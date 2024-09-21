@@ -1,0 +1,17 @@
+fileFormatVersion: 2
+guid: 8d98eb1e5a46ea04b8ec6ff912fe43dc
+MonoImporter:
+  externalObjects: {}
+  serializedVersion: 2
+  defaultReferences:
+  - m_Target: {instanceID: 0}
+  - m_ToolIcon: {fileID: 2800000, guid: 9a71a0fb622843144a9941b2c012fbbc, type: 3}
+  - m_ToolIconActive: {fileID: 2800000, guid: a98d0bd987ab2f946b5609ab797c3218, type: 3}
+  - m_ToolIconDark: {fileID: 2800000, guid: d4d5f6860c6883447b72139d71b7df2d, type: 3}
+  - m_ToolIconDarkActive: {fileID: 2800000, guid: a98d0bd987ab2f946b5609ab797c3218,
+      type: 3}
+  executionOrder: 0
+  icon: {instanceID: 0}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 

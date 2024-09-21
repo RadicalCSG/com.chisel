@@ -1,0 +1,26 @@
+{
+  "name": "com.chisel",
+  "displayName": "Chisel 3D Level Editor",
+  "version": "0.3.0-preview",
+  "unity": "6000.0",
+  "description": "A boolean (CSG) based 3d level editor for Unity",
+  "license": "MIT",
+  "keywords": [ "level design", "3D", "world building", "CSG", "BSP", "Boolean", "Geometry" ],
+  "type": "tool",
+  "hideInEditor": false,
+  "samples": [
+     {
+       "displayName": "Sample scene",
+       "description": "A sample scene made in Chisel",
+       "path": "Samples~/Sample Scene"
+     }
+  ],
+  "dependencies": {
+    "com.unity.burst": "1.8.17",
+    "com.unity.entities": "1.2.4",
+    "com.unity.collections": "2.4.3",
+    "com.unity.mathematics": "1.3.2",
+    "com.unity.profiling.core": "1.0.2",
+    "com.custom_asset_metadata": "https://github.com/LogicalError/CustomAssetMetadata.git#1.2.0"
+  }
+}
