@@ -9,6 +9,8 @@ using Unity.Collections.LowLevel.Unsafe;
 using Unity.Jobs;
 using Unity.Mathematics;
 using UnityEngine;
+using UnityEngine.Pool;
+
 using Debug = UnityEngine.Debug;
 using ReadOnlyAttribute = Unity.Collections.ReadOnlyAttribute;
 using WriteOnlyAttribute = Unity.Collections.WriteOnlyAttribute;
@@ -41,10 +43,10 @@ namespace Chisel.Core
     [GenerateTestsForBurstCompatibility]
     internal struct CompactHierarchyManagerInstance : IDisposable
     {
-        public NativeList<CompactHierarchy> hierarchies;
         public IDManager                    hierarchyIDLookup;
-        public NativeList<CompactNodeID>    nodes;
         public IDManager                    nodeIDLookup;
+        public NativeList<CompactHierarchy> hierarchies;
+        public NativeList<CompactNodeID>    nodes;
         public NativeList<CSGTree>          allTrees;
         public NativeList<CSGTree>          updatedTrees;
         public CompactHierarchyID           defaultHierarchyID;
@@ -70,29 +72,30 @@ namespace Chisel.Core
             if (nodes            .IsCreated) nodes            .Dispose(); nodes = default;
             if (allTrees         .IsCreated) allTrees         .Dispose(); allTrees = default;
             if (updatedTrees     .IsCreated) updatedTrees     .Dispose(); updatedTrees = default;
-        }
+			defaultHierarchyID = CompactHierarchyID.Invalid;
+		}
         
         internal void Clear()
         {
             if (hierarchies.IsCreated)
             {
-                var tempHierarchyList = new NativeArray<CompactHierarchy>(hierarchies.Length, Allocator.Temp);
+                var tempHierarchyList = ListPool< CompactHierarchy>.Get();
                 for (int i = 0; i < hierarchies.Length; i++)
-                    tempHierarchyList[i] = hierarchies[i];
+                    tempHierarchyList.Add(hierarchies[i]);
 
                 try
                 {
-                    for (int i = 0; i < tempHierarchyList.Length; i++)
+                    for (int i = 0; i < tempHierarchyList.Count; i++)
                     {
                         if (tempHierarchyList[i].IsCreated)
-                        {
+                        { 
                             try
                             {
                                 // Note: calling dispose will remove it from hierarchies, 
                                 // which is why we need to copy the list to dispose them all efficiently
                                 tempHierarchyList[i].Dispose();
                                 tempHierarchyList[i] = default;
-                            }
+                            } 
                             catch (Exception ex)
                             {
                                 Debug.LogException(ex);
@@ -102,10 +105,10 @@ namespace Chisel.Core
                 }
                 finally
                 {
-                    tempHierarchyList.Dispose();
-                }
+					ListPool<CompactHierarchy>.Release(tempHierarchyList);
+				}
             }
-            defaultHierarchyID = CompactHierarchyID.Invalid;
+            defaultHierarchyID = CompactHierarchyID.Invalid; 
 
             if (hierarchies.IsCreated) hierarchies.Clear();
             if (hierarchyIDLookup.IsCreated) hierarchyIDLookup.Clear();
@@ -1698,7 +1701,7 @@ namespace Chisel.Core
     }
 
     // TODO: create "ReadOnlyCompact...Manager" wrapper can be used in jobs
-    public partial class CompactHierarchyManager
+    public partial class CompactHierarchyManager : IDisposable
     {
         static CompactHierarchyManagerInstance  instance;
         
@@ -1747,13 +1750,34 @@ namespace Chisel.Core
             { 
                 for (int i = 0; i < instance.hierarchies.Length; i++)
                     instance.hierarchies[i].ClearAllOutlines();
-            }
+			}
         }
 
+        public void Dispose()
+        {
+            try
+            {
+                ClearOutlines();
+            }
+            finally
+            {
+                if (instance.hierarchies.IsCreated)
+                {
+                    instance.hierarchies.Dispose();
+                    instance.hierarchies = default;
+                }
+            }
+		}
 
-        /// <summary>Updates all pending changes to all <see cref="Chisel.Core.CSGTree"/>s.</summary>
-        /// <returns>True if any <see cref="Chisel.Core.CSGTree"/>s have been updated, false if no changes have been found.</returns>
-        [return: MarshalAs(UnmanagedType.U1)]
+		public static void Destroy()
+		{
+            instance.Dispose();
+		}
+
+
+		/// <summary>Updates all pending changes to all <see cref="Chisel.Core.CSGTree"/>s.</summary>
+		/// <returns>True if any <see cref="Chisel.Core.CSGTree"/>s have been updated, false if no changes have been found.</returns>
+		[return: MarshalAs(UnmanagedType.U1)]
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static bool Flush(FinishMeshUpdate finishMeshUpdates) 
         { 

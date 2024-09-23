@@ -554,9 +554,9 @@ namespace Chisel.Core
             brushMeshes.Resize(generators.Length, NativeArrayOptions.ClearMemory);
             var job = new CreateBrushesJob<Generator>
             {
-                settings            = generators,
-                surfaceArrays  = surfaceArrays,
-                brushMeshes         = brushMeshes
+                settings      = generators,
+                surfaceArrays = surfaceArrays,
+                brushMeshes   = brushMeshes
             };
             var createJobHandle = job.Schedule(runInParallel, generators, 8, dependsOn);
             var surfaceDeepDisposeJobHandle = surfaceArrays.DisposeDeep(createJobHandle);
@@ -587,13 +587,13 @@ namespace Chisel.Core
             var initializeArraysJob = new InitializeArraysJob
             {
                 // Read
-                nodes                       = generatorNodes,
-                brushMeshes                 = brushMeshes,
-                hierarchyList               = hierarchyList,
+                nodes                    = generatorNodes,
+                brushMeshes              = brushMeshes,
+                hierarchyList            = hierarchyList,
 
                 // Write
-                generatedNodeDefinitions    = generatedNodeDefinitions.AsParallelWriter(),
-                brushMeshBlobs              = brushMeshBlobs.AsParallelWriter()
+                generatedNodeDefinitions = generatedNodeDefinitions.AsParallelWriter(),
+                brushMeshBlobs           = brushMeshBlobs.AsParallelWriter()
             };
             initializeArraysJob.InitializeLookups();
             initializeArraysJobHandle = initializeArraysJob.Schedule(runInParallel, dependsOn);

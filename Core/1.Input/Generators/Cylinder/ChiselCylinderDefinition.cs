@@ -218,7 +218,7 @@ namespace Chisel.Core
         #endregion
 
         #region Generate
-        public BlobAssetReference<BrushMeshBlob> GenerateMesh(BlobAssetReference<InternalChiselSurfaceArray> surfaceDefinitionBlob, Allocator allocator)
+        public readonly BlobAssetReference<BrushMeshBlob> GenerateMesh(BlobAssetReference<InternalChiselSurfaceArray> surfaceDefinitionBlob, Allocator allocator)
         {
             var topDiameter     = new float2(topDiameterX, topDiameterZ);
             var bottomDiameter  = new float2(bottomDiameterX, bottomDiameterZ);

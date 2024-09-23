@@ -372,7 +372,6 @@ namespace Chisel.Core
                     {
                         brushMeshPointers   = brushMeshPointers.AsArray(),
                         surfaces            = surfaces,
-                        //brushMeshBlobCache  = brushMeshBlobCache,
                         brushMeshBlobs      = brushMeshBlobs,
                         allocator           = allocator
                     };
@@ -415,10 +414,10 @@ namespace Chisel.Core
         [BurstCompile(CompileSynchronously = true, OptimizeFor = OptimizeFor.Performance)]
         unsafe struct ConvertToBrushMeshBlobJob : IJobParallelFor
         {
-            [NoAlias, ReadOnly] public NativeArray<BrushMeshPointers>                           brushMeshPointers;
-            [NoAlias, ReadOnly] public NativeList<InternalChiselSurface>                          surfaces;
+            [NoAlias, ReadOnly] public NativeArray<BrushMeshPointers>                  brushMeshPointers;
+            [NoAlias, ReadOnly] public NativeList<InternalChiselSurface>               surfaces;
 
-            [NoAlias, WriteOnly] public NativeArray<BlobAssetReference<BrushMeshBlob>>    brushMeshBlobs;
+            [NoAlias, WriteOnly] public NativeArray<BlobAssetReference<BrushMeshBlob>> brushMeshBlobs;
 
             public Allocator allocator;
 
@@ -808,6 +807,7 @@ namespace Chisel.Core
                 var edgeCount       = brushMeshBlob.halfEdges.Length;
                 var polygonCount    = brushMeshBlob.polygons.Length;
                 var vertexCount     = brushMeshBlob.localVertices.Length;
+                // TODO: do this at creation time, so we don't have to worry about disposing the memory of invalid brushes
                 if (edgeCount < BrushMesh.kMinimumHalfEdges || polygonCount < BrushMesh.kMinimumPolygons || vertexCount < BrushMesh.kMinimumVertices)
 				{
 					Debug.Log("(11)");
