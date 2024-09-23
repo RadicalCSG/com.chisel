@@ -5,6 +5,7 @@ using Unity.Jobs;
 using Unity.Collections;
 using Unity.Entities;
 using Unity.Mathematics;
+using System;
 
 namespace Chisel.Core
 {
@@ -308,9 +309,9 @@ namespace Chisel.Core
         public BlobAssetReference<BrushMeshBlob> brushMeshBlob;
     }
 
-    internal sealed class ChiselMeshLookup : ScriptableObject
+    internal sealed class ChiselMeshLookup : ScriptableObject, IDisposable
     {
-        public class Data
+        public class Data : IDisposable
         {
             public NativeParallelHashMap<int, RefCountedBrushMeshBlob> brushMeshBlobCache;
 
@@ -318,28 +319,28 @@ namespace Chisel.Core
             {
                 brushMeshBlobCache = new NativeParallelHashMap<int, RefCountedBrushMeshBlob>(1000, Allocator.Persistent);
             }
-            /*
+			/*
             public void EnsureCapacity(int capacity)
             {
                 if (brushMeshBlobCache.Capacity < capacity)
                     brushMeshBlobCache.Capacity = capacity;
             }*/
 
-            internal void Dispose()
-            {
+			~Data() { Dispose(); }
+
+			public void Dispose()
+			{
                 if (brushMeshBlobCache.IsCreated)
                 {
                     try
                     {
-                        using (var items = brushMeshBlobCache.GetValueArray(Allocator.Persistent))
-                        {
-                            foreach (var item in items)
-                            {
-                                if (item.brushMeshBlob.IsCreated)
-                                    item.brushMeshBlob.Dispose();
-                            }
-                        }
-                    }
+						using var items = brushMeshBlobCache.GetValueArray(Allocator.Persistent);
+						foreach (var item in items)
+						{
+							if (item.brushMeshBlob.IsCreated)
+								item.brushMeshBlob.Dispose();
+						}
+					}
                     finally
                     {
                         brushMeshBlobCache.Dispose();
@@ -347,7 +348,7 @@ namespace Chisel.Core
                     }
                 }
                 // temporary hack
-                CompactHierarchyManager.ClearOutlines();
+                CompactHierarchyManager.Destroy();
             }
         }
 
@@ -386,5 +387,16 @@ namespace Chisel.Core
             data.Dispose();
             _singleton = null;
         }
-    }
+
+		public void Dispose()
+		{
+			data.Dispose();
+			_singleton = null;
+		}
+
+		~ChiselMeshLookup()
+        {
+            Dispose();
+        }
+	}
 }

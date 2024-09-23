@@ -210,11 +210,38 @@ namespace Chisel.Editors
         const string kEditorResourcesPath   = @"Editor Resources";
         const string kImageExtension        = @".png";
 
-        static readonly string[] searchPaths = new string[]
+		public static string AssemblyDirectory
+		{
+			get
+			{
+				string codeBase = System.Reflection.Assembly.GetExecutingAssembly().CodeBase;
+				System.UriBuilder uri = new System.UriBuilder(codeBase);
+				string path = System.Uri.UnescapeDataString(uri.Path);
+				return System.IO.Path.GetDirectoryName(path);
+			}
+		}
+
+		static string[] GetSearchPaths()
         {
-            @"Assets/" + kEditorResourcesPath,
-			@"Packages/com.chisel/" + kEditorResourcesPath
-        };
+            var assembly = System.Reflection.Assembly.GetExecutingAssembly();
+			var packageInfo = UnityEditor.PackageManager.PackageInfo.FindForAssembly(assembly);
+			if (packageInfo != null)
+			{
+		        return new string[]
+                {
+					System.IO.Path.Combine(packageInfo.assetPath, kEditorResourcesPath),
+			        @"Assets/" + kEditorResourcesPath
+		        };
+			} else
+			{
+				return new string[]
+				{
+					@"Assets/" + kEditorResourcesPath
+				};
+			}
+		}
+
+        static readonly string[] searchPaths = GetSearchPaths();
 
         static string[] GetResourcePaths()
         {
