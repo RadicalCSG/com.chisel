@@ -17,7 +17,10 @@ namespace Chisel.Core
             allTrees = default;
             bool needUpdate = false;
 
-            CompactHierarchyManager.GetAllTrees(instance.allTrees);
+			if (instance.defaultHierarchyID == CompactHierarchyID.Invalid)
+				instance.Initialize();
+
+			CompactHierarchyManager.GetAllTrees(instance.allTrees);
             // Check if we have a tree that needs updates
             instance.updatedTrees.Clear();
             for (int t = 0; t < instance.allTrees.Length; t++)

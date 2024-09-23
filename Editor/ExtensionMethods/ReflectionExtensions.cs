@@ -189,7 +189,8 @@ namespace Chisel.Editors
             }
             if (typeLookups.TryGetValue(fullName, out Type type))
                 return type;
-            return null;
+			Debug.LogError($"Could not find type for {fullName}");
+			return null;
         }
 
         public static Type[] AllTypes { get { return allTypes; } }
@@ -207,9 +208,10 @@ namespace Chisel.Editors
             }
             var property = type.GetProperty(propertyName, BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.Static);
             if (property == null)
-            {
-                Debug.LogError($"property == null (propertyName: {propertyName})");
-            }
+			{
+				Debug.LogError($"Could not find matching property for {propertyName}");
+                return null;
+			}
             return new ReflectedProperty<T>(property);
         }
 
@@ -222,9 +224,9 @@ namespace Chisel.Editors
             }
             var type = instance.GetType();
             if (type == null)
-            {
-                Debug.LogError("type == null");
-                return null;
+			{
+				Debug.LogError($"Could not find matching property for {propertyName}");
+				return null;
             }
             return new ReflectedProperty<T>(type.GetProperty(propertyName, BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.Static));
         }
@@ -240,9 +242,9 @@ namespace Chisel.Editors
             }
             var property = type.GetProperty(propertyName, BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.Static);
             if (property == null)
-            {
-                Debug.LogError($"property == null (propertyName: {propertyName})");
-            }
+			{
+				Debug.LogError($"Could not find matching property for {propertyName}");
+			}
             return new ReflectedProperty<T>(property);
         }
 
@@ -255,9 +257,9 @@ namespace Chisel.Editors
             }
             var property = type.GetProperty(propertyName, BindingFlags.NonPublic | BindingFlags.Public | System.Reflection.BindingFlags.Instance);
             if (property == null)
-            {
-                Debug.LogError($"property == null (propertyName: {propertyName})");
-            }
+			{
+				Debug.LogError($"Could not find matching property for {propertyName}");
+			}
             return new ReflectedProperty<T>(instance, property);
         }
 
@@ -271,9 +273,10 @@ namespace Chisel.Editors
             }
             var property = type.GetProperty(propertyName, BindingFlags.NonPublic | BindingFlags.Public | System.Reflection.BindingFlags.Instance);
             if (property == null)
-            {
-                Debug.LogError($"property == null (propertyName: {propertyName})");
-            }
+			{
+				Debug.LogError($"Could not find matching property for {propertyName}");
+				return null;
+			}
             return new ReflectedProperty<T>(instance, property);
         }
 
@@ -286,9 +289,9 @@ namespace Chisel.Editors
             }
             var type = instance.GetType();
             if (type == null)
-            {
-                Debug.LogError("type == null");
-                return null;
+			{
+				Debug.LogError($"Could not find matching property for {propertyName}");
+				return null;
             }
             return new ReflectedProperty<T>(instance, type.GetProperty(propertyName, BindingFlags.NonPublic | BindingFlags.Public | System.Reflection.BindingFlags.Instance));
         }
@@ -304,9 +307,10 @@ namespace Chisel.Editors
 
             var property = type.GetProperty(propertyName, BindingFlags.NonPublic | BindingFlags.Public | System.Reflection.BindingFlags.Instance);
             if (property == null)
-            {
-                Debug.LogError($"property == null (propertyName: {propertyName})");
-            }
+			{
+				Debug.LogError($"Could not find matching property for {propertyName}");
+				return null;
+			}
             return new ReflectedInstanceProperty<T>(property);
         }
 
@@ -320,9 +324,10 @@ namespace Chisel.Editors
             }
             var property = type.GetProperty(propertyName, BindingFlags.NonPublic | BindingFlags.Public | System.Reflection.BindingFlags.Instance);
             if (property == null)
-            {
-                Debug.LogError($"property == null (propertyName: {propertyName})");
-            }
+			{
+				Debug.LogError($"Could not find matching property for {propertyName}");
+                return null;
+			}
             return new ReflectedInstanceProperty<T>(property);
         }
         #endregion
@@ -337,7 +342,10 @@ namespace Chisel.Editors
             }
             var field = type.GetField(name, BindingFlags.NonPublic | BindingFlags.Public);
             if (field == null)
-                return null;
+			{
+				Debug.LogError($"Could not find matching field for {name}");
+				return null;
+            }
             return new ReflectedField<T>(instance, field);
         }
 
@@ -351,7 +359,10 @@ namespace Chisel.Editors
             }
             var field = type.GetField(fieldName, BindingFlags.NonPublic | BindingFlags.Public);
             if (field == null)
+            {
+                Debug.LogError($"Could not find matching field for {fullTypeName} {fieldName}");
                 return null;
+            }
             return new ReflectedField<T>(instance, field);
         }
 
@@ -364,9 +375,9 @@ namespace Chisel.Editors
             }
             var type = instance.GetType();
             if (type == null)
-            {
-                Debug.LogError("type == null");
-                return null;
+			{
+				Debug.LogError($"Could not find matching field for {fieldName}");
+				return null;
             }
             return new ReflectedField<T>(instance, type.GetField(fieldName, BindingFlags.NonPublic | BindingFlags.Public));
         }
@@ -383,9 +394,9 @@ namespace Chisel.Editors
             }
             var field = type.GetField(name, BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.Static);
             if (field == null)
-            {
-                Debug.LogError($"field {name} not found");
-                return null;
+			{
+				Debug.LogError($"Could not find matching field for {name}");
+				return null;
             }
             return new ReflectedField<T>(null, field);
         }
@@ -400,7 +411,10 @@ namespace Chisel.Editors
             }
             var field = type.GetField(fieldName, BindingFlags.NonPublic | BindingFlags.Public);
             if (field == null)
+            {
+                Debug.LogError($"Could not find matching field for {fullTypeName} {fieldName}");
                 return null;
+            }
             return new ReflectedField<T>(null, field);
         }
         #endregion
@@ -413,8 +427,14 @@ namespace Chisel.Editors
                 Debug.LogError("type == null");
                 return null;
             }
-            return type.GetMethod(name, BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.Static | BindingFlags.IgnoreReturn);
-        }
+            var field = type.GetMethod(name, BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.Static | BindingFlags.IgnoreReturn); 
+			if (field == null)
+			{
+				Debug.LogError($"Could not find matching field for {name}");
+				return null;
+			}
+            return field;
+		}
 
         public static MethodInfo GetStaticMethod(this Type type, string name, int parameterCount)
         {
@@ -427,8 +447,9 @@ namespace Chisel.Editors
             var flags = BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.Static | BindingFlags.IgnoreReturn;
             var allMethods = type.GetMethods(name, flags);
             if (allMethods == null)
-            {
-                return null;
+			{
+				Debug.LogError($"Could not find matching method for {name}");
+				return null;
             }
 
             foreach(var method in allMethods)
@@ -437,7 +458,8 @@ namespace Chisel.Editors
                     return method;
             }
 
-            return null;
+			Debug.LogError($"Could not find matching method for {name}");
+			return null;
         }
 
 
@@ -448,8 +470,14 @@ namespace Chisel.Editors
                 Debug.LogError("type == null");
                 return null;
             }
-            return type.GetMethod(name, BindingFlags.NonPublic | BindingFlags.Public);
-        }
+            var method = type.GetMethod(name, BindingFlags.NonPublic | BindingFlags.Public);
+			if (method == null)
+			{
+				Debug.LogError($"Could not find matching method for {name}");
+				return null;
+			}
+			return method;
+		}
 
         public static MethodInfo GetStaticMethod(this Type type, string name, params Type[] parameterTypes)
         {
@@ -465,7 +493,10 @@ namespace Chisel.Editors
             {
                 var foundMethods = type.GetMethods(name, bindingFlags);
                 if (foundMethods.Length == 0)
-                    return null;
+				{
+					Debug.LogError($"Could not find matching method for {name}");
+					return null;
+                }
                 if (foundMethods.Length == 1)
                 {/*
                     var foundParams = foundMethods[0].GetParameters();
@@ -478,8 +509,9 @@ namespace Chisel.Editors
                         Debug.Log($"{i}: {parameterTypes[i]}");
                     }*/
                     return foundMethods[0];
-                }
-                return null;
+				}
+				Debug.LogError("foundMethods.Length > 1");
+				return null;
             }
             return result;
         }
@@ -487,11 +519,16 @@ namespace Chisel.Editors
         public static MethodInfo GetMethod(this Type type, string name, params Type[] parameterTypes)
         {
             if (type == null)
-            {
-                Debug.LogError("type == null");
-                return null;
+			{
+				Debug.LogError($"Could not find matching method for {name}");
+				return null;
             }
-            return type.GetMethod(name, BindingFlags.NonPublic | BindingFlags.Public, null, parameterTypes, null);
+            var method = type.GetMethod(name, BindingFlags.NonPublic | BindingFlags.Public, null, parameterTypes, null);
+            if (method == null)
+			{
+				Debug.LogError($"Could not find matching method for {name}");
+			}
+            return method;
         }
 
         public static MethodInfo[] GetMethods(this Type type, string name, BindingFlags bindingFlags)
@@ -501,8 +538,13 @@ namespace Chisel.Editors
                 Debug.LogError("type == null");
                 return null;
             }
-            return (from method in type.GetMethods(bindingFlags) where method.Name == name select method).ToArray();
-        }
+            var methods = (from method in type.GetMethods(bindingFlags) where method.Name == name select method).ToArray();
+			if (methods == null)
+			{
+				Debug.LogError($"Could not find matching methods for {name}");
+			}
+            return methods;
+		}
 
         public static T CreateDelegate<T>(MethodInfo methodInfo) where T : Delegate
         {
@@ -511,8 +553,13 @@ namespace Chisel.Editors
                 Debug.LogError("methodInfo == null");
                 return null;
             }
-            return (T)Delegate.CreateDelegate(typeof(T), null, methodInfo, true);
-        }
+            var method = (T)Delegate.CreateDelegate(typeof(T), null, methodInfo, true);
+			if (method == null)
+			{
+				Debug.LogError($"Could not create delegate for method {methodInfo.Name}");
+			}
+            return method;
+		}
 
         public static T CreateDelegate<T>(this Type type, string methodName) where T : Delegate
         {
@@ -529,7 +576,12 @@ namespace Chisel.Editors
                 Debug.LogError($"methodInfo == null (methodName: {methodName})");
                 return null;
             }
-            return (T)Delegate.CreateDelegate(typeof(T), null, methodInfo, true);
+            var method = (T)Delegate.CreateDelegate(typeof(T), null, methodInfo, true);
+			if (method == null)
+			{
+				Debug.LogError($"Could not create delegate for method {methodInfo.Name}");
+			}
+			return method;
         }
 
 
@@ -546,8 +598,13 @@ namespace Chisel.Editors
                 Debug.LogError($"methodInfo == null (methodName: {methodName})");
                 return null;
             }
-            return (T)Delegate.CreateDelegate(typeof(T), null, methodInfo, true);
-        }
+            var method = (T)Delegate.CreateDelegate(typeof(T), null, methodInfo, true);
+			if (method == null)
+			{
+				Debug.LogError($"Could not create delegate for method {methodInfo.Name}");
+			}
+			return method;
+		}
 
         public static T CreateDelegate<T>(string fullTypeName, string methodName) where T : Delegate
         {
@@ -566,8 +623,13 @@ namespace Chisel.Editors
             }
             try
             {
-                return (T)Delegate.CreateDelegate(typeof(T), null, methodInfo, true);
-            }
+				var method = (T)Delegate.CreateDelegate(typeof(T), null, methodInfo, true);
+				if (method == null)
+				{
+					Debug.LogError($"Could not create delegate for method {methodInfo.Name}");
+				}
+				return method;
+			}
             catch (Exception ex)
             {
                 Debug.LogError($"{methodName}'s signature might've been modified between Unity versions");
@@ -587,8 +649,13 @@ namespace Chisel.Editors
                 Debug.LogError("methodInfo == null");
                 return null;
             }
-            return (T)Delegate.CreateDelegate(typeof(T), instance, methodInfo, true);
-        }
+			var method = (T)Delegate.CreateDelegate(typeof(T), instance, methodInfo, true);
+			if (method == null)
+			{
+				Debug.LogError($"Could not create delegate for method {methodInfo.Name}");
+			}
+			return method;
+		}
 
         public static T CreateDelegate<T>(object instance, string methodName) where T : Delegate
         {
@@ -610,8 +677,13 @@ namespace Chisel.Editors
                 Debug.LogError($"methodInfo == null (methodName: {methodName})");
                 return null;
             }
-            return (T)Delegate.CreateDelegate(typeof(T), instance, methodInfo, true);
-        }
+			var method = (T)Delegate.CreateDelegate(typeof(T), instance, methodInfo, true);
+			if (method == null)
+			{
+				Debug.LogError($"Could not create delegate for method {methodInfo.Name}");
+			}
+			return method;
+		}
 
         public static T CreateDelegate<T>(this Type type, object instance, string methodName) where T : Delegate
         {
@@ -632,7 +704,12 @@ namespace Chisel.Editors
                 Debug.LogError($"methodInfo == null (methodName: {methodName})");
                 return null;
             }
-            return (T)Delegate.CreateDelegate(typeof(T), instance, methodInfo, true);
-        }
+			var method = (T)Delegate.CreateDelegate(typeof(T), instance, methodInfo, true);
+			if (method == null)
+			{
+				Debug.LogError($"Could not create delegate for method {methodInfo.Name}");
+			}
+			return method;
+		}
     }
 }

@@ -237,7 +237,7 @@ namespace Chisel.Editors
                 ChiselGeneratedModelMeshManager.UpdateModels();
                 ChiselNodeEditorBase.HandleCancelEvent();
             }
-            catch (Exception ex)
+            catch (Exception ex) 
             {
                 Debug.LogError(ex);
             }

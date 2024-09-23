@@ -210,17 +210,6 @@ namespace Chisel.Editors
         const string kEditorResourcesPath   = @"Editor Resources";
         const string kImageExtension        = @".png";
 
-		public static string AssemblyDirectory
-		{
-			get
-			{
-				string codeBase = System.Reflection.Assembly.GetExecutingAssembly().CodeBase;
-				System.UriBuilder uri = new System.UriBuilder(codeBase);
-				string path = System.Uri.UnescapeDataString(uri.Path);
-				return System.IO.Path.GetDirectoryName(path);
-			}
-		}
-
 		static string[] GetSearchPaths()
         {
             var assembly = System.Reflection.Assembly.GetExecutingAssembly();

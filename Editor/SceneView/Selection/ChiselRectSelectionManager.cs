@@ -113,35 +113,46 @@ namespace Chisel.Editors
 
             unityRectSelectionType		= ReflectionExtensions.GetTypeByName("UnityEditor.RectSelection");
             if (unityRectSelectionType == null)
-                return; 
+			{
+				Debug.LogError("Could not find UnityEditor.RectSelection");
+				return;
+			}
 
-            unityEnumSelectionType 		= ReflectionExtensions.GetTypeByName("UnityEditor.RectSelection+SelectionType");
+			unityEnumSelectionType 		= ReflectionExtensions.GetTypeByName("UnityEditor.RectSelection+SelectionType");
             if (unityEnumSelectionType == null)
+			{
+				Debug.LogError("Could not find UnityEditor.RectSelection+SelectionType");
+				return;
+			}
+
+			rectSelectionField			= typeof(SceneView).GetField("m_RectSelection",			BindingFlags.NonPublic | BindingFlags.Instance);
+            if (rectSelectionField == null)
+            {
+                Debug.LogError("Could not find SceneView.m_RectSelection");
                 return;
-            
-            rectSelectionField			= typeof(SceneView).GetField("m_RectSelection",			BindingFlags.NonPublic | BindingFlags.Instance);
-            if (rectSelectionField == null) return;
+            }
 
 #if UNITY_2022_3_OR_NEWER
             rectSelectionIDField        = unityRectSelectionType.GetField("k_RectSelectionID",  BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.FlattenHierarchy);
-            if (rectSelectionIDField == null) return;
+            if (rectSelectionIDField == null)
+			{
+				Debug.LogError("Could not find UnityEditor.RectSelection.k_RectSelectionID");
+				return;
+			}
 
-            RectSelectionID             = 0;
-            selectStartPointField		= unityRectSelectionType.GetField("m_StartPoint",	    BindingFlags.NonPublic | BindingFlags.Instance);
-            isNearestControlField       = unityRectSelectionType.GetField("m_IsNearestControl",	BindingFlags.NonPublic | BindingFlags.Instance);
-            selectionStartField			= unityRectSelectionType.GetField("m_SelectionStart",	BindingFlags.NonPublic | BindingFlags.Instance);
-            lastSelectionField			= unityRectSelectionType.GetField("m_LastSelection",	BindingFlags.NonPublic | BindingFlags.Instance);
-            currentSelectionField		= unityRectSelectionType.GetField("m_CurrentSelection",	BindingFlags.NonPublic | BindingFlags.Instance);
-            selectMousePointField		= unityRectSelectionType.GetField("m_SelectMousePoint",	BindingFlags.NonPublic | BindingFlags.Instance);
-            updateSelectionMethod       = unityRectSelectionType.GetMethod("UpdateSelection",   BindingFlags.NonPublic | BindingFlags.Instance,
-                                                                            null,
-                                                                            new Type[] {
+			RectSelectionID       = 0;
+            selectStartPointField = unityRectSelectionType.GetField("m_StartPoint",	    BindingFlags.NonPublic | BindingFlags.Instance);
+            isNearestControlField = unityRectSelectionType.GetField("m_IsNearestControl",	BindingFlags.NonPublic | BindingFlags.Instance);
+            selectionStartField	  = unityRectSelectionType.GetField("m_SelectionStart",	BindingFlags.NonPublic | BindingFlags.Instance);
+            lastSelectionField	  = unityRectSelectionType.GetField("m_LastSelection",	BindingFlags.NonPublic | BindingFlags.Instance);
+            currentSelectionField = unityRectSelectionType.GetField("m_CurrentSelection",	BindingFlags.NonPublic | BindingFlags.Instance);
+            selectMousePointField = unityRectSelectionType.GetField("m_SelectMousePoint",	BindingFlags.NonPublic | BindingFlags.Instance);
+            updateSelectionMethod = ReflectionExtensions.GetStaticMethod(unityRectSelectionType, "UpdateSelection", new Type[] {
                                                                                 typeof(Object[]),
                                                                                 typeof(Object[]),
                                                                                 unityEnumSelectionType,
                                                                                 typeof(bool)
-                                                                            },
-                                                                            null);
+                                                                            });
 #else
             rectSelectionIDField		= unityRectSelectionType.GetField("s_RectSelectionID",	BindingFlags.NonPublic | BindingFlags.Static);
             if (rectSelectionIDField == null) return;
@@ -164,7 +175,7 @@ namespace Chisel.Editors
                                                                             null);
 #endif
 
-            selectionTypeAdditive       = Enum.Parse(unityEnumSelectionType, "Additive");
+			selectionTypeAdditive = Enum.Parse(unityEnumSelectionType, "Additive");
             selectionTypeSubtractive	= Enum.Parse(unityEnumSelectionType, "Subtractive");
             selectionTypeNormal			= Enum.Parse(unityEnumSelectionType, "Normal");
             
@@ -183,7 +194,23 @@ namespace Chisel.Editors
                                     selectionTypeAdditive		!= null &&
                                     selectionTypeSubtractive	!= null &&
                                     selectionTypeNormal			!= null;
-        }
+
+
+            if (!reflectionSucceeded)
+            {
+                Debug.LogError("Could not initialize selection properly");
+
+				Debug.LogError($"selectStartPointField {selectStartPointField}");
+				Debug.LogError($"selectionStartField {selectionStartField}");
+				Debug.LogError($"currentSelectionField {currentSelectionField}");
+				Debug.LogError($"selectMousePointField {selectMousePointField}");
+
+				Debug.LogError($"updateSelectionMethod {updateSelectionMethod}");
+				Debug.LogError($"selectionTypeAdditive {selectionTypeAdditive}");
+				Debug.LogError($"selectionTypeSubtractive {selectionTypeSubtractive}");
+				Debug.LogError($"selectionTypeNormal {selectionTypeNormal}");
+			}
+		}
     }
 
     // TODO: clean up, rename
