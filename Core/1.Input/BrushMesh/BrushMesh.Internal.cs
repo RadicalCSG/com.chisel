@@ -13,7 +13,6 @@ namespace Chisel.Core
             public Plane        localPlane;
         }
 
-
         private sealed class TriangulationPath
         {
             public TriangulationPath[]  subPaths;

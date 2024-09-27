@@ -305,9 +305,6 @@ namespace Chisel.Core
 
                 // Read/Write
                 hierarchyIDLookupRef     = new PointerReference<IDManager>(ref CompactHierarchyManager.HierarchyIDLookup),
-                //hierarchyIDLookupPtr
-                //nodeIDLookupPtr
-                //nodesLookup
                 hierarchyList            = hierarchyList,
                 brushMeshBlobCache       = brushMeshBlobCache
             };

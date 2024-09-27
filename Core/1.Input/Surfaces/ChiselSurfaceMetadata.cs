@@ -8,7 +8,6 @@ using UnityEngine;
 
 namespace Chisel.Core
 {
-	// TODO: add comments
 	[Serializable, Flags]
 	public enum SurfaceOutputFlags : byte
 	{

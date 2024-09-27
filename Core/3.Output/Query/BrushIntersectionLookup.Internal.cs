@@ -34,10 +34,8 @@ namespace Chisel.Core
         public readonly int Length;
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public void Clear()
-        {
-            twoBits.ClearValues();
-        }
+        public void Clear() { twoBits.ClearValues(); }
+
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void Set(int index, IntersectionType value)

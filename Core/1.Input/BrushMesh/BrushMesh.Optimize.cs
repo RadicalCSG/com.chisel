@@ -7,7 +7,7 @@ using UnityEngine.Pool;
 
 namespace Chisel.Core
 {
-    public sealed partial class BrushMesh
+    sealed partial class BrushMesh
     {
         const float kDistanceEpsilon = 0.00001f;
         const float kEqualityEpsilon = 0.0001f;
@@ -24,7 +24,6 @@ namespace Chisel.Core
                 return true;
             return false;
         }
-
 
         public void SnapPolygonVerticesToItsPlanes(int polygonIndex)
         {

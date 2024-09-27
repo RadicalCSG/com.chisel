@@ -17,10 +17,12 @@ namespace Chisel.Core
     public sealed partial class BrushMesh
     {
         const int kLatestVersion = 1;
-        [HideInInspector]
-        [SerializeField] int version = kLatestVersion;  // Serialization will overwrite the version number 
-                                                        // new instances will have the latest version
-                                                        // This allows us to detect changes and support upgrades
+
+		// Serialization will overwrite the version number 
+		// new instances will have the latest version
+		// This allows us to detect changes and support upgrades
+		[HideInInspector]
+        [SerializeField] int version = kLatestVersion;
 
         public BrushMesh() { }
         public BrushMesh(BrushMesh other)
@@ -69,7 +71,7 @@ namespace Chisel.Core
             public Int32 descriptionIndex;
 
             [EditorBrowsable(EditorBrowsableState.Never)]
-            public override string ToString() { return $"{{ firstEdge = {firstEdge}, edgeCount = {edgeCount}, descriptionIndex = {descriptionIndex} }}"; }
+            public override readonly string ToString() { return $"{{ firstEdge = {firstEdge}, edgeCount = {edgeCount}, descriptionIndex = {descriptionIndex} }}"; }
         }
 
         /// <summary>Defines a half edge of a <see cref="Chisel.Core.BrushMesh"/>.</summary>
@@ -84,7 +86,7 @@ namespace Chisel.Core
             public Int32 twinIndex;
 
             [EditorBrowsable(EditorBrowsableState.Never)]
-            public override string ToString() { return $"{{ twinIndex = {twinIndex}, vertexIndex = {vertexIndex} }}"; }
+            public override readonly string ToString() { return $"{{ twinIndex = {twinIndex}, vertexIndex = {vertexIndex} }}"; }
         }
 
         /// <value>The vertices of this <see cref="Chisel.Core.BrushMesh"/>.</value> 

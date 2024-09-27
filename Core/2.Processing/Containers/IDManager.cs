@@ -30,7 +30,7 @@ namespace Chisel.Core
 
 
         [GenerateTestsForBurstCompatibility]
-        public bool CheckConsistency()
+        public readonly bool CheckConsistency()
         {
             for (int id = 0; id < idToIndex.Length; id++)
             {
@@ -101,12 +101,12 @@ namespace Chisel.Core
         }
 
         // Note: not all indices might be in use
-        public int IndexCount   { get { return indexToID.Length; } }
+        public readonly int IndexCount   { get { return indexToID.Length; } }
 
-        public bool IsIndexFree(int index) { return sectionManager.IsIndexFree(index); }
-        public bool IsAnyIndexFree(int index, int count) { return sectionManager.IsAnyIndexFree(index, count); }
+        public readonly bool IsIndexFree(int index) { return sectionManager.IsIndexFree(index); }
+        public readonly bool IsAnyIndexFree(int index, int count) { return sectionManager.IsAnyIndexFree(index, count); }
 
-        public bool IsCreated
+        public readonly bool IsCreated
         {
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             get
@@ -149,7 +149,7 @@ namespace Chisel.Core
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public unsafe void GetID(int index, out int id, out int generation)
+        public readonly unsafe void GetID(int index, out int id, out int generation)
         {
             id = default; //out
             generation = default; //out
@@ -170,7 +170,7 @@ namespace Chisel.Core
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public unsafe bool IsValidID(int id, int generation, out int index)
+        public readonly unsafe bool IsValidID(int id, int generation, out int index)
         {
             var idInternal = id - 1; // We don't want 0 to be a valid id
 
@@ -187,7 +187,7 @@ namespace Chisel.Core
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal unsafe bool IsValidIDUnsafe(int id, int generation, out int index)
+        internal readonly unsafe bool IsValidIDUnsafe(int id, int generation, out int index)
         {
             var idInternal = id - 1; // We don't want 0 to be a valid id
 
@@ -205,7 +205,7 @@ namespace Chisel.Core
 
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public unsafe bool IsValidIndex(int index, out int id, out int generation)
+        public readonly unsafe bool IsValidIndex(int index, out int id, out int generation)
         {
             id = default; //out
             generation = default;//out
@@ -226,7 +226,7 @@ namespace Chisel.Core
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public unsafe int GetIndexNoErrors(int id, int generation)
+        public readonly unsafe int GetIndexNoErrors(int id, int generation)
         {
             Debug.Assert(IsCreated);
             var idInternal = id - 1; // We don't want 0 to be a valid id
@@ -277,7 +277,7 @@ namespace Chisel.Core
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public unsafe int GetIndex(int id, int generation)
+        public readonly unsafe int GetIndex(int id, int generation)
         {
             Debug.Assert(IsCreated);
             var idInternal = id - 1; // We don't want 0 to be a valid id

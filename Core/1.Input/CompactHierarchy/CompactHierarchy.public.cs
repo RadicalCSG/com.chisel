@@ -82,7 +82,7 @@ namespace Chisel.Core
         public readonly Int32 value;
         public readonly Int32 generation;
 
-        public readonly CompactHierarchyID hierarchyID;
+		public readonly CompactHierarchyID hierarchyID;
 
         internal CompactNodeID(CompactHierarchyID hierarchyID, Int32 value, Int32 generation = 0) { this.hierarchyID = hierarchyID; this.value = value; this.generation = generation; }
 
@@ -126,7 +126,7 @@ namespace Chisel.Core
     }
 
     [GenerateTestsForBurstCompatibility]
-    public struct CompactNode
+	public struct CompactNode
     {
         public Int32                userID;
 
@@ -144,11 +144,11 @@ namespace Chisel.Core
     }
 
     [GenerateTestsForBurstCompatibility]
-    public struct CompactChildNode // TODO: rename
+	internal struct CompactChildNode // TODO: rename
     {
-        // TODO: probably need to split this up into multiple pieces, figure out how this will actually be used in practice first
+		// TODO: probably need to split this up into multiple pieces, figure out how this will actually be used in practice first
 
-        public CompactNode      nodeInformation;
+		internal CompactNode    nodeInformation;
         public NodeID           nodeID;         // TODO: figure out how to get rid of this
         public CompactNodeID    compactNodeID;     
         public CompactNodeID    parentID;       // TODO: rewrite updating code to use index here instead of ID (removes indirection)
@@ -162,7 +162,7 @@ namespace Chisel.Core
 
     // TODO: make sure everything is covered in tests
     [GenerateTestsForBurstCompatibility]
-    public partial struct CompactHierarchy //: IDisposable
+	partial struct CompactHierarchy //: IDisposable
     {
         #region CreateHierarchy
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -237,7 +237,7 @@ namespace Chisel.Core
 
         [return: MarshalAs(UnmanagedType.U1)]
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public bool IsValidCompactNodeID(CompactNodeID compactNodeID)
+        public readonly bool IsValidCompactNodeID(CompactNodeID compactNodeID)
         {
             if (!IsCreated)
 				return false;
@@ -343,7 +343,7 @@ namespace Chisel.Core
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public int ChildCount(CompactNodeID compactNodeID)
+        public readonly int ChildCount(CompactNodeID compactNodeID)
         {
             Debug.Assert(IsCreated);
             var nodeIndex = HierarchyIndexOfInternal(compactNodeID);
@@ -364,7 +364,7 @@ namespace Chisel.Core
         /// WARNING: The returned reference will become invalid after modifying the hierarchy!
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public ref CompactNode GetChildRef(CompactNodeID compactNodeID) { return ref UnsafeGetChildRefAtInternal(compactNodeID); }
+        public readonly ref CompactNode GetChildRef(CompactNodeID compactNodeID) { return ref UnsafeGetChildRefAtInternal(compactNodeID); }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public CompactNode GetChild(CompactNodeID compactNodeID) { return UnsafeGetChildRefAtInternal(compactNodeID); }
@@ -379,7 +379,7 @@ namespace Chisel.Core
         public CompactNode GetChildAt(CompactNodeID compactNodeID, int index) { return SafeGetChildRefAtInternal(compactNodeID, index); }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public CompactNodeID GetChildCompactNodeIDAt(CompactNodeID compactNodeID, int index) { return GetChildCompactNodeIDAtInternal(compactNodeID, index); }
+        public readonly CompactNodeID GetChildCompactNodeIDAt(CompactNodeID compactNodeID, int index) { return GetChildCompactNodeIDAtInternal(compactNodeID, index); }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         [return: MarshalAs(UnmanagedType.U1)]
