@@ -13,10 +13,10 @@ namespace Chisel.Core
         }
 
 
-        public static BlobAssetReference<CompactTree> Create(ref CompactHierarchy       compactHierarchy, 
-                                                                   NativeArray<CompactNodeID> nodes, 
-                                                                   NativeArray<CompactNodeID> brushes, 
-                                                                   CompactNodeID              treeCompactNodeID)
+        public static BlobAssetReference<CompactTree> Create(ref CompactHierarchy           compactHierarchy, 
+                                                                 NativeArray<CompactNodeID> nodes, 
+                                                                 NativeArray<CompactNodeID> brushes, 
+                                                                 CompactNodeID              treeCompactNodeID)
         {
             if (brushes.Length == 0)
                 return BlobAssetReference<CompactTree>.Null;

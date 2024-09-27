@@ -175,16 +175,13 @@ namespace Chisel.Core
         public bool PickingEnabled  { get { return CompactHierarchyManager.IsBrushPickingEnabled(nodeID); } set { CompactHierarchyManager.SetPickingEnabled(nodeID, value); } }
         public bool IsSelectable    { get { return CompactHierarchyManager.IsBrushSelectable(nodeID); } }
 
-        #endregion
+		#endregion
 #endif
 
-        #region Transformation
-        // TODO: add description
-        public float4x4			    LocalTransformation		{ get { return CompactHierarchyManager.GetNodeLocalTransformation(nodeID); } set { CompactHierarchyManager.SetNodeLocalTransformation(nodeID, in value); } }		
-        // TODO: add description
-        public float4x4             TreeToNodeSpaceMatrix   { get { return CompactHierarchyManager.GetTreeToNodeSpaceMatrix(nodeID, out var result) ? result : float4x4.identity; } }
-        // TODO: add description
-        public float4x4             NodeToTreeSpaceMatrix	{ get { return CompactHierarchyManager.GetNodeToTreeSpaceMatrix(nodeID, out var result) ? result : float4x4.identity; } }
+		#region Transformation
+		public readonly float4x4 LocalTransformation   { get { return CompactHierarchyManager.GetNodeLocalTransformation(nodeID); } set { CompactHierarchyManager.SetNodeLocalTransformation(nodeID, in value); } }
+		public readonly float4x4 TreeToNodeSpaceMatrix { get { return CompactHierarchyManager.GetTreeToNodeSpaceMatrix(nodeID, out var result) ? result : float4x4.identity; } }
+		public readonly float4x4 NodeToTreeSpaceMatrix { get { return CompactHierarchyManager.GetNodeToTreeSpaceMatrix(nodeID, out var result) ? result : float4x4.identity; } }
         #endregion
         
         #region Comparison

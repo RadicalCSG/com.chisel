@@ -147,12 +147,12 @@ namespace Chisel.Core
 
         #region ChildNodeContainer
         /// <value>Gets the number of elements contained in the <see cref="Chisel.Core.CSGTreeBranch"/>.</value>
-        public Int32			Count			    { get { return Hierarchy.ChildCount(CompactNodeID); } }
+        public readonly Int32 Count { get { return Hierarchy.ChildCount(CompactNodeID); } }
 
         /// <summary>Gets child at the specified index.</summary>
         /// <param name="index">The zero-based index of the child to get.</param>
         /// <returns>The element at the specified index.</returns>
-        public CSGTreeNode		this[int index]	    { get { return Find(Hierarchy.GetChildCompactNodeIDAt(CompactNodeID, index)); } }
+        public readonly CSGTreeNode this[int index] { get { return Find(Hierarchy.GetChildCompactNodeIDAt(CompactNodeID, index)); } }
 
 
         /// <summary>Adds a <see cref="Chisel.Core.CSGTreeNode"/> to the end of the <see cref="Chisel.Core.CSGTreeBranch"/>.</summary>
@@ -233,20 +233,15 @@ namespace Chisel.Core
 #if UNITY_EDITOR
         #region Inspector State
 
-        public bool Visible         { get { return CompactHierarchyManager.IsBrushVisible(nodeID); } set { CompactHierarchyManager.SetVisibility(nodeID, value); } }
-        public bool PickingEnabled  { get { return CompactHierarchyManager.IsBrushPickingEnabled(nodeID); } set { CompactHierarchyManager.SetPickingEnabled(nodeID, value); } }
-        public bool IsSelectable    { get { return CompactHierarchyManager.IsBrushSelectable(nodeID); } }
+        public bool Visible         { readonly get { return CompactHierarchyManager.IsBrushVisible(nodeID); } set { CompactHierarchyManager.SetVisibility(nodeID, value); } }
+        public bool PickingEnabled  { readonly get { return CompactHierarchyManager.IsBrushPickingEnabled(nodeID); } set { CompactHierarchyManager.SetPickingEnabled(nodeID, value); } }
+        public readonly bool IsSelectable { get { return CompactHierarchyManager.IsBrushSelectable(nodeID); } }
 
         #endregion
 #endif
 
         #region Transformation
-        // TODO: add description
-        public float4x4			    LocalTransformation		{ get { return CompactHierarchyManager.GetNodeLocalTransformation(nodeID); } set { CompactHierarchyManager.SetNodeLocalTransformation(nodeID, in value); } }		
-        // TODO: add description
-        //public float4x4           TreeToNodeSpaceMatrix   { get { return CompactHierarchyManager.GetTreeToNodeSpaceMatrix(branchNodeID, out var result) ? result : float4x4.identity; } }
-        // TODO: add description
-        //public float4x4           NodeToTreeSpaceMatrix	{ get { return CompactHierarchyManager.GetNodeToTreeSpaceMatrix(branchNodeID, out var result) ? result : float4x4.identity; } }
+        internal float4x4 LocalTransformation { readonly get { return CompactHierarchyManager.GetNodeLocalTransformation(nodeID); } set { CompactHierarchyManager.SetNodeLocalTransformation(nodeID, in value); } }
         #endregion
                 
         #region Comparison
@@ -264,16 +259,16 @@ namespace Chisel.Core
         public static bool operator !=(CSGTreeNode left, CSGTreeBranch right) { return left.nodeID != right.nodeID; }
 
         [EditorBrowsable(EditorBrowsableState.Never)]
-        public override bool Equals(object obj)
+        public override readonly bool Equals(object obj)
         {
-            if (obj is CSGTreeBranch) return this == ((CSGTreeNode)obj);
-            if (obj is CSGTreeNode) return this == ((CSGTreeNode)obj);
+            if (obj is CSGTreeBranch branch) return this == branch;
+            if (obj is CSGTreeNode node) return this == node;
 			return false;
         }
         [EditorBrowsable(EditorBrowsableState.Never)]
-        public bool Equals(CSGTreeBranch other) { return this == other; }
+        public readonly bool Equals(CSGTreeBranch other) { return this == other; }
         [EditorBrowsable(EditorBrowsableState.Never)]
-        public override int GetHashCode() { return nodeID.GetHashCode(); }
+        public override readonly int GetHashCode() { return nodeID.GetHashCode(); }
         #endregion
 
 
@@ -292,11 +287,12 @@ namespace Chisel.Core
         [SerializeField] internal NodeID nodeID;
 
 
-        internal CompactNodeID      CompactNodeID       { get { return CompactHierarchyManager.GetCompactNodeID(nodeID); } }
-        internal CompactHierarchyID CompactHierarchyID  { get { return CompactNodeID.hierarchyID; } }
-        ref CompactHierarchy Hierarchy
+        internal readonly CompactNodeID      CompactNodeID       { get { return CompactHierarchyManager.GetCompactNodeID(nodeID); } }
+        internal readonly CompactHierarchyID CompactHierarchyID  { get { return CompactNodeID.hierarchyID; } }
+
+		readonly ref CompactHierarchy Hierarchy
         {
-            get
+			get
             {
                 var hierarchyID = CompactHierarchyID;
                 if (hierarchyID == CompactHierarchyID.Invalid)
@@ -305,6 +301,6 @@ namespace Chisel.Core
             }
         }
 
-        public override string ToString() => $"{((CSGTreeNode)this).Type} ({nodeID})";
+        public override readonly string ToString() => $"{((CSGTreeNode)this).Type} ({nodeID})";
     }
 }

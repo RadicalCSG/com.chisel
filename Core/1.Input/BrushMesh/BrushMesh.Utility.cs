@@ -8,7 +8,7 @@ using UnityEngine.Profiling;
 
 namespace Chisel.Core
 {
-    public sealed partial class BrushMesh
+    sealed partial class BrushMesh
     {
         [Serializable, StructLayout(LayoutKind.Sequential, Pack = 4)]
         struct VertexSide

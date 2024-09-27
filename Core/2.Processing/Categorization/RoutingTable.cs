@@ -4,9 +4,9 @@ namespace Chisel.Core
 {
     struct RoutingTable
     {
-        public BlobArray<CategoryRoutingRow>    routingRows;
-        public BlobArray<RoutingLookup>         routingLookups;
-        public BlobArray<int>	                nodeIDToTableIndex;
-        public int	                            nodeIDOffset;
+        public BlobArray<CategoryRoutingRow> routingRows;
+        public BlobArray<RoutingLookup>      routingLookups;
+        public BlobArray<int>	             nodeIDToTableIndex;
+        public int	                         nodeIDOffset;
     }
 }

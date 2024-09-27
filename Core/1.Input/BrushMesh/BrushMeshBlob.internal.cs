@@ -23,7 +23,10 @@ namespace Chisel.Core
 
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             public static uint GetHashCode([ReadOnly] ref Polygon polygon) { return HashExtensions.GetHashCode(ref polygon); }
-        }
+
+			[EditorBrowsable(EditorBrowsableState.Never)]
+			public override readonly string ToString() { return $"{{ firstEdge = {firstEdge}, edgeCount = {edgeCount}, descriptionIndex = {descriptionIndex}, surface = {surface} }}"; }
+		}
 
         /// <summary>Defines a half edge of a <see cref="BrushMeshBlob"/>.</summary>
         /// <seealso cref="BrushMeshBlob"/>
@@ -36,7 +39,7 @@ namespace Chisel.Core
             public Int32 twinIndex;
 
             [EditorBrowsable(EditorBrowsableState.Never)]
-            public override string ToString() { return $"{{ twinIndex = {twinIndex}, vertexIndex = {vertexIndex} }}"; }
+            public override readonly string ToString() { return $"{{ twinIndex = {twinIndex}, vertexIndex = {vertexIndex} }}"; }
         }
 
 
@@ -62,15 +65,6 @@ namespace Chisel.Core
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public override int GetHashCode()
-        {
-            return CalculateHashCode(ref this);
-        }
-        /*
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public bool IsEmpty()
-        {
-            return (localPlanes.Length == 0 || polygons.Length == 0 || localVertices.Length == 0 || halfEdges.Length == 0);
-        }*/
+        public override int GetHashCode() { return CalculateHashCode(ref this); }
     }
 }

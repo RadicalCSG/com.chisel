@@ -26,19 +26,19 @@ namespace Chisel.Core
         public static BrushMeshInstance Create(BrushMesh brushMesh, in ChiselSurfaceArray surfaceArray) { var newInstance = new BrushMeshInstance(); newInstance.Set(brushMesh, in surfaceArray); return newInstance; }
 
         /// <summary>Destroy the <see cref="Chisel.Core.BrushMeshInstance"/> and release the memory used by this instance.</summary>
-        public void	Destroy		()					{ var prevBrushMeshID = brushMeshHash; brushMeshHash = BrushMeshInstance.InvalidInstanceID; BrushMeshManager.DecreaseRefCount(prevBrushMeshID); }
+        public void	Destroy() { var prevBrushMeshID = brushMeshHash; brushMeshHash = BrushMeshInstance.InvalidInstanceID; BrushMeshManager.DecreaseRefCount(prevBrushMeshID); }
 
         /// <summary>Update this <see cref="Chisel.Core.BrushMeshInstance"/> with the given <see cref="Chisel.Core.BrushMesh"/>.</summary>
         /// <param name="brushMesh">The <see cref="Chisel.Core.BrushMesh"/> to update the <see cref="Chisel.Core.BrushMeshInstance"/> with</param>
         /// <returns><b>true</b> on success, <b>false</b> on failure. In case of failure the brush will keep using the previously set <see cref="Chisel.Core.BrushMesh"/>.</returns>
-        public bool Set			(BrushMesh brushMesh, in ChiselSurfaceArray surfaceArray)	
+        public bool Set(BrushMesh brushMesh, in ChiselSurfaceArray surfaceArray)	
         {
             brushMeshHash = BrushMeshManager.RegisterBrushMesh(brushMesh, in surfaceArray, oldBrushMeshHash: brushMeshHash);
             return Valid;
         }
         
         /// <value>An invalid instance</value>
-        public static readonly BrushMeshInstance InvalidInstance = new BrushMeshInstance { brushMeshHash = BrushMeshInstance.InvalidInstanceID };
+        public static readonly BrushMeshInstance InvalidInstance = new() { brushMeshHash = BrushMeshInstance.InvalidInstanceID };
         internal const Int32 InvalidInstanceID = 0;
         
         #region Comparison
@@ -48,9 +48,9 @@ namespace Chisel.Core
         public static bool operator != (BrushMeshInstance left, BrushMeshInstance right) { return left.brushMeshHash != right.brushMeshHash; }
 
         [EditorBrowsable(EditorBrowsableState.Never)]
-        public override bool Equals(object obj) { if (!(obj is BrushMeshInstance)) return false; var type = (BrushMeshInstance)obj; return brushMeshHash == type.brushMeshHash; }
+        public override bool Equals(object obj) { if (obj is BrushMeshInstance type) return brushMeshHash == type.brushMeshHash; return false; }
         [EditorBrowsable(EditorBrowsableState.Never)]
-        public override int GetHashCode() { return brushMeshHash; }
+        public override readonly int GetHashCode() { return brushMeshHash; }
         #endregion
     }
 }

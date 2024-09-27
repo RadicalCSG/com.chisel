@@ -74,11 +74,11 @@ namespace Chisel.Core
         bool isCreated;
 
         
-        public CompactNodeID        RootID      { [MethodImpl(MethodImplOptions.AggressiveInlining)] get; [MethodImpl(MethodImplOptions.AggressiveInlining)] internal set; }
-        public CompactHierarchyID   HierarchyID { [MethodImpl(MethodImplOptions.AggressiveInlining)] get; [MethodImpl(MethodImplOptions.AggressiveInlining)] private set; }
+        public CompactNodeID        RootID      { [MethodImpl(MethodImplOptions.AggressiveInlining)] readonly get; [MethodImpl(MethodImplOptions.AggressiveInlining)] internal set; }
+        public CompactHierarchyID   HierarchyID { [MethodImpl(MethodImplOptions.AggressiveInlining)] readonly get; [MethodImpl(MethodImplOptions.AggressiveInlining)] private set; }
 
 
-        public bool IsCreated
+        public readonly bool IsCreated
         {
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             get { return isCreated; }// idManager.IsCreated && compactNodes.IsCreated && brushOutlines.IsCreated && brushMeshToBrush.IsCreated; }
@@ -376,7 +376,7 @@ namespace Chisel.Core
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        unsafe void GetHash(in CompactChildNode node, NativeList<uint> hashes)
+		readonly unsafe void GetHash(in CompactChildNode node, NativeList<uint> hashes)
         {
             if (!IsValidCompactNodeID(node.compactNodeID))
                 return;
@@ -403,34 +403,30 @@ namespace Chisel.Core
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal unsafe uint GetHash(in CompactChildNode node)
+        internal readonly unsafe uint GetHash(in CompactChildNode node)
         {
             if (!IsValidCompactNodeID(node.compactNodeID))
                 return 0;
 
-            using (var hashes = new NativeList<uint>(Allocator.Temp))
-            {
-                GetHash(in node, hashes);
-                return math.hash(hashes.GetUnsafePtr(), sizeof(uint) * hashes.Length);
-            }
-        }
+			using var hashes = new NativeList<uint>(Allocator.Temp);
+			GetHash(in node, hashes);
+			return math.hash(hashes.GetUnsafePtr(), sizeof(uint) * hashes.Length);
+		}
 
-        public unsafe uint GetHash()
+        public readonly unsafe uint GetHash()
         {
-            using (var hashes = new NativeList<uint>(Allocator.Temp))
-            {
-                var compactNodesPtr = compactNodes.Ptr;
-                for (int i = 0; i < compactNodes.Length; i++)
-                {
-                    if (compactNodesPtr[i].compactNodeID == CompactNodeID.Invalid)
-                        continue;
-                    if (compactNodesPtr[i].parentID != CompactNodeID.Invalid)
-                        continue;
-                    GetHash(in compactNodesPtr[i], hashes);
-                }
-                return math.hash(hashes.GetUnsafePtr(), sizeof(uint) * hashes.Length);
-            }
-        }
+			using var hashes = new NativeList<uint>(Allocator.Temp);
+			var compactNodesPtr = compactNodes.Ptr;
+			for (int i = 0; i < compactNodes.Length; i++)
+			{
+				if (compactNodesPtr[i].compactNodeID == CompactNodeID.Invalid)
+					continue;
+				if (compactNodesPtr[i].parentID != CompactNodeID.Invalid)
+					continue;
+				GetHash(in compactNodesPtr[i], hashes);
+			}
+			return math.hash(hashes.GetUnsafePtr(), sizeof(uint) * hashes.Length);
+		}
 
         // Temporary hack
         public void ClearAllOutlines()
@@ -457,7 +453,7 @@ namespace Chisel.Core
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public unsafe ref BrushOutline GetOutline(CompactNodeID compactNodeID)
+        public readonly unsafe ref BrushOutline GetOutline(CompactNodeID compactNodeID)
         {
             Debug.Assert(IsCreated);
             var index = HierarchyIndexOfInternal(compactNodeID);
@@ -483,7 +479,7 @@ namespace Chisel.Core
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal Int32 GetBrushMeshID(CompactNodeID compactNodeID)
+        internal readonly Int32 GetBrushMeshID(CompactNodeID compactNodeID)
         {
             Debug.Assert(IsCreated);
             var index = HierarchyIndexOfInternal(compactNodeID);
@@ -585,7 +581,7 @@ namespace Chisel.Core
 
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        int HierarchyIndexOfInternal(CompactNodeID compactNodeID)
+		readonly int HierarchyIndexOfInternal(CompactNodeID compactNodeID)
         {
             Debug.Assert(IsCreated);
             if (compactNodeID == CompactNodeID.Invalid)
@@ -596,7 +592,7 @@ namespace Chisel.Core
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        int HierarchyIndexOfInternalNoErrors(CompactNodeID compactNodeID)
+		readonly int HierarchyIndexOfInternalNoErrors(CompactNodeID compactNodeID)
         {
             Debug.Assert(IsCreated);
             if (compactNodeID == CompactNodeID.Invalid)
@@ -607,14 +603,14 @@ namespace Chisel.Core
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        int UnsafeHierarchyIndexOfInternal(CompactNodeID compactNodeID)
+		readonly int UnsafeHierarchyIndexOfInternal(CompactNodeID compactNodeID)
         {
             return idManager.GetIndex(compactNodeID.value, compactNodeID.generation);
         }
 
         // WARNING: The returned reference will become invalid after modifying the hierarchy!
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        unsafe ref CompactChildNode UnsafeGetNodeRefAtInternal(CompactNodeID compactNodeID)
+		readonly unsafe ref CompactChildNode UnsafeGetNodeRefAtInternal(CompactNodeID compactNodeID)
         {
             Debug.Assert(IsCreated, "Hierarchy has not been initialized");
             var nodeIndex       = UnsafeHierarchyIndexOfInternal(compactNodeID);
@@ -624,7 +620,7 @@ namespace Chisel.Core
 
         // WARNING: The returned reference will become invalid after modifying the hierarchy!
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        unsafe ref CompactNode UnsafeGetChildRefAtInternal(CompactNodeID compactNodeID)
+        readonly unsafe ref CompactNode UnsafeGetChildRefAtInternal(CompactNodeID compactNodeID)
         {
             Debug.Assert(IsCreated, "Hierarchy has not been initialized");
             var nodeIndex       = UnsafeHierarchyIndexOfInternal(compactNodeID);
@@ -633,7 +629,7 @@ namespace Chisel.Core
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal unsafe CompactNodeID GetChildIDAtInternalNoError(CompactNodeID parentD, int index)
+        internal readonly unsafe CompactNodeID GetChildIDAtInternalNoError(CompactNodeID parentD, int index)
         {
             Debug.Assert(IsCreated, "Hierarchy has not been initialized");
             var parentIndex         = UnsafeHierarchyIndexOfInternal(parentD);
@@ -654,7 +650,7 @@ namespace Chisel.Core
 
         // WARNING: The returned reference will become invalid after modifying the hierarchy!
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public unsafe CompactNodeID GetChildCompactNodeIDAtInternal(CompactNodeID parentD, int index)
+        public readonly unsafe CompactNodeID GetChildCompactNodeIDAtInternal(CompactNodeID parentD, int index)
         {
             Debug.Assert(IsCreated, "Hierarchy has not been initialized");
             var parentIndex         = UnsafeHierarchyIndexOfInternal(parentD);
@@ -673,7 +669,7 @@ namespace Chisel.Core
 
         // WARNING: The returned reference will become invalid after modifying the hierarchy!
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal unsafe CompactNodeID GetChildCompactNodeIDAtNoError(CompactNodeID parentD, int index)
+        internal readonly unsafe CompactNodeID GetChildCompactNodeIDAtNoError(CompactNodeID parentD, int index)
         {
             Debug.Assert(IsCreated, "Hierarchy has not been initialized");
             var parentIndex = UnsafeHierarchyIndexOfInternal(parentD);
@@ -712,7 +708,7 @@ namespace Chisel.Core
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        int SiblingIndexOfInternal(int parentIndex, int nodeIndex)
+		readonly int SiblingIndexOfInternal(int parentIndex, int nodeIndex)
         {
             var parentHierarchy     = compactNodes[parentIndex];
             var parentChildOffset   = parentHierarchy.childOffset;
@@ -1442,7 +1438,7 @@ namespace Chisel.Core
                 brushOutlines.SetCapacity((int)((brushOutlines.Length + arrayLength) * 1.5f));
         }
 
-        public unsafe void GetTreeNodes(NativeList<CompactNodeID> nodes, NativeList<CompactNodeID> brushes)
+        public readonly unsafe void GetTreeNodes(NativeList<CompactNodeID> nodes, NativeList<CompactNodeID> brushes)
         {
             if (nodes.IsCreated) nodes.Clear();
             if (brushes.IsCreated) brushes.Clear();
@@ -1491,7 +1487,7 @@ namespace Chisel.Core
             }
         }
 
-        internal unsafe void GetAllNodes(NativeList<CSGTreeNode> nodes)
+        internal readonly unsafe void GetAllNodes(NativeList<CSGTreeNode> nodes)
         {
             if (!nodes.IsCreated)
                 return;
@@ -1515,7 +1511,7 @@ namespace Chisel.Core
         
         // Temporary workaround until we can switch to hashes
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal bool IsAnyStatusFlagSet(CompactNodeID compactNodeID)
+        internal readonly bool IsAnyStatusFlagSet(CompactNodeID compactNodeID)
         {
             Debug.Assert(IsCreated, "Hierarchy has not been initialized");
             if (compactNodeID == CompactNodeID.Invalid)
@@ -1526,7 +1522,7 @@ namespace Chisel.Core
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal bool IsStatusFlagSet(CompactNodeID compactNodeID, NodeStatusFlags flag)
+        internal readonly bool IsStatusFlagSet(CompactNodeID compactNodeID, NodeStatusFlags flag)
         {
             Debug.Assert(IsCreated, "Hierarchy has not been initialized");
             if (compactNodeID == CompactNodeID.Invalid)

@@ -2,7 +2,7 @@
 
 namespace Chisel.Core
 {
-    public sealed partial class BrushMesh
+    sealed partial class BrushMesh
 	{
         public bool Validate(bool logErrors = false)
         {

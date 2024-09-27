@@ -21,7 +21,7 @@ namespace Chisel.Core
         {
             public int  start;
             public int  length; // TODO: make this explicit as the difference between start and the next integer
-            public int  end { [MethodImpl(MethodImplOptions.AggressiveInlining)] get { return start + length - 1; } }
+            public readonly int end { [MethodImpl(MethodImplOptions.AggressiveInlining)] get { return start + length - 1; } }
         }
         [NoAlias, ReadOnly] UnsafeList<Section> sections;   // TODO: use UnsafeList instead, so we can more easily store them without getting 
                                                             //       "lists in lists" problems
@@ -32,18 +32,18 @@ namespace Chisel.Core
         [MarshalAs(UnmanagedType.U1)]
         bool firstElementFree;
                 
-        public int Count { [MethodImpl(MethodImplOptions.AggressiveInlining)] get { return sections.Length; } }
+        public readonly int Count { [MethodImpl(MethodImplOptions.AggressiveInlining)] get { return sections.Length; } }
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public bool IsSectionFree(int sectionIndex) { return ((sectionIndex & 1) == 0) ? firstElementFree : !firstElementFree; }
+        public readonly bool IsSectionFree(int sectionIndex) { return ((sectionIndex & 1) == 0) ? firstElementFree : !firstElementFree; }
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public int GetSectionStart(int sectionIndex) { return sections[sectionIndex].start; }
+        public readonly int GetSectionStart(int sectionIndex) { return sections[sectionIndex].start; }
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public int GetSectionLength(int sectionIndex) { return sections[sectionIndex].length; }
+        public readonly int GetSectionLength(int sectionIndex) { return sections[sectionIndex].length; }
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public int GetSectionEnd(int sectionIndex) { return sections[sectionIndex].end; }
+        public readonly int GetSectionEnd(int sectionIndex) { return sections[sectionIndex].end; }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public bool IsIndexFree(int index)
+        public readonly bool IsIndexFree(int index)
         {
             if (!FindSectionByOffset(index, out var sectionIndex))
                 return true;
@@ -51,7 +51,7 @@ namespace Chisel.Core
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public bool IsAnyIndexFree(int index, int count)
+        public readonly bool IsAnyIndexFree(int index, int count)
         {
             if (count <= 0)
                 return false;
@@ -84,7 +84,7 @@ namespace Chisel.Core
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        int CompareSection(int sectionIndex, int compareOffset)
+		readonly int CompareSection(int sectionIndex, int compareOffset)
         {
             var section = sections[sectionIndex];
             if (compareOffset < section.start)
@@ -95,15 +95,15 @@ namespace Chisel.Core
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public bool IsAllocatedIndex(int index)
+        public readonly bool IsAllocatedIndex(int index)
         {
             return FindSectionByOffset(index, out _);
         }
 
         struct SectionFindStack { public int first, last; }
 
-        // Find section by offset using binary search
-        unsafe bool FindSectionByOffset(int findOffset, out int foundSection)
+		// Find section by offset using binary search
+		readonly unsafe bool FindSectionByOffset(int findOffset, out int foundSection)
         {
             foundSection = -1;
             var sectionsLength = sections.Length;
