@@ -1,0 +1,6 @@
+[submodule "Dependencies/CustomAssetMetadata"]
+	path = Dependencies/CustomAssetMetadata
+	url = https://github.com/LogicalError/CustomAssetMetadata.git
+[submodule "Dependencies/BurstTriangulator"]
+	path = Dependencies/BurstTriangulator
+	url = https://github.com/RadicalCSG/BurstTriangulator.git
