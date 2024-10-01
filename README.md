@@ -10,7 +10,7 @@ Chisel is an extension for **Unity** that allows for _rapid_, iterative, **non d
 * If you have questions be sure to ask in the discord! **[Click here for to join the official Discord server!](https://discord.gg/zttNkPQ)**
 
 Notes:
-- Chisel requires Unity 2022.1.0b11 or newer
+- Chisel requires Unity 6 or newer
 - UX is still under development
 - CSG algorithm is still under development
 - It is *not yet* ready for production, but please feel free to try it out, or better yet, help out!
@@ -39,21 +39,14 @@ Planned Features (incomplete, and in random order):
 * [Trim Decals](https://github.com/RadicalCSG/Chisel.Prototype/issues/117)
 * [Grid Objects](https://github.com/RadicalCSG/Chisel.Prototype/issues/121)
 
-
-Packages overview:
-* `com.chisel.core` Low-level API and functionality (based on DOTS technology)
-* `com.chisel.editor` Unity Scene Editor functionality and API, tools and UI
-* `com.chisel.components` Unity Monobehaviour runtime API (to allow for possible ECS replacement in future)
-* `com.scene.handles.extensions` Custom scene handle extensions
-
 Extensions:
 * [Source Engine 2006 Map Importer for Chisel Editor]( https://github.com/Henry00IS/Chisel.Import.Source)
   * [Decal support for importer](https://github.com/Henry00IS/Chisel.Decals)
+  * [VPK import support for importer](https://github.com/nukeandbeans/com.chisel.import.source.vpktools)
 * [Quake1 Importer](https://github.com/Quixotic7/Chisel.Import.Quake1)
 
 Known issues:
 * [There are some cases where triangulation fails](https://github.com/RadicalCSG/Chisel.Prototype/issues/187)
-* There are some cases where overlapping surfaces create overlapping polygons
 
 If you find any failure cases, if possible please provide us with a reproducible scene so we can more easily fix it!
 
