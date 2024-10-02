@@ -252,7 +252,7 @@ namespace Chisel.Core
 
         readonly Dictionary<CSGTree, int>   chiselTreeLookup    = new();
         readonly List<Data>                 chiselTreeData      = new();
-
+        
         void Dispose()
 		{
 			foreach (var data in chiselTreeData)
@@ -282,32 +282,32 @@ namespace Chisel.Core
         public BlobAssetReference<BrushMeshBlob> brushMeshBlob;
     }
 
-    internal sealed class ChiselMeshLookup : ScriptableObject, IDisposable
+    internal sealed class ChiselMeshLookup : ScriptableObject
     {
-        public class Data : IDisposable
-        {
+        public class Data// : IDisposable
+		{
             public NativeParallelHashMap<int, RefCountedBrushMeshBlob> brushMeshBlobCache;
 
             internal void Initialize()
             {
                 brushMeshBlobCache = new NativeParallelHashMap<int, RefCountedBrushMeshBlob>(1000, Allocator.Persistent);
-            }
+			}
 
-			~Data() { Dispose(); }
+			//~Data() { Dispose(); }
 
 			public void Dispose()
-			{
+            {
                 if (brushMeshBlobCache.IsCreated)
                 {
                     try
                     {
-						using var items = brushMeshBlobCache.GetValueArray(Allocator.Persistent);
-						foreach (var item in items)
-						{
-							if (item.brushMeshBlob.IsCreated)
-								item.brushMeshBlob.Dispose();
-						}
-					}
+                        using var items = brushMeshBlobCache.GetValueArray(Allocator.Persistent);                        
+                        foreach (var item in items)
+                        {
+                            if (item.brushMeshBlob.IsCreated)
+                                item.brushMeshBlob.Dispose();
+                        }
+                    }
                     finally
                     {
                         brushMeshBlobCache.Dispose();
@@ -316,7 +316,7 @@ namespace Chisel.Core
                 }
                 // temporary hack
                 CompactHierarchyManager.Destroy();
-            }
+			}
         }
 
         static ChiselMeshLookup _singleton;
@@ -344,26 +344,15 @@ namespace Chisel.Core
 
         readonly Data data = new Data();
 
-        internal void OnEnable()
-        {
-            data.Initialize();
-        }
-
-        internal void OnDisable()
-        {
-            data.Dispose();
-            _singleton = null;
-        }
+        internal void OnEnable() { data.Initialize(); }
+        internal void OnDisable() { Dispose(); }
+		//internal void OnDestroy() { Dispose(); }
+		//~ChiselMeshLookup() { Dispose(); }
 
 		public void Dispose()
 		{
 			data.Dispose();
 			_singleton = null;
 		}
-
-		~ChiselMeshLookup()
-        {
-            Dispose();
-        }
 	}
 }
