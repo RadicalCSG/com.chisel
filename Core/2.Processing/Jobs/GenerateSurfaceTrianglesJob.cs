@@ -10,10 +10,11 @@ using Quaternion = UnityEngine.Quaternion;
 using ReadOnlyAttribute = Unity.Collections.ReadOnlyAttribute;
 using WriteOnlyAttribute = Unity.Collections.WriteOnlyAttribute;
 using Unity.Entities;
+using andywiecko.BurstTriangulator;
 
 namespace Chisel.Core
 {
-    [BurstCompile(CompileSynchronously = true)] // Fails for some reason    
+    [BurstCompile(CompileSynchronously = true)]
     struct GenerateSurfaceTrianglesJob : IJobParallelForDefer
     {
         // Read
@@ -41,19 +42,7 @@ namespace Chisel.Core
         [NativeDisableContainerSafetyRestriction] NativeList<UnsafeList<Edge>>      surfaceLoopAllEdges;
         [NativeDisableContainerSafetyRestriction] NativeList<int>                   surfaceIndexList;
         [NativeDisableContainerSafetyRestriction] NativeList<int>                   outputSurfaceIndicesArray;
-        [NativeDisableContainerSafetyRestriction] NativeArray<float2>               context_points;
-        [NativeDisableContainerSafetyRestriction] NativeArray<int>                  context_edges;
-        [NativeDisableContainerSafetyRestriction] NativeList<int>                   context_sortedPoints;
-        [NativeDisableContainerSafetyRestriction] NativeList<bool>                  context_triangleInterior;
-        [NativeDisableContainerSafetyRestriction] NativeList<Edge>                  context_inputEdgesCopy; 
-        [NativeDisableContainerSafetyRestriction] NativeList<UnsafeList<Edge>>      context_edgeLookupEdges;
-        [NativeDisableContainerSafetyRestriction] NativeParallelHashMap<int, int>           context_edgeLookups;
-        [NativeDisableContainerSafetyRestriction] NativeList<UnsafeList<Edge>>      context_foundLoops;
-        [NativeDisableContainerSafetyRestriction] NativeList<UnsafeList<int>>       context_children;
-        [NativeDisableContainerSafetyRestriction] NativeList<Poly2Tri.DTSweep.DirectedEdge>         context_allEdges;
-        [NativeDisableContainerSafetyRestriction] NativeList<Poly2Tri.DTSweep.DelaunayTriangle>     context_triangles;
-        [NativeDisableContainerSafetyRestriction] NativeList<Poly2Tri.DTSweep.AdvancingFrontNode>   context_advancingFrontNodes;
-
+        
         [BurstDiscard]
         public static void InvalidFinalCategory(CategoryIndex _interiorCategory)
         {
@@ -99,7 +88,6 @@ namespace Chisel.Core
                 if (surfaceInnerCount > 0)
                 {
                     inner = new UnsafeList<int>(surfaceInnerCount, Allocator.Temp);
-                    //inner.ResizeUninitialized(surfaceInnerCount);
                     for (int i = 0; i < surfaceInnerCount; i++)
                     {
                         inner.AddNoResize(input.Read<int>());
@@ -118,7 +106,6 @@ namespace Chisel.Core
                 if (edgeCount > 0)
                 { 
                     var edgesInner  = new UnsafeList<Edge>(edgeCount, Allocator.Temp);
-                    //edgesInner.ResizeUninitialized(edgeCount);
                     for (int e = 0; e < edgeCount; e++)
                     {
                         edgesInner.AddNoResize(input.Read<Edge>());
@@ -152,18 +139,6 @@ namespace Chisel.Core
 
             var pointCount                  = brushVertices.Length + 2;
 
-            NativeCollectionHelpers.EnsureMinimumSize(ref context_points, pointCount);
-            NativeCollectionHelpers.EnsureMinimumSize(ref context_edges, pointCount);
-            NativeCollectionHelpers.EnsureCapacityAndClear(ref context_allEdges, pointCount);
-            NativeCollectionHelpers.EnsureCapacityAndClear(ref context_sortedPoints, pointCount);
-            NativeCollectionHelpers.EnsureCapacityAndClear(ref context_triangles, pointCount * 3);
-            NativeCollectionHelpers.EnsureCapacityAndClear(ref context_triangleInterior, pointCount * 3);
-            NativeCollectionHelpers.EnsureCapacityAndClear(ref context_advancingFrontNodes, pointCount);
-            NativeCollectionHelpers.EnsureSizeAndClear(ref context_edgeLookupEdges, pointCount);
-            NativeCollectionHelpers.EnsureSizeAndClear(ref context_foundLoops, pointCount);
-            NativeCollectionHelpers.EnsureConstantSizeAndClear(ref context_children, 64);
-            NativeCollectionHelpers.EnsureConstantSizeAndClear(ref context_inputEdgesCopy, 64);
-            NativeCollectionHelpers.EnsureCapacityAndClear(ref context_edgeLookups, pointCount);
             NativeCollectionHelpers.EnsureCapacityAndClear(ref loops, maxLoops);
             NativeCollectionHelpers.EnsureCapacityAndClear(ref surfaceIndexList, maxIndices);
 
@@ -217,6 +192,34 @@ namespace Chisel.Core
                 else
                     rotation = (quaternion)Quaternion.FromToRotation(normal, Vector3.forward);
 
+
+
+                
+                double3 axi1, axi2;
+                if (math.abs(math.dot(normal, new float3(0,1,0))) < math.abs(math.dot(normal, new float3(0, 0, 1))))
+				{
+                    if (math.abs(math.dot(normal, new float3(0, 1, 0))) < math.abs(math.dot(normal, new float3(1, 0, 0))))
+                    {
+                        axi1 = new double3(0, 1, 0);
+                    } else
+					{
+						axi1 = new double3(1, 0, 0);
+					}
+                } else
+				{
+                    if (math.abs(math.dot(normal, new float3(0, 0, 1))) < math.abs(math.dot(normal, new float3(1, 0, 0))))
+                    {
+                        axi1 = new double3(0, 0, 1);
+                    } else
+                    {
+                        axi1 = new double3(1, 0, 0);
+                    }
+				}
+
+				axi1 = math.cross(normal, axi1);
+				axi2 = math.cross(normal, axi1);
+				
+
                 surfaceIndexList.Clear();
 
                 CategoryIndex interiorCategory = CategoryIndex.ValidAligned;
@@ -234,34 +237,105 @@ namespace Chisel.Core
 
 
                     NativeCollectionHelpers.EnsureCapacityAndClear(ref outputSurfaceIndicesArray, loopEdges.Length * 3);
-                    
-                    var context = new Poly2Tri.DTSweep
+
+					ref var vertices = ref *brushVertices.m_Vertices;
+					var usedIndices = new NativeList<int>(vertices.Length, Allocator.Persistent);
+					var positions = new NativeList<double2>(vertices.Length, Allocator.Persistent);
+					usedIndices.Resize(vertices.Length, NativeArrayOptions.ClearMemory);
+
+					var lookup = new NativeList<int>(vertices.Length, Allocator.Persistent);
+					lookup.Resize(vertices.Length, NativeArrayOptions.ClearMemory);
+
+					var constraints = new NativeList<int>(loopEdges.Length * 2, Allocator.Persistent);
+					constraints.Resize(loopEdges.Length * 2, NativeArrayOptions.UninitializedMemory);
+					for (int i = 0, j = 0; j < loopEdges.Length; i += 2, j++)
+					{
+						var index1 = loopEdges[j].index1;
+						if (usedIndices[index1] == 0)
+						{
+							var vertex = (double3)vertices[index1];
+							lookup[positions.Length] = index1;
+
+							//positions.Add(new double2(math.mul(rotation, vertices[index1]).xy));
+							positions.Add(new double2(math.dot(vertex, axi1), math.dot(vertex, axi2)));
+
+							usedIndices[index1] = positions.Length;
+						}
+						index1 = (ushort)(usedIndices[index1] - 1);
+
+						var index2 = loopEdges[j].index2;
+						if (usedIndices[index2] == 0)
+						{
+							var vertex = (double3)vertices[index2];
+							lookup[positions.Length] = index2;
+
+							//positions.Add(new double2(math.mul(rotation, vertices[index2]).xy));
+							positions.Add(new double2(math.dot(vertex, axi1), math.dot(vertex, axi2)));
+
+							usedIndices[index2] = positions.Length;
+						}
+						index2 = (ushort)(usedIndices[index2] - 1);
+
+						constraints[i + 0] = index1;
+						constraints[i + 1] = index2;
+					}
+
+					//Debug.Log($"vertices.Length {vertices.Length} | constraints.Length {constraints.Length}");
+
+					var holes = new NativeList<double2>(64, Allocator.Persistent);
+					var triangulator = new Triangulator<double2>(64, Allocator.Temp)
+					{
+						Input = new()
+						{
+							Positions = positions.AsArray(),
+							ConstraintEdges = constraints.AsArray(),
+							HoleSeeds = holes.AsArray()
+						},
+						Settings = new()
+						{
+							ValidateInput = true,
+							Verbose = true,
+							Preprocessor = Preprocessor.None,
+							AutoHolesAndBoundary = true,
+							RestoreBoundary = true,
+							SloanMaxIters = 1_000_000,
+							RefineMesh = false,
+							RefinementThresholds = new RefinementThresholds
+							{
+								Area = 1f,
+								Angle = math.radians(5)
+							},
+							ConcentricShellsParameter = 0.001f
+						}
+					};
+
+					triangulator.Execute();
+					
+					var status = triangulator.Output.Status.Value;
+					if (status != Status.OK)
+					{
+						Debug.LogError($"{status}");
+					}
+					var triangles = triangulator.Output.Triangles;
+					
+                    outputSurfaceIndicesArray.Clear();
+                    outputSurfaceIndicesArray.Resize(triangles.Length, NativeArrayOptions.UninitializedMemory);
+					for (int i = 0 , j = triangles.Length - 1; i < triangles.Length; i++, j--)
                     {
-                        vertices            = *brushVertices.m_Vertices,
-                        edgeLength          = pointCount,
-                        rotation            = rotation,
-                        normal              = normal,
-                        inputEdges          = loopEdges,
-                        surfaceIndicesArray = outputSurfaceIndicesArray,
-                        
-                        points              = context_points,
-                        edges               = context_edges,
-                        allEdges            = context_allEdges,
-                        triangles           = context_triangles,
-                        triangleInterior    = context_triangleInterior,
-                        sortedPoints        = context_sortedPoints,
-                        advancingFrontNodes = context_advancingFrontNodes,
-                        edgeLookupEdges     = context_edgeLookupEdges,
-                        edgeLookups         = context_edgeLookups,
-                        foundLoops          = context_foundLoops,
-                        children            = context_children,
-                        inputEdgesCopy      = context_inputEdgesCopy
-                    };
-                    context.Execute();
+                        outputSurfaceIndicesArray[i] = lookup[triangles[j]];
+                    }
+                    
+					triangulator.Dispose();
+					holes.Dispose();
+					positions.Dispose();
+					constraints.Dispose();
+					usedIndices.Dispose();
 
 
 
-                    if (outputSurfaceIndicesArray.Length >= 3)
+
+
+					if (outputSurfaceIndicesArray.Length >= 3)
                     {
                         if (interiorCategory == CategoryIndex.ValidReverseAligned ||
                             interiorCategory == CategoryIndex.ReverseAligned)

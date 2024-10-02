@@ -50,7 +50,7 @@ namespace Chisel.Core
                 var index = centerIndex + offsets[i];
                 var chainIndex = ((int)hashTable[GetHash(index)]) - 1;
                 {
-                    float closestDistance = CSGConstants.kSqrVertexEqualEpsilon;
+                    double closestDistance = CSGConstants.kSqrVertexEqualEpsilon;
                     while (chainIndex != -1)
                     {
                         var nextChainIndex  = ((int)((ushort*)chainedIndices->Ptr)[chainIndex]) - 1;
@@ -96,11 +96,11 @@ namespace Chisel.Core
                 var index = centerIndex + offsets[i];
                 var chainIndex = ((int)hashTable[GetHash(index)]) - 1;
                 {
-                    float closestDistance = CSGConstants.kSqrVertexEqualEpsilon;
+                    double closestDistance = CSGConstants.kSqrVertexEqualEpsilon;
                     while (chainIndex != -1)
                     {
                         var nextChainIndex  = ((int)((ushort*)chainedIndices->Ptr)[chainIndex]) - 1;
-                        var sqrDistance     = math.lengthsq(verticesPtr[chainIndex] - vertex);
+                        var sqrDistance     = math.lengthsq((double3)verticesPtr[chainIndex] - (double3)vertex);
                         if (sqrDistance < closestDistance)
                         {
                             closestVertexIndex = (ushort)chainIndex;
@@ -143,11 +143,11 @@ namespace Chisel.Core
                 var index = centerIndex + offsets[i];
                 var chainIndex = ((int)hashTable[GetHash(index)]) - 1;
                 {
-                    float closestDistance = CSGConstants.kSqrVertexEqualEpsilon;
+                    double closestDistance = CSGConstants.kSqrVertexEqualEpsilon;
                     while (chainIndex != -1)
                     {
                         var nextChainIndex  = ((int)((ushort*)chainedIndices->Ptr)[chainIndex]) - 1;
-                        var sqrDistance     = math.lengthsq(verticesPtr[chainIndex] - vertex);
+                        var sqrDistance     = math.lengthsq((double3)verticesPtr[chainIndex] - (double3)vertex);
                         if (sqrDistance < closestDistance)
                         {
                             closestVertexIndex = (ushort)chainIndex;
@@ -200,11 +200,11 @@ namespace Chisel.Core
                 var index = centerIndex + offsets[i];
                 var chainIndex = ((int)hashTable[GetHash(index)]) - 1;
                 {
-                    float closestDistance = CSGConstants.kSqrVertexEqualEpsilon;
+                    double closestDistance = CSGConstants.kSqrVertexEqualEpsilon;
                     while (chainIndex != -1)
                     {
-                        var nextChainIndex = ((int)((ushort*)chainedIndices->Ptr)[chainIndex]) - 1;
-                        var sqrDistance     = math.lengthsq(verticesPtr[chainIndex] - vertex);
+                        var nextChainIndex  = ((int)((ushort*)chainedIndices->Ptr)[chainIndex]) - 1;
+                        var sqrDistance     = math.lengthsq((double3)verticesPtr[chainIndex] - (double3)vertex);
                         if (sqrDistance < closestDistance)
                         {
                             closestVertexIndex = (ushort)chainIndex;
@@ -255,11 +255,11 @@ namespace Chisel.Core
                 var index = centerIndex + offsets[i];
                 var chainIndex = ((int)hashTable[GetHash(index)]) - 1;
                 {
-                    float closestDistance = CSGConstants.kSqrVertexEqualEpsilon;
+                    double closestDistance = CSGConstants.kSqrVertexEqualEpsilon;
                     while (chainIndex != -1)
                     {
                         var nextChainIndex  = chainedIndicesPtr[chainIndex] - 1;
-                        var sqrDistance     = math.lengthsq(verticesPtr[chainIndex] - vertex);
+                        var sqrDistance     = math.lengthsq((double3)verticesPtr[chainIndex] - (double3)vertex);
                         if (sqrDistance < closestDistance)
                         {
                             closestVertexIndex = (ushort)chainIndex;
