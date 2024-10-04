@@ -119,7 +119,7 @@ namespace Chisel.Core
 
         #region CreateHierarchy
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public unsafe ref CompactHierarchy CreateHierarchy(Int32 userID = 0)
+        public ref CompactHierarchy CreateHierarchy(Int32 userID = 0)
         {
             var rootNodeID = CreateNodeID(out var rootNodeIndex);
             var hierarchyID = CreateHierarchyID(out var hierarchyIndex);
@@ -131,8 +131,11 @@ namespace Chisel.Core
             }
             hierarchies[hierarchyIndex] = hierarchy;
             nodes[rootNodeIndex] = hierarchy.RootID;
-            return ref ((CompactHierarchy*)hierarchies.GetUnsafePtr())[hierarchyIndex];
-        }
+            unsafe
+            {
+                return ref UnsafeUtility.AsRef<CompactHierarchy>(hierarchies.GetUnsafePtr() + hierarchyIndex);
+            }
+		}
         #endregion
         
         [return: MarshalAs(UnmanagedType.U1)]
@@ -280,7 +283,7 @@ namespace Chisel.Core
 
         [return: MarshalAs(UnmanagedType.U1)]
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal unsafe static bool IsValidCompactNodeID(ref IDManager hierarchyIDLookup, NativeList<CompactHierarchy> hierarchies, CompactNodeID compactNodeID)
+        internal static bool IsValidCompactNodeID(ref IDManager hierarchyIDLookup, NativeList<CompactHierarchy> hierarchies, CompactNodeID compactNodeID)
         {
             if (compactNodeID == CompactNodeID.Invalid)
                 return false;
@@ -295,8 +298,7 @@ namespace Chisel.Core
             if (index < 0 || index >= hierarchies.Length)
                 return false;
              
-            ref var hierarchy = ref ((CompactHierarchy*)hierarchies.GetUnsafePtr())[index];
-            return hierarchy.IsValidCompactNodeID(compactNodeID);
+            return hierarchies[index].IsValidCompactNodeID(compactNodeID);
         }
         
         public void GetAllTreeNodes(NativeList<CSGTreeNode> allNodes)
@@ -371,52 +373,7 @@ namespace Chisel.Core
 
         #region GetHierarchy
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public unsafe ref CompactHierarchy GetHierarchy(CompactHierarchyID hierarchyID)
-        {
-            if (hierarchyID == CompactHierarchyID.Invalid)
-                throw new ArgumentException($"{nameof(CompactHierarchyID)} (value: {hierarchyID.value}, generation: {hierarchyID.generation}) is invalid.", nameof(hierarchyID));
-
-            var hierarchyIndex = hierarchyIDLookup.GetIndex(hierarchyID.value, hierarchyID.generation);
-            if (hierarchyIndex < 0 || hierarchyIndex >= hierarchies.Length)
-                throw new ArgumentException($"{nameof(CompactHierarchyID)} (value: {hierarchyID.value}, generation: {hierarchyID.generation}) with index {hierarchyIndex} has an invalid hierarchy (out of bounds [0...{hierarchies.Length}]), are you using an old reference?", nameof(hierarchyID));
-
-            return ref ((CompactHierarchy*)hierarchies.GetUnsafePtr())[hierarchyIndex];
-        }
-        
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal static unsafe ref CompactHierarchy GetHierarchy(ref IDManager hierarchyIDLookup, NativeList<CompactHierarchy> hierarchies, CompactHierarchyID hierarchyID)
-        {
-            if (hierarchyID == CompactHierarchyID.Invalid)
-                throw new ArgumentException($"{nameof(CompactHierarchyID)} (value: {hierarchyID.value}, generation: {hierarchyID.generation}) is invalid.", nameof(hierarchyID));
-
-            var hierarchyIndex = hierarchyIDLookup.GetIndex(hierarchyID.value, hierarchyID.generation);
-            if (hierarchyIndex < 0 || hierarchyIndex >= hierarchies.Length)
-                throw new ArgumentException($"{nameof(CompactHierarchyID)} (value: {hierarchyID.value}, generation: {hierarchyID.generation}) with index {hierarchyIndex} has an invalid hierarchy (out of bounds [0...{hierarchies.Length}]), are you using an old reference?", nameof(hierarchyID));
-
-            return ref ((CompactHierarchy*)hierarchies.GetUnsafePtr())[hierarchyIndex];
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public ref CompactHierarchy GetHierarchy(CSGTree tree)
-        {
-            return ref GetHierarchy(tree.nodeID);
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal unsafe ref CompactHierarchy GetHierarchy(CompactHierarchyID hierarchyID, out int hierarchyIndex)
-        {
-            if (hierarchyID == CompactHierarchyID.Invalid)
-                throw new ArgumentException($"{nameof(CompactHierarchyID)} (value: {hierarchyID.value}, generation: {hierarchyID.generation}) is invalid.", nameof(hierarchyID));
-
-            hierarchyIndex = hierarchyIDLookup.GetIndex(hierarchyID.value, hierarchyID.generation);
-            if (hierarchyIndex < 0 || hierarchyIndex >= hierarchies.Length)
-                throw new ArgumentException($"{nameof(CompactHierarchyID)} (value: {hierarchyID.value}, generation: {hierarchyID.generation}) with index {hierarchyIndex} has an invalid hierarchy (out of bounds [0...{hierarchies.Length}]), are you using an old reference?", nameof(hierarchyID));
-
-            return ref ((CompactHierarchy*)hierarchies.GetUnsafePtr())[hierarchyIndex];
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public ref CompactHierarchy GetHierarchy(CompactNodeID compactNodeID)
+        public readonly ref CompactHierarchy GetHierarchy(CompactNodeID compactNodeID)
         {
             if (compactNodeID == default)
                 throw new ArgumentException($"{nameof(CompactNodeID)} (value: {compactNodeID.value}, generation: {compactNodeID.generation}) is invalid.", nameof(compactNodeID));
@@ -425,24 +382,60 @@ namespace Chisel.Core
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal ref CompactHierarchy GetHierarchy(CompactNodeID compactNodeID, out int hierarchyIndex)
+        public readonly ref CompactHierarchy GetHierarchy(CompactHierarchyID hierarchyID)
+		{
+			if (hierarchyID == CompactHierarchyID.Invalid)
+				throw new ArgumentException($"{nameof(CompactHierarchyID)} (value: {hierarchyID.value}, generation: {hierarchyID.generation}) is invalid.", nameof(hierarchyID));
+
+			var hierarchyIndex = hierarchyIDLookup.GetIndex(hierarchyID.value, hierarchyID.generation);
+			if (hierarchyIndex < 0 || hierarchyIndex >= hierarchies.Length)
+				throw new ArgumentException($"{nameof(CompactHierarchyID)} (value: {hierarchyID.value}, generation: {hierarchyID.generation}) with index {hierarchyIndex} has an invalid hierarchy (out of bounds [0...{hierarchies.Length}]), are you using an old reference?", nameof(hierarchyID));
+			unsafe
+			{
+				return ref UnsafeUtility.AsRef<CompactHierarchy>(hierarchies.GetUnsafePtr() + hierarchyIndex);
+			}
+		}
+
+		[MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal readonly ref CompactHierarchy GetHierarchy(CompactHierarchyID hierarchyID, out int hierarchyIndex)
         {
-            if (compactNodeID == default)
-                throw new ArgumentException($"{nameof(CompactNodeID)} (value: {compactNodeID.value}, generation: {compactNodeID.generation}) is invalid.", nameof(compactNodeID));
+            if (hierarchyID == CompactHierarchyID.Invalid)
+                throw new ArgumentException($"{nameof(CompactHierarchyID)} (value: {hierarchyID.value}, generation: {hierarchyID.generation}) is invalid.", nameof(hierarchyID));
 
-            return ref GetHierarchy(compactNodeID.hierarchyID, out hierarchyIndex);
-        }
+            hierarchyIndex = hierarchyIDLookup.GetIndex(hierarchyID.value, hierarchyID.generation);
+            if (hierarchyIndex < 0 || hierarchyIndex >= hierarchies.Length)
+                throw new ArgumentException($"{nameof(CompactHierarchyID)} (value: {hierarchyID.value}, generation: {hierarchyID.generation}) with index {hierarchyIndex} has an invalid hierarchy (out of bounds [0...{hierarchies.Length}]), are you using an old reference?", nameof(hierarchyID));
+			unsafe
+            {
+                return ref UnsafeUtility.AsRef<CompactHierarchy>(hierarchies.GetUnsafePtr() + hierarchyIndex);
+            }
+		}
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal ref CompactHierarchy GetHierarchy(NodeID nodeID)
+		[MethodImpl(MethodImplOptions.AggressiveInlining)]
+		internal readonly ref CompactHierarchy GetHierarchy(CompactNodeID compactNodeID, out int hierarchyIndex)
+		{
+			if (compactNodeID == default)
+				throw new ArgumentException($"{nameof(CompactNodeID)} (value: {compactNodeID.value}, generation: {compactNodeID.generation}) is invalid.", nameof(compactNodeID));
+
+			return ref GetHierarchy(compactNodeID.hierarchyID, out hierarchyIndex);
+		}
+
+		[MethodImpl(MethodImplOptions.AggressiveInlining)]
+		internal ref CompactHierarchy GetHierarchy(NodeID nodeID)
+		{
+			if (nodeID == NodeID.Invalid)
+				throw new ArgumentException($"{nameof(NodeID)} is invalid.", nameof(nodeID));
+
+			if (!IsValidNodeID(nodeID, out int index))
+				throw new ArgumentException($"{nameof(NodeID)} (value: {nodeID.value}, generation: {nodeID.generation}) is invalid, are you using an old reference?", nameof(nodeID));
+
+			return ref GetHierarchy(nodes[index].hierarchyID);
+		}
+
+		[MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public ref CompactHierarchy GetHierarchy(CSGTree tree)
         {
-            if (nodeID == NodeID.Invalid)
-                throw new ArgumentException($"{nameof(NodeID)} is invalid.", nameof(nodeID));
-
-            if (!IsValidNodeID(nodeID, out int index))
-                throw new ArgumentException($"{nameof(NodeID)} (value: {nodeID.value}, generation: {nodeID.generation}) is invalid, are you using an old reference?", nameof(nodeID));
-
-            return ref GetHierarchy(nodes[index].hierarchyID);
+            return ref GetHierarchy(tree.nodeID);
         }
         #endregion
 
@@ -600,7 +593,7 @@ namespace Chisel.Core
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal IEnumerable<CompactNodeID> GetAllChildren(CompactHierarchy hierarchy, CompactNodeID compactNodeID)
+        internal readonly IEnumerable<CompactNodeID> GetAllChildren(CompactHierarchy hierarchy, CompactNodeID compactNodeID)
         {
             yield return compactNodeID;
             var childCount = hierarchy.ChildCount(compactNodeID);
@@ -629,7 +622,7 @@ namespace Chisel.Core
 
         [return: MarshalAs(UnmanagedType.U1)]
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal bool IsValidHierarchyID(CompactHierarchyID hierarchyID, out int index)
+        internal readonly bool IsValidHierarchyID(CompactHierarchyID hierarchyID, out int index)
         {
             index = -1;
             if (hierarchyID == CompactHierarchyID.Invalid)
@@ -649,7 +642,7 @@ namespace Chisel.Core
 
         [return: MarshalAs(UnmanagedType.U1)]
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public bool IsValidHierarchyID(CompactHierarchyID hierarchyID)
+        public readonly bool IsValidHierarchyID(CompactHierarchyID hierarchyID)
         {
             return IsValidHierarchyID(hierarchyID, out _);
         }
@@ -1906,55 +1899,22 @@ namespace Chisel.Core
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ref BrushOutline GetBrushOutline(NodeID nodeID) { return ref instance.GetBrushOutline(nodeID); }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static ref BrushOutline GetBrushOutline(ref CompactHierarchy hierarchy, CompactNodeID compactNodeID) { return ref CompactHierarchyManagerInstance.GetBrushOutline(ref hierarchy, compactNodeID); }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static ref CompactHierarchy CreateHierarchy(Int32 userID = 0) { return ref instance.CreateHierarchy(userID); }
-
         #region GetHierarchy
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ref CompactHierarchy GetHierarchy(CompactHierarchyID hierarchyID) { return ref instance.GetHierarchy(hierarchyID); }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal static ref CompactHierarchy GetHierarchy(ref IDManager hierarchyIDLookup, NativeList<CompactHierarchy> hierarchies, CompactHierarchyID hierarchyID) { return ref CompactHierarchyManagerInstance.GetHierarchy(ref hierarchyIDLookup, hierarchies, hierarchyID); }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ref CompactHierarchy GetHierarchy(CSGTree tree) { return ref instance.GetHierarchy(tree); }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal static ref CompactHierarchy GetHierarchy(CompactHierarchyID hierarchyID, out int hierarchyIndex) { return ref instance.GetHierarchy(hierarchyID, out hierarchyIndex); }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ref CompactHierarchy GetHierarchy(CompactNodeID compactNodeID) { return ref instance.GetHierarchy(compactNodeID); }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        static ref CompactHierarchy GetHierarchy(CompactNodeID compactNodeID, out int hierarchyIndex) { return ref instance.GetHierarchy(compactNodeID, out hierarchyIndex); }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        static ref CompactHierarchy GetHierarchy(NodeID nodeID) { return ref instance.GetHierarchy(nodeID); }
         #endregion
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal static int GetHierarchyIndex(NodeID nodeID) { return instance.GetHierarchyIndex(nodeID); }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal static int GetHierarchyIndexUnsafe(ref IDManager hierarchyIDLookup, CompactNodeID compactNodeID) { return CompactHierarchyManagerInstance.GetHierarchyIndexUnsafe(ref hierarchyIDLookup, compactNodeID); }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal static int GetHierarchyIndex(CompactNodeID compactNodeID) { return instance.GetHierarchyIndex(compactNodeID); }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static CompactHierarchyID GetHierarchyID(NodeID nodeID) { return instance.GetHierarchyID(nodeID); }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal static void FreeHierarchyID(CompactHierarchyID hierarchyID) { instance.FreeHierarchyID(hierarchyID); }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal static void FreeNodeID(NodeID nodeID) { instance.FreeNodeID(nodeID); }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal static void MoveNodeID(NodeID nodeID, CompactNodeID compactNodeID) { instance.MoveNodeID(nodeID, compactNodeID); }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal static void MoveNodeID(ref IDManager nodeIDLookup, NativeList<CompactNodeID> nodes, NodeID nodeID, CompactNodeID compactNodeID) { CompactHierarchyManagerInstance.MoveNodeID(ref nodeIDLookup, nodes, nodeID, compactNodeID); }
@@ -1963,16 +1923,7 @@ namespace Chisel.Core
         internal static void MoveNodeIDs(ref IDManager nodeIDLookup, NativeList<CompactNodeID> nodes, UnsafeList<CompactChildNode> compactNodes, int offset, int count) { CompactHierarchyManagerInstance.MoveNodeIDs(ref nodeIDLookup, nodes, compactNodes, offset, count); }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal static CompactNodeID GetCompactNodeIDNoError(ref IDManager nodeIDLookup, NativeList<CompactNodeID> nodes, NodeID nodeID, out int index) { return CompactHierarchyManagerInstance.GetCompactNodeIDNoError(ref nodeIDLookup, nodes, nodeID, out index); }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal static CompactNodeID GetCompactNodeIDNoError(ref IDManager nodeIDLookup, NativeList<CompactNodeID> nodes, NodeID nodeID) { return CompactHierarchyManagerInstance.GetCompactNodeIDNoError(ref nodeIDLookup, nodes, nodeID); }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static CompactNodeID GetCompactNodeIDNoError(NodeID nodeID) { return instance.GetCompactNodeIDNoError(nodeID); }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal static CompactNodeID GetCompactNodeID(NodeID nodeID, out int index) { return instance.GetCompactNodeID(nodeID, out index); }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static CompactNodeID GetCompactNodeID(NodeID nodeID) { return instance.GetCompactNodeID(nodeID); }
