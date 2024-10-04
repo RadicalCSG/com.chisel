@@ -554,6 +554,12 @@ namespace Chisel
 			}
 		}
 
+		[MethodImpl(MethodImplOptions.AggressiveInlining)]
+		public static NativeArray<T> AsArray<T>([ReadOnly] ref this NativeSlice<T> src) where T : unmanaged
+		{
+			return AsArray<T>(ref src, 0, src.Length);
+		}
+
 		public static NativeArray<T> AsArray<T>([ReadOnly] ref this NativeList<T> src, int index, int length) where T : unmanaged
 		{
 			CollectionChecks.CheckReadAndThrow(src);
@@ -599,6 +605,12 @@ namespace Chisel
 			}
 		}
 
+		[MethodImpl(MethodImplOptions.AggressiveInlining)]
+		public static NativeArray<T>.ReadOnly AsReadOnlyArray<T>([ReadOnly] ref this NativeSlice<T> src) where T : unmanaged
+		{
+			return AsReadOnlyArray(ref src, 0, src.Length);
+		}
+
 		public static NativeArray<T>.ReadOnly AsReadOnlyArray<T>([ReadOnly] ref this NativeSlice<T> src, int index, int length) where T : unmanaged
 		{
 			CollectionChecks.CheckReadAndThrow(src);
@@ -616,6 +628,12 @@ namespace Chisel
 #endif
 				return array.AsReadOnly();
 			}
+		}
+
+		[MethodImpl(MethodImplOptions.AggressiveInlining)]
+		public static NativeArray<T>.ReadOnly AsReadOnlyArray<T>([ReadOnly] ref this NativeList<T> src) where T : unmanaged
+		{
+			return AsReadOnlyArray(ref src, 0, src.Length);
 		}
 
 		public static NativeArray<T>.ReadOnly AsReadOnlyArray<T>([ReadOnly] ref this NativeList<T> src, int index, int length) where T : unmanaged
@@ -662,7 +680,8 @@ namespace Chisel
 			}
 			return nativeList;
 		}
-
+		
+		[MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public static NativeArray<T> ToNativeArray<T>(this T[] src, Allocator allocator) where T : unmanaged
 		{
 			CollectionChecks.CheckReadAndThrow(src);

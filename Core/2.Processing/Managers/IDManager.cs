@@ -149,7 +149,7 @@ namespace Chisel.Core
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public readonly unsafe void GetID(int index, out int id, out int generation)
+        public readonly void GetID(int index, out int id, out int generation)
         {
             id = default; //out
             generation = default; //out
@@ -158,11 +158,11 @@ namespace Chisel.Core
                 !sectionManager.IsAllocatedIndex(index))
                 throw new ArgumentOutOfRangeException($"{nameof(index)} ({index}) must be allocated and lie between 0 ... {indexToID.Length}");
 
-            var idInternal = indexToID.Ptr[index] - 1;
+            var idInternal = indexToID[index] - 1;
             if (idInternal < 0 || idInternal >= idToIndex.Length)
                 throw new IndexOutOfRangeException($"{nameof(id)} ({id}) must be between 1 ... {1 + idToIndex.Length}");
 
-            generation = idToIndex.Ptr[idInternal].generation;
+            generation = idToIndex[idInternal].generation;
             if (idToIndex[idInternal].index != index)
                 throw new FieldAccessException($"Internal mismatch of ids and indices");
 
@@ -170,7 +170,7 @@ namespace Chisel.Core
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public readonly unsafe bool IsValidID(int id, int generation, out int index)
+        public readonly bool IsValidID(int id, int generation, out int index)
         {
             var idInternal = id - 1; // We don't want 0 to be a valid id
 
@@ -178,7 +178,7 @@ namespace Chisel.Core
             if (idInternal < 0 || idInternal >= idToIndex.Length)
                 return false;
 
-            var idLookup = idToIndex.Ptr[idInternal];
+            var idLookup = idToIndex[idInternal];
             if (idLookup.generation != generation)
                 return false;
 
@@ -187,7 +187,7 @@ namespace Chisel.Core
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal readonly unsafe bool IsValidIDUnsafe(int id, int generation, out int index)
+        internal readonly bool IsValidIDUnsafe(int id, int generation, out int index)
         {
             var idInternal = id - 1; // We don't want 0 to be a valid id
 
@@ -195,7 +195,7 @@ namespace Chisel.Core
             if (idInternal < 0 || idInternal >= idToIndex.Length)
                 return false;
 
-            var idLookup = idToIndex.Ptr[idInternal];
+            var idLookup = idToIndex[idInternal];
             if (idLookup.generation != generation)
                 return false;
 
@@ -205,7 +205,7 @@ namespace Chisel.Core
 
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public readonly unsafe bool IsValidIndex(int index, out int id, out int generation)
+        public readonly bool IsValidIndex(int index, out int id, out int generation)
         {
             id = default; //out
             generation = default;//out
@@ -213,11 +213,11 @@ namespace Chisel.Core
             if (!sectionManager.IsAllocatedIndex(index))
                 return false;
 
-            var idInternal = indexToID.Ptr[index] - 1;
+            var idInternal = indexToID[index] - 1;
             if (idInternal < 0 || idInternal >= idToIndex.Length)
                 return false;
 
-            generation = idToIndex.Ptr[idInternal].generation;
+            generation = idToIndex[idInternal].generation;
             if (idToIndex[idInternal].index != index)
                 return false;
 
@@ -226,7 +226,7 @@ namespace Chisel.Core
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public readonly unsafe int GetIndexNoErrors(int id, int generation)
+        public readonly int GetIndexNoErrors(int id, int generation)
         {
             Debug.Assert(IsCreated);
             var idInternal = id - 1; // We don't want 0 to be a valid id
@@ -234,7 +234,7 @@ namespace Chisel.Core
             if (idInternal < 0 || idInternal >= idToIndex.Length)
                 return -1;
 
-            var idLookup = idToIndex.Ptr[idInternal];
+            var idLookup = idToIndex[idInternal];
             if (idLookup.generation != generation)
                 return -1;
 
@@ -277,7 +277,7 @@ namespace Chisel.Core
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public readonly unsafe int GetIndex(int id, int generation)
+        public readonly int GetIndex(int id, int generation)
         {
             Debug.Assert(IsCreated);
             var idInternal = id - 1; // We don't want 0 to be a valid id
@@ -289,7 +289,7 @@ namespace Chisel.Core
                 return -1;
             }
              
-            var idLookup = idToIndex.Ptr[idInternal];
+            var idLookup = idToIndex[idInternal];
             if (idLookup.generation != generation)
             {
                 CheckGeneration(generation, idLookup.generation);
@@ -439,7 +439,7 @@ namespace Chisel.Core
             }
         }
 
-        internal unsafe int InsertIndexRange(int originalOffset, int originalCount, int srcIndex, int dstIndex, int moveCount = 1)
+        internal int InsertIndexRange(int originalOffset, int originalCount, int srcIndex, int dstIndex, int moveCount = 1)
         {
             if (moveCount <= 0)
                 throw new ArgumentException($"{nameof(moveCount)} must be 1 or higher.");
@@ -452,63 +452,66 @@ namespace Chisel.Core
             if (indexToID.Length < newOffset + newCount)
                 indexToID.Resize(newOffset + newCount, NativeArrayOptions.ClearMemory);
 
-            var originalIDs = stackalloc int[moveCount];
-            for (int index = 0; index < moveCount; index++)
+            unsafe
             {
-                originalIDs[index] = indexToID[srcIndex + index];
-                indexToID[srcIndex + index] = default;
+                var originalIDs = stackalloc int[moveCount];
+                for (int index = 0; index < moveCount; index++)
+                {
+                    originalIDs[index] = indexToID[srcIndex + index];
+                    indexToID[srcIndex + index] = default;
+                }
+
+                // We first move the front part (when necesary)
+                var range = dstIndex;
+                if (range > 0)
+                    indexToID.MemMove(newOffset, originalOffset, range);
+
+                // Then we move the back part to the correct new offset (when necesary) ..
+                range = originalCount - dstIndex;
+                if (range > 0)
+                    indexToID.MemMove(newOffset + dstIndex + moveCount, originalOffset + dstIndex, range);
+
+                // Then we copy srcIndex to the new location
+                var newNodeIndex = newOffset + dstIndex;
+                for (int index = 0; index < moveCount; index++)
+                {
+                    indexToID[newNodeIndex + index] = originalIDs[index];
+                }
+
+                // Then we set the old indices to 0
+                if (srcIndex >= newOffset && srcIndex + moveCount <= newOffset + newCount)
+                    sectionManager.FreeRange(srcIndex, moveCount);
+                for (int index = srcIndex; index < srcIndex + moveCount; index++)
+                {
+                    if (index >= newOffset && index < newOffset + newCount)
+                        continue;
+
+                    indexToID[index] = default;
+                }
+                for (int index = originalOffset, lastIndex = (originalOffset + originalCount); index < lastIndex; index++)
+                {
+                    // TODO: figure out if there's an off by one here
+                    if (index >= newOffset && index < newOffset + newCount)
+                        continue;
+
+                    indexToID[index] = default;
+                }
+
+                // And fixup the id to index lookup
+                for (int index = newOffset, lastIndex = (newOffset + newCount); index < lastIndex; index++)
+                {
+                    var idInternal = indexToID[index] - 1;
+
+                    var idLookup = idToIndex[idInternal];
+                    idLookup.index = index;
+                    idToIndex[idInternal] = idLookup;
+                }
+
+                return newOffset;
             }
-
-            // We first move the front part (when necesary)
-            var range = dstIndex;
-            if (range > 0)
-                indexToID.MemMove(newOffset, originalOffset, range);
-
-            // Then we move the back part to the correct new offset (when necesary) ..
-            range = originalCount - dstIndex;
-            if (range > 0)
-                indexToID.MemMove(newOffset + dstIndex + moveCount, originalOffset + dstIndex, range);
-
-            // Then we copy srcIndex to the new location
-            var newNodeIndex = newOffset + dstIndex;
-            for (int index = 0; index < moveCount; index++)
-            {
-                indexToID[newNodeIndex + index] = originalIDs[index];
-            }
-
-            // Then we set the old indices to 0
-            if (srcIndex >= newOffset && srcIndex + moveCount <= newOffset + newCount)
-                sectionManager.FreeRange(srcIndex, moveCount);
-            for (int index = srcIndex; index < srcIndex + moveCount; index++)
-            {
-                if (index >= newOffset && index < newOffset + newCount)
-                    continue;
-                
-                indexToID[index] = default;
-            }
-            for (int index = originalOffset, lastIndex = (originalOffset + originalCount); index < lastIndex; index++)
-            {
-                // TODO: figure out if there's an off by one here
-                if (index >= newOffset && index < newOffset + newCount)
-                    continue;
-
-                indexToID[index] = default;
-            }
-
-            // And fixup the id to index lookup
-            for (int index = newOffset, lastIndex = (newOffset + newCount); index < lastIndex; index++)
-            {
-                var idInternal = indexToID[index] - 1;
-
-                var idLookup = idToIndex[idInternal];
-                idLookup.index = index;
-                idToIndex[idInternal] = idLookup;
-            }
-
-            return newOffset;
         }
 
-        internal unsafe void RemoveIndexRange(int offset, int count, int removeIndex, int removeRange)
+        internal void RemoveIndexRange(int offset, int count, int removeIndex, int removeRange)
         {
             if (offset < 0) throw new ArgumentException($"{nameof(offset)} must be positive");
             if (count < 0) throw new ArgumentException($"{nameof(count)} must be positive");

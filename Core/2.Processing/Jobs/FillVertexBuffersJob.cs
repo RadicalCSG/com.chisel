@@ -737,8 +737,11 @@ namespace Chisel.Core
                 var meshQueryIndex      = subMeshCount.meshQueryIndex;
                 var subMeshSurfaceArray = subMeshSurfaces[meshQueryIndex];
 
-                var min = new float3(float.PositiveInfinity, float.PositiveInfinity, float.PositiveInfinity);
-                var max = new float3(float.NegativeInfinity, float.NegativeInfinity, float.NegativeInfinity);
+                var aabb = new MinMaxAABB()
+                {
+                    Min = new float3(float.PositiveInfinity, float.PositiveInfinity, float.PositiveInfinity),
+                    Max = new float3(float.NegativeInfinity, float.NegativeInfinity, float.NegativeInfinity)
+                };
 
                 // copy all the vertices & indices to the sub-meshes, one sub-mesh per material
                 for (int surfaceIndex       = surfacesOffset, 
@@ -769,16 +772,12 @@ namespace Chisel.Core
 
                     vertices.CopyFrom(currentBaseVertex + indexVertexOffset, ref sourceVertices, 0, sourceVertexCount);
 
-                    min = math.min(min, sourceBuffer.min);
-                    max = math.max(max, sourceBuffer.max);
+					aabb.Min = math.min(aabb.Min, sourceBuffer.aabb.Min);
+					aabb.Max = math.max(aabb.Max, sourceBuffer.aabb.Max);
 
                     indexVertexOffset += sourceVertexCount;
                 }
                 
-                var srcBounds   = BoundsExtensions.CreateAABB(min: min, max: max);
-                var center      = (Vector3)((srcBounds.Max + srcBounds.Min) * 0.5f);
-                var size        = (Vector3)(srcBounds.Max - srcBounds.Min);
-                var dstBounds   = new Bounds(center, size);
                 meshData.SetSubMesh(subMeshIndex, new SubMeshDescriptor
                 {
                     baseVertex  = currentBaseVertex,
@@ -786,7 +785,7 @@ namespace Chisel.Core
                     vertexCount = vertexCount,
                     indexStart  = currentBaseIndex,
                     indexCount  = indexCount,
-                    bounds      = dstBounds,
+                    bounds      = aabb.ToBounds(),
                     topology    = UnityEngine.MeshTopology.Triangles,
                 }, MeshUpdateFlags.DontRecalculateBounds | MeshUpdateFlags.DontValidateIndices);
 
@@ -825,8 +824,11 @@ namespace Chisel.Core
             var indexCount		    = subMeshCount.indexCount;
             var subMeshSurfaceArray = subMeshSurfaces[meshQueryIndex];
 
-            var min = new float3(float.PositiveInfinity, float.PositiveInfinity, float.PositiveInfinity);
-            var max = new float3(float.NegativeInfinity, float.NegativeInfinity, float.NegativeInfinity);
+            var aabb = new MinMaxAABB()
+            {
+                Min = new float3(float.PositiveInfinity, float.PositiveInfinity, float.PositiveInfinity),
+                Max = new float3(float.NegativeInfinity, float.NegativeInfinity, float.NegativeInfinity)
+            };
 
             // copy all the vertices & indices to a mesh for the collider
             int indexOffset = 0, vertexOffset = 0;
@@ -854,19 +856,15 @@ namespace Chisel.Core
                 indexOffset += sourceIndexCount;
 
                 vertices.CopyFrom(vertexOffset, ref sourceVertices, 0, sourceVertexCount);
-                    
-                min = math.min(min, sourceBuffer.min);
-                max = math.max(max, sourceBuffer.max);
+
+				aabb.Min = math.min(aabb.Min, sourceBuffer.aabb.Min);
+				aabb.Max = math.max(aabb.Max, sourceBuffer.aabb.Max);
 
                 vertexOffset += sourceVertexCount;
             }
             Debug.Assert(indexOffset == totalIndexCount);
             Debug.Assert(vertexOffset == totalVertexCount);
 
-            var srcBounds   = BoundsExtensions.CreateAABB(min: min, max: max);
-            var center      = (Vector3)((srcBounds.Max + srcBounds.Min) * 0.5f);
-            var size        = (Vector3)(srcBounds.Max - srcBounds.Min);
-            var dstBounds   = new Bounds(center, size);
             meshData.subMeshCount = 1;
             meshData.SetSubMesh(0, new SubMeshDescriptor
             {
@@ -875,7 +873,7 @@ namespace Chisel.Core
                 vertexCount = vertexCount,
                 indexStart  = 0,
                 indexCount  = indexCount,
-                bounds      = dstBounds,
+                bounds      = aabb.ToBounds(),
                 topology    = UnityEngine.MeshTopology.Triangles,
             }, MeshUpdateFlags.DontRecalculateBounds | MeshUpdateFlags.DontValidateIndices);
         }

@@ -1,7 +1,10 @@
 using System;
 
+using Unity.Collections;
 using Unity.Entities;
 using Unity.Mathematics;
+
+using Debug = UnityEngine.Debug;
 
 namespace Chisel.Core
 {
@@ -17,11 +20,45 @@ namespace Chisel.Core
         public uint   geometryHash;
         public uint   surfaceHash;
 
-        public float3 min, max;  
+        public MinMaxAABB aabb;  
 
-        public BlobArray<Int32>		    indices;
-        public BlobArray<RenderVertex>	renderVertices;
-        public BlobArray<float3>	    colliderVertices;
+        public BlobArray<Int32>		   indices;
+        public BlobArray<RenderVertex> renderVertices;
+        public BlobArray<float3>	   colliderVertices;
+
+        public void Construct(BlobBuilder builder,
+							  NativeList<Int32> indices,
+							  NativeList<RenderVertex> renderVertices,
+							  NativeList<float3> colliderVertices, 
+                              int surfaceIndex,
+                              SurfaceDestinationFlags destinationFlags,
+							  SurfaceDestinationParameters destinationParameters)
+		{
+			var vertexHash = colliderVertices.Hash();
+			var indicesHash = indices.Hash();
+			var geometryHash = math.hash(new uint2(vertexHash, indicesHash));
+
+			this.surfaceIndex = surfaceIndex;
+
+			this.destinationFlags = destinationFlags;
+			this.destinationParameters = destinationParameters;
+
+			this.vertexCount = colliderVertices.Length;
+			this.indexCount = indices.Length;
+
+			// TODO: properly compute hash again, AND USE IT
+			this.surfaceHash = 0;// math.hash(new uint3(normalHash, tangentHash, uv0Hash));
+			this.geometryHash = geometryHash;
+
+			this.aabb = colliderVertices.GetMinMax();
+
+			var outputIndices = builder.Construct(ref this.indices, indices);
+			var outputVertices = builder.Construct(ref this.colliderVertices, colliderVertices);
+			builder.Construct(ref this.renderVertices, renderVertices);
+
+			UnityEngine.Debug.Assert(outputVertices.Length == this.vertexCount);
+			Debug.Assert(outputIndices.Length == this.indexCount);
+		}
     };
 
     struct ChiselQuerySurface

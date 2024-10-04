@@ -1,9 +1,11 @@
 ﻿using System.Runtime.CompilerServices;
 
+using Unity.Collections;
 using Unity.Entities;
 using Unity.Mathematics;
 
 using UnityEngine;
+using UnityEngine.Scripting;
 
 namespace Chisel
 {
@@ -142,11 +144,32 @@ namespace Chisel
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public static MinMaxAABB ToMinMaxAABB(this Bounds bounds) { return new MinMaxAABB { Min = bounds.min, Max = bounds.max }; }
 
+		[MethodImpl(MethodImplOptions.AggressiveInlining)] 
+		public static Bounds ToBounds(this AABB aabb) { return new Bounds(aabb.GetCenter(), aabb.GetSize()); }
+
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public static Bounds ToBounds(this MinMaxAABB aabb) { return new Bounds { center = (aabb.Max + aabb.Min) * 0.5f, extents = (aabb.Max - aabb.Min) * 0.5f }; }
 
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public static AABB ToAABB(this MinMaxAABB aabb) { return new AABB { Center = (aabb.Max + aabb.Min) * 0.5f, Extents = (aabb.Max - aabb.Min) * 0.5f }; }
+
+		[MethodImpl(MethodImplOptions.AggressiveInlining)]
+		public static float3 GetCenter(this MinMaxAABB aabb) { return (aabb.Max + aabb.Min) * 0.5f; }
+
+		[MethodImpl(MethodImplOptions.AggressiveInlining)]
+		public static float3 GetCenter(this AABB aabb) { return aabb.Center; }
+
+		[MethodImpl(MethodImplOptions.AggressiveInlining)]
+		public static float3 GetCenter(this Bounds aabb) { return aabb.center; }
+
+		[MethodImpl(MethodImplOptions.AggressiveInlining)]
+		public static float3 GetSize(this MinMaxAABB aabb) { return aabb.Max - aabb.Min; }
+
+		[MethodImpl(MethodImplOptions.AggressiveInlining)]
+		public static float3 GetSize(this AABB aabb) { return aabb.Size; }
+
+		[MethodImpl(MethodImplOptions.AggressiveInlining)]
+		public static float3 GetSize(this Bounds aabb) { return aabb.size; }
 
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public static void SetCenter(this MinMaxAABB aabb, float3 center) 
@@ -186,6 +209,7 @@ namespace Chisel
 			aabb.Min = min;
 			aabb.Max = max;
 		}
+
 
 		[MethodImpl(MethodImplOptions.AggressiveInlining)] public static void SetCenter(this AABB aabb, float3 center) { aabb.Center = center; }
 		[MethodImpl(MethodImplOptions.AggressiveInlining)] public static void SetExtents(this AABB aabb, float3 extents) { aabb.Extents = extents; }
@@ -237,6 +261,22 @@ namespace Chisel
 		{
 			aabb.extents = math.abs(max + min) * 0.5f;
 			aabb.center = math.abs(max - min) * 0.5f;
+		}
+
+		[MethodImpl(MethodImplOptions.AggressiveInlining)]
+		public static MinMaxAABB GetMinMax(this NativeList<float3> vertices)
+		{
+			var aabb = new MinMaxAABB()
+			{
+				Min = new float3(float.PositiveInfinity, float.PositiveInfinity, float.PositiveInfinity),
+				Max = new float3(float.NegativeInfinity, float.NegativeInfinity, float.NegativeInfinity)
+			};
+			for (int i = 0; i < vertices.Length; i++)
+			{
+				aabb.Min = math.min(aabb.Min, vertices[i]);
+				aabb.Max = math.max(aabb.Max, vertices[i]);
+			}
+			return aabb;
 		}
     }
 }

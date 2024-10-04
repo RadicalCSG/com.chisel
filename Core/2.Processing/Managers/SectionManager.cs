@@ -102,64 +102,66 @@ namespace Chisel.Core
         struct SectionFindStack { public int first, last; }
 
 		// Find section by offset using binary search
-		readonly unsafe bool FindSectionByOffset(int findOffset, out int foundSection)
+		readonly bool FindSectionByOffset(int findOffset, out int foundSection)
         {
             foundSection = -1;
             var sectionsLength = sections.Length;
             if (sectionsLength == 0)
                 return false;
 
-            var sectionsPtr = sections.Ptr;
-            if (findOffset < 0 || findOffset > sectionsPtr[sectionsLength - 1].end)
+            if (findOffset < 0 || findOffset > sections[sectionsLength - 1].end)
                 return false;
 
-            var searchStack = stackalloc SectionFindStack[16]; // should be be more than enough, we'd be running into integer size issues before then
-            int searchLength;
+            unsafe
+            { 
+                var searchStack = stackalloc SectionFindStack[16]; // should be be more than enough, we'd be running into integer size issues before then
+                int searchLength;
 
-            searchStack[0] = new SectionFindStack { first = 0, last = sectionsLength - 1 };
-            searchLength = 1;
+                searchStack[0] = new SectionFindStack { first = 0, last = sectionsLength - 1 };
+                searchLength = 1;
 
-            while (searchLength > 0)
-            {
-                var sectionFirstIndex = searchStack[searchLength - 1].first;
-                var sectionLastIndex  = searchStack[searchLength - 1].last;
-                searchStack[searchLength - 1] = default;
-                searchLength--;
-
-                var centerSectionIndex  = sectionFirstIndex + ((sectionLastIndex - sectionFirstIndex) / 2);
-                var section             = sectionsPtr[centerSectionIndex];
-                var difference          = (findOffset < section.start) ? -1 : 
-                                          (findOffset > section.end  ) ?  1 : 
-                                          0;
-
-                // Check if this is the section we need 
-                if (difference == 0)
+                while (searchLength > 0)
                 {
-                    foundSection = centerSectionIndex;
-                    return true;
-                }
+                    var sectionFirstIndex = searchStack[searchLength - 1].first;
+                    var sectionLastIndex  = searchStack[searchLength - 1].last;
+                    searchStack[searchLength - 1] = default;
+                    searchLength--;
 
-                // If we still have ranges to check on the left or right, add them to the stack
-                if (difference < 0)
-                {
-                    if (centerSectionIndex == sectionFirstIndex)
-                        break;
+                    var centerSectionIndex  = sectionFirstIndex + ((sectionLastIndex - sectionFirstIndex) / 2);
+                    var section             = sections[centerSectionIndex];
+                    var difference          = (findOffset < section.start) ? -1 : 
+                                              (findOffset > section.end  ) ?  1 : 
+                                              0;
 
-                    var firstNode = sectionFirstIndex;
-                    var lastNode  = centerSectionIndex - 1;
+                    // Check if this is the section we need 
+                    if (difference == 0)
+                    {
+                        foundSection = centerSectionIndex;
+                        return true;
+                    }
 
-                    searchStack[searchLength] = new SectionFindStack { first = firstNode, last = lastNode };
-                    searchLength++;
-                } else
-                {
-                    if (centerSectionIndex == sectionLastIndex)
-                        break;
+                    // If we still have ranges to check on the left or right, add them to the stack
+                    if (difference < 0)
+                    {
+                        if (centerSectionIndex == sectionFirstIndex)
+                            break;
 
-                    var firstNode = centerSectionIndex + 1;
-                    var lastNode  = sectionLastIndex;
+                        var firstNode = sectionFirstIndex;
+                        var lastNode  = centerSectionIndex - 1;
 
-                    searchStack[searchLength] = new SectionFindStack { first = firstNode, last = lastNode };
-                    searchLength++;
+                        searchStack[searchLength] = new SectionFindStack { first = firstNode, last = lastNode };
+                        searchLength++;
+                    } else
+                    {
+                        if (centerSectionIndex == sectionLastIndex)
+                            break;
+
+                        var firstNode = centerSectionIndex + 1;
+                        var lastNode  = sectionLastIndex;
+
+                        searchStack[searchLength] = new SectionFindStack { first = firstNode, last = lastNode };
+                        searchLength++;
+                    }
                 }
             }
             return false;
