@@ -41,7 +41,6 @@ namespace Chisel.Core
         [NativeDisableContainerSafetyRestriction] NativeArray<SurfaceInfo>          surfaceLoopAllInfos;
         [NativeDisableContainerSafetyRestriction] NativeList<UnsafeList<Edge>>      surfaceLoopAllEdges;
         [NativeDisableContainerSafetyRestriction] NativeList<int>                   surfaceIndexList;
-        [NativeDisableContainerSafetyRestriction] NativeList<int>                   outputSurfaceIndicesArray;
         
         [BurstDiscard]
         public static void InvalidFinalCategory(CategoryIndex _interiorCategory)
@@ -181,43 +180,14 @@ namespace Chisel.Core
 				var localSpaceToPlaneSpace  = MathExtensions.GenerateLocalToPlaneSpaceMatrix(localSpacePlane);
                 var treeSpaceToPlaneSpace   = math.mul(localSpaceToPlaneSpace, treeToNode);
                 var uv0Matrix               = math.mul(UV0.ToFloat4x4(), treeSpaceToPlaneSpace);
-
                 var surfaceTreeSpacePlane   = math.mul(nodeToTreeInverseTransposed, localSpacePlane);
 
-                // Ensure we have the rotation properly calculated, and have a valid normal
+                // Find 2 axi perpendicular to the normal
                 float3 normal = surfaceTreeSpacePlane.xyz;
-                quaternion rotation;
-                if (((Vector3)normal) == Vector3.forward)
-                    rotation = quaternion.identity;
-                else
-                    rotation = (quaternion)Quaternion.FromToRotation(normal, Vector3.forward);
-
-
-
-                
-                double3 axi1, axi2;
-                if (math.abs(math.dot(normal, new float3(0,1,0))) < math.abs(math.dot(normal, new float3(0, 0, 1))))
-				{
-                    if (math.abs(math.dot(normal, new float3(0, 1, 0))) < math.abs(math.dot(normal, new float3(1, 0, 0))))
-                    {
-                        axi1 = new double3(0, 1, 0);
-                    } else
-					{
-						axi1 = new double3(1, 0, 0);
-					}
-                } else
-				{
-                    if (math.abs(math.dot(normal, new float3(0, 0, 1))) < math.abs(math.dot(normal, new float3(1, 0, 0))))
-                    {
-                        axi1 = new double3(0, 0, 1);
-                    } else
-                    {
-                        axi1 = new double3(1, 0, 0);
-                    }
-				}
-
-				axi1 = math.cross(normal, axi1);
-				axi2 = math.cross(normal, axi1);
+                float3 xAxis = new(1, 0, 0), yAxis = new(0, 1, 0), zAxis = new(0, 0, 1);
+				double3 tmp = (math.abs(math.dot(normal, yAxis)) < math.abs(math.dot(normal, zAxis))) ? yAxis : zAxis;
+				double3 axi1 = math.cross(normal, (math.abs(math.dot(normal, tmp)) < math.abs(math.dot(normal, xAxis))) ? tmp : xAxis);
+				double3 axi2 = math.cross(normal, axi1);
 				
 
                 surfaceIndexList.Clear();
@@ -232,11 +202,6 @@ namespace Chisel.Core
                     interiorCategory = (CategoryIndex)loopInfo.interiorCategory;
 
                     Debug.Assert(surfaceIndex == loopInfo.basePlaneIndex, "surfaceIndex != loopInfo.basePlaneIndex");
-
-
-
-
-                    NativeCollectionHelpers.EnsureCapacityAndClear(ref outputSurfaceIndicesArray, loopEdges.Length * 3);
 
 					ref var vertices = ref *brushVertices.m_Vertices;
 					var usedIndices = new NativeList<int>(vertices.Length, Allocator.Persistent);
@@ -256,7 +221,6 @@ namespace Chisel.Core
 							var vertex = (double3)vertices[index1];
 							lookup[positions.Length] = index1;
 
-							//positions.Add(new double2(math.mul(rotation, vertices[index1]).xy));
 							positions.Add(new double2(math.dot(vertex, axi1), math.dot(vertex, axi2)));
 
 							usedIndices[index1] = positions.Length;
@@ -269,7 +233,6 @@ namespace Chisel.Core
 							var vertex = (double3)vertices[index2];
 							lookup[positions.Length] = index2;
 
-							//positions.Add(new double2(math.mul(rotation, vertices[index2]).xy));
 							positions.Add(new double2(math.dot(vertex, axi1), math.dot(vertex, axi2)));
 
 							usedIndices[index2] = positions.Length;
@@ -280,34 +243,36 @@ namespace Chisel.Core
 						constraints[i + 1] = index2;
 					}
 
-					//Debug.Log($"vertices.Length {vertices.Length} | constraints.Length {constraints.Length}");
+                    
 
 					var holes = new NativeList<double2>(64, Allocator.Persistent);
 					var triangulator = new Triangulator<double2>(64, Allocator.Temp)
-					{
+                    {
+
 						Input = new()
-						{
-							Positions = positions.AsArray(),
-							ConstraintEdges = constraints.AsArray(),
-							HoleSeeds = holes.AsArray()
-						},
-						Settings = new()
-						{
-							ValidateInput = true,
-							Verbose = true,
-							Preprocessor = Preprocessor.None,
-							AutoHolesAndBoundary = true,
-							RestoreBoundary = true,
-							SloanMaxIters = 1_000_000,
-							RefineMesh = false,
-							RefinementThresholds = new RefinementThresholds
-							{
-								Area = 1f,
-								Angle = math.radians(5)
-							},
-							ConcentricShellsParameter = 0.001f
-						}
-					};
+                        {
+                            Positions = positions.AsArray(),
+                            ConstraintEdges = constraints.AsArray(),
+                            HoleSeeds = holes.AsArray()
+                        },
+                        Settings = new()
+                        {
+                            ValidateInput = true,
+                            Verbose = true,
+                            Preprocessor = Preprocessor.None,
+                            AutoHolesAndBoundary = true,
+                            RestoreBoundary = true,
+                            SloanMaxIters = 1_000_000,
+                            RefineMesh = false,
+                            RefinementThresholds = new RefinementThresholds
+                            {
+                                Area = 1f,
+                                Angle = math.radians(5)
+                            },
+                            ConcentricShellsParameter = 0.001f
+                        }
+                    };
+
 
 					triangulator.Execute();
 					
@@ -315,43 +280,33 @@ namespace Chisel.Core
 					if (status != Status.OK)
 					{
 						Debug.LogError($"{status}");
-					}
-					var triangles = triangulator.Output.Triangles;
-					
-                    outputSurfaceIndicesArray.Clear();
-                    outputSurfaceIndicesArray.Resize(triangles.Length, NativeArrayOptions.UninitializedMemory);
-					for (int i = 0 , j = triangles.Length - 1; i < triangles.Length; i++, j--)
-                    {
-                        outputSurfaceIndicesArray[i] = lookup[triangles[j]];
+					} else
+                    { 
+					    var triangles = triangulator.Output.Triangles;
+					    if (triangles.Length >= 3)
+					    {
+                            if (interiorCategory == CategoryIndex.ValidReverseAligned ||
+                                interiorCategory == CategoryIndex.ReverseAligned)
+                            {
+                                for (int i = 0; i < triangles.Length; i++)
+                                {
+								    surfaceIndexList.Add(lookup[triangles[i]]);
+                                }
+                            } else
+					        {
+						        for (int i = 0, j = triangles.Length - 1; i < triangles.Length; i++, j--)
+						        {
+								    surfaceIndexList.Add(lookup[triangles[j]]);
+						        }
+						    }
+					    }
                     }
-                    
+
 					triangulator.Dispose();
 					holes.Dispose();
 					positions.Dispose();
 					constraints.Dispose();
 					usedIndices.Dispose();
-
-
-
-
-
-					if (outputSurfaceIndicesArray.Length >= 3)
-                    {
-                        if (interiorCategory == CategoryIndex.ValidReverseAligned ||
-                            interiorCategory == CategoryIndex.ReverseAligned)
-                        {
-                            var maxCount = outputSurfaceIndicesArray.Length - 1;
-                            for (int n = (maxCount / 2); n >= 0; n--)
-                            {
-                                var t = outputSurfaceIndicesArray[n];
-                                outputSurfaceIndicesArray[n] = outputSurfaceIndicesArray[maxCount - n];
-                                outputSurfaceIndicesArray[maxCount - n] = t;
-                            }
-                        }
-
-                        for (int n = 0; n < outputSurfaceIndicesArray.Length; n++)
-                            surfaceIndexList.Add(outputSurfaceIndicesArray[n]);
-                    }
                 }
 
                 if (surfaceIndexList.Length == 0)
@@ -392,9 +347,6 @@ namespace Chisel.Core
                     surfaceIndexList[i] = vertexIndexDst;
                 }
 
-                var vertexHash = surfaceColliderVertices.Hash(surfaceVerticesCount);
-                var indicesHash = surfaceIndexList.Hash(surfaceIndicesCount);
-                var geometryHash = math.hash(new uint2(vertexHash, indicesHash));
 
                 
 
@@ -404,7 +356,11 @@ namespace Chisel.Core
                                 surfaceVerticesCount);
 
 
-                var min = new float3(float.PositiveInfinity, float.PositiveInfinity, float.PositiveInfinity);
+				var vertexHash = surfaceColliderVertices.Hash(surfaceVerticesCount);
+				var indicesHash = surfaceIndexList.Hash(surfaceIndicesCount);
+				var geometryHash = math.hash(new uint2(vertexHash, indicesHash));
+
+				var min = new float3(float.PositiveInfinity, float.PositiveInfinity, float.PositiveInfinity);
                 var max = new float3(float.NegativeInfinity, float.NegativeInfinity, float.NegativeInfinity);
                 for (int i = 0; i < surfaceVerticesCount; i++)
                 {
@@ -475,13 +431,11 @@ namespace Chisel.Core
             root.surfaceCount = surfaceRenderBuffers.Length;
 
             var brushRenderBuffer = builder.CreateBlobAssetReference<ChiselBrushRenderBuffer>(Allocator.Persistent);
-
             if (brushRenderBufferCache[brushNodeOrder].IsCreated)
             {
                 brushRenderBufferCache[brushNodeOrder].Dispose();
                 brushRenderBufferCache[brushNodeOrder] = default;
             }
-
             brushRenderBufferCache[brushNodeOrder] = brushRenderBuffer;
         }
 

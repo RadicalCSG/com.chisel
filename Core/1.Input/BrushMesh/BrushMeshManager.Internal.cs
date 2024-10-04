@@ -562,7 +562,7 @@ namespace Chisel.Core
             var brushMesh = new BrushMesh
             {
                 vertices                = brushMeshBlob.localVertices.ToArray(),
-                halfEdges               = BlobArrayExtensions.ToArray<BrushMeshBlob.HalfEdge, BrushMesh.HalfEdge>(ref brushMeshBlob.halfEdges),
+                halfEdges               = brushMeshBlob.halfEdges.ToArray<BrushMeshBlob.HalfEdge, BrushMesh.HalfEdge>(),
                 halfEdgePolygonIndices  = brushMeshBlob.halfEdgePolygonIndices.ToArray(),
                 planes                  = new float4[brushMeshBlob.polygons.Length],
                 polygons                = new BrushMesh.Polygon[brushMeshBlob.polygons.Length]

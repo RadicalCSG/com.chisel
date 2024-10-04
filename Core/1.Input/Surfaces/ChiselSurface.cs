@@ -96,7 +96,7 @@ namespace Chisel.Core
 				uint materialHashcode = (chiselMaterial.material != null) ? (uint)chiselMaterial.material.GetHashCode() : 0u;
 				uint surfaceMetadataHashcode = (chiselMaterial.surfaceMetadata != null) ? (uint)chiselMaterial.surfaceMetadata.GetHashCode() : 0;
 
-				uint hash = HashExtensions.Hash(ref surfaceDetails);				
+				uint hash = surfaceDetails.Hash();				
                 hash = math.hash(new uint3(hash, materialHashcode, surfaceMetadataHashcode));
                 return (int)hash;
             }

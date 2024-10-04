@@ -239,7 +239,7 @@ namespace Chisel.Editors
             }
             catch (Exception ex) 
             {
-                Debug.LogError(ex);
+                Debug.LogException(ex);
             }
         }
 

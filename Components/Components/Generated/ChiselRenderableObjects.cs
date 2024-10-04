@@ -308,7 +308,7 @@ namespace Chisel.Components
                 var brushIndicesArray   = vertexBufferContents.triangleBrushIndices[meshUpdate.contentsIndex];
                 if (instance.triangleBrushes.Length < brushIndicesArray.Length)
                     instance.triangleBrushes = new CompactNodeID[brushIndicesArray.Length];
-                brushIndicesArray.CopyTo(instance.triangleBrushes, brushIndicesArray.Length);
+				brushIndicesArray.CopyTo(instance.triangleBrushes, brushIndicesArray.Length);
             }
             Profiler.EndSample();
 

@@ -27,27 +27,23 @@ namespace Chisel.Core
             };
         }
 
-        public unsafe bool IsCreated
+        public bool IsCreated
         {
             get
             {
-                return initialized &&
-                       vertices.Ptr != null && vertices.IsCreated &&
-                       visibleOuterLines.Ptr != null && visibleOuterLines.IsCreated &&
-                       surfaceVisibleOuterLines.Ptr != null && surfaceVisibleOuterLines.IsCreated &&
-                       surfaceVisibleOuterLineRanges.Ptr != null && surfaceVisibleOuterLineRanges.IsCreated;
+                return initialized && vertices.IsCreated && visibleOuterLines.IsCreated && surfaceVisibleOuterLines.IsCreated && surfaceVisibleOuterLineRanges.IsCreated;
             }
         }
 
-        public unsafe void Dispose()
+        public void Dispose()
         {
             try
             {
                 initialized = false;
-                if (vertices.Ptr                      != null && vertices                     .IsCreated) vertices                     .Dispose(); 
-                if (visibleOuterLines.Ptr             != null && visibleOuterLines            .IsCreated) visibleOuterLines            .Dispose(); 
-                if (surfaceVisibleOuterLines.Ptr      != null && surfaceVisibleOuterLines     .IsCreated) surfaceVisibleOuterLines     .Dispose(); 
-                if (surfaceVisibleOuterLineRanges.Ptr != null && surfaceVisibleOuterLineRanges.IsCreated) surfaceVisibleOuterLineRanges.Dispose(); 
+                if (vertices                     .IsCreated) vertices                     .Dispose(); 
+                if (visibleOuterLines            .IsCreated) visibleOuterLines            .Dispose(); 
+                if (surfaceVisibleOuterLines     .IsCreated) surfaceVisibleOuterLines     .Dispose(); 
+                if (surfaceVisibleOuterLineRanges.IsCreated) surfaceVisibleOuterLineRanges.Dispose(); 
             }
             catch(Exception ex)
             {
@@ -73,26 +69,12 @@ namespace Chisel.Core
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        static unsafe uint GetListHash<T>(ref NativeList<T> list)
-            where T : unmanaged
-        {
-            return math.hash(list.GetUnsafePtr(), list.Length * sizeof(T));
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        static unsafe uint GetListHash<T>(ref UnsafeList<T> list)
-            where T : unmanaged
-        {
-            return math.hash(list.Ptr, list.Length * sizeof(T));
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         void UpdateHash()
         {
-            hash = math.hash(new uint4(GetListHash(ref vertices),
-                                       GetListHash(ref visibleOuterLines),
-                                       GetListHash(ref surfaceVisibleOuterLines),
-                                       GetListHash(ref surfaceVisibleOuterLineRanges)));
+            hash = math.hash(new uint4(vertices.Hash(),
+                                       visibleOuterLines.Hash(),
+                                       surfaceVisibleOuterLines.Hash(),
+                                       surfaceVisibleOuterLineRanges.Hash()));
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]

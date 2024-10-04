@@ -971,8 +971,8 @@ namespace Chisel.Core
                 brushOutlines.MemMove(parentChildOffset, prevChildOffset, insertIndex);
             }
 
-            compactNodes .MemClear(parentChildOffset + insertIndex, count);
-            brushOutlines.MemClear(parentChildOffset + insertIndex, count);
+            compactNodes .ClearValues(parentChildOffset + insertIndex, count);
+            brushOutlines.ClearValues(parentChildOffset + insertIndex, count);
 
             for (int c = 0; c < count; c++)
             {

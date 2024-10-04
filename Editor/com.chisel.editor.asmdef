@@ -10,7 +10,8 @@
         "com.chisel.core",
         "com.chisel.unity.components",
         "AssetMetadataEditor",
-        "AssetMetadataRuntime"
+        "AssetMetadataRuntime",
+        "com.chisel.dots.extensions"
     ],
     "includePlatforms": [
         "Editor"

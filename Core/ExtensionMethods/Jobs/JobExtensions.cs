@@ -124,19 +124,22 @@ namespace Chisel.Core
     }
 
     // Note: you're only supposed to use this struct in the "Schedule" method
-    public unsafe struct ReadJobHandles
+    public struct ReadJobHandles
     {
         public JobHandle Handles;
 
         const int maxHandles = 32;
-        static DualJobHandle*[] handleArray = new DualJobHandle*[maxHandles];
+        static unsafe DualJobHandle*[] handleArray = new DualJobHandle*[maxHandles];
         static int handleArrayLength = 0;
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)] 
         static void Add(ref DualJobHandle jobHandle) 
         {
             UnityEngine.Debug.Assert(handleArrayLength < maxHandles);
-            handleArray[handleArrayLength] = (DualJobHandle*)UnsafeUtility.AddressOf(ref jobHandle); 
+			unsafe
+            {
+                handleArray[handleArrayLength] = (DualJobHandle*)UnsafeUtility.AddressOf(ref jobHandle);
+            }
             handleArrayLength++; 
         }
 
@@ -241,25 +244,31 @@ namespace Chisel.Core
         {
             if (handleArrayLength == 0)
                 return;
-            for (int i = 0; i < handleArrayLength; i++)
-                handleArray[i]->readWriteBarrier.AddDependency(newDependency);
+			unsafe
+            {
+                for (int i = 0; i < handleArrayLength; i++)
+                    handleArray[i]->readWriteBarrier.AddDependency(newDependency);
+            }
         }
     }
 
     // Note: you're only supposed to use this struct in the "Schedule" method
-    public unsafe struct WriteJobHandles
+    public struct WriteJobHandles
     {
         public JobHandle Handles;
 
         const int maxHandles = 32;
-        static DualJobHandle*[] handleArray = new DualJobHandle*[maxHandles];
+        static unsafe DualJobHandle*[] handleArray = new DualJobHandle*[maxHandles];
         static int handleArrayLength = 0;
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)] 
         static void Add(ref DualJobHandle jobHandle) 
         {
             UnityEngine.Debug.Assert(handleArrayLength < maxHandles);
-            handleArray[handleArrayLength] = (DualJobHandle*)UnsafeUtility.AddressOf(ref jobHandle); 
+			unsafe
+            {
+                handleArray[handleArrayLength] = (DualJobHandle*)UnsafeUtility.AddressOf(ref jobHandle);
+            }
             handleArrayLength++; 
         }
 
@@ -365,10 +374,13 @@ namespace Chisel.Core
             if (handleArrayLength == 0)
                 return;
 
-            for (int i = 0; i < handleArrayLength; i++)
+			unsafe
             {
-                handleArray[i]->writeBarrier.AddDependency(newDependency);
-                handleArray[i]->readWriteBarrier.AddDependency(newDependency);
+                for (int i = 0; i < handleArrayLength; i++)
+                {
+                    handleArray[i]->writeBarrier.AddDependency(newDependency);
+                    handleArray[i]->readWriteBarrier.AddDependency(newDependency);
+                }
             }
         }
     }

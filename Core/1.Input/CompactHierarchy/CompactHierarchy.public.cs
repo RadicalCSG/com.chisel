@@ -138,7 +138,7 @@ namespace Chisel.Core
         public MinMaxAABB           bounds;         // TODO: move this somewhere else, 1:1 relationship with brushMeshID
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public int GetHashcode() { unchecked { return (int)HashExtensions.Hash(ref this); } }
+        public int GetHashcode() { unchecked { return (int)this.Hash(); } }
 
         public override readonly string ToString() { return $"{nameof(brushMeshHash)} = {brushMeshHash}, {nameof(operation)} = {operation}, {nameof(userID)} = {userID}, {nameof(transformation)} = {transformation}"; }
     }

@@ -22,7 +22,7 @@ namespace Chisel.Core
             public override int GetHashCode() { unchecked { return (int)GetHashCode(ref this); } }
 
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            public static uint GetHashCode([ReadOnly] ref Polygon polygon) { return HashExtensions.GetHashCode(ref polygon); }
+            public static uint GetHashCode([ReadOnly] ref Polygon polygon) { return polygon.Hash(); }
 
 			[EditorBrowsable(EditorBrowsableState.Never)]
 			public override readonly string ToString() { return $"{{ firstEdge = {firstEdge}, edgeCount = {edgeCount}, descriptionIndex = {descriptionIndex}, surface = {surface} }}"; }
@@ -58,9 +58,9 @@ namespace Chisel.Core
             unchecked
             {
                 return (int)math.hash(
-                            new uint3(blob.polygons.Length      == 0 ? 0 : HashExtensions.GetHashCode(ref blob.polygons),
-                                      blob.localVertices.Length == 0 ? 0 : HashExtensions.GetHashCode(ref blob.localVertices),
-                                      blob.halfEdges.Length     == 0 ? 0 : HashExtensions.GetHashCode(ref blob.halfEdges)));
+                            new uint3(blob.polygons.Length      == 0 ? 0 : blob.polygons.Hash(),
+                                      blob.localVertices.Length == 0 ? 0 : blob.localVertices.Hash(),
+                                      blob.halfEdges.Length     == 0 ? 0 : blob.halfEdges.Hash()));
             }
         }
 
