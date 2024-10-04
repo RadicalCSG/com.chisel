@@ -8,7 +8,8 @@
         "Unity.Mathematics",
         "Unity.Mathematics.Extensions",
         "com.chisel.core",
-        "AssetMetadataRuntime"
+        "AssetMetadataRuntime",
+        "com.chisel.dots.extensions"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

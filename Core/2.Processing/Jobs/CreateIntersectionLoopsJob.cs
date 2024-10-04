@@ -746,33 +746,39 @@ skipMe:
         {
             intersectingBrushesStream.BeginForEachIndex(index);
 
-            NativeStreamExtensions.Read(ref intersectingBrushesStream, ref this.intersection.type);
+			intersectingBrushesStream.Read(out this.intersection.type);
             if (this.intersection.type == IntersectionType.InvalidValue)
                 return;
 
-            NativeStreamExtensions.Read(ref intersectingBrushesStream, ref this.intersection.brush0.brushIndexOrder);
-            NativeStreamExtensions.Read(ref intersectingBrushesStream, ref this.intersection.brush0.nodeToTreeSpace);
-            NativeStreamExtensions.Read(ref intersectingBrushesStream, ref this.intersection.brush0.toOtherBrushSpace);
-            NativeStreamExtensions.ReadArrayAndEnsureSize(ref intersectingBrushesStream, ref this.intersection.brush0.usedVertices, out this.intersection.brush0.usedVerticesLength);
-            NativeStreamExtensions.ReadArrayAndEnsureSize(ref intersectingBrushesStream, ref this.intersection.brush0.usedPlanePairs, out this.intersection.brush0.usedPlanePairsLength);
-            NativeStreamExtensions.ReadArrayAndEnsureSize(ref intersectingBrushesStream, ref this.intersection.brush0.localSpacePlanes0, out this.intersection.brush0.localSpacePlanesAndEdges0Length);
-            NativeStreamExtensions.Read(ref intersectingBrushesStream, ref this.intersection.brush0.localSpacePlanes0Length);
-            NativeStreamExtensions.ReadArrayAndEnsureSize(ref intersectingBrushesStream, ref this.intersection.brush0.localSpacePlaneIndices0, out this.intersection.brush0.localSpacePlaneIndices0Length);
-            NativeStreamExtensions.ReadArrayAndEnsureSize(ref intersectingBrushesStream, ref this.intersection.brush0.vertexIntersectionPlanes, out this.intersection.brush0.vertexIntersectionPlanesLength);
-            NativeStreamExtensions.ReadArrayAndEnsureSize(ref intersectingBrushesStream, ref this.intersection.brush0.vertexIntersectionSegments, out this.intersection.brush0.vertexIntersectionSegmentsLength);
-            NativeStreamExtensions.ReadArrayAndEnsureSize(ref intersectingBrushesStream, ref this.intersection.brush0.surfaceInfos, out this.intersection.brush0.surfaceInfosLength);
+			intersectingBrushesStream.Read(out this.intersection.brush0.brushIndexOrder);
+			intersectingBrushesStream.Read(out this.intersection.brush0.nodeToTreeSpace);
+			intersectingBrushesStream.Read(out this.intersection.brush0.toOtherBrushSpace);
 
-            NativeStreamExtensions.Read(ref intersectingBrushesStream, ref this.intersection.brush1.brushIndexOrder);
-            NativeStreamExtensions.Read(ref intersectingBrushesStream, ref this.intersection.brush1.nodeToTreeSpace);
-            NativeStreamExtensions.Read(ref intersectingBrushesStream, ref this.intersection.brush1.toOtherBrushSpace);
-            NativeStreamExtensions.ReadArrayAndEnsureSize(ref intersectingBrushesStream, ref this.intersection.brush1.usedVertices, out this.intersection.brush1.usedVerticesLength);
-            NativeStreamExtensions.ReadArrayAndEnsureSize(ref intersectingBrushesStream, ref this.intersection.brush1.usedPlanePairs, out this.intersection.brush1.usedPlanePairsLength);
-            NativeStreamExtensions.ReadArrayAndEnsureSize(ref intersectingBrushesStream, ref this.intersection.brush1.localSpacePlanes0, out this.intersection.brush1.localSpacePlanesAndEdges0Length);
-            NativeStreamExtensions.Read(ref intersectingBrushesStream, ref this.intersection.brush1.localSpacePlanes0Length);
-            NativeStreamExtensions.ReadArrayAndEnsureSize(ref intersectingBrushesStream, ref this.intersection.brush1.localSpacePlaneIndices0, out this.intersection.brush1.localSpacePlaneIndices0Length);
-            NativeStreamExtensions.ReadArrayAndEnsureSize(ref intersectingBrushesStream, ref this.intersection.brush1.vertexIntersectionPlanes, out this.intersection.brush1.vertexIntersectionPlanesLength);
-            NativeStreamExtensions.ReadArrayAndEnsureSize(ref intersectingBrushesStream, ref this.intersection.brush1.vertexIntersectionSegments, out this.intersection.brush1.vertexIntersectionSegmentsLength);
-            NativeStreamExtensions.ReadArrayAndEnsureSize(ref intersectingBrushesStream, ref this.intersection.brush1.surfaceInfos, out this.intersection.brush1.surfaceInfosLength);
+			intersectingBrushesStream.ReadArrayAndEnsureSize(ref this.intersection.brush0.usedVertices, out this.intersection.brush0.usedVerticesLength);
+			intersectingBrushesStream.ReadArrayAndEnsureSize(ref this.intersection.brush0.usedPlanePairs, out this.intersection.brush0.usedPlanePairsLength);
+			intersectingBrushesStream.ReadArrayAndEnsureSize(ref this.intersection.brush0.localSpacePlanes0, out this.intersection.brush0.localSpacePlanesAndEdges0Length);
+
+			intersectingBrushesStream.Read(out this.intersection.brush0.localSpacePlanes0Length);
+
+			intersectingBrushesStream.ReadArrayAndEnsureSize(ref this.intersection.brush0.localSpacePlaneIndices0, out this.intersection.brush0.localSpacePlaneIndices0Length);
+			intersectingBrushesStream.ReadArrayAndEnsureSize(ref this.intersection.brush0.vertexIntersectionPlanes, out this.intersection.brush0.vertexIntersectionPlanesLength);
+			intersectingBrushesStream.ReadArrayAndEnsureSize(ref this.intersection.brush0.vertexIntersectionSegments, out this.intersection.brush0.vertexIntersectionSegmentsLength);
+			intersectingBrushesStream.ReadArrayAndEnsureSize(ref this.intersection.brush0.surfaceInfos, out this.intersection.brush0.surfaceInfosLength);
+
+			intersectingBrushesStream.Read(out this.intersection.brush1.brushIndexOrder);
+			intersectingBrushesStream.Read(out this.intersection.brush1.nodeToTreeSpace);
+			intersectingBrushesStream.Read(out this.intersection.brush1.toOtherBrushSpace);
+
+			intersectingBrushesStream.ReadArrayAndEnsureSize(ref this.intersection.brush1.usedVertices, out this.intersection.brush1.usedVerticesLength);
+			intersectingBrushesStream.ReadArrayAndEnsureSize(ref this.intersection.brush1.usedPlanePairs, out this.intersection.brush1.usedPlanePairsLength);
+			intersectingBrushesStream.ReadArrayAndEnsureSize(ref this.intersection.brush1.localSpacePlanes0, out this.intersection.brush1.localSpacePlanesAndEdges0Length);
+
+			intersectingBrushesStream.Read(out this.intersection.brush1.localSpacePlanes0Length);
+
+			intersectingBrushesStream.ReadArrayAndEnsureSize(ref this.intersection.brush1.localSpacePlaneIndices0, out this.intersection.brush1.localSpacePlaneIndices0Length);
+			intersectingBrushesStream.ReadArrayAndEnsureSize(ref this.intersection.brush1.vertexIntersectionPlanes, out this.intersection.brush1.vertexIntersectionPlanesLength);
+			intersectingBrushesStream.ReadArrayAndEnsureSize(ref this.intersection.brush1.vertexIntersectionSegments, out this.intersection.brush1.vertexIntersectionSegmentsLength);
+			intersectingBrushesStream.ReadArrayAndEnsureSize(ref this.intersection.brush1.surfaceInfos, out this.intersection.brush1.surfaceInfosLength);
             intersectingBrushesStream.EndForEachIndex();
 
 

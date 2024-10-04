@@ -9,7 +9,7 @@ namespace Chisel.Core
 {
     partial class CompactHierarchyManager
     {
-        const bool runInParallelDefault = true;
+        const bool runInParallelDefault = false;
 
         #region Update / Rebuild
         internal static bool UpdateAllTreeMeshes(FinishMeshUpdate finishMeshUpdates, out JobHandle allTrees)

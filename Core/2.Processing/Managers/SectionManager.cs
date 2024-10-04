@@ -23,8 +23,7 @@ namespace Chisel.Core
             public int  length; // TODO: make this explicit as the difference between start and the next integer
             public readonly int end { [MethodImpl(MethodImplOptions.AggressiveInlining)] get { return start + length - 1; } }
         }
-        [NoAlias, ReadOnly] UnsafeList<Section> sections;   // TODO: use UnsafeList instead, so we can more easily store them without getting 
-                                                            //       "lists in lists" problems
+        [NoAlias, ReadOnly] UnsafeList<Section> sections;
 
         // We merge all allocated and free sections, which means they alternate between being free and allocated
         // We then store if the first element is allocated or not, with that we can determine if an even or odd 

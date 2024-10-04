@@ -1,13 +1,16 @@
 ﻿using System;
 using System.Runtime.CompilerServices;
+
+using Unity.Burst;
 using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
 
 namespace Chisel.Core
 {
     public static class NativeCollectionHelpers
-    {
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+	{
+
+		[MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void EnsureMinimumSizeAndClear<T>(ref NativeArray<T> array, int minimumSize, Allocator allocator = Allocator.Temp)
             where T: unmanaged
         {                    

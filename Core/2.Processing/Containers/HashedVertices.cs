@@ -676,4 +676,15 @@ namespace Chisel.Core
             }
         }
     }
+
+	public static unsafe class HashedVerticesExtensions
+	{
+		public static BlobBuilderArray<T> Construct<T>(this BlobBuilder builder, ref BlobArray<T> blobArray, HashedVertices data) where T : unmanaged
+		{
+			var blobBuilderArray = builder.Allocate(ref blobArray, data.Length);
+			if (data.Length > 0)
+				UnsafeUtility.MemCpy(blobBuilderArray.GetUnsafePtr(), data.GetUnsafeReadOnlyPtr(), blobBuilderArray.Length * sizeof(T));
+			return blobBuilderArray;
+		}
+	}
 }

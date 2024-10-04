@@ -9,7 +9,8 @@
         "Unity.Mathematics.Extensions",
         "Unity.Mathematics.Extensions.Hybrid",
         "AssetMetadataRuntime",
-        "andywiecko.BurstTriangulator"
+        "andywiecko.BurstTriangulator",
+        "com.chisel.dots.extensions"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

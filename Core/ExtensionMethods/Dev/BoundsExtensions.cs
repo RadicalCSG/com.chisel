@@ -5,7 +5,7 @@ using Unity.Mathematics;
 
 using UnityEngine;
 
-namespace Chisel.Core
+namespace Chisel
 {
     public static class BoundsExtensions
     {
