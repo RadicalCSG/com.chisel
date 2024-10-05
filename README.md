@@ -2,13 +2,13 @@
 
 Chisel is an extension for **Unity** that allows for _rapid_, iterative, **non destructive** level editing!
 
+[Installation Instructions](INSTALLATION.md)
+
 Note:
 - Chisel *requires Unity 6 or newer*
 - UX is *still under development*
 - CSG algorithm is *still under development*
 - It is *not yet* ready for production, but please feel free to try it out, or better yet, help out!
-
-[Installation Instructions](INSTALLATION.md)
 
 ![Example](Documentation~/Images/chisel_example.png)
 
