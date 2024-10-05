@@ -8,10 +8,11 @@ Note:
 - CSG algorithm is *still under development*
 - It is *not yet* ready for production, but please feel free to try it out, or better yet, help out!
 
+[Installation Instructions](INSTALLATION.md)
+
 ![Example](Documentation~/Images/chisel_example.png)
 
 ---
-* [Click here for information on how to install Chisel](INSTALLATION.md)
 * [Click here for information on how to get started](GETTING_STARTED.md)
 * Want to help out? [We have some good first issues here](https://github.com/RadicalCSG/Chisel/labels/good%20first%20issue)
 * If you have questions be sure to ask in the discord! **[Click here for to join the official Discord server!](https://discord.gg/zttNkPQ)**
