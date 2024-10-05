@@ -14,6 +14,7 @@ Note:
 * [Click here for information on how to get started](GettingStarted.md)
 * Want to help out? [We have some good first issues here](https://github.com/RadicalCSG/Chisel/labels/good%20first%20issue)
 * If you have questions be sure to ask in the discord! **[Click here for to join the official Discord server!](https://discord.gg/zttNkPQ)**
+---
 
 Features (incomplete)
 * [Constructive Solid Geometry Algorithm](http://www.youtube.com/watch?v=Iqmg4gblreo) that generates geometry in real-time
@@ -39,17 +40,16 @@ Planned Features (incomplete, and in random order):
 * [Trim Decals](https://github.com/RadicalCSG/Chisel.Prototype/issues/117)
 * [Grid Objects](https://github.com/RadicalCSG/Chisel.Prototype/issues/121)
 
+---
 Extensions:
 * [Source Engine 2006 Map Importer for Chisel Editor]( https://github.com/Henry00IS/Chisel.Import.Source)
   * [Decal support for importer](https://github.com/Henry00IS/Chisel.Decals)
   * [VPK import support for importer](https://github.com/nukeandbeans/com.chisel.import.source.vpktools)
 * [Quake1 Importer](https://github.com/Quixotic7/Chisel.Import.Quake1)
 
-Known issues:
-* [There are some cases where triangulation fails](https://github.com/RadicalCSG/Chisel.Prototype/issues/187)
-
 If you find any failure cases, if possible please provide us with a reproducible scene so we can more easily fix it!
 
+---
 The core technology is based on the algorithm explained in [this GDC 2020 talk](http://www.youtube.com/watch?v=Iqmg4gblreo)
 
 [![GDC Video](http://img.youtube.com/vi/Iqmg4gblreo/0.jpg)](http://www.youtube.com/watch?v=Iqmg4gblreo "Geometry in Milliseconds: Real-Time Constructive Solid Geometry")
