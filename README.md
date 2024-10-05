@@ -1,4 +1,4 @@
-# [Chisel](https://github.com/RadicalCSG/Chisel)
+# [Chisel](https://github.com/RadicalCSG/Chisel) (WIP)
 
 Chisel is an extension for **Unity** that allows for _rapid_, iterative, **non destructive** level editing!
 
