@@ -11,7 +11,7 @@ using WriteOnlyAttribute = Unity.Collections.WriteOnlyAttribute;
 
 namespace Chisel.Core
 {
-    //[BurstCompile(CompileSynchronously = true)]
+    [BurstCompile(CompileSynchronously = true)]
     struct CreateBlobPolygonsBlobsJob : IJobParallelForDefer
     {
         // Read

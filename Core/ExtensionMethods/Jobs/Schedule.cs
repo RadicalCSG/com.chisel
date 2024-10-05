@@ -275,7 +275,7 @@ namespace Chisel.Core
 
     }
 
-    //[BurstCompile(CompileSynchronously = true)]
+	[BurstCompile(CompileSynchronously = true)]
     public struct EnsureCapacityListForEachCountFromListJob<T, U> : IJob
         where T : unmanaged
         where U : unmanaged
@@ -293,7 +293,7 @@ namespace Chisel.Core
         }
     }
 
-    //[BurstCompile(CompileSynchronously = true)]
+	[BurstCompile(CompileSynchronously = true)]
     public struct EnsureCapacityListReferenceJob<T> : IJob
         where T : unmanaged
     {
@@ -310,7 +310,7 @@ namespace Chisel.Core
         }
     }
 
-    //[BurstCompile(CompileSynchronously = true)]
+	[BurstCompile(CompileSynchronously = true)]
     public struct DisposeListChildrenJob<T> : IJob
         where T : unmanaged, IDisposable
     {
@@ -332,7 +332,7 @@ namespace Chisel.Core
         }
     }
 
-    //[BurstCompile(CompileSynchronously = true)]
+	[BurstCompile(CompileSynchronously = true)]
     public struct DisposeArrayChildrenJob<T> : IJob
         where T : unmanaged, IDisposable
     {
@@ -353,7 +353,7 @@ namespace Chisel.Core
     }
 
 
-    //[BurstCompile(CompileSynchronously = true)]
+	[BurstCompile(CompileSynchronously = true)]
     public struct DisposeListChildrenBlobAssetReferenceJob<T> : IJob
         where T : unmanaged, IDisposable
     {
@@ -373,9 +373,9 @@ namespace Chisel.Core
             }
             list.Clear();
         }
-    }    
+    }
 
-    //[BurstCompile(CompileSynchronously = true)]
+	[BurstCompile(CompileSynchronously = true)]
     public struct DisposeReferenceChildJob<T> : IJob
         where T : unmanaged, IDisposable
     {
@@ -392,7 +392,7 @@ namespace Chisel.Core
         }
 	}
 
-	//[BurstCompile(CompileSynchronously = true)]
+	[BurstCompile(CompileSynchronously = true)]
 	public struct DisposeBlobReferenceChildJob<T> : IJob
 		where T : unmanaged, IDisposable
 	{
@@ -412,7 +412,7 @@ namespace Chisel.Core
 		}
 	}
 
-	//[BurstCompile(CompileSynchronously = true)]
+	[BurstCompile(CompileSynchronously = true)]
 	public struct DisposeReferenceChildBlobAssetReferenceJob<T> : IJob
         where T : unmanaged
     {

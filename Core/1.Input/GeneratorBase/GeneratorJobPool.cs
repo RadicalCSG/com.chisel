@@ -182,7 +182,7 @@ namespace Chisel.Core
             return lastJobHandle;
         }
         
-        //[BurstCompile(CompileSynchronously = true)]
+        [BurstCompile(CompileSynchronously = true)]
         struct HierarchySortJob : IJob
         {
             [NoAlias] public NativeList<GeneratedNodeDefinition>    generatedNodeDefinitions;
@@ -224,7 +224,7 @@ namespace Chisel.Core
         }
 
 
-        //[BurstCompile(CompileSynchronously = true)]
+        [BurstCompile(CompileSynchronously = true)]
         unsafe struct AssignMeshesJob : IJob
         {            
             public void InitializeLookups()
@@ -934,8 +934,8 @@ namespace Chisel.Core
 #endif
         }
         
-        //[BurstCompile(CompileSynchronously = true)]
-        unsafe struct InitializeArraysJob : IJob
+        [BurstCompile(CompileSynchronously = true)]
+        internal unsafe struct InitializeArraysJob : IJob
         {
             public void InitializeLookups()
             {
