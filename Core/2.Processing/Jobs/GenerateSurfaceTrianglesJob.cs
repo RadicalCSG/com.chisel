@@ -15,7 +15,7 @@ using andywiecko.BurstTriangulator;
 
 namespace Chisel.Core
 {
-    [BurstCompile(CompileSynchronously = true)]
+    //[BurstCompile(CompileSynchronously = true)] // FIXME: For some reason causes infinite loop when burst compiled?
     struct GenerateSurfaceTrianglesJob : IJobParallelForDefer
     {
         // Read
