@@ -2,8 +2,15 @@
 
 Chisel is an extension for **Unity** that allows for _rapid_, iterative, **non destructive** level editing!
 
-[Installation Instructions](INSTALLATION.md)
+![Example](Documentation~/Images/chisel_example.png)
 
+---
+* You can find [installation instructions here](INSTALLATION.md)
+* [Click here for information on how to get started](GETTING_STARTED.md)
+* Want to help out? [We have some good first issues here](https://github.com/RadicalCSG/Chisel/labels/good%20first%20issue)
+* ![Discord](Documentation~/Images/discord-mark-blue-small.png) If you have questions be sure to ask in the discord! **[Click here for to join the official Discord server!](https://discord.gg/zttNkPQ)**
+
+---
 
 Note:
 - Chisel *requires Unity 6 or newer*
@@ -11,13 +18,6 @@ Note:
 - CSG algorithm is *still under development*
 - It is *not yet* ready for production, but please feel free to try it out, or better yet, help out!
 
-![Example](Documentation~/Images/chisel_example.png)
-
----
-* [Click here for information on how to get started](GETTING_STARTED.md)
-* Want to help out? [We have some good first issues here](https://github.com/RadicalCSG/Chisel/labels/good%20first%20issue)
-* If you have questions be sure to ask in the discord! **[![Discord](Documentation~/Images/discord-mark-blue-small.png)
- Click here for to join the official Discord server!](https://discord.gg/zttNkPQ)**
 ---
 
 Features (incomplete)
