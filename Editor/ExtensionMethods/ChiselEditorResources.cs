@@ -254,23 +254,31 @@ namespace Chisel.Editors
             return path.Replace('\\', '/');
         }
 
-        static string ToLocalPath(string path)
-        {
-            path = FixSlashes(path);
-            var assetsPathIndex = path.IndexOf(@"/Assets/");
-            if (assetsPathIndex != -1)
-            {
-                path = path.Substring(assetsPathIndex + 1);
-            } else
-            {
-                var packagePathIndex = path.IndexOf(@"/Packages/");
-                if (packagePathIndex != -1)
-                    path = path.Substring(packagePathIndex + 1);
-            }
-            if (!path.EndsWith("/"))
-                path = path + "/";
-            return path;
-        }
-        #endregion
-    }
+		static string ToLocalPath(string path)
+		{
+			path = FixSlashes(path);
+			var assetsPathIndex = path.IndexOf(@"/Assets/");
+			if (assetsPathIndex != -1)
+			{
+				path = path.Substring(assetsPathIndex + 1);
+			}
+			else
+			{
+				var packagePathIndex = path.IndexOf(@"/Packages/");
+				if (packagePathIndex != -1)
+				{
+					path = path.Substring(packagePathIndex + 1);
+				}
+				var packageCacheIndex = path.IndexOf(@"/PackageCache/");
+				if (packageCacheIndex != -1)
+				{
+					path = "Packages/" + path.Substring(packageCacheIndex + @"/PackageCache/".Length);
+				}
+			}
+			if (!path.EndsWith("/"))
+				path = path + "/";
+			return path;
+		}
+		#endregion
+	}
 }
