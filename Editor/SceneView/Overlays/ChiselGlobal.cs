@@ -284,7 +284,6 @@ namespace Chisel.Editors
                 ConvertChildTreeNodesToGameObjects(parentTransform, in surfaceDefinition, node[i]);
             return compositeComponent;
         }
-
     }
 
     [EditorToolbarElement(id, typeof(SceneView))]

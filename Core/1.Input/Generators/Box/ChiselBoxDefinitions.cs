@@ -12,7 +12,7 @@ namespace Chisel.Core
     {
         public readonly static ChiselBox DefaultValues = new()
         {
-            bounds = new MinMaxAABB { Min = float3.zero, Max = float3.zero }
+            bounds = new MinMaxAABB { Min = float3.zero, Max = new float3(1) }
         };
 
         public MinMaxAABB bounds;

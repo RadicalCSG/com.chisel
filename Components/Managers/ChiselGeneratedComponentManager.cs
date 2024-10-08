@@ -181,15 +181,15 @@ namespace Chisel.Components
             SceneView.RepaintAll();
         }
 
-        public static DrawModeFlags UpdateHelperSurfaceState(DrawModeFlags helperStateFlags, bool ignoreBrushVisibility = true)
+        public static DrawModeFlags UpdateDebugVisualizationState(DrawModeFlags drawModeFlags, bool ignoreBrushVisibility = true)
         {
             foreach (var model in s_Models)
             {
                 if (!model || !model.isActiveAndEnabled || model.generated == null)
                     continue;
-                model.generated.UpdateHelperSurfaceState(helperStateFlags, ignoreBrushVisibility);
+                model.generated.UpdateDebugVisualizationState(drawModeFlags, ignoreBrushVisibility);
             }
-            return helperStateFlags;
+            return drawModeFlags;
         }
 
         public static void InitializeOnLoad(Scene scene)
@@ -200,12 +200,12 @@ namespace Chisel.Components
                 {
                     if (!model || !model.isActiveAndEnabled || model.generated == null)
                         continue;
-                    model.generated.RemoveHelperSurfaces();
+                    model.generated.HideDebugVisualizationSurfaces();
                 }
             }
         }
 
-        public static void RemoveHelperSurfaces()
+        public static void HideDebugVisualizationSurfaces()
         {
             var scene = SceneManager.GetActiveScene();
             foreach(var go in scene.GetRootGameObjects())
@@ -214,18 +214,18 @@ namespace Chisel.Components
                 {
                     if (!model || !model.isActiveAndEnabled || model.generated == null)
                         continue;
-                    model.generated.RemoveHelperSurfaces();
+                    model.generated.HideDebugVisualizationSurfaces();
                 }
             }
         }
 
-        public static void OnRenderModels(Camera camera, DrawModeFlags helperStateFlags)
+        public static void OnRenderModels(Camera camera, DrawModeFlags drawModeFlags)
         {
             foreach (var model in s_Models)
             {
                 if (model == null)
                     continue;
-                model.OnRenderModel(camera, helperStateFlags);
+                model.OnRenderModel(camera, drawModeFlags);
             }
         }
 
@@ -678,20 +678,20 @@ namespace Chisel.Components
                     }
                 }
 
-                var debugHelpers = model.generated.debugHelpers;
-                if (debugHelpers != null)
+                var debugVisualizationRenderables = model.generated.debugVisualizationRenderables;
+                if (debugVisualizationRenderables != null)
                 {
-                    foreach (var debugHelper in debugHelpers)
+                    foreach (var debugVisualizationRenderable in debugVisualizationRenderables)
                     {
-                        if (debugHelper == null || debugHelper.invalid || !debugHelper.container)
+                        if (debugVisualizationRenderable == null || debugVisualizationRenderable.invalid || !debugVisualizationRenderable.container)
                             continue;
-                        state.generatedComponents[debugHelper.container] = model;
+                        state.generatedComponents[debugVisualizationRenderable.container] = model;
 #if UNITY_EDITOR
-                        if (debugHelper.visible)
+                        if (debugVisualizationRenderable.visible)
                         {
-                            state.rendererDisabled[debugHelper.meshRenderer] = true;
-                            debugHelper.meshRenderer.forceRenderingOff = false;
-                            debugHelper.meshRenderer.enabled = true;
+                            state.rendererDisabled[debugVisualizationRenderable.meshRenderer] = true;
+                            debugVisualizationRenderable.meshRenderer.forceRenderingOff = false;
+                            debugVisualizationRenderable.meshRenderer.enabled = true;
                         }
 #endif
                     }
@@ -801,17 +801,17 @@ namespace Chisel.Components
             if (camera == null)
                 camera = Camera.current;
             var currentState = GetCameraDrawMode(camera);
-            return UpdateHelperSurfaceState(currentState, s_IgnoreVisibility || ignoreBrushVisibility);
+            return UpdateDebugVisualizationState(currentState, s_IgnoreVisibility || ignoreBrushVisibility);
         }
 
         public static DrawModeFlags EndDrawModeForCamera()
         {
-            return UpdateHelperSurfaceState(DrawModeFlags.Default, ignoreBrushVisibility: true);
+            return UpdateDebugVisualizationState(DrawModeFlags.Default, ignoreBrushVisibility: true);
         }
 
         public static void Update()
         {
-            UpdateHelperSurfaceState(DrawModeFlags.Default, ignoreBrushVisibility: true);
+            UpdateDebugVisualizationState(DrawModeFlags.Default, ignoreBrushVisibility: true);
         }
 #endif
     }

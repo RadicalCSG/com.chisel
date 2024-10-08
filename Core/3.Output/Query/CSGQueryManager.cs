@@ -66,7 +66,7 @@ namespace Chisel.Core
 						          Vector3           treeSpaceRayEnd,
 
                                   bool              ignoreBackfaced,
-                                  bool              ignoreCulled,
+                                  bool              ignoreDiscarded,
 
                                   List<CSGTreeBrushIntersection> foundIntersections)
         {
@@ -95,7 +95,7 @@ namespace Chisel.Core
             for (var s = 0; s < planeCount; s++)
             {
                 // Compare surface with 'current' meshquery (is this surface even being rendered???)
-                if (ignoreCulled)
+                if (ignoreDiscarded)
                 {
                     if (surfaces[s].indices.Length == 0)
                         continue;
@@ -139,7 +139,7 @@ namespace Chisel.Core
                 var treeIntersection = nodeToTreeSpace.MultiplyPoint(intersection);
                 if (!IsPointInsideSurface(ref surfaces[s], treeIntersection, out var treeSpaceNormal))
                 {
-                    if (ignoreCulled)
+                    if (ignoreDiscarded)
                         continue;
                 }
 
@@ -203,7 +203,7 @@ namespace Chisel.Core
                                                               List<CSGTreeNode> ignoreNodes = null,
                                                               List<CSGTreeNode> filterNodes = null,
                                                               bool              ignoreBackfaced = true, 
-                                                              bool              ignoreCulled = true)
+                                                              bool              ignoreDiscarded = true)
         {
             if (!tree.Valid)
                 return null;
@@ -278,7 +278,7 @@ namespace Chisel.Core
                                     treeSpaceRayEnd,
 
                                     ignoreBackfaced,
-                                    ignoreCulled,
+                                    ignoreDiscarded,
 
                                     s_FoundIntersections);
                 }

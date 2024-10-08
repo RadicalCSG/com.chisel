@@ -1105,10 +1105,6 @@ namespace Chisel.Editors
                 if (IsDefaultModel())
                     EditorGUILayout.HelpBox(DefaultModelContents.text, MessageType.Warning);
 
-				messages.StartWarnings(modelMessagesScrollPosition);
-				ChiselMessages.ShowMessages(targets, messages);
-				modelMessagesScrollPosition = messages.EndWarnings();
-
                 if (targets.Length == 1)
                 {
                     messages.StartWarnings(childMessagesScrollPosition);

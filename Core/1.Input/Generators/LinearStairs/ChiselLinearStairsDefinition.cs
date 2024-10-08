@@ -208,19 +208,19 @@ namespace Chisel.Core
         public readonly void UpdateSurfaces(ref ChiselSurfaceArray surfaceDefinition)
         {
             var surfaces = surfaceDefinition.surfaces;
-            if (!surfaces[(int)SurfaceSides.Top   ].HasMaterial) surfaces[(int)SurfaceSides.Top   ].SetMaterial(ChiselDefaultMaterials.DefaultFloorMaterial);
-            if (!surfaces[(int)SurfaceSides.Bottom].HasMaterial) surfaces[(int)SurfaceSides.Bottom].SetMaterial(ChiselDefaultMaterials.DefaultFloorMaterial);
-            if (!surfaces[(int)SurfaceSides.Left  ].HasMaterial) surfaces[(int)SurfaceSides.Left  ].SetMaterial(ChiselDefaultMaterials.DefaultWallMaterial);
-            if (!surfaces[(int)SurfaceSides.Right ].HasMaterial) surfaces[(int)SurfaceSides.Right ].SetMaterial(ChiselDefaultMaterials.DefaultWallMaterial);
-            if (!surfaces[(int)SurfaceSides.Front ].HasMaterial) surfaces[(int)SurfaceSides.Front ].SetMaterial(ChiselDefaultMaterials.DefaultWallMaterial);
-            if (!surfaces[(int)SurfaceSides.Back  ].HasMaterial) surfaces[(int)SurfaceSides.Back  ].SetMaterial(ChiselDefaultMaterials.DefaultWallMaterial);
-            if (!surfaces[(int)SurfaceSides.Tread ].HasMaterial) surfaces[(int)SurfaceSides.Tread ].SetMaterial(ChiselDefaultMaterials.DefaultTreadMaterial);
-            if (!surfaces[(int)SurfaceSides.Step  ].HasMaterial) surfaces[(int)SurfaceSides.Step  ].SetMaterial(ChiselDefaultMaterials.DefaultStepMaterial);
+            if (!surfaces[(int)SurfaceSides.Top   ].HasMaterial) surfaces[(int)SurfaceSides.Top   ].SetMaterial(ChiselProjectSettings.DefaultFloorMaterial);
+            if (!surfaces[(int)SurfaceSides.Bottom].HasMaterial) surfaces[(int)SurfaceSides.Bottom].SetMaterial(ChiselProjectSettings.DefaultFloorMaterial);
+            if (!surfaces[(int)SurfaceSides.Left  ].HasMaterial) surfaces[(int)SurfaceSides.Left  ].SetMaterial(ChiselProjectSettings.DefaultWallMaterial);
+            if (!surfaces[(int)SurfaceSides.Right ].HasMaterial) surfaces[(int)SurfaceSides.Right ].SetMaterial(ChiselProjectSettings.DefaultWallMaterial);
+            if (!surfaces[(int)SurfaceSides.Front ].HasMaterial) surfaces[(int)SurfaceSides.Front ].SetMaterial(ChiselProjectSettings.DefaultWallMaterial);
+            if (!surfaces[(int)SurfaceSides.Back  ].HasMaterial) surfaces[(int)SurfaceSides.Back  ].SetMaterial(ChiselProjectSettings.DefaultWallMaterial);
+            if (!surfaces[(int)SurfaceSides.Tread ].HasMaterial) surfaces[(int)SurfaceSides.Tread ].SetMaterial(ChiselProjectSettings.DefaultTreadMaterial);
+            if (!surfaces[(int)SurfaceSides.Step  ].HasMaterial) surfaces[(int)SurfaceSides.Step  ].SetMaterial(ChiselProjectSettings.DefaultStepMaterial);
 
             for (int i = 0; i < surfaceDefinition.surfaces.Length; i++)
             {
                 if (!surfaceDefinition.surfaces[i].HasMaterial)
-                    surfaceDefinition.surfaces[i].SetMaterial(ChiselDefaultMaterials.DefaultWallMaterial);
+                    surfaceDefinition.surfaces[i].SetMaterial(ChiselProjectSettings.DefaultWallMaterial);
             }
         }
         #endregion

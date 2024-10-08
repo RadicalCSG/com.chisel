@@ -1,0 +1,26 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a3f14beaf947185438aa73ebcfc1b3a8, type: 3}
+  m_Name: ChiselMaterials-URP
+  m_EditorClassIdentifier: 
+  Set:
+    defaultPhysicsMaterial: {fileID: 13400000, guid: 9a131e27bee822f49bbeaa7ee131d929, type: 2}
+    defaultFloorMaterial: {fileID: 2100000, guid: 985b7e9e6e89fbd4da9acda8fd0eec2c, type: 2}
+    defaultStepMaterial: {fileID: 2100000, guid: 48a4a6e984bd3d44bb45e31480b2dd96, type: 2}
+    defaultTreadMaterial: {fileID: 2100000, guid: b44b3d7cb1546df4798208bd3771a04e, type: 2}
+    defaultWallMaterial: {fileID: 2100000, guid: f0b289768881db043adc2a17bb334ddf, type: 2}
+    collisionSurfacesMaterial: {fileID: 2100000, guid: 47b54e6f8308cb746a50ca4e51851d51, type: 2}
+    shadowCastingSurfacesMaterial: {fileID: 2100000, guid: 9096e4e4d4d79d2479d1920dbea96a2d, type: 2}
+    shadowOnlySurfacesMaterial: {fileID: 2100000, guid: a5a0ad8da5f45ec4490a02829fd5b8e0, type: 2}
+    shadowReceivingSurfacesMaterial: {fileID: 2100000, guid: 56cffff6ee3d2e44fbe6806b9da4baf5, type: 2}
+    discardedSurfacesMaterial: {fileID: 2100000, guid: 7b8a1b33740303049aa58ef411310871, type: 2}
+    userHiddenSurfacesMaterial: {fileID: 2100000, guid: 5f57f2bf7cf7fec4ba861bbfb0082132, type: 2}

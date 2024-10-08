@@ -44,13 +44,13 @@ namespace Chisel.Components
         public ulong            geometryHashValue;
         public ulong            surfaceHashValue;
 
-        public bool             debugHelperRenderer;
+        public bool             debugVisualizationRenderer;
         [NonSerialized] public float uvLightmapUpdateTime;
 
         internal ChiselRenderObjects() { }
-        public static ChiselRenderObjects Create(string name, Transform parent, GameObjectState state, SurfaceDestinationFlags query, bool debugHelperRenderer = false)
+        public static ChiselRenderObjects Create(string name, Transform parent, GameObjectState state, SurfaceDestinationFlags query, bool debugVisualizationRenderer = false)
         {
-            var renderContainer = ChiselObjectUtility.CreateGameObject(name, parent, state, debugHelperRenderer: debugHelperRenderer);
+            var renderContainer = ChiselObjectUtility.CreateGameObject(name, parent, state, debugVisualizationRenderer: debugVisualizationRenderer);
             var meshFilter      = renderContainer.AddComponent<MeshFilter>();
             var meshRenderer    = renderContainer.AddComponent<MeshRenderer>();
             meshRenderer.enabled = false;
@@ -58,13 +58,13 @@ namespace Chisel.Components
             var renderObjects = new ChiselRenderObjects
             {
                 invalid             = false,     
-                visible             = !debugHelperRenderer,       
+                visible             = !debugVisualizationRenderer,       
                 query               = query,
                 container           = renderContainer,
                 meshFilter          = meshFilter,
                 meshRenderer        = meshRenderer,
                 renderMaterials     = new Material[0],
-                debugHelperRenderer = debugHelperRenderer
+                debugVisualizationRenderer = debugVisualizationRenderer
             };
             renderObjects.EnsureMeshesAllocated();
             renderObjects.Initialize();
@@ -154,15 +154,15 @@ namespace Chisel.Components
         void Initialize()
         {
             meshFilter.sharedMesh = sharedMesh;
-            if (!debugHelperRenderer)
+            if (!debugVisualizationRenderer)
             { 
-                meshRenderer.receiveShadows	= ((query & SurfaceDestinationFlags.ReceiveShadows) == SurfaceDestinationFlags.ReceiveShadows);
-                switch (query & (SurfaceDestinationFlags.Renderable | SurfaceDestinationFlags.CastShadows))
+                meshRenderer.receiveShadows	= ((query & SurfaceDestinationFlags.ShadowReceiving) == SurfaceDestinationFlags.ShadowReceiving);
+                switch (query & (SurfaceDestinationFlags.Renderable | SurfaceDestinationFlags.ShadowCasting))
                 {
                     case SurfaceDestinationFlags.None:				meshRenderer.enabled = false; break;
                     case SurfaceDestinationFlags.Renderable:		meshRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;			break;
-                    case SurfaceDestinationFlags.CastShadows:		meshRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.ShadowsOnly;   break;
-                    case SurfaceDestinationFlags.RenderCastShadows:	meshRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.On;			break;
+                    case SurfaceDestinationFlags.ShadowCasting:		meshRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.ShadowsOnly;   break;
+                    case SurfaceDestinationFlags.RenderShadowsCasting:	meshRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.On;			break;
                 }
 
 #if UNITY_EDITOR
@@ -287,7 +287,7 @@ namespace Chisel.Components
                 Profiler.EndSample();
 
                 Profiler.BeginSample("Enable");
-                var expectedEnabled = sharedMesh.vertexCount > 0 && !debugHelperRenderer;
+                var expectedEnabled = sharedMesh.vertexCount > 0 && !debugVisualizationRenderer;
                 if (meshRenderer.enabled != expectedEnabled)
                     meshRenderer.enabled = expectedEnabled;
                 Profiler.EndSample();
@@ -373,7 +373,7 @@ namespace Chisel.Components
                 }
 
                 var gameObjectState = gameObjectStates[objectUpdate.model];
-                var expectedEnabled = !instance.debugHelperRenderer && vertexBufferContents.triangleBrushIndices[contentsIndex].Length > 0;
+                var expectedEnabled = !instance.debugVisualizationRenderer && vertexBufferContents.triangleBrushIndices[contentsIndex].Length > 0;
                 if (instance.meshRenderer.enabled != expectedEnabled)
                     instance.meshRenderer.enabled = expectedEnabled;
 

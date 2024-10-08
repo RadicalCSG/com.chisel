@@ -205,7 +205,7 @@ namespace Chisel.Components
             }
         }
 
-        public static GameObject CreateGameObject(string name, Transform parent, GameObjectState state, bool debugHelperRenderer = false)
+        public static GameObject CreateGameObject(string name, Transform parent, GameObjectState state, bool debugVisualizationRenderer = false)
         {
             var parentScene = parent.gameObject.scene;
             var oldActiveScene = UnityEngine.SceneManagement.SceneManager.GetActiveScene();
@@ -218,7 +218,7 @@ namespace Chisel.Components
                 newGameObject.SetActive(false);
                 try
                 {
-                    UpdateContainerFlags(newGameObject, state, debugHelperRenderer: debugHelperRenderer);
+                    UpdateContainerFlags(newGameObject, state, debugVisualizationRenderer: debugVisualizationRenderer);
                     var transform = newGameObject.GetComponent<Transform>();
                     ChiselNodeHierarchyManager.ignoreNextChildrenChanged = true;
                     transform.SetParent(parent, false);
@@ -244,18 +244,18 @@ namespace Chisel.Components
         const HideFlags kTransformHideFlags         = HideFlags.NotEditable;// | HideFlags.HideInInspector;
         const HideFlags kComponentHideFlags         = HideFlags.HideInHierarchy | HideFlags.NotEditable; // Avoids MeshCollider showing wireframe
 
-        internal static void UpdateContainerFlags(GameObject gameObject, GameObjectState state, bool debugHelperRenderer = false, bool isRenderable = false)
+        internal static void UpdateContainerFlags(GameObject gameObject, GameObjectState state, bool debugVisualizationRenderer = false, bool isRenderable = false)
         {
             var transform = gameObject.transform;
-            var desiredGameObjectFlags  = debugHelperRenderer ? kEditorGameObjectHideFlags : kGameObjectHideFlags;
-            var desiredLayer            = debugHelperRenderer ? 0 : state.layer;
+            var desiredGameObjectFlags  = debugVisualizationRenderer ? kEditorGameObjectHideFlags : kGameObjectHideFlags;
+            var desiredLayer            = debugVisualizationRenderer ? 0 : state.layer;
             if (gameObject.layer     != desiredLayer        ) gameObject.layer     = desiredLayer;
             if (gameObject.hideFlags != desiredGameObjectFlags) gameObject.hideFlags = desiredGameObjectFlags;
             if (transform .hideFlags != kTransformHideFlags ) transform .hideFlags = kTransformHideFlags;
 
 #if UNITY_EDITOR
             StaticEditorFlags desiredStaticFlags;
-            if (debugHelperRenderer)
+            if (debugVisualizationRenderer)
             {
                 desiredStaticFlags = (StaticEditorFlags)0;
             } else

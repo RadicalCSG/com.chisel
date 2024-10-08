@@ -119,7 +119,7 @@ namespace Chisel.Components
             };
         }
 
-        public static bool FindFirstWorldIntersection(List<ChiselIntersection> foundIntersections, Vector3 worldRayStart, Vector3 worldRayEnd, int visibleLayers = ~0, SurfaceDestinationFlags visibleLayerFlags = SurfaceDestinationFlags.Renderable, bool ignoreBackfaced = false, bool ignoreCulled = false, GameObject[] ignore = null, GameObject[] filter = null)
+        public static bool FindFirstWorldIntersection(List<ChiselIntersection> foundIntersections, Vector3 worldRayStart, Vector3 worldRayEnd, int visibleLayers = ~0, SurfaceDestinationFlags visibleLayerFlags = SurfaceDestinationFlags.Renderable, bool ignoreBackfaced = false, bool ignoreDiscarded = false, GameObject[] ignore = null, GameObject[] filter = null)
         {
             bool found = false;
 
@@ -136,7 +136,7 @@ namespace Chisel.Components
                         var node = go.GetComponent<ChiselNode>();
                         if (node)
                         {
-                            ChiselNodeHierarchyManager.GetChildrenOfHierarchyItem(ignoreNodes, node.hierarchyItem);
+                            ChiselNodeHierarchyManager.GetChildrenOfHierarchyItemNoAlloc(node.hierarchyItem, ignoreNodes);
                             ignoreInstanceIDs.Add(node.GetInstanceID());
                         }
                     }
@@ -148,7 +148,7 @@ namespace Chisel.Components
                         var node = go.GetComponent<ChiselNode>();
                         if (node)
                         {
-                            ChiselNodeHierarchyManager.GetChildrenOfHierarchyItem(filterNodes, node.hierarchyItem);
+                            ChiselNodeHierarchyManager.GetChildrenOfHierarchyItemNoAlloc(node.hierarchyItem, filterNodes);
                             filterInstanceIDs.Add(node.GetInstanceID());
                             if (node.hierarchyItem != null &&
                                 node.hierarchyItem.Model)
@@ -198,7 +198,7 @@ namespace Chisel.Components
                             treeRayEnd		= worldRayEnd;
                         }
 
-                        var treeIntersections = CSGQueryManager.RayCastMulti(visibleQueries, tree, treeRayStart, treeRayEnd, ignoreNodes, filterNodes, ignoreBackfaced, ignoreCulled);
+                        var treeIntersections = CSGQueryManager.RayCastMulti(visibleQueries, tree, treeRayStart, treeRayEnd, ignoreNodes, filterNodes, ignoreBackfaced, ignoreDiscarded);
                         if (treeIntersections == null)
                             continue;
 
@@ -254,7 +254,7 @@ namespace Chisel.Components
                         var node = go.GetComponent<ChiselNode>();
                         if (node)
                         {
-                            ChiselNodeHierarchyManager.GetChildrenOfHierarchyItem(ignoreNodes, node.hierarchyItem);
+                            ChiselNodeHierarchyManager.GetChildrenOfHierarchyItemNoAlloc(node.hierarchyItem, ignoreNodes);
                             ignoreInstanceIDs.Add(node.GetInstanceID());
                         }
                     }
@@ -266,7 +266,7 @@ namespace Chisel.Components
                         var node = go.GetComponent<ChiselNode>();
                         if (node)
                         {
-                            ChiselNodeHierarchyManager.GetChildrenOfHierarchyItem(filterNodes, node.hierarchyItem);
+                            ChiselNodeHierarchyManager.GetChildrenOfHierarchyItemNoAlloc(node.hierarchyItem, filterNodes);
                             filterInstanceIDs.Add(node.GetInstanceID());
                             if (node.hierarchyItem != null &&
                                 node.hierarchyItem.Model)
@@ -306,7 +306,7 @@ namespace Chisel.Components
                     treeRayEnd = worldRayEnd;
                 }
 
-                var treeIntersections = CSGQueryManager.RayCastMulti(visibleQueries, tree, treeRayStart, treeRayEnd, ignoreNodes, filterNodes, ignoreBackfaced: true, ignoreCulled: true);
+                var treeIntersections = CSGQueryManager.RayCastMulti(visibleQueries, tree, treeRayStart, treeRayEnd, ignoreNodes, filterNodes, ignoreBackfaced: true, ignoreDiscarded: true);
                 if (treeIntersections == null)
                     return false;
 

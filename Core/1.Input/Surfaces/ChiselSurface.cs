@@ -63,8 +63,8 @@ namespace Chisel.Core
 
 		public bool HasMaterial { get { return chiselMaterial.material != null; } }
 
-		public Material				   RenderMaterial   { get { return (chiselMaterial.material != null) ? chiselMaterial.material : ChiselDefaultMaterials.DefaultMaterial; } set { SetMaterial(value); } }
-		public PhysicsMaterial		   PhysicsMaterial  { get { return (chiselMaterial.surfaceMetadata != null) ? chiselMaterial.surfaceMetadata.physicsMaterial : ChiselDefaultMaterials.DefaultPhysicsMaterial; } }
+		public Material				   RenderMaterial   { get { return (chiselMaterial.material != null) ? chiselMaterial.material : ChiselProjectSettings.DefaultMaterial; } set { SetMaterial(value); } }
+		public PhysicsMaterial		   PhysicsMaterial  { get { return (chiselMaterial.surfaceMetadata != null) ? chiselMaterial.surfaceMetadata.physicsMaterial : ChiselProjectSettings.DefaultPhysicsMaterial; } }
 		public SurfaceDestinationFlags DestinationFlags { get { return (chiselMaterial.surfaceMetadata != null) ? chiselMaterial.surfaceMetadata.destinationFlags : SurfaceDestinationFlags.Default; } }
 		public SurfaceOutputFlags      OutputFlags      { get { return (chiselMaterial.surfaceMetadata != null) ? chiselMaterial.surfaceMetadata.outputFlags : SurfaceOutputFlags.Default; } }
 

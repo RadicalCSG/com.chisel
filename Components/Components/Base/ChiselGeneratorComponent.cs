@@ -24,7 +24,7 @@ namespace Chisel.Components
             return brush;
         }
 
-        static readonly GeneratorBrushJobPool<Generator> s_JobPool = new GeneratorBrushJobPool<Generator>();
+        static readonly GeneratorBrushJobPool<Generator> s_JobPool = new();
         protected override bool EnsureTopNodeCreatedInternal(in CSGTree tree, ref CSGTreeNode node, int userID)
         {
             if (!OnValidateDefinition())

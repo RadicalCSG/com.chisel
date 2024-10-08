@@ -286,7 +286,9 @@ namespace Chisel.Editors
             // If we use the command object on a gameobject in the hierarchy, choose that gameobject
             // Otherwise: choose the activeModel (if available)
             var context             = (menuCommand.context as GameObject);
-            var parentGameObject    = (context != null) ? context : (ChiselModelManager.ActiveModel != null) ? ChiselModelManager.ActiveModel.gameObject : null;
+            var typeIsModel         = (typeof(T) == typeof(ChiselModelComponent));
+			var defaultParent       = typeIsModel ? null : ((ChiselModelManager.ActiveModel != null) ? ChiselModelManager.ActiveModel.gameObject : null);
+            var parentGameObject    = (context != null) ? context : defaultParent;
             var parentTransform     = (parentGameObject == null) ? null : parentGameObject.transform;
 
             // If we used the command object on a generator, choose it's parent to prevent us from 
@@ -308,10 +310,9 @@ namespace Chisel.Editors
             GameObjectUtility.SetParentAndAlign(gameObject, parentGameObject);
             Undo.RegisterCreatedObjectUndo(gameObject, "Create " + gameObject.name);
 
-
             // Find the appropriate model to make active after we created the generator
             ChiselModelComponent model;
-            if (typeof(T) != typeof(ChiselModelComponent))
+            if (!typeIsModel)
             {
                 model = gameObject.GetComponentInParent<ChiselModelComponent>();
                 // If we don't have a parent model, create one and put the generator underneath it

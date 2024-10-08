@@ -1540,7 +1540,7 @@ ForceRerun:
                         Profiler.BeginSample("UpdateTrampoline.updateChildrenQueue2.process.GetChildrenOfHierarchyItem");
                         var childNodes = ListPool<CSGTreeNode>.Get();
                         childNodes.Clear();
-                        GetChildrenOfHierarchyItem(childNodes, hierarchyItem);
+                        GetChildrenOfHierarchyItemNoAlloc(hierarchyItem, childNodes);
                         Profiler.EndSample();
                         if (childNodes.Count > 0)
                         {
@@ -1676,7 +1676,7 @@ ForceRerun:
         }
 
 
-        public static void GetChildrenOfHierarchyItem(List<CSGTreeNode> childNodes, ChiselHierarchyItem item)
+        public static void GetChildrenOfHierarchyItemNoAlloc(ChiselHierarchyItem item, List<CSGTreeNode> childNodes)
         {
             if (item == null)
                 return;
@@ -1684,6 +1684,8 @@ ForceRerun:
             for (int i = 0; i < item.Children.Count; i++)
             {
                 var childHierarchyItem = item.Children[i];
+                if (childHierarchyItem.Component is ChiselModelComponent)
+                    continue;
                 var childComponent = childHierarchyItem.Component;
                 if (!childComponent && childComponent.IsActive)
                     continue;

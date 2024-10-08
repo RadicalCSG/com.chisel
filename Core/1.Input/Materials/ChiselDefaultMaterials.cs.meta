@@ -1,0 +1,14 @@
+fileFormatVersion: 2
+guid: cd068dfcbc334194682ece77658ea488
+MonoImporter:
+  externalObjects: {}
+  serializedVersion: 2
+  defaultReferences:
+  - builtin: {fileID: 11400000, guid: 2f83ca2a9aea8d943be129a01561e92b, type: 2}
+  - HDRP: {fileID: 11400000, guid: 70ce5b08900c77b47a5d02c791c3c664, type: 2}
+  - URP: {fileID: 11400000, guid: ed460ae968b7f3b4a887205818f40728, type: 2}
+  executionOrder: 0
+  icon: {instanceID: 0}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 

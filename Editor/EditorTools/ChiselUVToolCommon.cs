@@ -346,7 +346,7 @@ namespace Chisel.Editors
 								    EditorGUI.PropertyField(physicsRect, physicsMaterialProp, GUIContent.none, true);
 							    } else
 							    {
-								    EditorGUI.ObjectField(physicsRect, GUIContent.none, ChiselDefaultMaterials.DefaultPhysicsMaterial, typeof(PhysicsMaterial), false);
+									EditorGUI.ObjectField(physicsRect, GUIContent.none, Core.ChiselProjectSettings.DefaultPhysicsMaterial, typeof(PhysicsMaterial), false);
 							    }
 						    }
 					    }

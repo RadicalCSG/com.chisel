@@ -7,7 +7,7 @@ namespace Chisel.Core
                                          ref VertexBufferContents vertexBufferContents,
                                          ref UnityEngine.Mesh.MeshDataArray meshDataArray,
                                          NativeList<ChiselMeshUpdate> colliderMeshUpdates,
-                                         NativeList<ChiselMeshUpdate> debugHelperMeshes,
+                                         NativeList<ChiselMeshUpdate> debugVisualizationMeshes,
                                          NativeList<ChiselMeshUpdate> renderMeshes,
                                          JobHandle dependencies);
 }

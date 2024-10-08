@@ -27,6 +27,5 @@ using System.Runtime.CompilerServices;
 [assembly: Unity.Jobs.RegisterGenericJobType(typeof(Chisel.Core.DisposeArrayChildrenJob<Unity.Collections.LowLevel.Unsafe.UnsafeList<Chisel.Core.SubMeshSurface>>))]
 [assembly: Unity.Jobs.RegisterGenericJobType(typeof(Chisel.Core.DisposeListChildrenJob<Unity.Collections.LowLevel.Unsafe.UnsafeList<Chisel.Core.CompactNodeID>>))]
 
-// TODO: figure out why this doesn't seem to work?
-//[assembly: InternalsVisibleTo("com.chisel.unity.editor", AllInternalsVisible = true)]
-//[assembly: InternalsVisibleTo("com.chisel.unity.components", AllInternalsVisible = true)]
+[assembly: InternalsVisibleTo("com.chisel.unity.editor", AllInternalsVisible = true)]
+[assembly: InternalsVisibleTo("com.chisel.unity.components", AllInternalsVisible = true)]

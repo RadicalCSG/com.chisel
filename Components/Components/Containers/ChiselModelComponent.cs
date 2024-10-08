@@ -272,7 +272,7 @@ namespace Chisel.Components
 
         // TODO: improve warning messages
         const string kModelHasNoChildrenMessage = kNodeTypeName + " has no children and will not have an effect";
-        const string kFailedToGenerateNodeMessage = "Failed to generate internal representation of " + kNodeTypeName + " (this should never happen)";
+        const string kFailedToGenerateNodeMessage = "Failed to generate internal representation of " + kNodeTypeName + "\nThe model might not have any (active) brushes inside it.";
 		const string kChildNodesWithProblems = kNodeTypeName + " has children with errors";
 
 		// Will show a warning icon in hierarchy when generator has a problem (do not make this method slow, it is called a lot!)
@@ -327,7 +327,7 @@ namespace Chisel.Components
                 if (!meshRenderer) 
                     continue;
 
-                if (renderable.debugHelperRenderer)
+                if (renderable.debugVisualizationRenderer)
                 {
                     if (!renderable.visible)
                         continue;
@@ -339,15 +339,15 @@ namespace Chisel.Components
 
                 meshRenderer.GetPropertyBlock(materialPropertyBlock);
 
-                var castShadows             = (ShadowCastingMode)meshRenderer.shadowCastingMode;
-                var receiveShadows          = (bool)meshRenderer.receiveShadows;
+                var shadowCasting           = (ShadowCastingMode)meshRenderer.shadowCastingMode;
+                var shadowReceiving         = (bool)meshRenderer.receiveShadows;
                 var probeAnchor             = (Transform)meshRenderer.probeAnchor;
                 var lightProbeUsage         = (LightProbeUsage)meshRenderer.lightProbeUsage;
                 var lightProbeProxyVolume   = meshRenderer.lightProbeProxyVolumeOverride == null ? null : meshRenderer.lightProbeProxyVolumeOverride.GetComponent<LightProbeProxyVolume>();
                 
                 for (int submeshIndex = 0; submeshIndex < mesh.subMeshCount; submeshIndex++)
                 {
-                    Graphics.DrawMesh(mesh, matrix, renderable.renderMaterials[submeshIndex], layer, camera, submeshIndex, materialPropertyBlock, castShadows, receiveShadows, probeAnchor, lightProbeUsage, lightProbeProxyVolume);
+                    Graphics.DrawMesh(mesh, matrix, renderable.renderMaterials[submeshIndex], layer, camera, submeshIndex, materialPropertyBlock, shadowCasting, shadowReceiving, probeAnchor, lightProbeUsage, lightProbeProxyVolume);
                 }
             }
         }
@@ -368,7 +368,7 @@ namespace Chisel.Components
                 if (!meshRenderer) 
                     continue;
 
-                if (renderable.debugHelperRenderer)
+                if (renderable.debugVisualizationRenderer)
                 {
                     if (!renderable.visible)
                         continue;
@@ -380,21 +380,21 @@ namespace Chisel.Components
 
                 meshRenderer.GetPropertyBlock(materialPropertyBlock);
 
-                var castShadows             = (ShadowCastingMode)meshRenderer.shadowCastingMode;
-                var receiveShadows          = (bool)meshRenderer.receiveShadows;
+                var shadowCasting           = (ShadowCastingMode)meshRenderer.shadowCastingMode;
+                var shadowReceiving         = (bool)meshRenderer.receiveShadows;
                 var probeAnchor             = (Transform)meshRenderer.probeAnchor;
                 var lightProbeUsage         = (LightProbeUsage)meshRenderer.lightProbeUsage;
                 var lightProbeProxyVolume   = meshRenderer.lightProbeProxyVolumeOverride == null ? null : meshRenderer.lightProbeProxyVolumeOverride.GetComponent<LightProbeProxyVolume>();
                 
                 for (int submeshIndex = 0; submeshIndex < mesh.subMeshCount; submeshIndex++)
                 {
-                    Graphics.DrawMesh(mesh, matrix, renderable.renderMaterials[submeshIndex], layer, camera, submeshIndex, materialPropertyBlock, castShadows, receiveShadows, probeAnchor, lightProbeUsage, lightProbeProxyVolume);
+                    Graphics.DrawMesh(mesh, matrix, renderable.renderMaterials[submeshIndex], layer, camera, submeshIndex, materialPropertyBlock, shadowCasting, shadowReceiving, probeAnchor, lightProbeUsage, lightProbeProxyVolume);
                 }
             }
         }
 
         // TODO: move to ChiselGeneratedComponentManager
-        public void OnRenderModel(Camera camera, DrawModeFlags helperStateFlags)
+        public void OnRenderModel(Camera camera, DrawModeFlags drawModeFlags)
         {
             // When we toggle visibility on brushes in the editor hierarchy, we want to render a different mesh
             // but still have the same lightmap, and keep lightmap support.
@@ -409,15 +409,15 @@ namespace Chisel.Components
             var matrix  = transform.localToWorldMatrix;
             if (VisibilityState != VisibilityState.Mixed)
             {
-                if ((helperStateFlags & ~DrawModeFlags.HideRenderables) != DrawModeFlags.None)
-                    RenderChiselRenderObjects(generated.debugHelpers, materialPropertyBlock, matrix, layer, camera);
+                if ((drawModeFlags & ~DrawModeFlags.HideRenderables) != DrawModeFlags.None)
+                    RenderChiselRenderObjects(generated.debugVisualizationRenderables, materialPropertyBlock, matrix, layer, camera);
                 return;
             }
 
-            if ((helperStateFlags & ~DrawModeFlags.HideRenderables) != DrawModeFlags.None)
-                RenderChiselRenderPartialObjects(generated.debugHelpers, materialPropertyBlock, matrix, layer, camera);
+            if ((drawModeFlags & ~DrawModeFlags.HideRenderables) != DrawModeFlags.None)
+                RenderChiselRenderPartialObjects(generated.debugVisualizationRenderables, materialPropertyBlock, matrix, layer, camera);
 
-            if ((helperStateFlags & DrawModeFlags.HideRenderables) == DrawModeFlags.None)
+            if ((drawModeFlags & DrawModeFlags.HideRenderables) == DrawModeFlags.None)
                 RenderChiselRenderPartialObjects(generated.renderables, materialPropertyBlock, matrix, layer, camera);
         }
 

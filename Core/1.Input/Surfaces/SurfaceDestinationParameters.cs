@@ -11,7 +11,7 @@ namespace Chisel.Core
 	/// flags and just compares the bits set on the <see cref="SurfaceDestinationFlags"/> of the <see cref="Chisel.Core.BrushMesh.Polygon"/>s with the bits set in the <see cref="Chisel.Core.MeshQuery"/>.
 	/// </note>
 	/// <note>
-	/// Only bits 0-23 can be used for layers, the 24th bit is used to find <see cref="Chisel.Core.SurfaceDestinationFlags.Culled"/> polygons.
+	/// Only bits 0-23 can be used for layers, the 24th bit is used to find <see cref="Chisel.Core.SurfaceDestinationFlags.Discarded"/> polygons.
 	/// </note>
 	/// </remarks>
 	/// <seealso cref="Chisel.Core.BrushMesh"/>
@@ -28,40 +28,40 @@ namespace Chisel.Core
         Renderable					= (int)((uint)1 <<  0),
 
         /// <summary>Find the polygons that: cast shadows</summary>
-        CastShadows					= (int)((uint)1 <<  1),
+        ShadowCasting				= (int)((uint)1 <<  1),
 
         /// <summary>Find the polygons that: receive shadows</summary>
-        ReceiveShadows				= (int)((uint)1 <<  2),
+        ShadowReceiving				= (int)((uint)1 <<  2),
 
         /// <summary>Find the polygons that: are part of a collider</summary>
         Collidable					= (int)((uint)1 <<  3),
 
         /// <summary>Find the polygons that: are visible and cast shadows.</summary>
-        RenderCastShadows			= Renderable | CastShadows,
+        RenderShadowsCasting		= Renderable | ShadowCasting,
 
         /// <summary>Find the polygons that: are visible and receive shadows.</summary>
-        RenderReceiveShadows		= Renderable | ReceiveShadows,
+        RenderShadowsReceiving		= Renderable | ShadowReceiving,
 
         /// <summary>
         /// Find the polygons that: are visible, cast shadows and receive shadows.
         /// </summary>
-        RenderReceiveCastShadows	= Renderable | CastShadows | ReceiveShadows,
+        RenderShadowReceiveAndCasting	= Renderable | ShadowCasting | ShadowReceiving,
 
 		// TODO: add flag for lightmapped/unlightmapped surfaces
 
         /// <summary>
         /// Find the polygons that: are visible, cast shadows and receive shadows. and generate colliders
         /// </summary>
-        Default         			= RenderReceiveCastShadows | Collidable,
+        Default         			= RenderShadowReceiveAndCasting | Collidable,
 
 		
 		/// <summary>
 		/// Find the polygons that: are visible, double sided, cast shadows and receive shadows. and generate colliders
 		/// </summary>
-		All							= Renderable | CastShadows | ReceiveShadows | Collidable,
+		All							= Renderable | ShadowCasting | ShadowReceiving | Collidable,
 
         /// <summary>Find polygons that have been removed by the CSG process, this can be used for debugging.</summary>
-        Culled						= (int)((uint)1 << 23)
+        Discarded					= (int)((uint)1 << 23)
     };
 
 	/// <summary>Index into one of the parameters of <seealso cref="SurfaceDestinationParameters"/></summary>

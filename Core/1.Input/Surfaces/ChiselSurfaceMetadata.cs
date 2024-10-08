@@ -50,7 +50,7 @@ namespace Chisel.Core
 
 		public override void OnReset()
 		{
-			physicsMaterial = ChiselDefaultMaterials.DefaultPhysicsMaterial;
+			physicsMaterial = ChiselProjectSettings.DefaultPhysicsMaterial;
 		}
 	}
 }
