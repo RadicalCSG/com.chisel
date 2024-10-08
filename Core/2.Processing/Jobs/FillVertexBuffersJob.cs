@@ -464,16 +464,16 @@ namespace Chisel.Core
     [BurstCompile(CompileSynchronously = true)]
     public struct AssignMeshesJob : IJob
     {
-        public const int kDebugHelperCount = 6;
+        public const int kDebugVisualizationModeCount = 6;
         public struct DebugRenderFlags { public SurfaceDestinationFlags Item1; public SurfaceDestinationFlags Item2; };
-        public static readonly DebugRenderFlags[] kGeneratedDebugRendererFlags = new DebugRenderFlags[kDebugHelperCount]
+        public static readonly DebugRenderFlags[] kGeneratedDebugRendererFlags = new DebugRenderFlags[kDebugVisualizationModeCount]
         {
             new DebugRenderFlags{ Item1 = SurfaceDestinationFlags.None                  , Item2 = SurfaceDestinationFlags.Renderable },              // is explicitly set to "not visible"
-            new DebugRenderFlags{ Item1 = SurfaceDestinationFlags.RenderCastShadows     , Item2 = SurfaceDestinationFlags.RenderCastShadows },       // casts Shadows and is renderered
-            new DebugRenderFlags{ Item1 = SurfaceDestinationFlags.CastShadows           , Item2 = SurfaceDestinationFlags.RenderCastShadows },       // casts Shadows and is NOT renderered (shadowOnly)
-            new DebugRenderFlags{ Item1 = SurfaceDestinationFlags.RenderReceiveShadows  , Item2 = SurfaceDestinationFlags.RenderReceiveShadows },    // any surface that receives shadows (must be rendered)
+            new DebugRenderFlags{ Item1 = SurfaceDestinationFlags.RenderShadowsCasting  , Item2 = SurfaceDestinationFlags.RenderShadowsCasting },       // casts Shadows and is renderered
+            new DebugRenderFlags{ Item1 = SurfaceDestinationFlags.ShadowCasting         , Item2 = SurfaceDestinationFlags.RenderShadowsCasting },       // casts Shadows and is NOT renderered (shadowOnly)
+            new DebugRenderFlags{ Item1 = SurfaceDestinationFlags.RenderShadowsReceiving, Item2 = SurfaceDestinationFlags.RenderShadowsReceiving },    // any surface that receives shadows (must be rendered)
             new DebugRenderFlags{ Item1 = SurfaceDestinationFlags.Collidable            , Item2 = SurfaceDestinationFlags.Collidable },              // collider surfaces
-            new DebugRenderFlags{ Item1 = SurfaceDestinationFlags.Culled                , Item2 = SurfaceDestinationFlags.Culled }                   // all surfaces removed by the CSG algorithm
+            new DebugRenderFlags{ Item1 = SurfaceDestinationFlags.Discarded             , Item2 = SurfaceDestinationFlags.Discarded }                   // all surfaces removed by the CSG algorithm
         };
 
         // Read
@@ -483,7 +483,7 @@ namespace Chisel.Core
 
         // Write
         [NoAlias, WriteOnly] public NativeList<Mesh.MeshData>           meshes;
-        [NoAlias, WriteOnly] public NativeList<ChiselMeshUpdate>        debugHelperMeshes;
+        [NoAlias, WriteOnly] public NativeList<ChiselMeshUpdate>        debugVisualizationMeshes;
         [NoAlias, WriteOnly] public NativeList<ChiselMeshUpdate>        renderMeshes;
 
         // Read / Write (allocate)
@@ -494,7 +494,7 @@ namespace Chisel.Core
         [BurstDiscard]
         public static void InvalidQuery(SurfaceDestinationFlags query, SurfaceDestinationFlags mask)
         {
-            Debug.Assert(false, $"Invalid helper query used (query: {query}, mask: {mask})");
+            Debug.Assert(false, $"Invalid debug visualization query used (query: {query}, mask: {mask})");
         }
 
         public void Execute() 
@@ -510,7 +510,7 @@ namespace Chisel.Core
                     var subMeshSection = subMeshSections[i];
                     if (subMeshSection.meshQuery.LayerParameterIndex == SurfaceParameterIndex.None)
                     {
-                        int helperIndex = -1;
+                        int debugVisualizationIndex = -1;
                         var query   = subMeshSection.meshQuery.LayerQuery;
                         var mask    = subMeshSection.meshQuery.LayerQueryMask;
                         for (int f = 0; f < kGeneratedDebugRendererFlags.Length; f++)
@@ -519,10 +519,10 @@ namespace Chisel.Core
                                 kGeneratedDebugRendererFlags[f].Item2 != mask)
                                 continue;
 
-                            helperIndex = f;
+                            debugVisualizationIndex = f;
                             break;
                         }
-                        if (helperIndex == -1)
+                        if (debugVisualizationIndex == -1)
                         {
                             InvalidQuery(query, mask);
                             continue;
@@ -532,18 +532,18 @@ namespace Chisel.Core
                         {
                             contentsIndex   = i,
                             meshIndex       = meshIndex,
-                            objectIndex     = helperIndex,
+                            objectIndex     = debugVisualizationIndex,
                             type            = ChiselMeshType.Render
                         };
 
                         meshes.Add(meshDatas[meshIndex]);
-                        debugHelperMeshes.Add(meshUpdate);
+                        debugVisualizationMeshes.Add(meshUpdate);
                         meshUpdates.Add(meshUpdate);
                         meshIndex++; 
                     } else
                     if (subMeshSection.meshQuery.LayerParameterIndex == SurfaceParameterIndex.RenderMaterial)
                     {
-                        var renderIndex = (int)(subMeshSection.meshQuery.LayerQuery & SurfaceDestinationFlags.RenderReceiveCastShadows);
+                        var renderIndex = (int)(subMeshSection.meshQuery.LayerQuery & SurfaceDestinationFlags.RenderShadowReceiveAndCasting);
                         var meshUpdate = new ChiselMeshUpdate
                         {
                             contentsIndex       = i,

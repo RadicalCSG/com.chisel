@@ -11,8 +11,8 @@ namespace Chisel.Editors
     {
         private readonly static GUIContent	kVisibleContent			= new("Visible", "When set, the surface will be visible, otherwise it will not be rendered.");
 		private readonly static GUIContent	kCollidableContent		= new("Collidable", "When set, the surface will be part of the generated collider, otherwise it will not be part of the collider.");
-		private readonly static GUIContent  kCastShadowsContent		= new("Cast Shadows", "When set, the surface cast shadows on other surfaces, otherwise light will pass through it. Note that the surface does not need to be visible to block light.");
-		private readonly static GUIContent  kReceiveShadowsContent	= new("Receive Shadows", "When set, the surface have shadows cast onto it, as long as the surface is visible. This cannot be disabled in deferred rendering modes.");
+		private readonly static GUIContent  kShadowCastingContent	= new("Cast Shadows", "When set, the surface cast shadows on other surfaces, otherwise light will pass through it. Note that the surface does not need to be visible to block light.");
+		private readonly static GUIContent  kShadowReceivingContent	= new("Receive Shadows", "When set, the surface have shadows cast onto it, as long as the surface is visible. This cannot be disabled in deferred rendering modes.");
 		
         public static float DefaultHeight
         {
@@ -39,8 +39,8 @@ namespace Chisel.Editors
 
                 bool isCollidable		= (surfaceDestinationFlags & SurfaceDestinationFlags.Collidable) != 0;
                 bool isRenderable		= (surfaceDestinationFlags & SurfaceDestinationFlags.Renderable) != 0;
-                bool isCastShadows		= (surfaceDestinationFlags & SurfaceDestinationFlags.CastShadows) != 0;
-                bool isReceiveShadows	= (surfaceDestinationFlags & SurfaceDestinationFlags.ReceiveShadows) != 0;
+                bool isShadowCasting	= (surfaceDestinationFlags & SurfaceDestinationFlags.ShadowCasting) != 0;
+                bool isShadowReceiving	= (surfaceDestinationFlags & SurfaceDestinationFlags.ShadowReceiving) != 0;
 				//bool isDoubleSided	= (surfaceDestinationFlags & SurfaceDestinationFlags.DoubleSided) != 0;
 				//bool isSkybox	        = (surfaceDestinationFlags & SurfaceDestinationFlags.ReplaceWithSkybox) != 0;
 				//bool noLightmap	    = (surfaceDestinationFlags & SurfaceDestinationFlags.NoLightmap) != 0;
@@ -58,8 +58,8 @@ namespace Chisel.Editors
                     var toggleStyle     = EditorStyles.label;
 
                     var halfWidth       = position.width / 2.0f;
-                    var textWidthLeft   = math.max(toggleStyle.CalcSize(kCastShadowsContent).x, toggleStyle.CalcSize(kVisibleContent).x);
-                    var textWidthRight  = math.max(toggleStyle.CalcSize(kReceiveShadowsContent).x, toggleStyle.CalcSize(kCollidableContent).x);
+                    var textWidthLeft   = math.max(toggleStyle.CalcSize(kShadowCastingContent).x, toggleStyle.CalcSize(kVisibleContent).x);
+                    var textWidthRight  = math.max(toggleStyle.CalcSize(kShadowReceivingContent).x, toggleStyle.CalcSize(kCollidableContent).x);
                     var offset          = (position.width - (textWidthRight + textWidthLeft)) / 2;
                     if (offset < 0)
                     {
@@ -85,11 +85,11 @@ namespace Chisel.Editors
 
 					isRenderable	= EditorGUI.ToggleLeft(button1, kVisibleContent, isRenderable, toggleStyle);
 					isCollidable    = EditorGUI.ToggleLeft(button2, kCollidableContent, isCollidable, toggleStyle);
-                    isCastShadows	= EditorGUI.ToggleLeft(button3, kCastShadowsContent, isCastShadows, toggleStyle);
+                    isShadowCasting	= EditorGUI.ToggleLeft(button3, kShadowCastingContent, isShadowCasting, toggleStyle);
                     EditorGUI.BeginDisabledGroup(deferredRenderingPath || !isRenderable);
-                    if	    (!isRenderable        ) EditorGUI.ToggleLeft(button4, kReceiveShadowsContent, false, toggleStyle);
-                    else if (deferredRenderingPath) EditorGUI.ToggleLeft(button4, kReceiveShadowsContent, true,  toggleStyle);
-                    else		 isReceiveShadows = EditorGUI.ToggleLeft(button4, kReceiveShadowsContent, isReceiveShadows, toggleStyle);
+                    if	    (!isRenderable        ) EditorGUI.ToggleLeft(button4, kShadowReceivingContent, false, toggleStyle);
+                    else if (deferredRenderingPath) EditorGUI.ToggleLeft(button4, kShadowReceivingContent, true,  toggleStyle);
+                    else		 isShadowReceiving = EditorGUI.ToggleLeft(button4, kShadowReceivingContent, isShadowReceiving, toggleStyle);
                     EditorGUI.EndDisabledGroup();
 
 					// Set indent back to what it was
@@ -100,11 +100,11 @@ namespace Chisel.Editors
                     if (isRenderable)		surfaceDestinationFlags |=  SurfaceDestinationFlags.Renderable;
                     else					surfaceDestinationFlags &= ~SurfaceDestinationFlags.Renderable;
                 
-                    if (isCastShadows)		surfaceDestinationFlags |=  SurfaceDestinationFlags.CastShadows;
-                    else					surfaceDestinationFlags &= ~SurfaceDestinationFlags.CastShadows;
+                    if (isShadowCasting)		surfaceDestinationFlags |=  SurfaceDestinationFlags.ShadowCasting;
+                    else					surfaceDestinationFlags &= ~SurfaceDestinationFlags.ShadowCasting;
                 
-                    if (isReceiveShadows)	surfaceDestinationFlags |=  SurfaceDestinationFlags.ReceiveShadows;
-                    else					surfaceDestinationFlags &= ~SurfaceDestinationFlags.ReceiveShadows;
+                    if (isShadowReceiving)	surfaceDestinationFlags |=  SurfaceDestinationFlags.ShadowReceiving;
+                    else					surfaceDestinationFlags &= ~SurfaceDestinationFlags.ShadowReceiving;
                 
                     if (isCollidable)		surfaceDestinationFlags |=  SurfaceDestinationFlags.Collidable;
                     else					surfaceDestinationFlags &= ~SurfaceDestinationFlags.Collidable;

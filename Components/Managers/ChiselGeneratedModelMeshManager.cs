@@ -61,7 +61,7 @@ namespace Chisel.Components
                                      ref VertexBufferContents       vertexBufferContents, 
                                      ref Mesh.MeshDataArray         meshDataArray,
                                      NativeList<ChiselMeshUpdate>   colliderMeshUpdates,
-                                     NativeList<ChiselMeshUpdate>   debugHelperMeshes,
+                                     NativeList<ChiselMeshUpdate>   debugVisualizationMeshes,
                                      NativeList<ChiselMeshUpdate>   renderMeshes,
                                      JobHandle                      dependencies)
         {
@@ -90,7 +90,7 @@ namespace Chisel.Components
             }
 
             var count = model.generated.FinishMeshUpdates(model, model.gameObject, ref meshDataArray, ref vertexBufferContents,
-                                                          colliderMeshUpdates, debugHelperMeshes, renderMeshes,
+                                                          colliderMeshUpdates, debugVisualizationMeshes, renderMeshes,
                                                           dependencies);
             componentGenerator.Rebuild(model);
             PostUpdateModel?.Invoke(model);

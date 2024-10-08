@@ -45,7 +45,7 @@ namespace Chisel.Components
 #endregion
 
         // TODO: potentially have a history per scene, so when one model turns out to be invalid, go back to the previously selected model
-        readonly Dictionary<Scene, ChiselModelComponent> activeModels = new Dictionary<Scene, ChiselModelComponent>();
+        readonly Dictionary<Scene, ChiselModelComponent> activeModels = new();
 
         #region ActiveModel Serialization
         [Serializable] public struct SceneModelPair { public Scene Key; public ChiselModelComponent Value; }

@@ -83,40 +83,40 @@ namespace Chisel.Core
             // Renderables
             new(
                 parameterIndex: SurfaceParameterIndex.RenderMaterial,
-                query:          SurfaceDestinationFlags.RenderReceiveCastShadows,
-                mask:           SurfaceDestinationFlags.RenderReceiveCastShadows,
+                query:          SurfaceDestinationFlags.RenderShadowReceiveAndCasting,
+                mask:           SurfaceDestinationFlags.RenderShadowReceiveAndCasting,
                 vertexChannels: VertexChannelFlags.All
             ),
             new( 
                 parameterIndex: SurfaceParameterIndex.RenderMaterial,
-                query:          SurfaceDestinationFlags.RenderCastShadows,
-                mask:           SurfaceDestinationFlags.RenderReceiveCastShadows,
+                query:          SurfaceDestinationFlags.RenderShadowsCasting,
+                mask:           SurfaceDestinationFlags.RenderShadowReceiveAndCasting,
                 vertexChannels: VertexChannelFlags.All
             ),
             new(
                 parameterIndex: SurfaceParameterIndex.RenderMaterial,
-                query:          SurfaceDestinationFlags.RenderReceiveShadows,
-                mask:           SurfaceDestinationFlags.RenderReceiveCastShadows,
+                query:          SurfaceDestinationFlags.RenderShadowsReceiving,
+                mask:           SurfaceDestinationFlags.RenderShadowReceiveAndCasting,
                 vertexChannels: VertexChannelFlags.All
             ),
             new(
                 parameterIndex: SurfaceParameterIndex.RenderMaterial,
                 query:          SurfaceDestinationFlags.Renderable,
-                mask:           SurfaceDestinationFlags.RenderReceiveCastShadows,
+                mask:           SurfaceDestinationFlags.RenderShadowReceiveAndCasting,
                 vertexChannels: VertexChannelFlags.All
             ),
             new(
                 parameterIndex: SurfaceParameterIndex.RenderMaterial,
-                query:          SurfaceDestinationFlags.CastShadows,
-                mask:           SurfaceDestinationFlags.RenderReceiveCastShadows,
+                query:          SurfaceDestinationFlags.ShadowCasting,
+                mask:           SurfaceDestinationFlags.RenderShadowReceiveAndCasting,
                 vertexChannels: VertexChannelFlags.All
             ),
                 
-			// Helper surfaces
+			// Debug Visualization surfaces
 			new(query: SurfaceDestinationFlags.None,         mask: SurfaceDestinationFlags.Renderable),	// hidden surfaces
-			new(query: SurfaceDestinationFlags.CastShadows	 ),
-			new(query: SurfaceDestinationFlags.ReceiveShadows),
-			new(query: SurfaceDestinationFlags.Culled		 )
+			new(query: SurfaceDestinationFlags.ShadowCasting	 ),
+			new(query: SurfaceDestinationFlags.ShadowReceiving),
+			new(query: SurfaceDestinationFlags.Discarded		 )
         };
 
         public static readonly MeshQuery[] CollisionOnly =
@@ -129,9 +129,9 @@ namespace Chisel.Core
                 vertexChannels: VertexChannelFlags.Position
             ),
                 
-			// Helper surfaces
+			// Debug Visualization surfaces
 			new(query: SurfaceDestinationFlags.None,          mask: SurfaceDestinationFlags.Renderable),	// hidden surfaces
-            new(query: SurfaceDestinationFlags.Culled         ) // removed by CSG algorithm
+            new(query: SurfaceDestinationFlags.Discarded         ) // removed by CSG algorithm
         };
 
         // TODO: do not make this hardcoded
@@ -140,32 +140,32 @@ namespace Chisel.Core
             // Renderables
             new(
                 parameterIndex: SurfaceParameterIndex.RenderMaterial,
-                query:          SurfaceDestinationFlags.RenderReceiveCastShadows,
-                mask:           SurfaceDestinationFlags.RenderReceiveCastShadows,
+                query:          SurfaceDestinationFlags.RenderShadowReceiveAndCasting,
+                mask:           SurfaceDestinationFlags.RenderShadowReceiveAndCasting,
                 vertexChannels: VertexChannelFlags.All
             ),
             new(
                 parameterIndex: SurfaceParameterIndex.RenderMaterial,
-                query:          SurfaceDestinationFlags.RenderCastShadows,
-                mask:           SurfaceDestinationFlags.RenderReceiveCastShadows,
+                query:          SurfaceDestinationFlags.RenderShadowsCasting,
+                mask:           SurfaceDestinationFlags.RenderShadowReceiveAndCasting,
                 vertexChannels: VertexChannelFlags.All
             ),
             new(
                 parameterIndex: SurfaceParameterIndex.RenderMaterial,
-                query:          SurfaceDestinationFlags.RenderReceiveShadows,
-                mask:           SurfaceDestinationFlags.RenderReceiveCastShadows,
+                query:          SurfaceDestinationFlags.RenderShadowsReceiving,
+                mask:           SurfaceDestinationFlags.RenderShadowReceiveAndCasting,
                 vertexChannels: VertexChannelFlags.All
             ),
             new(
                 parameterIndex: SurfaceParameterIndex.RenderMaterial,
                 query:          SurfaceDestinationFlags.Renderable,
-                mask:           SurfaceDestinationFlags.RenderReceiveCastShadows,
+                mask:           SurfaceDestinationFlags.RenderShadowReceiveAndCasting,
                 vertexChannels: VertexChannelFlags.All
             ),
             new(
                 parameterIndex: SurfaceParameterIndex.None,
-                query:          SurfaceDestinationFlags.CastShadows,
-                mask:           SurfaceDestinationFlags.RenderReceiveCastShadows,
+                query:          SurfaceDestinationFlags.ShadowCasting,
+                mask:           SurfaceDestinationFlags.RenderShadowReceiveAndCasting,
                 vertexChannels: VertexChannelFlags.All
             ),
 
@@ -177,12 +177,12 @@ namespace Chisel.Core
                 vertexChannels: VertexChannelFlags.Position
             ),
                 
-			// Helper surfaces
+			// Debug Visualization surfaces
 			new(query: SurfaceDestinationFlags.None,                  mask: SurfaceDestinationFlags.Renderable),	        // hidden surfaces
-			new(query: SurfaceDestinationFlags.RenderCastShadows,     mask: SurfaceDestinationFlags.RenderCastShadows),
-			new(query: SurfaceDestinationFlags.CastShadows,           mask: SurfaceDestinationFlags.RenderCastShadows),
-			new(query: SurfaceDestinationFlags.RenderReceiveShadows,  mask: SurfaceDestinationFlags.RenderReceiveShadows),
-			new(query: SurfaceDestinationFlags.Culled,                mask: SurfaceDestinationFlags.Culled)               // removed by CSG algorithm
+			new(query: SurfaceDestinationFlags.RenderShadowsCasting,     mask: SurfaceDestinationFlags.RenderShadowsCasting),
+			new(query: SurfaceDestinationFlags.ShadowCasting,           mask: SurfaceDestinationFlags.RenderShadowsCasting),
+			new(query: SurfaceDestinationFlags.RenderShadowsReceiving,  mask: SurfaceDestinationFlags.RenderShadowsReceiving),
+			new(query: SurfaceDestinationFlags.Discarded,                mask: SurfaceDestinationFlags.Discarded)               // removed by CSG algorithm
         };
     }
 }

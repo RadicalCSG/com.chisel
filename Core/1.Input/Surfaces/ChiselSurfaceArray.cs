@@ -66,7 +66,7 @@ namespace Chisel.Core
                 Array.Copy(surfaces, newSurfaces, Mathf.Min(newSurfaces.Length, prevLength));
             for (int i = prevLength; i < newSurfaces.Length; i++)
             {
-                newSurfaces[i] = ChiselSurface.Create(ChiselDefaultMaterials.DefaultWallMaterial);
+                newSurfaces[i] = ChiselSurface.Create(ChiselProjectSettings.DefaultWallMaterial);
             }
             surfaces = newSurfaces;
             return true;

@@ -114,7 +114,7 @@ namespace Chisel.Core
 
                 public NativeList<ChiselMeshUpdate>         meshUpdates;
                 public NativeList<ChiselMeshUpdate>         colliderMeshUpdates;
-                public NativeList<ChiselMeshUpdate>         debugHelperMeshes;
+                public NativeList<ChiselMeshUpdate>         debugVisualizationMeshes;
                 public NativeList<ChiselMeshUpdate>         renderMeshes;
 
                 public NativeList<BlobAssetReference<BasePolygonsBlob>>             basePolygonDisposeList;
@@ -378,7 +378,7 @@ namespace Chisel.Core
                                 var usedMeshCount = finishMeshUpdates(treeUpdate.tree, ref treeUpdate.Temporaries.vertexBufferContents,
                                                                       ref treeUpdate.Temporaries.meshDataArray,
                                                                       treeUpdate.Temporaries.colliderMeshUpdates,
-                                                                      treeUpdate.Temporaries.debugHelperMeshes,
+                                                                      treeUpdate.Temporaries.debugVisualizationMeshes,
                                                                       treeUpdate.Temporaries.renderMeshes,
                                                                       treeUpdate.dependencies);
                             }
@@ -504,7 +504,7 @@ namespace Chisel.Core
 
                 Temporaries.meshUpdates                     = new NativeList<ChiselMeshUpdate>(defaultAllocator);
                 Temporaries.colliderMeshUpdates             = new NativeList<ChiselMeshUpdate>(defaultAllocator);
-                Temporaries.debugHelperMeshes               = new NativeList<ChiselMeshUpdate>(defaultAllocator);
+                Temporaries.debugVisualizationMeshes        = new NativeList<ChiselMeshUpdate>(defaultAllocator);
                 Temporaries.renderMeshes                    = new NativeList<ChiselMeshUpdate>(defaultAllocator);
 
 
@@ -1756,9 +1756,9 @@ namespace Chisel.Core
                             meshDatas           = Temporaries.meshDatas,
 
                             // Write
-                            meshes              = Temporaries.vertexBufferContents.meshes,
-                            debugHelperMeshes   = Temporaries.debugHelperMeshes,
-                            renderMeshes        = Temporaries.renderMeshes,
+                            meshes                   = Temporaries.vertexBufferContents.meshes,
+                            debugVisualizationMeshes = Temporaries.debugVisualizationMeshes,
+                            renderMeshes             = Temporaries.renderMeshes,
 
                             // Read / Write (allcoate)
                             colliderMeshUpdates = Temporaries.colliderMeshUpdates,
@@ -2099,7 +2099,7 @@ namespace Chisel.Core
                 lastJobHandle.AddDependency(Temporaries.allTreeBrushIndexOrders .SafeDispose(JobHandles.allTreeBrushIndexOrdersJobHandle.readWriteBarrier));
                 lastJobHandle.AddDependency(Temporaries.meshUpdates             .SafeDispose(JobHandles.meshUpdatesJobHandle.readWriteBarrier));
                 lastJobHandle.AddDependency(Temporaries.colliderMeshUpdates     .SafeDispose(JobHandles.colliderMeshUpdatesJobHandle.readWriteBarrier));
-                lastJobHandle.AddDependency(Temporaries.debugHelperMeshes       .SafeDispose(JobHandles.debugHelperMeshesJobHandle.readWriteBarrier));
+                lastJobHandle.AddDependency(Temporaries.debugVisualizationMeshes       .SafeDispose(JobHandles.debugHelperMeshesJobHandle.readWriteBarrier));
                 lastJobHandle.AddDependency(Temporaries.renderMeshes            .SafeDispose(JobHandles.renderMeshesJobHandle.readWriteBarrier));
                 lastJobHandle.AddDependency(Temporaries.meshDatas               .SafeDispose(JobHandles.meshDatasJobHandle.readWriteBarrier));                
                 lastJobHandle.AddDependency(Temporaries.subMeshCounts           .SafeDispose(JobHandles.subMeshCountsJobHandle.readWriteBarrier));
