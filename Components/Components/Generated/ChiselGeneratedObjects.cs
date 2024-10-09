@@ -19,7 +19,7 @@ namespace Chisel.Components
         ShowShadowCasters   = 4,
         ShowShadowOnly      = 8,
         ShowShadowReceivers = 16,
-        ShowDiscarded          = 32,
+        ShowDiscarded       = 32,
         ShowUserHidden      = 64,
     }
     
@@ -72,9 +72,10 @@ namespace Chisel.Components
             DrawModeFlags.ShowDiscarded
         };
         public const string kGeneratedMeshColliderName	= "‹[generated-Collider]›";
+		public const int kColliderDebugVisualizationIndex = 4;
 
 
-        public GameObject               generatedDataContainer;
+		public GameObject               generatedDataContainer;
         public GameObject               colliderContainer;
         public ChiselColliderObjects[]  colliders;
 
@@ -110,11 +111,11 @@ namespace Chisel.Components
             var renderables = new ChiselRenderObjects[]
             {
                 new() { invalid = true },
-                ChiselRenderObjects.Create(kGeneratedMeshRendererNames[1], containerTransform, gameObjectState, SurfaceDestinationFlags.Renderable                               ),
-                ChiselRenderObjects.Create(kGeneratedMeshRendererNames[2], containerTransform, gameObjectState, SurfaceDestinationFlags.ShadowCasting                              ),
-                ChiselRenderObjects.Create(kGeneratedMeshRendererNames[3], containerTransform, gameObjectState, SurfaceDestinationFlags.Renderable | SurfaceDestinationFlags.ShadowCasting ),
+                ChiselRenderObjects.Create(kGeneratedMeshRendererNames[1], containerTransform, gameObjectState, SurfaceDestinationFlags.Renderable),
+                ChiselRenderObjects.Create(kGeneratedMeshRendererNames[2], containerTransform, gameObjectState,                                      SurfaceDestinationFlags.ShadowCasting),
+                ChiselRenderObjects.Create(kGeneratedMeshRendererNames[3], containerTransform, gameObjectState, SurfaceDestinationFlags.Renderable | SurfaceDestinationFlags.ShadowCasting),
                 new() { invalid = true },
-                ChiselRenderObjects.Create(kGeneratedMeshRendererNames[5], containerTransform, gameObjectState, SurfaceDestinationFlags.Renderable |                               SurfaceDestinationFlags.ShadowReceiving),
+                ChiselRenderObjects.Create(kGeneratedMeshRendererNames[5], containerTransform, gameObjectState, SurfaceDestinationFlags.Renderable |                                         SurfaceDestinationFlags.ShadowReceiving),
                 new() { invalid = true },
                 ChiselRenderObjects.Create(kGeneratedMeshRendererNames[7], containerTransform, gameObjectState, SurfaceDestinationFlags.Renderable | SurfaceDestinationFlags.ShadowCasting | SurfaceDestinationFlags.ShadowReceiving),
             };
@@ -518,7 +519,7 @@ namespace Chisel.Components
                 foundMeshes.Add(instance.sharedMesh);
                 colliderObjectUpdates.Add(new ChiselColliderObjectUpdate
                 {
-                    meshIndex = colliderMeshUpdate.meshIndex
+                    meshIndex = colliderMeshUpdate.meshIndex,
                 });
             }
             Profiler.EndSample();
@@ -675,10 +676,11 @@ namespace Chisel.Components
                 };
 			}
             colliderDebugVisualization.sharedMesh.CombineMeshes(colliderMeshes);
-            // }}
-		
-		    var foundMeshCount = foundMeshes.Count;
-                foundMeshes.Clear();
+            colliderDebugVisualization.renderMaterials = new Material[] { ChiselProjectSettings.CollisionSurfacesMaterial };
+			// }}
+
+			var foundMeshCount = foundMeshes.Count;
+            foundMeshes.Clear();
             return foundMeshCount;
         }
 

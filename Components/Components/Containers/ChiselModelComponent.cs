@@ -385,10 +385,10 @@ namespace Chisel.Components
                 var probeAnchor             = (Transform)meshRenderer.probeAnchor;
                 var lightProbeUsage         = (LightProbeUsage)meshRenderer.lightProbeUsage;
                 var lightProbeProxyVolume   = meshRenderer.lightProbeProxyVolumeOverride == null ? null : meshRenderer.lightProbeProxyVolumeOverride.GetComponent<LightProbeProxyVolume>();
-                
-                for (int submeshIndex = 0; submeshIndex < mesh.subMeshCount; submeshIndex++)
+
+				for (int submeshIndex = 0; submeshIndex < mesh.subMeshCount; submeshIndex++)
                 {
-                    Graphics.DrawMesh(mesh, matrix, renderable.renderMaterials[submeshIndex], layer, camera, submeshIndex, materialPropertyBlock, shadowCasting, shadowReceiving, probeAnchor, lightProbeUsage, lightProbeProxyVolume);
+					Graphics.DrawMesh(mesh, matrix, renderable.renderMaterials[submeshIndex], layer, camera, submeshIndex, materialPropertyBlock, shadowCasting, shadowReceiving, probeAnchor, lightProbeUsage, lightProbeProxyVolume);
                 }
             }
         }
@@ -414,11 +414,11 @@ namespace Chisel.Components
                 return;
             }
 
-            if ((drawModeFlags & ~DrawModeFlags.HideRenderables) != DrawModeFlags.None)
-                RenderChiselRenderPartialObjects(generated.debugVisualizationRenderables, materialPropertyBlock, matrix, layer, camera);
-
             if ((drawModeFlags & DrawModeFlags.HideRenderables) == DrawModeFlags.None)
                 RenderChiselRenderPartialObjects(generated.renderables, materialPropertyBlock, matrix, layer, camera);
+
+            if ((drawModeFlags & ~DrawModeFlags.HideRenderables) != DrawModeFlags.None)
+                RenderChiselRenderPartialObjects(generated.debugVisualizationRenderables, materialPropertyBlock, matrix, layer, camera);
         }
 
         public VisibilityState VisibilityState { get { return generated.visibilityState; } }

@@ -49,22 +49,22 @@ namespace Chisel.Core
 				// Uses same indices as kGeneratedVisualizationRendererNames / kGeneratedVisualizationShowFlags
 
 				// SurfaceDestinationFlags.Collidable / DrawModeFlags.ShowColliders
-				debugVisualizationMaterials[(int)SurfaceDestinationFlags.Collidable] = collisionSurfacesMaterial;
+				debugVisualizationMaterials[4] = collisionSurfacesMaterial;
 
 				// SurfaceDestinationFlags.RenderShadowReceiveAndCasting / DrawModeFlags.ShowShadowCasters
-				debugVisualizationMaterials[(int)SurfaceDestinationFlags.RenderShadowReceiveAndCasting] = shadowCastingSurfacesMaterial;
+				debugVisualizationMaterials[1] = shadowCastingSurfacesMaterial;
 
 				// SurfaceDestinationFlags.ShadowCasting / DrawModeFlags.ShowShadowOnly
-				debugVisualizationMaterials[(int)SurfaceDestinationFlags.ShadowCasting] = shadowOnlySurfacesMaterial;
+				debugVisualizationMaterials[2] = shadowOnlySurfacesMaterial;
 
 				// SurfaceDestinationFlags.RenderShadowsReceiving / DrawModeFlags.ShowShadowReceivers
-				debugVisualizationMaterials[(int)SurfaceDestinationFlags.RenderShadowsReceiving] = shadowReceivingSurfacesMaterial;
+				debugVisualizationMaterials[3] = shadowReceivingSurfacesMaterial;
 
 				// SurfaceDestinationFlags.Discarded / DrawModeFlags.ShowDiscarded
-				debugVisualizationMaterials[(int)SurfaceDestinationFlags.Discarded] = discardedSurfacesMaterial;
+				debugVisualizationMaterials[5] = discardedSurfacesMaterial;
 
 				// SurfaceDestinationFlags.None / DrawModeFlags.ShowUserHidden
-				debugVisualizationMaterials[(int)SurfaceDestinationFlags.None] = userHiddenSurfacesMaterial;
+				debugVisualizationMaterials[0] = userHiddenSurfacesMaterial;
 
 				return debugVisualizationMaterials;
 			}

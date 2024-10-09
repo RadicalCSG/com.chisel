@@ -307,7 +307,7 @@ namespace Chisel.Components
                 var instance            = objectUpdate.instance;
                 var brushIndicesArray   = vertexBufferContents.triangleBrushIndices[meshUpdate.contentsIndex];
                 if (instance.triangleBrushes.Length < brushIndicesArray.Length)
-                    instance.triangleBrushes = new CompactNodeID[brushIndicesArray.Length];
+                    instance.triangleBrushes = new CompactNodeID[brushIndicesArray.Length]; 
 				brushIndicesArray.CopyTo(instance.triangleBrushes, brushIndicesArray.Length);
             }
             Profiler.EndSample();
@@ -322,25 +322,26 @@ namespace Chisel.Components
                 var materialOverride    = objectUpdate.materialOverride;
                 var startIndex          = vertexBufferContents.subMeshSections[contentsIndex].startIndex;
                 var endIndex            = vertexBufferContents.subMeshSections[contentsIndex].endIndex;
-                var desiredCapacity = endIndex - startIndex;
+                var desiredCapacity     = Math.Max(1, endIndex - startIndex);
                 if (instance.renderMaterials == null || instance.renderMaterials.Length != desiredCapacity)
                     instance.renderMaterials = new Material[desiredCapacity];
-                if (materialOverride)
+				if (materialOverride)
                 {
                     for (int i = 0; i < instance.renderMaterials.Length; i++)
+                    {
                         instance.renderMaterials[i] = materialOverride;
-                } else
+                    }
+				} else
                 {
                     for (int i = 0; i < desiredCapacity; i++)
                     {
                         var meshDescription = vertexBufferContents.meshDescriptions[startIndex + i];
                         var renderMaterial  = ChiselMaterialManager.GetMaterial(meshDescription.surfaceParameter);
                         //ChiselBrushMaterialManager.GetRenderMaterialByInstanceID(meshDescription.surfaceParameter);
-
                         instance.renderMaterials[i] = renderMaterial;
                     }
+                    instance.SetMaterialsIfModified(instance.meshRenderer, instance.renderMaterials);
                 }
-                instance.SetMaterialsIfModified(instance.meshRenderer, instance.renderMaterials);
             }
             Profiler.EndSample();
         }
