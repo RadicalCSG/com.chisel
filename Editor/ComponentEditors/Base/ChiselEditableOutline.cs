@@ -3,7 +3,6 @@ using System.Linq;
 using System.Collections.Generic;
 using Chisel.Core;
 using Chisel.Components;
-using Snapping = Chisel.Editors.Snapping;
 using Unity.Mathematics;
 using UnityEngine;
 using UnityEditor;
@@ -23,14 +22,14 @@ namespace Chisel.Editors
             Rebuild();
         }
 
-        const float kHighlightedEdgeThickness   = 3.5f * 0.25f;
-        const float kEdgeThickness              = 2.0f * 0.25f;
-        const float kSoftEdgeDashSize           = 2.0f;
+        const float kHighlightedEdgeThickness = 3.5f * 0.25f;
+        const float kEdgeThickness            = 2.0f * 0.25f;
+        const float kSoftEdgeDashSize         = 2.0f;
 
 
-        public ChiselBrushComponent              brush;
-        public BrushMesh                brushMesh;
-        public ChiselTopologySelection  selection;
+        public ChiselBrushComponent    brush;
+        public BrushMesh               brushMesh;
+        public ChiselTopologySelection selection;
 
         // TODO: figure out a better place for these
         // These are temporary helpers to allow us to remap selection when modifying a brushMesh 
@@ -1680,8 +1679,6 @@ namespace Chisel.Editors
         // This method returns true when the brushMesh has changed
         public bool HandleSoftEdges()
         {
-            var halfEdges = brushMesh.halfEdges;
-
             for (int e = 0; e < s_TempEdgesIDCount; e++)
             {
                 switch (HandleClick(s_TempEdgesIDs[e], captureControl: false))

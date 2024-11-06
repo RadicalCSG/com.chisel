@@ -18,28 +18,28 @@ namespace Chisel.Components
         }
         #endregion
 
-        CSGTreeBrush GenerateTopNode(in CSGTree tree, CSGTreeNode node, int userID, CSGOperationType operation)
+        CSGTreeBrush GenerateTopNode(in CSGTree tree, CSGTreeNode node, int instanceID, CSGOperationType operation)
         {
             var brush = (CSGTreeBrush)node;
             if (!brush.Valid)
             {
                 if (node.Valid)
                     node.Destroy();
-                return tree.CreateBrush(userID: userID, operation: operation);
+                return tree.CreateBrush(instanceID: instanceID, operation: operation);
             }
             if (brush.Operation != operation)
                 brush.Operation = operation;
             return brush;
         }
 
-        protected override bool EnsureTopNodeCreatedInternal(in CSGTree tree, ref CSGTreeNode node, int userID)
+        protected override bool EnsureTopNodeCreatedInternal(in CSGTree tree, ref CSGTreeNode node, int instanceID)
         {
 			if (!OnValidateDefinition())
 				return false;
 
 			var brush = (CSGTreeBrush)node;
             if (!brush.Valid)
-                node = GenerateTopNode(in tree, brush, userID, operation);
+                node = GenerateTopNode(in tree, brush, instanceID, operation);
             return true;
         }
 

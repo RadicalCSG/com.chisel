@@ -101,8 +101,8 @@ namespace Chisel.Components
 
         static ChiselIntersection Convert(CSGTreeBrushIntersection intersection)
         {
-            var node                    = ChiselNodeHierarchyManager.FindChiselNodeByInstanceID(intersection.brush.UserID);
-            var model                   = ChiselNodeHierarchyManager.FindChiselNodeByInstanceID(intersection.tree.UserID) as ChiselModelComponent;
+            var node                    = ChiselNodeHierarchyManager.FindChiselNodeByInstanceID(intersection.brush.InstanceID);
+            var model                   = ChiselNodeHierarchyManager.FindChiselNodeByInstanceID(intersection.tree.InstanceID) as ChiselModelComponent;
 
             var treeLocalToWorldMatrix  = model.transform.localToWorldMatrix;            
             
@@ -206,7 +206,7 @@ namespace Chisel.Components
                         {
                             var intersection	= treeIntersections[i];
                             var brush			= intersection.brush;
-                            var instanceID		= brush.UserID;
+                            var instanceID		= brush.InstanceID;
 
                             if ((filterInstanceIDs.Count > 0 && !filterInstanceIDs.Contains(instanceID)) ||
                                 ignoreInstanceIDs.Contains(instanceID))
@@ -315,7 +315,7 @@ namespace Chisel.Components
                 {
                     var intersection	= treeIntersections[i];
                     var brush			= intersection.brush;
-                    var instanceID		= brush.UserID;
+                    var instanceID		= brush.InstanceID;
                 
                     if ((filterInstanceIDs.Count > 0 && !filterInstanceIDs.Contains(instanceID)) ||
                         ignoreInstanceIDs.Contains(instanceID))

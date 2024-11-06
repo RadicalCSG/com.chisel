@@ -39,38 +39,27 @@ namespace Chisel.Core
     {
         public static readonly CompactHierarchyID Invalid = default;
 
-        public readonly Int32 value;
-        public readonly Int32 generation;
-        internal CompactHierarchyID(Int32 value, Int32 generation = 0) { this.value = value; this.generation = generation; }
+		public readonly SlotIndex slotIndex;
+		internal CompactHierarchyID(SlotIndex slotIndex) { this.slotIndex = slotIndex; }
 
         [EditorBrowsable(EditorBrowsableState.Never), BurstDiscard]
-        public override string ToString() { return $"(HierarchyID = {value}, Generation = {generation})"; }
+        public override string ToString() { return $"(HierarchyID = {slotIndex.index}, Generation = {slotIndex.generation})"; }
 
         #region Comparison
         [EditorBrowsable(EditorBrowsableState.Never), MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static bool operator ==(CompactHierarchyID left, CompactHierarchyID right) { return left.value == right.value && left.generation == right.generation; }
+        public static bool operator ==(CompactHierarchyID left, CompactHierarchyID right) { return left.slotIndex == right.slotIndex; }
         [EditorBrowsable(EditorBrowsableState.Never), MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static bool operator !=(CompactHierarchyID left, CompactHierarchyID right) { return left.value != right.value || left.generation != right.generation; }
-        [EditorBrowsable(EditorBrowsableState.Never)]
-        public override bool Equals(object obj) { if (obj is CompactHierarchyID) return this == ((CompactHierarchyID)obj); return false; }
-        [EditorBrowsable(EditorBrowsableState.Never)]
-        public override int GetHashCode() { return value; }
+        public static bool operator !=(CompactHierarchyID left, CompactHierarchyID right) { return left.slotIndex != right.slotIndex; }
+        [EditorBrowsable(EditorBrowsableState.Never), MethodImpl(MethodImplOptions.AggressiveInlining)]
+		public readonly override bool Equals(object obj) { if (obj is CompactHierarchyID id) return this == id; return false; }
+        [EditorBrowsable(EditorBrowsableState.Never), MethodImpl(MethodImplOptions.AggressiveInlining)]
+		public readonly override int GetHashCode() { return slotIndex.GetHashCode(); }
 
-        [EditorBrowsable(EditorBrowsableState.Never)]
-        public int CompareTo(CompactHierarchyID other)
-        {
-            var diff = value - other.value;
-            if (diff != 0)
-                return diff;
+        [EditorBrowsable(EditorBrowsableState.Never), MethodImpl(MethodImplOptions.AggressiveInlining)]
+		public readonly int CompareTo(CompactHierarchyID other) { return slotIndex.CompareTo(other.slotIndex); }
 
-            return generation - other.generation;
-        }
-
-        [EditorBrowsable(EditorBrowsableState.Never)]
-        public bool Equals(CompactHierarchyID other)
-        {
-            return value == other.value && generation == other.generation;
-        }
+        [EditorBrowsable(EditorBrowsableState.Never), MethodImpl(MethodImplOptions.AggressiveInlining)]
+		public readonly bool Equals(CompactHierarchyID other) { return slotIndex == other.slotIndex; }
         #endregion
     }
     
@@ -79,56 +68,42 @@ namespace Chisel.Core
     {
         public static readonly CompactNodeID Invalid = default;
 
-        public readonly Int32 value;
-        public readonly Int32 generation;
+        public readonly SlotIndex slotIndex;
 
 		public readonly CompactHierarchyID hierarchyID;
 
-        internal CompactNodeID(CompactHierarchyID hierarchyID, Int32 value, Int32 generation = 0) { this.hierarchyID = hierarchyID; this.value = value; this.generation = generation; }
+        internal CompactNodeID(CompactHierarchyID hierarchyID, SlotIndex slotIndex) { this.hierarchyID = hierarchyID; this.slotIndex = slotIndex; }
 
         [EditorBrowsable(EditorBrowsableState.Never), BurstDiscard]
-        public readonly override string ToString() { return $"{nameof(value)} = {value}, {nameof(generation)} = {generation}, {nameof(hierarchyID)} = {hierarchyID}"; }
+        public readonly override string ToString() { return $"{nameof(slotIndex)} = {slotIndex}, {nameof(hierarchyID)} = {hierarchyID}"; }
 
         #region Comparison
         [EditorBrowsable(EditorBrowsableState.Never), MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static bool operator ==(CompactNodeID left, CompactNodeID right) { return left.value == right.value && left.generation == right.generation && left.hierarchyID == right.hierarchyID; }
+        public static bool operator ==(CompactNodeID left, CompactNodeID right) { return left.slotIndex == right.slotIndex && left.hierarchyID == right.hierarchyID; }
         [EditorBrowsable(EditorBrowsableState.Never), MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static bool operator !=(CompactNodeID left, CompactNodeID right) { return left.value != right.value || left.generation != right.generation || left.hierarchyID != right.hierarchyID; }
-        [EditorBrowsable(EditorBrowsableState.Never)]
-        public override bool Equals(object obj)
-        {
-            if (obj is CompactNodeID) return this == ((CompactNodeID)obj);
-            return false;
-        }
-        [EditorBrowsable(EditorBrowsableState.Never)]
-        public readonly override int GetHashCode() { return value; }
+        public static bool operator !=(CompactNodeID left, CompactNodeID right) { return left.slotIndex != right.slotIndex || left.hierarchyID != right.hierarchyID; }
+        [EditorBrowsable(EditorBrowsableState.Never), MethodImpl(MethodImplOptions.AggressiveInlining)]
+		public readonly override bool Equals(object obj) { if (obj is CompactNodeID id) return this == id; return false; }
 
-        [EditorBrowsable(EditorBrowsableState.Never)]
-        public int CompareTo(CompactNodeID other)
+        [EditorBrowsable(EditorBrowsableState.Never), MethodImpl(MethodImplOptions.AggressiveInlining)]
+		public readonly override int GetHashCode() { return slotIndex.GetHashCode(); }
+
+        [EditorBrowsable(EditorBrowsableState.Never), MethodImpl(MethodImplOptions.AggressiveInlining)]
+		public readonly int CompareTo(CompactNodeID other)
         {
             var diff = hierarchyID.CompareTo(other.hierarchyID);
-            if (diff != 0)
-                return diff;
-
-            diff = value - other.value;
-            if (diff != 0)
-                return diff;
-
-            return generation - other.generation;
+            if (diff != 0) return diff;
+            return slotIndex.CompareTo(other.slotIndex);
         }
-
-        [EditorBrowsable(EditorBrowsableState.Never)]
-        public bool Equals(CompactNodeID other)
-        {
-            return value == other.value && generation == other.generation && hierarchyID == other.hierarchyID;
-        }
+        [EditorBrowsable(EditorBrowsableState.Never), MethodImpl(MethodImplOptions.AggressiveInlining)]
+		public readonly bool Equals(CompactNodeID other) { return slotIndex == other.slotIndex && hierarchyID == other.hierarchyID; }
         #endregion
     }
 
     [GenerateTestsForBurstCompatibility]
 	public struct CompactNode
     {
-        public Int32                userID;
+        public Int32                instanceID;
 
         public CSGOperationType     operation;
         public float4x4             transformation; // local (may include non-ChiselNode parent transformations)
@@ -140,7 +115,7 @@ namespace Chisel.Core
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public int GetHashcode() { unchecked { return (int)this.Hash(); } }
 
-        public override readonly string ToString() { return $"{nameof(brushMeshHash)} = {brushMeshHash}, {nameof(operation)} = {operation}, {nameof(userID)} = {userID}, {nameof(transformation)} = {transformation}"; }
+        public override readonly string ToString() { return $"{nameof(brushMeshHash)} = {brushMeshHash}, {nameof(operation)} = {operation}, {nameof(instanceID)} = {instanceID}, {nameof(transformation)} = {transformation}"; }
     }
 
     [GenerateTestsForBurstCompatibility]
@@ -152,12 +127,13 @@ namespace Chisel.Core
         public NodeID           nodeID;         // TODO: figure out how to get rid of this
         public CompactNodeID    compactNodeID;     
         public CompactNodeID    parentID;       // TODO: rewrite updating code to use index here instead of ID (removes indirection)
+		//public SlotIndex        outlineID;      // TODO: remove need for this
         public Int32            childCount;
         public Int32            childOffset;
 
         public static readonly CompactChildNode Invalid = default;
 
-        public override string ToString() { return $"{nameof(compactNodeID)} = {compactNodeID.value}, {nameof(parentID)} = {parentID.value}, {nameof(nodeInformation.userID)} = {nodeInformation.userID}, {nameof(childCount)} = {childCount}, {nameof(childOffset)} = {childOffset}, {nameof(nodeInformation.brushMeshHash)} = {nodeInformation.brushMeshHash}, {nameof(nodeInformation.operation)} = {nodeInformation.operation}, {nameof(nodeInformation.transformation)} = {nodeInformation.transformation}"; }
+        public override string ToString() { return $"{nameof(compactNodeID)} = {compactNodeID}, {nameof(parentID)} = {parentID}, {nameof(nodeInformation.instanceID)} = {nodeInformation.instanceID}, {nameof(childCount)} = {childCount}, {nameof(childOffset)} = {childOffset}, {nameof(nodeInformation.brushMeshHash)} = {nodeInformation.brushMeshHash}, {nameof(nodeInformation.operation)} = {nodeInformation.operation}, {nameof(nodeInformation.transformation)} = {nodeInformation.transformation}"; }
     }
 
     // TODO: make sure everything is covered in tests
@@ -166,9 +142,9 @@ namespace Chisel.Core
     {
         #region CreateHierarchy
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static CompactHierarchy CreateHierarchy(NodeID nodeID, Int32 userID, Allocator allocator)
+        public static CompactHierarchy CreateHierarchy(NodeID nodeID, Int32 instanceID, Allocator allocator)
         {
-            return CreateHierarchy(CompactHierarchyID.Invalid, nodeID, userID, allocator);
+            return CreateHierarchy(CompactHierarchyID.Invalid, nodeID, instanceID, allocator);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -178,23 +154,23 @@ namespace Chisel.Core
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal static CompactHierarchy CreateHierarchy(CompactHierarchyID hierarchyID, NodeID nodeID, Int32 userID, Allocator allocator)
+        internal static CompactHierarchy CreateHierarchy(CompactHierarchyID hierarchyID, NodeID nodeID, Int32 instanceID, Allocator allocator)
         {
             var compactHierarchy = new CompactHierarchy
             {
                 brushMeshToBrush = new UnsafeParallelHashMap<int, CompactNodeID>(16384, allocator),
                 compactNodes     = new UnsafeList<CompactChildNode>(1024, allocator),
-                brushOutlines    = new UnsafeList<BrushOutline>(1024, allocator),
-                idManager        = IDManager.Create(allocator),
+				//brushOutlineManager = BrushOutlineManager .Create(allocator),
+				slotIndexMap     = SlotIndexMap.Create(allocator),
                 HierarchyID      = hierarchyID,
                 isCreated        = true
             };
             compactHierarchy.RootID = compactHierarchy.CreateNode(nodeID, new CompactNode
             {
-                userID          = userID,
-                operation       = CSGOperationType.Additive,
-                transformation  = float4x4.identity,
-                brushMeshHash   = Int32.MaxValue
+                instanceID     = instanceID,
+                operation      = CSGOperationType.Additive,
+                transformation = float4x4.identity,
+                brushMeshHash  = Int32.MaxValue
             });
             return compactHierarchy;
         }
@@ -202,14 +178,14 @@ namespace Chisel.Core
 
         #region CreateBranch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public CompactNodeID CreateBranch(NodeID nodeID, CSGOperationType operation = CSGOperationType.Additive, Int32 userID = 0) { return CreateBranch(nodeID, float4x4.identity, operation, userID); }
+        public CompactNodeID CreateBranch(NodeID nodeID, CSGOperationType operation = CSGOperationType.Additive, Int32 instanceID = 0) { return CreateBranch(nodeID, float4x4.identity, operation, instanceID); }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public CompactNodeID CreateBranch(NodeID nodeID, float4x4 transformation, CSGOperationType operation = CSGOperationType.Additive, Int32 userID = 0)
+        public CompactNodeID CreateBranch(NodeID nodeID, float4x4 transformation, CSGOperationType operation = CSGOperationType.Additive, Int32 instanceID = 0)
         {
             return CreateNode(nodeID, new CompactNode
             {
-                userID          = userID,
+                instanceID          = instanceID,
                 operation       = operation,
                 transformation  = transformation,
                 brushMeshHash   = Int32.MaxValue
@@ -219,14 +195,14 @@ namespace Chisel.Core
 
         #region CreateBrush
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public CompactNodeID CreateBrush(NodeID nodeID, Int32 brushMeshID, CSGOperationType operation = CSGOperationType.Additive, Int32 userID = 0) { return CreateBrush(nodeID, brushMeshID, float4x4.identity, operation, userID); }
+        public CompactNodeID CreateBrush(NodeID nodeID, Int32 brushMeshID, CSGOperationType operation = CSGOperationType.Additive, Int32 instanceID = 0) { return CreateBrush(nodeID, brushMeshID, float4x4.identity, operation, instanceID); }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public CompactNodeID CreateBrush(NodeID nodeID, Int32 brushMeshID, float4x4 transformation, CSGOperationType operation = CSGOperationType.Additive, Int32 userID = 0)
+        public CompactNodeID CreateBrush(NodeID nodeID, Int32 brushMeshID, float4x4 transformation, CSGOperationType operation = CSGOperationType.Additive, Int32 instanceID = 0)
         {
             return CreateNode(nodeID, new CompactNode
             {
-                userID          = userID,
+                instanceID      = instanceID,
                 operation       = operation,
                 transformation  = transformation,
                 brushMeshHash   = brushMeshID, 
@@ -241,7 +217,7 @@ namespace Chisel.Core
         {
             if (!IsCreated)
 				return false;
-			if (!idManager.IsValidID(compactNodeID.value, compactNodeID.generation, out var index))
+			if (!slotIndexMap.IsValidSlotIndex(compactNodeID.slotIndex, out var index))
                 return false;
             if (compactNodes[index].compactNodeID != compactNodeID)
                 return false;
@@ -249,7 +225,7 @@ namespace Chisel.Core
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public int SiblingIndexOf(CompactNodeID compactNodeID)
+		public readonly int SiblingIndexOf(CompactNodeID compactNodeID)
         {
             Debug.Assert(IsCreated);
             var nodeIndex = HierarchyIndexOfInternal(compactNodeID);
@@ -266,7 +242,7 @@ namespace Chisel.Core
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public int SiblingIndexOf(CompactNodeID parent, CompactNodeID child)
+		public readonly int SiblingIndexOf(CompactNodeID parent, CompactNodeID child)
         {
             Debug.Assert(IsCreated);
             if (parent == CompactNodeID.Invalid)
@@ -287,7 +263,7 @@ namespace Chisel.Core
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public NodeID GetNodeID(CompactNodeID compactNodeID)
+		public readonly NodeID GetNodeID(CompactNodeID compactNodeID)
         {
             int nodeIndex;
             Debug.Assert(IsCreated);
@@ -311,7 +287,7 @@ namespace Chisel.Core
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public NodeID GetNodeIDNoErrors(CompactNodeID compactNodeID)
+        public readonly NodeID GetNodeIDNoErrors(CompactNodeID compactNodeID)
         {
             int nodeIndex;
             Debug.Assert(IsCreated);
@@ -329,7 +305,7 @@ namespace Chisel.Core
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public CompactNodeID ParentOf(CompactNodeID compactNodeID)
+        public readonly CompactNodeID ParentOf(CompactNodeID compactNodeID)
         {
             Debug.Assert(IsCreated);
             if (compactNodeID == CompactNodeID.Invalid)
@@ -557,7 +533,7 @@ namespace Chisel.Core
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal void AttachToParent(ref IDManager hierarchyIDLookup, NativeList<CompactHierarchy> hierarchies, ref IDManager nodeIDLookup, NativeList<CompactNodeID> nodes, CompactNodeID parentID, CompactNodeID compactNodeID, bool ignoreBrushMeshHashes = false)
+        internal void AttachToParent(ref SlotIndexMap hierarchyIDLookup, NativeList<CompactHierarchy> hierarchies, ref SlotIndexMap nodeIDLookup, NativeList<CompactNodeID> nodes, CompactNodeID parentID, CompactNodeID compactNodeID, bool ignoreBrushMeshHashes = false)
         {
             Debug.Assert(IsCreated);
             var parentIndex = HierarchyIndexOfInternal(parentID);
@@ -581,7 +557,7 @@ namespace Chisel.Core
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         [return: MarshalAs(UnmanagedType.U1)]
-        internal bool AttachToParentAt(ref IDManager hierarchyIDLookup, NativeList<CompactHierarchy> hierarchies, ref IDManager nodeIDLookup, NativeList<CompactNodeID> nodes, CompactNodeID parentID, int index, CompactNodeID compactNodeID)
+        internal bool AttachToParentAt(ref SlotIndexMap hierarchyIDLookup, NativeList<CompactHierarchy> hierarchies, ref SlotIndexMap nodeIDLookup, NativeList<CompactNodeID> nodes, CompactNodeID parentID, int index, CompactNodeID compactNodeID)
         {
             Debug.Assert(IsCreated);
             if (index < 0)

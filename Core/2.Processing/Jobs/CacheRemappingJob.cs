@@ -30,16 +30,8 @@ namespace Chisel.Core
         static readonly IndexOrderComparer indexOrderComparer = new IndexOrderComparer();
         #endregion
 
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public void InitializeHierarchy(ref CompactHierarchy hierarchy)
-        {
-            compactHierarchyPtr = (CompactHierarchy*)UnsafeUtility.AddressOf(ref hierarchy);
-        }
-
-        [NativeDisableUnsafePtrRestriction]
-        [NoAlias, ReadOnly] public CompactHierarchy*            compactHierarchyPtr;
-        [NoAlias, ReadOnly] public NativeList<int>              nodeIDValueToNodeOrder;
+		[NoAlias, ReadOnly] public CompactHierarchy.ReadOnly    compactHierarchy;
+		[NoAlias, ReadOnly] public NativeList<int>              nodeIDValueToNodeOrder;
         [NoAlias, ReadOnly] public NativeReference<int>         nodeIDValueToNodeOrderOffsetRef;
         [NoAlias, ReadOnly] public NativeList<CompactNodeID>    brushes;
         [NoAlias, ReadOnly] public int                          brushCount;
@@ -62,7 +54,6 @@ namespace Chisel.Core
 
         public void Execute()
         {
-            ref var compactHierarchy = ref UnsafeUtility.AsRef<CompactHierarchy>(compactHierarchyPtr);
             var needRemapping = false;
             var nodeIDValueToNodeOrderOffset = nodeIDValueToNodeOrderOffsetRef.Value;
 
@@ -77,7 +68,7 @@ namespace Chisel.Core
                 for (int n = 0; n < brushCount; n++)
                 {
                     var compactNodeID = allTreeBrushIndexOrders[n].compactNodeID;
-                    var offsetIDValue = compactNodeID.value - nodeIDValueToNodeOrderOffset;
+                    var offsetIDValue = compactNodeID.slotIndex.index - nodeIDValueToNodeOrderOffset;
                     indexLookup[offsetIDValue] = (n + 1);
                 }
                 using (indexLookup)
@@ -88,7 +79,7 @@ namespace Chisel.Core
                         for (int n = 0; n < previousBrushIDValuesLength; n++)
                         {
                             var sourceID        = brushIDValues[n];
-                            var sourceIDValue   = sourceID.value;
+                            var sourceIDValue   = sourceID.slotIndex.index;
                             var sourceOffset    = sourceIDValue - nodeIDValueToNodeOrderOffset;
                             var destination     = (sourceOffset < 0 || sourceOffset >= nodeIDValueToNodeOrder.Length) ? -1 : indexLookup[sourceOffset] - 1;
                             if (destination == -1)
@@ -127,7 +118,7 @@ namespace Chisel.Core
                                     if (!brushes.Contains(otherBrushID))
                                         continue;
 
-                                    var otherBrushIDValue   = otherBrushID.value;
+                                    var otherBrushIDValue   = otherBrushID.slotIndex.index;
                                     var otherBrushOrder     = nodeIDValueToNodeOrder[otherBrushIDValue - nodeIDValueToNodeOrderOffset];
                                     var otherIndexOrder     = new IndexOrder { compactNodeID = otherBrushID, nodeOrder = otherBrushOrder };
                                     brushesThatNeedIndirectUpdateHashMap.Add(otherIndexOrder);
@@ -219,15 +210,15 @@ namespace Chisel.Core
                                         continue;
                                     }
 
-                                    { var tmp = basePolygonCache[destination]; basePolygonCache[destination] = basePolygonCache[source]; basePolygonCache[source] = tmp; }
-                                    { var tmp = routingTableCache[destination]; routingTableCache[destination] = routingTableCache[source]; routingTableCache[source] = tmp; }
-                                    { var tmp = transformationCache[destination]; transformationCache[destination] = transformationCache[source]; transformationCache[source] = tmp; }
-                                    { var tmp = brushRenderBufferCache[destination]; brushRenderBufferCache[destination] = brushRenderBufferCache[source]; brushRenderBufferCache[source] = tmp; }
-                                    { var tmp = treeSpaceVerticesCache[destination]; treeSpaceVerticesCache[destination] = treeSpaceVerticesCache[source]; treeSpaceVerticesCache[source] = tmp; }
-                                    { var tmp = brushTreeSpaceBoundCache[destination]; brushTreeSpaceBoundCache[destination] = brushTreeSpaceBoundCache[source]; brushTreeSpaceBoundCache[source] = tmp; }
-                                    { var tmp = brushTreeSpacePlaneCache[destination]; brushTreeSpacePlaneCache[destination] = brushTreeSpacePlaneCache[source]; brushTreeSpacePlaneCache[source] = tmp; }
-                                    { var tmp = brushesTouchedByBrushCache[destination]; brushesTouchedByBrushCache[destination] = brushesTouchedByBrushCache[source]; brushesTouchedByBrushCache[source] = tmp; }
-                                }
+									(basePolygonCache[source], basePolygonCache[destination]) = (basePolygonCache[destination], basePolygonCache[source]);
+									(routingTableCache[source], routingTableCache[destination]) = (routingTableCache[destination], routingTableCache[source]);
+									(transformationCache[source], transformationCache[destination]) = (transformationCache[destination], transformationCache[source]);
+									(brushRenderBufferCache[source], brushRenderBufferCache[destination]) = (brushRenderBufferCache[destination], brushRenderBufferCache[source]);
+									(treeSpaceVerticesCache[source], treeSpaceVerticesCache[destination]) = (treeSpaceVerticesCache[destination], treeSpaceVerticesCache[source]);
+									(brushTreeSpaceBoundCache[source], brushTreeSpaceBoundCache[destination]) = (brushTreeSpaceBoundCache[destination], brushTreeSpaceBoundCache[source]);
+									(brushTreeSpacePlaneCache[source], brushTreeSpacePlaneCache[destination]) = (brushTreeSpacePlaneCache[destination], brushTreeSpacePlaneCache[source]);
+									(brushesTouchedByBrushCache[source], brushesTouchedByBrushCache[destination]) = (brushesTouchedByBrushCache[destination], brushesTouchedByBrushCache[source]);
+								}
                             }
                         }
                     }

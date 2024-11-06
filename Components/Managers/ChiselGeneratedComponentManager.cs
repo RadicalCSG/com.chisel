@@ -3,6 +3,10 @@ using Chisel.Core;
 using UnityEngine;
 using UnityEngine.Pool;
 using UnityEngine.SceneManagement;
+using System;
+using Unity.Collections;
+
+
 #if UNITY_EDITOR
 using UnityEditor;
 using UnityEditor.SceneManagement;
@@ -10,6 +14,155 @@ using UnityEditor.SceneManagement;
 
 namespace Chisel.Components
 {
+#if UNITY_EDITOR
+	public struct BrushVisibilityLookup : IBrushVisibilityLookup, IDisposable
+	{
+		NativeHashMap<CompactNodeID, VisibilityState> compactNodeIDVisibilityStateLookup;
+		NativeHashMap<int, VisibilityState> instanceIDVisibilityStateLookup;
+
+		public void Dispose()
+        {
+            if (compactNodeIDVisibilityStateLookup.IsCreated)
+                compactNodeIDVisibilityStateLookup.Dispose();
+            compactNodeIDVisibilityStateLookup = default;
+
+			if (instanceIDVisibilityStateLookup.IsCreated)
+				instanceIDVisibilityStateLookup.Dispose();
+			instanceIDVisibilityStateLookup = default;
+		}
+
+        [GenerateTestsForBurstCompatibility]
+		public bool IsBrushVisible(CompactNodeID brushID) 
+        { 
+            return compactNodeIDVisibilityStateLookup.TryGetValue(brushID, out VisibilityState state) && state == VisibilityState.AllVisible;
+		}
+
+		[GenerateTestsForBurstCompatibility]
+		public bool IsBrushVisible(int instanceID)
+		{
+			return instanceIDVisibilityStateLookup.TryGetValue(instanceID, out VisibilityState state) && state == VisibilityState.AllVisible;
+		}
+
+		private readonly VisibilityState GetVisibilityState(SceneVisibilityManager instance, ChiselGeneratorComponent generator)
+        {
+            var resultState     = VisibilityState.Unknown;
+            var visible         = !instance.IsHidden(generator.gameObject);
+            var pickingEnabled  = !instance.IsPickingDisabled(generator.gameObject);
+            var topNode         = generator.TopTreeNode;
+            if (topNode.Valid)
+            {
+                topNode.Visible         = visible;
+                topNode.PickingEnabled  = pickingEnabled;
+
+                if (visible)
+                    resultState |= VisibilityState.AllVisible;
+                else
+                    resultState |= VisibilityState.AllInvisible;
+            }
+            return resultState;
+        }
+
+        public bool HasVisibilityInitialized(ChiselGeneratorComponent node)
+        {
+            if (!compactNodeIDVisibilityStateLookup.IsCreated || 
+                !node.TopTreeNode.Valid)
+                return false;
+
+            var compactNodeID = CompactHierarchyManager.GetCompactNodeID(node.TopTreeNode);
+            foreach (var childCompactNodeID in CompactHierarchyManager.GetAllChildren(compactNodeID))
+            {
+                if (!compactNodeIDVisibilityStateLookup.ContainsKey(childCompactNodeID))
+                    return false;
+            }
+            return true;
+        }
+        /*
+        public void UpdateVisibility(ChiselGeneratorComponent node)
+        {
+            if (!visibilityStateLookup.IsCreated)
+				visibilityStateLookup = new NativeHashMap<CompactNodeID, VisibilityState>(2048, Allocator.Persistent);
+			var sceneVisibilityManager = SceneVisibilityManager.instance;
+            UpdateVisibility(sceneVisibilityManager, node);
+        }
+        */
+        void UpdateVisibility(SceneVisibilityManager sceneVisibilityManager, ChiselGeneratorComponent node)
+        {
+            var treeNode = node.TopTreeNode;
+            if (!treeNode.Valid)
+                return;
+
+            var model = node.hierarchyItem.Model;
+            if (model == null)
+                Debug.LogError($"{node.hierarchyItem.Component} model {model} == null", node.hierarchyItem.Component);
+            if (!model)
+                return;
+
+            var modelNode = model.TopTreeNode;
+            var compactNodeID = CompactHierarchyManager.GetCompactNodeID(treeNode);
+            var modelCompactNodeID = CompactHierarchyManager.GetCompactNodeID(modelNode);
+            if (!compactNodeIDVisibilityStateLookup.TryGetValue(modelCompactNodeID, out VisibilityState prevState))
+                prevState = VisibilityState.Unknown;
+            var state = GetVisibilityState(sceneVisibilityManager, node);
+
+            foreach (var childCompactNodeID in CompactHierarchyManager.GetAllChildren(compactNodeID))
+                compactNodeIDVisibilityStateLookup[childCompactNodeID] = state;
+            compactNodeIDVisibilityStateLookup[modelCompactNodeID] = state | prevState;
+			instanceIDVisibilityStateLookup[node.GetInstanceID()] = state | prevState;
+		}
+
+        public void UpdateVisibility(IEnumerable<ChiselModelComponent> models)
+        {
+			// TODO: 1. turn off rendering regular meshes when we have partial visibility of model contents
+			//       2. find a way to render partial mesh instead
+			//          A. needs to show lightmap of original mesh, even when modified
+			//          B. updating lightmaps needs to still work as if original mesh is changed
+			if (!compactNodeIDVisibilityStateLookup.IsCreated)
+				compactNodeIDVisibilityStateLookup = new NativeHashMap<CompactNodeID, VisibilityState>(2048, Allocator.Persistent);
+			compactNodeIDVisibilityStateLookup.Clear();
+
+			if (!instanceIDVisibilityStateLookup.IsCreated)
+				instanceIDVisibilityStateLookup = new NativeHashMap<int, VisibilityState>(2048, Allocator.Persistent);
+			instanceIDVisibilityStateLookup.Clear();
+
+			var sceneVisibilityManager = SceneVisibilityManager.instance;
+            foreach (var node in ChiselGeneratedModelMeshManager.s_RegisteredNodeLookup)
+            {
+                if (!node || !node.isActiveAndEnabled)
+                    continue;
+
+                var generatorComponent = node as ChiselGeneratorComponent;
+                if (generatorComponent)
+                {
+                    UpdateVisibility(sceneVisibilityManager, generatorComponent);
+                }
+            }
+
+            foreach (var model in models)
+            {
+                if (!model || !model.isActiveAndEnabled || model.generated == null)
+                    continue;
+                var modelNode = model.TopTreeNode;
+                if (!modelNode.Valid)
+                    continue;
+                var modelCompactNodeID  = CompactHierarchyManager.GetCompactNodeID(modelNode);
+                if (!compactNodeIDVisibilityStateLookup.TryGetValue(modelCompactNodeID, out VisibilityState state))
+                {
+                    compactNodeIDVisibilityStateLookup[modelCompactNodeID] = VisibilityState.AllVisible;
+                    instanceIDVisibilityStateLookup[model.GetInstanceID()] = VisibilityState.AllVisible;
+					model.generated.visibilityState = VisibilityState.AllVisible;
+                    continue; 
+                }
+                if (state == VisibilityState.Mixed ||
+                    state != model.generated.visibilityState)
+                    model.generated.needVisibilityMeshUpdate = true;
+                model.generated.visibilityState = state;
+            }
+        }
+	}
+#endif
+
+    // TODO: get rid of all statics, properly dispose native memory
+
     // TODO: fix adding "generated" gameObject causing TransformChanged events that dirty model, which rebuilds components
     // TODO: Modifying a lightmap index *should also be undoable*
     public sealed class ChiselGeneratedComponentManager
@@ -159,14 +312,31 @@ namespace Chisel.Components
         }
 
 #if UNITY_EDITOR
-        private static readonly Dictionary<CompactNodeID, VisibilityState> s_VisibilityStateLookup = new();
-        public static bool IsBrushVisible(CompactNodeID brushID) 
-        { 
-            return s_VisibilityStateLookup.TryGetValue(brushID, out VisibilityState state) && state == VisibilityState.AllVisible; 
-        }
+        public static BrushVisibilityLookup brushVisibilityLookup = new BrushVisibilityLookup();
+		
+		public static bool IsBrushVisible(CompactNodeID brushID)
+		{
+			return brushVisibilityLookup.IsBrushVisible(brushID);
+		}
 
-        static bool updateVisibilityFlag = true;
-        public static void OnVisibilityChanged()
+		static bool updateVisibilityFlag = true;
+		public static void UpdateVisibility(bool force = false)
+        {
+            if (!updateVisibilityFlag && !force)
+                return;
+
+            updateVisibilityFlag = false;
+            brushVisibilityLookup.UpdateVisibility(s_Models);
+		}
+
+		public static void EnsureVisibilityInitialized(ChiselGeneratorComponent node)
+		{
+			if (brushVisibilityLookup.HasVisibilityInitialized(node))
+				return;
+			UpdateVisibility(node);
+		}
+
+		public static void OnVisibilityChanged()
         {
             updateVisibilityFlag = true;
             EditorApplication.delayCall -= OnUnityIndeterministicMessageOrderingWorkAround;
@@ -177,7 +347,7 @@ namespace Chisel.Components
         static void OnUnityIndeterministicMessageOrderingWorkAround()
         {
             EditorApplication.delayCall -= OnUnityIndeterministicMessageOrderingWorkAround;
-            EditorApplication.QueuePlayerLoopUpdate();
+			EditorApplication.QueuePlayerLoopUpdate();
             SceneView.RepaintAll();
         }
 
@@ -187,7 +357,7 @@ namespace Chisel.Components
             {
                 if (!model || !model.isActiveAndEnabled || model.generated == null)
                     continue;
-                model.generated.UpdateDebugVisualizationState(drawModeFlags, ignoreBrushVisibility);
+                model.generated.UpdateDebugVisualizationState(brushVisibilityLookup, drawModeFlags, ignoreBrushVisibility);
             }
             return drawModeFlags;
         }
@@ -218,129 +388,14 @@ namespace Chisel.Components
                 }
             }
         }
-
+        
         public static void OnRenderModels(Camera camera, DrawModeFlags drawModeFlags)
         {
             foreach (var model in s_Models)
             {
                 if (model == null)
                     continue;
-                model.OnRenderModel(camera, drawModeFlags);
-            }
-        }
-
-        public static VisibilityState UpdateVisibilityState(SceneVisibilityManager instance, ChiselGeneratorComponent generator)
-        {
-            var resultState     = VisibilityState.Unknown;
-            var visible         = !instance.IsHidden(generator.gameObject);
-            var pickingEnabled  = !instance.IsPickingDisabled(generator.gameObject);
-            var topNode         = generator.TopTreeNode;
-            if (topNode.Valid)
-            {
-                topNode.Visible         = visible;
-                topNode.PickingEnabled  = pickingEnabled;
-
-                if (visible)
-                    resultState |= VisibilityState.AllVisible;
-                else
-                    resultState |= VisibilityState.AllInvisible;
-            }
-            return resultState;
-        }
-
-        public static bool HasVisibilityInitialized(ChiselGeneratorComponent node)
-        {
-            if (!node.TopTreeNode.Valid)
-                return false;
-
-            var compactNodeID = CompactHierarchyManager.GetCompactNodeID(node.TopTreeNode);
-            foreach (var childCompactNodeID in CompactHierarchyManager.GetAllChildren(compactNodeID))
-            {
-                if (!s_VisibilityStateLookup.ContainsKey(childCompactNodeID))
-                    return false;
-            }
-            return true;
-        } 
-
-        public static void EnsureVisibilityInitialized(ChiselGeneratorComponent node)
-        {
-            if (HasVisibilityInitialized(node))
-                return;
-            UpdateVisibility(node);
-        }
-
-        public static void UpdateVisibility(ChiselGeneratorComponent node)
-        {
-            var sceneVisibilityManager = SceneVisibilityManager.instance;
-            UpdateVisibility(sceneVisibilityManager, node);
-        }
-
-        static void UpdateVisibility(SceneVisibilityManager sceneVisibilityManager, ChiselGeneratorComponent node)
-        {
-            var treeNode = node.TopTreeNode;
-            if (!treeNode.Valid)
-                return;
-
-            var model = node.hierarchyItem.Model;
-            if (model == null)
-                Debug.LogError($"{node.hierarchyItem.Component} model {model} == null", node.hierarchyItem.Component);
-            if (!model)
-                return;
-
-            var modelNode = model.TopTreeNode;
-            var compactNodeID = CompactHierarchyManager.GetCompactNodeID(treeNode);
-            var modelCompactNodeID = CompactHierarchyManager.GetCompactNodeID(modelNode);
-            if (!s_VisibilityStateLookup.TryGetValue(modelCompactNodeID, out VisibilityState prevState))
-                prevState = VisibilityState.Unknown;
-            var state = UpdateVisibilityState(sceneVisibilityManager, node);
-
-            foreach (var childCompactNodeID in CompactHierarchyManager.GetAllChildren(compactNodeID))
-                s_VisibilityStateLookup[childCompactNodeID] = state;
-            s_VisibilityStateLookup[modelCompactNodeID] = state | prevState;
-        }
-
-        public static void UpdateVisibility(bool force = false)
-        { 
-            if (!updateVisibilityFlag && !force)
-                return;
-
-            updateVisibilityFlag = false;
-            // TODO: 1. turn off rendering regular meshes when we have partial visibility of model contents
-            //       2. find a way to render partial mesh instead
-            //          A. needs to show lightmap of original mesh, even when modified
-            //          B. updating lightmaps needs to still work as if original mesh is changed
-            s_VisibilityStateLookup.Clear();
-            var sceneVisibilityManager = SceneVisibilityManager.instance;
-            foreach (var node in ChiselGeneratedModelMeshManager.s_RegisteredNodeLookup)
-            {
-                if (!node || !node.isActiveAndEnabled)
-                    continue;
-
-                var generatorComponent = node as ChiselGeneratorComponent;
-                if (generatorComponent)
-                {
-                    UpdateVisibility(sceneVisibilityManager, generatorComponent);
-                }
-            }
-
-            foreach (var model in s_Models)
-            {
-                if (!model || !model.isActiveAndEnabled || model.generated == null)
-                    continue;
-                var modelNode = model.TopTreeNode;
-                if (!modelNode.Valid)
-                    continue;
-                var modelCompactNodeID  = CompactHierarchyManager.GetCompactNodeID(modelNode);
-                if (!s_VisibilityStateLookup.TryGetValue(modelCompactNodeID, out VisibilityState state))
-                {
-                    s_VisibilityStateLookup[modelCompactNodeID] = VisibilityState.AllVisible;
-                    model.generated.visibilityState = VisibilityState.AllVisible;
-                    continue; 
-                }
-                if (state == VisibilityState.Mixed ||
-                    state != model.generated.visibilityState)
-                    model.generated.needVisibilityMeshUpdate = true;
-                model.generated.visibilityState = state;
+				ChiselRenderObjects.OnRenderModel(camera, model, drawModeFlags);
             }
         }
 #endif
@@ -498,7 +553,7 @@ namespace Chisel.Components
 
         public static void CheckIfFullMeshNeedsToBeHidden(ChiselModelComponent model, ChiselRenderObjects renderable)
         {
-            var shouldHideMesh = (model.generated.visibilityState != VisibilityState.AllVisible && model.generated.visibilityState != VisibilityState.Unknown);
+            var shouldHideMesh = true;// (model.generated.visibilityState != VisibilityState.AllVisible && model.generated.visibilityState != VisibilityState.Unknown);
             if (renderable.meshRenderer.forceRenderingOff != shouldHideMesh)
                 renderable.meshRenderer.forceRenderingOff = shouldHideMesh;
         }
@@ -516,7 +571,7 @@ namespace Chisel.Components
 #endif
 
 #if UNITY_EDITOR
-        // Hacky way to store that a mesh has lightmap UV created
+        // FIXME: Hacky way to store that a mesh has lightmap UV created
         // Note: tried storing this in name of mesh, but getting the current mesh name allocates a lot of memory 
         public static bool HasLightmapUVs(UnityEngine.Mesh sharedMesh)
         {
@@ -554,7 +609,7 @@ namespace Chisel.Components
                 return;
             
             UnwrapParam.SetDefaults(out UnwrapParam param);
-            var uvSettings = model.UVGenerationSettings;
+            var uvSettings = model.RenderSettings.uvGenerationSettings;
             param.angleError	= Mathf.Clamp(uvSettings.angleError,       SerializableUnwrapParam.minAngleError, SerializableUnwrapParam.maxAngleError);
             param.areaError		= Mathf.Clamp(uvSettings.areaError,        SerializableUnwrapParam.minAreaError,  SerializableUnwrapParam.maxAreaError );
             param.hardAngle		= Mathf.Clamp(uvSettings.hardAngle,        SerializableUnwrapParam.minHardAngle,  SerializableUnwrapParam.maxHardAngle );

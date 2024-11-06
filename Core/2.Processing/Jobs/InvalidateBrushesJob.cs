@@ -14,28 +14,20 @@ namespace Chisel.Core
     [BurstCompile(CompileSynchronously = true)]
     unsafe struct InvalidateBrushesJob : IJob
     {
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public void InitializeHierarchy(ref CompactHierarchy hierarchy)
-        {
-            compactHierarchyPtr = (CompactHierarchy*)UnsafeUtility.AddressOf(ref hierarchy);
-        }
-
-        [NativeDisableUnsafePtrRestriction]
-        [NoAlias, ReadOnly] public CompactHierarchy*                                      compactHierarchyPtr;
-        [NoAlias, ReadOnly] public NativeReference<bool>                                  needRemappingRef;
-        [NoAlias, ReadOnly] public NativeList<IndexOrder>                                 rebuildTreeBrushIndexOrders;
-        [NoAlias, ReadOnly] public NativeList<BlobAssetReference<BrushesTouchedByBrush>>  brushesTouchedByBrushCache;
-        [NoAlias, ReadOnly] public NativeList<CompactNodeID>                              brushes;
-        [NoAlias, ReadOnly] public int                                                    brushCount;
-        [NoAlias, ReadOnly] public NativeList<int>                                        nodeIDValueToNodeOrder;
-        [NoAlias, ReadOnly] public NativeReference<int>                                   nodeIDValueToNodeOrderOffsetRef;
+        [NoAlias, ReadOnly] public CompactHierarchy.ReadOnly                             compactHierarchy;
+        [NoAlias, ReadOnly] public NativeReference<bool>                                 needRemappingRef;
+        [NoAlias, ReadOnly] public NativeList<IndexOrder>                                rebuildTreeBrushIndexOrders;
+        [NoAlias, ReadOnly] public NativeList<BlobAssetReference<BrushesTouchedByBrush>> brushesTouchedByBrushCache;
+        [NoAlias, ReadOnly] public NativeList<CompactNodeID>                             brushes;
+        [NoAlias, ReadOnly] public int                                                   brushCount;
+        [NoAlias, ReadOnly] public NativeList<int>                                       nodeIDValueToNodeOrder;
+        [NoAlias, ReadOnly] public NativeReference<int>                                  nodeIDValueToNodeOrderOffsetRef;
 
         // Write
         [NoAlias, WriteOnly] public NativeParallelHashSet<IndexOrder>   brushesThatNeedIndirectUpdateHashMap;
 
         public void Execute()
         {
-            ref var compactHierarchy = ref UnsafeUtility.AsRef<CompactHierarchy>(compactHierarchyPtr);
             if (rebuildTreeBrushIndexOrders.Length == 0 &&
                 rebuildTreeBrushIndexOrders.Length == brushCount && !needRemappingRef.Value)
                 return;
@@ -67,7 +59,7 @@ namespace Chisel.Core
                     if (!brushes.Contains(otherBrushID))
                         continue;
 
-                    var otherBrushIDValue   = otherBrushID.value;
+                    var otherBrushIDValue   = otherBrushID.slotIndex.index;
                     var otherBrushOrder     = nodeIDValueToNodeOrder[otherBrushIDValue - nodeIDValueToNodeOrderOffset];
                     var otherIndexOrder     = new IndexOrder { compactNodeID = otherBrushID, nodeOrder = otherBrushOrder };
                     brushesThatNeedIndirectUpdateHashMap.Add(otherIndexOrder);

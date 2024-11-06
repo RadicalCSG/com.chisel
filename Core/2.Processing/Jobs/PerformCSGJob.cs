@@ -857,7 +857,7 @@ namespace Chisel.Core
                 var brushNodeID1    = surfaceInfo.brushIndexOrder.compactNodeID;
 
                 // check if brush does not exist in routing table (will not have any effect)
-                var idWithOffset = brushNodeID1.value - nodeIDOffset;
+                var idWithOffset = brushNodeID1.slotIndex.index - nodeIDOffset;
                 if (idWithOffset < 0 || idWithOffset >= nodeIDToTableIndex.Length)
                     continue;
 
@@ -886,7 +886,7 @@ namespace Chisel.Core
                     var brushNodeID1     = surfaceInfo.brushIndexOrder.compactNodeID;
 
                     // check if brush does not exist in routing table (will not have any effect)
-                    var idWithOffset = brushNodeID1.value - nodeIDOffset;
+                    var idWithOffset = brushNodeID1.slotIndex.index - nodeIDOffset;
                     if (idWithOffset < 0 || idWithOffset >= nodeIDToTableIndex.Length)
                         continue;
 

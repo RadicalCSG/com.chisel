@@ -24,13 +24,15 @@ namespace Chisel.Core
 
         public BlobArray<Int32>		   indices;
         public BlobArray<RenderVertex> renderVertices;
-        public BlobArray<float3>	   colliderVertices;
+		public BlobArray<SelectVertex> selectVertices;
+		public BlobArray<float3>	   colliderVertices;
 
         public void Construct(BlobBuilder builder,
 							  NativeList<Int32> indices,
+							  NativeList<float3> colliderVertices,
+							  NativeList<SelectVertex> selectVertices,
 							  NativeList<RenderVertex> renderVertices,
-							  NativeList<float3> colliderVertices, 
-                              int surfaceIndex,
+							  int surfaceIndex,
                               SurfaceDestinationFlags destinationFlags,
 							  SurfaceDestinationParameters destinationParameters)
 		{
@@ -53,10 +55,13 @@ namespace Chisel.Core
 			this.aabb = colliderVertices.GetMinMax();
 
 			var outputIndices = builder.Construct(ref this.indices, indices);
-			var outputVertices = builder.Construct(ref this.colliderVertices, colliderVertices);
-			builder.Construct(ref this.renderVertices, renderVertices);
+			var outputColliderVertices = builder.Construct(ref this.colliderVertices, colliderVertices);
+			var outputRenderVertices = builder.Construct(ref this.renderVertices, renderVertices);
+			var outputSelectVertices = builder.Construct(ref this.selectVertices, selectVertices);
 
-			UnityEngine.Debug.Assert(outputVertices.Length == this.vertexCount);
+			UnityEngine.Debug.Assert(outputColliderVertices.Length == this.vertexCount);
+			UnityEngine.Debug.Assert(outputRenderVertices.Length == this.vertexCount);
+			UnityEngine.Debug.Assert(outputSelectVertices.Length == this.vertexCount);
 			Debug.Assert(outputIndices.Length == this.indexCount);
 		}
     };
@@ -76,7 +81,7 @@ namespace Chisel.Core
     struct ChiselQuerySurfaces
     {
         public CompactNodeID                    brushNodeID;
-        public BlobArray<ChiselQuerySurface>    surfaces;
+		public BlobArray<ChiselQuerySurface>    surfaces;
     }
 
     struct ChiselBrushRenderBuffer

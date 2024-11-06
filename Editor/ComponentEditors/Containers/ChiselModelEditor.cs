@@ -174,27 +174,11 @@ namespace Chisel.Editors
         delegate bool HasUVOverlapsDelegate(Renderer renderer);
         delegate bool HasInstancingDelegate(Shader s);
 
-#if UNITY_2023_1_OR_NEWER
 		delegate void LightmapParametersGUIDelegate(SerializedProperty prop, GUIContent content);
 		static readonly LightmapParametersGUIDelegate LightmapParametersGUI = ReflectionExtensions.CreateDelegate<LightmapParametersGUIDelegate>("UnityEditor.RendererLightingSettings", "LightmapParametersGUI");
 		static readonly HasClampedResolutionDelegate HasClampedResolution = typeof(Lightmapping).CreateDelegate<HasClampedResolutionDelegate>("HasClampedResolution");
 		static readonly HasUVOverlapsDelegate HasUVOverlaps = typeof(Lightmapping).CreateDelegate<HasUVOverlapsDelegate>("HasUVOverlaps");
-#elif UNITY_2020_2_OR_NEWER
-        delegate void LightmapParametersGUIDelegate(SerializedProperty prop, GUIContent content);
-        static readonly LightmapParametersGUIDelegate	LightmapParametersGUI   = ReflectionExtensions.CreateDelegate<LightmapParametersGUIDelegate>("UnityEditor.SharedLightingSettingsEditor", "LightmapParametersGUI");
-        static readonly HasClampedResolutionDelegate    HasClampedResolution    = typeof(Lightmapping).CreateDelegate<HasClampedResolutionDelegate>("HasClampedResolution");
-        static readonly HasUVOverlapsDelegate           HasUVOverlaps           = typeof(Lightmapping).CreateDelegate<HasUVOverlapsDelegate>("HasUVOverlaps");
-#elif UNITY_2020_1_OR_NEWER
-        delegate bool LightmapParametersGUIDelegate(SerializedProperty prop, GUIContent content);
-        static LightmapParametersGUIDelegate	LightmapParametersGUI   = ReflectionExtensions.CreateDelegate<LightmapParametersGUIDelegate>("UnityEditor.SharedLightingSettingsEditor", "LightmapParametersGUI");
-        static HasClampedResolutionDelegate     HasClampedResolution    = typeof(Lightmapping).CreateDelegate<HasClampedResolutionDelegate>("HasClampedResolution");
-        static HasUVOverlapsDelegate            HasUVOverlaps           = typeof(Lightmapping).CreateDelegate<HasUVOverlapsDelegate>("HasUVOverlaps");
-#else
-        delegate bool LightmapParametersGUIDelegate(SerializedProperty prop, GUIContent content);
-        static LightmapParametersGUIDelegate    LightmapParametersGUI   = ReflectionExtensions.CreateDelegate<LightmapParametersGUIDelegate>("UnityEditor.LightingSettingsInspector", "LightmapParametersGUI");
-        static HasClampedResolutionDelegate     HasClampedResolution    = typeof(LightmapEditorSettings).CreateDelegate<HasClampedResolutionDelegate>("HasClampedResolution");
-        static HasUVOverlapsDelegate            HasUVOverlaps           = typeof(LightmapEditorSettings).CreateDelegate<HasUVOverlapsDelegate>("HasUVOverlaps");
-#endif
+
 		static GetCachedMeshSurfaceAreaDelegate GetCachedMeshSurfaceArea    = ReflectionExtensions.CreateDelegate<GetCachedMeshSurfaceAreaDelegate>("UnityEditor.InternalMeshUtil", "GetCachedMeshSurfaceArea");
         static HasInstancingDelegate            HasInstancing               = typeof(ShaderUtil).CreateDelegate<HasInstancingDelegate>("HasInstancing");
          
@@ -222,10 +206,10 @@ namespace Chisel.Editors
             createRenderComponentsProp   = serializedObject.FindProperty($"{ChiselModelComponent.kCreateRenderComponentsName}");
             createColliderComponentsProp = serializedObject.FindProperty($"{ChiselModelComponent.kCreateColliderComponentsName}");
             autoRebuildUVsProp           = serializedObject.FindProperty($"{ChiselModelComponent.kAutoRebuildUVsName}");
-            angleErrorProp               = serializedObject.FindProperty($"{ChiselModelComponent.kUVGenerationSettingsName}.{SerializableUnwrapParam.kAngleErrorName}");
-            areaErrorProp                = serializedObject.FindProperty($"{ChiselModelComponent.kUVGenerationSettingsName}.{SerializableUnwrapParam.kAreaErrorName}");
-            hardAngleProp                = serializedObject.FindProperty($"{ChiselModelComponent.kUVGenerationSettingsName}.{SerializableUnwrapParam.kHardAngleName}");
-            packMarginPixelsProp         = serializedObject.FindProperty($"{ChiselModelComponent.kUVGenerationSettingsName}.{SerializableUnwrapParam.kPackMarginPixelsName}");
+            angleErrorProp               = serializedObject.FindProperty($"{ChiselModelComponent.kRenderSettingsName}.{ChiselGeneratedRenderSettings.kUVGenerationSettingsName}.{SerializableUnwrapParam.kAngleErrorName}");
+            areaErrorProp                = serializedObject.FindProperty($"{ChiselModelComponent.kRenderSettingsName}.{ChiselGeneratedRenderSettings.kUVGenerationSettingsName}.{SerializableUnwrapParam.kAreaErrorName}");
+            hardAngleProp                = serializedObject.FindProperty($"{ChiselModelComponent.kRenderSettingsName}.{ChiselGeneratedRenderSettings.kUVGenerationSettingsName}.{SerializableUnwrapParam.kHardAngleName}");
+            packMarginPixelsProp         = serializedObject.FindProperty($"{ChiselModelComponent.kRenderSettingsName}.{ChiselGeneratedRenderSettings.kUVGenerationSettingsName}.{SerializableUnwrapParam.kPackMarginPixelsName}");
 
 
             motionVectorsProp                   = serializedObject.FindProperty($"{ChiselModelComponent.kRenderSettingsName}.{ChiselGeneratedRenderSettings.kMotionVectorGenerationModeName}");

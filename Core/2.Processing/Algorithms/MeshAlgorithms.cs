@@ -1,18 +1,11 @@
 using System;
-using Unity.Burst;
 using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
-using Unity.Jobs;
 using Unity.Mathematics;
-using Debug = UnityEngine.Debug;
-using Vector3 = UnityEngine.Vector3;
-using Quaternion = UnityEngine.Quaternion;
 using ReadOnlyAttribute = Unity.Collections.ReadOnlyAttribute;
 using WriteOnlyAttribute = Unity.Collections.WriteOnlyAttribute;
-using Unity.Entities;
-using andywiecko.BurstTriangulator;
 using System.Runtime.CompilerServices;
-using System.ComponentModel;
+using UnityEditor;
 
 namespace Chisel.Core
 {
@@ -140,6 +133,7 @@ namespace Chisel.Core
     {
 		public NativeArray<int>			indexRemap;
 		public NativeList<float3>		surfaceColliderVertices;
+		public NativeList<SelectVertex> surfaceSelectVertices;
 		public NativeList<RenderVertex> surfaceRenderVertices;
 
 
@@ -147,10 +141,11 @@ namespace Chisel.Core
 		{
 			indexRemap.ClearValues();
 			surfaceColliderVertices.Clear();
+			surfaceSelectVertices.Clear();
 			surfaceRenderVertices.Clear();
 		}
 
-		public void RegisterVertices(NativeList<int> triangles, int startIndex, [ReadOnly] UnsafeList<float3> sourceVertices, float3 normal, CategoryIndex categoryIndex)
+		public void RegisterVertices(NativeList<int> triangles, int startIndex, [ReadOnly] UnsafeList<float3> sourceVertices, float3 normal, int instanceID, CategoryIndex categoryIndex)
 		{
 			var surfaceNormal = normal;
 			if (categoryIndex == CategoryIndex.ValidReverseAligned || categoryIndex == CategoryIndex.ReverseAligned)
@@ -168,6 +163,11 @@ namespace Chisel.Core
 					{
 						position = position,
 						normal = surfaceNormal
+					});
+					surfaceSelectVertices.Add(new SelectVertex
+					{
+						position = position,
+						instanceID = HandleUtility.EncodeSelectionId(instanceID)
 					});
 					indexRemap[vertexIndexSrc] = vertexIndexDst + 1;
 				} else

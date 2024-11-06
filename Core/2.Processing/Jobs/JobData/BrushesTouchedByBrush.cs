@@ -192,7 +192,7 @@ namespace Chisel.Core
 
         public IntersectionType Get(CompactNodeID nodeID)
         {
-            var idValue = nodeID.value;
+            var idValue = nodeID.slotIndex.index;
             idValue -= BitOffset;
             if (idValue < 0 || idValue >= BitCount)
             {

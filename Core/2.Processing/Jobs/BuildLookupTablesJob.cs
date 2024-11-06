@@ -33,7 +33,7 @@ namespace Chisel.Core
                 for (int nodeOrder = 0; nodeOrder < brushCount; nodeOrder++)
                 {
                     var brushCompactNodeID      = brushes[nodeOrder];
-                    var brushCompactNodeIDValue = brushCompactNodeID.value;
+                    var brushCompactNodeIDValue = brushCompactNodeID.slotIndex.index;
                     nodeIDValueMin = math.min(nodeIDValueMin, brushCompactNodeIDValue);
                     nodeIDValueMax = math.max(nodeIDValueMax, brushCompactNodeIDValue);
                 }
@@ -49,7 +49,7 @@ namespace Chisel.Core
             for (int nodeOrder  = 0; nodeOrder  < brushCount; nodeOrder ++)
             {
                 var brushCompactNodeID      = brushes[nodeOrder];
-                var brushCompactNodeIDValue = brushCompactNodeID.value;
+                var brushCompactNodeIDValue = brushCompactNodeID.slotIndex.index;
                 nodeIDValueToNodeOrder[brushCompactNodeIDValue - nodeIDValueToNodeOrderOffset] = nodeOrder;
                     
                 // We need the index into the tree to ensure deterministic ordering

@@ -240,8 +240,8 @@ namespace Chisel.Editors
 
         static string NameForTreeNode(CSGTreeNode treeNode)
         {
-            var userID = treeNode.UserID;
-            var obj = (userID != 0) ? EditorUtility.InstanceIDToObject(userID) : null;
+            var instanceID = treeNode.InstanceID;
+            var obj = (instanceID != 0) ? EditorUtility.InstanceIDToObject(instanceID) : null;
             string name;
             if (obj == null)
             {
@@ -254,15 +254,15 @@ namespace Chisel.Editors
             {
                 var brush = (CSGTreeBrush)treeNode;
                 if (treeNode.Valid)
-                    return $"{name} [{treeNode}:{userID}:{brush.BrushMesh.BrushMeshID}]";
+                    return $"{name} [{treeNode}:{instanceID}:{brush.BrushMesh.BrushMeshID}]";
                 else
-                    return $"{name} [{treeNode}:{userID}:{brush.BrushMesh.BrushMeshID}] (INVALID)";
+                    return $"{name} [{treeNode}:{instanceID}:{brush.BrushMesh.BrushMeshID}] (INVALID)";
             } else
             {
                 if (treeNode.Valid)
-                    return $"{name} [{treeNode}:{userID}]";
+                    return $"{name} [{treeNode}:{instanceID}]";
                 else
-                    return $"{name} [{treeNode}:{userID}] (INVALID)";
+                    return $"{name} [{treeNode}:{instanceID}] (INVALID)";
             }
         }
 
@@ -296,12 +296,12 @@ namespace Chisel.Editors
                 }
 
                 var child       = children[i];
-                var userID		= child.UserID;
+                var instanceID	= child.InstanceID;
                 var childCount	= child.Count;
                 if (itemRect.y > visibleArea.yMin)
                 {
                     var name			= NameForTreeNode(child);
-                    var selected		= selectedInstanceIDs.Contains(userID);
+                    var selected		= selectedInstanceIDs.Contains(instanceID);
                     var labelStyle		= (childCount > 0) ?
                                             (selected ? styles.foldOutLabelSelected : styles.foldOutLabel) :
                                             (selected ? styles.emptyLabelSelected : styles.emptyLabelItem);
@@ -336,14 +336,14 @@ namespace Chisel.Editors
                     if (EditorGUI.EndChangeCheck() ||
                         GUI.Button(labelRect, name, labelStyle))
                     {
-                        var obj = EditorUtility.InstanceIDToObject(userID);
+                        var obj = EditorUtility.InstanceIDToObject(instanceID);
                         if (!(obj is GameObject))
                         {
                             var mono = (obj as MonoBehaviour);
                             if (mono)
-                                userID = mono.gameObject.GetInstanceID();
+                                instanceID = mono.gameObject.GetInstanceID();
                         }
-                        Selection.instanceIDs = new[] { userID };
+                        Selection.instanceIDs = new[] { instanceID };
                     }
                     if (!child.Valid)
                         GUI.color = prevColor;
@@ -444,7 +444,7 @@ namespace Chisel.Editors
                             {
                                 for (int n = 0; n < allTreeNodes.Length; n++)
                                 {
-                                    if (allTreeNodes[n].UserID == instanceID)
+                                    if (allTreeNodes[n].InstanceID == instanceID)
                                     {
                                         node = allTreeNodes[n];
                                         break;
@@ -459,7 +459,7 @@ namespace Chisel.Editors
                                 labelArea.y = labelArea.height;
                                 labelArea.height = kItemHeight;
                                 GUI.Label(labelArea, $"Node: {node}"); labelArea.y += kItemHeight;
-                                GUI.Label(labelArea, $"UserID: {node.UserID}"); labelArea.y += kItemHeight;
+                                GUI.Label(labelArea, $"InstanceID: {node.InstanceID}"); labelArea.y += kItemHeight;
                                 GUI.Label(labelArea, $"Operation: {node.Operation}"); labelArea.y += kItemHeight;
                                 GUI.Label(labelArea, $"Valid: {node.Valid}"); labelArea.y += kItemHeight;
                                 GUI.Label(labelArea, $"NodeType: {node.Type}"); labelArea.y += kItemHeight;

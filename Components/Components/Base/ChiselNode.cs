@@ -31,7 +31,7 @@ namespace Chisel.Components
         {
         }
 
-        protected void OnEnable()
+        protected virtual void OnEnable()
 		{
 			OnInitialize(); // Awake is not reliable, so we initialize here
             ChiselNodeHierarchyManager.UpdateAvailability(this);

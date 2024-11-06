@@ -13,14 +13,8 @@ namespace Chisel.Core
     [BurstCompile(CompileSynchronously = true)]
     unsafe struct FindModifiedBrushesJob : IJob
     {
-        public void InitializeHierarchy(ref CompactHierarchy hierarchy)
-        {
-            compactHierarchyPtr = (CompactHierarchy*)UnsafeUtility.AddressOf(ref hierarchy);
-        }
-
-        // Read
-        [NativeDisableUnsafePtrRestriction]
-        [NoAlias, ReadOnly] public CompactHierarchy*            compactHierarchyPtr;
+		// Read
+		[NoAlias, ReadOnly] public CompactHierarchy.ReadOnly    compactHierarchy;
         [NoAlias, ReadOnly] public NativeList<CompactNodeID>    brushes;
         [NoAlias, ReadOnly] public int                          brushCount;
         [NoAlias, ReadOnly] public NativeList<IndexOrder>       allTreeBrushIndexOrders;
@@ -34,7 +28,6 @@ namespace Chisel.Core
 
         public void Execute()
         {
-            ref var compactHierarchy = ref UnsafeUtility.AsRef<CompactHierarchy>(compactHierarchyPtr);
             if (rebuildTreeBrushIndexOrders.Capacity < brushCount)
                 rebuildTreeBrushIndexOrders.Capacity = brushCount;
 

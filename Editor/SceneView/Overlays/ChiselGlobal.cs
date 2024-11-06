@@ -58,13 +58,13 @@ namespace Chisel.Editors
         {
             ChiselToolbarUtility.SetupToolbarElement(this, kIcon, kTooltip);
             this.clicked += OnClicked;
-            ChiselSelectionManager.GeneratorSelectionUpdated += UpdateEnabledState;
+            OldChiselSelectionManager.GeneratorSelectionUpdated += UpdateEnabledState;
             UpdateEnabledState();
         }
 
         protected void UpdateEnabledState()
         {
-            bool enabled = ChiselSelectionManager.AreNodesSelected;
+            bool enabled = OldChiselSelectionManager.AreNodesSelected;
             if (this.enabledSelf != enabled)
                 this.SetEnabled(enabled);
         }
@@ -87,13 +87,13 @@ namespace Chisel.Editors
         {
             ChiselToolbarUtility.SetupToolbarElement(this, kIcon, kTooltip);
             this.clicked += OnClicked;
-            ChiselSelectionManager.GeneratorSelectionUpdated += UpdateEnabledState;
+            OldChiselSelectionManager.GeneratorSelectionUpdated += UpdateEnabledState;
             UpdateEnabledState();
         }
 
         protected void UpdateEnabledState()
         {
-            bool enabled = ChiselSelectionManager.AreNodesSelected;
+            bool enabled = OldChiselSelectionManager.AreNodesSelected;
             if (this.enabledSelf != enabled)
                 this.SetEnabled(enabled);
         }
@@ -138,13 +138,13 @@ namespace Chisel.Editors
         {
             ChiselToolbarUtility.SetupToolbarElement(this, kIcon, kTooltip);
             this.clicked += OnClicked;
-            ChiselSelectionManager.GeneratorSelectionUpdated += UpdateEnabledState;
+            OldChiselSelectionManager.GeneratorSelectionUpdated += UpdateEnabledState;
             UpdateEnabledState();
         }
 
         void UpdateEnabledState()
         {
-            bool enabled = ChiselSelectionManager.AreGeneratorsSelected;
+            bool enabled = OldChiselSelectionManager.AreGeneratorsSelected;
             if (this.enabledSelf != enabled)
                 this.SetEnabled(enabled);
         }
@@ -155,7 +155,7 @@ namespace Chisel.Editors
             try
             {
                 bool modified = false;
-                foreach (var generator in ChiselSelectionManager.SelectedGenerators)
+                foreach (var generator in OldChiselSelectionManager.SelectedGenerators)
                 {
                     if (!generator.TopTreeNode.Valid)
                         continue;
@@ -298,11 +298,11 @@ namespace Chisel.Editors
         public ChiselSetAdditiveOperationToggle()
         {
             UpdateEnabledState();
-            ChiselSelectionManager.OperationNodesSelectionUpdated -= UpdateEnabledState;
-            ChiselSelectionManager.OperationNodesSelectionUpdated += UpdateEnabledState;
+            OldChiselSelectionManager.OperationNodesSelectionUpdated -= UpdateEnabledState;
+            OldChiselSelectionManager.OperationNodesSelectionUpdated += UpdateEnabledState;
             UpdateValue();
-            ChiselSelectionManager.NodeOperationUpdated -= UpdateValue;
-            ChiselSelectionManager.NodeOperationUpdated += UpdateValue;
+            OldChiselSelectionManager.NodeOperationUpdated -= UpdateValue;
+            OldChiselSelectionManager.NodeOperationUpdated += UpdateValue;
             InitLabel();
         }
 
@@ -316,19 +316,19 @@ namespace Chisel.Editors
         {
             base.SetValueWithoutNotify(newValue);
             if (newValue)
-                ChiselSelectionManager.SetOperationForSelection(kType);
+                OldChiselSelectionManager.SetOperationForSelection(kType);
         }
 
         protected void UpdateEnabledState()
         {
-            bool enabled = ChiselSelectionManager.AreOperationNodesSelected;
+            bool enabled = OldChiselSelectionManager.AreOperationNodesSelected;
             if (this.enabledSelf != enabled)
                 this.SetEnabled(enabled);
         }
 
         protected void UpdateValue()
         {
-            var currentOperation = ChiselSelectionManager.OperationOfSelectedNodes;
+            var currentOperation = OldChiselSelectionManager.OperationOfSelectedNodes;
             var mixedValue = !currentOperation.HasValue;
             //this.showMixedValue = mixedValue;
             bool newValue = !mixedValue && currentOperation.Value == kType;
@@ -349,11 +349,11 @@ namespace Chisel.Editors
         public ChiselSetSubtractiveOperationToggle()
         {
             UpdateEnabledState();
-            ChiselSelectionManager.OperationNodesSelectionUpdated -= UpdateEnabledState;
-            ChiselSelectionManager.OperationNodesSelectionUpdated += UpdateEnabledState;
+            OldChiselSelectionManager.OperationNodesSelectionUpdated -= UpdateEnabledState;
+            OldChiselSelectionManager.OperationNodesSelectionUpdated += UpdateEnabledState;
             UpdateValue();
-            ChiselSelectionManager.NodeOperationUpdated -= UpdateValue;
-            ChiselSelectionManager.NodeOperationUpdated += UpdateValue;
+            OldChiselSelectionManager.NodeOperationUpdated -= UpdateValue;
+            OldChiselSelectionManager.NodeOperationUpdated += UpdateValue;
             InitLabel();
         }
 
@@ -367,19 +367,19 @@ namespace Chisel.Editors
         {
             base.SetValueWithoutNotify(newValue);
             if (newValue)
-                ChiselSelectionManager.SetOperationForSelection(kType);
+                OldChiselSelectionManager.SetOperationForSelection(kType);
         }
 
         protected void UpdateEnabledState()
         {
-            bool enabled = ChiselSelectionManager.AreOperationNodesSelected;
+            bool enabled = OldChiselSelectionManager.AreOperationNodesSelected;
             if (this.enabledSelf != enabled)
                 this.SetEnabled(enabled);
         }
 
         protected void UpdateValue()
         {
-            var currentOperation = ChiselSelectionManager.OperationOfSelectedNodes;
+            var currentOperation = OldChiselSelectionManager.OperationOfSelectedNodes;
             var mixedValue = !currentOperation.HasValue;
             //this.showMixedValue = mixedValue;
             bool newValue = !mixedValue && currentOperation.Value == kType;
@@ -400,11 +400,11 @@ namespace Chisel.Editors
         public ChiselSetIntersectingOperationToggle()
         {
             UpdateEnabledState();
-            ChiselSelectionManager.OperationNodesSelectionUpdated -= UpdateEnabledState;
-            ChiselSelectionManager.OperationNodesSelectionUpdated += UpdateEnabledState;
+            OldChiselSelectionManager.OperationNodesSelectionUpdated -= UpdateEnabledState;
+            OldChiselSelectionManager.OperationNodesSelectionUpdated += UpdateEnabledState;
             UpdateValue();
-            ChiselSelectionManager.NodeOperationUpdated -= UpdateValue;
-            ChiselSelectionManager.NodeOperationUpdated += UpdateValue;
+            OldChiselSelectionManager.NodeOperationUpdated -= UpdateValue;
+            OldChiselSelectionManager.NodeOperationUpdated += UpdateValue;
             InitLabel();
         }
 
@@ -418,19 +418,19 @@ namespace Chisel.Editors
         {
             base.SetValueWithoutNotify(newValue);
             if (newValue)
-                ChiselSelectionManager.SetOperationForSelection(kType);
+                OldChiselSelectionManager.SetOperationForSelection(kType);
         }
 
         protected void UpdateEnabledState()
         {
-            bool enabled = ChiselSelectionManager.AreOperationNodesSelected;
+            bool enabled = OldChiselSelectionManager.AreOperationNodesSelected;
             if (this.enabledSelf != enabled)
                 this.SetEnabled(enabled);
         }
 
         protected void UpdateValue()
         {
-            var currentOperation = ChiselSelectionManager.OperationOfSelectedNodes;
+            var currentOperation = OldChiselSelectionManager.OperationOfSelectedNodes;
             var mixedValue = !currentOperation.HasValue;
             //this.showMixedValue = mixedValue;
             bool newValue = !mixedValue && currentOperation.Value == kType;

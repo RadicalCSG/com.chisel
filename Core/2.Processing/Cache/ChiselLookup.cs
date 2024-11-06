@@ -22,13 +22,14 @@ namespace Chisel.Core
             public NativeList<BlobAssetReference<BasePolygonsBlob>>             basePolygonCache;
             public NativeList<BlobAssetReference<RoutingTable>>                 routingTableCache;
             public NativeList<NodeTransformations>                              transformationCache;
+
             public NativeList<BlobAssetReference<BrushTreeSpaceVerticesBlob>>   treeSpaceVerticesCache;
             public NativeList<BlobAssetReference<ChiselBrushRenderBuffer>>      brushRenderBufferCache;
+
             public NativeList<MinMaxAABB>                                       brushTreeSpaceBoundCache;
             public NativeList<BlobAssetReference<BrushTreeSpacePlanes>>         brushTreeSpacePlaneCache;
             public NativeList<BlobAssetReference<BrushesTouchedByBrush>>        brushesTouchedByBrushCache;
             
-            public NativeParallelHashMap<CompactNodeID, MinMaxAABB>             brushTreeSpaceBoundLookup;
             public NativeParallelHashMap<CompactNodeID, BlobAssetReference<ChiselBrushRenderBuffer>> brushRenderBufferLookup;
 
 			internal void Initialize()
@@ -36,18 +37,16 @@ namespace Chisel.Core
                 brushIDValues               = new NativeList<CompactNodeID>(1000, Allocator.Persistent);
                 allKnownBrushMeshIndices    = new NativeParallelHashSet<int>(1000, Allocator.Persistent);
 
-                // TODO: not used??
-                brushTreeSpaceBoundLookup   = new NativeParallelHashMap<CompactNodeID, MinMaxAABB>(1000, Allocator.Persistent);
                 brushRenderBufferLookup     = new NativeParallelHashMap<CompactNodeID, BlobAssetReference<ChiselBrushRenderBuffer>>(1000, Allocator.Persistent);
 
                 // brushIndex
-                basePolygonCache            = new NativeList<BlobAssetReference<BasePolygonsBlob>>(1000, Allocator.Persistent);
                 brushTreeSpaceBoundCache    = new NativeList<MinMaxAABB>(1000, Allocator.Persistent);
+                transformationCache         = new NativeList<NodeTransformations>(1000, Allocator.Persistent);
+                basePolygonCache            = new NativeList<BlobAssetReference<BasePolygonsBlob>>(1000, Allocator.Persistent);
                 treeSpaceVerticesCache      = new NativeList<BlobAssetReference<BrushTreeSpaceVerticesBlob>>(1000, Allocator.Persistent);
                 routingTableCache           = new NativeList<BlobAssetReference<RoutingTable>>(1000, Allocator.Persistent);
                 brushTreeSpacePlaneCache    = new NativeList<BlobAssetReference<BrushTreeSpacePlanes>>(1000, Allocator.Persistent);
                 brushesTouchedByBrushCache  = new NativeList<BlobAssetReference<BrushesTouchedByBrush>>(1000, Allocator.Persistent);
-                transformationCache         = new NativeList<NodeTransformations>(1000, Allocator.Persistent);
                 brushRenderBufferCache      = new NativeList<BlobAssetReference<ChiselBrushRenderBuffer>>(1000, Allocator.Persistent);
 
                 parameters                  = new NativeArray<ChiselLayerParameters>(SurfaceDestinationParameters.ParameterCount, Allocator.Persistent);
@@ -62,9 +61,6 @@ namespace Chisel.Core
 
             internal void EnsureCapacity(int brushCount)
             {
-                if (brushTreeSpaceBoundLookup.Capacity < brushCount)
-                    brushTreeSpaceBoundLookup.Capacity = brushCount;
-
                 if (brushRenderBufferLookup.Capacity < brushCount)
                     brushRenderBufferLookup.Capacity = brushCount;
 
@@ -194,9 +190,6 @@ namespace Chisel.Core
                     brushRenderBufferCache.Dispose();
                 }
                 brushRenderBufferCache = default;
-                if (brushTreeSpaceBoundLookup.IsCreated)
-                    brushTreeSpaceBoundLookup.Dispose();
-                brushTreeSpaceBoundLookup = default;
                 if (brushRenderBufferLookup.IsCreated)
                     brushRenderBufferLookup.Dispose();
                 brushRenderBufferLookup = default;
@@ -314,8 +307,8 @@ namespace Chisel.Core
                         brushMeshBlobCache = default;
                     }
                 }
-                // temporary hack
-                CompactHierarchyManager.Destroy();
+				// FIXME: temporary hack
+				CompactHierarchyManager.Destroy();
 			}
         }
 

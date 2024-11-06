@@ -5,8 +5,6 @@ using Unity.Collections.LowLevel.Unsafe;
 using Unity.Jobs;
 using Unity.Mathematics;
 using Debug = UnityEngine.Debug;
-using Vector3 = UnityEngine.Vector3;
-using Quaternion = UnityEngine.Quaternion;
 using ReadOnlyAttribute = Unity.Collections.ReadOnlyAttribute;
 using WriteOnlyAttribute = Unity.Collections.WriteOnlyAttribute;
 using Unity.Entities;
@@ -26,9 +24,10 @@ namespace Chisel.Core
         [NoAlias, ReadOnly] public NativeList<NodeTransformations>                  transformationCache;
         [NoAlias, ReadOnly] public NativeStream.Reader                              input;        
         [NoAlias, ReadOnly] public NativeArray<MeshQuery>                           meshQueries;
+		[NoAlias, ReadOnly] public CompactHierarchyManagerInstance.ReadOnlyInstanceIDLookup instanceIDLookup;
 
-        // Write
-        [NativeDisableParallelForRestriction]
+		// Write
+		[NativeDisableParallelForRestriction]
         [NoAlias] public NativeList<BlobAssetReference<ChiselBrushRenderBuffer>>    brushRenderBufferCache;
 
         // Per thread scratch memory
@@ -113,7 +112,9 @@ namespace Chisel.Core
             if (!basePolygonCache[brushNodeOrder].IsCreated)
                 return;
 
-            var maxLoops = 0;
+			int instanceID = instanceIDLookup.SafeGetNodeInstanceID(brushIndexOrder.compactNodeID);
+
+			var maxLoops = 0;
             var maxIndices = 0;
             for (int s = 0; s < surfaceLoopIndices.Length; s++)
             {
@@ -140,6 +141,7 @@ namespace Chisel.Core
             {
 				indexRemap = new NativeArray<int>(brushVertices.Length, Allocator.Temp),
                 surfaceColliderVertices = new NativeList<float3>(brushVertices.Length, Allocator.Temp),
+				surfaceSelectVertices = new NativeList<SelectVertex>(brushVertices.Length, Allocator.Temp),
 				surfaceRenderVertices = new NativeList<RenderVertex>(brushVertices.Length, Allocator.Temp)
             };
 
@@ -171,6 +173,7 @@ namespace Chisel.Core
 			var builder = new BlobBuilder(Allocator.Temp, 4096);
             ref var root = ref builder.ConstructRoot<ChiselBrushRenderBuffer>();
             var surfaceRenderBuffers = builder.Allocate(ref root.surfaces, surfaceLoopIndices.Length);
+
 
 			for (int surfaceIndex = 0; surfaceIndex < surfaceLoopIndices.Length; surfaceIndex++)
             {
@@ -235,7 +238,7 @@ namespace Chisel.Core
 					var prevSurfaceIndexCount = surfaceIndexList.Length;
 					CategoryIndex interiorCategory = (CategoryIndex)loopInfo.interiorCategory;
 					readOnlyVertices.RemapTriangles(interiorCategory, output.Triangles, surfaceIndexList);
-                    uniqueVertexMapper.RegisterVertices(surfaceIndexList, prevSurfaceIndexCount, *brushVertices.m_Vertices, map3DTo2D.normal, interiorCategory);
+                    uniqueVertexMapper.RegisterVertices(surfaceIndexList, prevSurfaceIndexCount, *brushVertices.m_Vertices, map3DTo2D.normal, instanceID, interiorCategory);
 					#endregion
 				}
 
@@ -251,9 +254,11 @@ namespace Chisel.Core
 				MeshAlgorithms.ComputeTangents(surfaceIndexList, uniqueVertexMapper.surfaceRenderVertices);
 
 				ref var surfaceRenderBuffer = ref surfaceRenderBuffers[surfaceIndex];
-                surfaceRenderBuffer.Construct(builder, surfaceIndexList, uniqueVertexMapper.surfaceRenderVertices,
-											  uniqueVertexMapper.surfaceColliderVertices, surfaceIndex, 
-                                              destinationFlags, destinationParameters);
+                surfaceRenderBuffer.Construct(builder, surfaceIndexList,
+											  uniqueVertexMapper.surfaceColliderVertices,
+											  uniqueVertexMapper.surfaceSelectVertices,
+											  uniqueVertexMapper.surfaceRenderVertices, 
+                                              surfaceIndex, destinationFlags, destinationParameters);
 			}
 
 			//triangulator.Dispose();
@@ -286,19 +291,19 @@ namespace Chisel.Core
 
 					querySurfaceList.AddNoResize(new ChiselQuerySurface
                     {
-                        surfaceIndex        = renderBuffer.surfaceIndex,
-                        surfaceParameter    = surfaceParameterIndex < 0 ? 0 : renderBuffer.destinationParameters.parameters[surfaceParameterIndex],
-                        vertexCount         = renderBuffer.vertexCount,
-                        indexCount          = renderBuffer.indexCount,
-                        surfaceHash         = renderBuffer.surfaceHash,
-                        geometryHash        = renderBuffer.geometryHash
+                        surfaceIndex     = renderBuffer.surfaceIndex,
+                        surfaceParameter = surfaceParameterIndex < 0 ? 0 : renderBuffer.destinationParameters.parameters[surfaceParameterIndex],
+                        vertexCount      = renderBuffer.vertexCount,
+                        indexCount       = renderBuffer.indexCount,
+                        surfaceHash      = renderBuffer.surfaceHash,
+                        geometryHash     = renderBuffer.geometryHash
                     });
                 }
                 querySurfaceList.Sort(compareSortByBasePlaneIndex);
 
                 builder.Construct(ref querySurfaces[t].surfaces, querySurfaceList);
                 querySurfaces[t].brushNodeID = brushIndexOrder.compactNodeID;
-            }
+			}
 
             querySurfaceList.Dispose();
 
