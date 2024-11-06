@@ -7,7 +7,7 @@ using UnityEditor;
 namespace Chisel.Editors
 {
 
-    static class ChiselSelectionManager
+    static class OldChiselSelectionManager
     {
         [UnityEditor.InitializeOnLoadMethod]
         static void Initialize()
@@ -18,11 +18,9 @@ namespace Chisel.Editors
         }
 
         public static Action NodeOperationUpdated;
-        //public static Action NodesSelectionUpdated;
         public static Action OperationNodesSelectionUpdated;
         public static Action GeneratorSelectionUpdated;
 
-        //static bool s_CurrHaveNodes = false;
         static bool s_CurrHaveOperationNodes = false;
         static bool s_CurrHaveGenerators = false;
         static CSGOperationType? s_CurrOperation = null;

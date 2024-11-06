@@ -1,9 +1,7 @@
 using System;
 using System.Collections.Generic;
 using Chisel.Core;
-using Unity.Collections;
 using Unity.Jobs;
-using UnityEngine;
 using UnityEngine.Profiling;
 
 namespace Chisel.Components
@@ -15,8 +13,10 @@ namespace Chisel.Components
         public static event Action<ChiselModelComponent> PostUpdateModel;
         public static event Action              PostUpdateModels;
         
-        internal static HashSet<ChiselNode>     s_RegisteredNodeLookup = new();
-        internal static List<ChiselModelComponent>       s_RegisteredModels = new();
+        internal static HashSet<ChiselNode>         s_RegisteredNodeLookup = new();
+
+        // TODO: should not be public
+        public static List<ChiselModelComponent>    s_RegisteredModels = new();
 
         static readonly ChiselGeneratedComponentManager componentGenerator = new();
         
@@ -57,13 +57,7 @@ namespace Chisel.Components
             componentGenerator.Register(model);
         }
 
-        static int FinishMeshUpdates(CSGTree                        tree, 
-                                     ref VertexBufferContents       vertexBufferContents, 
-                                     ref Mesh.MeshDataArray         meshDataArray,
-                                     NativeList<ChiselMeshUpdate>   colliderMeshUpdates,
-                                     NativeList<ChiselMeshUpdate>   debugVisualizationMeshes,
-                                     NativeList<ChiselMeshUpdate>   renderMeshes,
-                                     JobHandle                      dependencies)
+        static int FinishMeshUpdates(CSGTree tree, ChiselMeshUpdates meshUpdates, JobHandle dependencies)
         {
             ChiselModelComponent model = null;
             for (int m = 0; m < s_RegisteredModels.Count; m++)
@@ -77,27 +71,24 @@ namespace Chisel.Components
 
             if (model == null)
             {
-                if (meshDataArray.Length > 0) meshDataArray.Dispose();
-                meshDataArray = default;
+                if (meshUpdates.meshDataArray.Length > 0) meshUpdates.meshDataArray.Dispose();
+				meshUpdates.meshDataArray = default;
                 return 0;
             }
 
             if (!ChiselGeneratedObjects.IsValid(model.generated))
             {
-                if (model.generated != null)
-                    model.generated.Destroy();
+                model.generated?.Destroy();
                 model.generated = ChiselGeneratedObjects.Create(model.gameObject);
             }
 
-            var count = model.generated.FinishMeshUpdates(model, model.gameObject, ref meshDataArray, ref vertexBufferContents,
-                                                          colliderMeshUpdates, debugVisualizationMeshes, renderMeshes,
-                                                          dependencies);
+            var count = model.generated.FinishMeshUpdates(model, meshUpdates, dependencies);
             componentGenerator.Rebuild(model);
             PostUpdateModel?.Invoke(model);
             return count;
         }
         
-        static readonly FinishMeshUpdate    s_FinishMeshUpdates     = (FinishMeshUpdate)FinishMeshUpdates;
+        static readonly FinishMeshUpdate s_FinishMeshUpdates = (FinishMeshUpdate)FinishMeshUpdates;
 
         public static void UpdateModels()
         {

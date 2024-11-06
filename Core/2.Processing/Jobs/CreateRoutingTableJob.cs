@@ -245,13 +245,13 @@ namespace Chisel.Core
                         {
                             if (intersectionType == IntersectionType.AInsideB) 
                             { 
-                                output[outputLength] = new CategoryStackNode { NodeIDValue = currentNodeID.value, routingRow = CategoryRoutingRow.AllInside }; 
+                                output[outputLength] = new CategoryStackNode { NodeIDValue = currentNodeID.slotIndex.index, routingRow = CategoryRoutingRow.AllInside }; 
                                 outputLength++;
                                 break; 
                             }
                             if (intersectionType == IntersectionType.BInsideA) 
                             { 
-                                output[outputLength] = new CategoryStackNode { NodeIDValue = currentNodeID.value, routingRow = CategoryRoutingRow.AllOutside };
+                                output[outputLength] = new CategoryStackNode { NodeIDValue = currentNodeID.slotIndex.index, routingRow = CategoryRoutingRow.AllOutside };
                                 outputLength++;
                                 break; 
                             }
@@ -260,7 +260,7 @@ namespace Chisel.Core
                             if (processedNodeID == currentNode.CompactNodeID)
                             {
                                 haveGoneBeyondSelf = 1; // We're currently "ON" our brush
-                                output[outputLength] = new CategoryStackNode { NodeIDValue = currentNodeID.value, routingRow = CategoryRoutingRow.AllSelfAligned };
+                                output[outputLength] = new CategoryStackNode { NodeIDValue = currentNodeID.slotIndex.index, routingRow = CategoryRoutingRow.AllSelfAligned };
                                 outputLength++;
                                 break;
                             }  
@@ -269,7 +269,7 @@ namespace Chisel.Core
                                 haveGoneBeyondSelf = 2; // We're now definitely beyond our brush
 
                             // Otherwise return identity categories (input == output)
-                            output[outputLength] = new CategoryStackNode { NodeIDValue = currentNodeID.value, routingRow = CategoryRoutingRow.Identity };
+                            output[outputLength] = new CategoryStackNode { NodeIDValue = currentNodeID.slotIndex.index, routingRow = CategoryRoutingRow.Identity };
                             outputLength++;
                             break;
                         }
@@ -420,7 +420,7 @@ namespace Chisel.Core
 
             if (outputLength == 0)
             {
-                output[outputLength] = new CategoryStackNode { NodeIDValue = processedNodeID.value, routingRow = CategoryRoutingRow.AllOutside };
+                output[outputLength] = new CategoryStackNode { NodeIDValue = processedNodeID.slotIndex.index, routingRow = CategoryRoutingRow.AllOutside };
                 outputLength++;
             }
 #if SHOW_DEBUG_MESSAGES

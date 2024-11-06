@@ -334,7 +334,7 @@ namespace Chisel.Core
     struct InvalidateIndirectBrushCacheJob : IJobParallelForDefer
     {
         // Read
-        [NoAlias, ReadOnly] public NativeList<IndexOrder>                                   brushesThatNeedIndirectUpdate;
+        [NoAlias, ReadOnly] public NativeList<IndexOrder>                             brushesThatNeedIndirectUpdate;
 
         // Read Write
         [NativeDisableParallelForRestriction]
@@ -434,7 +434,7 @@ namespace Chisel.Core
                     for (int p = 0; p < polygons.Length; p++)
                     {
                         ref var nodeIndexOrder = ref polygons[p].nodeIndexOrder;
-                        var nodeIDValue = nodeIndexOrder.compactNodeID.value;
+                        var nodeIDValue = nodeIndexOrder.compactNodeID.slotIndex.index;
                         nodeIndexOrder.nodeOrder = nodeIDValueToNodeOrder[nodeIDValue - nodeIDValueToNodeOrderOffset];
                     }
                     basePolygonCache[nodeOrder] = item;
@@ -456,7 +456,7 @@ namespace Chisel.Core
                     {
                         ref var brushIntersection = ref brushIntersections[b];
                         ref var nodeIndexOrder = ref brushIntersection.nodeIndexOrder;
-                        var nodeIDValue = nodeIndexOrder.compactNodeID.value;
+                        var nodeIDValue = nodeIndexOrder.compactNodeID.slotIndex.index;
                         nodeIndexOrder.nodeOrder = nodeIDValueToNodeOrder[nodeIDValue - nodeIDValueToNodeOrderOffset];
                     }
                     for (int b0 = 0; b0 < brushIntersections.Length; b0++)
@@ -469,11 +469,9 @@ namespace Chisel.Core
                             ref var nodeIndexOrder1 = ref brushIntersection1.nodeIndexOrder;
                             if (nodeIndexOrder0.nodeOrder > nodeIndexOrder1.nodeOrder)
                             {
-                                var t = nodeIndexOrder0;
-                                nodeIndexOrder0 = nodeIndexOrder1;
-                                nodeIndexOrder1 = t;
-                            }
-                        }
+								(nodeIndexOrder1, nodeIndexOrder0) = (nodeIndexOrder0, nodeIndexOrder1);
+							}
+						}
                     }
                     brushesTouchedByBrushCache[nodeOrder] = item;
                 }

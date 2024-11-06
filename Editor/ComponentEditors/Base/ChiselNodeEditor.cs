@@ -2,34 +2,27 @@ using System;
 using System.Collections.Generic;
 using Chisel.Core;
 using Chisel.Components;
-using SceneHandles = Chisel.Editors.SceneHandles;
-using ControlState = Chisel.Editors.ControlState;
-using HandleRendering = Chisel.Editors.HandleRendering;
-using Grid = Chisel.Editors.Grid;
 using UnityEditor;
 using UnityEditor.EditorTools;
 using UnityEngine;
 using UnityEngine.Profiling;
 using UnityEngine.Pool;
-#if !UNITY_2020_2_OR_NEWER
-using ToolManager = UnityEditor.EditorTools;
-#endif
 
 namespace Chisel.Editors
 {
     public abstract class ChiselNodeEditorBase : Editor
 	{
-		protected const string kGameObjectMenuPath = "GameObject/Chisel/";
-		protected const int kGameObjectMenuPriority = 1;
+		protected const string kGameObjectMenuPath              = "GameObject/Chisel/";
+		protected const int    kGameObjectMenuPriority          = 1;
 
-		protected const string kGameObjectMenuModelPath = kGameObjectMenuPath + "Create ";
-		protected const int kGameObjectMenuModelPriority = -5;
-		protected const string kGameObjectMenuCompositePath = kGameObjectMenuPath + "Create Composites/";
-		protected const int kGameObjectMenuCompositePriority = -4;
-		protected const string kGameObjectMenuNodePath = kGameObjectMenuPath + "Create Generators/";
-		protected const int kGameObjectMenuNodePriority = -3;
-		protected const string kGameObjectMenuOperationPath = kGameObjectMenuPath + "Set Operation To/";
-		protected const int kGameObjectMenuOperationPriority = -1;
+		protected const string kGameObjectMenuModelPath         = kGameObjectMenuPath + "Create ";
+		protected const int    kGameObjectMenuModelPriority     = -5;
+		protected const string kGameObjectMenuCompositePath     = kGameObjectMenuPath + "Create Composites/";
+		protected const int    kGameObjectMenuCompositePriority = -4;
+		protected const string kGameObjectMenuNodePath          = kGameObjectMenuPath + "Create Generators/";
+		protected const int    kGameObjectMenuNodePriority      = -3;
+		protected const string kGameObjectMenuOperationPath     = kGameObjectMenuPath + "Set Operation To/";
+		protected const int    kGameObjectMenuOperationPriority = -1;
 
 		const string kDefaultCompositeName = "Composite";
 
@@ -49,8 +42,7 @@ namespace Chisel.Editors
             }
         }
 
-
-        static void MenuSetOperationTo(MenuCommand menuCommand, CSGOperationType operationType)
+		static void MenuSetOperationTo(MenuCommand menuCommand, CSGOperationType operationType)
         {
             var context     = (menuCommand.context as GameObject);
             var gameObject  = (context == null) ? Selection.activeGameObject : context;

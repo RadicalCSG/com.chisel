@@ -14,17 +14,11 @@ namespace Chisel.Core
     [BurstCompile(CompileSynchronously = true)]
     unsafe struct BuildCompactTreeJob : IJob
     {
-        public void InitializeHierarchy(ref CompactHierarchy hierarchy)
-        {
-            compactHierarchyPtr = (CompactHierarchy*)UnsafeUtility.AddressOf(ref hierarchy);
-        }
-
         // Read
         public CompactNodeID treeCompactNodeID;
         [NoAlias, ReadOnly] public NativeList<CompactNodeID> brushes;
         [NoAlias, ReadOnly] public NativeList<CompactNodeID> nodes;
-        [NativeDisableUnsafePtrRestriction]
-        [NoAlias, ReadOnly] public CompactHierarchy* compactHierarchyPtr;
+        [NoAlias, ReadOnly] public CompactHierarchy.ReadOnly compactHierarchy;
 
 
         // Write
@@ -32,8 +26,7 @@ namespace Chisel.Core
 
         public void Execute()
         {
-            ref var compactHierarchy = ref UnsafeUtility.AsRef<CompactHierarchy>(compactHierarchyPtr);
-            compactTreeRef.Value = CompactTreeBuilder.Create(ref compactHierarchy, nodes.AsArray(), brushes.AsArray(), treeCompactNodeID);
+            compactTreeRef.Value = CompactTreeBuilder.Create(compactHierarchy, nodes.AsArray(), brushes.AsArray(), treeCompactNodeID);
         }
     }
 }

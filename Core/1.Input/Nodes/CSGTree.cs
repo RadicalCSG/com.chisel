@@ -22,13 +22,13 @@ namespace Chisel.Core
     {
         #region Create
         /// <summary>Generates a tree returns a <see cref="Chisel.Core.CSGTree"/> struct that contains a reference to it.</summary>
-        /// <param name="userID">A unique id to help identify this particular tree. For instance, this could be an InstanceID to a [UnityEngine.Object](https://docs.unity3d.com/ScriptReference/Object.html).</param>
+        /// <param name="instanceID">A unique id to help identify this particular tree. For instance, this could be an InstanceID to a [UnityEngine.Object](https://docs.unity3d.com/ScriptReference/Object.html).</param>
         /// <param name="children">The child nodes that are children of this tree. A tree may not have duplicate children, contain itself or contain a <see cref="Chisel.Core.CSGTree"/>.</param>
         /// <returns>A new <see cref="Chisel.Core.CSGTree"/>. May be an invalid node if it failed to create it.</returns>
         [BurstDiscard, MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static CSGTree Create(Int32 userID, params CSGTreeNode[] children)
+        public static CSGTree Create(Int32 instanceID, params CSGTreeNode[] children)
         {
-            var treeNodeID = CompactHierarchyManager.CreateTree(userID);
+            var treeNodeID = CompactHierarchyManager.CreateTree(instanceID);
             Debug.Assert(CompactHierarchyManager.IsValidNodeID(treeNodeID));
             if (children != null && children.Length > 0)
             {
@@ -52,14 +52,14 @@ namespace Chisel.Core
         public static CSGTree Create(params CSGTreeNode[] children) { return Create(0, children); }
         #endregion
 
-        public CSGTreeBrush CreateBrush(Int32 userID = 0, BrushMeshInstance brushMesh = default(BrushMeshInstance), CSGOperationType operation = CSGOperationType.Additive)
+        public CSGTreeBrush CreateBrush(Int32 instanceID = 0, BrushMeshInstance brushMesh = default(BrushMeshInstance), CSGOperationType operation = CSGOperationType.Additive)
         {
-            return CSGTreeBrush.Create(userID, brushMesh, operation);
+            return CSGTreeBrush.Create(instanceID, brushMesh, operation);
         }
 
-        public CSGTreeBranch CreateBranch(Int32 userID = 0, CSGOperationType operation = CSGOperationType.Additive)
+        public CSGTreeBranch CreateBranch(Int32 instanceID = 0, CSGOperationType operation = CSGOperationType.Additive)
         {
-            return CSGTreeBranch.Create(userID, operation);
+            return CSGTreeBranch.Create(instanceID, operation);
         }
 
 
@@ -116,8 +116,8 @@ namespace Chisel.Core
         /// <remarks><note>NodeIDs are eventually recycled, so be careful holding on to Nodes that have been destroyed.</note></remarks>
         public NodeID           NodeID			{ get { return nodeID; } }
 
-        /// <value>Gets the <see cref="Chisel.Core.CSGTree.UserID"/> set to the <see cref="Chisel.Core.CSGTree"/> at creation time.</value>
-        public Int32			UserID			{ get { return CompactHierarchyManager.GetUserIDOfNode(nodeID); } }
+        /// <value>Gets the <see cref="Chisel.Core.CSGTree.InstanceID"/> set to the <see cref="Chisel.Core.CSGTree"/> at creation time.</value>
+        public Int32			InstanceID		{ get { return CompactHierarchyManager.GetNodeInstanceID(nodeID); } }
         
         /// <value>Returns the dirty flag of the <see cref="Chisel.Core.CSGTree"/>. When the it's dirty, then it means (some of) its generated meshes have been modified.</value>
         public bool				Dirty			{ get { return CompactHierarchyManager.IsNodeDirty(nodeID); } }

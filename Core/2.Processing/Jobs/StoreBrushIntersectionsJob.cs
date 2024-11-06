@@ -31,8 +31,8 @@ namespace Chisel.Core
 
         static void SetUsedNodesBits([NoAlias, ReadOnly] ref CompactTree compactTree, [NoAlias, ReadOnly] in NativeList<BrushIntersection> brushIntersections, CompactNodeID brushNodeID, CompactNodeID rootNodeID, [NoAlias] ref BrushIntersectionLookup bitset)
         {
-            var brushNodeIDValue = brushNodeID.value;
-            var rootNodeIDValue  = rootNodeID.value;
+            var brushNodeIDValue = brushNodeID.slotIndex.index;
+            var rootNodeIDValue  = rootNodeID.slotIndex.index;
 
             bitset.Clear();
             bitset.Set(brushNodeIDValue, IntersectionType.Intersection);
@@ -58,7 +58,7 @@ namespace Chisel.Core
             {
                 var otherIntersectionInfo = brushIntersections[i];
                 var otherNodeID           = otherIntersectionInfo.nodeIndexOrder.compactNodeID;
-                var otherNodeIDValue      = otherNodeID.value;
+                var otherNodeIDValue      = otherNodeID.slotIndex.index;
                 bitset.Set(otherNodeIDValue, otherIntersectionInfo.type);
                 for (int b = otherIntersectionInfo.bottomUpStart; b < otherIntersectionInfo.bottomUpEnd; b++)
                     bitset.Set(brushAncestors[b], IntersectionType.Intersection);
@@ -89,7 +89,7 @@ namespace Chisel.Core
 
                     var otherIndexOrder     = touchingBrush.brushNodeOrder1;
                     var otherBrushID        = allTreeBrushIndexOrders[otherIndexOrder].compactNodeID;
-                    var otherBrushIDValue   = otherBrushID.value;
+                    var otherBrushIDValue   = otherBrushID.slotIndex.index;
                     if ((otherBrushIDValue < minBrushIDValue || (otherBrushIDValue - minBrushIDValue) >= brushIDValueToAncestorLegend.Length))
                         continue;
                     

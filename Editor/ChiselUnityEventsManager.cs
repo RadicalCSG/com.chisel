@@ -43,19 +43,16 @@ namespace Chisel.Editors
             UnityEditor.Selection.selectionChanged -= OnSelectionChanged;
             UnityEditor.Selection.selectionChanged += OnSelectionChanged;
 
-            // Triggered when currently active/selected item has changed.
-            ChiselSurfaceSelectionManager.selectionChanged -= OnSurfaceSelectionChanged;
-            ChiselSurfaceSelectionManager.selectionChanged += OnSurfaceSelectionChanged;
-            ChiselSurfaceSelectionManager.hoverChanged -= OnSurfaceHoverChanged;
-            ChiselSurfaceSelectionManager.hoverChanged += OnSurfaceHoverChanged;
-
             UnityEditor.EditorApplication.playModeStateChanged -= OnPlayModeStateChanged;
             UnityEditor.EditorApplication.playModeStateChanged += OnPlayModeStateChanged;
 
 
-            // Triggered when changing visibility/picking in hierarchy
-            UnityEditor.SceneVisibilityManager.visibilityChanged += OnVisibilityChanged;
-            UnityEditor.SceneVisibilityManager.pickingChanged += OnPickingChanged;
+			// Triggered when changing visibility/picking in hierarchy
+			UnityEditor.SceneVisibilityManager.visibilityChanged -= OnVisibilityChanged;
+			UnityEditor.SceneVisibilityManager.visibilityChanged += OnVisibilityChanged;
+
+			UnityEditor.SceneVisibilityManager.pickingChanged -= OnPickingChanged;
+			UnityEditor.SceneVisibilityManager.pickingChanged += OnPickingChanged;
 
 
             // Callback that is triggered after an undo or redo was executed.
@@ -74,7 +71,21 @@ namespace Chisel.Editors
             UnityEditor.SceneView.duringSceneGui -= OnDuringSceneGUI;
             UnityEditor.SceneView.duringSceneGui += OnDuringSceneGUI;
 
-            UnityEditor.SceneManagement.EditorSceneManager.activeSceneChangedInEditMode += OnActiveSceneChanged;
+			UnityEditor.SceneManagement.EditorSceneManager.activeSceneChangedInEditMode -= OnActiveSceneChanged;
+			UnityEditor.SceneManagement.EditorSceneManager.activeSceneChangedInEditMode += OnActiveSceneChanged;
+			
+            ToolManager.activeToolChanged -= OnEditModeChanged;
+			ToolManager.activeToolChanged += OnEditModeChanged;
+
+			HandleUtility.UnregisterRenderPickingCallback(ChiselSelectionManager.PickingCallback);
+			HandleUtility.RegisterRenderPickingCallback(ChiselSelectionManager.PickingCallback);
+
+
+			// Triggered when currently active/selected item has changed.
+			ChiselSurfaceSelectionManager.selectionChanged -= OnSurfaceSelectionChanged;
+            ChiselSurfaceSelectionManager.selectionChanged += OnSurfaceSelectionChanged;
+            ChiselSurfaceSelectionManager.hoverChanged -= OnSurfaceHoverChanged;
+            ChiselSurfaceSelectionManager.hoverChanged += OnSurfaceHoverChanged;
 
             ChiselNodeHierarchyManager.NodeHierarchyReset -= OnHierarchyReset;
             ChiselNodeHierarchyManager.NodeHierarchyReset += OnHierarchyReset;
@@ -91,14 +102,12 @@ namespace Chisel.Editors
             ChiselGeneratedModelMeshManager.PostReset -= OnPostResetModels;
             ChiselGeneratedModelMeshManager.PostReset += OnPostResetModels;
 
-            ToolManager.activeToolChanged -= OnEditModeChanged;
-            ToolManager.activeToolChanged += OnEditModeChanged;
 
-            ChiselClickSelectionManager.Instance.OnReset();
-            ChiselOutlineRenderer.Instance.OnReset();
+			//ChiselClickSelectionManager.Instance.OnReset();
+			ChiselOutlineRenderer.Instance.OnReset();
         }
 
-        private static void OnHierarchyChanged()
+		private static void OnHierarchyChanged()
         {
             ChiselNodeHierarchyManager.CheckOrderOfChildNodesModifiedOfNonNodeGameObject();
         }
@@ -150,7 +159,7 @@ namespace Chisel.Editors
                     (Event.current.type != EventType.MouseMove && Event.current.type != EventType.Layout))
                 {
                     ChiselDragAndDropManager.Instance.OnSceneGUI(sceneView);
-                    ChiselClickSelectionManager.Instance.OnSceneGUI(sceneView);
+					ChiselRectSelectionManager.OnSceneGUI(sceneView);
                 }
             }
             finally
@@ -172,7 +181,7 @@ namespace Chisel.Editors
 
         private static void OnSelectionChanged()
         {
-            ChiselClickSelectionManager.Instance.OnSelectionChanged();
+            //ChiselClickSelectionManager.Instance.OnSelectionChanged();
             ChiselOutlineRenderer.Instance.OnSelectionChanged();
         }
 

@@ -1744,7 +1744,7 @@ ForceRerun:
 
         public static ChiselNode FindChiselNodeByTreeNode(CSGTreeNode node)
         {
-            return FindChiselNodeByInstanceID(node.UserID);
+            return FindChiselNodeByInstanceID(node.InstanceID);
         }
     }
 }

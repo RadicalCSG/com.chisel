@@ -13,14 +13,8 @@ namespace Chisel.Core
     [BurstCompile(CompileSynchronously = true)]
     unsafe struct UpdateBrushMeshIDsJob : IJob
     {
-        public void InitializeHierarchy(ref CompactHierarchy hierarchy)
-        {
-            compactHierarchyPtr = (CompactHierarchy*)UnsafeUtility.AddressOf(ref hierarchy);
-        }
-
         // Read
-        [NativeDisableUnsafePtrRestriction]
-        [NoAlias, ReadOnly] public CompactHierarchy*         compactHierarchyPtr;
+        [NoAlias, ReadOnly] public CompactHierarchy.ReadOnly compactHierarchy;
         [NoAlias, ReadOnly] public NativeParallelHashMap<int, RefCountedBrushMeshBlob>  brushMeshBlobs;
         [NoAlias, ReadOnly] public int                       brushCount;
         [NoAlias, ReadOnly] public NativeList<CompactNodeID> brushes;
@@ -35,7 +29,6 @@ namespace Chisel.Core
 
         public void Execute()
         {
-            ref var compactHierarchy = ref UnsafeUtility.AsRef<CompactHierarchy>(compactHierarchyPtr);
             Debug.Assert(parameters.Length == SurfaceDestinationParameters.ParameterCount);
             Debug.Assert(parameterCounts.Length == SurfaceDestinationParameters.ParameterCount);
             Debug.Assert(SurfaceDestinationParameters.kSurfaceDestinationParameterFlagMask.Length == SurfaceDestinationParameters.ParameterCount);

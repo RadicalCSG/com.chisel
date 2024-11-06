@@ -99,7 +99,7 @@ namespace Chisel.Editors
 
         public static void CenterPivotOnSelection()
         {
-            var selectedNodes = ChiselSelectionManager.SelectedNodes;
+            var selectedNodes = OldChiselSelectionManager.SelectedNodes;
             if (selectedNodes != null && selectedNodes.Count != 0)
             {
                 var center = PIvotUtility.FindSelectionWorldSpaceCenter(selectedNodes);
@@ -109,7 +109,7 @@ namespace Chisel.Editors
 
         public static void CenterPivotOnEachNodeInSelection()
         {
-            var selectedNodes = ChiselSelectionManager.SelectedNodes;
+            var selectedNodes = OldChiselSelectionManager.SelectedNodes;
             if (selectedNodes != null && selectedNodes.Count != 0)
             {
                 PIvotUtility.MovePivotToCenter(selectedNodes);

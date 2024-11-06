@@ -10,14 +10,14 @@ namespace Chisel.Components
         where Generator      : unmanaged, IBrushGenerator
         where DefinitionType : SerializedBrushGenerator<Generator>, new()
     {
-        CSGTreeBrush GenerateTopNode(in CSGTree tree, CSGTreeNode node, int userID, CSGOperationType operation)
+        CSGTreeBrush GenerateTopNode(in CSGTree tree, CSGTreeNode node, int instanceID, CSGOperationType operation)
         {
             var brush = (CSGTreeBrush)node;
             if (!brush.Valid)
             {
                 if (node.Valid)
                     node.Destroy();
-                return tree.CreateBrush(userID: userID, operation: operation);
+                return tree.CreateBrush(instanceID: instanceID, operation: operation);
             }
             if (brush.Operation != operation)
                 brush.Operation = operation;
@@ -25,13 +25,13 @@ namespace Chisel.Components
         }
 
         static readonly GeneratorBrushJobPool<Generator> s_JobPool = new();
-        protected override bool EnsureTopNodeCreatedInternal(in CSGTree tree, ref CSGTreeNode node, int userID)
+        protected override bool EnsureTopNodeCreatedInternal(in CSGTree tree, ref CSGTreeNode node, int instanceID)
         {
             if (!OnValidateDefinition())
                 return false;
 
             var brush = (CSGTreeBrush)node;
-            node = GenerateTopNode(in tree, brush, userID, operation);
+            node = GenerateTopNode(in tree, brush, instanceID, operation);
             return true;
         }
 
@@ -66,13 +66,13 @@ namespace Chisel.Components
         where Generator      : unmanaged, IBranchGenerator
         where DefinitionType : SerializedBranchGenerator<Generator>, new()
     {
-        CSGTreeBranch GenerateTopNode(in CSGTree tree, CSGTreeBranch branch, int userID, CSGOperationType operation)
+        CSGTreeBranch GenerateTopNode(in CSGTree tree, CSGTreeBranch branch, int instanceID, CSGOperationType operation)
         {
             if (!branch.Valid)
             {
                 if (branch.Valid)
                     branch.Destroy();
-                return tree.CreateBranch(userID: userID, operation: operation);
+                return tree.CreateBranch(instanceID: instanceID, operation: operation);
             }
             if (branch.Operation != operation)
                 branch.Operation = operation;
@@ -80,13 +80,13 @@ namespace Chisel.Components
         }
 
         static readonly GeneratorBranchJobPool<Generator> s_JobPool = new();
-        protected override bool EnsureTopNodeCreatedInternal(in CSGTree tree, ref CSGTreeNode node, int userID)
+        protected override bool EnsureTopNodeCreatedInternal(in CSGTree tree, ref CSGTreeNode node, int instanceID)
         {
 			if (!OnValidateDefinition())
 				return false;
 
 			var branch = (CSGTreeBranch)node;
-            node = GenerateTopNode(in tree, branch, userID, operation);
+            node = GenerateTopNode(in tree, branch, instanceID, operation);
             return true;
         }
 
@@ -447,7 +447,7 @@ namespace Chisel.Components
 
                 var treeRoot = model.Node;
                 var instanceID = GetInstanceID();
-                if (EnsureTopNodeCreatedInternal(in treeRoot, ref Node, userID: instanceID))
+                if (EnsureTopNodeCreatedInternal(in treeRoot, ref Node, instanceID: instanceID))
                     ClearHashes();
 
                 if (!Node.Valid)
@@ -536,7 +536,7 @@ namespace Chisel.Components
 
         protected abstract int GetDefinitionHash();
 
-        protected abstract bool EnsureTopNodeCreatedInternal(in CSGTree tree, ref CSGTreeNode node, int userID);
+        protected abstract bool EnsureTopNodeCreatedInternal(in CSGTree tree, ref CSGTreeNode node, int instanceID);
         protected abstract void UpdateGeneratorNodesInternal(in CSGTree tree, ref CSGTreeNode node);
 	}
 }

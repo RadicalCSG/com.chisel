@@ -2,9 +2,9 @@
 using Unity.Jobs;
 using Unity.Collections;
 using Unity.Mathematics;
-using Unity.Collections.LowLevel.Unsafe;
 using UnityEngine;
 using UnityEngine.Rendering;
+using Unity.Entities;
 
 namespace Chisel.Core
 {
@@ -14,9 +14,15 @@ namespace Chisel.Core
         public float3 normal;
         public float4 tangent;
         public float2 uv0;
-    }
+	}
 
-    public struct SubMeshSection
+	public struct SelectVertex
+	{
+		public float3 position;
+		public Vector4 instanceID;
+	}
+
+	public struct SubMeshSection
     {
         public MeshQuery meshQuery;
         public int startIndex;
@@ -27,7 +33,12 @@ namespace Chisel.Core
 
     public struct VertexBufferContents
     {
-        public readonly static VertexAttributeDescriptor[] s_RenderDescriptors = new[]
+        public readonly static VertexAttributeDescriptor[] s_ColliderDescriptors = new[]
+        {
+            new VertexAttributeDescriptor(VertexAttribute.Position,  dimension: 3, stream: 0)
+        };
+
+		public readonly static VertexAttributeDescriptor[] s_RenderDescriptors = new[]
         {
             new VertexAttributeDescriptor(VertexAttribute.Position,  dimension: 3, stream: 0),
             new VertexAttributeDescriptor(VertexAttribute.Normal,    dimension: 3, stream: 0),
@@ -35,33 +46,35 @@ namespace Chisel.Core
             new VertexAttributeDescriptor(VertexAttribute.TexCoord0, dimension: 2, stream: 0),
         };
 
-        public readonly static VertexAttributeDescriptor[] s_ColliderDescriptors = new[]
-        {
-            new VertexAttributeDescriptor(VertexAttribute.Position,  dimension: 3, stream: 0)
-        };
+		public readonly static VertexAttributeDescriptor[] s_SelectDescriptors = new[]
+		{
+			new VertexAttributeDescriptor(VertexAttribute.Position,  dimension: 3, stream: 0),
+			new VertexAttributeDescriptor(VertexAttribute.Color,     dimension: 4, stream: 0)
+		};
 
         public NativeList<GeneratedMeshDescription> meshDescriptions;
         public NativeList<SubMeshSection>           subMeshSections;
+        public NativeList<Mesh.MeshData>            meshes;
+        public NativeList<BlobAssetReference<SubMeshTriangleLookup>> subMeshTriangleLookups;
+		public NativeArray<VertexAttributeDescriptor> colliderDescriptors;
+		public NativeArray<VertexAttributeDescriptor> renderDescriptors;
+		public NativeArray<VertexAttributeDescriptor> selectDescriptors;
 
-        public NativeList<UnsafeList<CompactNodeID>>    triangleBrushIndices;
-        public NativeList<Mesh.MeshData>                meshes;
-
-        public NativeArray<VertexAttributeDescriptor> renderDescriptors;
-        public NativeArray<VertexAttributeDescriptor> colliderDescriptors;
-
-        public void EnsureInitialized()
+		public void EnsureInitialized()
         {
-            if (!meshDescriptions.IsCreated) meshDescriptions   = new NativeList<GeneratedMeshDescription>(Allocator.Persistent);
+            if (!meshDescriptions.IsCreated) meshDescriptions = new NativeList<GeneratedMeshDescription>(Allocator.Persistent);
             else meshDescriptions.Clear();
-            if (!subMeshSections.IsCreated) subMeshSections     = new NativeList<SubMeshSection>(Allocator.Persistent);
+            if (!subMeshSections.IsCreated) subMeshSections = new NativeList<SubMeshSection>(Allocator.Persistent);
             else subMeshSections.Clear();
-            if (!meshes              .IsCreated) meshes               = new NativeList<Mesh.MeshData>(Allocator.Persistent);
-            if (!triangleBrushIndices.IsCreated) triangleBrushIndices = new NativeList<UnsafeList<CompactNodeID>>(Allocator.Persistent);
+            if (!meshes.IsCreated) meshes = new NativeList<Mesh.MeshData>(Allocator.Persistent);
+            if (!subMeshTriangleLookups.IsCreated) subMeshTriangleLookups = new NativeList<BlobAssetReference<SubMeshTriangleLookup>>(Allocator.Persistent);
 
-            if (!renderDescriptors.IsCreated)
+			if (!colliderDescriptors.IsCreated)
+				colliderDescriptors = new NativeArray<VertexAttributeDescriptor>(s_ColliderDescriptors, Allocator.Persistent);
+			if (!renderDescriptors.IsCreated)
                 renderDescriptors = new NativeArray<VertexAttributeDescriptor>(s_RenderDescriptors, Allocator.Persistent);
-            if (!colliderDescriptors.IsCreated)
-                colliderDescriptors = new NativeArray<VertexAttributeDescriptor>(s_ColliderDescriptors, Allocator.Persistent);
+			if (!selectDescriptors.IsCreated)
+				selectDescriptors = new NativeArray<VertexAttributeDescriptor>(s_SelectDescriptors, Allocator.Persistent);
         }
 
         public void Clear()
@@ -76,11 +89,12 @@ namespace Chisel.Core
             {
                 return meshDescriptions.IsCreated &&
                         subMeshSections.IsCreated &&
-                        triangleBrushIndices.IsCreated &&
+                        subMeshTriangleLookups.IsCreated &&
                         meshes.IsCreated &&
+						colliderDescriptors.IsCreated &&
                         renderDescriptors.IsCreated &&
-                        colliderDescriptors.IsCreated;
-            }
+						selectDescriptors.IsCreated;
+			}
         }
 
         public JobHandle Dispose(JobHandle dependency) 
@@ -89,11 +103,12 @@ namespace Chisel.Core
             if (meshDescriptions    .IsCreated) lastJobHandle = JobHandle.CombineDependencies(lastJobHandle, meshDescriptions       .Dispose(dependency));
             if (subMeshSections     .IsCreated) lastJobHandle = JobHandle.CombineDependencies(lastJobHandle, subMeshSections        .Dispose(dependency));
             if (meshes              .IsCreated) lastJobHandle = JobHandle.CombineDependencies(lastJobHandle, meshes                 .Dispose(dependency));
-            if (triangleBrushIndices.IsCreated) lastJobHandle = JobHandle.CombineDependencies(lastJobHandle, triangleBrushIndices   .DisposeDeep(dependency));
+            if (subMeshTriangleLookups.IsCreated) lastJobHandle = JobHandle.CombineDependencies(lastJobHandle, subMeshTriangleLookups.DisposeDeep(dependency));
 
-            if (renderDescriptors   .IsCreated) lastJobHandle = JobHandle.CombineDependencies(lastJobHandle, renderDescriptors      .Dispose(dependency));
-            if (colliderDescriptors .IsCreated) lastJobHandle = JobHandle.CombineDependencies(lastJobHandle, colliderDescriptors    .Dispose(dependency));
-
+			if (colliderDescriptors.IsCreated) lastJobHandle = JobHandle.CombineDependencies(lastJobHandle, colliderDescriptors.Dispose(dependency));
+			if (renderDescriptors  .IsCreated) lastJobHandle = JobHandle.CombineDependencies(lastJobHandle, renderDescriptors.Dispose(dependency));
+			if (selectDescriptors  .IsCreated) lastJobHandle = JobHandle.CombineDependencies(lastJobHandle, selectDescriptors.Dispose(dependency));
+			
             this = default;
             return lastJobHandle;
         }

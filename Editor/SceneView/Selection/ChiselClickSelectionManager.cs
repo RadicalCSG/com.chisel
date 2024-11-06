@@ -15,7 +15,7 @@ using UnityEngine.Profiling;
 
 namespace Chisel.Editors
 {
-    public class PlaneIntersection
+	public class PlaneIntersection
     {
         public PlaneIntersection(Vector3 point, Plane plane) { this.point = point; this.plane = plane; }
         public PlaneIntersection(Vector3 point, Vector3 normal) { this.point = point; this.plane = new Plane(normal, point); }
@@ -100,14 +100,14 @@ namespace Chisel.Editors
             return true;
         }
 
-
+        
         public delegate bool IntersectRayMeshFunc(Ray ray, Mesh mesh, Matrix4x4 matrix, out RaycastHit hit);
         public static IntersectRayMeshFunc IntersectRayMesh = typeof(HandleUtility).CreateDelegate<IntersectRayMeshFunc>("IntersectRayMesh");
-#if UNITY_2022_3_OR_NEWER
+        
         public static MethodInfo internalGetClosestPickingIDMethod = typeof(HandleUtility).GetMethod("Internal_GetClosestPickingID", BindingFlags.Default | BindingFlags.Static | BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
         public static Type pickingObjectType = ReflectionExtensions.GetTypeByName("UnityEditor.PickingObject");
         public static ConstructorInfo pickingObjectConstructor = pickingObjectType.GetConstructors(BindingFlags.Instance | BindingFlags.Public).FirstOrDefault(c => !c.GetParameters().Any());
-
+        /*
         static object ToPickingObjectArray(GameObject[] gameObjects)
         {
             Profiler.BeginSample("ToPickingObjectArray");
@@ -130,7 +130,7 @@ namespace Chisel.Editors
                 Profiler.EndSample();
             }
         }
-
+        */
         public static GameObject PickClosestGameObject(Camera cam, int layers, Vector2 position, GameObject[] ignore, GameObject[] filter, bool drawGizmos, ref int materialIndex)
         {
             Profiler.BeginSample("PickClosestGameObject");
@@ -166,15 +166,6 @@ namespace Chisel.Editors
                 Profiler.EndSample();
             }
         }
-
-#else
-#if UNITY_2020_2_OR_NEWER
-        public delegate GameObject PickClosestGameObjectFunc(Camera camera, int layers, Vector2 position, GameObject[] ignore, GameObject[] filter, bool drawGizmos, out int materialIndex);
-#else
-        public delegate GameObject PickClosestGameObjectFunc(Camera camera, int layers, Vector2 position, GameObject[] ignore, GameObject[] filter, out int materialIndex);
-#endif
-        public static PickClosestGameObjectFunc PickClosestGO = typeof(HandleUtility).CreateDelegate<PickClosestGameObjectFunc>("Internal_PickClosestGO");
-#endif
 
 
         public void OnReset()
@@ -228,70 +219,8 @@ namespace Chisel.Editors
             }
         }
 
-        public void OnSceneGUI(SceneView sceneView)
-        {
-            if (s_SelectedNodeList.Count > 0)
-            {
-                for (int i = 0; i < s_SelectedNodeList.Count; i++)
-                {
-                    if (!s_SelectedNodeList[i].transform)
-                    {
-                        UpdateSelection();
-                        break;
-                    }
-                }
-
-                var modifiedNodes = HashSetPool<ChiselNode>.Get();
-                try
-                {
-                    for (int i = 0; i < s_SelectedNodeList.Count; i++)
-                    {
-                        var transform = s_SelectedNodeList[i].transform;
-                        var node = s_SelectedNodeList[i].node;
-                        var curLocalToWorldMatrix = transform.localToWorldMatrix;
-                        var oldLocalToWorldMatrix = node.hierarchyItem.LocalToWorldMatrix;
-                        if (curLocalToWorldMatrix.m00 != oldLocalToWorldMatrix.m00 ||
-                            curLocalToWorldMatrix.m01 != oldLocalToWorldMatrix.m01 ||
-                            curLocalToWorldMatrix.m02 != oldLocalToWorldMatrix.m02 ||
-                            curLocalToWorldMatrix.m03 != oldLocalToWorldMatrix.m03 ||
-
-                            curLocalToWorldMatrix.m10 != oldLocalToWorldMatrix.m10 ||
-                            curLocalToWorldMatrix.m11 != oldLocalToWorldMatrix.m11 ||
-                            curLocalToWorldMatrix.m12 != oldLocalToWorldMatrix.m12 ||
-                            curLocalToWorldMatrix.m13 != oldLocalToWorldMatrix.m13 ||
-
-                            curLocalToWorldMatrix.m20 != oldLocalToWorldMatrix.m20 ||
-                            curLocalToWorldMatrix.m21 != oldLocalToWorldMatrix.m21 ||
-                            curLocalToWorldMatrix.m22 != oldLocalToWorldMatrix.m22 ||
-                            curLocalToWorldMatrix.m23 != oldLocalToWorldMatrix.m23 //||
-
-                            //curLocalToWorldMatrix.m30 != oldLocalToWorldMatrix.m30 ||
-                            //curLocalToWorldMatrix.m31 != oldLocalToWorldMatrix.m31 ||
-                            //curLocalToWorldMatrix.m32 != oldLocalToWorldMatrix.m32 ||
-                            //curLocalToWorldMatrix.m33 != oldLocalToWorldMatrix.m33
-                            )
-                        {
-                            node.hierarchyItem.LocalToWorldMatrix = curLocalToWorldMatrix;
-                            node.hierarchyItem.WorldToLocalMatrix = transform.worldToLocalMatrix;
-                            modifiedNodes.Add(node);
-                        }
-                    }
-                    if (modifiedNodes.Count > 0)
-                        ChiselNodeHierarchyManager.NotifyTransformationChanged(modifiedNodes);
-                }
-                finally
-                {
-                    HashSetPool<ChiselNode>.Release(modifiedNodes);
-                }
-            }
-
-            // Handle selection clicks / marquee selection
-            ChiselRectSelectionManager.Update(sceneView);
-        }
-
-
-        #region DeepSelection (private)
-        private static readonly List<GameObject> s_DeepClickIgnoreGameObjectList = new();
+		#region DeepSelection (private)
+		private static readonly List<GameObject> s_DeepClickIgnoreGameObjectList = new();
         private static Vector2 s_PrevSceenPos = new(float.PositiveInfinity, float.PositiveInfinity);
         private static Camera s_PrevCamera;
 
@@ -382,7 +311,7 @@ namespace Chisel.Editors
 
             return intersection.brushIntersection.surfaceIndex != -1;
         }
-
+        
         public static GameObject PickModelOrGameObject(Camera camera, Vector2 pickposition, int layers, ref GameObject[] ignore, ref GameObject[] filter, out ChiselModelComponent model, out Material material)
         {
             Profiler.BeginSample("PickNodeOrGameObject");
@@ -458,7 +387,7 @@ namespace Chisel.Editors
                 Profiler.EndSample();
             }
         }
-
+        
         static PlaneIntersection GetPlaneIntersection(Vector2 mousePosition)
         {
             ChiselIntersection brushIntersection;
@@ -499,11 +428,10 @@ namespace Chisel.Editors
         {
             if (!dragArea.Contains(mousePosition))
                 return null;
-            ResetDeepClick();
+            //ResetDeepClick();
             return GetPlaneIntersection(mousePosition);
         }
-
-
+        
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         static bool FindSurfaceReference(ChiselNode chiselNode, CSGTreeNode node, CSGTreeBrush findBrush, int surfaceID, out SurfaceReference surfaceReference)
         {
@@ -597,7 +525,7 @@ namespace Chisel.Editors
         {
             return FindSurfaceReferences(position, selectAllSurfaces, foundSurfaces, out _, out _);
         }
-
+        
         public static GameObject PickNodeOrGameObject(Camera camera, Vector2 pickposition, int layers, SurfaceDestinationFlags visibleLayerFlags, ref GameObject[] ignore, ref GameObject[] filter, out ChiselModelComponent model, out ChiselNode node, out ChiselIntersection intersection)
         {
             Profiler.BeginSample("PickNodeOrGameObject");
@@ -668,7 +596,7 @@ namespace Chisel.Editors
                 Profiler.EndSample();
             }
         }
-
+        
         static GameObject PickClosestGameObjectDelegated(Vector2 position, ref GameObject[] ignore, ref GameObject[] filter, out ChiselIntersection intersection)
         {
             Profiler.BeginSample("PickClosestGameObjectDelegated");
@@ -698,4 +626,5 @@ namespace Chisel.Editors
             }
         }
     }
+
 }

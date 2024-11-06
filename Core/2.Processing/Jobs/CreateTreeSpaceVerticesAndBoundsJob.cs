@@ -13,23 +13,17 @@ namespace Chisel.Core
 {
     [BurstCompile(CompileSynchronously = true)]
     unsafe struct CreateTreeSpaceVerticesAndBoundsJob : IJobParallelForDefer
-    {        
-        public void InitializeLookups()
-        {
-            hierarchyIDLookupPtr    = (IDManager*)UnsafeUtility.AddressOf(ref CompactHierarchyManager.HierarchyIDLookup);
-        }
-
-        // Read
-        [NativeDisableUnsafePtrRestriction, NoAlias, ReadOnly] public IDManager*    hierarchyIDLookupPtr;
-        [NoAlias, ReadOnly] public NativeList<IndexOrder>                           rebuildTreeBrushIndexOrders;
+    {
+		// Read
+		[NoAlias, ReadOnly] public NativeList<IndexOrder>                           rebuildTreeBrushIndexOrders;
         [NoAlias, ReadOnly] public NativeList<NodeTransformations>                  transformationCache;
         [NoAlias, ReadOnly] public NativeArray<BlobAssetReference<BrushMeshBlob>>   brushMeshLookup;
 
         // Read/Write
-        [NativeDisableContainerSafetyRestriction, NoAlias, ReadOnly] public NativeArray<CompactHierarchy> hierarchyList;
+		[NativeDisableParallelForRestriction, NoAlias] public CompactHierarchyManagerInstance.ReadWrite compactHierarchyManager;
 
-        // Write
-        [NativeDisableParallelForRestriction]
+		// Write
+		[NativeDisableParallelForRestriction]
         [NoAlias, WriteOnly] public NativeList<MinMaxAABB> brushTreeSpaceBounds;
         [NativeDisableParallelForRestriction]
         [NoAlias, WriteOnly] public NativeList<BlobAssetReference<BrushTreeSpaceVerticesBlob>>  treeSpaceVerticesCache;
@@ -54,12 +48,11 @@ namespace Chisel.Core
             var compactNodeID   = brushIndexOrder.compactNodeID;
             var transform       = transformationCache[brushNodeOrder];
 
-            ref var hierarchyIDLookup   = ref UnsafeUtility.AsRef<IDManager>(hierarchyIDLookupPtr);
-            var hierarchyIndex          = CompactHierarchyManager.GetHierarchyIndexUnsafe(ref hierarchyIDLookup, compactNodeID);
-            var hierarchyListPtr        = (CompactHierarchy*)hierarchyList.GetUnsafePtr();
-            ref var compactHierarchy    = ref hierarchyListPtr[hierarchyIndex];
-            
-            var mesh            = brushMeshLookup[brushNodeOrder];
+            var hierarchyIndex = compactHierarchyManager.GetHierarchyIndex(compactNodeID);
+            Debug.Assert(hierarchyIndex >= 0);
+            ref var compactHierarchy = ref compactHierarchyManager.GetHierarchyByIndex(hierarchyIndex);
+
+			var mesh            = brushMeshLookup[brushNodeOrder];
             if (mesh == BlobAssetReference<BrushMeshBlob>.Null ||
                 !mesh.IsCreated)
             {

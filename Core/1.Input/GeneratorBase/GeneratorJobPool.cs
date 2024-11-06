@@ -189,7 +189,7 @@ namespace Chisel.Core
 
             struct GeneratedNodeDefinitionSorter : IComparer<GeneratedNodeDefinition>
             {
-                public int Compare(GeneratedNodeDefinition x, GeneratedNodeDefinition y)
+                public readonly int Compare(GeneratedNodeDefinition x, GeneratedNodeDefinition y)
                 {
                     var x_hierarchyID = x.hierarchyIndex;
                     var y_hierarchyID = y.hierarchyIndex;
@@ -197,8 +197,8 @@ namespace Chisel.Core
                     if (x_hierarchyID != y_hierarchyID)
                         return x_hierarchyID - y_hierarchyID;
                     
-                    var x_parentCompactNodeID = x.parentCompactNodeID.value;
-                    var y_parentCompactNodeID = y.parentCompactNodeID.value;
+                    var x_parentCompactNodeID = x.parentCompactNodeID.slotIndex.index;
+                    var y_parentCompactNodeID = y.parentCompactNodeID.slotIndex.index;
                     if (x_parentCompactNodeID != y_parentCompactNodeID)
                         return x_parentCompactNodeID - y_parentCompactNodeID;
 
@@ -207,8 +207,8 @@ namespace Chisel.Core
                     if (x_siblingIndex != y_siblingIndex)
                         return x_siblingIndex - y_siblingIndex;
 
-                    var x_compactNodeID = x.compactNodeID.value;
-                    var y_compactNodeID = y.compactNodeID.value;
+                    var x_compactNodeID = x.compactNodeID.slotIndex.index;
+                    var y_compactNodeID = y.compactNodeID.slotIndex.index;
                     if (x_compactNodeID != y_compactNodeID)
                         return x_compactNodeID - y_compactNodeID;
                     return 0;
@@ -229,8 +229,8 @@ namespace Chisel.Core
         {            
             public void InitializeLookups()
             {
-                hierarchyIDLookupPtr = (IDManager*)UnsafeUtility.AddressOf(ref CompactHierarchyManager.HierarchyIDLookup);
-                nodeIDLookupPtr = (IDManager*)UnsafeUtility.AddressOf(ref CompactHierarchyManager.NodeIDLookup);
+                hierarchyIDLookupPtr = (SlotIndexMap*)UnsafeUtility.AddressOf(ref CompactHierarchyManager.HierarchyIDLookup);
+                nodeIDLookupPtr = (SlotIndexMap*)UnsafeUtility.AddressOf(ref CompactHierarchyManager.NodeIDLookup);
                 nodesLookup = CompactHierarchyManager.Nodes;
             }
 
@@ -238,9 +238,9 @@ namespace Chisel.Core
             [NoAlias, ReadOnly] public NativeList<GeneratedNodeDefinition>      generatedNodeDefinitions;
 
             // Read/Write
-            [NoAlias] public PointerReference<IDManager>                        hierarchyIDLookupRef;
-            [NativeDisableUnsafePtrRestriction, NoAlias] public IDManager*      hierarchyIDLookupPtr;
-            [NativeDisableUnsafePtrRestriction, NoAlias] public IDManager*      nodeIDLookupPtr;
+            [NoAlias] public PointerReference<SlotIndexMap>                        hierarchyIDLookupRef;
+            [NativeDisableUnsafePtrRestriction, NoAlias] public SlotIndexMap*      hierarchyIDLookupPtr;
+            [NativeDisableUnsafePtrRestriction, NoAlias] public SlotIndexMap*      nodeIDLookupPtr;
             [NoAlias] public NativeList<CompactNodeID>                          nodesLookup;
             [NoAlias] public NativeList<CompactHierarchy>                       hierarchyList;
             [NativeDisableContainerSafetyRestriction]
@@ -253,7 +253,7 @@ namespace Chisel.Core
 
                 ref var hierarchyIDLookup   = ref hierarchyIDLookupRef.Value;// UnsafeUtility.AsRef<IDManager>(hierarchyIDLookupPtr);
                 //ref var hierarchyIDLookup   = ref UnsafeUtility.AsRef<IDManager>(hierarchyIDLookupPtr);
-                ref var nodeIDLookup        = ref UnsafeUtility.AsRef<IDManager>(nodeIDLookupPtr);
+                ref var nodeIDLookup        = ref UnsafeUtility.AsRef<SlotIndexMap>(nodeIDLookupPtr);
 
                 // TODO: set all unique hierarchies dirty separately, somehow. Make this job parallel
                 var hierarchyListPtr = (CompactHierarchy*)hierarchyList.GetUnsafePtr();
@@ -304,7 +304,7 @@ namespace Chisel.Core
                 generatedNodeDefinitions = generatedNodeDefinitions,
 
                 // Read/Write
-                hierarchyIDLookupRef     = new PointerReference<IDManager>(ref CompactHierarchyManager.HierarchyIDLookup),
+                hierarchyIDLookupRef     = new PointerReference<SlotIndexMap>(ref CompactHierarchyManager.HierarchyIDLookup),
                 hierarchyList            = hierarchyList,
                 brushMeshBlobCache       = brushMeshBlobCache
             };
@@ -390,14 +390,14 @@ namespace Chisel.Core
     {
         public void InitializeLookups()
         {
-            hierarchyIDLookupPtr = (IDManager*)UnsafeUtility.AddressOf(ref CompactHierarchyManager.HierarchyIDLookup);
-            nodeIDLookupPtr = (IDManager*)UnsafeUtility.AddressOf(ref CompactHierarchyManager.NodeIDLookup);
+            hierarchyIDLookupPtr = (SlotIndexMap*)UnsafeUtility.AddressOf(ref CompactHierarchyManager.HierarchyIDLookup);
+            nodeIDLookupPtr = (SlotIndexMap*)UnsafeUtility.AddressOf(ref CompactHierarchyManager.NodeIDLookup);
             nodesLookup = CompactHierarchyManager.Nodes;
         }
 
         // Read
-        [NativeDisableUnsafePtrRestriction, NoAlias, ReadOnly] public IDManager*    hierarchyIDLookupPtr;
-        [NativeDisableUnsafePtrRestriction, NoAlias, ReadOnly] public IDManager*    nodeIDLookupPtr;
+        [NativeDisableUnsafePtrRestriction, NoAlias, ReadOnly] public SlotIndexMap*    hierarchyIDLookupPtr;
+        [NativeDisableUnsafePtrRestriction, NoAlias, ReadOnly] public SlotIndexMap*    nodeIDLookupPtr;
         [NoAlias, ReadOnly] public NativeList<CompactNodeID>                        nodesLookup;
 
         [NoAlias, ReadOnly] public NativeList<NodeID>                             nodes;
@@ -410,8 +410,8 @@ namespace Chisel.Core
 
         public void Execute()
         {
-            ref var hierarchyIDLookup = ref UnsafeUtility.AsRef<IDManager>(hierarchyIDLookupPtr);
-            ref var nodeIDLookup = ref UnsafeUtility.AsRef<IDManager>(nodeIDLookupPtr);
+            ref var hierarchyIDLookup = ref UnsafeUtility.AsRef<SlotIndexMap>(hierarchyIDLookupPtr);
+            ref var nodeIDLookup = ref UnsafeUtility.AsRef<SlotIndexMap>(nodeIDLookupPtr);
             var hierarchyListPtr = (CompactHierarchy*)hierarchyList.GetUnsafeReadOnlyPtr();
             for (int i = 0; i < nodes.Length; i++) 
             {
@@ -870,9 +870,9 @@ namespace Chisel.Core
                     var newRange = new NativeArray<CSGTreeNode>(newBrushCount, Allocator.Temp);
                     try
                     {
-                        var userID = branch.UserID;
+                        var instanceID = branch.InstanceID;
                         for (int i = 0; i < newBrushCount; i++)
-                            newRange[i] = tree.CreateBrush(userID: userID, operation: CSGOperationType.Additive);
+                            newRange[i] = tree.CreateBrush(instanceID: instanceID, operation: CSGOperationType.Additive);
                         branch.AddRange(newRange);
                     }
                     finally { newRange.Dispose(); }
@@ -939,14 +939,14 @@ namespace Chisel.Core
         {
             public void InitializeLookups()
             {
-                hierarchyIDLookupPtr = (IDManager*)UnsafeUtility.AddressOf(ref CompactHierarchyManager.HierarchyIDLookup);
-                nodeIDLookupPtr = (IDManager*)UnsafeUtility.AddressOf(ref CompactHierarchyManager.NodeIDLookup);
+                hierarchyIDLookupPtr = (SlotIndexMap*)UnsafeUtility.AddressOf(ref CompactHierarchyManager.HierarchyIDLookup);
+                nodeIDLookupPtr = (SlotIndexMap*)UnsafeUtility.AddressOf(ref CompactHierarchyManager.NodeIDLookup);
                 nodesLookup = CompactHierarchyManager.Nodes;
             }
 
             // Read
-            [NativeDisableUnsafePtrRestriction, NoAlias, ReadOnly] public IDManager*    hierarchyIDLookupPtr;
-            [NativeDisableUnsafePtrRestriction, NoAlias, ReadOnly] public IDManager*    nodeIDLookupPtr;
+            [NativeDisableUnsafePtrRestriction, NoAlias, ReadOnly] public SlotIndexMap*    hierarchyIDLookupPtr;
+            [NativeDisableUnsafePtrRestriction, NoAlias, ReadOnly] public SlotIndexMap*    nodeIDLookupPtr;
             [NoAlias, ReadOnly] public NativeList<CompactNodeID>                        nodesLookup;
 
             [NoAlias, ReadOnly] public NativeList<NodeID>               generatorRootNodeIDs;
@@ -960,8 +960,8 @@ namespace Chisel.Core
 
             public void Execute()
             {
-                ref var hierarchyIDLookup = ref UnsafeUtility.AsRef<IDManager>(hierarchyIDLookupPtr);
-                ref var nodeIDLookup = ref UnsafeUtility.AsRef<IDManager>(nodeIDLookupPtr);
+                ref var hierarchyIDLookup = ref UnsafeUtility.AsRef<SlotIndexMap>(hierarchyIDLookupPtr);
+                ref var nodeIDLookup = ref UnsafeUtility.AsRef<SlotIndexMap>(nodeIDLookupPtr);
                 var hierarchyListPtr = (CompactHierarchy*)hierarchyList.GetUnsafeReadOnlyPtr();
                 for (int i = 0; i < generatorRootNodeIDs.Length; i++)
                 {
