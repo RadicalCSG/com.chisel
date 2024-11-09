@@ -173,8 +173,8 @@ namespace Chisel.Core
                         surfaceParameter  = surfaces[s].surfaceParameter, // <-- 2. store array per surfaceParameter => no sort
                         vertexCount       = surfaces[s].vertexCount,
                         indexCount        = surfaces[s].indexCount,
-                        surfaceHashValue       = surfaces[s].surfaceHash,
-                        geometryHashValue      = surfaces[s].geometryHash,
+                        surfaceHashValue  = surfaces[s].surfaceHash,
+                        geometryHashValue = surfaces[s].geometryHash,
                         brushRenderBuffer = brushRenderBuffer, // <-- 3. Get rid of this somehow => memcpy
                     });
                 }

@@ -178,7 +178,7 @@ namespace Chisel.Components
     }
 
     [DisallowMultipleComponent]
-    public abstract class ChiselGeneratorComponent : ChiselNode, IChiselHasOperation
+    public abstract class ChiselGeneratorComponent : ChiselNodeComponent, IChiselHasOperation
     {
         // This ensures names remain identical, or a compile error occurs.
         public const string kOperationFieldName = nameof(operation);
@@ -311,7 +311,7 @@ namespace Chisel.Components
                         break;
 
                     // If we find a ChiselNode we continue, unless it's a Composite set to passthrough
-                    if (transform.TryGetComponent<ChiselNode>(out var component))
+                    if (transform.TryGetComponent<ChiselNodeComponent>(out var component))
                     {
                         var composite = component as ChiselCompositeComponent;
                         if (composite == null || !composite.PassThrough)
@@ -375,7 +375,7 @@ namespace Chisel.Components
 				return;
             }
 
-            if (ChiselGeneratedComponentManager.IsDefaultModel(hierarchyItem.Model))
+            if (ChiselModelManager.Instance.IsDefaultModel(hierarchyItem.Model))
             {
                 messages.Warning(kGeneratorIsPartOfDefaultModel);
             }
@@ -430,7 +430,7 @@ namespace Chisel.Components
             prevMaterialHash = 0;
             prevDefinitionHash = 0;
 #if UNITY_EDITOR
-            ChiselGeneratedComponentManager.EnsureVisibilityInitialized(this); 
+			ChiselUnityVisibilityManager.EnsureVisibilityInitialized(this); 
 #endif
         }
 

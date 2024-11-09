@@ -19,66 +19,14 @@ namespace Chisel.Components
     }
     
 
-	// TODO: move out of here
 	public struct SelectionOffset
 	{
 		public int offset;
-		public readonly int Count { get { return selectionToInstanceIDs?.Length ?? 0; } }
+		public readonly int Count { get { return selectionIndexDescriptions?.Length ?? 0; } }
 		public int hashcode;
 		public HashSet<int> skipSelectionID;
 		public ChiselRenderObjects renderObjects;
-		public int[] selectionToInstanceIDs;
-	}
-
-	// TODO: move out of here
-	public static class ChiselSelectionManager
-	{
-
-        // Only used for debug rendering
-        static readonly List<GameObject> ignoreSet = new();
-		public static bool NeedToRenderForPicking(GameObject go) 
-        {
-			// TODO: Can we use HandleUtility.GetPickingIncludeExcludeList instead?
-			return !ignoreSet.Contains(go); 
-        }
-
-		public static UnityEditor.RenderPickingResult PickingCallback(in UnityEditor.RenderPickingArgs args)
-        {
-            ignoreSet.Clear();
-            if (args.renderPickingType == UnityEditor.RenderPickingType.RenderFromIgnoreSet)
-            {
-                ignoreSet.AddRange(args.renderObjectSet);
-			}
-
-			var selectionOffsets = new List<SelectionOffset>();
-			int pickingOffset = args.pickingIndex;
-			int pickingIndex = ChiselRenderObjects.RenderPickingModels(args.NeedToRenderForPicking, pickingOffset, selectionOffsets);
-
-			UnityEditor.RenderPickingResult result = 
-                new(pickingIndex - pickingOffset,
-		            delegate(int localPickingIndex)//, Vector3 worldPos, float depth)
-			        {
-                        localPickingIndex += pickingOffset;
-						for (int i = 0; i < selectionOffsets.Count; i++)
-                        {
-                            var selectionOffset = selectionOffsets[i];
-                            if (localPickingIndex < selectionOffset.offset)
-                            {
-                                Debug.Log("picking index not found");
-                                return null;
-                            }
-							if (localPickingIndex >= selectionOffset.offset + selectionOffset.Count)
-                                continue;
-
-                            var instanceID = selectionOffset.selectionToInstanceIDs[localPickingIndex - selectionOffset.offset];
-							return Resources.InstanceIDToObject(instanceID);
-						}
-						Debug.Log("picking index not found");
-						return null;
-					});
-
-			return result;
-        }
+		public SelectionDescription[] selectionIndexDescriptions;
 	}
 
 
@@ -161,8 +109,8 @@ namespace Chisel.Components
 					hideFlags = HideFlags.DontSave
 				};
 				selectionMeshHashcode = ~HashCode.Combine(triangleBrushes?.hashCode ?? 0, 0, sharedMesh.GetHashCode());
-                // TODO: do this on level load instead?
-				ChiselGeneratedComponentManager.UpdateVisibility(true);
+				// TODO: do this on level load instead?
+				ChiselUnityVisibilityManager.UpdateVisibility(true);
 			}
 #endif
 		}
@@ -219,19 +167,6 @@ namespace Chisel.Components
             return true;
         }
 
-        public bool HasLightmapUVs
-        {
-            get
-            {
-#if UNITY_EDITOR
-                // Avoid light mapping multiple times, when the same mesh is used on multiple MeshRenderers
-                if (!ChiselGeneratedComponentManager.HasLightmapUVs(sharedMesh))
-                    return true;
-#endif
-                return false;
-            }
-        }
-
         void Initialize()
         {
             meshFilter.sharedMesh = sharedMesh;
@@ -248,7 +183,7 @@ namespace Chisel.Components
 
 #if UNITY_EDITOR
                 UnityEditor.EditorUtility.SetSelectedRenderState(meshRenderer, UnityEditor.EditorSelectedRenderState.Hidden);
-                ChiselGeneratedComponentManager.SetHasLightmapUVs(sharedMesh, false);
+				ChiselUnityUVGenerationManager.SetHasLightmapUVs(sharedMesh, false);
 #endif
             } else
             {
@@ -263,12 +198,21 @@ namespace Chisel.Components
             }
         }
 
-        void UpdateSettings(ChiselModelComponent model, GameObjectState state, bool meshIsModified)
+#if UNITY_EDITOR
+		public static void CheckIfFullMeshNeedsToBeHidden(ChiselModelComponent model, ChiselRenderObjects renderable)
+		{
+			var shouldHideMesh = true;// (model.generated.visibilityState != VisibilityState.AllVisible && model.generated.visibilityState != VisibilityState.Unknown);
+			if (renderable.meshRenderer.forceRenderingOff != shouldHideMesh)
+				renderable.meshRenderer.forceRenderingOff = shouldHideMesh;
+		}
+#endif
+
+		void UpdateSettings(ChiselModelComponent model, GameObjectState state, bool meshIsModified)
         {
 #if UNITY_EDITOR
             Profiler.BeginSample("CheckIfFullMeshNeedsToBeHidden");
             // If we need to render partial meshes (where some brushes are hidden) then we shouldn't show the full mesh
-            ChiselGeneratedComponentManager.CheckIfFullMeshNeedsToBeHidden(model, this);
+            CheckIfFullMeshNeedsToBeHidden(model, this);
             Profiler.EndSample();
             if (meshIsModified)
             {
@@ -281,10 +225,10 @@ namespace Chisel.Components
                 UnityEditor.EditorUtility.SetDirty(model);
                 Profiler.EndSample();
                 Profiler.BeginSample("SetHasLightmapUVs");
-                ChiselGeneratedComponentManager.SetHasLightmapUVs(sharedMesh, false);
+				ChiselUnityUVGenerationManager.SetHasLightmapUVs(sharedMesh, false);
                 Profiler.EndSample();
                 Profiler.BeginSample("ClearLightmapData");
-                ChiselGeneratedComponentManager.ClearLightmapData(state, this);
+				ChiselUnityUVGenerationManager.ClearLightmapData(state, this);
                 Profiler.EndSample();
             }
 #endif 
@@ -532,9 +476,9 @@ namespace Chisel.Components
 
 
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
-		public int[] GetSelectionToInstanceIDsArray()
+		public SelectionDescription[] GetSelectionIndexDescriptionArray()
 		{
-			return triangleBrushes.selectionToInstanceIDs;
+			return triangleBrushes.selectionIndexDescriptions;
 		}
 
 
@@ -662,13 +606,13 @@ namespace Chisel.Components
 		}
         
 
-		private static int GetInvisibleInstanceIds(BrushVisibilityLookup brushVisibilityLookup, ManagedSubMeshTriangleLookup.NeedToRenderForPicking needToRenderForPicking, int[] selectionToInstanceIDs, HashSet<int> skipSelectionID)
+		private static int GetInvisibleInstanceIds(BrushVisibilityLookup brushVisibilityLookup, ManagedSubMeshTriangleLookup.NeedToRenderForPicking needToRenderForPicking, SelectionDescription[] selectionToInstanceIDs, HashSet<int> skipSelectionID)
         {
             skipSelectionID.Clear();
             int hashcode = 0;
 			for (int selectionID = 0; selectionID < selectionToInstanceIDs.Length; selectionID++)
             {
-                var instanceID = selectionToInstanceIDs[selectionID];
+                var instanceID = selectionToInstanceIDs[selectionID].instanceID;
 
                 GameObject instanceGameObject = null;
                 if (brushVisibilityLookup.IsBrushVisible(instanceID))
@@ -689,10 +633,11 @@ namespace Chisel.Components
 
 		public static int RenderPickingModels(ManagedSubMeshTriangleLookup.NeedToRenderForPicking needToRenderForPicking, int selectionIndexOffset, List<SelectionOffset> selectionOffsets)
 		{
-			var brushVisibilityLookup = ChiselGeneratedComponentManager.brushVisibilityLookup;
+			var brushVisibilityLookup = ChiselUnityVisibilityManager.brushVisibilityLookup;
             
             selectionOffsets.Clear();
-			foreach (var model in ChiselGeneratedModelMeshManager.s_RegisteredModels)
+            var instance = ChiselModelManager.Instance;
+			foreach (var model in instance.Models)
 			{
 				var generated = model.generated;
 
@@ -707,12 +652,12 @@ namespace Chisel.Components
 					if (renderObjects == null || !renderObjects.IsRendered())
 						continue;
 
-					var selectionToInstanceIDs = renderObjects.GetSelectionToInstanceIDsArray();
-                    if (selectionToInstanceIDs.Length == 0)
+					var selectionIndexDescriptions = renderObjects.GetSelectionIndexDescriptionArray();
+                    if (selectionIndexDescriptions.Length == 0)
                         continue;
 
 					var skipSelectionID = HashSetPool<int>.Get();
-					var hashcode = GetInvisibleInstanceIds(brushVisibilityLookup, needToRenderForPicking, selectionToInstanceIDs, skipSelectionID);
+					var hashcode = GetInvisibleInstanceIds(brushVisibilityLookup, needToRenderForPicking, selectionIndexDescriptions, skipSelectionID);
                                        
 					selectionOffsets.Add(new SelectionOffset
 					{
@@ -720,10 +665,10 @@ namespace Chisel.Components
 						hashcode = hashcode,
 						renderObjects = renderObjects,
 						skipSelectionID = skipSelectionID,
-						selectionToInstanceIDs = selectionToInstanceIDs
+						selectionIndexDescriptions = selectionIndexDescriptions
 					});
 
-					selectionIndexOffset += selectionToInstanceIDs.Length;
+					selectionIndexOffset += selectionIndexDescriptions.Length;
 				}
 
 				foreach (var renderObjects in generated.debugVisualizationRenderables)
@@ -731,12 +676,12 @@ namespace Chisel.Components
 					if (renderObjects == null || !renderObjects.IsRendered())
 						continue;
 
-					var selectionToInstanceIDs = renderObjects.GetSelectionToInstanceIDsArray();
-					if (selectionToInstanceIDs.Length == 0)
+					var selectionIndexDescriptions = renderObjects.GetSelectionIndexDescriptionArray();
+					if (selectionIndexDescriptions.Length == 0)
 						continue;
 
 					var skipSelectionID = HashSetPool<int>.Get();
-					var hashcode = GetInvisibleInstanceIds(brushVisibilityLookup, needToRenderForPicking, selectionToInstanceIDs, skipSelectionID);
+					var hashcode = GetInvisibleInstanceIds(brushVisibilityLookup, needToRenderForPicking, selectionIndexDescriptions, skipSelectionID);
 					
 					selectionOffsets.Add(new SelectionOffset
 					{
@@ -744,10 +689,10 @@ namespace Chisel.Components
 						hashcode = hashcode,
 						renderObjects = renderObjects,
 						skipSelectionID = skipSelectionID,
-						selectionToInstanceIDs = selectionToInstanceIDs
+						selectionIndexDescriptions = selectionIndexDescriptions
 					});
 
-					selectionIndexOffset += selectionToInstanceIDs.Length;
+					selectionIndexOffset += selectionIndexDescriptions.Length;
 				}
 			}
 
@@ -759,6 +704,10 @@ namespace Chisel.Components
 			}
 			return selectionIndexOffset;
 		}
+
+
+
+		static bool NeedToRenderForPicking(GameObject _) { return true; }
 
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public static void OnRenderModel(Camera camera, ChiselModelComponent model, DrawModeFlags drawModeFlags)
@@ -777,7 +726,7 @@ namespace Chisel.Components
 			if (drawModeFlags == DrawModeFlags.ShowPickingModel)
 			{
 				List<SelectionOffset> selectionOffsets = new();
-				RenderPickingModels(ChiselSelectionManager.NeedToRenderForPicking, 0, selectionOffsets);
+				RenderPickingModels(NeedToRenderForPicking, 0, selectionOffsets);
 				return;
 			}
 

@@ -22,7 +22,7 @@ namespace Chisel.Editors
     // TODO: add support for "editors" to have an init/shutdown/update part so we can cache handles
     public sealed class ChiselEditorHandles : IChiselHandles
     {
-        public void Start(ChiselNode generator, SceneView sceneView = null)
+        public void Start(ChiselNodeComponent generator, SceneView sceneView = null)
         {
             this.focusControl = Chisel.Editors.SceneHandleUtility.focusControl;
             this.disabled = Chisel.Editors.SceneHandles.disabled;
@@ -102,7 +102,7 @@ namespace Chisel.Editors
 
         int focusControl;
 
-        ChiselNode generator;
+        ChiselNodeComponent generator;
         Transform generatorTransform;
         public bool modified { get; private set; }
 
@@ -131,7 +131,7 @@ namespace Chisel.Editors
             }
         }
 
-        public readonly Dictionary<ChiselNode, object> generatorStateLookup = new Dictionary<ChiselNode, object>();
+        public readonly Dictionary<ChiselNodeComponent, object> generatorStateLookup = new Dictionary<ChiselNodeComponent, object>();
 
         public object generatorState 
         { 

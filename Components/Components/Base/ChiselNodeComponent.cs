@@ -6,7 +6,7 @@ namespace Chisel.Components
 {
     [DisallowMultipleComponent]
     //[ExcludeFromObjectFactoryAttribute]
-    public abstract class ChiselNode : MonoBehaviour, IChiselMessageProvider
+    public abstract class ChiselNodeComponent : MonoBehaviour, IChiselMessageProvider
 	{
         public const string kDocumentationBaseURL = "http://example.com/docs/"; // TODO: put somewhere else / put documentation online
         public const string kDocumentationExtension = ".html";
@@ -20,7 +20,7 @@ namespace Chisel.Components
         [NonSerialized] [HideInInspector] public readonly ChiselHierarchyItem hierarchyItem;
 
 
-        public ChiselNode() { hierarchyItem = new ChiselHierarchyItem(this); ChiselNodeHierarchyManager.Register(this); }        
+        public ChiselNodeComponent() { hierarchyItem = new ChiselHierarchyItem(this); ChiselNodeHierarchyManager.Register(this); }        
         
         protected virtual void OnCleanup() 
         { 
@@ -94,7 +94,7 @@ namespace Chisel.Components
                     break;
 
                 // If we find a ChiselNode we continue, unless it's a Composite set to passthrough
-                if (transform.TryGetComponent<ChiselNode>(out var component))
+                if (transform.TryGetComponent<ChiselNodeComponent>(out var component))
                 {
                     var composite = component as ChiselCompositeComponent;
                     if (composite == null || !composite.PassThrough)

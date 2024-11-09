@@ -35,16 +35,16 @@ namespace Chisel.Editors
                 return false;
             if (Selection.count == 1)
             {
-                var chiselNode = Selection.activeObject as ChiselNode;
+                var chiselNode = Selection.activeObject as ChiselNodeComponent;
                 if (chiselNode != null)
                     return true;
 
                 var gameObject = Selection.activeObject as GameObject;
                 if (gameObject != null)
-                    if (gameObject.TryGetComponent<ChiselNode>(out _))
+                    if (gameObject.TryGetComponent<ChiselNodeComponent>(out _))
                         return true;
             }
-            return Selection.GetFiltered<ChiselNode>(SelectionMode.Editable).Length > 0;
+            return Selection.GetFiltered<ChiselNodeComponent>(SelectionMode.Editable).Length > 0;
         }
     }
 }

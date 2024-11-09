@@ -5,7 +5,7 @@ namespace Chisel.Components
 {
     [ExecuteInEditMode, HelpURL(kDocumentationBaseURL + kNodeTypeName + kDocumentationExtension)]
     [DisallowMultipleComponent, AddComponentMenu("Chisel/" + kNodeTypeName)]
-    public sealed class ChiselCompositeComponent : ChiselNode, IChiselHasOperation
+    public sealed class ChiselCompositeComponent : ChiselNodeComponent, IChiselHasOperation
     {
         // This ensures names remain identical and the field actually exists, or a compile error occurs.
         public const string kOperationFieldName     = nameof(operation);

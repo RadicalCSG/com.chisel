@@ -63,11 +63,7 @@ namespace Chisel.Editors
             if (!_shadersInitialized) ShaderInit();
             if (_pixelsPerPointId != -1)
             {
-#if UNITY_5_4_OR_NEWER
                 genericLineMaterial.SetFloat(_pixelsPerPointId, EditorGUIUtility.pixelsPerPoint);
-#else
-                genericLineMaterial.SetFloat(_pixelsPerPointId, 1.0f);
-#endif
             }
             if (_lineThicknessMultiplierId != -1) genericLineMaterial.SetFloat(_lineThicknessMultiplierId, _lineThicknessMultiplier * EditorGUIUtility.pixelsPerPoint);
             if (_lineDashMultiplierId      != -1) genericLineMaterial.SetFloat(_lineDashMultiplierId,      _lineDashMultiplier);

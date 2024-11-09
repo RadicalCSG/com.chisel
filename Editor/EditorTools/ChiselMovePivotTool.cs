@@ -6,12 +6,7 @@ using UnityEngine;
 using UnityEditor;
 using UnityEditor.ShortcutManagement;
 using UnityEditor.EditorTools;
-using Snapping = Chisel.Editors.Snapping;
-using Grid = Chisel.Editors.Grid;
 using UnityEngine.Pool;
-#if !UNITY_2020_2_OR_NEWER
-using ToolManager = UnityEditor.EditorTools;
-#endif
 
 namespace Chisel.Editors
 {
@@ -90,7 +85,7 @@ namespace Chisel.Editors
             Snapping.CustomSnappedEvent = null;
             if (EditorGUI.EndChangeCheck())
             {
-                var nodes = OldChiselSelectionManager.SelectedNodes;
+                var nodes = ChiselSelectionManager.SelectedNodes;
                 if (nodes == null || nodes.Count == 0)
                     return;
                 PIvotUtility.MovePivotTo(nodes, newPosition);
@@ -206,7 +201,8 @@ namespace Chisel.Editors
                 allVertexSnapEvents  == null)
                 return;
 
-            s_FoundIntersections.Clear();
+
+			s_FoundIntersections.Clear();
             if (ChiselSceneQuery.FindFirstWorldIntersection(s_FoundIntersections, worldRayStart - worldRayDirection, worldRayStart + worldRayDirection, filter: selection))
             {
                 if (allSurfaceSnapEvents != null)
@@ -242,7 +238,7 @@ namespace Chisel.Editors
                 ref var vertices                = ref brushMesh.localVertices;
                 ref var halfEdgePolygonIndices  = ref brushMesh.halfEdgePolygonIndices;
 
-                var model           = ChiselNodeHierarchyManager.FindChiselNodeByInstanceID(csgTree.InstanceID) as ChiselModelComponent;
+                var model           = Resources.InstanceIDToObject(csgTree.InstanceID) as ChiselModelComponent;
                 var worldToNode     = (Matrix4x4)csgBrush.TreeToNodeSpaceMatrix * model.hierarchyItem.WorldToLocalMatrix;
                 var nodeToWorld     = model.hierarchyItem.LocalToWorldMatrix * (Matrix4x4)csgBrush.NodeToTreeSpaceMatrix;
                 
@@ -368,7 +364,7 @@ namespace Chisel.Editors
                     if (!go)
                         continue;
 
-                    var node = go.GetComponent<ChiselNode>();
+                    var node = go.GetComponent<ChiselNodeComponent>();
                     if (!node)
                         continue;
 
@@ -405,7 +401,7 @@ namespace Chisel.Editors
                     ref var halfEdgePolygonIndices = ref brushMesh.halfEdgePolygonIndices;
 
                     // TODO: store this information with brush 
-                    var model = ChiselNodeHierarchyManager.FindChiselNodeByInstanceID(csgTree.InstanceID) as ChiselModelComponent;
+                    var model = Resources.InstanceIDToObject(csgTree.InstanceID) as ChiselModelComponent;
                     var worldToNode = (Matrix4x4)csgBrush.TreeToNodeSpaceMatrix * model.hierarchyItem.WorldToLocalMatrix;
                     var nodeToWorld = model.hierarchyItem.LocalToWorldMatrix * (Matrix4x4)csgBrush.NodeToTreeSpaceMatrix;
 
@@ -811,7 +807,7 @@ namespace Chisel.Editors
                     s_PolygonVertices.Add(vertex);
                 }
                 
-                var model           = ChiselNodeHierarchyManager.FindChiselNodeByInstanceID(brush.Tree.InstanceID) as ChiselModelComponent;
+                var model           = Resources.InstanceIDToObject(brush.Tree.InstanceID) as ChiselModelComponent;
                 var nodeToWorld     = model.hierarchyItem.LocalToWorldMatrix * (Matrix4x4)brush.NodeToTreeSpaceMatrix;
                 ChiselOutlineRenderer.DrawLineLoop(nodeToWorld, s_PolygonVertices, Handles.color, thickness: 2);
             }

@@ -220,7 +220,6 @@ namespace Chisel.Editors
                         }
                         break;
                     }
-#if UNITY_2020_1_OR_NEWER
                     case EventType.MouseMove:
                     {
                         if (SceneHandles.InCameraOrbitMode)
@@ -244,7 +243,6 @@ namespace Chisel.Editors
                         }
                         break;
                     }
-#endif
                     case EventType.Layout:
                     {
                         if (SceneHandles.InCameraOrbitMode)

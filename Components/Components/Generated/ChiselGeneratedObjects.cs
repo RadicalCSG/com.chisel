@@ -5,8 +5,6 @@ using UnityEngine;
 using UnityEngine.Rendering;
 using UnityEngine.Profiling;
 using Unity.Jobs;
-using Unity.Collections;
-using UnityEditor;
 
 namespace Chisel.Components
 {        
@@ -333,27 +331,30 @@ namespace Chisel.Components
             return true;
         }
 
-        public bool HasLightmapUVs
-        {
-            get
-            {
-#if UNITY_EDITOR
-                if (renderables == null)
-                    return false;
+		public static bool IsObjectGenerated(UnityEngine.Object obj)
+		{
+			if (!obj)
+				return false;
 
-                for (int i = 0; i < renderables.Length; i++)
-                {
-                    if (renderables[i] == null || 
-                        renderables[i].invalid)
-                        continue;
-                    if (renderables[i].HasLightmapUVs)
-                        return true;
-                }
-#endif
-                return false;
-            }
-        }
+			var gameObject = obj as GameObject;
+			if (Equals(gameObject, null))
+			{
+				var component = obj as GameObject;
+				if (Equals(component, null))
+					return false;
 
+				gameObject = component.gameObject;
+			}
+
+			if (gameObject.name == kGeneratedContainerName)
+				return true;
+
+			var parent = gameObject.transform.parent;
+			if (Equals(parent, null))
+				return false;
+
+			return parent.name == kGeneratedContainerName;
+		}
 
         static readonly Dictionary<ChiselModelComponent, GameObjectState>   gameObjectStates= new();
         static readonly List<ChiselColliderObjectUpdate> colliderObjectUpdates = new();
@@ -706,8 +707,8 @@ namespace Chisel.Components
 
         public void UpdateDebugVisualizationState(BrushVisibilityLookup brushVisibilityLookup, DrawModeFlags drawModeFlags, bool ignoreBrushVisibility = false)
         {
-            //if (!ignoreBrushVisibility)
-                ChiselGeneratedComponentManager.UpdateVisibility();
+			//if (!ignoreBrushVisibility)
+			ChiselUnityVisibilityManager.UpdateVisibility();
             
             var shouldHideMesh  = true/* !ignoreBrushVisibility &&
                                   visibilityState != VisibilityState.AllVisible &&

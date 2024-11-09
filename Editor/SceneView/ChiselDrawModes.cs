@@ -1,14 +1,11 @@
-using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 
 using Chisel.Components;
-using Chisel.Core;
 
 using UnityEditor;
 using UnityEditor.Callbacks;
 using UnityEngine;
-using UnityEngine.Pool;
 using UnityEngine.Rendering;
 using UnityEngine.SceneManagement;
 
@@ -60,12 +57,12 @@ namespace Chisel.Editors
                 return;
 			if (s_KnownCameras.Contains(camera))
 			{
-				var drawModeFlags = ChiselGeneratedComponentManager.BeginDrawModeForCamera(camera);
-				ChiselGeneratedComponentManager.OnRenderModels(camera, drawModeFlags);
-                ChiselGeneratedComponentManager.EndDrawModeForCamera();
+				var drawModeFlags = ChiselUnityVisibilityManager.BeginDrawModeForCamera(camera);
+				ChiselModelManager.Instance.OnRenderModels(camera, drawModeFlags);
+				ChiselUnityVisibilityManager.EndDrawModeForCamera();
             } else
 			{
-				ChiselGeneratedComponentManager.OnRenderModels(camera, DrawModeFlags.None);
+				ChiselModelManager.Instance.OnRenderModels(camera, DrawModeFlags.None);
 			}
 		}
 
@@ -74,24 +71,24 @@ namespace Chisel.Editors
 		{
 			SceneManager.sceneLoaded -= OnSceneLoaded;
 			SceneManager.sceneLoaded += OnSceneLoaded;
-			ChiselGeneratedModelMeshManager.PostUpdateModels -= OnPostUpdateModels;
-			ChiselGeneratedModelMeshManager.PostUpdateModels += OnPostUpdateModels;
+			ChiselModelManager.Instance.PostUpdateModels -= OnPostUpdateModels;
+			ChiselModelManager.Instance.PostUpdateModels += OnPostUpdateModels;
 		}
 
 		private static void OnSceneLoaded(Scene scene, LoadSceneMode mode)
 		{
-			ChiselGeneratedComponentManager.InitializeOnLoad(scene); // <- ensures selection works (rendering partial meshes hides regular meshes)
+			ChiselModelManager.Instance.InitializeOnLoad(scene); // <- ensures selection works (rendering partial meshes hides regular meshes)
 		}
 
 		private static void OnPostUpdateModels()
 		{
-			ChiselGeneratedComponentManager.Update(); // <- ensures selection works (rendering partial meshes hides regular meshes)
+			ChiselUnityVisibilityManager.Update(); // <- ensures selection works (rendering partial meshes hides regular meshes)
 		}
 
         [PostProcessScene(1)]
 		public static void OnPostprocessScene()
 		{
-			ChiselGeneratedComponentManager.HideDebugVisualizationSurfaces();
+			ChiselModelManager.Instance.HideDebugVisualizationSurfaces();
 		}
 
 		static bool initialized = false;
@@ -132,10 +129,10 @@ namespace Chisel.Editors
 				if (s_DrawModeLookup.TryGetValue(sceneView.cameraMode.name, out var flags))
 					desiredDrawModeFlags = flags;
 			}
-			var prevDrawMode = ChiselGeneratedComponentManager.GetCameraDrawMode(camera);
+			var prevDrawMode = ChiselUnityVisibilityManager.GetCameraDrawMode(camera);
 			if (prevDrawMode != desiredDrawModeFlags)
 			{
-				ChiselGeneratedComponentManager.SetCameraDrawMode(camera, desiredDrawModeFlags);
+				ChiselUnityVisibilityManager.SetCameraDrawMode(camera, desiredDrawModeFlags);
 			}
 		}
 	}

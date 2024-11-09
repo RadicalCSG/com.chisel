@@ -96,11 +96,11 @@ namespace Chisel.Editors
             ChiselNodeHierarchyManager.TransformationChanged -= OnTransformationChanged;
             ChiselNodeHierarchyManager.TransformationChanged += OnTransformationChanged;
 
-            ChiselGeneratedModelMeshManager.PostUpdateModels -= OnPostUpdateModels;
-            ChiselGeneratedModelMeshManager.PostUpdateModels += OnPostUpdateModels;
+			ChiselModelManager.Instance.PostUpdateModels -= OnPostUpdateModels;
+			ChiselModelManager.Instance.PostUpdateModels += OnPostUpdateModels;
 
-            ChiselGeneratedModelMeshManager.PostReset -= OnPostResetModels;
-            ChiselGeneratedModelMeshManager.PostReset += OnPostResetModels;
+			ChiselModelManager.Instance.PostReset -= OnPostResetModels;
+			ChiselModelManager.Instance.PostReset += OnPostResetModels;
 
 
 			//ChiselClickSelectionManager.Instance.OnReset();
@@ -113,18 +113,18 @@ namespace Chisel.Editors
         }
 
         private static void OnPickingChanged()
-        {
-            ChiselGeneratedComponentManager.OnVisibilityChanged();
+		{
+			ChiselUnityVisibilityManager.SetDirty();
         }
 
         private static void OnVisibilityChanged()
-        {
-            ChiselGeneratedComponentManager.OnVisibilityChanged();
-        }
+		{
+			ChiselUnityVisibilityManager.SetDirty();
+		}
 
         private static void OnActiveSceneChanged(Scene prevScene, Scene newScene)
         {
-            ChiselModelManager.OnActiveSceneChanged(prevScene, newScene);
+            ChiselModelManager.Instance.OnActiveSceneChanged(prevScene, newScene);
         }
 
         static void OnTransformationChanged()
@@ -243,7 +243,7 @@ namespace Chisel.Editors
             try
             {
                 ChiselNodeHierarchyManager.Update();
-                ChiselGeneratedModelMeshManager.UpdateModels();
+				ChiselModelManager.Instance.UpdateModels();
                 ChiselNodeEditorBase.HandleCancelEvent();
             }
             catch (Exception ex) 
@@ -264,7 +264,7 @@ namespace Chisel.Editors
 
                 // TODO: implement material drag & drop support for meshes
 
-                var component = gameObject.GetComponent<ChiselNode>();
+                var component = gameObject.GetComponent<ChiselNodeComponent>();
                 if (!component)
                     return;
                 Editors.ChiselHierarchyWindowManager.OnHierarchyWindowItemGUI(instanceID, component, selectionRect);
@@ -316,15 +316,15 @@ namespace Chisel.Editors
         }
         */
 
-        static readonly HashSet<ChiselNode>	modifiedNodes		= new HashSet<ChiselNode>();
+        static readonly HashSet<ChiselNodeComponent>	modifiedNodes		= new HashSet<ChiselNodeComponent>();
         static readonly HashSet<Transform>	processedTransforms = new HashSet<Transform>();
 
         private static void OnWillFlushUndoRecord()
         {
-            ChiselModelManager.OnWillFlushUndoRecord();
+            ChiselModelManager.Instance.OnWillFlushUndoRecord();
         }
 
-        static readonly List<ChiselNode> s_ChildNodes = new List<ChiselNode>();
+        static readonly List<ChiselNodeComponent> s_ChildNodes = new List<ChiselNodeComponent>();
 
         private static UnityEditor.UndoPropertyModification[] OnPostprocessModifications(UnityEditor.UndoPropertyModification[] modifications)
         {
@@ -349,7 +349,7 @@ namespace Chisel.Editors
                 processedTransforms.Add(transform);
 
                 s_ChildNodes.Clear();
-                transform.GetComponentsInChildren<ChiselNode>(false, s_ChildNodes);
+                transform.GetComponentsInChildren<ChiselNodeComponent>(false, s_ChildNodes);
                 if (s_ChildNodes.Count == 0)
                     continue;
                 if (s_ChildNodes[0] is ChiselModelComponent)

@@ -52,7 +52,7 @@ namespace Chisel.Editors
                             var center2D = shape.Center;
                             var center3D = new Vector3(center2D.x, 0, center2D.y);
                             Transform parentTransform = null;
-                            var model = ChiselModelManager.GetActiveModelOrCreate(modelBeneathCursor);
+                            var model = ChiselModelManager.Instance.GetActiveModelOrCreate(modelBeneathCursor);
                             if (model != null) parentTransform = model.transform;
                             generatedComponent = ChiselComponentFactory.Create(generatorType, ToolName, parentTransform,
                                                                                   transformation * Matrix4x4.TRS(center3D, Quaternion.identity, Vector3.one))
@@ -144,7 +144,7 @@ namespace Chisel.Editors
                         {
                             // Create the generator GameObject
                             Transform parentTransform = null;
-                            var model = ChiselModelManager.GetActiveModelOrCreate(modelBeneathCursor);
+                            var model = ChiselModelManager.Instance.GetActiveModelOrCreate(modelBeneathCursor);
                             if (model != null) parentTransform = model.transform;
                             generatedComponent  = ChiselComponentFactory.Create(generatorType, ToolName, parentTransform, transformation) 
                                                 as ChiselNodeGeneratorComponent<DefinitionType>;

@@ -6,8 +6,8 @@ namespace Chisel.Editors
 {
     public sealed class GUIView
     {
-        static ReflectedProperty<object>        currentProperty     = ReflectionExtensions.GetStaticProperty<object>("UnityEditor.GUIView", "current");
-        static ReflectedInstanceProperty<bool>  hasFocusProperty    = ReflectionExtensions.GetProperty<bool>("UnityEditor.GUIView", "hasFocus");
+        static readonly ReflectedProperty<object>       currentProperty  = ReflectionExtensions.GetStaticProperty<object>("UnityEditor.GUIView", "current");
+        static readonly ReflectedInstanceProperty<bool> hasFocusProperty = ReflectionExtensions.GetProperty<bool>("UnityEditor.GUIView", "hasFocus");
 
         public static bool HasFocus
         {
@@ -44,14 +44,14 @@ namespace Chisel.Editors
             sWarningContent = ChiselEditorResources.GetIconContent("warning")[0];
         }
 
-        static void RenderHierarchyItem(int instanceID, ChiselNode node, Rect selectionRect)
+        static void RenderHierarchyItem(int instanceID, ChiselNodeComponent node, Rect selectionRect)
         {
             if (!ChiselSceneGUIStyle.isInitialized)
                 return;
             var model = node as ChiselModelComponent;
             if (!ReferenceEquals(model, null))
             {
-                if (model == ChiselModelManager.ActiveModel)
+                if (model == ChiselModelManager.Instance.ActiveModel)
                 {
                     var content = EditorGUIUtility.TrTempContent(node.name + " (active)");
 
@@ -89,7 +89,7 @@ namespace Chisel.Editors
             }
         }
 
-        internal static void OnHierarchyWindowItemGUI(int instanceID, ChiselNode node, Rect selectionRect)
+        internal static void OnHierarchyWindowItemGUI(int instanceID, ChiselNodeComponent node, Rect selectionRect)
         {
             // TODO: implement material drag & drop support on hierarchy items
 

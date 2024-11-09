@@ -22,7 +22,7 @@ namespace Chisel.Editors
         SurfaceReference[]      prevSurfaceReferences   = null;
         Material[]			    prevMaterials			= null;
 
-        ChiselNode[]            prevNodes	            = null;
+        ChiselNodeComponent[]            prevNodes	            = null;
 
         public static IChiselDragAndDropOperation AcceptDrag()
         {
@@ -66,7 +66,7 @@ namespace Chisel.Editors
                 prevSurfaceReferences   = new SurfaceReference[surfaceReferences.Length];
             }
 
-            var tempNodes = HashSetPool<ChiselNode>.Get();
+            var tempNodes = HashSetPool<ChiselNodeComponent>.Get();
             try
             {
                 for (int i = 0; i < surfaceReferences.Length; i++)
@@ -80,7 +80,7 @@ namespace Chisel.Editors
             }
             finally
             {
-                HashSetPool<ChiselNode>.Release(tempNodes);
+                HashSetPool<ChiselNodeComponent>.Release(tempNodes);
             }
         }
 
@@ -135,7 +135,7 @@ namespace Chisel.Editors
             
             { 
                 s_FoundSurfaceReferences.Clear();
-                ChiselClickSelectionManager.FindSurfaceReferences(Event.current.mousePosition, selectAllSurfaces, s_FoundSurfaceReferences);
+                ChiselClickSelectionManager.FindSurfaceReferences(Event.current.mousePosition, selectAllSurfaces, s_FoundSurfaceReferences, out _, out _);
                 var surfaceReferences = s_FoundSurfaceReferences.ToArray();
                 s_FoundSurfaceReferences.Clear();
                 if (!Equals(prevSurfaceReferences, surfaceReferences))
