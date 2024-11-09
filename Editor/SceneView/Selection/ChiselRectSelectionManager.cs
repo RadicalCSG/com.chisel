@@ -66,26 +66,26 @@ namespace Chisel.Editors
                 });
         }
 
-        static Type			unityRectSelectionType;
-        static Type			unityEnumSelectionType;
+        static readonly Type unityRectSelectionType;
+        static readonly Type unityEnumSelectionType;
 
-        static object		selectionTypeAdditive;
-        static object		selectionTypeSubtractive;
-        static object		selectionTypeNormal;
+        static readonly object selectionTypeAdditive;
+        static readonly object selectionTypeSubtractive;
+        static readonly object selectionTypeNormal;
             
-        static FieldInfo	rectSelectionField;
-        static FieldInfo	selectStartPointField;
-        static FieldInfo    isNearestControlField;
-        static FieldInfo	selectMousePointField;
-        static FieldInfo	selectionStartField;
-        static FieldInfo	lastSelectionField;
-        static FieldInfo	currentSelectionField;
+        static readonly FieldInfo rectSelectionField;
+        static readonly FieldInfo selectStartPointField;
+        static readonly FieldInfo isNearestControlField;
+        static readonly FieldInfo selectMousePointField;
+        static readonly FieldInfo selectionStartField;
+        static readonly FieldInfo lastSelectionField;
+        static readonly FieldInfo currentSelectionField;
         
-        static FieldInfo	rectSelectionIDField;
+        static readonly FieldInfo rectSelectionIDField;
 
-        static MethodInfo	updateSelectionMethod;
+        static readonly MethodInfo updateSelectionMethod;
         
-        static bool			reflectionSucceeded = false;
+        static readonly bool reflectionSucceeded = false;
 
         static ChiselRectSelection()
         {
@@ -151,7 +151,7 @@ namespace Chisel.Editors
 
             if (!reflectionSucceeded)
             {
-                Debug.LogError("Could not initialize selection properly");
+                Debug.LogError("Could not initialize rect selection properly");
 
 				Debug.LogError($"selectStartPointField {selectStartPointField}");
 				Debug.LogError($"selectionStartField {selectionStartField}");
@@ -170,7 +170,7 @@ namespace Chisel.Editors
     internal static class ChiselRectSelectionManager
     {
         static HashSet<CSGTreeNode> rectFoundTreeNodes	= new();
-        static HashSet<GameObject> rectFoundGameObjects = new();
+        static readonly HashSet<GameObject> rectFoundGameObjects = new();
         static Vector2  prevStartGUIPoint;
         static Vector2  prevMouseGUIPoint;
         static Vector2  prevStartScreenPoint;
@@ -198,7 +198,7 @@ namespace Chisel.Editors
             for (int i = selection.Length - 1; i >= 0; i--)
             {
                 var obj = selection[i];
-                if (ChiselGeneratedComponentManager.IsObjectGenerated(obj))
+                if (ChiselGeneratedObjects.IsObjectGenerated(obj))
                     continue;
                 found.Add(obj);
             }
@@ -310,7 +310,7 @@ namespace Chisel.Editors
                                         }
                                     }
                                 }
-                                var nodeComponent	= ChiselNodeHierarchyManager.FindChiselNodeByTreeNode(treeNode);
+                                var nodeComponent = Resources.InstanceIDToObject(treeNode.InstanceID) as ChiselNodeComponent;
                                 if (!nodeComponent)
                                     continue;
                                 var gameObject = nodeComponent.gameObject;

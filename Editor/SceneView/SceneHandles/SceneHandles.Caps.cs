@@ -503,108 +503,22 @@ namespace Chisel.Editors
             }
         }
 
-#if UNITY_2020_1_OR_NEWER
         public readonly static CapFunction ArrowHandleCap = ArrowHandleCapFunction;
         public static void ArrowHandleCapFunction(int controlID, Vector3 position, Quaternion rotation, float size, EventType eventType)
         {
             UnityEditor.Handles.ArrowHandleCap(controlID, position, rotation, size, eventType);
         }
-#else
-        public static void ArrowHandleCap (int controlID, Vector3 position, Quaternion rotation, float size, EventType eventType)
-        {
-            var hoverExtraScale     = 1.05f;
-            var coneOffset          = Vector3.zero;
-            switch (eventType)
-            {
-                case EventType.Layout:
-                case EventType.MouseMove:
-                {
-                    Vector3 direction = rotation * Vector3.forward;
-                    var distance = HandleUtility.DistanceToLine(position, position + (direction + coneOffset) * (size * 1.1f)) * 0.9f;
-                    HandleUtility.AddControl(controlID, distance);
-                    //HandleUtility.AddControl(controlID, HandleUtility.DistanceToCone(position + (direction + coneOffset) * size, rotation, size * .2f));
-                    break;
-                }
-                case EventType.Repaint:
-                {
-                    Vector3 direction = rotation * Vector3.forward;
-                    float coneSize = size * .2f;
-                    if (IsHovering(controlID, Event.current))
-                        coneSize *= hoverExtraScale;
-                    ConeHandleCap(controlID, position + (direction + coneOffset) * size, rotation, coneSize, eventType);
-                    Handles.DrawLine(position, position + (direction + coneOffset) * (size * .9f));
-                    break;
-                }
-            }
-        }
-#endif
 
-#if UNITY_5_6_OR_NEWER
         public readonly static CapFunction ConeHandleCap = ConeHandleCapFunction;
         public static void ConeHandleCapFunction(int controlID, Vector3 position, Quaternion rotation, float size, EventType eventType)
         {
             UnityEditor.Handles.ConeHandleCap(controlID, position, rotation, size, eventType);
         }
-#else
-        public static void ConeHandleCap (int controlID, Vector3 position, Quaternion rotation, float size, EventType eventType) 
-        {
-            switch (eventType)
-            {
-                case (EventType.Layout):
-                {
-                    if (controlID == -1)
-                        break;
-                    UnityEngine.HandleUtility.AddControl(controlID, UnityEngine.HandleUtility.DistanceToCircle(position, size));
-                    break;
-                }
-                case (EventType.Repaint):
-                {
-                    UnityEngine.Handles.ConeCap(controlID, position, rotation, size);
-                    break;
-                }
-            }
-        }
-#endif
 
-#if UNITY_5_6_OR_NEWER
         public readonly static CapFunction RectangleHandleCap = RectangleHandleCapFunction;
         public static void RectangleHandleCapFunction(int controlID, Vector3 position, Quaternion rotation, float size, EventType eventType)
         {
             UnityEditor.Handles.RectangleHandleCap(controlID, position, rotation, size, eventType);
         }
-#else
-        static Vector3[] s_RectangleHandlePointsCache = new Vector3[5];
-
-        public static void RectangleHandleCap (int controlID, Vector3 position, Quaternion rotation, float size, EventType eventType) 
-        {
-            RectangleHandleCap(controlID, position, rotation, new Vector2(size, size), eventType);
-        }
-
-        internal static void RectangleHandleCap (int controlID, Vector3 position, Quaternion rotation, Vector2 size, EventType eventType) 
-        {
-            switch (eventType)
-            {
-                case (EventType.Layout):
-                {
-                    if (controlID == -1)
-                        break;
-                    UnityEngine.HandleUtility.AddControl (controlID, UnityEngine.HandleUtility.DistanceToRectangle (position, rotation, size));
-                    break;
-                }
-                case (EventType.Repaint):
-                {
-                    var sideways = rotation * new Vector3 (size.x, 0, 0);
-                    var up = rotation * new Vector3 (0, size.y, 0);
-                    s_RectangleHandlePointsCache[0] = position + sideways + up;
-                    s_RectangleHandlePointsCache[1] = position + sideways - up;
-                    s_RectangleHandlePointsCache[2] = position - sideways - up;
-                    s_RectangleHandlePointsCache[3] = position - sideways + up;
-                    s_RectangleHandlePointsCache[4] = position + sideways + up;
-                    UnityEngine.Handles.DrawPolyLine (s_RectangleHandlePointsCache);
-                    break;
-                }
-            }
-        }
-#endif
     }
 }

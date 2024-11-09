@@ -17,7 +17,7 @@ namespace Chisel.Components
             var boundsCount     = 0;
 
             var s_FoundBrushes = HashSetPool<CSGTreeBrush>.Get();
-            ChiselGeneratedComponentManager.GetAllTreeBrushes(generator, s_FoundBrushes);
+			ChiselModelManager.Instance.GetAllTreeBrushes(generator, s_FoundBrushes);
             foreach (var brush in s_FoundBrushes)
             {
                 if (!brush.Valid)
@@ -61,7 +61,7 @@ namespace Chisel.Components
             var boundsCount     = 0;
 
             var s_FoundBrushes = HashSetPool<CSGTreeBrush>.Get();
-            ChiselGeneratedComponentManager.GetAllTreeBrushes(generator, s_FoundBrushes);
+			ChiselModelManager.Instance.GetAllTreeBrushes(generator, s_FoundBrushes);
             foreach (var brush in s_FoundBrushes)
             {
                 if (!brush.Valid)

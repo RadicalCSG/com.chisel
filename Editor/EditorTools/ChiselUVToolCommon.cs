@@ -1146,7 +1146,7 @@ namespace Chisel.Editors
         internal static Vector3		worldIntersection;
         internal static Vector3     worldDragDeltaVector;
         
-        internal static ChiselNode[]	            selectedNodes;
+        internal static ChiselNodeComponent[]	            selectedNodes;
         internal static UVMatrix[]			        selectedUVMatrices;
         internal static SurfaceReference[]	        selectedSurfaceReferences;
 

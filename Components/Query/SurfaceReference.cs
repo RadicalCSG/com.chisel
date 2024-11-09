@@ -18,7 +18,7 @@ namespace Chisel.Components
         public int                      descriptionIndex;
         public int                      surfaceIndex;
 
-        public SurfaceReference(ChiselNode node, int descriptionIndex, CSGTreeBrush brush, int surfaceIndex)
+        public SurfaceReference(ChiselNodeComponent node, int descriptionIndex, CSGTreeBrush brush, int surfaceIndex)
         {
             this.node                   = node as ChiselGeneratorComponent;
             this.brush                  = brush;

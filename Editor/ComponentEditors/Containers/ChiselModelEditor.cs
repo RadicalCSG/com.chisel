@@ -33,7 +33,7 @@ namespace Chisel.Editors
         {
             var model = (menuCommand.context as GameObject).GetComponent<ChiselModelComponent>();
             if (model)
-                ChiselModelManager.ActiveModel = model;
+                ChiselModelManager.Instance.ActiveModel = model;
         }
 
         [ContextMenu("Set Active Model", true)]
@@ -256,7 +256,7 @@ namespace Chisel.Editors
 				var modelTarget = targets[0] as ChiselModelComponent;
                 if (modelTarget)
                 {
-                    foreach (var child in modelTarget.GetComponentsInChildren<ChiselNode>(includeInactive: false))
+                    foreach (var child in modelTarget.GetComponentsInChildren<ChiselNodeComponent>(includeInactive: false))
                     {
 						if (child.isActiveAndEnabled)
 						    uniqueChildNodes.Add(child);
@@ -496,7 +496,7 @@ namespace Chisel.Editors
                 if (!model)
                     continue;
 
-                if (ChiselGeneratedComponentManager.NeedUVGeneration(model))
+                if (ChiselUnityUVGenerationManager.NeedUVGeneration(model))
                     return true;
             }
             return false;
@@ -931,7 +931,7 @@ namespace Chisel.Editors
                     var buttonContents = needLightmapRebuild ? ForceBuildUVsContents : ForceRebuildUVsContents;
                     if (GUILayout.Button(buttonContents, GUILayout.ExpandWidth(false)))
                     {
-                        ChiselGeneratedComponentManager.DelayedUVGeneration(force: true);
+						ChiselUnityUVGenerationManager.DelayedUVGeneration(force: true);
                     }
                     EditorGUILayout.EndHorizontal();
                 }
@@ -958,7 +958,7 @@ namespace Chisel.Editors
                     if (EditorGUI.EndChangeCheck())
                     {
                         if (autoRebuildUVsProp.boolValue)
-                            ChiselGeneratedComponentManager.ForceUpdateDelayedUVGeneration();
+							ChiselUnityUVGenerationManager.ForceUpdateDelayedUVGeneration();
                     }
 
                     EditorGUILayout.PropertyField(angleErrorProp);
@@ -1053,7 +1053,7 @@ namespace Chisel.Editors
 
             for (int i = 0; i < serializedObject.targetObjects.Length; i++)
             {
-                if (ChiselGeneratedComponentManager.IsDefaultModel(serializedObject.targetObjects[i]))
+                if (ChiselModelManager.Instance.IsDefaultModel(serializedObject.targetObjects[i]))
                     return true;
             }
             return false;

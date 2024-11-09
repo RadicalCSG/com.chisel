@@ -166,7 +166,7 @@ namespace Chisel.Components
 
     [ExecuteInEditMode, HelpURL(kDocumentationBaseURL + kNodeTypeName + kDocumentationExtension)]
     [DisallowMultipleComponent, AddComponentMenu("Chisel/" + kNodeTypeName)]
-    public sealed class ChiselModelComponent : ChiselNode
+    public sealed class ChiselModelComponent : ChiselNodeComponent
     {
         public const string kRenderSettingsName           = nameof(renderSettings);
         public const string kColliderSettingsName         = nameof(colliderSettings);
@@ -222,7 +222,7 @@ namespace Chisel.Components
                 messages.Warning(kModelHasNoChildrenMessage);
             } else
 			{
-                if (transform.GetComponentInChildren<ChiselNode>() == null)
+                if (transform.GetComponentInChildren<ChiselNodeComponent>() == null)
 				{
 					messages.Warning(kModelHasNoChildrenMessage);
 				}
@@ -289,7 +289,7 @@ namespace Chisel.Components
 
             // Legacy solution
             if (!IsDefaultModel &&
-                name == ChiselGeneratedComponentManager.kGeneratedDefaultModelName)
+                name == ChiselModelManager.kGeneratedDefaultModelName)
                 IsDefaultModel = true;
 
 			IsInitialized = true;

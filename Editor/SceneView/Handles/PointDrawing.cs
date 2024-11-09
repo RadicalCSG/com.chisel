@@ -49,7 +49,7 @@ namespace Chisel.Editors
 			Chisel.Editors.Grid.HoverGrid = null;
             if (s_CurrentPointIndex == 0)
             {
-                s_StartIntersection = ChiselClickSelectionManager.GetPlaneIntersection(mousePosition, dragArea);
+				s_StartIntersection = dragArea.Contains(mousePosition) ? ChiselClickSelectionManager.GetPlaneIntersection(mousePosition) : null;
                 if (s_StartIntersection != null &&
                     s_StartIntersection.plane.normal.sqrMagnitude > 0) // TODO: figure out how this could happen
                 {
@@ -167,7 +167,7 @@ namespace Chisel.Editors
             UpdatePoints(points, newPoint);
 
             // reset the starting position
-            s_StartIntersection = ChiselClickSelectionManager.GetPlaneIntersection(s_MousePosition, dragArea);
+            s_StartIntersection = dragArea.Contains(s_MousePosition) ? ChiselClickSelectionManager.GetPlaneIntersection(s_MousePosition) : null;
             evt.Use();
         }
 
@@ -220,7 +220,7 @@ namespace Chisel.Editors
 
                     using (new UnityEditor.Handles.DrawingScope(Matrix4x4.identity))
                     {
-                        var orientation = s_StartIntersection.orientation;
+                        var orientation = s_StartIntersection.Orientation;
                         if (capFunction != null)
                         {
                             using (new UnityEditor.Handles.DrawingScope(s_Transform))

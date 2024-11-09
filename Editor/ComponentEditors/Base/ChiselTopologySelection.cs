@@ -10,7 +10,7 @@ namespace Chisel.Editors
     [Serializable]
     public sealed class ChiselTopologySelection
     {
-        public ChiselNode node;
+        public ChiselNodeComponent node;
         public int index;
 
         public readonly HashSet<int> selectedEdges = new HashSet<int>();
@@ -129,7 +129,7 @@ namespace Chisel.Editors
         [Serializable]
         public class ChiselNodeSelection
         {
-            public ChiselNode node;
+            public ChiselNodeComponent node;
             [SerializeField] internal Dictionary<int, ChiselTopologySelection> brushMeshSelections = new Dictionary<int, ChiselTopologySelection>();
 
             public ChiselTopologySelection this[int index]
@@ -169,9 +169,9 @@ namespace Chisel.Editors
 
         [SerializeField] ChiselTopologySelection[] topologySelection;
         private object brushMeshSelection;
-        readonly Dictionary<ChiselNode, ChiselNodeSelection> nodeSelectionLookup = new Dictionary<ChiselNode, ChiselNodeSelection>();
+        readonly Dictionary<ChiselNodeComponent, ChiselNodeSelection> nodeSelectionLookup = new Dictionary<ChiselNodeComponent, ChiselNodeSelection>();
 
-        public ChiselNodeSelection this[ChiselNode node]
+        public ChiselNodeSelection this[ChiselNodeComponent node]
         {
             get
             {
@@ -214,7 +214,7 @@ namespace Chisel.Editors
         }
 
         #region DeselectAll
-        public static void DeselectAll(ChiselNode node)
+        public static void DeselectAll(ChiselNodeComponent node)
         {
             if (!Selection.nodeSelectionLookup.TryGetValue(node, out ChiselNodeSelection nodeSelection))
                 return;
@@ -224,7 +224,7 @@ namespace Chisel.Editors
             Selection.nodeSelectionLookup.Remove(node);
         }
 
-        public static void DeselectAll(ChiselNode node, int index)
+        public static void DeselectAll(ChiselNodeComponent node, int index)
         {
             if (!Selection.nodeSelectionLookup.TryGetValue(node, out ChiselNodeSelection nodeSelection))
                 return;

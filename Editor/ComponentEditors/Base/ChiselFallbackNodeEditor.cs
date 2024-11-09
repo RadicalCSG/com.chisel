@@ -10,8 +10,8 @@ using Chisel.Components;
 
 namespace Chisel.Editors
 {
-    [CustomEditor(typeof(ChiselNode), isFallback = true)]
-    public sealed class ChiselFallbackNodeEditor : ChiselNodeEditor<ChiselNode>
+    [CustomEditor(typeof(ChiselNodeComponent), isFallback = true)]
+    public sealed class ChiselFallbackNodeEditor : ChiselNodeEditor<ChiselNodeComponent>
     {
         protected override void OnEditSettingsGUI(SceneView sceneView) { }
     }

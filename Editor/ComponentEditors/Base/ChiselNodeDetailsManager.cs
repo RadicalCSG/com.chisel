@@ -33,7 +33,7 @@ namespace Chisel.Editors
 
 
 
-        public static IChiselNodeDetails GetNodeDetails(ChiselNode node)
+        public static IChiselNodeDetails GetNodeDetails(ChiselNodeComponent node)
         {
             if (s_NodeDetailsLookup.TryGetValue(node.GetType(), out IChiselNodeDetails nodeDetails))
                 return nodeDetails;
@@ -47,7 +47,7 @@ namespace Chisel.Editors
             return generatorDefaultDetails;
         }
 
-        public static GUIContent GetHierarchyIcon(ChiselNode node)
+        public static GUIContent GetHierarchyIcon(ChiselNodeComponent node)
         {
             if (s_NodeDetailsLookup.TryGetValue(node.GetType(), out IChiselNodeDetails nodeDetails))
             {
@@ -89,7 +89,7 @@ namespace Chisel.Editors
 
         static HierarchyMessageHandler hierarchyMessageHandler = new HierarchyMessageHandler();
 
-        public static GUIContent GetHierarchyIcon(ChiselNode node, out bool hasValidState)
+        public static GUIContent GetHierarchyIcon(ChiselNodeComponent node, out bool hasValidState)
         {
             hierarchyMessageHandler.Clear();
             node.GetMessages(hierarchyMessageHandler);

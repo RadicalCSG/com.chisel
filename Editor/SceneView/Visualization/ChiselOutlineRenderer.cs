@@ -69,11 +69,7 @@ namespace Chisel.Editors
                 if (_instance)
                     return _instance;
 
-#if UNITY_2023_1_OR_NEWER
 				var foundInstances = UnityEngine.Object.FindObjectsByType<ChiselOutlineRenderer>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
-#else
-                var foundInstances = UnityEngine.Object.FindObjectsOfType<ChiselOutlineRenderer>();
-#endif
                 if (foundInstances == null ||
                     foundInstances.Length == 0)
                 {
@@ -86,7 +82,7 @@ namespace Chisel.Editors
                 return _instance;
             }
         }
-#endregion
+        #endregion
 
         ChiselRenderer	brushOutlineRenderer;
         ChiselRenderer	surfaceOutlineRenderer;
@@ -247,17 +243,17 @@ namespace Chisel.Editors
                 for (int i = 0; i < objects.Length; i++)
                 {
                     var obj = objects[i];
-                    ChiselNode[] nodes = null;
+                    ChiselNodeComponent[] nodes = null;
                     var gameObject = obj as GameObject;
                     if (!Equals(null, gameObject))
                     {
-                        nodes = gameObject.GetComponentsInChildren<ChiselNode>();
+                        nodes = gameObject.GetComponentsInChildren<ChiselNodeComponent>();
                     } else
                     {
                         var behaviour = obj as Behaviour;
                         if (!Equals(null, behaviour))
                         {
-                            nodes = behaviour.GetComponents<ChiselNode>();
+                            nodes = behaviour.GetComponents<ChiselNodeComponent>();
                         }
                     }
 
@@ -270,7 +266,7 @@ namespace Chisel.Editors
                             if (node == null)
                                 continue;
                             foundTreeBrushes.Clear();
-                            ChiselGeneratedComponentManager.GetAllTreeBrushes(node, foundTreeBrushes);
+							ChiselModelManager.Instance.GetAllTreeBrushes(node, foundTreeBrushes);
                             if (foundTreeBrushes.Count > 0)
                             {
                                 var directSelected = (// if component is directly select

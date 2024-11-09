@@ -12,13 +12,13 @@ namespace Chisel.Editors
 {
     public interface IChiselNodeDetails
     {
-        GUIContent GetHierarchyIconForGenericNode(ChiselNode node);
+        GUIContent GetHierarchyIconForGenericNode(ChiselNodeComponent node);
     }
 
     public abstract class ChiselNodeDetails<T> : IChiselNodeDetails
-        where T : ChiselNode
+        where T : ChiselNodeComponent
     {
-        GUIContent IChiselNodeDetails.GetHierarchyIconForGenericNode(ChiselNode node) { return GetHierarchyIcon((T)node); }
+        GUIContent IChiselNodeDetails.GetHierarchyIconForGenericNode(ChiselNodeComponent node) { return GetHierarchyIcon((T)node); }
         public abstract GUIContent GetHierarchyIcon(T node);
     }
 }

@@ -173,7 +173,7 @@ namespace Chisel.Editors
     }
 
     public abstract class ChiselNodeEditor<T> : ChiselNodeEditorBase
-        where T : ChiselNode
+        where T : ChiselNodeComponent
     {
         public virtual Bounds OnGetFrameBounds() { return CalculateBounds(targets); }
         public virtual bool HasFrameBounds() { if (!target) return false; return true; }
@@ -183,7 +183,7 @@ namespace Chisel.Editors
             var bounds = new Bounds();
             foreach (var target in targets)
             {
-                var node = target as ChiselNode;
+                var node = target as ChiselNodeComponent;
                 if (!node)
                     continue;
 
@@ -192,7 +192,7 @@ namespace Chisel.Editors
             return bounds;
         }
 
-        public static Vector3[] CalculateGridBounds(ChiselNode[] targetNodes)
+        public static Vector3[] CalculateGridBounds(ChiselNodeComponent[] targetNodes)
         {
             if (targetNodes == null)
                 return new[] { Vector3.zero };
@@ -279,7 +279,7 @@ namespace Chisel.Editors
             // Otherwise: choose the activeModel (if available)
             var context             = (menuCommand.context as GameObject);
             var typeIsModel         = (typeof(T) == typeof(ChiselModelComponent));
-			var defaultParent       = typeIsModel ? null : ((ChiselModelManager.ActiveModel != null) ? ChiselModelManager.ActiveModel.gameObject : null);
+			var defaultParent       = typeIsModel ? null : ((ChiselModelManager.Instance.ActiveModel != null) ? ChiselModelManager.Instance.ActiveModel.gameObject : null);
             var parentGameObject    = (context != null) ? context : defaultParent;
             var parentTransform     = (parentGameObject == null) ? null : parentGameObject.transform;
 
@@ -310,7 +310,7 @@ namespace Chisel.Editors
                 // If we don't have a parent model, create one and put the generator underneath it
                 if (!model)
                 {
-                    model = ChiselModelManager.CreateNewModel(gameObject.transform.parent);
+                    model = ChiselModelManager.Instance.CreateNewModel(gameObject.transform.parent);
                     
                     // Make sure we create the model at the exact same location as the generator
                     var modelGameObject     = model.gameObject;
@@ -325,7 +325,7 @@ namespace Chisel.Editors
                 model = component as ChiselModelComponent;
 
             // Set the active model before we select the gameobject, otherwise we'll be selecting the model instead
-            ChiselModelManager.ActiveModel = model;
+            ChiselModelManager.Instance.ActiveModel = model;
             Selection.activeObject = gameObject;
         }
 
@@ -336,16 +336,16 @@ namespace Chisel.Editors
 
             for (int i = 0; i < targetObjects.Length; i++)
             {
-                ChiselNode node = targetObjects[i] as ChiselNode;
+                ChiselNodeComponent node = targetObjects[i] as ChiselNodeComponent;
                 if (Equals(node, null))
                 {
                     var gameObject = targetObjects[i] as GameObject;
                     if (gameObject)
-                        node = gameObject.GetComponent<ChiselNode>();
+                        node = gameObject.GetComponent<ChiselNodeComponent>();
                 }
                 if (node)
                 {
-                    if (ChiselGeneratedComponentManager.IsDefaultModel(node.hierarchyItem.Model))
+                    if (ChiselModelManager.Instance.IsDefaultModel(node.hierarchyItem.Model))
                         return true;
                 }
             }
@@ -370,7 +370,7 @@ namespace Chisel.Editors
             }
 
             Selection.activeObject = modelGameObject;
-            ChiselModelManager.ActiveModel = model;
+            ChiselModelManager.Instance.ActiveModel = model;
 
             // This forces the model to be opened when we create it
             EditorGUIUtility.PingObject(modelGameObject);
@@ -393,18 +393,18 @@ namespace Chisel.Editors
                 var childSiblingIndex   = childTransform.GetSiblingIndex();
                 var childParent         = childTransform.parent;
 
-                var model               = ChiselModelManager.CreateNewModel(childParent);
+                var model               = ChiselModelManager.Instance.CreateNewModel(childParent);
                 var modelGameObject     = model.gameObject;
                 var modelTransform      = model.transform;
                 modelTransform.SetSiblingIndex(childSiblingIndex);
                 Undo.RegisterCreatedObjectUndo(modelGameObject, "Create " + modelGameObject.name);
                 MoveTargetsUnderModel(targetObjects, model);
             }
-            if (ChiselModelManager.ActiveModel && GUILayout.Button(kAddToActiveModel))
+            if (ChiselModelManager.Instance.ActiveModel && GUILayout.Button(kAddToActiveModel))
             {
                 // TODO: sort gameObjects by their siblingIndex / hierarchy position
 
-                MoveTargetsUnderModel(targetObjects, ChiselModelManager.ActiveModel);
+                MoveTargetsUnderModel(targetObjects, ChiselModelManager.Instance.ActiveModel);
             }
             EditorGUILayout.EndVertical();
         }
@@ -413,13 +413,13 @@ namespace Chisel.Editors
         {
             if (Event.current.type == EventType.Layout)
             {
-                var modifiedNodes = HashSetPool<ChiselNode>.Get();
+                var modifiedNodes = HashSetPool<ChiselNodeComponent>.Get();
                 try
                 {
                     modifiedNodes.Clear();
                     foreach (var target in serializedObject.targetObjects)
                     {
-                        var node = target as ChiselNode;
+                        var node = target as ChiselNodeComponent;
                         if (!node)
                             continue;
 
@@ -462,7 +462,7 @@ namespace Chisel.Editors
                 }
                 finally
                 {
-                    HashSetPool<ChiselNode>.Release(modifiedNodes);
+                    HashSetPool<ChiselNodeComponent>.Release(modifiedNodes);
                 }
             }
         }
@@ -535,14 +535,14 @@ namespace Chisel.Editors
 
         protected abstract void OnEditSettingsGUI(SceneView sceneView);
 
-        ChiselNode[] targetNodes;
+        ChiselNodeComponent[] targetNodes;
 
 
         protected virtual void InitInspector()
         {
-            targetNodes = new ChiselNode[targets.Length];
+            targetNodes = new ChiselNodeComponent[targets.Length];
             for (int i = 0; i < targets.Length; i++)
-                targetNodes[i] = targets[i] as ChiselNode;
+                targetNodes[i] = targets[i] as ChiselNodeComponent;
             ResetGridBounds();
 
             Grid.GridModified -= OnGridModified;
@@ -705,7 +705,7 @@ namespace Chisel.Editors
             return ChiselEditorResources.GetIconContent(s_OperationIcons[typeIndex], GetOperationName(typeIndex, name));
         }
         
-        public GUIContent GetHierarchyIconForGenericNode(ChiselNode node)
+        public GUIContent GetHierarchyIconForGenericNode(ChiselNodeComponent node)
         {
             var brushGenerator = node as ChiselGeneratorComponent;
             if (brushGenerator != null)

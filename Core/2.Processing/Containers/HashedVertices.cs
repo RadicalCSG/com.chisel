@@ -300,14 +300,12 @@ namespace Chisel.Core
 
 #if ENABLE_UNITY_COLLECTIONS_CHECKS
         internal AtomicSafetyHandle m_Safety;
-#if UNITY_2020_1_OR_NEWER
         private static readonly SharedStatic<int> s_staticSafetyId = SharedStatic<int>.GetOrCreate<HashedVertices>();
         [BurstDiscard]
         private static void CreateStaticSafetyId()
         {
             s_staticSafetyId.Data = AtomicSafetyHandle.NewStaticSafetyId<HashedVertices>();
         }
-#endif
         [NativeSetClassTypeToNullOnSchedule]
         DisposeSentinel m_DisposeSentinel;
 #endif
@@ -380,15 +378,11 @@ namespace Chisel.Core
             CheckArgPositive(chainedIndicesCapacity);
 
             DisposeSentinel.Create(out m_Safety, out m_DisposeSentinel, disposeSentinelStackDepth, allocator);
-#if UNITY_2020_1_OR_NEWER
             if (s_staticSafetyId.Data == 0)
             {
                 CreateStaticSafetyId();
             }
             AtomicSafetyHandle.SetStaticSafetyId(ref m_Safety, s_staticSafetyId.Data);
-#endif
-#endif
-#if ENABLE_UNITY_COLLECTIONS_CHECKS
             DisposeSentinel.Create(out m_Safety, out m_DisposeSentinel, 0, allocator);
 #endif
             m_AllocatorLabel = allocator;

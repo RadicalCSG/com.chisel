@@ -6,15 +6,32 @@ using UnityEngine;
 using Unity.Entities;
 using UnityEditor;
 using UnityEngine.Pool;
-using Unity.Mathematics;
 
 namespace Chisel.Core
 {
+	public struct SelectionDescription : IEquatable<SelectionDescription>
+	{
+		public int instanceID;
+		public int surfaceIndex;
+		public CompactNodeID brushNodeID;
+
+		public override readonly int GetHashCode() { return HashCode.Combine(instanceID, surfaceIndex, brushNodeID); }
+		public override readonly bool Equals(object obj)
+		{
+			if (obj is SelectionDescription selectionDescription) return Equals(selectionDescription);
+			return false;
+		}
+		public readonly bool Equals(SelectionDescription other)
+		{
+			return instanceID == other.instanceID && surfaceIndex == other.surfaceIndex && brushNodeID == other.brushNodeID;
+		}
+	}
+
 	// TODO: actually use this
 	public struct SubMeshTriangleLookup
 	{
 		public BlobArray<int> perTriangleSelectionIDLookup;
-		public BlobArray<int> selectionToInstanceIDs;
+		public BlobArray<SelectionDescription> selectionIndexDescriptions;
 
 		// TODO: use this for surface selection
 		public BlobArray<int> perTriangleSurfaceIndexLookup;
@@ -46,8 +63,8 @@ namespace Chisel.Core
 			var perTriangleSelectionIDLookup = builder.Allocate(ref root.perTriangleSelectionIDLookup, triangleCount);
 			var perTriangleNodeIDLookup = builder.Allocate(ref root.perTriangleNodeIDLookup, triangleCount);
 
-			using var uniqueInstanceIDs = new NativeHashMap<int, int>(triangleCount, Allocator.Temp);
-			using var selectionToInstanceIDs = new NativeList<int>(triangleCount, Allocator.Temp);
+			using var uniqueInstanceIDs = new NativeHashMap<SelectionDescription, int>(triangleCount, Allocator.Temp);
+			using var selectionIndexDescriptions = new NativeList<SelectionDescription>(triangleCount, Allocator.Temp);
 
 			int currentBaseIndex = 0;
 			for (int subMeshIndex = 0, d = startIndex; d < endIndex; d++, subMeshIndex++)
@@ -75,11 +92,17 @@ namespace Chisel.Core
 					var brushNodeID	= subMeshSurface.brushNodeID;
 					var instanceID	= instanceIDLookup.SafeGetNodeInstanceID(brushNodeID);
 
-					if (!uniqueInstanceIDs.TryGetValue(instanceID, out int selectionID))
+					var selectionDescription = new SelectionDescription()
 					{
-						selectionID = selectionToInstanceIDs.Length;
-						uniqueInstanceIDs.Add(instanceID, selectionID);
-						selectionToInstanceIDs.Add(instanceID);
+						instanceID = instanceID,
+						surfaceIndex = subMeshSurface.surfaceIndex,
+						brushNodeID = brushNodeID
+					};
+					if (!uniqueInstanceIDs.TryGetValue(selectionDescription, out int selectionID))
+					{
+						selectionID = selectionIndexDescriptions.Length;
+						uniqueInstanceIDs.Add(selectionDescription, selectionID);
+						selectionIndexDescriptions.Add(selectionDescription);
 					}
 
 					var brushTriangleCount = brushIndexCount / 3;
@@ -94,10 +117,10 @@ namespace Chisel.Core
 				currentBaseIndex += indexCount;
 			}
 
-			var hashCode = selectionToInstanceIDs.Hash();
+			var hashCode = selectionIndexDescriptions.Hash();
 
 			root.hashCode = (int)hashCode;
-			builder.Construct(ref root.selectionToInstanceIDs, selectionToInstanceIDs);
+			builder.Construct(ref root.selectionIndexDescriptions, selectionIndexDescriptions);
 
 			return builder.CreateBlobAssetReference<SubMeshTriangleLookup>(allocator);
 		}
@@ -120,13 +143,13 @@ namespace Chisel.Core
 			else
 				managedSubMeshTriangleLookup.perTriangleSelectionIDLookup = Array.Empty<int>();
 
-			if (managedSubMeshTriangleLookup.selectionToInstanceIDs == null ||
-				managedSubMeshTriangleLookup.selectionToInstanceIDs.Length < selectionToInstanceIDs.Length)
-				managedSubMeshTriangleLookup.selectionToInstanceIDs = new int[selectionToInstanceIDs.Length];
-			if (managedSubMeshTriangleLookup.selectionToInstanceIDs.Length > 0)
-				selectionToInstanceIDs.CopyTo(managedSubMeshTriangleLookup.selectionToInstanceIDs, selectionToInstanceIDs.Length);
+			if (managedSubMeshTriangleLookup.selectionIndexDescriptions == null ||
+				managedSubMeshTriangleLookup.selectionIndexDescriptions.Length < selectionIndexDescriptions.Length)
+				managedSubMeshTriangleLookup.selectionIndexDescriptions = new SelectionDescription[selectionIndexDescriptions.Length];
+			if (managedSubMeshTriangleLookup.selectionIndexDescriptions.Length > 0)
+				selectionIndexDescriptions.CopyTo(managedSubMeshTriangleLookup.selectionIndexDescriptions, selectionIndexDescriptions.Length);
 			else
-				managedSubMeshTriangleLookup.selectionToInstanceIDs = Array.Empty<int>();
+				managedSubMeshTriangleLookup.selectionIndexDescriptions = Array.Empty<SelectionDescription>();
 
 			if (managedSubMeshTriangleLookup.perTriangleNodeIDLookup == null ||
 				managedSubMeshTriangleLookup.perTriangleNodeIDLookup.Length < perTriangleNodeIDLookup.Length)
@@ -151,7 +174,7 @@ namespace Chisel.Core
 	{
 		public CompactNodeID[] perTriangleNodeIDLookup = Array.Empty<CompactNodeID>();
 		public int[] perTriangleSelectionIDLookup = Array.Empty<int>();
-		public int[] selectionToInstanceIDs = Array.Empty<int>();
+		public SelectionDescription[] selectionIndexDescriptions = Array.Empty<SelectionDescription>();
 		public int[] perTriangleSurfaceIndexLookup = Array.Empty<int>();
 		public int hashCode = 0;
 

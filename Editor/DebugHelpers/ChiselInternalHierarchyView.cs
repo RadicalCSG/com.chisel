@@ -377,7 +377,7 @@ namespace Chisel.Editors
                 var go = obj as GameObject;
                 if (go != null)
                 {
-                    foreach(var no in go.GetComponents<ChiselNode>())
+                    foreach(var no in go.GetComponents<ChiselNodeComponent>())
                     {
                         var instanceID_ = no.GetInstanceID();
                         selectedInstanceIDs.Add(instanceID_);
@@ -430,7 +430,7 @@ namespace Chisel.Editors
                     if (selectedInstanceIDs.Count == 1)
                     {
                         var instanceID = selectedInstanceIDs.First();
-                        var obj = EditorUtility.InstanceIDToObject(instanceID) as ChiselNode;
+                        var obj = EditorUtility.InstanceIDToObject(instanceID) as ChiselNodeComponent;
                         if (obj)
                         {
                             var brush = obj as ChiselBrushComponent;

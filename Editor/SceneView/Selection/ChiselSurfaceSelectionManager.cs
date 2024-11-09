@@ -97,12 +97,12 @@ namespace Chisel.Editors
             get { return Data.hoverSurfaces; }
         }
 
-        public static HashSet<ChiselNode> SelectedNodes 
+        public static HashSet<ChiselNodeComponent> SelectedNodes 
         {
             get
             {
                 var selectedSurfaces    = Data.selectedSurfaces;
-                var uniqueNodes			= new HashSet<ChiselNode>();
+                var uniqueNodes			= new HashSet<ChiselNodeComponent>();
 
                 foreach (var selectedSurface in selectedSurfaces)
                 {
@@ -263,7 +263,7 @@ namespace Chisel.Editors
         
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        static bool GetAllSurfaces(ChiselNode chiselNode, CSGTreeNode node, CSGTreeBrush? findBrush, List<SurfaceReference> surfaces)
+        static bool GetAllSurfaces(ChiselNodeComponent chiselNode, CSGTreeNode node, CSGTreeBrush? findBrush, List<SurfaceReference> surfaces)
         {
             switch (node.Type)
             {
@@ -274,7 +274,7 @@ namespace Chisel.Editors
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        static bool GetAllSurfaces(ChiselNode chiselNode, CSGTreeBranch branch, CSGTreeBrush? findBrush, List<SurfaceReference> surfaces)
+        static bool GetAllSurfaces(ChiselNodeComponent chiselNode, CSGTreeBranch branch, CSGTreeBrush? findBrush, List<SurfaceReference> surfaces)
         {
             if (!branch.Valid)
                 return false;
@@ -289,7 +289,7 @@ namespace Chisel.Editors
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        static bool GetAllSurfaces(ChiselNode chiselNode, CSGTreeBrush brush, CSGTreeBrush? findBrush, List<SurfaceReference> surfaces)
+        static bool GetAllSurfaces(ChiselNodeComponent chiselNode, CSGTreeBrush brush, CSGTreeBrush? findBrush, List<SurfaceReference> surfaces)
         {
             if (!brush.Valid)
                 return false;
@@ -313,7 +313,7 @@ namespace Chisel.Editors
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static bool GetAllSurfaceReferences(ChiselNode chiselNode, CSGTreeBrush brush, List<SurfaceReference> surfaces)
+        public static bool GetAllSurfaceReferences(ChiselNodeComponent chiselNode, CSGTreeBrush brush, List<SurfaceReference> surfaces)
         {
             if (!chiselNode || !chiselNode.TopTreeNode.Valid)
                 return false;
@@ -325,7 +325,7 @@ namespace Chisel.Editors
 
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static bool GetAllSurfaceReferences(ChiselNode chiselNode, List<SurfaceReference> surfaces)
+        public static bool GetAllSurfaceReferences(ChiselNodeComponent chiselNode, List<SurfaceReference> surfaces)
         {
             if (!chiselNode || !chiselNode.TopTreeNode.Valid)
                 return false;
@@ -360,7 +360,7 @@ namespace Chisel.Editors
                 if (usedGameObjects.Contains(gameObject))
                     continue;
 
-                var chiselNode = gameObject.GetComponent<ChiselNode>();
+                var chiselNode = gameObject.GetComponent<ChiselNodeComponent>();
                 if (chiselNode == null || !(chiselNode is ChiselGeneratorComponent))
                     continue;
 
@@ -401,7 +401,7 @@ namespace Chisel.Editors
             if (SelectedGameObjects.Count == 0)
             {
                 // To prevent the EditorTool from exiting the moment we deselect all surfaces, we leave one object 'selected'
-                var selected = UnityEditor.Selection.GetFiltered<ChiselNode>(SelectionMode.Deep | SelectionMode.Editable);
+                var selected = UnityEditor.Selection.GetFiltered<ChiselNodeComponent>(SelectionMode.Deep | SelectionMode.Editable);
                 if (selected.Length > 0)
                 {
                     UnityEditor.Selection.activeObject = selected[0];
