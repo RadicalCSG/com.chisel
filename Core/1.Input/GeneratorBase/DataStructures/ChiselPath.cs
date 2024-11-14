@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Linq;
+
 using UnityEngine;
 
 namespace Chisel.Core
@@ -25,13 +26,14 @@ namespace Chisel.Core
 
         public ChiselPathPoint[]  segments;
 
-        public static readonly ChiselPath Default = new ChiselPath( new[]
+        public readonly static ChiselPath Default = new( new[]
         {
             new ChiselPathPoint(Vector3.zero),
-            new ChiselPathPoint(ChiselPathPoint.kDefaultDirection)
+            new ChiselPathPoint(ChiselPathPoint.DefaultDirection)
         });
 
-        public void UpgradeIfNecessary()
+
+		public void UpgradeIfNecessary()
         {
             if (version == kLatestVersion)
                 return;
@@ -42,7 +44,7 @@ namespace Chisel.Core
                 return;
 
             for (int i = 0; i < this.segments.Length; i++)
-                this.segments[i].rotation = ChiselPathPoint.kDefaultRotation;
+                this.segments[i].rotation = ChiselPathPoint.DefaultRotation;
         }
 	}
 
@@ -50,22 +52,12 @@ namespace Chisel.Core
 	[Serializable]
 	public struct ChiselPathPoint
 	{
-		public static readonly Vector3 kDefaultDirection = Vector3.up;
-		public static readonly Quaternion kDefaultRotation = Quaternion.LookRotation(kDefaultDirection);
+		static Vector3 kDefaultDirection = Vector3.up;
+		public static Vector3 DefaultDirection { get { return kDefaultDirection; } }
 
-		static readonly Vector4 unitX = new(1, 0, 0, 0);
-		static readonly Vector4 unitY = new(0, 1, 0, 0);
-		static readonly Vector4 unitZ = new(0, 0, 1, 0);
-		static readonly Vector4 unitW = new(0, 0, 0, 1);
-		static readonly Matrix4x4 swizzleYZ;
 
-		static ChiselPathPoint()
-		{
-			swizzleYZ.SetColumn(0, unitX);
-			swizzleYZ.SetColumn(1, unitZ);
-			swizzleYZ.SetColumn(2, unitY);
-			swizzleYZ.SetColumn(3, unitW);
-		}
+		static Quaternion kDefaultRotation = Quaternion.LookRotation(kDefaultDirection);
+		public static Quaternion DefaultRotation { get { return kDefaultRotation; } }
 
 		public ChiselPathPoint(Vector3 position, Quaternion rotation, Vector3 scale)
 		{
@@ -77,7 +69,7 @@ namespace Chisel.Core
 		public ChiselPathPoint(Vector3 position)
 		{
 			this.position = position;
-			this.rotation = ChiselPathPoint.kDefaultRotation;
+			this.rotation = ChiselPathPoint.DefaultRotation;
 			this.scale = Vector3.one;
 		}
 

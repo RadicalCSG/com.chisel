@@ -7,12 +7,12 @@ namespace Chisel.Editors
     public static class GridRenderer
     {
         const int kPlaneSize = 100;
-        private static Mesh gridMesh;		
+        static Mesh s_GridMesh;		
         internal static Mesh GridMesh
         {
             get
             {
-                if (!gridMesh)
+                if (!s_GridMesh)
                 {
                     var vertices = new Vector3[kPlaneSize * kPlaneSize];
                     var indices  = new int[(kPlaneSize -1) * (kPlaneSize-1)*6];
@@ -49,45 +49,46 @@ namespace Chisel.Editors
                         }
                     }
 
-                    gridMesh = new Mesh()
+                    s_GridMesh = new Mesh()
                     {
                         name = "Plane",
                         vertices  = vertices,
                         triangles = indices,
                         hideFlags = HideFlags.HideAndDontSave | HideFlags.DontUnloadUnusedAsset
                     };
-                    gridMesh.bounds = new Bounds(Vector3.zero, new Vector3(float.MaxValue, 0.1f, float.MaxValue));
+                    s_GridMesh.bounds = new Bounds(Vector3.zero, new Vector3(float.MaxValue, 0.1f, float.MaxValue));
                 }
-                return gridMesh;
+                return s_GridMesh;
             }
         }
 
-        private static MaterialPropertyBlock properties = null;
-        
-        private static Material gridMaterial;
+        static Material s_GridMaterial;
         internal static Material GridMaterial
         {
             get
             {
-                if (!gridMaterial)
+                if (!s_GridMaterial)
                 {
-                    gridMaterial = SceneHandleMaterialManager.GenerateDebugMaterial(SceneHandleMaterialManager.ShaderNameHandlesRoot + "Grid");
-                    gridMaterial.SetInt("_Cull", (int)UnityEngine.Rendering.CullMode.Off);
-                    gridMaterial.SetInt("_ZWrite", 0);   
-                    gridMaterial.SetInt("_ZTest", (int)UnityEngine.Rendering.CompareFunction.LessEqual); 
+                    s_GridMaterial = SceneHandleMaterialManager.GenerateDebugMaterial(SceneHandleMaterialManager.kShaderNameHandlesRoot + "Grid");
+                    s_GridMaterial.SetInt("_Cull", (int)UnityEngine.Rendering.CullMode.Off);
+                    s_GridMaterial.SetInt("_ZWrite", 0);   
+                    s_GridMaterial.SetInt("_ZTest", (int)UnityEngine.Rendering.CompareFunction.LessEqual); 
                 }
-                return gridMaterial;
+                return s_GridMaterial;
             }
         }
         
-        internal static float	prevOrthoInterpolation	= 0;
-        internal static float	prevSceneViewSize		= 0;
-        internal static Vector3 prevGridSpacing			= Vector3.zero;
-        internal static Color	prevCenterColor;
-        internal static Color	prevGridColor;
-        internal static Color	centerColor;
-        internal static Color	gridColor;
-        internal static int		counter = 0;
+        static MaterialPropertyBlock s_MaterialProperties = null;
+        
+
+        internal static float	s_PrevOrthoInterpolation	= 0;
+        internal static float	s_PrevSceneViewSize		= 0;
+        internal static Vector3 s_PrevGridSpacing			= Vector3.zero;
+        internal static Color	s_PrevCenterColor;
+        internal static Color	s_PrevGridColor;
+        internal static Color	s_CenterColor;
+        internal static Color	s_GridColor;
+        internal static int		s_Counter = 0;
 
         public static float Opacity { get; set; } = 1.0f;
 
@@ -129,25 +130,25 @@ namespace Chisel.Editors
                 orthoInterpolation = Mathf.Clamp01((orthoInterpolation - kMinOrtho) / (kMaxOrtho - kMinOrtho));
             }
 
-            counter--;
-            if (counter <= 0)
+            s_Counter--;
+            if (s_Counter <= 0)
             {
                 var opacity = Opacity;
 
                 // this code is slow and creates garbage, but unity doesn't give us a nice efficient mechanism to get these standard colors
-                centerColor = ColorUtility.GetPreferenceColor("Scene/Center Axis", new Color(.8f, .8f, .8f, .93f));
-                centerColor.a = opacity * 0.5f;
-                gridColor = ColorUtility.GetPreferenceColor("Scene/Grid", new Color(.5f, .5f, .5f, .4f));
-                gridColor.a = opacity;
-                counter = 10;
+                s_CenterColor = ColorUtility.GetPreferenceColor("Scene/Center Axis", new Color(.8f, .8f, .8f, .93f));
+                s_CenterColor.a = opacity * 0.5f;
+                s_GridColor = ColorUtility.GetPreferenceColor("Scene/Grid", new Color(.5f, .5f, .5f, .4f));
+                s_GridColor.a = opacity;
+                s_Counter = 10;
             }
 
             if (renderMode == DrawCameraMode.TexturedWire)
             {
                 // if we don't use DrawMeshNow Unity will draw the wireframe of the grid :(
 
-                gridMaterial.SetColor("_GridColor",			 gridColor);
-                gridMaterial.SetColor("_CenterColor",		 centerColor);
+                gridMaterial.SetColor("_GridColor",			 s_GridColor);
+                gridMaterial.SetColor("_CenterColor",		 s_CenterColor);
                 gridMaterial.SetFloat("_OrthoInterpolation", orthoInterpolation);
                 gridMaterial.SetFloat("_ViewSize",			 sceneViewSize);
                 gridMaterial.SetVector("_GridSpacing",		 swizzledGridSpacing);
@@ -156,40 +157,40 @@ namespace Chisel.Editors
             } else
             {
                 // TODO: store this for each SceneView
-                if (properties == null)
-                    properties = new MaterialPropertyBlock();
+                if (s_MaterialProperties == null)
+                    s_MaterialProperties = new MaterialPropertyBlock();
 
-                if (prevGridColor != gridColor)
+                if (s_PrevGridColor != s_GridColor)
                 {
-                    properties.SetColor("_GridColor", gridColor);
-                    prevGridColor = gridColor;
+                    s_MaterialProperties.SetColor("_GridColor", s_GridColor);
+                    s_PrevGridColor = s_GridColor;
                 }
 
-                if (prevCenterColor != centerColor)
+                if (s_PrevCenterColor != s_CenterColor)
                 {
-                    properties.SetColor("_CenterColor", centerColor);
-                    prevCenterColor = centerColor;
+                    s_MaterialProperties.SetColor("_CenterColor", s_CenterColor);
+                    s_PrevCenterColor = s_CenterColor;
                 }
 
-                if (prevOrthoInterpolation != orthoInterpolation)
+                if (s_PrevOrthoInterpolation != orthoInterpolation)
                 {
-                    properties.SetFloat("_OrthoInterpolation", orthoInterpolation);
-                    prevOrthoInterpolation = orthoInterpolation;
+                    s_MaterialProperties.SetFloat("_OrthoInterpolation", orthoInterpolation);
+                    s_PrevOrthoInterpolation = orthoInterpolation;
                 }
 
-                if (prevSceneViewSize != sceneViewSize)
+                if (s_PrevSceneViewSize != sceneViewSize)
                 {
-                    properties.SetFloat("_ViewSize", sceneViewSize);
-                    prevSceneViewSize = sceneViewSize;
+                    s_MaterialProperties.SetFloat("_ViewSize", sceneViewSize);
+                    s_PrevSceneViewSize = sceneViewSize;
                 }
 
-                if (prevGridSpacing != gridSpacing)
+                if (s_PrevGridSpacing != gridSpacing)
                 {
-                    properties.SetVector("_GridSpacing", swizzledGridSpacing);
-                    prevGridSpacing = gridSpacing;
+                    s_MaterialProperties.SetVector("_GridSpacing", swizzledGridSpacing);
+                    s_PrevGridSpacing = gridSpacing;
                 }
 
-                Graphics.DrawMesh(gridMesh, grid.GridToWorldSpace, gridMaterial, 0, camera, 0, properties, false, false);
+                Graphics.DrawMesh(gridMesh, grid.GridToWorldSpace, gridMaterial, 0, camera, 0, s_MaterialProperties, false, false);
             } 
         }
     }

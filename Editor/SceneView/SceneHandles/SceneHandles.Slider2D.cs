@@ -2,31 +2,52 @@ using System.Linq;
 using UnityEditor;
 using UnityEngine;
 using Chisel.Core;
+using System.Buffers;
 
 namespace Chisel.Editors
 {
     public sealed partial class SceneHandles
     {
-        internal static int s_Slider2DHash = "Slider2DHash".GetHashCode();
+		internal readonly static int kSlider2DHash = "Slider2DHash".GetHashCode();
                 
-        static readonly Vector3[] s_Slider2DPointArray = new Vector3[1];
         public static Vector3 Slider2DHandle(Vector3 handlePos, Vector3 offset, Vector3 handleDir, Vector3 slideDir1, Vector3 slideDir2, float handleSize, CapFunction capFunction, Axes axes = Axes.None, bool selectLockingAxisOnClick = false, Vector3? snappingSteps = null)
         {
-            var id = GUIUtility.GetControlID (s_Slider2DHash, FocusType.Keyboard);
-            s_Slider2DPointArray[0] = handlePos;
-            return Slider2D.Do(id, s_Slider2DPointArray, handlePos, offset, handleDir, slideDir1, slideDir2, handleSize, capFunction, axes, selectLockingAxisOnClick, false, snappingSteps)[0];
-        }
+            var id = GUIUtility.GetControlID (kSlider2DHash, FocusType.Keyboard);
+			var points = ArrayPool<Vector3>.Shared.Rent(1);
+            try
+            {
+				points[0] = handlePos;
+                return Slider2D.Do(id, points, 1, handlePos, offset, handleDir, slideDir1, slideDir2, handleSize, capFunction, axes, selectLockingAxisOnClick, false, snappingSteps)[0];
+			}
+			finally
+			{
+				ArrayPool<Vector3>.Shared.Return(points);
+			}
+		}
 
         public static Vector3[] Slider2DHandle(int id, Vector3[] points, Vector3 handlePos, Vector3 offset, Vector3 handleDir, Vector3 slideDir1, Vector3 slideDir2, float handleSize, CapFunction capFunction, Axes axes = Axes.None, bool selectLockingAxisOnClick = false, Vector3? snappingSteps = null, bool noSnapping = false)
         {
             return Slider2D.Do(id, points, handlePos, offset, handleDir, slideDir1, slideDir2, handleSize, capFunction, axes, selectLockingAxisOnClick, noSnapping, snappingSteps);
-        }
+		}
 
-        public static Vector3 Slider2DHandle(int id, Vector3 handlePos, Vector3 offset, Vector3 handleDir, Vector3 slideDir1, Vector3 slideDir2, float handleSize, CapFunction capFunction, Axes axes = Axes.None, bool selectLockingAxisOnClick = false, Vector3? snappingSteps = null, bool noSnapping = false)
-        {
-            s_Slider2DPointArray[0] = handlePos;
-            return Slider2D.Do(id, s_Slider2DPointArray, handlePos, offset, handleDir, slideDir1, slideDir2, handleSize, capFunction, axes, selectLockingAxisOnClick, noSnapping, snappingSteps)[0];
-        }
+		internal static Vector3[] Slider2DHandle(int id, Vector3[] points, int pointCount, Vector3 handlePos, Vector3 offset, Vector3 handleDir, Vector3 slideDir1, Vector3 slideDir2, float handleSize, CapFunction capFunction, Axes axes = Axes.None, bool selectLockingAxisOnClick = false, Vector3? snappingSteps = null, bool noSnapping = false)
+		{
+			return Slider2D.Do(id, points, pointCount, handlePos, offset, handleDir, slideDir1, slideDir2, handleSize, capFunction, axes, selectLockingAxisOnClick, noSnapping, snappingSteps);
+		}
+
+		public static Vector3 Slider2DHandle(int id, Vector3 handlePos, Vector3 offset, Vector3 handleDir, Vector3 slideDir1, Vector3 slideDir2, float handleSize, CapFunction capFunction, Axes axes = Axes.None, bool selectLockingAxisOnClick = false, Vector3? snappingSteps = null, bool noSnapping = false)
+		{
+			var points = ArrayPool<Vector3>.Shared.Rent(1);
+            try
+            {
+				points[0] = handlePos;
+                return Slider2D.Do(id, points, 1, handlePos, offset, handleDir, slideDir1, slideDir2, handleSize, capFunction, axes, selectLockingAxisOnClick, noSnapping, snappingSteps)[0];
+			}
+			finally
+			{
+				ArrayPool<Vector3>.Shared.Return(points);
+			}
+		}
 
         public static Vector3 Slider2DHandleOffset(int id, Vector3 handlePos, Vector3 handleDir, float handleSize = 0, CapFunction capFunction = null, bool selectLockingAxisOnClick = false, Vector3? snappingSteps = null)
         {
@@ -35,27 +56,46 @@ namespace Chisel.Editors
             var axes        = grid.GetTangentAxesForAxis(normalAxis, out Vector3 slideDir1, out Vector3 slideDir2);
             if (handleSize == 0)
                 handleSize = UnityEditor.HandleUtility.GetHandleSize(handlePos) * 0.05f;
-            s_Slider2DPointArray[0] = handlePos;
-            return Slider2D.Do(id, s_Slider2DPointArray, handlePos, Vector3.zero, handleDir, slideDir1, slideDir2, handleSize, capFunction, axes, selectLockingAxisOnClick, false, snappingSteps)[0] - handlePos;
-        }
+			var points = ArrayPool<Vector3>.Shared.Rent(1);
+            try
+            {
+				points[0] = handlePos;
+                return Slider2D.Do(id, points, 1, handlePos, Vector3.zero, handleDir, slideDir1, slideDir2, handleSize, capFunction, axes, selectLockingAxisOnClick, false, snappingSteps)[0] - handlePos;
+			}
+			finally
+			{
+				ArrayPool<Vector3>.Shared.Return(points);
+			}
+		}
 
         public class Slider2D
-        {
-            private static Vector2		s_CurrentMousePosition;
+		{
+			private static readonly Snapping2D s_Snapping2D = new();
+			private static Vector2		s_CurrentMousePosition;
             private static Vector3[]	s_StartPoints;
-            private static Snapping2D	s_Snapping2D = new Snapping2D();
             private static int          s_PrevFocusControl;
             private static bool         s_MovedMouse = false;
 
-            static readonly Vector3[] s_SliderPointArray = new Vector3[1];
-
             public static Vector3 Do(int id, Vector3 point, Vector3 handleOrigin, Vector3 handleCursorOffset, Vector3 handleNormal, Vector3 slideDir1, Vector3 slideDir2, float handleSize, SceneHandles.CapFunction capFunction, Axes axes = Axes.None, bool selectLockingAxisOnClick = false, bool noSnapping = false, Vector3? snappingSteps = null)
             {
-                s_SliderPointArray[0] = point;
-                return Do(id, s_SliderPointArray, handleOrigin, handleCursorOffset, handleNormal, slideDir1, slideDir2, handleSize, capFunction, axes, selectLockingAxisOnClick, noSnapping, snappingSteps)[0];
-            }
-                        
+                var points = ArrayPool<Vector3>.Shared.Rent(1);
+                try
+                {
+                    points[0] = point;
+                    return Do(id, points, 1, handleOrigin, handleCursorOffset, handleNormal, slideDir1, slideDir2, handleSize, capFunction, axes, selectLockingAxisOnClick, noSnapping, snappingSteps)[0];
+                }
+                finally
+                {
+                    ArrayPool<Vector3>.Shared.Return(points);
+                }
+			}
+
             public static Vector3[] Do(int id, Vector3[] points, Vector3 handleOrigin, Vector3 handleCursorOffset, Vector3 handleNormal, Vector3 slideDir1, Vector3 slideDir2, float handleSize, SceneHandles.CapFunction capFunction, Axes axes = Axes.None, bool selectLockingAxisOnClick = false, bool noSnapping = false, Vector3? snappingSteps = null)
+            {
+                return Do(id, points, points.Length, handleOrigin, handleCursorOffset, handleNormal, slideDir1, slideDir2, handleSize, capFunction, axes, selectLockingAxisOnClick, noSnapping, snappingSteps);
+			}
+
+			internal static Vector3[] Do(int id, Vector3[] points, int pointCount, Vector3 handleOrigin, Vector3 handleCursorOffset, Vector3 handleNormal, Vector3 slideDir1, Vector3 slideDir2, float handleSize, SceneHandles.CapFunction capFunction, Axes axes = Axes.None, bool selectLockingAxisOnClick = false, bool noSnapping = false, Vector3? snappingSteps = null)
             {
                 var evt = Event.current;
                 switch (evt.GetTypeForControl(id))
@@ -77,7 +117,9 @@ namespace Chisel.Editors
                         EditorGUIUtility.SetWantsMouseJumping(1);
 
                         s_CurrentMousePosition = evt.mousePosition;
-                        s_StartPoints = points.ToArray();
+						s_StartPoints = new Vector3[pointCount];
+                        for (int i = 0; i < pointCount; i++)
+                            s_StartPoints[i] = points[i];
                             
                         var localToWorldMatrix	= UnityEditor.Handles.matrix;
                         var	center				= Grid.ActiveGrid.Center;
@@ -101,7 +143,7 @@ namespace Chisel.Editors
 
                         s_MovedMouse = true;
 
-                        if (SceneHandles.disabled || Snapping.AreAxisLocked(axes))
+                        if (SceneHandles.Disabled || Snapping.AreAxisLocked(axes))
                             break;
 
                         s_CurrentMousePosition += evt.delta;
@@ -124,8 +166,8 @@ namespace Chisel.Editors
 
                         if (s_StartPoints != null)
                         {
-                            points = new Vector3[points.Length]; // if we don't, it's hard to do Undo properly
-                            for (int i = 0; i < points.Length; i++)
+                            points = new Vector3[pointCount]; // if we don't, it's hard to do Undo properly
+                            for (int i = 0; i < pointCount; i++)
                                 points[i] = 
                                     SnappingUtility.Quantize(s_StartPoints[i] + pointDelta);
                         }
@@ -163,7 +205,7 @@ namespace Chisel.Editors
                         else
                             UnityEditor.HandleUtility.AddControl(id, UnityEditor.HandleUtility.DistanceToCircle(position, handleSize * .5f));
 
-                        int currentFocusControl = SceneHandleUtility.focusControl;
+                        int currentFocusControl = SceneHandleUtility.FocusControl;
                         if ((currentFocusControl == id && s_PrevFocusControl != id) ||
                             (currentFocusControl != id && s_PrevFocusControl == id))
                         {
@@ -191,7 +233,7 @@ namespace Chisel.Editors
 
                         var position = handleOrigin + handleCursorOffset;
                         var rotation = Quaternion.LookRotation(handleNormal, slideDir1);
-                        var color	 = SceneHandles.StateColor(SceneHandles.color, isSelected: (id == s_PrevFocusControl));
+                        var color	 = SceneHandles.StateColor(SceneHandles.Color, isSelected: (id == s_PrevFocusControl));
 
                         using (new SceneHandles.DrawingScope(color))
                         {

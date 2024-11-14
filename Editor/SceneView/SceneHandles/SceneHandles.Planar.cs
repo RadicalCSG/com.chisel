@@ -1,20 +1,35 @@
 ﻿using UnityEditor;
 using UnityEngine;
 using Chisel.Core;
+using System.Buffers;
 
 namespace Chisel.Editors
 {
     public sealed partial class SceneHandles
     {
-        static Vector3		s_PlanarHandlesOctant	= Vector3.one;
-        static Vector3[]	s_Vertices				= new Vector3[4];
+        static Vector3		        s_PlanarHandlesOctant	= Vector3.one;
+        static readonly Vector3[]	s_Vertices				= new Vector3[4];
 
-        static Vector3 PlanarHandle(int id, PlaneAxes planarAxes, Vector3 position, Quaternion rotation, float handleSize, bool selectLockingAxisOnClick = false)
+		internal static Vector3 PlanarHandle(int id, PlaneAxes planarAxes, Vector3 position, Quaternion rotation, float handleSize, bool selectLockingAxisOnClick = false)
         {
-            return PlanarHandle(id, planarAxes, new Vector3[] { position }, position, rotation, handleSize, selectLockingAxisOnClick)[0];
+            var points = ArrayPool<Vector3>.Shared.Rent(1);
+            try
+            {
+                points[0] = position;
+				return PlanarHandle(id, planarAxes, points, 1, position, rotation, handleSize, selectLockingAxisOnClick)[0];
+            }
+            finally
+            {
+				ArrayPool<Vector3>.Shared.Return(points);
+			}
         }
 
-        static Vector3[] PlanarHandle(int id, PlaneAxes planarAxes, Vector3[] points, Vector3 position, Quaternion rotation, float handleSize, bool selectLockingAxisOnClick = false)
+		internal static Vector3[] PlanarHandle(int id, PlaneAxes planarAxes, Vector3[] points, Vector3 position, Quaternion rotation, float handleSize, bool selectLockingAxisOnClick = false)
+        {
+            return PlanarHandle(id, planarAxes, points, points.Length, position, rotation, handleSize, selectLockingAxisOnClick);
+		}
+
+		static Vector3[] PlanarHandle(int id, PlaneAxes planarAxes, Vector3[] points, int pointCount, Vector3 position, Quaternion rotation, float handleSize, bool selectLockingAxisOnClick = false)
         {
             int axis1index = 0;
             int axis2index = 0;
@@ -28,7 +43,7 @@ namespace Chisel.Editors
             }
             
             int axisNormalIndex = 3 - axis2index - axis1index;
-            var prevColor = SceneHandles.color;
+            var prevColor = SceneHandles.Color;
 
             var handleTransform = Matrix4x4.TRS(position, rotation, Vector3.one);
             var sceneView = SceneView.currentDrawingSceneView;
@@ -59,21 +74,22 @@ namespace Chisel.Editors
             axis1 = rotation * axis1;
             axis2 = rotation * axis2;
             axisNormal = rotation * axisNormal;
-            
-            s_Vertices[0] = position + handleOffset + ( axis1 +axis2) * handleSize * 0.5f;
-            s_Vertices[1] = position + handleOffset + (-axis1 +axis2) * handleSize * 0.5f;
-            s_Vertices[2] = position + handleOffset + (-axis1 -axis2) * handleSize * 0.5f;
-            s_Vertices[3] = position + handleOffset + ( axis1 -axis2) * handleSize * 0.5f;
 
-            var innerColor = SceneHandles.color;
+            var innerColor = SceneHandles.Color;
             var outerColor = Color.black;
             innerColor.a = 0.1f;
-            if (!isStatic && !SceneHandles.disabled)
-                SceneHandles.DrawSolidRectangleWithOutline(s_Vertices, innerColor, outerColor);
+            if (!isStatic && !SceneHandles.Disabled)
+			{
+				s_Vertices[0] = position + handleOffset + (axis1 + axis2) * handleSize * 0.5f;
+				s_Vertices[1] = position + handleOffset + (-axis1 + axis2) * handleSize * 0.5f;
+				s_Vertices[2] = position + handleOffset + (-axis1 - axis2) * handleSize * 0.5f;
+				s_Vertices[3] = position + handleOffset + (axis1 - axis2) * handleSize * 0.5f;
+				SceneHandles.DrawSolidRectangleWithOutline(s_Vertices, innerColor, outerColor);
+            }
 
-            points = Slider2DHandle(id, points, position, handleOffset, axisNormal, axis1, axis2, handleSize * 0.5f, RectangleHandleCap, axes, selectLockingAxisOnClick);
+            points = Slider2DHandle(id, points, pointCount, position, handleOffset, axisNormal, axis1, axis2, handleSize * 0.5f, RectangleHandleCap, axes, selectLockingAxisOnClick);
 
-            SceneHandles.color = prevColor;
+            SceneHandles.Color = prevColor;
 
             return points;
         }

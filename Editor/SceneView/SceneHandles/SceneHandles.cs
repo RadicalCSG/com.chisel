@@ -6,20 +6,20 @@ namespace Chisel.Editors
 {
     public sealed partial class SceneHandles
     {
-        public static float		backfaceSizeMultiplier	= 0.95f;
-        public static bool		disabled				{ get { return !GUI.enabled; } set { GUI.enabled = !value; } }
+        public static float		BackfaceSizeMultiplier  { get; set; } = 0.95f;
+        public static bool		Disabled				{ get { return !GUI.enabled; } set { GUI.enabled = !value; } }
 
-        public static Matrix4x4	matrix					{ get { return UnityEditor.Handles.matrix; } set { UnityEditor.Handles.matrix = value; } }
-        public static Matrix4x4	inverseMatrix			{ get { return UnityEditor.Handles.inverseMatrix; } }
+        public static Matrix4x4	Matrix					{ get { return UnityEditor.Handles.matrix; } set { UnityEditor.Handles.matrix = value; } }
+        public static Matrix4x4	InverseMatrix			{ get { return UnityEditor.Handles.inverseMatrix; } }
 
 
         public static void DrawDottedLine(Vector3 p1, Vector3 p2, float screenSpaceSize) { UnityEditor.Handles.DrawDottedLine(p1, p2, screenSpaceSize); }		
         public static void DrawDottedLines(Vector3[] lineSegments, float screenSpaceSize) { UnityEditor.Handles.DrawDottedLines(lineSegments, screenSpaceSize); }
         public static void DrawAAPolyLine(Vector3 pointA, Vector3 pointB) 
         {
-            linePoints[0] = pointA;
-            linePoints[1] = pointB;
-            UnityEditor.Handles.DrawAAPolyLine(linePoints); 
+            s_LinePoints[0] = pointA;
+            s_LinePoints[1] = pointB;
+            UnityEditor.Handles.DrawAAPolyLine(s_LinePoints); 
         }
         public static void DrawAAPolyLine(params Vector3[] points) { UnityEditor.Handles.DrawAAPolyLine(points); }		
         public static void DrawAAPolyLine(float width, params Vector3[] points) { UnityEditor.Handles.DrawAAPolyLine(width, points); }
@@ -29,6 +29,7 @@ namespace Chisel.Editors
         public static void DrawAAConvexPolygon(params Vector3[] points) { UnityEditor.Handles.DrawAAConvexPolygon(points); }
         public static void DrawSolidRectangleWithOutline(Rect rectangle, Color faceColor, Color outlineColor) { UnityEditor.Handles.DrawSolidRectangleWithOutline(rectangle, faceColor, outlineColor); }
         public static void DrawSolidRectangleWithOutline(Vector3[] verts, Color faceColor, Color outlineColor) { UnityEditor.Handles.DrawSolidRectangleWithOutline(verts, faceColor, outlineColor); }
+
         
 
         public static void BeginGUI() { UnityEditor.Handles.BeginGUI(); }
@@ -36,9 +37,9 @@ namespace Chisel.Editors
 
         public static void DrawLine(Vector3 p1, Vector3 p2)
         {
-            linePoints[0] = p1;
-            linePoints[1] = p2;
-            UnityEditor.Handles.DrawAAPolyLine(2.0f, linePoints); 
+            s_LinePoints[0] = p1;
+            s_LinePoints[1] = p2;
+            UnityEditor.Handles.DrawAAPolyLine(2.0f, s_LinePoints); 
         }
         
         public struct DrawingScope : IDisposable
@@ -53,7 +54,7 @@ namespace Chisel.Editors
                 m_NotDisposed = true;
                 originalColor    = UnityEditor.Handles.color;
                 originalMatrix   = UnityEditor.Handles.matrix;
-                originalDisabled = SceneHandles.disabled;
+                originalDisabled = SceneHandles.Disabled;
 
                 UnityEditor.Handles.color = color;
                 UnityEditor.Handles.matrix = matrix;
@@ -68,8 +69,8 @@ namespace Chisel.Editors
                 if (!m_NotDisposed)
                     return; 
                 m_NotDisposed = false;
-                var prev = SceneHandles.disabled;
-                SceneHandles.disabled = originalDisabled;
+                var prev = SceneHandles.Disabled;
+                SceneHandles.Disabled = originalDisabled;
                 UnityEditor.Handles.color = originalColor;
                 UnityEditor.Handles.matrix = originalMatrix;
             }

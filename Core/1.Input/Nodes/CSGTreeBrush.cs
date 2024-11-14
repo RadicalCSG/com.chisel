@@ -216,11 +216,12 @@ namespace Chisel.Core
         #endregion
 
         /// <value>An invalid node</value>
-        public static readonly CSGTreeBrush Invalid = new CSGTreeBrush { nodeID = NodeID.Invalid };
+        readonly static CSGTreeBrush kInvalid = new() { nodeID = NodeID.Invalid };
+		public static ref readonly CSGTreeBrush Invalid => ref kInvalid;
 
-        // Temporary workaround until we can switch to hashes
-        internal bool IsAnyStatusFlagSet()                  { return Hierarchy.IsAnyStatusFlagSet(CompactNodeID); }
-        internal bool IsStatusFlagSet(NodeStatusFlags flag) { return Hierarchy.IsStatusFlagSet(CompactNodeID, flag); }
+		// Temporary workaround until we can switch to hashes
+		internal readonly bool IsAnyStatusFlagSet()                  { return ReadOnlyHierarchy.IsAnyStatusFlagSet(CompactNodeID); }
+		internal readonly bool IsStatusFlagSet(NodeStatusFlags flag) { return ReadOnlyHierarchy.IsStatusFlagSet(CompactNodeID, flag); }
         internal void SetStatusFlag(NodeStatusFlags flag)   { Hierarchy.SetStatusFlag(CompactNodeID, flag); }
         internal void ClearStatusFlag(NodeStatusFlags flag) { Hierarchy.ClearStatusFlag(CompactNodeID, flag); }
         internal void ClearAllStatusFlags()                 { Hierarchy.ClearAllStatusFlags(CompactNodeID); }
@@ -229,8 +230,8 @@ namespace Chisel.Core
         [SerializeField] internal NodeID nodeID;
 
 
-        internal CompactNodeID      CompactNodeID       { get { return CompactHierarchyManager.GetCompactNodeID(nodeID); } }
-        internal CompactHierarchyID CompactHierarchyID  { get { return CompactNodeID.hierarchyID; } }
+        internal readonly CompactNodeID      CompactNodeID       { get { return CompactHierarchyManager.GetCompactNodeID(nodeID); } }
+        internal readonly CompactHierarchyID CompactHierarchyID  { get { return CompactNodeID.hierarchyID; } }
         ref CompactHierarchy Hierarchy
         {
             get
@@ -240,8 +241,18 @@ namespace Chisel.Core
                     throw new InvalidOperationException($"Invalid NodeID");
                 return ref CompactHierarchyManager.GetHierarchy(hierarchyID);
             }
-        }
+		}
+		readonly ref CompactHierarchy ReadOnlyHierarchy
+		{
+			get
+			{
+				var hierarchyID = CompactHierarchyID;
+				if (hierarchyID == CompactHierarchyID.Invalid)
+					throw new InvalidOperationException($"Invalid NodeID");
+				return ref CompactHierarchyManager.GetHierarchy(hierarchyID);
+			}
+		}
 
-        public override string ToString() => $"{((CSGTreeNode)this).Type} ({nodeID})";
+		public override string ToString() => $"{((CSGTreeNode)this).Type} ({nodeID})";
     }
 }

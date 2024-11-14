@@ -39,8 +39,8 @@ namespace Chisel.Editors
             ChiselUVToolCommon.Instance.OnDeactivate();
         }
 
-        static readonly int kSurfaceEditModeHash		= "SurfaceMoveEditMode".GetHashCode();
-        static readonly int kSurfaceMoveHash			= "SurfaceMove".GetHashCode();
+        readonly static int kSurfaceEditModeHash		= "SurfaceMoveEditMode".GetHashCode();
+        readonly static int kSurfaceMoveHash			= "SurfaceMove".GetHashCode();
 
 
         public override void OnSceneGUI(SceneView sceneView, Rect dragArea)
@@ -76,13 +76,13 @@ namespace Chisel.Editors
         static void TranslateSurfacesInWorldSpace(Vector3 translation)
         {
             var movementInWorldSpace = Matrix4x4.TRS(-translation, Quaternion.identity, Vector3.one); 
-            Undo.RecordObjects(ChiselUVToolCommon.selectedNodes, "Moved UV coordinates");
-            for (int i = 0; i < ChiselUVToolCommon.selectedSurfaceReferences.Length; i++)
+            Undo.RecordObjects(ChiselUVToolCommon.s_SelectedNodes, "Moved UV coordinates");
+            for (int i = 0; i < ChiselUVToolCommon.s_SelectedSurfaceReferences.Length; i++)
             {
                 // Translates the uv surfaces in a given direction. Since the z direction, relatively to the surface, 
                 // is basically removed in this calculation, it should behave well when we move multiple selected surfaces
                 // in any direction.
-                ChiselUVToolCommon.selectedSurfaceReferences[i].WorldSpaceTransformUV(movementInWorldSpace, ChiselUVToolCommon.selectedUVMatrices[i]);
+                ChiselUVToolCommon.s_SelectedSurfaceReferences[i].WorldSpaceTransformUV(movementInWorldSpace, ChiselUVToolCommon.s_SelectedUVMatrices[i]);
             }
         }
 
@@ -113,7 +113,7 @@ namespace Chisel.Editors
                         break;
 
                     ChiselUVToolCommon.StartToolDragging();
-                    TranslateSurfacesInWorldSpace(ChiselUVToolCommon.worldDragDeltaVector);
+                    TranslateSurfacesInWorldSpace(ChiselUVToolCommon.s_WorldDragDeltaVector);
                     break;
                 }
             }

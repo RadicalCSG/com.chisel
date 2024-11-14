@@ -6,6 +6,7 @@ using UnityEngine;
 using Unity.Entities;
 using UnityEditor;
 using UnityEngine.Pool;
+using Unity.Mathematics;
 
 namespace Chisel.Core
 {
@@ -15,7 +16,8 @@ namespace Chisel.Core
 		public int surfaceIndex;
 		public CompactNodeID brushNodeID;
 
-		public override readonly int GetHashCode() { return HashCode.Combine(instanceID, surfaceIndex, brushNodeID); }
+		public override readonly int GetHashCode() { return (int)Hash(); }
+		public readonly uint Hash() { unchecked { return (uint)math.hash(new int3(instanceID, surfaceIndex, (int)brushNodeID.Hash())); } }
 		public override readonly bool Equals(object obj)
 		{
 			if (obj is SelectionDescription selectionDescription) return Equals(selectionDescription);
@@ -25,7 +27,7 @@ namespace Chisel.Core
 		{
 			return instanceID == other.instanceID && surfaceIndex == other.surfaceIndex && brushNodeID == other.brushNodeID;
 		}
-	}
+	} 
 
 	// TODO: actually use this
 	public struct SubMeshTriangleLookup

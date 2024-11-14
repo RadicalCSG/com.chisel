@@ -6,6 +6,7 @@ using Chisel.Components;
 using Unity.Mathematics;
 using UnityEngine;
 using UnityEditor;
+using UnityEngine.Pool;
 
 namespace Chisel.Editors
 {
@@ -38,9 +39,11 @@ namespace Chisel.Editors
         public int[] edgeRemap;
         public int[] polygonRemap;
 
+		public List<int> tempPolygon1ToPolygon2 = new();
 
-        #region Selection Methods
-        public void SelectVertex(int vertexIndex, SelectionType selectionType)
+
+		#region Selection Methods
+		public void SelectVertex(int vertexIndex, SelectionType selectionType)
         {
             Undo.RecordObject(ChiselTopologySelectionManager.Selection, "Selection modified");
             SelectVertex(brushMesh, selection, vertexIndex, selectionType);
@@ -490,7 +493,9 @@ namespace Chisel.Editors
         // Rebuild all mesh specific computations
         public void Rebuild()
         {
-            FindSoftEdges();
+            tempPolygon1ToPolygon2.Clear();
+
+			FindSoftEdges();
 
             if (!IsValidBrush())
                 return;
@@ -632,10 +637,10 @@ namespace Chisel.Editors
         #region UpdateControlIDs
         static SceneHandles.PositionHandleIDs s_TempPositionHandleIDs;
 
-        internal static int s_PolygonHash = "Polygon".GetHashCode();
-        internal static int s_VertexHash = "Vertex".GetHashCode();
-        internal static int s_EdgeHash = "Edge".GetHashCode();
-        internal static int s_SoftEdgeHash = "SoftEdge".GetHashCode();
+        internal static readonly int kPolygonHash = "Polygon".GetHashCode();
+        internal static readonly int kVertexHash = "Vertex".GetHashCode();
+        internal static readonly int kEdgeHash = "Edge".GetHashCode();
+        internal static readonly int kSoftEdgeHash = "SoftEdge".GetHashCode();
 
         void UpdateControlIDs()
         {
@@ -651,16 +656,16 @@ namespace Chisel.Editors
             s_TempSoftEdgesIDCount  = softEdges.Length;
 
             for (int p = 0; p < s_TempPolygonsIDCount; p++)
-                s_TempPolygonsIDs[p] = GUIUtility.GetControlID(s_PolygonHash, FocusType.Keyboard);
+                s_TempPolygonsIDs[p] = GUIUtility.GetControlID(kPolygonHash, FocusType.Keyboard);
 
             for (int v = 0; v < s_TempVerticesIDCount; v++)
-                s_TempVerticesIDs[v] = GUIUtility.GetControlID(s_VertexHash, FocusType.Keyboard);
+                s_TempVerticesIDs[v] = GUIUtility.GetControlID(kVertexHash, FocusType.Keyboard);
 
             for (int e = 0; e < s_TempEdgesIDCount; e++)
-                s_TempEdgesIDs[e] = (halfEdges[e].twinIndex > e) ? 0 : GUIUtility.GetControlID(s_EdgeHash, FocusType.Keyboard);
+                s_TempEdgesIDs[e] = (halfEdges[e].twinIndex > e) ? 0 : GUIUtility.GetControlID(kEdgeHash, FocusType.Keyboard);
 
             for (int e = 0; e < s_TempSoftEdgesIDCount; e++)
-                s_TempSoftEdgesIDs[e] = GUIUtility.GetControlID(s_SoftEdgeHash, FocusType.Keyboard);
+                s_TempSoftEdgesIDs[e] = GUIUtility.GetControlID(kSoftEdgeHash, FocusType.Keyboard);
         }
         #endregion
 
@@ -689,11 +694,10 @@ namespace Chisel.Editors
             vertexSelectionCenter = (min + max) * 0.5f;
         }
 
-        // Finds all edges that have been created when optimizing the outline mesh.
-        // This is possible when not all vertices on a polygon actually lie on the same plane and we're forced to split that polygon
-        #region FindSoftEdges
-        static readonly List<int> s_TempPolygon1ToPolygon2 = new();
-        void FindSoftEdges()
+		// Finds all edges that have been created when optimizing the outline mesh.
+		// This is possible when not all vertices on a polygon actually lie on the same plane and we're forced to split that polygon
+		#region FindSoftEdges
+		void FindSoftEdges()
         {
             softEdges = new SoftEdge[0];
             //brushContainers.Clear();
@@ -722,11 +726,12 @@ namespace Chisel.Editors
             var beforeHalfEdgePolygonIndices = beforeBrushMesh.halfEdgePolygonIndices;
 
             var afterPlanes     = afterBrushMesh.planes;
-            var afterVertices   = afterBrushMesh.vertices;
+            //var afterVertices = afterBrushMesh.vertices;
 
-            s_TempPolygon1ToPolygon2.Clear();
+
+            tempPolygon1ToPolygon2.Clear();
             for (int i = 0; i < afterPolygons.Length; i++)
-                s_TempPolygon1ToPolygon2.Add(-1);
+                tempPolygon1ToPolygon2.Add(-1);
 
             // TODO: optimize this
             // NOTE: assumes vertices are the same on both the original brushMesh and the optimized one
@@ -754,8 +759,8 @@ namespace Chisel.Editors
                         afterVertexIndexB != beforeVertexIndexB)
                         continue;
 
-                    s_TempPolygon1ToPolygon2[afterPolygonIndexA] = beforePolygonIndexA;
-                    s_TempPolygon1ToPolygon2[afterPolygonIndexB] = beforePolygonIndexB;
+                    tempPolygon1ToPolygon2[afterPolygonIndexA] = beforePolygonIndexA;
+                    tempPolygon1ToPolygon2[afterPolygonIndexB] = beforePolygonIndexB;
                     found = true;
                     break;
                 }
@@ -859,7 +864,7 @@ namespace Chisel.Editors
             {
                 case EventType.MouseMove:
                 {
-                    if (SceneHandleUtility.focusControl != id)
+                    if (SceneHandleUtility.FocusControl != id)
                         break;
 
                     prevAlternateMode = AlternateEditMode;
@@ -960,7 +965,7 @@ namespace Chisel.Editors
                 prevAlternateMode.Value == alternateEditMode)
                 return ClickState.None;
 
-            if (SceneHandleUtility.focusControl != id)
+            if (SceneHandleUtility.FocusControl != id)
                 return ClickState.None;
 
             prevAlternateMode = alternateEditMode;
@@ -1021,7 +1026,7 @@ namespace Chisel.Editors
                 var isActive = (state & ItemState.Active) == ItemState.Active;
                 var isBackfaced = (state & ItemState.Frontfaced) != ItemState.Frontfaced;
                 var baseColor = (isBackfaced && !isActive && !isHovering) ? backfacedColor : frontfacedColor;
-                colors[i] = !validState ? invalidColor : SceneHandles.StateColor(baseColor, SceneHandles.disabled, isSelected: (isActive || isSelected), isPreSelected: isHovering);
+                colors[i] = !validState ? invalidColor : SceneHandles.StateColor(baseColor, SceneHandles.Disabled, isSelected: (isActive || isSelected), isPreSelected: isHovering);
             }
         }
 
@@ -1041,21 +1046,21 @@ namespace Chisel.Editors
             // TODO: improve polygon color and make it handle transparency (polygon rendering does not work with alpha?)
             // TODO: make it possible to modify these colors from a settings page
             #region Default Colors
-            var FrontfacedPolygonColor = SceneHandles.yAxisColor;
-            var BackfacedPolygonColor = new Color(FrontfacedPolygonColor.r, FrontfacedPolygonColor.g, FrontfacedPolygonColor.b, FrontfacedPolygonColor.a * SceneHandles.backfaceAlphaMultiplier);
+            var FrontfacedPolygonColor = SceneHandles.YAxisColor;
+            var BackfacedPolygonColor = new Color(FrontfacedPolygonColor.r, FrontfacedPolygonColor.g, FrontfacedPolygonColor.b, FrontfacedPolygonColor.a * SceneHandles.BackfaceAlphaMultiplier);
 
-            var FrontfacedColor = SceneHandles.zAxisColor;
-            var BackfacedColor = new Color(FrontfacedColor.r, FrontfacedColor.g, FrontfacedColor.b, FrontfacedColor.a * SceneHandles.backfaceAlphaMultiplier);
+            var FrontfacedColor = SceneHandles.ZAxisColor;
+            var BackfacedColor = new Color(FrontfacedColor.r, FrontfacedColor.g, FrontfacedColor.b, FrontfacedColor.a * SceneHandles.BackfaceAlphaMultiplier);
             var InvalidColor = Color.red;
             #endregion
 
             var currentHotControl       = GUIUtility.hotControl;
-            var currentFocusControl     = SceneHandleUtility.focusControl;
-            var currDisabled            = SceneHandles.disabled;
+            var currentFocusControl     = SceneHandleUtility.FocusControl;
+            var currDisabled            = SceneHandles.Disabled;
 
             var cameraTransform         = camera.transform;
-            var cameraLocalPos          = SceneHandles.inverseMatrix.MultiplyPoint(cameraTransform.position);
-            var cameraLocalForward      = SceneHandles.inverseMatrix.MultiplyVector(cameraTransform.forward);
+            var cameraLocalPos          = SceneHandles.InverseMatrix.MultiplyPoint(cameraTransform.position);
+            var cameraLocalForward      = SceneHandles.InverseMatrix.MultiplyVector(cameraTransform.forward);
             var isCameraOrthographic    = camera.orthographic;
             var isCameraInsideOutline   = IsPointInsideOutline(cameraLocalPos);
 
@@ -1140,8 +1145,8 @@ namespace Chisel.Editors
 
                 var afterPolygonIndexA  = softEdges[s].afterPolygonIndexA;
                 var afterPolygonIndexB  = softEdges[s].afterPolygonIndexB;
-                var beforePolygonIndexA = s_TempPolygon1ToPolygon2[afterPolygonIndexA];
-                var beforePolygonIndexB = s_TempPolygon1ToPolygon2[afterPolygonIndexB];
+                var beforePolygonIndexA = tempPolygon1ToPolygon2[afterPolygonIndexA];
+                var beforePolygonIndexB = tempPolygon1ToPolygon2[afterPolygonIndexB];
 
                 // We cannot use the original polygon for backfacing since it's probably pointing in another direction
                 var beforePolygonAState = (beforePolygonIndexA < 0 || beforePolygonIndexA >= polygons.Length) ? ItemState.None : (s_TempPolygonsState[beforePolygonIndexA] & ~ItemState.Frontfaced);
@@ -1209,7 +1214,7 @@ namespace Chisel.Editors
             var vertex1 = vertices[halfEdges[edgeIndex].vertexIndex];
             var vertex2 = vertices[halfEdges[twinIndex].vertexIndex];
 
-            var grid    = Chisel.Editors.Grid.defaultGrid;
+            var grid    = Chisel.Editors.Grid.DefaultGrid;
             var xAxis   = (float3)worldToLocalMatrix.MultiplyVector(grid.Right);
             var yAxis   = (float3)worldToLocalMatrix.MultiplyVector(grid.Up);
             var zAxis   = (float3)worldToLocalMatrix.MultiplyVector(grid.Forward);
@@ -1548,7 +1553,7 @@ namespace Chisel.Editors
             get
             {
                 // TODO: handle this in a more efficient way
-                var currentFocusControl = SceneHandleUtility.focusControl;
+                var currentFocusControl = SceneHandleUtility.FocusControl;
                 for (int e = 0; e < s_TempEdgesIDCount; e++)
                 {
                     var id = s_TempEdgesIDs[e];
@@ -1577,7 +1582,7 @@ namespace Chisel.Editors
             get
             {
                 // TODO: handle this in a more efficient way
-                var currentFocusControl = SceneHandleUtility.focusControl;
+                var currentFocusControl = SceneHandleUtility.FocusControl;
                 for (int p = 0; p < s_TempPolygonsIDCount; p++)
                 {
                     if (currentFocusControl != s_TempPolygonsIDs[p])
@@ -1605,7 +1610,7 @@ namespace Chisel.Editors
                 evt.type != EventType.Layout)
                 return;
 
-            var currentFocusControl     = SceneHandleUtility.focusControl;
+            var currentFocusControl     = SceneHandleUtility.FocusControl;
             var inCreateEdgeEditMode    = InCreateEdgeEditMode;
 
             var polygons    = brushMesh.polygons;
@@ -1627,7 +1632,7 @@ namespace Chisel.Editors
                 var position    = vertices[v];
                 var handleSize  = UnityEditor.HandleUtility.GetHandleSize(position) * HandleRendering.kPointScale;
 
-                SceneHandles.color = vertexColors[v];
+                SceneHandles.Color = vertexColors[v];
                 SceneHandles.OutlinedDotHandleCap(id, position, Quaternion.identity, handleSize, evt.type);
             }
 
@@ -1641,7 +1646,7 @@ namespace Chisel.Editors
                 var vertex1     = vertices[halfEdges[e].vertexIndex];
                 var vertex2     = vertices[halfEdges[twin].vertexIndex];
 
-                SceneHandles.color = edgeColors[e];
+                SceneHandles.Color = edgeColors[e];
                 if (currentFocusControl == id)
                     ChiselOutlineRenderer.DrawLine(vertex1, vertex2, thickness: kHighlightedEdgeThickness);
                 else
@@ -1667,7 +1672,7 @@ namespace Chisel.Editors
                 var pointSize       = handleSize * HandleRendering.kPointScale;
                 var normal          = isOutlineInsideOut ? -planes[p].xyz : planes[p].xyz;
 
-                SceneHandles.color = polygonColors[p];
+                SceneHandles.Color = polygonColors[p];
                 var rotation = Quaternion.LookRotation(normal);
                 SceneHandles.NormalHandleCap(id, polygonCenter, rotation, pointSize, evt.type);
             }
@@ -1677,7 +1682,7 @@ namespace Chisel.Editors
         // Soft edges are edges that do not exist in our source mesh, but have been created during the optimization process (due to non planar polygons)
         // By double clicking on the soft edges we can turn them into 'real edges', we can reverse the process by clicking on a real edge
         // This method returns true when the brushMesh has changed
-        public bool HandleSoftEdges()
+        public bool HandleSoftEdges(List<int> tempPolygon1ToPolygon2)
         {
             for (int e = 0; e < s_TempEdgesIDCount; e++)
             {
@@ -1694,14 +1699,14 @@ namespace Chisel.Editors
             }
 
             var vertices = brushMesh.vertices;
-            var currentFocusControl = SceneHandleUtility.focusControl;
+            var currentFocusControl = SceneHandleUtility.FocusControl;
 
             for (int s = 0; s < softEdges.Length; s++)
             {
                 var id          = s_TempSoftEdgesIDs[s];
                 var vertex1     = vertices[softEdges[s].vertexIndex1];
                 var vertex2     = vertices[softEdges[s].vertexIndex2];
-                SceneHandles.color = softEdgeColors[s];
+                SceneHandles.Color = softEdgeColors[s];
                 if (currentFocusControl == id)
                     ChiselOutlineRenderer.DrawLine(vertex1, vertex2, thickness: kHighlightedEdgeThickness, dashSize: kSoftEdgeDashSize);
                 else
@@ -1714,7 +1719,7 @@ namespace Chisel.Editors
                     {
                         // We double clicked on a soft edge and turn it into a real edge by splitting the polygon along this edge
                         var afterPolygonIndexA = softEdges[s].afterPolygonIndexA;
-                        var beforePolygonIndexA = s_TempPolygon1ToPolygon2[afterPolygonIndexA];
+                        var beforePolygonIndexA = tempPolygon1ToPolygon2[afterPolygonIndexA];
                         SplitPolygonBetweenTwoVertices(beforePolygonIndexA, softEdges[s].vertexIndex1, softEdges[s].vertexIndex2);
                         return true;
                     }
@@ -2212,7 +2217,7 @@ namespace Chisel.Editors
 
             HandleSelection(in2DMode, cameraDirection);
 
-            if (HandleSoftEdges())
+            if (HandleSoftEdges(tempPolygon1ToPolygon2))
                 return true;
 
             if (InCreateEdgeEditMode)

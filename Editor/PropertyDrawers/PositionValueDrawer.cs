@@ -27,7 +27,7 @@ namespace Chisel.Editors
             property.serializedObject.ApplyModifiedProperties();
         }
 
-        static GUIContent ResetValuesContent = new GUIContent ("Reset Values");
+        static readonly GUIContent kResetValuesContent = new("Reset Values");
         
         public override void OnGUI(Rect position, SerializedProperty property, GUIContent label)
         {
@@ -40,7 +40,7 @@ namespace Chisel.Editors
          
                     var context = new GenericMenu ();
          
-                    context.AddItem (ResetValuesContent, false, ResetValues, property);
+                    context.AddItem (kResetValuesContent, false, ResetValues, property);
          
                     context.ShowAsContext ();
                 }

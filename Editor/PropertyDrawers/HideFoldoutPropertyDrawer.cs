@@ -11,7 +11,9 @@ namespace Chisel.Editors
         public override bool CanCacheInspectorGUI(SerializedProperty property) { return true; }
 #endif
 
-        public override float GetPropertyHeight(SerializedProperty iterator, GUIContent label)
+		static GUIContent s_TempGUIContent = new();
+
+		public override float GetPropertyHeight(SerializedProperty iterator, GUIContent label)
         {
             float totalHeight = 0;
             int startingDepth = iterator.depth;
@@ -20,16 +22,14 @@ namespace Chisel.Editors
             {
                 do
                 {
-                    k_TempGUIContent.text = iterator.displayName;
-                    totalHeight += EditorGUI.GetPropertyHeight(iterator, k_TempGUIContent, includeChildren: false) + EditorGUIUtility.standardVerticalSpacing;
+                    s_TempGUIContent.text = iterator.displayName;
+                    totalHeight += EditorGUI.GetPropertyHeight(iterator, s_TempGUIContent, includeChildren: false) + EditorGUIUtility.standardVerticalSpacing;
                 }
                 while (iterator.NextVisible(iterator.isExpanded) && iterator.depth > startingDepth);
             }
             totalHeight += EditorGUIUtility.standardVerticalSpacing;
             return totalHeight;
         }
-
-        static GUIContent k_TempGUIContent = new GUIContent();
 
         public override void OnGUI(Rect position, SerializedProperty iterator, GUIContent label)
         {
@@ -45,9 +45,9 @@ namespace Chisel.Editors
                     do
                     {
                         EditorGUI.indentLevel = iterator.depth - startingDepth;
-                        k_TempGUIContent.text = iterator.displayName;
-                        var height = EditorGUI.GetPropertyHeight(iterator, k_TempGUIContent, includeChildren: false);
-                        EditorGUI.PropertyField(new Rect(position.x, y, position.width, height), iterator, k_TempGUIContent);
+                        s_TempGUIContent.text = iterator.displayName;
+                        var height = EditorGUI.GetPropertyHeight(iterator, s_TempGUIContent, includeChildren: false);
+                        EditorGUI.PropertyField(new Rect(position.x, y, position.width, height), iterator, s_TempGUIContent);
                         y += height + EditorGUIUtility.standardVerticalSpacing;
                     }
                     while (iterator.NextVisible(iterator.isExpanded) && iterator.depth >= startingDepth);

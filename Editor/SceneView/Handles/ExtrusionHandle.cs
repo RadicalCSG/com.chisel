@@ -15,10 +15,10 @@ namespace Chisel.Editors
 
     public static class ExtrusionHandle
     {
-        internal static int s_HeightSizingHash = "HeightSizingHash".GetHashCode();
+        internal readonly static int kHeightSizingHash = "HeightSizingHash".GetHashCode();
         public static ExtrusionState DoHandle(ref Vector3 position, Axis axis, float? snappingSteps = null)
         {
-            var id = GUIUtility.GetControlID(s_HeightSizingHash, FocusType.Keyboard);
+            var id = GUIUtility.GetControlID(kHeightSizingHash, FocusType.Keyboard);
             return ExtrusionHandle.Do(id, ref position, axis, snappingSteps);
         }
 

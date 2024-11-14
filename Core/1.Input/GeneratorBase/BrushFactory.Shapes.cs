@@ -165,7 +165,7 @@ namespace Chisel.Core
             }
         }
 
-        static readonly BrushMesh.HalfEdge[] squarePyramidHalfEdges = new[]
+		readonly static BrushMesh.HalfEdge[] kSquarePyramidHalfEdges = new[]
         {
             // polygon 0
             new BrushMesh.HalfEdge{ twinIndex =  8, vertexIndex = 0 },	// 0  (0-3)
@@ -194,7 +194,7 @@ namespace Chisel.Core
             new BrushMesh.HalfEdge{ twinIndex = 10, vertexIndex = 4 },	// 15 (4-1)
         };
 
-        static readonly BrushMesh.HalfEdge[] invertedSquarePyramidHalfEdges = squarePyramidHalfEdges;
+		readonly static BrushMesh.HalfEdge[] kInvertedSquarePyramidHalfEdges = kSquarePyramidHalfEdges;
 
         //
         //
@@ -329,7 +329,7 @@ namespace Chisel.Core
             }
         }
 
-        static readonly BrushMesh.HalfEdge[] triangularPyramidHalfEdges = new[]
+		readonly static BrushMesh.HalfEdge[] kTriangularPyramidHalfEdges = new[]
         {
             // polygon 0
             new BrushMesh.HalfEdge{ twinIndex = 11, vertexIndex = 3 },	// 0  (3-1)
@@ -352,7 +352,7 @@ namespace Chisel.Core
             new BrushMesh.HalfEdge{ twinIndex =  0, vertexIndex = 1 },	// 11 (1-3)
         };
 
-        static readonly BrushMesh.HalfEdge[] invertedTriangularPyramidHalfEdges = new[]
+		readonly static BrushMesh.HalfEdge[] kInvertedTriangularPyramidHalfEdges = new[]
         {
             // polygon 0
             new BrushMesh.HalfEdge{ twinIndex = 10, vertexIndex = 1 },	// 0  (1-3)
@@ -529,7 +529,7 @@ namespace Chisel.Core
         }
 
 
-        static readonly BrushMesh.HalfEdge[] wedgeHalfEdges = new[]
+		readonly static BrushMesh.HalfEdge[] kWedgeHalfEdges = new[]
         {
             // polygon 0
             new BrushMesh.HalfEdge{ twinIndex =  6, vertexIndex = 0 },	// 0  (0-2)
@@ -560,7 +560,7 @@ namespace Chisel.Core
             new BrushMesh.HalfEdge{ twinIndex =  7, vertexIndex = 2 }	// 17 (2-5)
         };
 
-        static readonly BrushMesh.HalfEdge[] invertedWedgeHalfEdges = new[]
+		readonly static BrushMesh.HalfEdge[] kInvertedWedgeHalfEdges = new[]
         {
             // polygon 0
             new BrushMesh.HalfEdge{ twinIndex =  6, vertexIndex = 2 },	// 0  (2-0)
@@ -591,7 +591,7 @@ namespace Chisel.Core
             new BrushMesh.HalfEdge{ twinIndex = 11, vertexIndex = 1 }	// 17 (1-4)
         };
 
-        static readonly BrushMesh.HalfEdge[] boxHalfEdges = new[]
+		readonly static BrushMesh.HalfEdge[] kBoxHalfEdges = new[]
         {
             // polygon 0
             new BrushMesh.HalfEdge{ twinIndex = 17, vertexIndex = 0 },	//  0
@@ -629,8 +629,8 @@ namespace Chisel.Core
             new BrushMesh.HalfEdge{ twinIndex =  7, vertexIndex = 6 },	// 22
             new BrushMesh.HalfEdge{ twinIndex = 14, vertexIndex = 2 }	// 23
         };
-        
-        static readonly BrushMesh.HalfEdge[] invertedBoxHalfEdges = new[]
+
+		readonly static BrushMesh.HalfEdge[] kInvertedBoxHalfEdges = new[]
         {
             // polygon 0
             new BrushMesh.HalfEdge{ twinIndex = 19, vertexIndex = 1 },	//  0 (1-0)

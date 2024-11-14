@@ -10,8 +10,8 @@ namespace Chisel.Core
     [Serializable]
     public struct ChiselSphere : IBrushGenerator
     {
-        public readonly static ChiselSphere DefaultValues = new ChiselSphere
-        {
+        readonly static ChiselSphere kDefaultSettings = new()
+		{
             diameterXYZ		    = new float3(1),
             offsetY             = 0,
             rotation		    = 0.0f,
@@ -19,8 +19,9 @@ namespace Chisel.Core
             verticalSegments    = 12,
             generateFromCenter  = false
         };
+		public static ref readonly ChiselSphere DefaultSettings => ref kDefaultSettings;
 
-        [DistanceValue] public float3	diameterXYZ;
+		[DistanceValue] public float3	diameterXYZ;
         public float    offsetY;
         public bool     generateFromCenter;
         public float    rotation; // TODO: useless?
@@ -74,7 +75,7 @@ namespace Chisel.Core
         #endregion
 
         #region Reset
-        public void Reset() { this = DefaultValues; }
+        public void Reset() { this = DefaultSettings; }
         #endregion
     }
 

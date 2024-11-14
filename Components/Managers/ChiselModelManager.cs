@@ -28,7 +28,7 @@ namespace Chisel.Components
                     foundInstances.Length == 0)
                 {
                     _instance = ScriptableObject.CreateInstance<ChiselModelManager>();
-                    _instance.hideFlags = HideFlags.DontSaveInBuild;
+                    _instance.hideFlags = HideFlags.HideAndDontSave;
                     return _instance;
                 }
 
@@ -74,7 +74,8 @@ namespace Chisel.Components
 				return 0;
 			}
 
-			if (!ChiselGeneratedObjects.IsValid(foundModel.generated))
+			if (foundModel.generated == null ||
+				!foundModel.generated.IsValid())
 			{
 				foundModel.generated?.Destroy();
 				foundModel.generated = ChiselGeneratedObjects.Create(foundModel.gameObject);
@@ -85,7 +86,7 @@ namespace Chisel.Components
 			return count;
 		}
 
-		static readonly FinishMeshUpdate finishMeshUpdatesMethod = (FinishMeshUpdate)FinishMeshUpdates;
+		readonly static FinishMeshUpdate finishMeshUpdatesMethod = (FinishMeshUpdate)FinishMeshUpdates;
 
 		public void UpdateModels()
 		{
@@ -196,7 +197,8 @@ namespace Chisel.Components
 				model.OnInitialize();
 			}
 
-			if (!ChiselGeneratedObjects.IsValid(model.generated))
+			if (model.generated == null ||
+				!model.generated.IsValid())
 			{
 				model.generated?.Destroy();
 				model.generated = ChiselGeneratedObjects.Create(model.gameObject);

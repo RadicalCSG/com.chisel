@@ -9,8 +9,8 @@ namespace Chisel.Editors
     {
         public static Frustum GetSubFrustum(this Camera camera, Rect screenRect)
         {
-            var oldMatrix = SceneHandles.matrix;
-            SceneHandles.matrix = Matrix4x4.identity;
+            var oldMatrix = SceneHandles.Matrix;
+            SceneHandles.Matrix = Matrix4x4.identity;
 
             var min_x = screenRect.x;
             var max_x = screenRect.x + screenRect.width;
@@ -26,7 +26,7 @@ namespace Chisel.Editors
             var r1 = UnityEditor.HandleUtility.GUIPointToWorldRay(o1);
             var r2 = UnityEditor.HandleUtility.GUIPointToWorldRay(o2);
             var r3 = UnityEditor.HandleUtility.GUIPointToWorldRay(o3);
-            SceneHandles.matrix = oldMatrix;
+            SceneHandles.Matrix = oldMatrix;
             
             var n0 = r0.origin;
             var n1 = r1.origin;

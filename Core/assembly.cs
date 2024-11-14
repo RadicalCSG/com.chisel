@@ -20,14 +20,15 @@ using System.Runtime.CompilerServices;
 [assembly: Unity.Jobs.RegisterGenericJobType(typeof(Chisel.Core.DisposeArrayChildrenJob<Unity.Collections.LowLevel.Unsafe.UnsafeList<Chisel.Core.BrushIntersectWith>>))]
 [assembly: Unity.Jobs.RegisterGenericJobType(typeof(Chisel.Core.DisposeArrayChildrenJob<Unity.Collections.LowLevel.Unsafe.UnsafeList<Unity.Mathematics.float3>>))]
 
-[assembly: Unity.Jobs.RegisterGenericJobType(typeof(Chisel.Core.DisposeListChildrenBlobAssetReferenceJob<Unity.Entities.BlobAssetReference<Chisel.Core.InternalChiselSurfaceArray>>))]
-[assembly: Unity.Jobs.RegisterGenericJobType(typeof(Chisel.Core.DisposeListChildrenBlobAssetReferenceJob<Unity.Entities.BlobAssetReference<Chisel.Core.BasePolygonsBlob>>))]
-[assembly: Unity.Jobs.RegisterGenericJobType(typeof(Chisel.Core.DisposeListChildrenBlobAssetReferenceJob<Unity.Entities.BlobAssetReference<Chisel.Core.BrushTreeSpaceVerticesBlob>>))]
-[assembly: Unity.Jobs.RegisterGenericJobType(typeof(Chisel.Core.DisposeListChildrenBlobAssetReferenceJob<Unity.Entities.BlobAssetReference<Chisel.Core.BrushesTouchedByBrush>>))]
-[assembly: Unity.Jobs.RegisterGenericJobType(typeof(Chisel.Core.DisposeListChildrenBlobAssetReferenceJob<Unity.Entities.BlobAssetReference<Chisel.Core.RoutingTable>>))]
-[assembly: Unity.Jobs.RegisterGenericJobType(typeof(Chisel.Core.DisposeListChildrenBlobAssetReferenceJob<Unity.Entities.BlobAssetReference<Chisel.Core.BrushTreeSpacePlanes>>))]
-[assembly: Unity.Jobs.RegisterGenericJobType(typeof(Chisel.Core.DisposeListChildrenBlobAssetReferenceJob<Unity.Entities.BlobAssetReference<Chisel.Core.ChiselBrushRenderBuffer>>))]
-[assembly: Unity.Jobs.RegisterGenericJobType(typeof(Chisel.Core.DisposeListChildrenBlobAssetReferenceJob<Unity.Entities.BlobAssetReference<Chisel.Core.SubMeshTriangleLookup>>))]
+[assembly: Unity.Jobs.RegisterGenericJobType(typeof(Chisel.Core.DisposeListChildrenBlobAssetReferenceJob<Chisel.Core.InternalChiselSurfaceArray>))]
+[assembly: Unity.Jobs.RegisterGenericJobType(typeof(Chisel.Core.DisposeListChildrenBlobAssetReferenceJob<Chisel.Core.BasePolygonsBlob>))]
+[assembly: Unity.Jobs.RegisterGenericJobType(typeof(Chisel.Core.DisposeListChildrenBlobAssetReferenceJob<Chisel.Core.BrushTreeSpaceVerticesBlob>))]
+[assembly: Unity.Jobs.RegisterGenericJobType(typeof(Chisel.Core.DisposeListChildrenBlobAssetReferenceJob<Chisel.Core.BrushesTouchedByBrush>))]
+[assembly: Unity.Jobs.RegisterGenericJobType(typeof(Chisel.Core.DisposeListChildrenBlobAssetReferenceJob<Chisel.Core.RoutingTable>))]
+[assembly: Unity.Jobs.RegisterGenericJobType(typeof(Chisel.Core.DisposeListChildrenBlobAssetReferenceJob<Chisel.Core.BrushTreeSpacePlanes>))]
+[assembly: Unity.Jobs.RegisterGenericJobType(typeof(Chisel.Core.DisposeListChildrenBlobAssetReferenceJob<Chisel.Core.ChiselBrushRenderBuffer>))]
+[assembly: Unity.Jobs.RegisterGenericJobType(typeof(Chisel.Core.DisposeListChildrenBlobAssetReferenceJob<Chisel.Core.SubMeshTriangleLookup>))]
+
 
 [assembly: InternalsVisibleTo("com.chisel.unity.editor", AllInternalsVisible = true)]
 [assembly: InternalsVisibleTo("com.chisel.unity.components", AllInternalsVisible = true)]

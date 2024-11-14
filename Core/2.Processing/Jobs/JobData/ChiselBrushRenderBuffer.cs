@@ -8,7 +8,7 @@ using Debug = UnityEngine.Debug;
 
 namespace Chisel.Core
 {
-    struct ChiselSurfaceRenderBuffer
+    internal struct ChiselSurfaceRenderBuffer
     {
         public int                          surfaceIndex;
 		public SurfaceDestinationFlags      destinationFlags;
@@ -66,7 +66,7 @@ namespace Chisel.Core
 		}
     };
 
-    struct ChiselQuerySurface
+	internal struct ChiselQuerySurface
     {
         public int      surfaceIndex;
         public int      surfaceParameter;
@@ -78,13 +78,13 @@ namespace Chisel.Core
         public uint     surfaceHash;
     }
 
-    struct ChiselQuerySurfaces
+    internal struct ChiselQuerySurfaces
     {
         public CompactNodeID                    brushNodeID;
 		public BlobArray<ChiselQuerySurface>    surfaces;
     }
 
-    struct ChiselBrushRenderBuffer
+    internal struct ChiselBrushRenderBuffer
     {
         public BlobArray<ChiselSurfaceRenderBuffer> surfaces;
         public BlobArray<ChiselQuerySurfaces>       querySurfaces;

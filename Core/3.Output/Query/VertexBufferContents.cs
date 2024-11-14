@@ -33,26 +33,28 @@ namespace Chisel.Core
 
     public struct VertexBufferContents
     {
-        public readonly static VertexAttributeDescriptor[] s_ColliderDescriptors = new[]
+        readonly static VertexAttributeDescriptor[] kColliderDescriptors = new[]
         {
             new VertexAttributeDescriptor(VertexAttribute.Position,  dimension: 3, stream: 0)
         };
 
-		public readonly static VertexAttributeDescriptor[] s_RenderDescriptors = new[]
+		readonly static VertexAttributeDescriptor[] kRenderDescriptors = new[]
         {
             new VertexAttributeDescriptor(VertexAttribute.Position,  dimension: 3, stream: 0),
             new VertexAttributeDescriptor(VertexAttribute.Normal,    dimension: 3, stream: 0),
             new VertexAttributeDescriptor(VertexAttribute.Tangent,   dimension: 4, stream: 0),
             new VertexAttributeDescriptor(VertexAttribute.TexCoord0, dimension: 2, stream: 0),
         };
+		public static ref readonly VertexAttributeDescriptor[] RenderDescriptors => ref kRenderDescriptors;
 
-		public readonly static VertexAttributeDescriptor[] s_SelectDescriptors = new[]
+		readonly static VertexAttributeDescriptor[] kSelectDescriptors = new[]
 		{
 			new VertexAttributeDescriptor(VertexAttribute.Position,  dimension: 3, stream: 0),
 			new VertexAttributeDescriptor(VertexAttribute.Color,     dimension: 4, stream: 0)
 		};
 
-        public NativeList<GeneratedMeshDescription> meshDescriptions;
+
+		public NativeList<GeneratedMeshDescription> meshDescriptions;
         public NativeList<SubMeshSection>           subMeshSections;
         public NativeList<Mesh.MeshData>            meshes;
         public NativeList<BlobAssetReference<SubMeshTriangleLookup>> subMeshTriangleLookups;
@@ -70,11 +72,11 @@ namespace Chisel.Core
             if (!subMeshTriangleLookups.IsCreated) subMeshTriangleLookups = new NativeList<BlobAssetReference<SubMeshTriangleLookup>>(Allocator.Persistent);
 
 			if (!colliderDescriptors.IsCreated)
-				colliderDescriptors = new NativeArray<VertexAttributeDescriptor>(s_ColliderDescriptors, Allocator.Persistent);
+				colliderDescriptors = new NativeArray<VertexAttributeDescriptor>(kColliderDescriptors, Allocator.Persistent);
 			if (!renderDescriptors.IsCreated)
-                renderDescriptors = new NativeArray<VertexAttributeDescriptor>(s_RenderDescriptors, Allocator.Persistent);
+                renderDescriptors = new NativeArray<VertexAttributeDescriptor>(kRenderDescriptors, Allocator.Persistent);
 			if (!selectDescriptors.IsCreated)
-				selectDescriptors = new NativeArray<VertexAttributeDescriptor>(s_SelectDescriptors, Allocator.Persistent);
+				selectDescriptors = new NativeArray<VertexAttributeDescriptor>(kSelectDescriptors, Allocator.Persistent);
         }
 
         public void Clear()

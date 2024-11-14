@@ -37,35 +37,43 @@ namespace Chisel.Core
             if (treeSpaceVerticesBlob == BlobAssetReference<BrushTreeSpaceVerticesBlob>.Null)
                 return;
             ref var vertices  = ref treeSpaceVerticesBlob.Value.treeSpaceVertices;
-
+    
+            mergeVertices = new HashedVertices(math.max(vertices.Length, 1000), Allocator.Temp);
             NativeCollectionHelpers.EnsureCapacityAndClear(ref mergeVertices, math.max(vertices.Length, 1000));
-            mergeVertices.AddUniqueVertices(ref vertices);
-
-            // NOTE: assumes brushIntersections is in the same order as the brushes are in the tree
-            ref var brushIntersections = ref brushIntersectionsBlob.Value.brushIntersections;
-            for (int i = 0; i < brushIntersections.Length; i++)
+            try
             {
-                var intersectingNodeOrder = brushIntersections[i].nodeIndexOrder.nodeOrder;
-                if (intersectingNodeOrder > brushNodeOrder)
-                    continue;
+                mergeVertices.AddUniqueVertices(ref vertices);
 
-                // In order, goes through the previous brushes in the tree, 
-                // and snaps any vertex that is almost the same in the next brush, with that vertex
-                ref var intersectingVertices = ref treeSpaceVerticesArray[intersectingNodeOrder].Value.treeSpaceVertices;
-                mergeVertices.ReplaceIfExists(ref intersectingVertices);
+                // NOTE: assumes brushIntersections is in the same order as the brushes are in the tree
+                ref var brushIntersections = ref brushIntersectionsBlob.Value.brushIntersections;
+                for (int i = 0; i < brushIntersections.Length; i++)
+                {
+                    var intersectingNodeOrder = brushIntersections[i].nodeIndexOrder.nodeOrder;
+                    if (intersectingNodeOrder > brushNodeOrder)
+                        continue;
+
+                    // In order, goes through the previous brushes in the tree, 
+                    // and snaps any vertex that is almost the same in the next brush, with that vertex
+                    ref var intersectingVertices = ref treeSpaceVerticesArray[intersectingNodeOrder].Value.treeSpaceVertices;
+                    mergeVertices.ReplaceIfExists(ref intersectingVertices);
+                }
+
+
+                for (int i = 0; i < vertices.Length; i++)
+                {
+                    vertices[i] = mergeVertices.GetUniqueVertex(vertices[i]);
+                }
+
+                //treeSpaceVerticesLookup.TryAdd(brushNodeIndex, treeSpaceVerticesBlob);
             }
-
-
-            for (int i = 0; i < vertices.Length; i++)
+            finally
             {
-                vertices[i] = mergeVertices.GetUniqueVertex(vertices[i]);
+                mergeVertices.Dispose();
             }
-
-            //treeSpaceVerticesLookup.TryAdd(brushNodeIndex, treeSpaceVerticesBlob);
         }
     }
     */
-    [BurstCompile(CompileSynchronously = true)]
+	[BurstCompile(CompileSynchronously = true)]
     struct MergeTouchingBrushVerticesIndirectJob : IJobParallelForDefer
     {
         // Read
@@ -90,45 +98,54 @@ namespace Chisel.Core
                 return;
             
             var vertices = loopVerticesLookup[brushIndexOrder.nodeOrder];
-            NativeCollectionHelpers.EnsureCapacityAndClear(ref mergeVertices, math.max(vertices.Length, 1000));
-            mergeVertices.AddUniqueVertices(in vertices);
 
-            // NOTE: assumes brushIntersections is in the same order as the brushes are in the tree
-            ref var brushIntersections = ref brushIntersectionsBlob.Value.brushIntersections;
-            for (int i = 0; i < brushIntersections.Length; i++)
+            mergeVertices = new HashedVertices(math.max(vertices.Length, 1000), Allocator.Temp);
+            //NativeCollectionHelpers.EnsureCapacityAndClear(ref mergeVertices, math.max(vertices.Length, 1000));
+            try
             {
-                var intersectingNodeOrder = brushIntersections[i].nodeIndexOrder.nodeOrder;
-                if (intersectingNodeOrder > brushNodeOrder ||
-                    !loopVerticesLookup[intersectingNodeOrder].IsCreated)
-                    continue;
+                mergeVertices.AddUniqueVertices(in vertices);
 
-                // In order, goes through the previous brushes in the tree, 
-                // and snaps any vertex that is almost the same in the next brush, with that vertex
-                ref var intersectingVertices = ref treeSpaceVerticesArray[intersectingNodeOrder].Value.treeSpaceVertices;
-                mergeVertices.ReplaceIfExists(ref intersectingVertices);
+                // NOTE: assumes brushIntersections is in the same order as the brushes are in the tree
+                ref var brushIntersections = ref brushIntersectionsBlob.Value.brushIntersections;
+                for (int i = 0; i < brushIntersections.Length; i++)
+                {
+                    var intersectingNodeOrder = brushIntersections[i].nodeIndexOrder.nodeOrder;
+                    if (intersectingNodeOrder > brushNodeOrder ||
+                        !loopVerticesLookup[intersectingNodeOrder].IsCreated)
+                        continue;
+
+                    // In order, goes through the previous brushes in the tree, 
+                    // and snaps any vertex that is almost the same in the next brush, with that vertex
+                    ref var intersectingVertices = ref treeSpaceVerticesArray[intersectingNodeOrder].Value.treeSpaceVertices;
+                    mergeVertices.ReplaceIfExists(ref intersectingVertices);
+                }
+
+                // NOTE: assumes brushIntersections is in the same order as the brushes are in the tree
+                for (int i = 0; i < brushIntersections.Length; i++)
+                {
+                    var intersectingNodeOrder = brushIntersections[i].nodeIndexOrder.nodeOrder;
+                    if (intersectingNodeOrder > brushNodeOrder ||
+                        !loopVerticesLookup[intersectingNodeOrder].IsCreated)
+                        continue;
+
+                    // In order, goes through the previous brushes in the tree, 
+                    // and snaps any vertex that is almost the same in the next brush, with that vertex
+                    var intersectingVertices = loopVerticesLookup[intersectingNodeOrder];
+                    mergeVertices.ReplaceIfExists(in intersectingVertices);
+                }
+
+
+                for (int i = 0; i < vertices.Length; i++)
+                {
+                    vertices[i] = mergeVertices.GetUniqueVertex(vertices[i]);
+                }
+
+                //treeSpaceVerticesLookup.TryAdd(brushNodeIndex, treeSpaceVerticesBlob);
             }
-
-            // NOTE: assumes brushIntersections is in the same order as the brushes are in the tree
-            for (int i = 0; i < brushIntersections.Length; i++)
+            finally
             {
-                var intersectingNodeOrder = brushIntersections[i].nodeIndexOrder.nodeOrder;
-                if (intersectingNodeOrder > brushNodeOrder ||
-                    !loopVerticesLookup[intersectingNodeOrder].IsCreated)
-                    continue;
-
-                // In order, goes through the previous brushes in the tree, 
-                // and snaps any vertex that is almost the same in the next brush, with that vertex
-                var intersectingVertices = loopVerticesLookup[intersectingNodeOrder];
-                mergeVertices.ReplaceIfExists(in intersectingVertices);
+                mergeVertices.Dispose();
             }
-
-
-            for (int i = 0; i < vertices.Length; i++)
-            {
-                vertices[i] = mergeVertices.GetUniqueVertex(vertices[i]);
-            }
-
-            //treeSpaceVerticesLookup.TryAdd(brushNodeIndex, treeSpaceVerticesBlob);
         }
     }
 }

@@ -128,26 +128,27 @@ namespace Chisel.Core
     {
         public JobHandle Handles;
 
-        const int maxHandles = 32;
-        static unsafe DualJobHandle*[] handleArray = new DualJobHandle*[maxHandles];
-        static int handleArrayLength = 0;
+        const int kMaxHandles = 32;
+		// TODO: make this safe
+		static unsafe readonly DualJobHandle*[] s_HandleArray = new DualJobHandle*[kMaxHandles];
+        static int s_HandleArrayLength = 0;
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)] 
         static void Add(ref DualJobHandle jobHandle) 
         {
-            UnityEngine.Debug.Assert(handleArrayLength < maxHandles);
+            UnityEngine.Debug.Assert(s_HandleArrayLength < kMaxHandles);
 			unsafe
             {
-                handleArray[handleArrayLength] = (DualJobHandle*)UnsafeUtility.AddressOf(ref jobHandle);
+                s_HandleArray[s_HandleArrayLength] = (DualJobHandle*)UnsafeUtility.AddressOf(ref jobHandle);
             }
-            handleArrayLength++; 
+            s_HandleArrayLength++; 
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public ReadJobHandles(ref DualJobHandle jobHandle0)
         {
             Handles = jobHandle0.writeBarrier;
-            handleArrayLength = 0;
+            s_HandleArrayLength = 0;
             Add(ref jobHandle0);
         }
 
@@ -155,7 +156,7 @@ namespace Chisel.Core
         public ReadJobHandles(ref DualJobHandle jobHandle0, ref DualJobHandle jobHandle1) 
         { 
             Handles = JobHandleExtensions.CombineDependencies(jobHandle0.writeBarrier, jobHandle1.writeBarrier);
-            handleArrayLength = 0;
+            s_HandleArrayLength = 0;
             Add(ref jobHandle0); Add(ref jobHandle1);
         }
 
@@ -163,7 +164,7 @@ namespace Chisel.Core
         public ReadJobHandles(ref DualJobHandle jobHandle0, ref DualJobHandle jobHandle1, ref DualJobHandle jobHandle2) 
         { 
             Handles = JobHandleExtensions.CombineDependencies(jobHandle0.writeBarrier, jobHandle1.writeBarrier, jobHandle2.writeBarrier);
-            handleArrayLength = 0;
+            s_HandleArrayLength = 0;
             Add(ref jobHandle0); Add(ref jobHandle1); Add(ref jobHandle2);
         }
 
@@ -171,7 +172,7 @@ namespace Chisel.Core
         public ReadJobHandles(ref DualJobHandle jobHandle0, ref DualJobHandle jobHandle1, ref DualJobHandle jobHandle2, ref DualJobHandle jobHandle3) 
         { 
             Handles = JobHandleExtensions.CombineDependencies(jobHandle0.writeBarrier, jobHandle1.writeBarrier, jobHandle2.writeBarrier, jobHandle3.writeBarrier);
-            handleArrayLength = 0;
+            s_HandleArrayLength = 0;
             Add(ref jobHandle0); Add(ref jobHandle1); Add(ref jobHandle2); Add(ref jobHandle3);
         }
 
@@ -179,7 +180,7 @@ namespace Chisel.Core
         public ReadJobHandles(ref DualJobHandle jobHandle0, ref DualJobHandle jobHandle1, ref DualJobHandle jobHandle2, ref DualJobHandle jobHandle3, ref DualJobHandle jobHandle4) 
         { 
             Handles = JobHandleExtensions.CombineDependencies(jobHandle0.writeBarrier, jobHandle1.writeBarrier, jobHandle2.writeBarrier, jobHandle3.writeBarrier, jobHandle4.writeBarrier);
-            handleArrayLength = 0;
+            s_HandleArrayLength = 0;
             Add(ref jobHandle0); Add(ref jobHandle1); Add(ref jobHandle2); Add(ref jobHandle3); Add(ref jobHandle4);
         }
 
@@ -187,7 +188,7 @@ namespace Chisel.Core
         public ReadJobHandles(ref DualJobHandle jobHandle0, ref DualJobHandle jobHandle1, ref DualJobHandle jobHandle2, ref DualJobHandle jobHandle3, ref DualJobHandle jobHandle4, ref DualJobHandle jobHandle5) 
         { 
             Handles = JobHandleExtensions.CombineDependencies(jobHandle0.writeBarrier, jobHandle1.writeBarrier, jobHandle2.writeBarrier, jobHandle3.writeBarrier, jobHandle4.writeBarrier, jobHandle5.writeBarrier);
-            handleArrayLength = 0;
+            s_HandleArrayLength = 0;
             Add(ref jobHandle0); Add(ref jobHandle1); Add(ref jobHandle2); Add(ref jobHandle3); Add(ref jobHandle4); Add(ref jobHandle5);
         }
 
@@ -195,7 +196,7 @@ namespace Chisel.Core
         public ReadJobHandles(ref DualJobHandle jobHandle0, ref DualJobHandle jobHandle1, ref DualJobHandle jobHandle2, ref DualJobHandle jobHandle3, ref DualJobHandle jobHandle4, ref DualJobHandle jobHandle5, ref DualJobHandle jobHandle6) 
         { 
             Handles = JobHandleExtensions.CombineDependencies(jobHandle0.writeBarrier, jobHandle1.writeBarrier, jobHandle2.writeBarrier, jobHandle3.writeBarrier, jobHandle4.writeBarrier, jobHandle5.writeBarrier, jobHandle6.writeBarrier);
-            handleArrayLength = 0;
+            s_HandleArrayLength = 0;
             Add(ref jobHandle0); Add(ref jobHandle1); Add(ref jobHandle2); Add(ref jobHandle3); Add(ref jobHandle4); Add(ref jobHandle5); Add(ref jobHandle6);
         }
 
@@ -203,7 +204,7 @@ namespace Chisel.Core
         public ReadJobHandles(ref DualJobHandle jobHandle0, ref DualJobHandle jobHandle1, ref DualJobHandle jobHandle2, ref DualJobHandle jobHandle3, ref DualJobHandle jobHandle4, ref DualJobHandle jobHandle5, ref DualJobHandle jobHandle6, ref DualJobHandle jobHandle7) 
         { 
             Handles = JobHandleExtensions.CombineDependencies(jobHandle0.writeBarrier, jobHandle1.writeBarrier, jobHandle2.writeBarrier, jobHandle3.writeBarrier, jobHandle4.writeBarrier, jobHandle5.writeBarrier, jobHandle6.writeBarrier, jobHandle7.writeBarrier);
-            handleArrayLength = 0;
+            s_HandleArrayLength = 0;
             Add(ref jobHandle0); Add(ref jobHandle1); Add(ref jobHandle2); Add(ref jobHandle3); Add(ref jobHandle4); Add(ref jobHandle5); Add(ref jobHandle6); Add(ref jobHandle7);
         }
 
@@ -211,7 +212,7 @@ namespace Chisel.Core
         public ReadJobHandles(ref DualJobHandle jobHandle0, ref DualJobHandle jobHandle1, ref DualJobHandle jobHandle2, ref DualJobHandle jobHandle3, ref DualJobHandle jobHandle4, ref DualJobHandle jobHandle5, ref DualJobHandle jobHandle6, ref DualJobHandle jobHandle7, ref DualJobHandle jobHandle8) 
         { 
             Handles = JobHandleExtensions.CombineDependencies(jobHandle0.writeBarrier, jobHandle1.writeBarrier, jobHandle2.writeBarrier, jobHandle3.writeBarrier, jobHandle4.writeBarrier, jobHandle5.writeBarrier, jobHandle6.writeBarrier, jobHandle7.writeBarrier, jobHandle8.writeBarrier);
-            handleArrayLength = 0;
+            s_HandleArrayLength = 0;
             Add(ref jobHandle0); Add(ref jobHandle1); Add(ref jobHandle2); Add(ref jobHandle3); Add(ref jobHandle4); Add(ref jobHandle5); Add(ref jobHandle6); Add(ref jobHandle7); Add(ref jobHandle8);
         }
 
@@ -219,7 +220,7 @@ namespace Chisel.Core
         public ReadJobHandles(ref DualJobHandle jobHandle0, ref DualJobHandle jobHandle1, ref DualJobHandle jobHandle2, ref DualJobHandle jobHandle3, ref DualJobHandle jobHandle4, ref DualJobHandle jobHandle5, ref DualJobHandle jobHandle6, ref DualJobHandle jobHandle7, ref DualJobHandle jobHandle8, ref DualJobHandle jobHandle9) 
         { 
             Handles = JobHandleExtensions.CombineDependencies(jobHandle0.writeBarrier, jobHandle1.writeBarrier, jobHandle2.writeBarrier, jobHandle3.writeBarrier, jobHandle4.writeBarrier, jobHandle5.writeBarrier, jobHandle6.writeBarrier, jobHandle7.writeBarrier, jobHandle8.writeBarrier, jobHandle9.writeBarrier);
-            handleArrayLength = 0;
+            s_HandleArrayLength = 0;
             Add(ref jobHandle0); Add(ref jobHandle1); Add(ref jobHandle2); Add(ref jobHandle3); Add(ref jobHandle4); Add(ref jobHandle5); Add(ref jobHandle6); Add(ref jobHandle7); Add(ref jobHandle8); Add(ref jobHandle9);
         }
 
@@ -227,7 +228,7 @@ namespace Chisel.Core
         public ReadJobHandles(ref DualJobHandle jobHandle0, ref DualJobHandle jobHandle1, ref DualJobHandle jobHandle2, ref DualJobHandle jobHandle3, ref DualJobHandle jobHandle4, ref DualJobHandle jobHandle5, ref DualJobHandle jobHandle6, ref DualJobHandle jobHandle7, ref DualJobHandle jobHandle8, ref DualJobHandle jobHandle9, ref DualJobHandle jobHandle10) 
         { 
             Handles = JobHandleExtensions.CombineDependencies(jobHandle0.writeBarrier, jobHandle1.writeBarrier, jobHandle2.writeBarrier, jobHandle3.writeBarrier, jobHandle4.writeBarrier, jobHandle5.writeBarrier, jobHandle6.writeBarrier, jobHandle7.writeBarrier, jobHandle8.writeBarrier, jobHandle9.writeBarrier, jobHandle10.writeBarrier);
-            handleArrayLength = 0;
+            s_HandleArrayLength = 0;
             Add(ref jobHandle0); Add(ref jobHandle1); Add(ref jobHandle2); Add(ref jobHandle3); Add(ref jobHandle4); Add(ref jobHandle5); Add(ref jobHandle6); Add(ref jobHandle7); Add(ref jobHandle8); Add(ref jobHandle9); Add(ref jobHandle10);
         }
 
@@ -235,19 +236,19 @@ namespace Chisel.Core
         public ReadJobHandles(ref DualJobHandle jobHandle0, ref DualJobHandle jobHandle1, ref DualJobHandle jobHandle2, ref DualJobHandle jobHandle3, ref DualJobHandle jobHandle4, ref DualJobHandle jobHandle5, ref DualJobHandle jobHandle6, ref DualJobHandle jobHandle7, ref DualJobHandle jobHandle8, ref DualJobHandle jobHandle9, ref DualJobHandle jobHandle10, ref DualJobHandle jobHandle11) 
         { 
             Handles = JobHandleExtensions.CombineDependencies(jobHandle0.writeBarrier, jobHandle1.writeBarrier, jobHandle2.writeBarrier, jobHandle3.writeBarrier, jobHandle4.writeBarrier, jobHandle5.writeBarrier, jobHandle6.writeBarrier, jobHandle7.writeBarrier, jobHandle8.writeBarrier, jobHandle9.writeBarrier, jobHandle10.writeBarrier, jobHandle11.writeBarrier);
-            handleArrayLength = 0;
+            s_HandleArrayLength = 0;
             Add(ref jobHandle0); Add(ref jobHandle1); Add(ref jobHandle2); Add(ref jobHandle3); Add(ref jobHandle4); Add(ref jobHandle5); Add(ref jobHandle6); Add(ref jobHandle7); Add(ref jobHandle8); Add(ref jobHandle9); Add(ref jobHandle10); Add(ref jobHandle11);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void AddDependency(JobHandle newDependency)
         {
-            if (handleArrayLength == 0)
+            if (s_HandleArrayLength == 0)
                 return;
 			unsafe
             {
-                for (int i = 0; i < handleArrayLength; i++)
-                    handleArray[i]->readWriteBarrier.AddDependency(newDependency);
+                for (int i = 0; i < s_HandleArrayLength; i++)
+                    s_HandleArray[i]->readWriteBarrier.AddDependency(newDependency);
             }
         }
     }
@@ -257,26 +258,27 @@ namespace Chisel.Core
     {
         public JobHandle Handles;
 
-        const int maxHandles = 32;
-        static unsafe DualJobHandle*[] handleArray = new DualJobHandle*[maxHandles];
-        static int handleArrayLength = 0;
+        const int kMaxHandles = 32;
+        // TODO: make this safe
+        static unsafe readonly DualJobHandle*[] s_HandleArray = new DualJobHandle*[kMaxHandles];
+        static int s_HandleArrayLength = 0;
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)] 
         static void Add(ref DualJobHandle jobHandle) 
         {
-            UnityEngine.Debug.Assert(handleArrayLength < maxHandles);
+            UnityEngine.Debug.Assert(s_HandleArrayLength < kMaxHandles);
 			unsafe
             {
-                handleArray[handleArrayLength] = (DualJobHandle*)UnsafeUtility.AddressOf(ref jobHandle);
+                s_HandleArray[s_HandleArrayLength] = (DualJobHandle*)UnsafeUtility.AddressOf(ref jobHandle);
             }
-            handleArrayLength++; 
+            s_HandleArrayLength++; 
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public WriteJobHandles(ref DualJobHandle jobHandle0)
         {
             Handles = jobHandle0.readWriteBarrier;
-            handleArrayLength = 0;
+            s_HandleArrayLength = 0;
             Add(ref jobHandle0);
         }
 
@@ -284,7 +286,7 @@ namespace Chisel.Core
         public WriteJobHandles(ref DualJobHandle jobHandle0, ref DualJobHandle jobHandle1) 
         { 
             Handles = JobHandleExtensions.CombineDependencies(jobHandle0.readWriteBarrier, jobHandle1.readWriteBarrier);
-            handleArrayLength = 0;
+            s_HandleArrayLength = 0;
             Add(ref jobHandle0); Add(ref jobHandle1);
         }
 
@@ -292,7 +294,7 @@ namespace Chisel.Core
         public WriteJobHandles(ref DualJobHandle jobHandle0, ref DualJobHandle jobHandle1, ref DualJobHandle jobHandle2) 
         { 
             Handles = JobHandleExtensions.CombineDependencies(jobHandle0.readWriteBarrier, jobHandle1.readWriteBarrier, jobHandle2.readWriteBarrier);
-            handleArrayLength = 0;
+            s_HandleArrayLength = 0;
             Add(ref jobHandle0); Add(ref jobHandle1); Add(ref jobHandle2);
         }
 
@@ -300,7 +302,7 @@ namespace Chisel.Core
         public WriteJobHandles(ref DualJobHandle jobHandle0, ref DualJobHandle jobHandle1, ref DualJobHandle jobHandle2, ref DualJobHandle jobHandle3) 
         { 
             Handles = JobHandleExtensions.CombineDependencies(jobHandle0.readWriteBarrier, jobHandle1.readWriteBarrier, jobHandle2.readWriteBarrier, jobHandle3.readWriteBarrier);
-            handleArrayLength = 0;
+            s_HandleArrayLength = 0;
             Add(ref jobHandle0); Add(ref jobHandle1); Add(ref jobHandle2); Add(ref jobHandle3);
         }
 
@@ -308,7 +310,7 @@ namespace Chisel.Core
         public WriteJobHandles(ref DualJobHandle jobHandle0, ref DualJobHandle jobHandle1, ref DualJobHandle jobHandle2, ref DualJobHandle jobHandle3, ref DualJobHandle jobHandle4) 
         { 
             Handles = JobHandleExtensions.CombineDependencies(jobHandle0.readWriteBarrier, jobHandle1.readWriteBarrier, jobHandle2.readWriteBarrier, jobHandle3.readWriteBarrier, jobHandle4.readWriteBarrier);
-            handleArrayLength = 0;
+            s_HandleArrayLength = 0;
             Add(ref jobHandle0); Add(ref jobHandle1); Add(ref jobHandle2); Add(ref jobHandle3); Add(ref jobHandle4);
         }
 
@@ -316,7 +318,7 @@ namespace Chisel.Core
         public WriteJobHandles(ref DualJobHandle jobHandle0, ref DualJobHandle jobHandle1, ref DualJobHandle jobHandle2, ref DualJobHandle jobHandle3, ref DualJobHandle jobHandle4, ref DualJobHandle jobHandle5) 
         { 
             Handles = JobHandleExtensions.CombineDependencies(jobHandle0.readWriteBarrier, jobHandle1.readWriteBarrier, jobHandle2.readWriteBarrier, jobHandle3.readWriteBarrier, jobHandle4.readWriteBarrier, jobHandle5.readWriteBarrier);
-            handleArrayLength = 0;
+            s_HandleArrayLength = 0;
             Add(ref jobHandle0); Add(ref jobHandle1); Add(ref jobHandle2); Add(ref jobHandle3); Add(ref jobHandle4); Add(ref jobHandle5);
         }
 
@@ -324,7 +326,7 @@ namespace Chisel.Core
         public WriteJobHandles(ref DualJobHandle jobHandle0, ref DualJobHandle jobHandle1, ref DualJobHandle jobHandle2, ref DualJobHandle jobHandle3, ref DualJobHandle jobHandle4, ref DualJobHandle jobHandle5, ref DualJobHandle jobHandle6) 
         { 
             Handles = JobHandleExtensions.CombineDependencies(jobHandle0.readWriteBarrier, jobHandle1.readWriteBarrier, jobHandle2.readWriteBarrier, jobHandle3.readWriteBarrier, jobHandle4.readWriteBarrier, jobHandle5.readWriteBarrier, jobHandle6.readWriteBarrier);
-            handleArrayLength = 0;
+            s_HandleArrayLength = 0;
             Add(ref jobHandle0); Add(ref jobHandle1); Add(ref jobHandle2); Add(ref jobHandle3); Add(ref jobHandle4); Add(ref jobHandle5); Add(ref jobHandle6);
         }
 
@@ -332,7 +334,7 @@ namespace Chisel.Core
         public WriteJobHandles(ref DualJobHandle jobHandle0, ref DualJobHandle jobHandle1, ref DualJobHandle jobHandle2, ref DualJobHandle jobHandle3, ref DualJobHandle jobHandle4, ref DualJobHandle jobHandle5, ref DualJobHandle jobHandle6, ref DualJobHandle jobHandle7) 
         { 
             Handles = JobHandleExtensions.CombineDependencies(jobHandle0.readWriteBarrier, jobHandle1.readWriteBarrier, jobHandle2.readWriteBarrier, jobHandle3.readWriteBarrier, jobHandle4.readWriteBarrier, jobHandle5.readWriteBarrier, jobHandle6.readWriteBarrier, jobHandle7.readWriteBarrier);
-            handleArrayLength = 0;
+            s_HandleArrayLength = 0;
             Add(ref jobHandle0); Add(ref jobHandle1); Add(ref jobHandle2); Add(ref jobHandle3); Add(ref jobHandle4); Add(ref jobHandle5); Add(ref jobHandle6); Add(ref jobHandle7);
         }
 
@@ -340,7 +342,7 @@ namespace Chisel.Core
         public WriteJobHandles(ref DualJobHandle jobHandle0, ref DualJobHandle jobHandle1, ref DualJobHandle jobHandle2, ref DualJobHandle jobHandle3, ref DualJobHandle jobHandle4, ref DualJobHandle jobHandle5, ref DualJobHandle jobHandle6, ref DualJobHandle jobHandle7, ref DualJobHandle jobHandle8) 
         { 
             Handles = JobHandleExtensions.CombineDependencies(jobHandle0.readWriteBarrier, jobHandle1.readWriteBarrier, jobHandle2.readWriteBarrier, jobHandle3.readWriteBarrier, jobHandle4.readWriteBarrier, jobHandle5.readWriteBarrier, jobHandle6.readWriteBarrier, jobHandle7.readWriteBarrier, jobHandle8.readWriteBarrier);
-            handleArrayLength = 0;
+            s_HandleArrayLength = 0;
             Add(ref jobHandle0); Add(ref jobHandle1); Add(ref jobHandle2); Add(ref jobHandle3); Add(ref jobHandle4); Add(ref jobHandle5); Add(ref jobHandle6); Add(ref jobHandle7); Add(ref jobHandle8);
         }
 
@@ -348,7 +350,7 @@ namespace Chisel.Core
         public WriteJobHandles(ref DualJobHandle jobHandle0, ref DualJobHandle jobHandle1, ref DualJobHandle jobHandle2, ref DualJobHandle jobHandle3, ref DualJobHandle jobHandle4, ref DualJobHandle jobHandle5, ref DualJobHandle jobHandle6, ref DualJobHandle jobHandle7, ref DualJobHandle jobHandle8, ref DualJobHandle jobHandle9) 
         { 
             Handles = JobHandleExtensions.CombineDependencies(jobHandle0.readWriteBarrier, jobHandle1.readWriteBarrier, jobHandle2.readWriteBarrier, jobHandle3.readWriteBarrier, jobHandle4.readWriteBarrier, jobHandle5.readWriteBarrier, jobHandle6.readWriteBarrier, jobHandle7.readWriteBarrier, jobHandle8.readWriteBarrier, jobHandle9.readWriteBarrier);
-            handleArrayLength = 0;
+            s_HandleArrayLength = 0;
             Add(ref jobHandle0); Add(ref jobHandle1); Add(ref jobHandle2); Add(ref jobHandle3); Add(ref jobHandle4); Add(ref jobHandle5); Add(ref jobHandle6); Add(ref jobHandle7); Add(ref jobHandle8); Add(ref jobHandle9);
         }
 
@@ -356,7 +358,7 @@ namespace Chisel.Core
         public WriteJobHandles(ref DualJobHandle jobHandle0, ref DualJobHandle jobHandle1, ref DualJobHandle jobHandle2, ref DualJobHandle jobHandle3, ref DualJobHandle jobHandle4, ref DualJobHandle jobHandle5, ref DualJobHandle jobHandle6, ref DualJobHandle jobHandle7, ref DualJobHandle jobHandle8, ref DualJobHandle jobHandle9, ref DualJobHandle jobHandle10) 
         { 
             Handles = JobHandleExtensions.CombineDependencies(jobHandle0.readWriteBarrier, jobHandle1.readWriteBarrier, jobHandle2.readWriteBarrier, jobHandle3.readWriteBarrier, jobHandle4.readWriteBarrier, jobHandle5.readWriteBarrier, jobHandle6.readWriteBarrier, jobHandle7.readWriteBarrier, jobHandle8.readWriteBarrier, jobHandle9.readWriteBarrier, jobHandle10.readWriteBarrier);
-            handleArrayLength = 0;
+            s_HandleArrayLength = 0;
             Add(ref jobHandle0); Add(ref jobHandle1); Add(ref jobHandle2); Add(ref jobHandle3); Add(ref jobHandle4); Add(ref jobHandle5); Add(ref jobHandle6); Add(ref jobHandle7); Add(ref jobHandle8); Add(ref jobHandle9); Add(ref jobHandle10);
         }
 
@@ -364,22 +366,22 @@ namespace Chisel.Core
         public WriteJobHandles(ref DualJobHandle jobHandle0, ref DualJobHandle jobHandle1, ref DualJobHandle jobHandle2, ref DualJobHandle jobHandle3, ref DualJobHandle jobHandle4, ref DualJobHandle jobHandle5, ref DualJobHandle jobHandle6, ref DualJobHandle jobHandle7, ref DualJobHandle jobHandle8, ref DualJobHandle jobHandle9, ref DualJobHandle jobHandle10, ref DualJobHandle jobHandle11) 
         { 
             Handles = JobHandleExtensions.CombineDependencies(jobHandle0.readWriteBarrier, jobHandle1.readWriteBarrier, jobHandle2.readWriteBarrier, jobHandle3.readWriteBarrier, jobHandle4.readWriteBarrier, jobHandle5.readWriteBarrier, jobHandle6.readWriteBarrier, jobHandle7.readWriteBarrier, jobHandle8.readWriteBarrier, jobHandle9.readWriteBarrier, jobHandle10.readWriteBarrier, jobHandle11.readWriteBarrier);
-            handleArrayLength = 0;
+            s_HandleArrayLength = 0;
             Add(ref jobHandle0); Add(ref jobHandle1); Add(ref jobHandle2); Add(ref jobHandle3); Add(ref jobHandle4); Add(ref jobHandle5); Add(ref jobHandle6); Add(ref jobHandle7); Add(ref jobHandle8); Add(ref jobHandle9); Add(ref jobHandle10); Add(ref jobHandle11);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void AddDependency(JobHandle newDependency)
         {
-            if (handleArrayLength == 0)
+            if (s_HandleArrayLength == 0)
                 return;
 
 			unsafe
             {
-                for (int i = 0; i < handleArrayLength; i++)
+                for (int i = 0; i < s_HandleArrayLength; i++)
                 {
-                    handleArray[i]->writeBarrier.AddDependency(newDependency);
-                    handleArray[i]->readWriteBarrier.AddDependency(newDependency);
+                    s_HandleArray[i]->writeBarrier.AddDependency(newDependency);
+                    s_HandleArray[i]->readWriteBarrier.AddDependency(newDependency);
                 }
             }
         }

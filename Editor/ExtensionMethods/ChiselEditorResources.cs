@@ -13,37 +13,30 @@ namespace Chisel.Editors
         internal const string kActiveIconID     = " On";
         internal const string kDarkIconID       = "d_";
 
-        internal static string[] resourcePaths;
+        internal static string[] s_ResourcePaths;
 
         static ChiselEditorResources()
         {
-            editorPixelsPerPoint    = EditorGUIUtility.pixelsPerPoint;
-            isProSkin               = EditorGUIUtility.isProSkin;
+            s_EditorPixelsPerPoint = EditorGUIUtility.pixelsPerPoint;
+			s_IsProSkin = EditorGUIUtility.isProSkin;
 
-            resourcePaths = GetResourcePaths();
+            s_ResourcePaths = GetResourcePaths();
         }
 
         // Should be safe since when these parameters change, Unity will do a domain reload, 
         // which will call the constructor in which these are set.
-        static float editorPixelsPerPoint;
-        public static bool  isProSkin;
+        static readonly float s_EditorPixelsPerPoint;
+        static readonly bool s_IsProSkin;
+        public static bool IsProSkin => s_IsProSkin;
 
-        public static float ImageScale
-        {
-            get
-            {
-                if (editorPixelsPerPoint > 1.0f)
-                    return 2.0f;
-                return 1.0f;
-            }
-        }
+		public static float ImageScale { get { return (s_EditorPixelsPerPoint > 1.0f) ? 2.0f : 1.0f; } }
 
         static Texture2D LoadImageFromResourcePaths(string name)
         {
             name += kImageExtension;
-            for (int i = 0; i < resourcePaths.Length; i++)
+            for (int i = 0; i < s_ResourcePaths.Length; i++)
             {
-                var path = resourcePaths[i] + name;
+                var path = s_ResourcePaths[i] + name;
                 if (!System.IO.File.Exists(path))
                     continue;
                 var image = AssetDatabase.LoadAssetAtPath<Texture2D>(path);
@@ -57,7 +50,7 @@ namespace Chisel.Editors
         {
             Texture2D image = null;
             var imagePixelsPerPoint = 1.0f;
-            if (editorPixelsPerPoint > 1.0f)
+            if (s_EditorPixelsPerPoint > 1.0f)
             {
                 image = LoadImageFromResourcePaths(name + kLargeIconID);
                 if (image != null)
@@ -70,8 +63,8 @@ namespace Chisel.Editors
             if (image == null)
                 return null;
 
-            if (!Mathf.Approximately(imagePixelsPerPoint, editorPixelsPerPoint) &&    // scaling are different
-                !Mathf.Approximately(editorPixelsPerPoint % 1, 0))                    // screen scaling is non-integer
+            if (!Mathf.Approximately(imagePixelsPerPoint, s_EditorPixelsPerPoint) &&    // scaling are different
+                !Mathf.Approximately(s_EditorPixelsPerPoint % 1, 0))                    // screen scaling is non-integer
                 image.filterMode = FilterMode.Bilinear;
             return image;
         }
@@ -79,10 +72,10 @@ namespace Chisel.Editors
         public static Texture2D[] LoadIconImages(string name)
         {
             var nameID = HashLowerInvariant(name);
-            if (!iconImagesLookup.TryGetValue(nameID, out var iconImages))
+            if (!s_IconImagesLookup.TryGetValue(nameID, out var iconImages))
             {
                 iconImages = LoadIconImagesInternal(name);
-                iconImagesLookup[nameID] = iconImages;
+                s_IconImagesLookup[nameID] = iconImages;
             }
             return iconImages;
         }
@@ -91,10 +84,10 @@ namespace Chisel.Editors
         {
             var nameID = HashLowerInvariant(name);
             var id = (nameID * 33) + (tooltip?.GetHashCode() ?? 0);
-            if (!iconContentLookup.TryGetValue(id, out var contents))
+            if (!s_IconContentLookup.TryGetValue(id, out var contents))
             {
                 contents = GetIconContentInternal(name, tooltip ?? string.Empty);
-                iconContentLookup[id] = contents;
+                s_IconContentLookup[id] = contents;
             }
             return contents;
         }
@@ -103,29 +96,29 @@ namespace Chisel.Editors
         {
             var nameID = HashLowerInvariant(name); 
             var id = (nameID * 33) + (tooltip?.GetHashCode() ?? 0);
-            if (!iconContentWithNameLookup.TryGetValue(id, out var contents))
+            if (!s_IconContentWithNameLookup.TryGetValue(id, out var contents))
             {
                 contents = GetIconContentWithNameInternal(name, tooltip ?? string.Empty);
-                iconContentWithNameLookup[id] = contents;
+                s_IconContentWithNameLookup[id] = contents;
             }
             return contents;
         }
 
         // TODO: add a AssetPostProcessor to detect if images changed/added/removed and remove those from the lookup
-        static readonly Dictionary<string, Texture2D>    imagesLookup                = new Dictionary<string, Texture2D>();
-        static readonly Dictionary<int, Texture2D[]>     iconImagesLookup            = new Dictionary<int, Texture2D[]>();
-        static readonly Dictionary<int, GUIContent[]>    iconContentLookup           = new Dictionary<int, GUIContent[]>();
-        static readonly Dictionary<int, GUIContent[]>    iconContentWithNameLookup   = new Dictionary<int, GUIContent[]>();
+        readonly static Dictionary<string, Texture2D> s_ImagesLookup              = new();
+        readonly static Dictionary<int, Texture2D[]>  s_IconImagesLookup          = new();
+        readonly static Dictionary<int, GUIContent[]> s_IconContentLookup         = new();
+        readonly static Dictionary<int, GUIContent[]> s_IconContentWithNameLookup = new();
 
         static Texture2D LoadImageInternal(string name)
         {
             name = FixSlashes(name);
-            if (imagesLookup.TryGetValue(name, out Texture2D image))
+            if (s_ImagesLookup.TryGetValue(name, out Texture2D image))
                 return image;
             image = LoadScaledTextureInternal(name);
             if (!image)
                 return image;
-            imagesLookup[name] = image;
+            s_ImagesLookup[name] = image;
             return image;
         }
 
@@ -154,7 +147,7 @@ namespace Chisel.Editors
         {
             Texture2D result = null;
             var nameID = name.Replace(' ', '_').ToLowerInvariant();
-            if (isProSkin)
+            if (s_IsProSkin)
             {
                 if (active        ) result = LoadImageInternal($@"{kIconPath}{kDarkIconID}{nameID}{kActiveIconID}");
                 if (result == null) result = LoadImageInternal($@"{kIconPath}{kDarkIconID}{nameID}");
@@ -203,7 +196,13 @@ namespace Chisel.Editors
         }
 
         [UnityEditor.Callbacks.DidReloadScripts]
-        public static void ClearCache() { imagesLookup.Clear(); iconImagesLookup.Clear(); iconContentLookup.Clear(); iconContentWithNameLookup.Clear(); }
+        public static void ClearCache() 
+        { 
+            s_ImagesLookup.Clear(); 
+            s_IconImagesLookup.Clear(); 
+            s_IconContentLookup.Clear(); 
+            s_IconContentWithNameLookup.Clear(); 
+        }
 
         
         #region Editor Resource Paths
@@ -230,7 +229,7 @@ namespace Chisel.Editors
 			}
 		}
 
-        static readonly string[] searchPaths = GetSearchPaths();
+        readonly static string[] searchPaths = GetSearchPaths();
 
         static string[] GetResourcePaths()
         {

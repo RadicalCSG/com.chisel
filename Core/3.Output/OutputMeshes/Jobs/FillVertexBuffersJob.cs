@@ -33,7 +33,7 @@ namespace Chisel.Core
     {
         public const int kDebugVisualizationModeCount = 6;
         public struct DebugRenderFlags { public SurfaceDestinationFlags Item1; public SurfaceDestinationFlags Item2; };
-        public static readonly DebugRenderFlags[] kGeneratedDebugRendererFlags = new DebugRenderFlags[kDebugVisualizationModeCount]
+        public readonly static DebugRenderFlags[] kGeneratedDebugRendererFlags = new DebugRenderFlags[kDebugVisualizationModeCount]
         {
             new(){ Item1 = SurfaceDestinationFlags.None                  , Item2 = SurfaceDestinationFlags.Renderable },              // is explicitly set to "not visible"
             new(){ Item1 = SurfaceDestinationFlags.RenderShadowsCasting  , Item2 = SurfaceDestinationFlags.RenderShadowsCasting },    // casts Shadows and is renderered

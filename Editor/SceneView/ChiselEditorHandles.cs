@@ -1,4 +1,5 @@
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using Chisel.Components;
 using Chisel.Core;
@@ -24,8 +25,8 @@ namespace Chisel.Editors
     {
         public void Start(ChiselNodeComponent generator, SceneView sceneView = null)
         {
-            this.focusControl = Chisel.Editors.SceneHandleUtility.focusControl;
-            this.disabled = Chisel.Editors.SceneHandles.disabled;
+            this.focusControl = Chisel.Editors.SceneHandleUtility.FocusControl;
+            this.disabled = Chisel.Editors.SceneHandles.Disabled;
             this.generator = generator;
             this.modified = false;
             this.lastHandleHadFocus = false;
@@ -42,7 +43,7 @@ namespace Chisel.Editors
             s_HighlightHandles.Clear();
             s_EditorHandlesToDraw.Clear();
             if (Event.current != null)
-                internalMouseRay = UnityEditor.HandleUtility.GUIPointToWorldRay(Event.current.mousePosition);
+                s_InternalMouseRay = UnityEditor.HandleUtility.GUIPointToWorldRay(Event.current.mousePosition);
         }
 
         public void End()
@@ -75,22 +76,21 @@ namespace Chisel.Editors
 
         }
 
-        static Ray internalMouseRay;
-
+        static Ray s_InternalMouseRay;
         static Ray MouseRay
         {
             get
             {
                 var matrix = Handles.inverseMatrix;
-                var mouseRay = internalMouseRay;
+                var mouseRay = s_InternalMouseRay;
                 mouseRay.origin = matrix.MultiplyPoint(mouseRay.origin);
                 mouseRay.direction = matrix.MultiplyVector(mouseRay.direction);
                 return mouseRay;
             }
         }
 
-        static readonly HashSet<IChiselEditorHandle> s_EditorHandlesToDraw = new();
-        static readonly HashSet<IChiselEditorHandle> s_HighlightHandles = new();
+        readonly static HashSet<IChiselEditorHandle> s_EditorHandlesToDraw = new();
+        readonly static HashSet<IChiselEditorHandle> s_HighlightHandles = new();
 
         public bool IsIn2DMode
         {
@@ -193,7 +193,7 @@ namespace Chisel.Editors
 
             const float kDefaultThickness = 1.0f;
 
-            public void Draw(IChiselHandles handles, bool focus)
+            public readonly void Draw(IChiselHandles handles, bool focus)
             {
                 handles.color = handles.GetStateColor(Color, focus, false);
                 ChiselOutlineRenderer.DrawLine(From, To, LineMode.ZTest, kDefaultThickness, DashSize);
@@ -201,14 +201,14 @@ namespace Chisel.Editors
                 ChiselOutlineRenderer.DrawLine(From, To, LineMode.NoZTest, kDefaultThickness, DashSize);
             }
 
-            public float MouseDistance()
+            public readonly float MouseDistance()
             {
                 if (HighlightOnly)
                     return float.PositiveInfinity;
                 return HandleUtility.DistanceToLine(From, To);
             }
 
-            public bool TryGetClosestPoint(out Vector3 closestPoint, bool interpolate = true)
+            public readonly bool TryGetClosestPoint(out Vector3 closestPoint, bool interpolate = true)
             {
                 if (interpolate)
                 {
@@ -632,14 +632,14 @@ namespace Chisel.Editors
 
 
 
-        public bool TryGetClosestPoint(IChiselHandle[] handles, out Vector3 closestPoint, bool interpolate = true)
+        bool TryGetClosestPoint(IChiselHandle[] handles, int handleCount, out Vector3 closestPoint, bool interpolate = true)
         {
             Vector3? foundClosestPoint = null;
-            if (handles != null && handles.Length > 0)
+            if (handles != null && handleCount > 0)
             {
                 var mouseRay = MouseRay;
                 var lineDistance = float.PositiveInfinity;
-                for (int i = 0; i < handles.Length; i++)
+                for (int i = 0; i < handleCount; i++)
                 {
                     if (!handles[i].TryGetClosestPoint(out Vector3 point, interpolate))
                         continue;
@@ -663,22 +663,35 @@ namespace Chisel.Editors
             return foundClosestPoint.HasValue;
         }
 
-        public bool TryGetClosestPoint(IChiselHandle handle, out Vector3 closestPoint, bool interpolate = true)
+		public bool TryGetClosestPoint(IChiselHandle[] handles, out Vector3 closestPoint, bool interpolate = true)
+		{
+			return TryGetClosestPoint(handles, handles.Length, out closestPoint, interpolate);
+		}
+
+		public bool TryGetClosestPoint(IChiselHandle handle, out Vector3 closestPoint, bool interpolate = true)
         {
-            singleHandleArray[0] = handle;
-            return TryGetClosestPoint(singleHandleArray, out closestPoint, interpolate);
+            var singleHandleArray = ArrayPool<IChiselHandle>.Shared.Rent(1);
+            try
+            {
+                singleHandleArray[0] = handle;
+                return TryGetClosestPoint(singleHandleArray, 1, out closestPoint, interpolate);
+            }
+            finally
+            {
+				ArrayPool<IChiselHandle>.Shared.Return(singleHandleArray);
+			}
         }
 
-        public void DoRenderHandles(IChiselHandle[] handles)
+        void DoRenderHandles(IChiselHandle[] handles, int handleCount)
         {
-            var id = GUIUtility.GetControlID(s_DoSlider1DHandleHash, FocusType.Passive);
+            var id = GUIUtility.GetControlID(kDoSlider1DHandleHash, FocusType.Passive);
             switch (Event.current.GetTypeForControl(id))
             {
                 case EventType.Repaint:
                 {
                     var hot = (GUIUtility.hotControl == id);
                     var focus = lastHandleHadFocus || hot;
-                    for (int i = 0; i < handles.Length; i++)
+                    for (int i = 0; i < handleCount; i++)
                     {
                         if (focus) s_HighlightHandles.Add((IChiselEditorHandle)handles[i]);
                         s_EditorHandlesToDraw.Add((IChiselEditorHandle)handles[i]);
@@ -688,14 +701,20 @@ namespace Chisel.Editors
             }
         }
 
-        internal static int s_DoSlider1DHandleHash = "DoSlider1DHandle".GetHashCode();
-        public bool DoSlider1DHandle(ref Vector3 position, Vector3 direction, IChiselHandle[] handles, float snappingStep = 0, string undoMessage = null)
+        public void DoRenderHandles(IChiselHandle[] handles)
         {
-            if (handles != null && handles.Length == 0)
+            DoRenderHandles(handles, handles.Length);
+		}
+
+
+		internal static int kDoSlider1DHandleHash = "DoSlider1DHandle".GetHashCode();
+        bool DoSlider1DHandle(ref Vector3 position, Vector3 direction, IChiselHandle[] handles, int handleCount, float snappingStep = 0, string undoMessage = null)
+        {
+            if (handles != null && handleCount == 0)
                 return false;
             
             EditorGUI.BeginChangeCheck();
-            var id = GUIUtility.GetControlID(s_DoSlider1DHandleHash, FocusType.Passive);
+            var id = GUIUtility.GetControlID(kDoSlider1DHandleHash, FocusType.Passive);
             
             var axis = Axis.Y;
             if (snappingStep == 0)
@@ -706,14 +725,14 @@ namespace Chisel.Editors
             if (lastHandleHadFocus)
                 mouseCursor = Chisel.Editors.SceneHandleUtility.GetCursorForDirection(Vector3.zero, direction);
             if (handles != null &&
-                handles.Length > 0)
+				handleCount > 0)
             {
                 switch (Event.current.GetTypeForControl(id))
                 {
                     case EventType.Layout:
                     {
                         var minDistance = ((IChiselEditorHandle)handles[0]).MouseDistance();
-                        for (int i = 1; i < handles.Length; i++)
+                        for (int i = 1; i < handleCount; i++)
                             minDistance = Mathf.Min(minDistance, ((IChiselEditorHandle)handles[i]).MouseDistance());
                         UnityEditor.HandleUtility.AddControl(id, minDistance);
                         break;
@@ -722,7 +741,7 @@ namespace Chisel.Editors
                     {
                         var hot   = (GUIUtility.hotControl == id);
                         var focus = lastHandleHadFocus || hot;
-                        for (int i = 0; i < handles.Length; i++)
+                        for (int i = 0; i < handleCount; i++)
                         {
                             if (focus) s_HighlightHandles.Add((IChiselEditorHandle)handles[i]);
                             s_EditorHandlesToDraw.Add((IChiselEditorHandle)handles[i]);
@@ -740,21 +759,41 @@ namespace Chisel.Editors
             return true;
         }
 
-        static readonly IChiselHandle[] singleHandleArray = new IChiselHandle[1];
+		public bool DoSlider1DHandle(ref Vector3 position, Vector3 direction, IChiselHandle[] handles, float snappingStep = 0, string undoMessage = null)
+        {
+            return DoSlider1DHandle(ref position, direction, handles, handles.Length, snappingStep, undoMessage);
+
+		}
+
+
         public bool DoSlider1DHandle(ref Vector3 position, Vector3 direction, IChiselHandle handle, float snappingStep = 0, string undoMessage = null)
-        {
-            singleHandleArray[0] = handle;
-            return DoSlider1DHandle(ref position, direction, singleHandleArray, snappingStep, undoMessage);
-        }
+		{
+			var singleHandleArray = ArrayPool<IChiselHandle>.Shared.Rent(1);
+			try
+			{
+			    singleHandleArray[0] = handle;
+                return DoSlider1DHandle(ref position, direction, singleHandleArray, 1, snappingStep, undoMessage);
+			}
+			finally
+			{
+				ArrayPool<IChiselHandle>.Shared.Return(singleHandleArray);
+			}
+		}
 
 
-        public bool DoSlider1DHandle(ref float distance, Vector3 center, Vector3 direction, IChiselHandle[] handles, float snappingStep = 0, string undoMessage = null)
+		public bool DoSlider1DHandle(ref float distance, Vector3 center, Vector3 direction, IChiselHandle[] handles, float snappingStep = 0, string undoMessage = null)
         {
-            if (handles != null && handles.Length == 0)
+            return DoSlider1DHandle(ref distance, center, direction, handles, handles.Length, snappingStep, undoMessage);
+
+		}
+
+		bool DoSlider1DHandle(ref float distance, Vector3 center, Vector3 direction, IChiselHandle[] handles, int handleCount, float snappingStep = 0, string undoMessage = null)
+        {
+            if (handles != null && handleCount == 0)
                 return false;
 
             EditorGUI.BeginChangeCheck();
-            var id = GUIUtility.GetControlID(s_DoSlider1DHandleHash, FocusType.Passive);
+            var id = GUIUtility.GetControlID(kDoSlider1DHandleHash, FocusType.Passive);
 
             var axis = Axis.Y;
             if (snappingStep == 0)
@@ -767,14 +806,14 @@ namespace Chisel.Editors
             if (lastHandleHadFocus)
                 mouseCursor = Chisel.Editors.SceneHandleUtility.GetCursorForDirection(Vector3.zero, direction);
             if (handles != null &&
-                handles.Length > 0)
+				handleCount > 0)
             {
                 switch (Event.current.GetTypeForControl(id))
                 {
                     case EventType.Layout:
                     {
                         var minDistance = ((IChiselEditorHandle)handles[0]).MouseDistance();
-                        for (int i = 1; i < handles.Length; i++)
+                        for (int i = 1; i < handleCount; i++)
                             minDistance = Mathf.Min(minDistance, ((IChiselEditorHandle)handles[i]).MouseDistance());
                         UnityEditor.HandleUtility.AddControl(id, minDistance);
                         break;
@@ -783,7 +822,7 @@ namespace Chisel.Editors
                     {
                         var hot = (GUIUtility.hotControl == id);
                         var focus = lastHandleHadFocus || hot;
-                        for (int i = 0; i < handles.Length; i++)
+                        for (int i = 0; i < handleCount; i++)
                         {
                             if (focus) s_HighlightHandles.Add((IChiselEditorHandle)handles[i]);
                             s_EditorHandlesToDraw.Add((IChiselEditorHandle)handles[i]);
@@ -805,27 +844,43 @@ namespace Chisel.Editors
         }
 
         public bool DoSlider1DHandle(ref float distance, Vector3 center, Vector3 direction, IChiselHandle handle, float snappingStep = 0, string undoMessage = null)
-        {
-            singleHandleArray[0] = handle;
-            return DoSlider1DHandle(ref distance, center, direction, singleHandleArray, snappingStep, undoMessage);
+		{
+			var singleHandleArray = ArrayPool<IChiselHandle>.Shared.Rent(1);
+			try
+			{
+			    singleHandleArray[0] = handle;
+                return DoSlider1DHandle(ref distance, center, direction, singleHandleArray, 1, snappingStep, undoMessage);
+			}
+			finally
+			{
+				ArrayPool<IChiselHandle>.Shared.Return(singleHandleArray);
+			}
         }
 
 
         public bool DoCircleRotationHandle(ref float angle, Vector3 center, Vector3 normal, IChiselHandle handle, string undoMessage = null)
-        {
-            singleHandleArray[0] = handle;
-            return DoCircleRotationHandle(ref angle, center, normal, singleHandleArray, undoMessage);
+		{
+			var singleHandleArray = ArrayPool<IChiselHandle>.Shared.Rent(1);
+			try
+			{
+			    singleHandleArray[0] = handle;
+                return DoCircleRotationHandle(ref angle, center, normal, singleHandleArray, 1, undoMessage);
+			}
+			finally
+			{
+				ArrayPool<IChiselHandle>.Shared.Return(singleHandleArray);
+			}
         }
 
-        internal static int s_DoCircleRotationHandleHash = "DoCircleRotationHandle".GetHashCode();
+        internal static int kDoCircleRotationHandleHash = "DoCircleRotationHandle".GetHashCode();
         internal static Vector3 s_RotationVector = Vector3.forward;
-        public bool DoCircleRotationHandle(ref float angle, Vector3 center, Vector3 normal, IChiselHandle[] handles, string undoMessage = null)
+        bool DoCircleRotationHandle(ref float angle, Vector3 center, Vector3 normal, IChiselHandle[] handles, int handleCount, string undoMessage = null)
         {
-            if (handles != null && handles.Length == 0)
+            if (handles != null && handleCount == 0)
                 return false;
             
             EditorGUI.BeginChangeCheck();
-            var id = GUIUtility.GetControlID(s_DoCircleRotationHandleHash, FocusType.Passive);
+            var id = GUIUtility.GetControlID(kDoCircleRotationHandleHash, FocusType.Passive);
             
             var capFunction = (handles == null) ? null : Chisel.Editors.SceneHandles.NullCap;
 
@@ -883,14 +938,14 @@ namespace Chisel.Editors
             if (lastHandleHadFocus)
                 mouseCursor = Chisel.Editors.SceneHandleUtility.GetCursorForCircleTangent(center, normal);
             if (handles != null &&
-                handles.Length > 0)
+				handleCount > 0)
             {
                 switch (Event.current.GetTypeForControl(id))
                 {
                     case EventType.Layout:
                     {
                         var minDistance = ((IChiselEditorHandle)handles[0]).MouseDistance();
-                        for (int i = 1; i < handles.Length; i++)
+                        for (int i = 1; i < handleCount; i++)
                             minDistance = Mathf.Min(minDistance, ((IChiselEditorHandle)handles[i]).MouseDistance());
                         UnityEditor.HandleUtility.AddControl(id, minDistance);
                         break;
@@ -899,7 +954,7 @@ namespace Chisel.Editors
                     {
                         var hot   = (GUIUtility.hotControl == id);
                         var focus = lastHandleHadFocus || hot;
-                        for (int i = 0; i < handles.Length; i++)
+                        for (int i = 0; i < handleCount; i++)
                         {
                             if (focus) s_HighlightHandles.Add((IChiselEditorHandle)handles[i]);
                             s_EditorHandlesToDraw.Add((IChiselEditorHandle)handles[i]);
@@ -916,23 +971,36 @@ namespace Chisel.Editors
             this.modified = true;
             return true;
         }
-        
 
 
-        public bool DoDistanceHandle(ref float distance, Vector3 center, Vector3 normal, IChiselHandle handle, string undoMessage = null)
+		public bool DoCircleRotationHandle(ref float angle, Vector3 center, Vector3 normal, IChiselHandle[] handles, string undoMessage = null)
         {
-            singleHandleArray[0] = handle;
-            return DoDistanceHandle(ref distance, center, normal, singleHandleArray, undoMessage);
+            return DoCircleRotationHandle(ref angle, center, normal, handles, handles.Length, undoMessage);
+		}
+
+
+		public bool DoDistanceHandle(ref float distance, Vector3 center, Vector3 normal, IChiselHandle handle, string undoMessage = null)
+		{
+			var singleHandleArray = ArrayPool<IChiselHandle>.Shared.Rent(1);
+			try
+			{
+			    singleHandleArray[0] = handle;
+                return DoDistanceHandle(ref distance, center, normal, singleHandleArray, 1, undoMessage);
+			}
+			finally
+			{
+				ArrayPool<IChiselHandle>.Shared.Return(singleHandleArray);
+			}
         }
 
-        internal static int s_DoDistanceHandleHash = "DoDistanceHandle".GetHashCode();
-        public bool DoDistanceHandle(ref float distance, Vector3 center, Vector3 normal, IChiselHandle[] handles, string undoMessage = null)
+        internal static int kDoDistanceHandleHash = "DoDistanceHandle".GetHashCode();
+        bool DoDistanceHandle(ref float distance, Vector3 center, Vector3 normal, IChiselHandle[] handles, int handleCount, string undoMessage = null)
         {
-            if (handles != null && handles.Length == 0)
+            if (handles != null && handleCount == 0)
                 return false;
             
             EditorGUI.BeginChangeCheck();
-            var id = GUIUtility.GetControlID(s_DoDistanceHandleHash, FocusType.Passive);
+            var id = GUIUtility.GetControlID(kDoDistanceHandleHash, FocusType.Passive);
             
             var capFunction = (handles == null) ? null : Chisel.Editors.SceneHandles.NullCap;
 
@@ -996,14 +1064,14 @@ namespace Chisel.Editors
             if (lastHandleHadFocus)
                 mouseCursor = Chisel.Editors.SceneHandleUtility.GetCursorForDirection(center, originalVector);
             if (handles != null &&
-                handles.Length > 0)
+				handleCount > 0)
             {
                 switch (Event.current.GetTypeForControl(id))
                 {
                     case EventType.Layout:
                     {
                         var minDistance = ((IChiselEditorHandle)handles[0]).MouseDistance();
-                        for (int i = 1; i < handles.Length; i++)
+                        for (int i = 1; i < handleCount; i++)
                             minDistance = Mathf.Min(minDistance, ((IChiselEditorHandle)handles[i]).MouseDistance());
                         UnityEditor.HandleUtility.AddControl(id, minDistance);
                         break;
@@ -1012,7 +1080,7 @@ namespace Chisel.Editors
                     {
                         var hot   = (GUIUtility.hotControl == id);
                         var focus = lastHandleHadFocus || hot;
-                        for (int i = 0; i < handles.Length; i++)
+                        for (int i = 0; i < handleCount; i++)
                         {
                             if (focus) s_HighlightHandles.Add((IChiselEditorHandle)handles[i]);
                             s_EditorHandlesToDraw.Add((IChiselEditorHandle)handles[i]);
@@ -1030,15 +1098,21 @@ namespace Chisel.Editors
             return true;
         }
 
+		public bool DoDistanceHandle(ref float distance, Vector3 center, Vector3 normal, IChiselHandle[] handles, string undoMessage = null)
+        {
+            return DoDistanceHandle(ref distance, center, normal, handles, handles.Length, undoMessage);
+
+		}
 
 
 
 
-        internal static int s_DoDirectionHandleHash = "DoDirectionHandle".GetHashCode();
+
+		internal static int kDoDirectionHandleHash = "DoDirectionHandle".GetHashCode();
         public bool DoDirectionHandle(ref Vector3 position, Vector3 direction, float snappingStep = 0, string undoMessage = null)
         {
             EditorGUI.BeginChangeCheck();
-            var id = GUIUtility.GetControlID(s_DoDirectionHandleHash, FocusType.Passive);
+            var id = GUIUtility.GetControlID(kDoDirectionHandleHash, FocusType.Passive);
             this.lastHandleHadFocus = focusControl == id;
             var prevColor = color;
             color = GetStateColor(color, lastHandleHadFocus, backfaced);
@@ -1066,9 +1140,9 @@ namespace Chisel.Editors
         public Color GetStateColor(Color baseColor, bool hasFocus, bool isBackfaced)
         {
             var nonSelectedColor = baseColor;
-            if (isBackfaced) nonSelectedColor.a *= Chisel.Editors.SceneHandles.backfaceAlphaMultiplier;
-            var focusColor = (hasFocus) ? Chisel.Editors.SceneHandles.selectedColor : nonSelectedColor;
-            return disabled ? Color.Lerp(focusColor, Chisel.Editors.SceneHandles.staticColor, Chisel.Editors.SceneHandles.staticBlend) : focusColor;
+            if (isBackfaced) nonSelectedColor.a *= Chisel.Editors.SceneHandles.BackfaceAlphaMultiplier;
+            var focusColor = (hasFocus) ? Chisel.Editors.SceneHandles.SelectedColor : nonSelectedColor;
+            return disabled ? Color.Lerp(focusColor, Chisel.Editors.SceneHandles.StaticColor, Chisel.Editors.SceneHandles.StaticBlend) : focusColor;
         }
 
         public void DrawLine(Vector3 from, Vector3 to, LineMode lineMode = LineMode.NoZTest, float thickness = 1.0f, float dashSize = 0.0f)
@@ -1216,11 +1290,11 @@ namespace Chisel.Editors
             return true;
         }
 
-        internal static int s_DoRotatableLineHandleHash = "DoDirectionHandle".GetHashCode();
+        internal static int kDoRotatableLineHandleHash = "DoDirectionHandle".GetHashCode();
         public bool DoRotatableLineHandle(ref float angle, Vector3 origin, float diameter, Vector3 handleDir, Vector3 slideDir1, Vector3 slideDir2, string undoMessage = null)
         {
             EditorGUI.BeginChangeCheck();
-            var id = GUIUtility.GetControlID(s_DoDirectionHandleHash, FocusType.Passive);
+            var id = GUIUtility.GetControlID(kDoDirectionHandleHash, FocusType.Passive);
             this.lastHandleHadFocus = focusControl == id;
             var prevColor = color;
             color = GetStateColor(color, lastHandleHadFocus, backfaced);
@@ -1394,15 +1468,16 @@ namespace Chisel.Editors
         public void StartWarnings(Vector2 position)
         {
             hasLayoutStarted = false;
-            scrollPosition = position;
+            s_ScrollPosition = position;
 		}
 
-        static GUIContent warningIcon;
-        static GUIContent warningIcon2x;
-		static Vector2 iconSize;
-		static Vector2 iconSize2x;
-		static Vector2 scrollPosition;
-		int indentLevel;
+        static GUIContent s_WarningIcon;
+        static GUIContent s_WarningIcon2x;
+		static Vector2 s_IconSize;
+		static Vector2 s_IconSize2x;
+		static Vector2 s_ScrollPosition;
+		
+        int indentLevel;
         float height;
 
 
@@ -1420,19 +1495,19 @@ namespace Chisel.Editors
         {
             if (hasLayoutStarted)
                 return;
-            if (warningIcon == null)
+            if (s_WarningIcon == null)
             {
-                warningIcon = EditorGUIUtility.IconContent("console.warnicon.sml");
-                warningIcon2x = EditorGUIUtility.IconContent("console.warnicon.sml@2x");
+                s_WarningIcon = EditorGUIUtility.IconContent("console.warnicon.sml");
+                s_WarningIcon2x = EditorGUIUtility.IconContent("console.warnicon.sml@2x");
                 GUIStyle defaultStyle = EditorStyles.helpBox;
-                iconSize = defaultStyle.CalcSize(warningIcon);
-                iconSize2x = defaultStyle.CalcSize(warningIcon2x);
+                s_IconSize = defaultStyle.CalcSize(s_WarningIcon);
+                s_IconSize2x = defaultStyle.CalcSize(s_WarningIcon2x);
 			}
 
             indentLevel = EditorGUI.indentLevel;
             EditorGUI.indentLevel = 0;
 
-            scrollPosition = GUILayout.BeginScrollView(scrollPosition, EditorStyles.helpBox, GUILayout.ExpandWidth(true), GUILayout.MaxHeight(150), GUILayout.MinHeight(0));
+            s_ScrollPosition = GUILayout.BeginScrollView(s_ScrollPosition, EditorStyles.helpBox, GUILayout.ExpandWidth(true), GUILayout.MaxHeight(150), GUILayout.MinHeight(0));
 			hasLayoutStarted = true;
             height = 0;
 		}
@@ -1442,15 +1517,15 @@ namespace Chisel.Editors
             Rect rect = GUILayoutUtility.GetRect(0, 0, EditorStyles.helpBox);
             if (EditorGUIUtility.pixelsPerPoint > 1)
             {
-                rect.width = iconSize2x.x;
-                rect.height = iconSize2x.y;
-                EditorGUI.LabelField(rect, warningIcon2x);
+                rect.width = s_IconSize2x.x;
+                rect.height = s_IconSize2x.y;
+                EditorGUI.LabelField(rect, s_WarningIcon2x);
                 return (true, rect.yMax);
             } else
             {
-                rect.width = iconSize.x;
-                rect.height = iconSize.y;
-                EditorGUI.LabelField(rect, warningIcon);
+                rect.width = s_IconSize.x;
+                rect.height = s_IconSize.y;
+                EditorGUI.LabelField(rect, s_WarningIcon);
 				return (false, rect.yMax);
 			}
         }
@@ -1461,12 +1536,12 @@ namespace Chisel.Editors
             { 
                 if (EditorGUIUtility.pixelsPerPoint > 1)
                 {
-                    if (height < iconSize2x.y)
-                        GUILayoutUtility.GetRect(0, (iconSize2x.y - height) - EditorGUIUtility.singleLineHeight);
+                    if (height < s_IconSize2x.y)
+                        GUILayoutUtility.GetRect(0, (s_IconSize2x.y - height) - EditorGUIUtility.singleLineHeight);
                 } else
                 {
-                    if (height < iconSize.y)
-                        GUILayoutUtility.GetRect(0, (iconSize.y - height) - EditorGUIUtility.singleLineHeight);
+                    if (height < s_IconSize.y)
+                        GUILayoutUtility.GetRect(0, (s_IconSize.y - height) - EditorGUIUtility.singleLineHeight);
                 }
                 EditorGUI.indentLevel = indentLevel;
 				GUILayout.EndScrollView();
@@ -1474,7 +1549,7 @@ namespace Chisel.Editors
 			    titleShown = false;
 			    titleName = null;
             }
-            return scrollPosition;
+            return s_ScrollPosition;
 		}
 
 		public void ShowTitle()
@@ -1489,13 +1564,13 @@ namespace Chisel.Editors
 			    Rect rect = GUILayoutUtility.GetRect(content, EditorStyles.label);
                 if (doubleSized)
 				{
-					rect.x += iconSize2x.x;
-					rect.width -= iconSize2x.x;
+					rect.x += s_IconSize2x.x;
+					rect.width -= s_IconSize2x.x;
 					height = math.max(rect.yMax, warningIconBottom) + 3;
 				} else
                 {
-                    rect.x += iconSize.x;
-                    rect.width -= iconSize.x;
+                    rect.x += s_IconSize.x;
+                    rect.width -= s_IconSize.x;
 					height = math.max(rect.yMax, warningIconBottom) + 3;
 				}
                 if (titleReferenceObject == null)
@@ -1526,8 +1601,8 @@ namespace Chisel.Editors
             {
                 var content = new GUIContent(message);
                 Rect rect = GUILayoutUtility.GetRect(content, EditorStyles.label);
-                rect.x += iconSize.x;
-                rect.width -= iconSize.x;
+                rect.x += s_IconSize.x;
+                rect.width -= s_IconSize.x;
                 EditorGUI.LabelField(rect, content);
                 var content2 = new GUIContent(buttonText);
                 Rect rect2 = GUILayoutUtility.GetRect(content2, EditorStyles.iconButton);
@@ -1551,8 +1626,8 @@ namespace Chisel.Editors
 			// TODO: prevent duplicates?
 			var content = new GUIContent(message);
 			Rect rect = GUILayoutUtility.GetRect(content, EditorStyles.label);
-			rect.x += iconSize.x;
-			rect.width -= iconSize.x;
+			rect.x += s_IconSize.x;
+			rect.width -= s_IconSize.x;
 			EditorGUI.LabelField(rect, content);
 			height += rect.height;
 		}

@@ -1,11 +1,9 @@
 using System.Collections.Generic;
-using System.Runtime.CompilerServices;
 using UnityEngine;
 using Unity.Jobs;
 using Unity.Collections;
 using Unity.Entities;
 using Unity.Mathematics;
-using System;
 
 namespace Chisel.Core
 {
@@ -16,7 +14,7 @@ namespace Chisel.Core
             public JobHandle                            lastJobHandle;
 
             public NativeList<CompactNodeID>            brushIDValues;
-            public NativeArray<ChiselLayerParameters>   parameters;
+            public NativeArray<ChiselLayerParameters>   parameters; 
             public NativeParallelHashSet<int>           allKnownBrushMeshIndices;
 
             public NativeList<BlobAssetReference<BasePolygonsBlob>>             basePolygonCache;
@@ -266,86 +264,6 @@ namespace Chisel.Core
 		private void OnDestroy()
 		{
 			Dispose();
-		}
-	}
-
-    public struct RefCountedBrushMeshBlob
-    {
-        public int refCount;
-        public BlobAssetReference<BrushMeshBlob> brushMeshBlob;
-    }
-
-    internal sealed class ChiselMeshLookup : ScriptableObject
-    {
-        public class Data// : IDisposable
-		{
-            public NativeParallelHashMap<int, RefCountedBrushMeshBlob> brushMeshBlobCache;
-
-            internal void Initialize()
-            {
-                brushMeshBlobCache = new NativeParallelHashMap<int, RefCountedBrushMeshBlob>(1000, Allocator.Persistent);
-			}
-
-			//~Data() { Dispose(); }
-
-			public void Dispose()
-            {
-                if (brushMeshBlobCache.IsCreated)
-                {
-                    try
-                    {
-                        using var items = brushMeshBlobCache.GetValueArray(Allocator.Persistent);                        
-                        foreach (var item in items)
-                        {
-                            if (item.brushMeshBlob.IsCreated)
-                                item.brushMeshBlob.Dispose();
-                        }
-                    }
-                    finally
-                    {
-                        brushMeshBlobCache.Dispose();
-                        brushMeshBlobCache = default;
-                    }
-                }
-				// FIXME: temporary hack
-				CompactHierarchyManager.Destroy();
-			}
-        }
-
-        static ChiselMeshLookup _singleton;
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        static void UpdateValue()
-        {
-            if (_singleton == null)
-            {
-                _singleton = ScriptableObject.CreateInstance<ChiselMeshLookup>();
-                _singleton.hideFlags = HideFlags.HideAndDontSave;
-            }
-        }
-
-        public static Data Value
-        {
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            get
-            {
-                if (_singleton == null)
-                    UpdateValue();
-                return _singleton.data;
-            }
-        }
-
-        readonly Data data = new Data();
-
-        internal void OnEnable() { data.Initialize(); }
-        internal void OnDisable() { Dispose(); }
-		//internal void OnDestroy() { Dispose(); }
-		//~ChiselMeshLookup() { Dispose(); }
-
-		public void Dispose()
-		{
-			data.Dispose();
-			_singleton = null;
 		}
 	}
 }

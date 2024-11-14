@@ -128,7 +128,7 @@ namespace Chisel.Editors
         public static bool PrevGeneratorMode()
         {
             var currentGeneratorMode = ChiselGeneratorManager.GeneratorMode;
-            var generatorModes = ChiselGeneratorManager.generatorModes;
+            var generatorModes = ChiselGeneratorManager.s_GeneratorModes;
             var index = currentGeneratorMode == null ? 1 : ArrayUtility.IndexOf(generatorModes, currentGeneratorMode);
             do { index--; } while (index >= 0 && !generatorModes[index].InToolBox);
             if (index < 0)
@@ -140,7 +140,7 @@ namespace Chisel.Editors
         public static bool NextGeneratorMode()
         {
             var currentGeneratorMode = ChiselGeneratorManager.GeneratorMode;
-            var generatorModes = ChiselGeneratorManager.generatorModes;
+            var generatorModes = ChiselGeneratorManager.s_GeneratorModes;
             var index = currentGeneratorMode == null ? generatorModes.Length - 1 : ArrayUtility.IndexOf(generatorModes, currentGeneratorMode);
             do { index++; } while (index < generatorModes.Length && !generatorModes[index].InToolBox);
             if (index >= generatorModes.Length)
@@ -186,13 +186,14 @@ namespace Chisel.Editors
             public float boxStyleVerticalMargin;
         }
 
-        static Styles styles = null;
+        static Styles s_Styles = null;
+
         static void InitStyles()
         {
-            if (styles == null)
+            if (s_Styles == null)
             {
                 ChiselEditorSettings.Load();
-                styles = new Styles
+                s_Styles = new Styles
                 {
                     boxStyle  = new GUIStyle(GUI.skin.box),
                     namedToggleStyle = new GUIStyle(GUI.skin.button)
@@ -232,7 +233,7 @@ namespace Chisel.Editors
                     },
                     groupTitleStyle =  new GUIStyle(EditorStyles.boldLabel)
                 };
-                styles.boxStyleVerticalMargin = styles.boxStyle.margin.vertical;
+                s_Styles.boxStyleVerticalMargin = s_Styles.boxStyle.margin.vertical;
             }
         }
 
@@ -244,7 +245,7 @@ namespace Chisel.Editors
             // TODO: add automatic finding node based generators in project
 
             InitStyles();
-            var generatorModes  = ChiselGeneratorManager.generatorModes;
+            var generatorModes  = ChiselGeneratorManager.s_GeneratorModes;
             var isActive        = ChiselPlacementTool.IsActive();
 
             float height = 0;
@@ -265,14 +266,14 @@ namespace Chisel.Editors
             EditorGUILayout.GetControlRect(false, height);
 
             var togglePosition  = new Rect(0,0, ChiselEditorUtility.ContextWidth, kSingleLineHeight);
-            var style           = styles.namedToggleStyle;
+            var style           = s_Styles.namedToggleStyle;
             previousGroup   = string.Empty;
             for (int i = 0; i < generatorModes.Length; i++)
             {
                 var generatorMode = generatorModes[i];
                 if (previousGroup != generatorMode.Group)
                 {
-                    EditorGUI.LabelField(togglePosition, generatorMode.Group, styles.groupTitleStyle);
+                    EditorGUI.LabelField(togglePosition, generatorMode.Group, s_Styles.groupTitleStyle);
                     togglePosition.y += kSingleLineHeight + kSingleSpacing;
                     previousGroup = generatorMode.Group;
                 }
@@ -284,8 +285,8 @@ namespace Chisel.Editors
         
         // TODO: CLEAN THIS UP
         public const int kMinWidth = ((248 + 32) - ((32 + 2) * ChiselPlacementToolsSelectionWindow.kToolsWide)) + (ChiselPlacementToolsSelectionWindow.kButtonSize * ChiselPlacementToolsSelectionWindow.kToolsWide);
-        public static readonly GUILayoutOption kMinWidthLayout = GUILayout.MinWidth(kMinWidth);
-        public static readonly GUILayoutOption kMinInnerWidthLayout = GUILayout.MinWidth(kMinWidth - 8);
+        public readonly static GUILayoutOption kMinWidthLayout = GUILayout.MinWidth(kMinWidth);
+        public readonly static GUILayoutOption kMinInnerWidthLayout = GUILayout.MinWidth(kMinWidth - 8);
 
         public const int kToolsWide = 8;
 
@@ -304,10 +305,10 @@ namespace Chisel.Editors
         {
             InitStyles();
 
-            var generatorModes  = ChiselGeneratorManager.generatorModes;
+            var generatorModes  = ChiselGeneratorManager.s_GeneratorModes;
             var isActive        = ChiselPlacementTool.IsActive();
 
-            var style           = styles.toggleStyleMid;
+            var style           = s_Styles.toggleStyleMid;
 
             int usedModes = 0;
             for (int i = 0; i < generatorModes.Length; i++)
@@ -319,7 +320,7 @@ namespace Chisel.Editors
             }
 
             int rows = Mathf.CeilToInt((usedModes + 1) / (float)kToolsWide);
-            var groupRect = EditorGUILayout.GetControlRect(false, (rows * style.fixedHeight) + styles.boxStyleVerticalMargin, kMinWidthLayout);
+            var groupRect = EditorGUILayout.GetControlRect(false, (rows * style.fixedHeight) + s_Styles.boxStyleVerticalMargin, kMinWidthLayout);
             groupRect.xMin -= 2;
             groupRect.yMin += 5;
             groupRect.xMax += 3;
@@ -334,8 +335,8 @@ namespace Chisel.Editors
                 GUI.DrawTexture(new Rect(groupRect.x, groupRect.y - 1, groupRect.width, 1), Texture2D.whiteTexture);
                 GUI.color = oldColor;
 
-                styles.boxStyle.Draw(groupRect, false, false, false, false);
-                styles.boxStyle.Draw(groupRect, false, false, false, false);
+                s_Styles.boxStyle.Draw(groupRect, false, false, false, false);
+                s_Styles.boxStyle.Draw(groupRect, false, false, false, false);
             }
 
             var topX            = groupRect.x + 3;
@@ -359,16 +360,16 @@ namespace Chisel.Editors
                 position.y = topMargin  + ypos * buttonHeight;
 
 
-                var toggleStyle = (xpos == 0) ? styles.toggleStyleLeft :
-                                  (xpos == kToolsWide - 1) || (i == generatorModes.Length - 1) ? styles.toggleStyleRight :
-                                  styles.toggleStyleMid;
+                var toggleStyle = (xpos == 0) ? s_Styles.toggleStyleLeft :
+                                  (xpos == kToolsWide - 1) || (i == generatorModes.Length - 1) ? s_Styles.toggleStyleRight :
+                                  s_Styles.toggleStyleMid;
 
                 GeneratorButton(position, generatorModes[i], toggleStyle, isActive);
                 xpos++;
             }
             if (xpos >= kToolsWide) { ypos++; xpos = 0; }
             {
-                var addStyle = styles.addStyle;
+                var addStyle = s_Styles.addStyle;
                 position.x = addStyle.margin.left + topX + xpos * buttonWidth;
                 position.y = addStyle.margin.top  + topY + ypos * buttonHeight;
                 if (GUI.Button(position, kAddButton, addStyle))

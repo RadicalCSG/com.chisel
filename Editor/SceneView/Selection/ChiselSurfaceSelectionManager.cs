@@ -13,11 +13,11 @@ namespace Chisel.Editors
     [Serializable]
     public class ChiselSurfaceSelection : ISingletonData
     {
-        public HashSet<SurfaceReference> selectedSurfaces	= new HashSet<SurfaceReference>();
+        public HashSet<SurfaceReference> selectedSurfaces = new();
         public SurfaceReference[] selectedSurfacesArray;
         
         [NonSerialized]
-        public HashSet<SurfaceReference> hoverSurfaces	= new HashSet<SurfaceReference>();
+        public HashSet<SurfaceReference> hoverSurfaces = new();
         
         public void OnAfterDeserialize()
         {
@@ -68,8 +68,8 @@ namespace Chisel.Editors
     
     public class ChiselSurfaceSelectionManager : SingletonManager<ChiselSurfaceSelection, ChiselSurfaceSelectionManager>
     {
-        public static Action selectionChanged;
-        public static Action hoverChanged;
+        public static Action SelectionChanged;
+        public static Action HoverChanged;
 
         protected override void Initialize() 
         {
@@ -151,8 +151,8 @@ namespace Chisel.Editors
         {
             if (!HoverInternal(surfaces))
                 return false;
-            if (hoverChanged != null)
-                hoverChanged.Invoke();
+            if (HoverChanged != null)
+                HoverChanged.Invoke();
             return true;
         }
 
@@ -160,8 +160,8 @@ namespace Chisel.Editors
         {
             if (!UnhoverInternal(surfaces))
                 return false;
-            if (hoverChanged != null)
-                hoverChanged.Invoke();
+            if (HoverChanged != null)
+                HoverChanged.Invoke();
             return true;
         }
 
@@ -169,8 +169,8 @@ namespace Chisel.Editors
         {
             if (!UnhoverAllInternal())
                 return false;
-            if (hoverChanged != null)
-                hoverChanged.Invoke();
+            if (HoverChanged != null)
+                HoverChanged.Invoke();
             return true;
         }
 
@@ -208,27 +208,24 @@ namespace Chisel.Editors
         {
             if (!SelectInternal(surfaces))
                 return false;
-            if (selectionChanged != null)
-                selectionChanged.Invoke();
-            return true;
+			SelectionChanged?.Invoke();
+			return true;
         }
 
         public static bool Deselect(HashSet<SurfaceReference> surfaces)
         {
             if (!DeselectInternal(surfaces))
                 return false;
-            if (selectionChanged != null)
-                selectionChanged.Invoke();
-            return true;
+			SelectionChanged?.Invoke();
+			return true;
         }
 
         public static bool DeselectAll()
         {
             if (!DeselectAllInternal())
                 return false;
-            if (selectionChanged != null)
-                selectionChanged.Invoke();
-            return true;
+			SelectionChanged?.Invoke();
+			return true;
         }
 
 
@@ -336,7 +333,7 @@ namespace Chisel.Editors
             return surfaces.Count > 0;
         }
 
-        static readonly List<SurfaceReference> s_TempSurfaces = new List<SurfaceReference>();
+        readonly static List<SurfaceReference> s_TempSurfaces = new List<SurfaceReference>();
 
         static void OnSelectionChanged()
         {
@@ -410,8 +407,8 @@ namespace Chisel.Editors
                 UnityEditor.Selection.objects = SelectedGameObjects.ToArray();
 
             UnityEditor.Selection.selectionChanged += OnSelectionChanged;
-            if (modified && selectionChanged != null)
-                selectionChanged.Invoke();
+            if (modified && SelectionChanged != null)
+                SelectionChanged.Invoke();
             return modified;
         }
 
@@ -442,8 +439,8 @@ namespace Chisel.Editors
             } else
                 modified = UnhoverAllInternal();
 
-            if (modified && hoverChanged != null)
-                hoverChanged.Invoke();
+            if (modified && HoverChanged != null)
+                HoverChanged.Invoke();
             return modified;
         }
     }

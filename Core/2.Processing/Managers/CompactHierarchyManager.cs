@@ -21,9 +21,9 @@ namespace Chisel.Core
     [GenerateTestsForBurstCompatibility]
     public readonly struct NodeID : IComparable<NodeID>, IEquatable<NodeID>
     {
-        public static readonly NodeID Invalid = default;
+        public static NodeID Invalid => default;
 
-        public readonly SlotIndex slotIndex;
+		public readonly SlotIndex slotIndex;
         internal NodeID(SlotIndex slotIndex) { this.slotIndex = slotIndex; }
 
         #region Overhead
@@ -944,7 +944,7 @@ namespace Chisel.Core
             return GetHierarchy(compactNodeID).GetChildRef(compactNodeID).transformation;
         }
 
-        static readonly NodeTransformations kIdentityNodeTransformation = new NodeTransformations
+		readonly static NodeTransformations kIdentityNodeTransformation = new NodeTransformations
         {
             nodeToTree = float4x4.identity,
             treeToNode = float4x4.identity
@@ -1858,19 +1858,16 @@ namespace Chisel.Core
 			return instance.AsReadWrite();
 		}
 
+#if UNITY_EDITOR
 		[UnityEditor.InitializeOnLoadMethod]
-        [RuntimeInitializeOnLoadMethod]
         static void StaticInitialize()
         {
-#if UNITY_EDITOR
             UnityEditor.AssemblyReloadEvents.beforeAssemblyReload -= OnBeforeAssemblyReload;
             UnityEditor.AssemblyReloadEvents.beforeAssemblyReload += OnBeforeAssemblyReload;
-            UnityEditor.AssemblyReloadEvents.afterAssemblyReload -= OnAfterAssemblyReload;
+            UnityEditor.AssemblyReloadEvents.afterAssemblyReload -= OnAfterAssemblyReload; 
             UnityEditor.AssemblyReloadEvents.afterAssemblyReload += OnAfterAssemblyReload;
-#endif
         }
          
-#if UNITY_EDITOR
         static void OnBeforeAssemblyReload() { instance.Dispose(); instance = default; }
 
         // TODO: need a runtime equivalent
@@ -1938,7 +1935,7 @@ namespace Chisel.Core
             PickingEnabled  = 2,
             Selectable      = Visible | PickingEnabled
         }
-        static readonly Dictionary<int, BrushVisibilityState> brushSelectableState = new();
+		readonly static Dictionary<int, BrushVisibilityState> brushSelectableState = new();
 
         [EditorBrowsable(EditorBrowsableState.Never)]
         [MethodImpl(MethodImplOptions.AggressiveInlining)]

@@ -5,12 +5,16 @@ namespace Chisel.Core
 {
     public static class PlaneExtensions
     {
-        public static readonly Vector3 NanVector = new Vector3(float.NaN, float.NaN, float.NaN);
-        public static readonly float3 NanFloat3 = new float3(float.NaN, float.NaN, float.NaN);
-        public static readonly double3 NanDouble3 = new double3(float.NaN, float.NaN, float.NaN);
+        readonly static Vector3 kNanVector = new(float.NaN, float.NaN, float.NaN);
+        readonly static float3  kNanFloat3 = new(float.NaN, float.NaN, float.NaN);
+        readonly static double3 kNanDouble3 = new(float.NaN, float.NaN, float.NaN);
 
-        //*
-        public static double3 Intersection(double4 inPlane1, double4 inPlane2, double4 inPlane3)
+        public static ref readonly Vector3 NanVector => ref kNanVector;
+        public static ref readonly float3 NanFloat3 => ref kNanFloat3;
+        public static ref readonly double3 NanDouble3 => ref kNanDouble3;
+
+		//*
+		public static double3 Intersection(double4 inPlane1, double4 inPlane2, double4 inPlane3)
         {
 #if false
             var N0 = inPlane2.wzyx * inPlane3.yxwz - inPlane2.yxwz * inPlane3.wzyx;

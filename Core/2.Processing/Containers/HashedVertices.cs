@@ -300,7 +300,7 @@ namespace Chisel.Core
 
 #if ENABLE_UNITY_COLLECTIONS_CHECKS
         internal AtomicSafetyHandle m_Safety;
-        private static readonly SharedStatic<int> s_staticSafetyId = SharedStatic<int>.GetOrCreate<HashedVertices>();
+        private readonly static SharedStatic<int> s_staticSafetyId = SharedStatic<int>.GetOrCreate<HashedVertices>();
         [BurstDiscard]
         private static void CreateStaticSafetyId()
         {
@@ -389,8 +389,8 @@ namespace Chisel.Core
             var hashTableMemSize = (ushort)(kHashTableSize + 1) * UnsafeUtility.SizeOf<ushort>();
             m_HashTable = UnsafeUtility.Malloc(hashTableMemSize, UnsafeUtility.AlignOf<ushort>(), m_AllocatorLabel);
             UnsafeUtility.MemClear(m_HashTable, hashTableMemSize);
-            
-            m_Vertices          = UnsafeList<float3>.Create(vertexCapacity, allocator);
+
+			m_Vertices          = UnsafeList<float3>.Create(vertexCapacity, allocator);
             m_ChainedIndices    = UnsafeList<ushort>.Create(chainedIndicesCapacity, allocator);
 
 #if ENABLE_UNITY_COLLECTIONS_CHECKS
@@ -436,7 +436,7 @@ namespace Chisel.Core
             UnsafeList<ushort>.Destroy(m_ChainedIndices);
             m_ChainedIndices = null;
             UnsafeUtility.Free(m_HashTable, m_AllocatorLabel);
-            m_HashTable = null;
+            m_HashTable = null; 
         }
         #endregion
 

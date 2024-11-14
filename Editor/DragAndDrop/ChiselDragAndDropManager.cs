@@ -5,35 +5,35 @@ namespace Chisel.Editors
 {
     public sealed class ChiselDragAndDropManager : ScriptableObject
     {
-        static ChiselDragAndDropManager _instance;
+        static ChiselDragAndDropManager s_instance;
         public static ChiselDragAndDropManager Instance
         {
             get
             {
-                if (_instance)
-                    return _instance;
+                if (s_instance)
+                    return s_instance;
 
                 var foundInstances = UnityEngine.Object.FindObjectsByType<ChiselDragAndDropManager>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
 				if (foundInstances == null ||
                     foundInstances.Length == 0)
                 {
-                    _instance = ScriptableObject.CreateInstance<ChiselDragAndDropManager>();
-                    _instance.hideFlags = HideFlags.HideAndDontSave;
-                    return _instance;
+                    s_instance = ScriptableObject.CreateInstance<ChiselDragAndDropManager>();
+                    s_instance.hideFlags = HideFlags.HideAndDontSave;
+                    return s_instance;
                 }
 
-                _instance = foundInstances[0];
-                return _instance;
+                s_instance = foundInstances[0];
+                return s_instance;
             }
         }
 
-        static IChiselDragAndDropOperation dragAndDropOperation;
+        static IChiselDragAndDropOperation s_DragAndDropOperation;
 
-        static readonly int ChiselDragAndDropManagerHash = "ChiselDragAndDropManager".GetHashCode();
+        readonly static int kChiselDragAndDropManagerHash = "ChiselDragAndDropManager".GetHashCode();
 
         public void OnSceneGUI(SceneView sceneView)
         {
-            int id = GUIUtility.GetControlID(ChiselDragAndDropManagerHash, FocusType.Keyboard);
+            int id = GUIUtility.GetControlID(kChiselDragAndDropManagerHash, FocusType.Keyboard);
             switch (Event.current.type)
             {
                 case EventType.ValidateCommand:
@@ -45,17 +45,17 @@ namespace Chisel.Editors
                 }
                 case EventType.DragUpdated:
                 {
-                    if (dragAndDropOperation == null &&
+                    if (s_DragAndDropOperation == null &&
                         DragAndDrop.activeControlID == 0)
                     {
-                        dragAndDropOperation = ChiselDragAndDropMaterial.AcceptDrag();
-                        if (dragAndDropOperation != null)
+                        s_DragAndDropOperation = ChiselDragAndDropMaterial.AcceptDrag();
+                        if (s_DragAndDropOperation != null)
                             DragAndDrop.activeControlID = id;
                     }
 
-                    if (dragAndDropOperation != null)
+                    if (s_DragAndDropOperation != null)
                     {
-                        dragAndDropOperation.UpdateDrag();
+                        s_DragAndDropOperation.UpdateDrag();
                         DragAndDrop.visualMode = DragAndDropVisualMode.Link;
                         DragAndDrop.activeControlID = id;
                         Event.current.Use();
@@ -64,10 +64,10 @@ namespace Chisel.Editors
                 }
                 case EventType.DragPerform:
                 {
-                    if (dragAndDropOperation != null)
+                    if (s_DragAndDropOperation != null)
                     {
-                        dragAndDropOperation.PerformDrag();
-                        dragAndDropOperation = null;
+                        s_DragAndDropOperation.PerformDrag();
+                        s_DragAndDropOperation = null;
                         DragAndDrop.AcceptDrag();
                         DragAndDrop.activeControlID = 0;
                         Event.current.Use();
@@ -76,10 +76,10 @@ namespace Chisel.Editors
                 }
                 case EventType.DragExited:
                 {
-                    if (dragAndDropOperation != null)
+                    if (s_DragAndDropOperation != null)
                     {
-                        dragAndDropOperation.CancelDrag();
-                        dragAndDropOperation = null;
+                        s_DragAndDropOperation.CancelDrag();
+                        s_DragAndDropOperation = null;
                         DragAndDrop.activeControlID = 0;
                         HandleUtility.Repaint();
                         Event.current.Use();

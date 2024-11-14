@@ -202,29 +202,32 @@ namespace Chisel.Editors
                 return;
 
 
-			s_FoundIntersections.Clear();
-            if (ChiselSceneQuery.FindFirstWorldIntersection(s_FoundIntersections, worldRayStart - worldRayDirection, worldRayStart + worldRayDirection, filter: selection))
-            {
-                if (allSurfaceSnapEvents != null)
+			var foundIntersections = ListPool<ChiselIntersection>.Get();
+			try
+            { 
+			    foundIntersections.Clear();
+                if (ChiselSceneQuery.FindFirstWorldIntersection(foundIntersections, worldRayStart - worldRayDirection, worldRayStart + worldRayDirection, filter: selection))
                 {
-                    for (int i = 0; i < s_FoundIntersections.Count; i++)
+                    if (allSurfaceSnapEvents != null)
                     {
-                        var intersection = s_FoundIntersections[i];
-                        allSurfaceSnapEvents.Add(new SurfaceSnap 
-                        { 
-                            brush           = intersection.brushIntersection.brush,
-                            surfaceIndex    = intersection.brushIntersection.surfaceIndex,
-                            intersection    = intersection.worldPlaneIntersection,
-                            normal          = intersection.worldPlane.normal,
-                        });
+                        for (int i = 0; i < foundIntersections.Count; i++)
+                        {
+                            var intersection = foundIntersections[i];
+                            allSurfaceSnapEvents.Add(new SurfaceSnap 
+                            { 
+                                brush           = intersection.brushIntersection.brush,
+                                surfaceIndex    = intersection.brushIntersection.surfaceIndex,
+                                intersection    = intersection.worldPlaneIntersection,
+                                normal          = intersection.worldPlane.normal,
+                            });
+                        }
                     }
                 }
-            }
 
-            if (allEdgeSnapEvents == null && allVertexSnapEvents == null)
-                return;
+                if (allEdgeSnapEvents == null && allVertexSnapEvents == null)
+                    return;
 
-            foreach (var intersection in s_FoundIntersections)
+                foreach (var intersection in foundIntersections)
             {
                 var csgBrush        = intersection.brushIntersection.brush;
                 var csgTree         = intersection.brushIntersection.tree;
@@ -315,6 +318,11 @@ namespace Chisel.Editors
                     }
                 }
             }
+            }
+            finally
+			{
+				ListPool<ChiselIntersection>.Release(foundIntersections);
+			}
         }
 
 
@@ -609,35 +617,35 @@ namespace Chisel.Editors
 
         class SnappingContext
         {
-            public List<SurfaceSnap>           s_AllSurfaceSnapEvents  = new List<SurfaceSnap>();
-            public List<EdgeSnap>              s_AllEdgeSnapEvents     = new List<EdgeSnap>();
-            public List<VertexSnap>            s_AllVertexSnapEvents   = new List<VertexSnap>();
+            public List<SurfaceSnap> allSurfaceSnapEvents  = new List<SurfaceSnap>();
+            public List<EdgeSnap>    allEdgeSnapEvents     = new List<EdgeSnap>();
+            public List<VertexSnap>  allVertexSnapEvents   = new List<VertexSnap>();
             
             public void Clear()
             {
-                s_AllSurfaceSnapEvents.Clear();
-                s_AllEdgeSnapEvents.Clear();
-                s_AllVertexSnapEvents.Clear();
+                allSurfaceSnapEvents.Clear();
+                allEdgeSnapEvents.Clear();
+                allVertexSnapEvents.Clear();
             }
 
             public void CollectAllSnapPoints(List<Vector3> worldSnapPoints)
             {
-                foreach (var evt in s_AllVertexSnapEvents)
+                foreach (var evt in allVertexSnapEvents)
                     worldSnapPoints.Add(evt.intersection);
                 
-                foreach (var evt in s_AllEdgeSnapEvents)
+                foreach (var evt in allEdgeSnapEvents)
                     worldSnapPoints.Add(evt.intersection);
                 
-                foreach (var evt in s_AllSurfaceSnapEvents)
+                foreach (var evt in allSurfaceSnapEvents)
                     worldSnapPoints.Add(evt.intersection);
             }
         }
 
-        static readonly List<ChiselIntersection>            s_FoundIntersections    = new List<ChiselIntersection>();
-        static readonly Dictionary<int, SnappingContext>    s_SnappingContext       = new Dictionary<int, SnappingContext>();
-        static readonly List<SurfaceSnap>                   s_DrawSurfaceSnapEvents = new List<SurfaceSnap>();
-        static readonly List<EdgeSnap>                      s_DrawEdgeSnapEvents    = new List<EdgeSnap>();
-        static readonly List<VertexSnap>                    s_DrawVertexSnapEvents  = new List<VertexSnap>();
+        // TODO: get rid of these statics
+        readonly static Dictionary<int, SnappingContext> s_SnappingContext = new();
+        readonly static List<SurfaceSnap> s_DrawSurfaceSnapEvents = new();
+        readonly static List<EdgeSnap>    s_DrawEdgeSnapEvents    = new();
+        readonly static List<VertexSnap>  s_DrawVertexSnapEvents  = new();
         
 
         const float kArbitrarySnapDistance = 5; // TODO: use fixed step when no grid snapping, otherwise grid step size
@@ -662,9 +670,9 @@ namespace Chisel.Editors
             var selection   = Selection.gameObjects;
             var step        = worldRayDirection * kArbitrarySnapDistance;
             FindSnapPointsAlongRay(selection, worldRayStart, step,
-                                   surfaceSnappingActive ? snappingContext.s_AllSurfaceSnapEvents : null,
-                                   edgeSnappingActive    ? snappingContext.s_AllEdgeSnapEvents    : null,
-                                   vertexSnappingActive  ? snappingContext.s_AllVertexSnapEvents  : null);
+                                   surfaceSnappingActive ? snappingContext.allSurfaceSnapEvents : null,
+                                   edgeSnappingActive    ? snappingContext.allEdgeSnapEvents    : null,
+                                   vertexSnappingActive  ? snappingContext.allVertexSnapEvents  : null);
 
             snappingContext.CollectAllSnapPoints(foundWorldspacePoints);
             return true;
@@ -689,9 +697,9 @@ namespace Chisel.Editors
                 !surfaceSnappingActive)
                 return false;
 
-            var surfaceSnapEvents   = surfaceSnappingActive ? snappingContext.s_AllSurfaceSnapEvents : null;
-            var edgeSnapEvents      = edgeSnappingActive    ? snappingContext.s_AllEdgeSnapEvents    : null;
-            var vertexSnapEvents    = vertexSnappingActive  ? snappingContext.s_AllVertexSnapEvents  : null;
+            var surfaceSnapEvents   = surfaceSnappingActive ? snappingContext.allSurfaceSnapEvents : null;
+            var edgeSnapEvents      = edgeSnappingActive    ? snappingContext.allEdgeSnapEvents    : null;
+            var vertexSnapEvents    = vertexSnappingActive  ? snappingContext.allVertexSnapEvents  : null;
 
             var selection = Selection.gameObjects; 
             FindClosestSnapPointsToPlane(selection, startWorldPoint, currentWorldPoint, worldSlideGrid, kArbitrarySnapDistance, surfaceSnapEvents, edgeSnapEvents, vertexSnapEvents); 
@@ -709,32 +717,28 @@ namespace Chisel.Editors
                 return;
 
 
-            if (index < snappingContext.s_AllVertexSnapEvents.Count)
+            if (index < snappingContext.allVertexSnapEvents.Count)
             {
-                s_DrawVertexSnapEvents.Add(snappingContext.s_AllVertexSnapEvents[index]);
+                s_DrawVertexSnapEvents.Add(snappingContext.allVertexSnapEvents[index]);
                 return;
             }
-            index -= snappingContext.s_AllVertexSnapEvents.Count;
+            index -= snappingContext.allVertexSnapEvents.Count;
 
-            if (index < snappingContext.s_AllEdgeSnapEvents.Count)
+            if (index < snappingContext.allEdgeSnapEvents.Count)
             {
-                s_DrawEdgeSnapEvents.Add(snappingContext.s_AllEdgeSnapEvents[index]);
+                s_DrawEdgeSnapEvents.Add(snappingContext.allEdgeSnapEvents[index]);
                 return;
             }
-            index -= snappingContext.s_AllEdgeSnapEvents.Count;
+            index -= snappingContext.allEdgeSnapEvents.Count;
 
-            if (index < snappingContext.s_AllSurfaceSnapEvents.Count)
+            if (index < snappingContext.allSurfaceSnapEvents.Count)
             {
-                s_DrawSurfaceSnapEvents.Add(snappingContext.s_AllSurfaceSnapEvents[index]);
+                s_DrawSurfaceSnapEvents.Add(snappingContext.allSurfaceSnapEvents[index]);
                 return;
             }
-            index -= snappingContext.s_AllSurfaceSnapEvents.Count;
+            index -= snappingContext.allSurfaceSnapEvents.Count;
         }
 
-        static readonly List<Vector3> s_PolygonVertices = new List<Vector3>();
-
-        static readonly HashSet<(CSGTreeNode, int)> s_usedVertices = new HashSet<(CSGTreeNode, int)>();
-        static readonly HashSet<(CSGTreeNode, int)> s_usedSurfaces = new HashSet<(CSGTreeNode, int)>();
         static void DrawCustomSnappedEvent()
         {
 #if false
@@ -750,70 +754,82 @@ namespace Chisel.Editors
             }
 #endif
 
-            s_usedVertices.Clear();
-            s_usedSurfaces.Clear();
-            var prevMatrix = Handles.matrix;
-            for (int i = 0; i < s_DrawVertexSnapEvents.Count; i++)
-            {
-                var intersection    = s_DrawVertexSnapEvents[i];
-                var vertexKey       = (intersection.brush, intersection.vertexIndex);
-                if (!s_usedVertices.Add(vertexKey))
-                    continue;
-                HandleRendering.RenderVertexBox(intersection.intersection);
-            }
-
-            for (int i = 0; i < s_DrawEdgeSnapEvents.Count; i++)
-            {
-                var intersection    = s_DrawEdgeSnapEvents[i];
-                s_usedSurfaces.Add((intersection.brush, intersection.surfaceIndex0));
-                s_usedSurfaces.Add((intersection.brush, intersection.surfaceIndex1));
-
-                var vertexKey0      = (intersection.brush, intersection.vertexIndex0);
-                var vertexKey1      = (intersection.brush, intersection.vertexIndex1);
-                if (!s_usedVertices.Add(vertexKey0) ||
-                    !s_usedVertices.Add(vertexKey1))
-                    continue;
-                ChiselOutlineRenderer.DrawLine(intersection.from, intersection.to);
-            }
-
-            for (int i = 0; i < s_DrawSurfaceSnapEvents.Count; i++)
-            {
-                var surfaceSnapEvent    = s_DrawSurfaceSnapEvents[i];
-                var surfaceKey          = (surfaceSnapEvent.brush, surfaceSnapEvent.surfaceIndex);
-                if (!s_usedSurfaces.Add(surfaceKey))
-                    continue;
-
-                var center          = s_DrawSurfaceSnapEvents[i].intersection;
-                var rotation        = Quaternion.LookRotation(surfaceSnapEvent.normal);
-                var transformation = Matrix4x4.TRS(center, rotation, Vector3.one);
-                Handles.matrix = transformation;
-                //HandleRendering.DrawInfiniteLine(Vector3.zero, Axis.X);
-                //HandleRendering.DrawInfiniteLine(Vector3.zero, Axis.Y);
-
-                var brush           = surfaceSnapEvent.brush;
-                var surfaceIndex    = surfaceSnapEvent.surfaceIndex;
-                var brushMeshBlob   = BrushMeshManager.GetBrushMeshBlob(brush.BrushMesh);
-                if (!brushMeshBlob.IsCreated)
-                    continue;
-
-                ref var brushMesh   = ref brushMeshBlob.Value;
-                var polygon         = brushMesh.polygons[surfaceIndex];
-                var firstEdge       = polygon.firstEdge;
-                var lastEdge        = firstEdge + polygon.edgeCount;
-                s_PolygonVertices.Clear();
-                for (int e = firstEdge; e < lastEdge; e++)
+			var polygonVertices = ListPool<Vector3>.Get();
+			var usedVertices = HashSetPool<(CSGTreeNode, int)>.Get();
+			var usedSurfaces = HashSetPool<(CSGTreeNode, int)>.Get();
+			try
+            { 
+                usedVertices.Clear();
+                usedSurfaces.Clear();
+                var prevMatrix = Handles.matrix;
+                for (int i = 0; i < s_DrawVertexSnapEvents.Count; i++)
                 {
-                    var vertex = brushMesh.localVertices[brushMesh.halfEdges[e].vertexIndex];
-                    s_PolygonVertices.Add(vertex);
+                    var intersection    = s_DrawVertexSnapEvents[i];
+                    var vertexKey       = (intersection.brush, intersection.vertexIndex);
+                    if (!usedVertices.Add(vertexKey))
+                        continue;
+                    HandleRendering.RenderVertexBox(intersection.intersection);
                 }
+
+                for (int i = 0; i < s_DrawEdgeSnapEvents.Count; i++)
+                {
+                    var intersection    = s_DrawEdgeSnapEvents[i];
+                    usedSurfaces.Add((intersection.brush, intersection.surfaceIndex0));
+                    usedSurfaces.Add((intersection.brush, intersection.surfaceIndex1));
+
+                    var vertexKey0      = (intersection.brush, intersection.vertexIndex0);
+                    var vertexKey1      = (intersection.brush, intersection.vertexIndex1);
+                    if (!usedVertices.Add(vertexKey0) ||
+                        !usedVertices.Add(vertexKey1))
+                        continue;
+                    ChiselOutlineRenderer.DrawLine(intersection.from, intersection.to);
+                }
+
+                for (int i = 0; i < s_DrawSurfaceSnapEvents.Count; i++)
+                {
+                    var surfaceSnapEvent    = s_DrawSurfaceSnapEvents[i];
+                    var surfaceKey          = (surfaceSnapEvent.brush, surfaceSnapEvent.surfaceIndex);
+                    if (!usedSurfaces.Add(surfaceKey))
+                        continue;
+
+                    var center          = s_DrawSurfaceSnapEvents[i].intersection;
+                    var rotation        = Quaternion.LookRotation(surfaceSnapEvent.normal);
+                    var transformation = Matrix4x4.TRS(center, rotation, Vector3.one);
+                    Handles.matrix = transformation;
+                    //HandleRendering.DrawInfiniteLine(Vector3.zero, Axis.X);
+                    //HandleRendering.DrawInfiniteLine(Vector3.zero, Axis.Y);
+
+                    var brush           = surfaceSnapEvent.brush;
+                    var surfaceIndex    = surfaceSnapEvent.surfaceIndex;
+                    var brushMeshBlob   = BrushMeshManager.GetBrushMeshBlob(brush.BrushMesh);
+                    if (!brushMeshBlob.IsCreated)
+                        continue;
+
+                    ref var brushMesh   = ref brushMeshBlob.Value;
+                    var polygon         = brushMesh.polygons[surfaceIndex];
+                    var firstEdge       = polygon.firstEdge;
+                    var lastEdge        = firstEdge + polygon.edgeCount;
+                    polygonVertices.Clear();
+                    for (int e = firstEdge; e < lastEdge; e++)
+                    {
+                        var vertex = brushMesh.localVertices[brushMesh.halfEdges[e].vertexIndex];
+                        polygonVertices.Add(vertex);
+                    }
                 
-                var model           = Resources.InstanceIDToObject(brush.Tree.InstanceID) as ChiselModelComponent;
-                var nodeToWorld     = model.hierarchyItem.LocalToWorldMatrix * (Matrix4x4)brush.NodeToTreeSpaceMatrix;
-                ChiselOutlineRenderer.DrawLineLoop(nodeToWorld, s_PolygonVertices, Handles.color, thickness: 2);
-            }
+                    var model           = Resources.InstanceIDToObject(brush.Tree.InstanceID) as ChiselModelComponent;
+                    var nodeToWorld     = model.hierarchyItem.LocalToWorldMatrix * (Matrix4x4)brush.NodeToTreeSpaceMatrix;
+                    ChiselOutlineRenderer.DrawLineLoop(nodeToWorld, polygonVertices, Handles.color, thickness: 2);
+                }
 
             
-            Handles.matrix = prevMatrix;
+                Handles.matrix = prevMatrix;
+            }
+            finally
+			{
+				ListPool<Vector3>.Release(polygonVertices);
+				HashSetPool<(CSGTreeNode, int)>.Release(usedVertices);
+				HashSetPool<(CSGTreeNode, int)>.Release(usedSurfaces);
+			}
         }
     }
 }

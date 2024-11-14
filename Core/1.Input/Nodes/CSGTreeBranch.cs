@@ -273,12 +273,13 @@ namespace Chisel.Core
 
 
         /// <value>An invalid node</value>
-        public static readonly CSGTreeBranch Invalid = new CSGTreeBranch { nodeID = NodeID.Invalid };
+        readonly static CSGTreeBranch kInvalid = new() { nodeID = NodeID.Invalid };
+		public static ref readonly CSGTreeBranch Invalid => ref kInvalid;
 
 
-        // Temporary workaround until we can switch to hashes
-        internal bool IsAnyStatusFlagSet()                  { return Hierarchy.IsAnyStatusFlagSet(CompactNodeID); }
-        internal bool IsStatusFlagSet(NodeStatusFlags flag) { return Hierarchy.IsStatusFlagSet(CompactNodeID, flag); }
+		// Temporary workaround until we can switch to hashes
+		internal readonly bool IsAnyStatusFlagSet()                  { return Hierarchy.IsAnyStatusFlagSet(CompactNodeID); }
+        internal readonly bool IsStatusFlagSet(NodeStatusFlags flag) { return Hierarchy.IsStatusFlagSet(CompactNodeID, flag); }
         internal void SetStatusFlag(NodeStatusFlags flag)   { Hierarchy.SetStatusFlag(CompactNodeID, flag); }
         internal void ClearStatusFlag(NodeStatusFlags flag) { Hierarchy.ClearStatusFlag(CompactNodeID, flag); }
         internal void ClearAllStatusFlags()                 { Hierarchy.ClearAllStatusFlags(CompactNodeID); }

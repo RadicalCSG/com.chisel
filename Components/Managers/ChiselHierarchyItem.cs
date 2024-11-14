@@ -1,4 +1,6 @@
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
+
 using UnityEngine;
 using UnityEngine.SceneManagement;
 
@@ -31,9 +33,10 @@ namespace Chisel.Components
 
     public sealed class ChiselHierarchyItem
     {
-        public static readonly Bounds EmptyBounds = new();
+        readonly static Bounds kEmptyBounds = new();
+		public static ref readonly Bounds EmptyBounds => ref kEmptyBounds;
 
-        public ChiselHierarchyItem(ChiselNodeComponent node) { Component = node; }
+		public ChiselHierarchyItem(ChiselNodeComponent node) { Component = node; }
 
         public ChiselHierarchyItem                Parent;
         internal int                              siblingIndicesUntilNode;

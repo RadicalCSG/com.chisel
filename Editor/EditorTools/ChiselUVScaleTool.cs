@@ -18,7 +18,12 @@ namespace Chisel.Editors
         const string kToolName = "UV Scale";
         public override string ToolName => kToolName;
 
-        public static bool IsActive() { return ToolManager.activeToolType == typeof(ChiselUVScaleTool); }
+		const float kMinScaleDiameter = 2.0f;
+
+		// TODO: see if we can get rid of these statics
+		static bool s_HaveScaleStartLength = false;
+		static float s_CompareDistance = 0;
+		public static bool IsActive() { return ToolManager.activeToolType == typeof(ChiselUVScaleTool); }
 
         #region Keyboard Shortcut
         const string kEditModeShotcutName = kToolName + " Mode";
@@ -43,8 +48,8 @@ namespace Chisel.Editors
         
         public override SnapSettings ToolUsedSnappingModes { get { return Chisel.Editors.SnapSettings.AllUV; } }
 
-        static readonly int kSurfaceEditModeHash		= "SurfaceScaleEditMode".GetHashCode();
-        static readonly int kSurfaceScaleHash			= "SurfaceScale".GetHashCode();
+        readonly static int kSurfaceEditModeHash		= "SurfaceScaleEditMode".GetHashCode();
+        readonly static int kSurfaceScaleHash			= "SurfaceScale".GetHashCode();
         
         public override void OnSceneGUI(SceneView sceneView, Rect dragArea)
         {
@@ -76,10 +81,6 @@ namespace Chisel.Editors
         }
 
 
-        static bool     haveScaleStartLength = false;
-        static float    compareDistance = 0;
-        const float     kMinScaleDiameter = 2.0f;
-
         #region Surface Scale Tool
         static void ScaleSurfacesInWorldSpace(Vector3 center, Vector3 normal, float scale)
         {
@@ -91,10 +92,10 @@ namespace Chisel.Editors
             // Get the rotation on that plane, around 'worldStartPosition'
             var worldspaceRotation = MathExtensions.ScaleFromPoint(center, normal, scale);
 
-            Undo.RecordObjects(ChiselUVToolCommon.selectedNodes, "Scale UV coordinates");
-            for (int i = 0; i < ChiselUVToolCommon.selectedSurfaceReferences.Length; i++)
+            Undo.RecordObjects(ChiselUVToolCommon.s_SelectedNodes, "Scale UV coordinates");
+            for (int i = 0; i < ChiselUVToolCommon.s_SelectedSurfaceReferences.Length; i++)
             {
-                var rotationInPlaneSpace = ChiselUVToolCommon.selectedSurfaceReferences[i].WorldSpaceToPlaneSpace(worldspaceRotation);
+                var rotationInPlaneSpace = ChiselUVToolCommon.s_SelectedSurfaceReferences[i].WorldSpaceToPlaneSpace(worldspaceRotation);
 
                 // TODO: Finish this. If we have multiple surfaces selected, we want other non-aligned surfaces to move/rotate in a nice way
                 //		 last thing we want is that these surfaces are rotated in such a way that the uvs are rotated into infinity.
@@ -103,7 +104,7 @@ namespace Chisel.Editors
                 var rotateToPlane = Quaternion.FromToRotation(rotationInPlaneSpace.GetColumn(2), Vector3.forward);
                 var fixedRotation = Matrix4x4.TRS(Vector3.zero, rotateToPlane, Vector3.one) * rotationInPlaneSpace;
 
-                ChiselUVToolCommon.selectedSurfaceReferences[i].PlaneSpaceTransformUV(fixedRotation, ChiselUVToolCommon.selectedUVMatrices[i]);
+                ChiselUVToolCommon.s_SelectedSurfaceReferences[i].PlaneSpaceTransformUV(fixedRotation, ChiselUVToolCommon.s_SelectedUVMatrices[i]);
             }
         }
 
@@ -119,22 +120,22 @@ namespace Chisel.Editors
                 // TODO: support scaling texture using keyboard
                 case EventType.Repaint:
                 {
-                    if (haveScaleStartLength)
+                    if (s_HaveScaleStartLength)
                     {
-                        var toWorldVector   = ChiselUVToolCommon.worldDragDeltaVector;
+                        var toWorldVector   = ChiselUVToolCommon.s_WorldDragDeltaVector;
                         var magnitude       = toWorldVector.magnitude;
                         toWorldVector /= magnitude;
-                        if (haveScaleStartLength)
+                        if (s_HaveScaleStartLength)
                         {
-                            Handles.DrawDottedLine(ChiselUVToolCommon.worldStartPosition, ChiselUVToolCommon.worldStartPosition + (toWorldVector * compareDistance), 4.0f);
-                            Handles.DrawDottedLine(ChiselUVToolCommon.worldStartPosition, ChiselUVToolCommon.worldStartPosition + (toWorldVector * magnitude), 4.0f);
+                            Handles.DrawDottedLine(ChiselUVToolCommon.s_WorldStartPosition, ChiselUVToolCommon.s_WorldStartPosition + (toWorldVector * s_CompareDistance), 4.0f);
+                            Handles.DrawDottedLine(ChiselUVToolCommon.s_WorldStartPosition, ChiselUVToolCommon.s_WorldStartPosition + (toWorldVector * magnitude), 4.0f);
                         } else
-                            Handles.DrawDottedLine(ChiselUVToolCommon.worldStartPosition, ChiselUVToolCommon.worldStartPosition + (toWorldVector * magnitude), 4.0f);
+                            Handles.DrawDottedLine(ChiselUVToolCommon.s_WorldStartPosition, ChiselUVToolCommon.s_WorldStartPosition + (toWorldVector * magnitude), 4.0f);
                     }
                     if (ChiselUVToolCommon.IsToolEnabled(id))
                     {
-                        if (haveScaleStartLength &&
-                            ChiselUVToolCommon.pointHasSnapped)
+                        if (s_HaveScaleStartLength &&
+                            ChiselUVToolCommon.s_PointHasSnapped)
                         {
                             ChiselUVToolCommon.RenderIntersectionPoint();
                             ChiselUVToolCommon.RenderSnapEvent();
@@ -149,28 +150,28 @@ namespace Chisel.Editors
                     
                     if (ChiselUVToolCommon.StartToolDragging())
                     {
-                        haveScaleStartLength = false;
-                        ChiselUVToolCommon.pointHasSnapped = false;
+                        s_HaveScaleStartLength = false;
+                        ChiselUVToolCommon.s_PointHasSnapped = false;
                     }
 
-                    var toWorldVector = ChiselUVToolCommon.worldDragDeltaVector;
-                    if (!haveScaleStartLength)
+                    var toWorldVector = ChiselUVToolCommon.s_WorldDragDeltaVector;
+                    if (!s_HaveScaleStartLength)
                     {
-                        var handleSize		= HandleUtility.GetHandleSize(ChiselUVToolCommon.worldStartPosition);	
+                        var handleSize		= HandleUtility.GetHandleSize(ChiselUVToolCommon.s_WorldStartPosition);	
                         var minDiameterSqr	= handleSize * kMinScaleDiameter;
                         // Only start scaling when we've moved the cursor far away enough from the center of scale
                         if (toWorldVector.sqrMagnitude > minDiameterSqr)
                         {
                             // Switch to scaling mode, we have a center and a start distance to compare with, 
                             // from now on, when we move the mouse we change the scale relative to this first distance.
-                            haveScaleStartLength = true;
-                            ChiselUVToolCommon.pointHasSnapped = false;
-                            compareDistance = toWorldVector.sqrMagnitude;
+                            s_HaveScaleStartLength = true;
+                            ChiselUVToolCommon.s_PointHasSnapped = false;
+                            s_CompareDistance = toWorldVector.sqrMagnitude;
                         }
                     } else
                     {
                         // TODO: drag from one position to another -> texture should fit in between and tile accordingly, taking rotation into account
-                        ScaleSurfacesInWorldSpace(ChiselUVToolCommon.worldStartPosition, ChiselUVToolCommon.worldDragPlane.normal, compareDistance / toWorldVector.sqrMagnitude);
+                        ScaleSurfacesInWorldSpace(ChiselUVToolCommon.s_WorldStartPosition, ChiselUVToolCommon.s_WorldDragPlane.normal, s_CompareDistance / toWorldVector.sqrMagnitude);
                     }
                     break;
                 }

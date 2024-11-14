@@ -32,8 +32,8 @@ namespace Chisel.Core
     public struct ChiselLinearStairs : IBranchGenerator
     {
         // TODO: set defaults using attributes?
-        public readonly static ChiselLinearStairs DefaultValues = new ChiselLinearStairs
-        {
+        readonly static ChiselLinearStairs kDefaultSettings = new()
+		{
             stepHeight		= 0.20f,
             stepDepth		= 0.20f,
             treadHeight	    = 0.02f,
@@ -54,10 +54,11 @@ namespace Chisel.Core
             sideWidth		= 0.125f,
             sideHeight		= 0.5f
         };
+		public static ref readonly ChiselLinearStairs DefaultSettings => ref kDefaultSettings;
 
-        // TODO: add all spiral stairs improvements to linear stairs
+		// TODO: add all spiral stairs improvements to linear stairs
 
-        public MinMaxAABB bounds;
+		public MinMaxAABB bounds;
 
         [DistanceValue] public float	stepHeight;
         [DistanceValue] public float	stepDepth;
@@ -266,7 +267,7 @@ namespace Chisel.Core
         #endregion
 
         #region Reset
-        public void Reset() { this = DefaultValues; }
+        public void Reset() { this = DefaultSettings; }
         #endregion
     }
 

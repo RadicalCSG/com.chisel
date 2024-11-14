@@ -5,6 +5,8 @@ using System.Runtime.InteropServices;
 using Unity.Burst;
 using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
+using Unity.Mathematics;
+
 using UnityEngine;
 using ReadOnlyAttribute = Unity.Collections.ReadOnlyAttribute;
 using WriteOnlyAttribute = Unity.Collections.WriteOnlyAttribute;
@@ -27,7 +29,9 @@ namespace Chisel.Core
 		[EditorBrowsable(EditorBrowsableState.Never), MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public override readonly bool Equals(object obj) { if (obj is SlotIndex slot) return this == slot; return false; }
 		[EditorBrowsable(EditorBrowsableState.Never), MethodImpl(MethodImplOptions.AggressiveInlining)]
-		public readonly override int GetHashCode() { return HashCode.Combine(index.GetHashCode(), generation.GetHashCode()); }
+		public readonly override int GetHashCode() { return (int)Hash(); }
+		[EditorBrowsable(EditorBrowsableState.Never), MethodImpl(MethodImplOptions.AggressiveInlining)]
+		public readonly uint Hash() { unchecked { return math.hash(new int2(index, generation)); } }
 
 		[EditorBrowsable(EditorBrowsableState.Never), MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public readonly int CompareTo(SlotIndex other)

@@ -8,7 +8,7 @@ namespace Chisel.Editors
 {
     internal static class ChiselEditorUtility
     {
-        public static readonly ReflectedProperty<float> ContextWidth = typeof(EditorGUIUtility).GetStaticProperty<float>("contextWidth");
+        public readonly static ReflectedProperty<float> ContextWidth = typeof(EditorGUIUtility).GetStaticProperty<float>("contextWidth");
 
         public delegate Texture2D GetHelpIconDelegate(MessageType type);
 
@@ -55,7 +55,7 @@ namespace Chisel.Editors
             return (GraphicsSettings.GetShaderMode(BuiltinShaderType.DeferredReflections) != BuiltinShaderMode.Disabled);
         }
 
-        static readonly int EnumFieldsHashCode = "EnumFields".GetHashCode();
+        readonly static int EnumFieldsHashCode = "EnumFields".GetHashCode();
         public static void EnumFlagsField(GUIContent label, SerializedProperty property, Type type, GUIStyle style, params GUILayoutOption[] options)
         {
             var position = EditorGUILayout.GetControlRect();

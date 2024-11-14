@@ -35,7 +35,7 @@ namespace Chisel.Editors
 	public static class ChiselClickSelectionManager
     {
         delegate bool IntersectRayMeshFunc(Ray ray, Mesh mesh, Matrix4x4 matrix, out RaycastHit hit);
-		static readonly IntersectRayMeshFunc IntersectRayMesh = typeof(HandleUtility).CreateDelegate<IntersectRayMeshFunc>("IntersectRayMesh");
+		readonly static IntersectRayMeshFunc s_IntersectRayMesh = typeof(HandleUtility).CreateDelegate<IntersectRayMeshFunc>("IntersectRayMesh");
 
         public static PlaneIntersection GetPlaneIntersection(Vector2 mousePosition)
         {
@@ -50,7 +50,7 @@ namespace Chisel.Editors
                 {
                     var mesh = meshFilter.sharedMesh;
                     var mouseRay = UnityEditor.HandleUtility.GUIPointToWorldRay(mousePosition);
-					if (IntersectRayMesh(mouseRay, mesh, intersectionObject.transform.localToWorldMatrix, out RaycastHit hit))
+					if (s_IntersectRayMesh(mouseRay, mesh, intersectionObject.transform.localToWorldMatrix, out RaycastHit hit))
 					{
 						if (intersectionObject.TryGetComponent<MeshRenderer>(out var meshRenderer) &&
 							meshRenderer.enabled)

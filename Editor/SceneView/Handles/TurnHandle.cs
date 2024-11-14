@@ -12,11 +12,11 @@ namespace Chisel.Editors
 
     public static class TurnHandle
     {
-        static GUIContent clockWiseRotation         = new GUIContent("↻");
-        static GUIContent antiClockWiseRotation     = new GUIContent("↺");
+		readonly static GUIContent kClockWiseRotation     = new("↻");
+		readonly static GUIContent kAntiClockWiseRotation = new("↺");
 
         // TODO: put somewhere else
-        public static Color iconColor = new Color(201f / 255, 200f / 255, 144f / 255, 1.00f);
+        public static Color kIconColor = new(201f / 255, 200f / 255, 144f / 255, 1.00f);
 
         public static TurnState DoHandle(Bounds bounds)
         {
@@ -48,7 +48,7 @@ namespace Chisel.Editors
             var pLabel1     = new Vector3(axis1X ? min.x : max.x, axisY ? max.y : min.y, axis1Z ? min.z : max.z);
 
             var prevColor = Handles.color;
-            Handles.color = iconColor;
+            Handles.color = kIconColor;
 
             var result = TurnState.None;
 
@@ -56,12 +56,12 @@ namespace Chisel.Editors
             //  - buttons closer to each other, which is nicer when you need to go back and forth (although you could just click 3 times to go back)
             //  - since you'd only have 1 button group, the chance is higher it's outside of the screen. 
             //    so a better solution should be found to make sure the button group doesn't overlap the stairs, yet is close to it, and on screen.
-            if (SceneHandles.ClickableLabel(pLabel1, (pLabel1 - center).normalized, clockWiseRotation, fontSize: 32, fontStyle: FontStyle.Bold))
+            if (SceneHandles.ClickableLabel(pLabel1, (pLabel1 - center).normalized, kClockWiseRotation, fontSize: 32, fontStyle: FontStyle.Bold))
             {
                 result = TurnState.ClockWise;
             }
 
-            if (SceneHandles.ClickableLabel(pLabel0, (pLabel0 - center).normalized, antiClockWiseRotation, fontSize: 32, fontStyle: FontStyle.Bold))
+            if (SceneHandles.ClickableLabel(pLabel0, (pLabel0 - center).normalized, kAntiClockWiseRotation, fontSize: 32, fontStyle: FontStyle.Bold))
             {
                 result = TurnState.AntiClockWise;
             }

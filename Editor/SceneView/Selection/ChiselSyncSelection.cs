@@ -9,25 +9,25 @@ namespace Chisel.Editors
 {
     public class ChiselSyncSelection : ScriptableObject, ISerializationCallbackReceiver
     {
-        static ChiselSyncSelection _instance;
+        static ChiselSyncSelection s_Instance;
         public static ChiselSyncSelection Instance
         {
             get
             {
-                if (_instance)
-                    return _instance;
+                if (s_Instance)
+                    return s_Instance;
 
 				var foundInstances = UnityEngine.Object.FindObjectsByType<ChiselSyncSelection>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
                 if (foundInstances == null ||
                     foundInstances.Length == 0)
                 {
-                    _instance = ScriptableObject.CreateInstance<ChiselSyncSelection>();					
-                    _instance.hideFlags = HideFlags.HideAndDontSave;
-                    return _instance;
+                    s_Instance = ScriptableObject.CreateInstance<ChiselSyncSelection>();					
+                    s_Instance.hideFlags = HideFlags.HideAndDontSave;
+                    return s_Instance;
                 }
                                
-                _instance = foundInstances[0];
-                return _instance;
+                s_Instance = foundInstances[0];
+                return s_Instance;
             }
         }
 

@@ -64,11 +64,12 @@ namespace Chisel.Core
 		{
 			if (!outlineLookup.IsCreated)
 				return;
-			
+
 			var values = outlineLookup.GetValueArray(Allocator.Temp);
 			foreach (var value in values)
 				value.Dispose();
 			values.Dispose();
+
 			outlineLookup.Dispose(); outlineLookup = default;
 		}
 	}

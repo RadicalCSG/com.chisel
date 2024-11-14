@@ -1,4 +1,6 @@
 using System;
+using System.Buffers;
+using System.Collections;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using Unity.Mathematics;
@@ -144,8 +146,6 @@ namespace Chisel.Core
             }
         }
 
-        // TODO: make this not allocate memory
-        static int[] sNewVertexPosition = null;
         bool RemoveRedundantVertices()
         {
             if (halfEdges == null ||
@@ -153,78 +153,86 @@ namespace Chisel.Core
                 vertices.Length == 0)
                 return false;
 
-            if (sNewVertexPosition == null ||
-                sNewVertexPosition.Length < vertices.Length)
-                sNewVertexPosition = new int[vertices.Length];            
-            for (int v = 0; v < vertices.Length; v++)
-                sNewVertexPosition[v] = -1;
-
-            for (int e = 0; e < halfEdges.Length; e++)
+            var newVertexPosition = ArrayPool<int>.Shared.Rent(vertices.Length);
+			try
             {
-                var vertexIndex = halfEdges[e].vertexIndex;
-                sNewVertexPosition[vertexIndex] = vertexIndex;
-            }
+                if (newVertexPosition == null ||
+                    newVertexPosition.Length < vertices.Length)
+                    newVertexPosition = new int[vertices.Length];
+                for (int v = 0; v < vertices.Length; v++)
+                    newVertexPosition[v] = -1;
 
-
-            for (int v = 0; v < vertices.Length; v++)
-            {
-                if (sNewVertexPosition[v] != -1)
-                    continue;
-                vertices[v] = new float3(float.NaN, float.NaN, float.NaN);
-            }
-
-            bool modified = false;
-            int from    = -1;
-            int to      = 0;
-            int count   = 0;            
-            for (int v = 0; v < vertices.Length; v++)
-            {
-                if (sNewVertexPosition[v] != -1)
+                for (int e = 0; e < halfEdges.Length; e++)
                 {
-                    if (from == -1)
-                        from = v;
-                    count++;
-                    continue;
+                    var vertexIndex = halfEdges[e].vertexIndex;
+                    newVertexPosition[vertexIndex] = vertexIndex;
                 }
 
-                if (from == -1)
-                    continue;
 
-                if (from != to)
+                for (int v = 0; v < vertices.Length; v++)
+                {
+                    if (newVertexPosition[v] != -1)
+                        continue;
+                    vertices[v] = new float3(float.NaN, float.NaN, float.NaN);
+                }
+
+                bool modified = false;
+                int from = -1;
+                int to = 0;
+                int count = 0;
+                for (int v = 0; v < vertices.Length; v++)
+                {
+                    if (newVertexPosition[v] != -1)
+                    {
+                        if (from == -1)
+                            from = v;
+                        count++;
+                        continue;
+                    }
+
+                    if (from == -1)
+                        continue;
+
+                    if (from != to)
+                    {
+                        Array.Copy(vertices, from, vertices, to, count);
+                        for (int n = 0; n < count; n++)
+                            newVertexPosition[from + n] = to + n;
+                    }
+                    to += count;
+                    count = 0;
+                    from = -1;
+                }
+                if (from != -1 &&
+                    from != to)
                 {
                     Array.Copy(vertices, from, vertices, to, count);
                     for (int n = 0; n < count; n++)
-                        sNewVertexPosition[from + n] = to + n;
+                        newVertexPosition[from + n] = to + n;
                 }
                 to += count;
-                count = 0;
-                from = -1;
-            }
-            if (from != -1 &&
-                from != to)
-            {
-                Array.Copy(vertices, from, vertices, to, count);
-                for (int n = 0; n < count; n++)
-                    sNewVertexPosition[from + n] = to + n;
-            }
-            to += count;
-            if (to != vertices.Length)
-            {
-                Array.Resize(ref vertices, to);
-                modified = true;
-            }
+                if (to != vertices.Length)
+                {
+                    Array.Resize(ref vertices, to);
+                    modified = true;
+                }
 
-            if (!modified)
-                return false;
+                if (!modified)
+                    return false;
 
-            for (int e = 0; e < halfEdges.Length; e++)
-            {
-                var vertexIndex = halfEdges[e].vertexIndex;
-                vertexIndex = sNewVertexPosition[vertexIndex];
-                halfEdges[e].vertexIndex = vertexIndex;
+                for (int e = 0; e < halfEdges.Length; e++)
+                {
+                    var vertexIndex = halfEdges[e].vertexIndex;
+                    vertexIndex = newVertexPosition[vertexIndex];
+                    halfEdges[e].vertexIndex = vertexIndex;
+                }
+
+                return true;
             }
-
-            return true;
+            finally
+			{
+				ArrayPool<int>.Shared.Return(newVertexPosition);
+			}
         }
 
         public static bool CompactHalfEdges(List<Polygon> polygons, List<float4> planes, List<HalfEdge> halfEdges, List<int> halfEdgePolygonIndices)
@@ -814,8 +822,6 @@ namespace Chisel.Core
 			Validate(logErrors: true);
         }
 
-        static HalfEdge[] sTempEdgeCache = null;
-
         public static void SplitPolygon(int polygonIndex, int indexOut, int indexIn, List<Polygon> polygons, List<float4> planes, List<HalfEdge> halfEdges, List<int> halfEdgePolygonIndices, List<float3> vertices)
         {
             var firstEdge = polygons[polygonIndex].firstEdge;
@@ -867,20 +873,26 @@ namespace Chisel.Core
 
                 {
                     int desiredHalfEdgeCount = halfEdges.Count + newEdgeCount;
-                    if (sTempEdgeCache == null || sTempEdgeCache.Length < desiredHalfEdgeCount)
-                        sTempEdgeCache = new HalfEdge[desiredHalfEdgeCount];
 
-                    halfEdges.CopyTo(0, sTempEdgeCache, 0, halfEdges.Count);
+                    var tempEdgeCache = ArrayPool<HalfEdge>.Shared.Rent(desiredHalfEdgeCount);
+                    try
+                    {
+                        halfEdges.CopyTo(0, tempEdgeCache, 0, halfEdges.Count);
 
-                    var offset = newFirstIndex;
-                    halfEdges.CopyTo(indexOut, sTempEdgeCache, offset, segment3); offset += segment3;
-                    halfEdges.CopyTo(firstEdge, sTempEdgeCache, offset, segment1); offset += segment1;
+                        var offset = newFirstIndex;
+                        halfEdges.CopyTo(indexOut, tempEdgeCache, offset, segment3); offset += segment3;
+                        halfEdges.CopyTo(firstEdge, tempEdgeCache, offset, segment1); offset += segment1;
 
-                    halfEdges.CopyTo(indexIn, sTempEdgeCache, indexIn, segment2);
+                        halfEdges.CopyTo(indexIn, tempEdgeCache, indexIn, segment2);
 
-                    halfEdges.Clear();
-                    halfEdges.AddRange(sTempEdgeCache);
-                }
+                        halfEdges.Clear();
+                        halfEdges.AddRange(tempEdgeCache);
+                    }
+                    finally
+                    {
+                        ArrayPool<HalfEdge>.Shared.Return(tempEdgeCache);
+                    }
+				}
 
                 {
                     var firstEdgeIndex1 = polygons[polygonIndex].firstEdge;
@@ -964,19 +976,25 @@ namespace Chisel.Core
 
                 {
                     int desiredHalfEdgeCount = halfEdges.Count + newEdgeCount;
-                    if (sTempEdgeCache == null || sTempEdgeCache.Length < desiredHalfEdgeCount)
-                        sTempEdgeCache = new HalfEdge[desiredHalfEdgeCount];
+                    var tempEdgeCache = ArrayPool<HalfEdge>.Shared.Rent(desiredHalfEdgeCount);
+                    try
+                    {
 
-                    halfEdges.CopyTo(0, sTempEdgeCache, 0, halfEdges.Count);
+                        halfEdges.CopyTo(0, tempEdgeCache, 0, halfEdges.Count);
 
-                    var offset = newFirstIndex;
-                    halfEdges.CopyTo(indexIn,   sTempEdgeCache, offset, segment3); offset += segment3;
-                    halfEdges.CopyTo(firstEdge, sTempEdgeCache, offset, segment1); offset += segment1;
+                        var offset = newFirstIndex;
+                        halfEdges.CopyTo(indexIn, tempEdgeCache, offset, segment3); offset += segment3;
+                        halfEdges.CopyTo(firstEdge, tempEdgeCache, offset, segment1); offset += segment1;
 
-                    halfEdges.CopyTo(indexOut,  sTempEdgeCache, indexOut, segment2);
+                        halfEdges.CopyTo(indexOut, tempEdgeCache, indexOut, segment2);
 
-                    halfEdges.Clear();
-                    halfEdges.AddRange(sTempEdgeCache);
+                        halfEdges.Clear();
+                        halfEdges.AddRange(tempEdgeCache);
+                    }
+                    finally
+                    {
+                        ArrayPool<HalfEdge>.Shared.Return(tempEdgeCache);
+                    }
                 }
 
                 {
@@ -1533,293 +1551,314 @@ namespace Chisel.Core
             polygons = null;
         }
 
-        static readonly List<VertexSide>    s_VertexDistances               = new List<VertexSide>();   // avoids allocations at runtime
-        static readonly List<int>           s_IntersectedEdges              = new List<int>();          // avoids allocations at runtime
-        static readonly List<int>           s_TestPolygons                  = new List<int>();          // avoids allocations at runtime
-        static readonly List<HalfEdge>      s_HalfEdgesBuffer               = new List<HalfEdge>();     // avoids allocations at runtime
-        static readonly List<int>           s_HalfEdgePolygonIndicesBuffer  = new List<int>();          // avoids allocations at runtime
-        static readonly List<Polygon>       s_PolygonsBuffer                = new List<Polygon>();      // avoids allocations at runtime
-        static readonly List<float4>        s_PlanesBuffer                  = new List<float4>();       // avoids allocations at runtime        
-        static readonly List<float3>        s_VerticesBuffer                = new List<float3>();       // avoids allocations at runtime
-        static bool[]       s_TestedPolygons                = null; // avoids allocations at runtime
-
-
-        static bool CutInternal(float4[] cuttingPlanes, List<Polygon> polygons, List<float4> planes, List<HalfEdge> halfEdges, List<int> halfEdgePolygonIndices, List<float3> vertices)
+        static bool CutInternal(float4[] cuttingPlanes, int cuttingPlaneLength, List<Polygon> polygons, List<float4> planes, List<HalfEdge> halfEdges, List<int> halfEdgePolygonIndices, List<float3> vertices)
         {
             bool result = true;
-            for (int srcIndex = 0; srcIndex < cuttingPlanes.Length; srcIndex++)
+            for (int srcIndex = 0; srcIndex < cuttingPlaneLength; srcIndex++)
             {
                 var cuttingPlane = -cuttingPlanes[srcIndex];
 
-                s_VertexDistances.Clear();
-                if (s_VertexDistances.Capacity < vertices.Count)
-                    s_VertexDistances.Capacity = vertices.Count;
-
-                var oldVertexCount = vertices.Count;
-                for (var p = 0; p < vertices.Count; p++)
+                var vertexDistances = ListPool<VertexSide>.Get();
+				var intersectedEdges = ListPool<int>.Get();
+				var testPolygons = ListPool<int>.Get();
+				try
                 {
-                    var distance = math.dot(cuttingPlane, new float4(vertices[p], 1));
-                    var halfspace = (short)((distance < -kDistanceEpsilon) ? -1 : (distance > kDistanceEpsilon) ? 1 : 0);
-                    s_VertexDistances.Add(new VertexSide { Distance = distance, Halfspace = halfspace });
-                }
+                    vertexDistances.Clear();
+                    if (vertexDistances.Capacity < vertices.Count)
+                        vertexDistances.Capacity = vertices.Count;
 
-                bool foundAligned = false;
-                for (var p = polygons.Count - 1; p >= 0; p--)
-                {
-                    if (IsPolygonCompletelyPlaneAligned(polygons[p], halfEdges, s_VertexDistances))
+                    var oldVertexCount = vertices.Count;
+                    for (var p = 0; p < vertices.Count; p++)
                     {
-                        var polygon = polygons[p];
-                        polygon.descriptionIndex = srcIndex;
-						polygons[p] = polygon;
-						foundAligned = true;
+                        var distance = math.dot(cuttingPlane, new float4(vertices[p], 1));
+                        var halfspace = (short)((distance < -kDistanceEpsilon) ? -1 : (distance > kDistanceEpsilon) ? 1 : 0);
+                        vertexDistances.Add(new VertexSide { Distance = distance, Halfspace = halfspace });
                     }
-                }
-                if (foundAligned)
-                    continue;
 
-                // We split all the polygons by the cutting plane (which creates new polygons at the end, so we start at the end going backwards)
-                for (var p = polygons.Count - 1; p >= 0; p--)
-                {
-                    SplitPolygon(p, s_VertexDistances, polygons, planes, halfEdges, halfEdgePolygonIndices, vertices);
-                }
-
-                for (var p = oldVertexCount; p < vertices.Count; p++)
-                {
-                    var distance = math.dot(cuttingPlane, new float4(vertices[p], 1));
-                    var halfspace = (short)((distance < -kDistanceEpsilon) ? -1 : (distance > kDistanceEpsilon) ? 1 : 0);
-                    s_VertexDistances.Add(new VertexSide { Distance = distance, Halfspace = halfspace });
-                }
-
-                s_IntersectedEdges.Clear();
-                if (s_IntersectedEdges.Capacity < halfEdges.Count) s_IntersectedEdges.Capacity = halfEdges.Count;
-
-                // We look for all the half-edges that lie on the cutting plane, 
-                // since these form the polygons on the cutting plane.
-                for (int currEdgeIndex = 0; currEdgeIndex < halfEdges.Count; currEdgeIndex++)
-                {
-                    var vertexIndex = halfEdges[currEdgeIndex].vertexIndex;
-                    if (s_VertexDistances[vertexIndex].Halfspace != 0)
+                    bool foundAligned = false;
+                    for (var p = polygons.Count - 1; p >= 0; p--)
+                    {
+                        if (IsPolygonCompletelyPlaneAligned(polygons[p], halfEdges, vertexDistances))
+                        {
+                            var polygon = polygons[p];
+                            polygon.descriptionIndex = srcIndex;
+                            polygons[p] = polygon;
+                            foundAligned = true;
+                        }
+                    }
+                    if (foundAligned)
                         continue;
 
-                    var polygonIndex = halfEdgePolygonIndices[currEdgeIndex];
-                    var firstEdge = polygons[polygonIndex].firstEdge;
-                    var edgeCount = polygons[polygonIndex].edgeCount;
-                    var prevEdgeIndex = ((currEdgeIndex + edgeCount - firstEdge - 1) % edgeCount) + firstEdge;
-
-                    if (s_VertexDistances[halfEdges[prevEdgeIndex].vertexIndex].Halfspace != 0)
-                        continue;
-
-                    s_IntersectedEdges.Add(currEdgeIndex);
-                }
-
-                if (s_IntersectedEdges.Count == 0)
-                {
-                    if (s_VertexDistances[0].Halfspace < 0)
+                    // We split all the polygons by the cutting plane (which creates new polygons at the end, so we start at the end going backwards)
+                    for (var p = polygons.Count - 1; p >= 0; p--)
                     {
-                        polygons.Clear();
-                        halfEdges.Clear();
-                        halfEdgePolygonIndices.Clear();
-                        vertices.Clear();
-                        return false;
+                        SplitPolygon(p, vertexDistances, polygons, planes, halfEdges, halfEdgePolygonIndices, vertices);
                     }
-                    continue;
-                }
 
-                // We should have an even number of intersections
-                Debug.Assert((s_IntersectedEdges.Count % 2) == 0);
-
-                var prevIndex = s_IntersectedEdges.Count - 1;
-                while (prevIndex > 0)
-                {
-                    var currEdgeIndex1 = s_IntersectedEdges[prevIndex];
-
-                    var polygonIndex1 = halfEdgePolygonIndices[currEdgeIndex1];
-                    var firstEdge1 = polygons[polygonIndex1].firstEdge;
-                    var edgeCount1 = polygons[polygonIndex1].edgeCount;
-
-                    var prevEdgeIndex1 = ((currEdgeIndex1 + edgeCount1 - firstEdge1 - 1) % edgeCount1) + firstEdge1;
-                    var currVertexIndex1 = halfEdges[currEdgeIndex1].vertexIndex;
-                    var prevVertexIndex1 = halfEdges[prevEdgeIndex1].vertexIndex;
-                    var lastIndex = prevIndex - 1;
-
-                    // We look for the next edge that starts from the current vertex, but doesn't lead to it's previous vertex
-                    //  (that would be an edge on a reversed polygon)
-                    bool found = false;
-                    for (int currIndex = lastIndex; currIndex >= 0; currIndex--)
+                    for (var p = oldVertexCount; p < vertices.Count; p++)
                     {
-                        var currEdgeIndex2 = s_IntersectedEdges[currIndex];
+                        var distance = math.dot(cuttingPlane, new float4(vertices[p], 1));
+                        var halfspace = (short)((distance < -kDistanceEpsilon) ? -1 : (distance > kDistanceEpsilon) ? 1 : 0);
+                        vertexDistances.Add(new VertexSide { Distance = distance, Halfspace = halfspace });
+                    }
 
-                        var polygonIndex2 = halfEdgePolygonIndices[currEdgeIndex2];
-                        var firstEdge2 = polygons[polygonIndex2].firstEdge;
-                        var edgeCount2 = polygons[polygonIndex2].edgeCount;
+					
 
+					intersectedEdges.Clear();
+                    if (intersectedEdges.Capacity < halfEdges.Count) intersectedEdges.Capacity = halfEdges.Count;
 
-                        var prevEdgeIndex2 = ((currEdgeIndex2 + edgeCount2 - firstEdge2 - 1) % edgeCount2) + firstEdge2;
-                        var currVertexIndex2 = halfEdges[currEdgeIndex2].vertexIndex;
-                        var prevVertexIndex2 = halfEdges[prevEdgeIndex2].vertexIndex;
-
-                        if (prevVertexIndex2 != currVertexIndex1 ||
-                            currVertexIndex2 == prevVertexIndex1)
+                    // We look for all the half-edges that lie on the cutting plane, 
+                    // since these form the polygons on the cutting plane.
+                    for (int currEdgeIndex = 0; currEdgeIndex < halfEdges.Count; currEdgeIndex++)
+                    {
+                        var vertexIndex = halfEdges[currEdgeIndex].vertexIndex;
+                        if (vertexDistances[vertexIndex].Halfspace != 0)
                             continue;
 
-                        if (currIndex != lastIndex)
-                        {
-                            var t = s_IntersectedEdges[currIndex];
-                            s_IntersectedEdges[currIndex] = s_IntersectedEdges[lastIndex];
-                            s_IntersectedEdges[lastIndex] = t;
-                        }
-                        found = true;
-                        break;
-                    }
-                    if (!found)
-                    {
-                        // We have reached the half-way mark and we don't need to check the other half of 
-                        // the half-edges since those are the twins of the half-edges we already found.
-                        Debug.Assert(prevIndex == (s_IntersectedEdges.Count / 2));
-
-                        // So we remove the rest, leaving us with the half-edges that form the 
-                        // polygon on the cutting plane.
-                        s_IntersectedEdges.RemoveRange(0, prevIndex);
-                        break;
-                    }
-                    prevIndex--;
-                }
-
-                var newEdgeCount = s_IntersectedEdges.Count;
-                if (newEdgeCount > 0)
-                {
-                    var polygonStart1 = halfEdges.Count;
-                    var polygonStart2 = polygonStart1 + newEdgeCount;
-
-                    if (halfEdges.Capacity < halfEdges.Count + (newEdgeCount * 2))
-                        halfEdges.Capacity = halfEdges.Count + (newEdgeCount * 2);
-                    for (int i = 0; i < newEdgeCount * 2; i++)
-                        halfEdges.Add(new HalfEdge());
-
-                    //Array.Resize(ref halfEdges, polygonStart2 + newEdgeCount);
-                    for (int i = 0, j = newEdgeCount - 1; i < newEdgeCount; i++, j--)
-                    {
-                        var edgeIndex1 = polygonStart1 + j;
-                        var edgeIndex2 = polygonStart2 + i;
-                        var srcIndex1 = s_IntersectedEdges[i];
-                        var srcIndex2 = halfEdges[srcIndex1].twinIndex;
-                        var vertexIndex1 = halfEdges[srcIndex1].vertexIndex;
-                        var vertexIndex2 = halfEdges[srcIndex2].vertexIndex;
-                        halfEdges[edgeIndex1] = new HalfEdge { vertexIndex = vertexIndex1, twinIndex = srcIndex2 };
-                        halfEdges[edgeIndex2] = new HalfEdge { vertexIndex = vertexIndex2, twinIndex = srcIndex1 };
-
-                        var srcEdge2 = halfEdges[srcIndex2];
-                        srcEdge2.twinIndex = edgeIndex1;
-                        halfEdges[srcIndex2] = srcEdge2;
-
-                        var srcEdge1 = halfEdges[srcIndex1];
-                        srcEdge1.twinIndex = edgeIndex2;
-                        halfEdges[srcIndex1] = srcEdge1;
-                    }
-
-                    Debug.Assert(planes.Count == polygons.Count);
-                    s_TestPolygons.Clear();
-                    {
-                        var polygonIndex1   = polygons.Count;
-                        var polygonIndex2   = polygonIndex1 + 1;
-                        
-                        polygons.Add(new Polygon
-                        {
-                            firstEdge           = polygonStart1,
-                            edgeCount           = newEdgeCount,
-                            descriptionIndex    = srcIndex
-                        });
-
-                        polygons.Add(new Polygon
-                        {
-                            firstEdge           = polygonStart2,
-                            edgeCount           = newEdgeCount,
-                            descriptionIndex    = srcIndex
-                        });
-
-                        var desiredHalfEdgePolygonIndicesCapacity = halfEdgePolygonIndices.Count + (2 * newEdgeCount);
-                        if (halfEdgePolygonIndices.Capacity < desiredHalfEdgePolygonIndicesCapacity)
-                            halfEdgePolygonIndices.Capacity = desiredHalfEdgePolygonIndicesCapacity;
-
-                        for (int e= 0; e < newEdgeCount; e++)
-                            halfEdgePolygonIndices.Add(polygonIndex1);
-
-                        for (int e = 0; e < newEdgeCount; e++)
-                            halfEdgePolygonIndices.Add(polygonIndex2);
-
-                        planes.Add(CalculatePlane(polygons[polygonIndex1], halfEdges, vertices));
-                        planes.Add(CalculatePlane(polygons[polygonIndex2], halfEdges, vertices));
-                        Debug.Assert(planes.Count == polygons.Count);
-
-                        s_TestPolygons.Add(polygonIndex1);
-                    }
-
-                    if (s_TestedPolygons == null || s_TestedPolygons.Length < polygons.Count)
-                        s_TestedPolygons = new bool[polygons.Count];
-                    else 
-                        Array.Clear(s_TestedPolygons, 0, polygons.Count);
-                    s_TestedPolygons[s_TestPolygons[0]] = true;
-                    while (s_TestPolygons.Count > 0)
-                    {
-                        var polygonIndex = s_TestPolygons[s_TestPolygons.Count - 1];
-                        s_TestPolygons.RemoveAt(s_TestPolygons.Count - 1);
-
+                        var polygonIndex = halfEdgePolygonIndices[currEdgeIndex];
                         var firstEdge = polygons[polygonIndex].firstEdge;
                         var edgeCount = polygons[polygonIndex].edgeCount;
-                        var lastEdge = firstEdge + edgeCount;
-                        for (int e = firstEdge; e < lastEdge; e++)
+                        var prevEdgeIndex = ((currEdgeIndex + edgeCount - firstEdge - 1) % edgeCount) + firstEdge;
+
+                        if (vertexDistances[halfEdges[prevEdgeIndex].vertexIndex].Halfspace != 0)
+                            continue;
+
+                        intersectedEdges.Add(currEdgeIndex);
+                    }
+
+                    if (intersectedEdges.Count == 0)
+                    {
+                        if (vertexDistances[0].Halfspace < 0)
                         {
-                            var twinIndex = halfEdges[e].twinIndex;
-                            polygonIndex = halfEdgePolygonIndices[twinIndex];
-                            if (s_TestedPolygons[polygonIndex])
+                            polygons.Clear();
+                            halfEdges.Clear();
+                            halfEdgePolygonIndices.Clear();
+                            vertices.Clear();
+                            return false;
+                        }
+                        continue;
+                    }
+
+                    // We should have an even number of intersections
+                    Debug.Assert((intersectedEdges.Count % 2) == 0);
+
+                    var prevIndex = intersectedEdges.Count - 1;
+                    while (prevIndex > 0)
+                    {
+                        var currEdgeIndex1 = intersectedEdges[prevIndex];
+
+                        var polygonIndex1 = halfEdgePolygonIndices[currEdgeIndex1];
+                        var firstEdge1 = polygons[polygonIndex1].firstEdge;
+                        var edgeCount1 = polygons[polygonIndex1].edgeCount;
+
+                        var prevEdgeIndex1 = ((currEdgeIndex1 + edgeCount1 - firstEdge1 - 1) % edgeCount1) + firstEdge1;
+                        var currVertexIndex1 = halfEdges[currEdgeIndex1].vertexIndex;
+                        var prevVertexIndex1 = halfEdges[prevEdgeIndex1].vertexIndex;
+                        var lastIndex = prevIndex - 1;
+
+                        // We look for the next edge that starts from the current vertex, but doesn't lead to it's previous vertex
+                        //  (that would be an edge on a reversed polygon)
+                        bool found = false;
+                        for (int currIndex = lastIndex; currIndex >= 0; currIndex--)
+                        {
+                            var currEdgeIndex2 = intersectedEdges[currIndex];
+
+                            var polygonIndex2 = halfEdgePolygonIndices[currEdgeIndex2];
+                            var firstEdge2 = polygons[polygonIndex2].firstEdge;
+                            var edgeCount2 = polygons[polygonIndex2].edgeCount;
+
+
+                            var prevEdgeIndex2 = ((currEdgeIndex2 + edgeCount2 - firstEdge2 - 1) % edgeCount2) + firstEdge2;
+                            var currVertexIndex2 = halfEdges[currEdgeIndex2].vertexIndex;
+                            var prevVertexIndex2 = halfEdges[prevEdgeIndex2].vertexIndex;
+
+                            if (prevVertexIndex2 != currVertexIndex1 ||
+                                currVertexIndex2 == prevVertexIndex1)
                                 continue;
-                            s_TestedPolygons[polygonIndex] = true;
-                            s_TestPolygons.Add(polygonIndex);
+
+                            if (currIndex != lastIndex)
+                            {
+                                var t = intersectedEdges[currIndex];
+                                intersectedEdges[currIndex] = intersectedEdges[lastIndex];
+                                intersectedEdges[lastIndex] = t;
+                            }
+                            found = true;
+                            break;
+                        }
+                        if (!found)
+                        {
+                            // We have reached the half-way mark and we don't need to check the other half of 
+                            // the half-edges since those are the twins of the half-edges we already found.
+                            Debug.Assert(prevIndex == (intersectedEdges.Count / 2));
+
+                            // So we remove the rest, leaving us with the half-edges that form the 
+                            // polygon on the cutting plane.
+                            intersectedEdges.RemoveRange(0, prevIndex);
+                            break;
+                        }
+                        prevIndex--;
+                    }
+
+                    var newEdgeCount = intersectedEdges.Count;
+                    if (newEdgeCount > 0)
+                    {
+                        var polygonStart1 = halfEdges.Count;
+                        var polygonStart2 = polygonStart1 + newEdgeCount;
+
+                        if (halfEdges.Capacity < halfEdges.Count + (newEdgeCount * 2))
+                            halfEdges.Capacity = halfEdges.Count + (newEdgeCount * 2);
+                        for (int i = 0; i < newEdgeCount * 2; i++)
+                            halfEdges.Add(new HalfEdge());
+
+                        //Array.Resize(ref halfEdges, polygonStart2 + newEdgeCount);
+                        for (int i = 0, j = newEdgeCount - 1; i < newEdgeCount; i++, j--)
+                        {
+                            var edgeIndex1 = polygonStart1 + j;
+                            var edgeIndex2 = polygonStart2 + i;
+                            var srcIndex1 = intersectedEdges[i];
+                            var srcIndex2 = halfEdges[srcIndex1].twinIndex;
+                            var vertexIndex1 = halfEdges[srcIndex1].vertexIndex;
+                            var vertexIndex2 = halfEdges[srcIndex2].vertexIndex;
+                            halfEdges[edgeIndex1] = new HalfEdge { vertexIndex = vertexIndex1, twinIndex = srcIndex2 };
+                            halfEdges[edgeIndex2] = new HalfEdge { vertexIndex = vertexIndex2, twinIndex = srcIndex1 };
+
+                            var srcEdge2 = halfEdges[srcIndex2];
+                            srcEdge2.twinIndex = edgeIndex1;
+                            halfEdges[srcIndex2] = srcEdge2;
+
+                            var srcEdge1 = halfEdges[srcIndex1];
+                            srcEdge1.twinIndex = edgeIndex2;
+                            halfEdges[srcIndex1] = srcEdge1;
+                        }
+
+                        Debug.Assert(planes.Count == polygons.Count);
+                        testPolygons.Clear();
+                        {
+                            var polygonIndex1 = polygons.Count;
+                            var polygonIndex2 = polygonIndex1 + 1;
+
+                            polygons.Add(new Polygon
+                            {
+                                firstEdge = polygonStart1,
+                                edgeCount = newEdgeCount,
+                                descriptionIndex = srcIndex
+                            });
+
+                            polygons.Add(new Polygon
+                            {
+                                firstEdge = polygonStart2,
+                                edgeCount = newEdgeCount,
+                                descriptionIndex = srcIndex
+                            });
+
+                            var desiredHalfEdgePolygonIndicesCapacity = halfEdgePolygonIndices.Count + (2 * newEdgeCount);
+                            if (halfEdgePolygonIndices.Capacity < desiredHalfEdgePolygonIndicesCapacity)
+                                halfEdgePolygonIndices.Capacity = desiredHalfEdgePolygonIndicesCapacity;
+
+                            for (int e = 0; e < newEdgeCount; e++)
+                                halfEdgePolygonIndices.Add(polygonIndex1);
+
+                            for (int e = 0; e < newEdgeCount; e++)
+                                halfEdgePolygonIndices.Add(polygonIndex2);
+
+                            planes.Add(CalculatePlane(polygons[polygonIndex1], halfEdges, vertices));
+                            planes.Add(CalculatePlane(polygons[polygonIndex2], halfEdges, vertices));
+                            Debug.Assert(planes.Count == polygons.Count);
+
+                            testPolygons.Add(polygonIndex1);
+                        }
+
+
+                        var testedPolygons = ArrayPool<bool>.Shared.Rent(polygons.Count);
+                        Array.Clear(testedPolygons, 0, testedPolygons.Length);
+                        try
+                        {
+                            testedPolygons[testPolygons[0]] = true;
+                            while (testPolygons.Count > 0)
+                            {
+                                var polygonIndex = testPolygons[testPolygons.Count - 1];
+                                testPolygons.RemoveAt(testPolygons.Count - 1);
+
+                                var firstEdge = polygons[polygonIndex].firstEdge;
+                                var edgeCount = polygons[polygonIndex].edgeCount;
+                                var lastEdge = firstEdge + edgeCount;
+                                for (int e = firstEdge; e < lastEdge; e++)
+                                {
+                                    var twinIndex = halfEdges[e].twinIndex;
+                                    polygonIndex = halfEdgePolygonIndices[twinIndex];
+                                    if (testedPolygons[polygonIndex])
+                                        continue;
+                                    testedPolygons[polygonIndex] = true;
+                                    testPolygons.Add(polygonIndex);
+                                }
+                            }
+
+
+                            var side = false;
+                            for (int e = 0; e < halfEdges.Count; e++)
+                            {
+                                var vertexIndex = halfEdges[e].vertexIndex;
+                                if (vertexDistances[vertexIndex].Halfspace == 0)
+                                    continue;
+
+                                var polygonIndex = halfEdgePolygonIndices[e];
+                                side = (vertexDistances[vertexIndex].Halfspace > 0) == testedPolygons[polygonIndex];
+                                break;
+                            }
+
+                            for (int p = 0; p < polygons.Count; p++)
+                            {
+                                if (testedPolygons[p] == side)
+                                    continue;
+                                var oldPolygon = polygons[p];
+                                oldPolygon.edgeCount = 0;
+                                polygons[p] = oldPolygon;
+                            }
+                        }
+                        finally
+                        {
+                            ArrayPool<bool>.Shared.Return(testedPolygons);
                         }
                     }
 
-
-                    var side = false;
-                    for (int e = 0; e < halfEdges.Count; e++)
-                    {
-                        var vertexIndex = halfEdges[e].vertexIndex;
-                        if (s_VertexDistances[vertexIndex].Halfspace == 0)
-                            continue;
-
-                        var polygonIndex = halfEdgePolygonIndices[e];
-                        side = (s_VertexDistances[vertexIndex].Halfspace > 0) == s_TestedPolygons[polygonIndex];
-                        break;
-                    }
-
-                    for (int p = 0; p < polygons.Count; p++)
-                    {
-                        if (s_TestedPolygons[p] == side)
-                            continue;
-                        var oldPolygon = polygons[p];
-                        oldPolygon.edgeCount = 0;
-                        polygons[p] = oldPolygon;
-                    }
+                    CompactHalfEdges(polygons, planes, halfEdges, halfEdgePolygonIndices);
                 }
-
-                CompactHalfEdges(polygons, planes, halfEdges, halfEdgePolygonIndices);
+                finally
+                {
+					ListPool<VertexSide>.Release(vertexDistances);
+					ListPool<int>.Release(intersectedEdges);
+					ListPool<int>.Release(testPolygons);
+				}
             }
             return result;
         }
 
-        static readonly float4[] sSingleCuttingPlane = new float4[1];
 		public bool Cut(Plane cuttingPlane)
 		{
-			sSingleCuttingPlane[0] = -new float4(cuttingPlane.normal, cuttingPlane.distance);
-			return Cut(sSingleCuttingPlane);
+            var singleCuttingPlane = ArrayPool<float4>.Shared.Rent(1);
+            try
+            {
+                singleCuttingPlane[0] = -new float4(cuttingPlane.normal, cuttingPlane.distance);
+                return Cut(singleCuttingPlane, 1);
+            }
+            finally
+			{
+				ArrayPool<float4>.Shared.Return(singleCuttingPlane);
+			}
 		}
 
 		public bool Cut(float4[] cuttingPlanes)
+        {
+            return Cut(cuttingPlanes, cuttingPlanes.Length);
+		}
+
+		public bool Cut(float4[] cuttingPlanes, int cuttingPlaneLength)
         {
             Profiler.BeginSample("Cut");
             try
             {
                 if (cuttingPlanes == null) throw new ArgumentNullException(nameof(cuttingPlanes));
-                if (cuttingPlanes.Length == 0)
+                if (cuttingPlaneLength == 0 || cuttingPlaneLength > cuttingPlanes.Length)
                     return false;            
                 if (polygons == null || polygons.Length == 0 ||
                     halfEdges == null || halfEdges.Length == 0 ||
@@ -1831,53 +1870,70 @@ namespace Chisel.Core
                 if (planes == null || planes.Length != polygons.Length)
                     CalculatePlanes();
 
-                var desiredPolygons = polygons.Length + (cuttingPlanes.Length * 2);
-                if (s_PolygonsBuffer.Capacity < desiredPolygons) s_PolygonsBuffer.Capacity = desiredPolygons;
-                s_PolygonsBuffer.Clear();
-                s_PolygonsBuffer.AddRange(polygons);
 
-                if (s_PlanesBuffer.Capacity < desiredPolygons) s_PlanesBuffer.Capacity = desiredPolygons;
-                s_PlanesBuffer.Clear();
-                s_PlanesBuffer.AddRange(planes);
+				var halfEdgesBuffer = ListPool<HalfEdge>.Get();
+				var halfEdgePolygonIndicesBuffer = ListPool<int>.Get();
+				var polygonsBuffer = ListPool<Polygon>.Get();
+				var planesBuffer = ListPool<float4>.Get();
+				var verticesBuffer = ListPool<float3>.Get();
+                try
+                { 
+				    var desiredPolygons = polygons.Length + (cuttingPlaneLength * 2);
+                    if (polygonsBuffer.Capacity < desiredPolygons) polygonsBuffer.Capacity = desiredPolygons;
+                    polygonsBuffer.Clear();
+                    polygonsBuffer.AddRange(polygons);
 
-                var desiredHalfEdges = halfEdges.Length + (cuttingPlanes.Length * 8);
-                if (s_HalfEdgesBuffer.Capacity < desiredHalfEdges) s_HalfEdgesBuffer.Capacity = desiredHalfEdges;
-                s_HalfEdgesBuffer.Clear();
-                s_HalfEdgesBuffer.AddRange(halfEdges);
+                    if (planesBuffer.Capacity < desiredPolygons) planesBuffer.Capacity = desiredPolygons;
+                    planesBuffer.Clear();
+                    planesBuffer.AddRange(planes);
 
-                if (s_HalfEdgePolygonIndicesBuffer.Capacity < desiredHalfEdges) s_HalfEdgePolygonIndicesBuffer.Capacity = desiredHalfEdges;
-                s_HalfEdgePolygonIndicesBuffer.Clear();
-                s_HalfEdgePolygonIndicesBuffer.AddRange(halfEdgePolygonIndices);
+                    var desiredHalfEdges = halfEdges.Length + (cuttingPlaneLength * 8);
+                    if (halfEdgesBuffer.Capacity < desiredHalfEdges) halfEdgesBuffer.Capacity = desiredHalfEdges;
+                    halfEdgesBuffer.Clear();
+                    halfEdgesBuffer.AddRange(halfEdges);
 
-                var desiredVertices = vertices.Length + (cuttingPlanes.Length * 2);
-                if (s_VerticesBuffer.Capacity < desiredVertices) s_VerticesBuffer.Capacity = desiredVertices;
-                s_VerticesBuffer.Clear();
-                s_VerticesBuffer.AddRange(vertices);
+                    if (halfEdgePolygonIndicesBuffer.Capacity < desiredHalfEdges) halfEdgePolygonIndicesBuffer.Capacity = desiredHalfEdges;
+                    halfEdgePolygonIndicesBuffer.Clear();
+                    halfEdgePolygonIndicesBuffer.AddRange(halfEdgePolygonIndices);
 
-                var result = CutInternal(cuttingPlanes, s_PolygonsBuffer, s_PlanesBuffer, s_HalfEdgesBuffer, s_HalfEdgePolygonIndicesBuffer, s_VerticesBuffer);
+                    var desiredVertices = vertices.Length + (cuttingPlaneLength * 2);
+                    if (verticesBuffer.Capacity < desiredVertices) verticesBuffer.Capacity = desiredVertices;
+                    verticesBuffer.Clear();
+                    verticesBuffer.AddRange(vertices);
 
-                bool updateIndices;
-                //updateIndices = CompactHalfEdges(s_PolygonsBuffer, s_PlanesBuffer, s_HalfEdgesBuffer, s_HalfEdgePolygonIndicesBuffer);
+                    var result = CutInternal(cuttingPlanes, cuttingPlaneLength, polygonsBuffer, planesBuffer, halfEdgesBuffer, halfEdgePolygonIndicesBuffer, verticesBuffer);
 
-                polygons                = s_PolygonsBuffer.ToArray();
-                planes                  = s_PlanesBuffer.ToArray();
-                halfEdges               = s_HalfEdgesBuffer.ToArray();
-                halfEdgePolygonIndices  = s_HalfEdgePolygonIndicesBuffer.ToArray();
-                vertices                = s_VerticesBuffer.ToArray();
+                    bool updateIndices;
+                    //updateIndices = CompactHalfEdges(s_PolygonsBuffer, s_PlanesBuffer, s_HalfEdgesBuffer, s_HalfEdgePolygonIndicesBuffer);
 
-                updateIndices = RemoveRedundantVertices();// || updateIndices;
-                /*
-                Profiler.BeginSample("GetVertexSnappedToItsPlanes");
-                for (int v = 0; v < vertices.Length; v++)
-                    vertices[v] = GetVertexSnappedToItsPlanes(v);
-                Profiler.EndSample();
-                */
+                    polygons                = polygonsBuffer.ToArray();
+                    planes                  = planesBuffer.ToArray();
+                    halfEdges               = halfEdgesBuffer.ToArray();
+                    halfEdgePolygonIndices  = halfEdgePolygonIndicesBuffer.ToArray();
+                    vertices                = verticesBuffer.ToArray();
 
-                //if (updateIndices)
-                    UpdateHalfEdgePolygonIndices();
+                    updateIndices = RemoveRedundantVertices();// || updateIndices;
+                    /*
+                    Profiler.BeginSample("GetVertexSnappedToItsPlanes");
+                    for (int v = 0; v < vertices.Length; v++)
+                        vertices[v] = GetVertexSnappedToItsPlanes(v);
+                    Profiler.EndSample();
+                    */
 
-                Validate();
-				return result;
+                    //if (updateIndices)
+                        UpdateHalfEdgePolygonIndices();
+
+                    Validate();
+				    return result;
+                }
+                finally
+				{
+					ListPool<HalfEdge>.Release(halfEdgesBuffer);
+					ListPool<int>.Release(halfEdgePolygonIndicesBuffer);
+					ListPool<Polygon>.Release(polygonsBuffer);
+					ListPool<float4>.Release(planesBuffer);
+					ListPool<float3>.Release(verticesBuffer);
+				}
             }
             finally
             {
