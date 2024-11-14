@@ -4,6 +4,7 @@ using Unity.Mathematics;
 using Unity.Collections.LowLevel.Unsafe;
 using Unity.Profiling;
 using Unity.Entities;
+using System.Buffers;
 
 namespace Chisel.Core
 {
@@ -37,11 +38,10 @@ namespace Chisel.Core
             if (!needUpdate)
                 return false;
 
-
-            using (new ProfilerMarker("UpdateTreeMeshes").Auto())
+            using (new ProfilerMarker("UpdateTreeMeshes").Auto()) 
             {
-                allTrees = TreeUpdate.ScheduleTreeMeshJobs(finishMeshUpdates, instance.updatedTrees);
-                return true;
+				allTrees = TreeUpdate.ScheduleTreeMeshJobs(finishMeshUpdates, instance.updatedTrees);
+				return true;
             }
         }
         #endregion
@@ -50,23 +50,22 @@ namespace Chisel.Core
 
         internal struct TreeUpdate
         {
-            public CSGTree          tree;
-            public CompactNodeID    treeCompactNodeID;
-            public int              brushCount;
-            public int              maxNodeOrder;
-            public int              updateCount;
+            public CSGTree       tree;
+            public CompactNodeID treeCompactNodeID;
+            public int           brushCount;
+            public int           maxNodeOrder;
+            public int           updateCount;
 
-            public JobHandle        dependencies;
+            public JobHandle     dependencies;
 
             #region All Native Collection Temporaries
             internal struct TemporariesStruct
             { 
-                public UnityEngine.Mesh.MeshDataArray           meshDataArray;
-                public NativeList<UnityEngine.Mesh.MeshData>    meshDatas;
+                public UnityEngine.Mesh.MeshDataArray       meshDataArray;
+                public NativeList<UnityEngine.Mesh.MeshData> meshDatas;
 
                 public NativeArray<int>                     parameterCounts;
                 public NativeList<NodeOrderNodeID>          transformTreeBrushIndicesList;
-                public NativeList<NodeOrderNodeID>          brushBoundsUpdateList;
 
                 public NativeList<CompactNodeID>            brushes;
                 public NativeList<CompactNodeID>            nodes;
@@ -79,7 +78,7 @@ namespace Chisel.Core
                 public NativeArray<MeshQuery>               meshQueries;
                 public int                                  meshQueriesLength;
 
-                public NativeArray<UnsafeList<BrushIntersectWith>>  brushBrushIntersections;
+                public NativeArray<UnsafeList<BrushIntersectWith>> brushBrushIntersections;
                 public NativeList<BrushIntersectWith>       brushIntersectionsWith;
                 public NativeArray<int2>                    brushIntersectionsWithRange;
                 public NativeList<IndexOrder>               brushesThatNeedIndirectUpdate;
@@ -91,7 +90,7 @@ namespace Chisel.Core
                 public NativeList<BrushIntersectionLoop>    outputSurfaces;
                 public NativeArray<int2>                    outputSurfacesRange;
 
-                public NativeArray<BlobAssetReference<BrushMeshBlob>>   brushMeshLookup;
+                public NativeArray<BlobAssetReference<BrushMeshBlob>> brushMeshLookup;
 
                 public NativeArray<UnsafeList<float3>>      loopVerticesLookup;
 
@@ -108,10 +107,6 @@ namespace Chisel.Core
                 public NativeList<SubMeshDescriptions>      subMeshDescriptions;
                 public NativeArray<UnsafeList<SubMeshSurface>> subMeshSurfaces;
 
-                public NativeStream                         dataStream1;
-                public NativeStream                         dataStream2;
-                public NativeStream                         intersectingBrushesStream;
-
                 public NativeList<ChiselMeshUpdate>         meshUpdatesColliders;
                 public NativeList<ChiselMeshUpdate>         meshUpdatesRenderables;
                 public NativeList<ChiselMeshUpdate>         meshUpdatesDebugVisualizations;
@@ -122,7 +117,7 @@ namespace Chisel.Core
                 public NativeList<BlobAssetReference<RoutingTable>>                 routingTableDisposeList;
                 public NativeList<BlobAssetReference<BrushTreeSpacePlanes>>         brushTreeSpacePlaneDisposeList;
                 public NativeList<BlobAssetReference<ChiselBrushRenderBuffer>>      brushRenderBufferDisposeList;
-            }
+            } 
             internal TemporariesStruct Temporaries;
             #endregion
 
@@ -130,7 +125,6 @@ namespace Chisel.Core
             internal struct JobHandlesStruct
             {
                 public DualJobHandle transformTreeBrushIndicesListJobHandle;
-                public DualJobHandle brushBoundsUpdateListJobHandle;
                 public DualJobHandle brushesJobHandle;
                 public DualJobHandle nodesJobHandle;
                 public DualJobHandle parametersJobHandle;
@@ -223,7 +217,7 @@ namespace Chisel.Core
                 }
             }
 
-            static readonly MeshQueryComparer meshQueryComparer = new MeshQueryComparer();
+			readonly static MeshQueryComparer kMeshQueryComparer = new();
 			#endregion
 
 			#region Initialize Temporaries
@@ -243,7 +237,6 @@ namespace Chisel.Core
 
                 Temporaries.parameterCounts                = new NativeArray<int>(chiselLookupValues.parameters.Length, defaultAllocator);
                 Temporaries.transformTreeBrushIndicesList  = new NativeList<NodeOrderNodeID>(defaultAllocator);
-                Temporaries.brushBoundsUpdateList          = new NativeList<NodeOrderNodeID>(defaultAllocator);
                 Temporaries.nodes                          = new NativeList<CompactNodeID>(defaultAllocator);
                 Temporaries.brushes                        = new NativeList<CompactNodeID>(defaultAllocator);
 
@@ -313,7 +306,7 @@ namespace Chisel.Core
                 // TODO: have more control over the queries
                 Temporaries.meshQueries         = MeshQuery.DefaultQueries.ToNativeArray(defaultAllocator);
                 Temporaries.meshQueriesLength   = Temporaries.meshQueries.Length;
-                Temporaries.meshQueries.Sort(meshQueryComparer);
+                Temporaries.meshQueries.Sort(kMeshQueryComparer);
                 #endregion
 
                 Temporaries.subMeshSurfaces = new NativeArray<UnsafeList<SubMeshSurface>>(Temporaries.meshQueriesLength, defaultAllocator);
@@ -357,7 +350,6 @@ namespace Chisel.Core
 			#endregion
 
 
-			static TreeUpdate[] s_TreeUpdates;
             public static JobHandle ScheduleTreeMeshJobs(FinishMeshUpdate finishMeshUpdates, NativeList<CSGTree> trees)
             {
                 var finalJobHandle = default(JobHandle);
@@ -377,203 +369,213 @@ namespace Chisel.Core
                 // TODO: make this unnecessary
                 generatorPoolJobHandle.Complete();
 
-
-				//
-				// Make a list of valid modified trees
-				//
-				#region Find all modified, valid trees
 				var treeUpdateLength = 0;
-                using (new ProfilerMarker("CSG_TreeUpdate_Allocate").Auto())
-                {
-                    if (s_TreeUpdates == null || s_TreeUpdates.Length < trees.Length)
-                        s_TreeUpdates = new TreeUpdate[trees.Length];
-                    for (int t = 0; t < trees.Length; t++)
+				var treeUpdates = ArrayPool<TreeUpdate>.Shared.Rent(trees.Length);
+				try
+                { 
+
+				    //
+				    // Make a list of valid modified trees
+				    //
+				    #region Find all modified, valid trees
+                    using (new ProfilerMarker("CSG_TreeUpdate_Allocate").Auto())
                     {
-                        var tree = trees[t];
-                        var treeCompactNodeID = CompactHierarchyManager.GetCompactNodeID(tree);
-                        ref var compactHierarchy = ref CompactHierarchyManager.GetHierarchy(treeCompactNodeID);
-
-                        // Skip invalid trees since they wouldn't work anyway
-                        if (!compactHierarchy.IsValidCompactNodeID(treeCompactNodeID))
-                            continue;
-
-                        if (!compactHierarchy.IsNodeDirty(treeCompactNodeID))
-                            continue;
-
-                        ref var treeUpdate = ref s_TreeUpdates[treeUpdateLength];
-                        treeUpdate.tree = tree;
-                        treeUpdate.treeCompactNodeID = treeCompactNodeID;
-                        treeUpdateLength++;
-                    }
-
-                    if (treeUpdateLength == 0)
-                        return finalJobHandle;
-                }
-                #endregion
-
-                //
-                // Initialize our data structures
-                //
-                #region Initialize temporaries
-                using (new ProfilerMarker("CSG_TreeUpdate_Initialize").Auto())
-                {
-                    for (int t = 0; t < treeUpdateLength; t++)
-                    {
-                        s_TreeUpdates[t].Initialize();
-                    }
-                }
-                #endregion
-
-                try
-                {
-                    try
-                    {
-                        //
-                        // Preprocess the data we need to perform CSG, figure what needs to be updated in the tree (might be nothing)
-                        //
-                        #region Schedule cache update jobs
-                        using (new ProfilerMarker("CSG_RunMeshInitJobs").Auto())
+                        if (treeUpdates == null || treeUpdates.Length < trees.Length)
+                            treeUpdates = new TreeUpdate[trees.Length];
+                        for (int t = 0; t < trees.Length; t++)
                         {
-                            for (int t = 0; t < treeUpdateLength; t++)
-                            {
-                                s_TreeUpdates[t].RunMeshInitJobs(generatorPoolJobHandle);
-                            }
+                            var tree = trees[t];
+                            var treeCompactNodeID = CompactHierarchyManager.GetCompactNodeID(tree);
+                            ref var compactHierarchy = ref CompactHierarchyManager.GetHierarchy(treeCompactNodeID);
+
+                            // Skip invalid trees since they wouldn't work anyway
+                            if (!compactHierarchy.IsValidCompactNodeID(treeCompactNodeID))
+                                continue;
+
+                            if (!compactHierarchy.IsNodeDirty(treeCompactNodeID))
+                                continue;
+
+                            ref var treeUpdate = ref treeUpdates[treeUpdateLength];
+                            treeUpdate.tree = tree;
+                            treeUpdate.treeCompactNodeID = treeCompactNodeID;
+                            treeUpdateLength++;
                         }
-                        #endregion
 
-                        //
-                        // Schedule chain of jobs that will generate our surface meshes 
-                        // At this point we need previously scheduled jobs to be completed so we know what actually needs to be updated, if anything
-                        //
-                        #region Schedule CSG jobs
-                        using (new ProfilerMarker("CSG_RunMeshUpdateJobs").Auto())
-                        {
-                            // Reverse order since we sorted the trees from big to small & small trees are more likely to have already completed
-                            for (int t = treeUpdateLength - 1; t >= 0; t--)
-                            {
-                                ref var treeUpdate = ref s_TreeUpdates[t];
-                                // TODO: figure out if there's a way around this ....
-                                treeUpdate.JobHandles.transformTreeBrushIndicesListJobHandle.readWriteBarrier.Complete();
-                                treeUpdate.JobHandles.rebuildTreeBrushIndexOrdersJobHandle.writeBarrier.Complete();
-                                treeUpdate.updateCount = treeUpdate.Temporaries.rebuildTreeBrushIndexOrders.Length;
-
-                                if (treeUpdate.updateCount <= 0)
-                                    continue;
-
-                                treeUpdate.RunMeshUpdateJobs();
-                            }
-                        }
-                        #endregion
-                    }
-                    finally
-                    {
-						//
-						// Dispose temporaries that we don't need anymore
-						//
-						#region Cleanup
-						for (int t = 0; t < treeUpdateLength; t++)
-                        {
-                            ref var treeUpdate = ref s_TreeUpdates[t];
-                            treeUpdate.PreMeshUpdateDispose();
-                        }
-						#endregion
-					}
-
-					//
-					// Wait for our scheduled mesh update jobs to finish, ensure our components are setup correctly, and upload our mesh data to the meshes
-					//
-
-					for (int t = 0; t < treeUpdateLength; t++)
-                    {
-                        ref var treeUpdate = ref s_TreeUpdates[t];
-                        treeUpdate.dependencies = JobHandleExtensions.CombineDependencies(treeUpdate.JobHandles.compactHierarchyJobHandle.readWriteBarrier,
-																						  treeUpdate.JobHandles.meshDatasJobHandle.writeBarrier,
-                                                                                          treeUpdate.JobHandles.meshUpdatesJobHandle.writeBarrier,
-                                                                                          treeUpdate.JobHandles.colliderMeshUpdatesJobHandle.writeBarrier,
-                                                                                          treeUpdate.JobHandles.debugHelperMeshesJobHandle.writeBarrier,
-                                                                                          treeUpdate.JobHandles.renderMeshesJobHandle.writeBarrier,
-                                                                                          treeUpdate.JobHandles.vertexBufferContents_triangleBrushIndicesJobHandle.writeBarrier,
-                                                                                          treeUpdate.JobHandles.vertexBufferContents_meshesJobHandle.writeBarrier);
-
-                        // TODO: get rid of these crazy legacy flags
-                        #region Clear tree/brush status flags 
-                        ref var compactHierarchy = ref CompactHierarchyManager.GetHierarchy(treeUpdate.treeCompactNodeID);
-                        using (new ProfilerMarker("CSG_ClearFlags").Auto())
-                        {
-                            compactHierarchy.ClearAllStatusFlags(treeUpdate.treeCompactNodeID);
-                            for (int b = 0; b < treeUpdate.brushCount; b++)
-                            {
-                                var brushIndexOrder = treeUpdate.Temporaries.allTreeBrushIndexOrders[b];
-                                compactHierarchy.ClearAllStatusFlags(brushIndexOrder.compactNodeID);
-                            }
-                        }
-                        #endregion
-
-                        if (treeUpdate.updateCount <= 0 &&
-                            treeUpdate.brushCount > 0)
-                            continue;
-
-                        //
-                        // Call delegate to convert the generated meshes in whatever we need 
-                        //  For example, it could create/update Meshes/MeshRenderers/MeshFilters/Gameobjects etc.
-                        //  But it could eventually, optionally, output entities instead at some point
-                        //
-                        #region Finish Mesh Updates
-                        if (finishMeshUpdates != null)
-                        {
-                            using (new ProfilerMarker("CSG_FinishMeshUpdates").Auto())
-                            {
-                                var meshUpdates = new ChiselMeshUpdates()
-                                {
-									vertexBufferContents            = treeUpdate.Temporaries.vertexBufferContents,
-									meshDataArray                   = treeUpdate.Temporaries.meshDataArray,
-									meshUpdatesColliders            = treeUpdate.Temporaries.meshUpdatesColliders,
-									meshUpdatesRenderables          = treeUpdate.Temporaries.meshUpdatesRenderables,
-									meshUpdatesDebugVisualizations  = treeUpdate.Temporaries.meshUpdatesDebugVisualizations
-                                };
-								var usedMeshCount = finishMeshUpdates(treeUpdate.tree, meshUpdates, treeUpdate.dependencies);
-                                treeUpdate.Temporaries.meshDataArray = default;
-							}
-                        }
-                        #endregion
-                    }
-                }
-                finally
-                {
-                    #region Ensure meshes are cleaned up
-                    for (int t = 0; t < treeUpdateLength; t++)
-                    {
-                        ref var treeUpdate = ref s_TreeUpdates[t];
-
-                        // Error or not, our jobs need to be completed at this point
-                        treeUpdate.dependencies.Complete();
-
-                        // Ensure our meshDataArray ends up being disposed, even if we had errors
-                        if (treeUpdate.Temporaries.meshDataArray.Length > 0)
-                        {
-                            try { treeUpdate.Temporaries.meshDataArray.Dispose(); } catch { }
-                        }
-                        treeUpdate.Temporaries.meshDataArray = default;
+                        if (treeUpdateLength == 0)
+                            return finalJobHandle;
                     }
                     #endregion
 
-                    #region Free temporaries
-                    // TODO: most of these disposes can be scheduled before we complete and write to the meshes, 
-                    // so that these disposes can happen at the same time as the mesh updates in finishMeshUpdates
-                    using (new ProfilerMarker("CSG_FreeTemporaries").Auto())
+                    //
+                    // Initialize our data structures
+                    //
+                    #region Initialize temporaries
+                    using (new ProfilerMarker("CSG_TreeUpdate_Initialize").Auto())
                     {
                         for (int t = 0; t < treeUpdateLength; t++)
                         {
-                            ref var treeUpdate = ref s_TreeUpdates[t];
-                            treeUpdate.FreeTemporaries(ref finalJobHandle);
-                            treeUpdate.Temporaries = default;
+                            treeUpdates[t].Initialize();
                         }
-                        GeneratorJobPoolManager.Clear();
                     }
                     #endregion
-                }
-                return finalJobHandle;
-            }
+
+					try
+                    {
+                        try
+                        {
+                            //
+                            // Preprocess the data we need to perform CSG, figure what needs to be updated in the tree (might be nothing)
+                            //
+                            #region Schedule cache update jobs
+                            using (new ProfilerMarker("CSG_RunMeshInitJobs").Auto())
+                            {
+                                for (int t = 0; t < treeUpdateLength; t++)
+                                {
+                                    treeUpdates[t].RunMeshInitJobs(generatorPoolJobHandle);
+                                }
+                            }
+                            #endregion
+
+                            //
+                            // Schedule chain of jobs that will generate our surface meshes 
+                            // At this point we need previously scheduled jobs to be completed so we know what actually needs to be updated, if anything
+                            //
+                            #region Schedule CSG jobs
+                            using (new ProfilerMarker("CSG_RunMeshUpdateJobs").Auto())
+                            {
+                                // Reverse order since we sorted the trees from big to small & small trees are more likely to have already completed
+                                for (int t = treeUpdateLength - 1; t >= 0; t--)
+                                {
+                                    ref var treeUpdate = ref treeUpdates[t];
+                                    // TODO: figure out if there's a way around this ....
+                                    treeUpdate.JobHandles.transformTreeBrushIndicesListJobHandle.readWriteBarrier.Complete();
+                                    treeUpdate.JobHandles.rebuildTreeBrushIndexOrdersJobHandle.writeBarrier.Complete();
+                                    treeUpdate.updateCount = treeUpdate.Temporaries.rebuildTreeBrushIndexOrders.Length;
+
+                                    if (treeUpdate.updateCount <= 0)
+                                        continue;
+
+                                    treeUpdate.RunMeshUpdateJobs();
+                                }
+                            }
+                            #endregion
+                        }
+                        finally
+                        {
+						    //
+						    // Dispose temporaries that we don't need anymore
+						    //
+						    #region Cleanup
+						    for (int t = 0; t < treeUpdateLength; t++)
+                            {
+                                ref var treeUpdate = ref treeUpdates[t];
+                                treeUpdate.PreMeshUpdateDispose();
+                            }
+						    #endregion
+					    }
+
+					    //
+					    // Wait for our scheduled mesh update jobs to finish, ensure our components are setup correctly, and upload our mesh data to the meshes
+					    //
+
+					    for (int t = 0; t < treeUpdateLength; t++)
+                        {
+                            ref var treeUpdate = ref treeUpdates[t];
+                            treeUpdate.dependencies = JobHandleExtensions.CombineDependencies(treeUpdate.JobHandles.compactHierarchyJobHandle.readWriteBarrier,
+																						      treeUpdate.JobHandles.meshDatasJobHandle.writeBarrier,
+                                                                                              treeUpdate.JobHandles.meshUpdatesJobHandle.writeBarrier,
+                                                                                              treeUpdate.JobHandles.colliderMeshUpdatesJobHandle.writeBarrier,
+                                                                                              treeUpdate.JobHandles.debugHelperMeshesJobHandle.writeBarrier,
+                                                                                              treeUpdate.JobHandles.renderMeshesJobHandle.writeBarrier,
+                                                                                              treeUpdate.JobHandles.vertexBufferContents_triangleBrushIndicesJobHandle.writeBarrier,
+                                                                                              treeUpdate.JobHandles.vertexBufferContents_meshesJobHandle.writeBarrier);
+
+                            // TODO: get rid of these crazy legacy flags
+                            #region Clear tree/brush status flags 
+                            ref var compactHierarchy = ref CompactHierarchyManager.GetHierarchy(treeUpdate.treeCompactNodeID);
+                            using (new ProfilerMarker("CSG_ClearFlags").Auto())
+                            {
+                                compactHierarchy.ClearAllStatusFlags(treeUpdate.treeCompactNodeID);
+                                for (int b = 0; b < treeUpdate.brushCount; b++)
+                                {
+                                    var brushIndexOrder = treeUpdate.Temporaries.allTreeBrushIndexOrders[b];
+                                    compactHierarchy.ClearAllStatusFlags(brushIndexOrder.compactNodeID);
+                                }
+                            }
+                            #endregion
+
+                            if (treeUpdate.updateCount <= 0 &&
+                                treeUpdate.brushCount > 0)
+                                continue;
+
+                            //
+                            // Call delegate to convert the generated meshes in whatever we need 
+                            //  For example, it could create/update Meshes/MeshRenderers/MeshFilters/Gameobjects etc.
+                            //  But it could eventually, optionally, output entities instead at some point
+                            //
+                            #region Finish Mesh Updates
+                            if (finishMeshUpdates != null)
+                            {
+                                using (new ProfilerMarker("CSG_FinishMeshUpdates").Auto())
+                                {
+                                    var meshUpdates = new ChiselMeshUpdates()
+                                    {
+									    vertexBufferContents            = treeUpdate.Temporaries.vertexBufferContents,
+									    meshDataArray                   = treeUpdate.Temporaries.meshDataArray,
+									    meshUpdatesColliders            = treeUpdate.Temporaries.meshUpdatesColliders,
+									    meshUpdatesRenderables          = treeUpdate.Temporaries.meshUpdatesRenderables,
+									    meshUpdatesDebugVisualizations  = treeUpdate.Temporaries.meshUpdatesDebugVisualizations
+                                    };
+								    var usedMeshCount = finishMeshUpdates(treeUpdate.tree, meshUpdates, treeUpdate.dependencies);
+                                    treeUpdate.Temporaries.meshDataArray = default;
+							    }
+                            }
+                            #endregion
+                        }
+                    }
+                    finally
+                    {
+                        #region Ensure meshes are cleaned up
+                        for (int t = 0; t < treeUpdateLength; t++)
+                        {
+                            ref var treeUpdate = ref treeUpdates[t];
+
+                            // Error or not, our jobs need to be completed at this point
+                            treeUpdate.dependencies.Complete();
+
+                            // Ensure our meshDataArray ends up being disposed, even if we had errors
+                            if (treeUpdate.Temporaries.meshDataArray.Length > 0)
+                            {
+                                try { treeUpdate.Temporaries.meshDataArray.Dispose(); } catch { }
+                            }
+                            treeUpdate.Temporaries.meshDataArray = default;
+                        }
+                        #endregion
+
+                        #region Free temporaries
+                        // TODO: most of these disposes can be scheduled before we complete and write to the meshes, 
+                        // so that these disposes can happen at the same time as the mesh updates in finishMeshUpdates
+                        using (new ProfilerMarker("CSG_FreeTemporaries").Auto())
+                        {
+                            JobHandle freeJobs = default;
+                            for (int t = 0; t < treeUpdateLength; t++)
+                            {
+                                ref var treeUpdate = ref treeUpdates[t];
+								freeJobs = JobHandle.CombineDependencies(freeJobs, treeUpdate.FreeTemporaries(ref finalJobHandle));
+                                treeUpdate.Temporaries = default;
+                            }
+                            GeneratorJobPoolManager.Clear();
+                            freeJobs.Complete();
+						}
+                        #endregion
+                    }
+                    return finalJobHandle;
+				}
+				finally
+				{
+					ArrayPool<TreeUpdate>.Shared.Return(treeUpdates);
+				}
+			}
 
             public void RunMeshInitJobs(JobHandle dependsOn)
 			{
@@ -688,11 +690,8 @@ namespace Chisel.Core
                     {
                         const bool runInParallel = runInParallelDefault;
                         Temporaries.transformTreeBrushIndicesList.Clear();
-                        Temporaries.brushBoundsUpdateList.Clear();
                         if (Temporaries.transformTreeBrushIndicesList.Capacity < this.brushCount)
                             Temporaries.transformTreeBrushIndicesList.SetCapacity(this.brushCount);
-                        if (Temporaries.brushBoundsUpdateList.Capacity < this.brushCount)
-                            Temporaries.brushBoundsUpdateList.SetCapacity(this.brushCount);
                         var findModifiedBrushesJob = new FindModifiedBrushesJob
                         {
                             // Read
@@ -705,8 +704,7 @@ namespace Chisel.Core
                             rebuildTreeBrushIndexOrders   = Temporaries.rebuildTreeBrushIndexOrders,
 
                             // Write
-                            transformTreeBrushIndicesList = Temporaries.transformTreeBrushIndicesList.AsParallelWriter(),
-                            brushBoundsUpdateList         = Temporaries.brushBoundsUpdateList.AsParallelWriter()
+                            transformTreeBrushIndicesList = Temporaries.transformTreeBrushIndicesList.AsParallelWriter()
                         };
                         var handle = findModifiedBrushesJob.Schedule(runInParallel,
                             new ReadJobHandles(
@@ -715,8 +713,7 @@ namespace Chisel.Core
 								ref JobHandles.compactHierarchyJobHandle),
                             new WriteJobHandles(
                                 ref JobHandles.rebuildTreeBrushIndexOrdersJobHandle,
-                                ref JobHandles.transformTreeBrushIndicesListJobHandle,
-                                ref JobHandles.brushBoundsUpdateListJobHandle));
+                                ref JobHandles.transformTreeBrushIndicesListJobHandle));
                         handle.Complete();
                     }
                     #endregion
@@ -1212,9 +1209,10 @@ namespace Chisel.Core
                 // Determine all surfaces and intersections
                 //
 
-                #region Determine Intersection Surfaces
-                // Find all pairs of brush intersections for each brush
-                using (new ProfilerMarker("Job_PrepareBrushPairIntersections").Auto())
+                NativeStream intersectingBrushesStream;
+				#region Determine Intersection Surfaces
+				// Find all pairs of brush intersections for each brush
+				using (new ProfilerMarker("Job_PrepareBrushPairIntersections").Auto())
                 {
                     const bool runInParallel = runInParallelDefault;
                     var findBrushPairsJob = new FindBrushPairsJob
@@ -1233,7 +1231,7 @@ namespace Chisel.Core
                             ref JobHandles.brushesTouchedByBrushCacheJobHandle),
                         new WriteJobHandles(ref JobHandles.uniqueBrushPairsJobHandle));
 
-                    NativeCollection.ScheduleConstruct(runInParallel, out Temporaries.intersectingBrushesStream, Temporaries.uniqueBrushPairs,
+                    NativeCollection.ScheduleConstruct(runInParallel, out intersectingBrushesStream, Temporaries.uniqueBrushPairs,
                                                         new ReadJobHandles(
                                                             ref JobHandles.uniqueBrushPairsJobHandle
                                                             ),
@@ -1250,7 +1248,7 @@ namespace Chisel.Core
                         brushMeshLookup         = Temporaries.brushMeshLookup,
 
                         // Write
-                        intersectingBrushesStream = Temporaries.intersectingBrushesStream.AsWriter()
+                        intersectingBrushesStream = intersectingBrushesStream.AsWriter()
                     };
                     prepareBrushPairIntersectionsJob.Schedule(runInParallel, Temporaries.uniqueBrushPairs, 1,
                         new ReadJobHandles(
@@ -1326,7 +1324,7 @@ namespace Chisel.Core
                         // Read
                         brushTreeSpacePlaneCache    = chiselLookupValues.brushTreeSpacePlaneCache,
                         treeSpaceVerticesCache      = chiselLookupValues.treeSpaceVerticesCache,
-                        intersectingBrushesStream   = Temporaries.intersectingBrushesStream.AsReader(),
+                        intersectingBrushesStream   = intersectingBrushesStream.AsReader(),
 
                         // Write
                         outputSurfaceVertices       = Temporaries.outputSurfaceVertices.AsParallelWriterExt(),
@@ -1342,7 +1340,7 @@ namespace Chisel.Core
                             ref JobHandles.outputSurfaceVerticesJobHandle,
                             ref JobHandles.outputSurfacesJobHandle));
 
-                    NativeCollection.ScheduleDispose(runInParallel, ref Temporaries.intersectingBrushesStream, currentJobHandle);
+                    NativeCollection.ScheduleDispose(runInParallel, ref intersectingBrushesStream, currentJobHandle);
                 }
 
                 using (new ProfilerMarker("Job_GatherOutputSurfaces").Auto())
@@ -1363,11 +1361,12 @@ namespace Chisel.Core
                             ref JobHandles.outputSurfacesJobHandle,
                             ref JobHandles.outputSurfacesRangeJobHandle));
                 }
-
+                
+                NativeStream dataStream1;
                 using (new ProfilerMarker("Job_FindLoopOverlapIntersections").Auto())
                 {
                     const bool runInParallel = runInParallelDefault;
-                    NativeCollection.ScheduleConstruct(runInParallel, out Temporaries.dataStream1, Temporaries.allUpdateBrushIndexOrders,
+                    NativeCollection.ScheduleConstruct(runInParallel, out dataStream1, Temporaries.allUpdateBrushIndexOrders,
                                                         new ReadJobHandles(
                                                             ref JobHandles.allUpdateBrushIndexOrdersJobHandle
                                                             ),
@@ -1392,7 +1391,7 @@ namespace Chisel.Core
                         loopVerticesLookup          = Temporaries.loopVerticesLookup,
 
                         // Write
-                        output = Temporaries.dataStream1.AsWriter()
+                        output = dataStream1.AsWriter()
                     };
                     findLoopOverlapIntersectionsJob.Schedule(runInParallel, Temporaries.allUpdateBrushIndexOrders, 1,
                         new ReadJobHandles(
@@ -1441,7 +1440,7 @@ namespace Chisel.Core
                 // Perform CSG on prepared surfaces, giving each surface a categorization
                 //
 
-                #region Perform CSG     
+                #region Perform CSG 
                 using (new ProfilerMarker("Job_UpdateBrushCategorizationTables").Auto())
                 {
                     const bool runInParallel = runInParallelDefault;
@@ -1465,10 +1464,12 @@ namespace Chisel.Core
                         new WriteJobHandles(ref JobHandles.routingTableCacheJobHandle));
                 }
 
+
+				NativeStream dataStream2;
                 using (new ProfilerMarker("Job_PerformCSG").Auto())
                 {
                     const bool runInParallel = runInParallelDefault;
-                    NativeCollection.ScheduleConstruct(runInParallel, out Temporaries.dataStream2, Temporaries.allUpdateBrushIndexOrders,
+                    NativeCollection.ScheduleConstruct(runInParallel, out dataStream2, Temporaries.allUpdateBrushIndexOrders,
                                                         new ReadJobHandles(
                                                             ref JobHandles.allUpdateBrushIndexOrdersJobHandle
                                                             ),
@@ -1486,10 +1487,10 @@ namespace Chisel.Core
                         brushTreeSpacePlaneCache    = chiselLookupValues.brushTreeSpacePlaneCache,
                         brushesTouchedByBrushCache  = chiselLookupValues.brushesTouchedByBrushCache,
                         loopVerticesLookup          = Temporaries.loopVerticesLookup,
-                        input                       = Temporaries.dataStream1.AsReader(),
+                        input                       = dataStream1.AsReader(),
 
                         // Write
-                        output                      = Temporaries.dataStream2.AsWriter(),
+                        output                      = dataStream2.AsWriter(),
                     };
                     var currentJobHandle = performCSGJob.Schedule(runInParallel, Temporaries.allUpdateBrushIndexOrders, 1,
                         new ReadJobHandles(
@@ -1502,7 +1503,7 @@ namespace Chisel.Core
                         new WriteJobHandles(
                             ref JobHandles.dataStream2JobHandle));
 
-                    NativeCollection.ScheduleDispose(runInParallel, ref Temporaries.dataStream1, currentJobHandle);
+                    NativeCollection.ScheduleDispose(runInParallel, ref dataStream1, currentJobHandle);
                 }
 				#endregion
 
@@ -1520,7 +1521,7 @@ namespace Chisel.Core
                         allUpdateBrushIndexOrders = Temporaries.allUpdateBrushIndexOrders,
                         basePolygonCache          = chiselLookupValues.basePolygonCache,
                         transformationCache       = chiselLookupValues.transformationCache,
-                        input                     = Temporaries.dataStream2.AsReader(),
+                        input                     = dataStream2.AsReader(),
                         meshQueries               = Temporaries.meshQueries,
 						instanceIDLookup          = CompactHierarchyManager.GetReadOnlyInstanceIDLookup(),
 
@@ -1536,7 +1537,7 @@ namespace Chisel.Core
                             ref JobHandles.meshQueriesJobHandle),
                         new WriteJobHandles(ref JobHandles.brushRenderBufferCacheJobHandle));
 
-					NativeCollection.ScheduleDispose(runInParallel, ref Temporaries.dataStream2, currentJobHandle);
+					NativeCollection.ScheduleDispose(runInParallel, ref dataStream2, currentJobHandle);
                 }
                 #endregion
 
@@ -1994,8 +1995,7 @@ namespace Chisel.Core
                                                     JobHandles.compactTreeRefJobHandle.writeBarrier,
                                                     JobHandles.needRemappingRefJobHandle.writeBarrier,
                                                     JobHandles.nodeIDValueToNodeOrderOffsetRefJobHandle.writeBarrier,
-                                                    JobHandles.transformTreeBrushIndicesListJobHandle.writeBarrier,
-                                                    JobHandles.brushBoundsUpdateListJobHandle.writeBarrier)
+                                                    JobHandles.transformTreeBrushIndicesListJobHandle.writeBarrier)
                                             );
 
                 var chiselLookupValues = ChiselTreeLookup.Value[this.tree];
@@ -2010,7 +2010,6 @@ namespace Chisel.Core
                 lastJobHandle.AddDependency(Temporaries.parameterCounts              .SafeDispose(JobHandles.parameterCountsJobHandle.readWriteBarrier));
                 
                 lastJobHandle.AddDependency(Temporaries.transformTreeBrushIndicesList.SafeDispose(JobHandles.transformTreeBrushIndicesListJobHandle.readWriteBarrier));
-                lastJobHandle.AddDependency(Temporaries.brushBoundsUpdateList        .SafeDispose(JobHandles.brushBoundsUpdateListJobHandle.readWriteBarrier));
                 lastJobHandle.AddDependency(Temporaries.brushes                      .SafeDispose(JobHandles.brushesJobHandle.readWriteBarrier));
                 lastJobHandle.AddDependency(Temporaries.nodes                        .SafeDispose(JobHandles.nodesJobHandle.readWriteBarrier));
                 lastJobHandle.AddDependency(Temporaries.brushRenderData              .SafeDispose(JobHandles.brushRenderDataJobHandle.readWriteBarrier));
@@ -2047,7 +2046,7 @@ namespace Chisel.Core
                 return lastJobHandle;
             }
 
-            public JobHandle FreeTemporaries(ref JobHandle finalJobHandle)
+			public JobHandle FreeTemporaries(ref JobHandle finalJobHandle)
             {
                 // Combine all JobHandles of all jobs to ensure that we wait for ALL of them to finish 
                 // before we dispose of our temporaries.
@@ -2095,8 +2094,6 @@ namespace Chisel.Core
                                                     JobHandles.uniqueBrushPairsJobHandle.writeBarrier),
                                                 JobHandleExtensions.CombineDependencies(
                                                     JobHandles.transformTreeBrushIndicesListJobHandle.writeBarrier,
-                                                    JobHandles.brushBoundsUpdateListJobHandle.writeBarrier,
-                                                    //JobHandles.brushesJobHandle.writeBarrier,
                                                     JobHandles.nodesJobHandle.writeBarrier,
                                                     JobHandles.parametersJobHandle.writeBarrier,
                                                     JobHandles.allKnownBrushMeshIndicesJobHandle.writeBarrier,
@@ -2156,7 +2153,9 @@ namespace Chisel.Core
                 lastJobHandle.AddDependency(dependencies);
                 
                 chiselLookupValues.lastJobHandle = lastJobHandle;
-                return lastJobHandle;
+                lastJobHandle.Complete();
+
+				return lastJobHandle;
             }
         }
     }

@@ -7,26 +7,26 @@ namespace Chisel.Editors
 {
     internal static class GUIConstants
     {
-        public const float defaultLineScale			= 1.0f;
-        public const float visibleOuterLineDots		= 2.0f;
-        public const float visibleInnerLineDots		= 1.0f;
+        public const float kDefaultLineScale		= 1.0f;
+        public const float kVisibleOuterLineDots	= 2.0f;
+        public const float kVisibleInnerLineDots	= 1.0f;
 
-        public const float invisibleOuterLineDots	= 2.0f;
-        public const float invisibleInnerLineDots	= 1.0f;
+        public const float kInvisibleOuterLineDots	= 2.0f;
+        public const float kInvisibleInnerLineDots	= 1.0f;
 
-        public const float invalidLineDots			= 2.0f;
+        public const float kInvalidLineDots			= 2.0f;
 
-        public const float unselected_factor		= 0.65f;
-        public const float innerFactor				= 0.70f;
-        public const float occludedFactor			= 0.80f;
+        public const float kUnselectedFactor		= 0.65f;
+        public const float kInnerFactor				= 0.70f;
+        public const float kOccludedFactor			= 0.80f;
     }
 
     public sealed class ChiselRenderer
     {
-		Chisel.Editors.LineMeshManager	zTestLinesManager		= new Chisel.Editors.LineMeshManager();
-		Chisel.Editors.LineMeshManager	noZTestLinesManager		= new Chisel.Editors.LineMeshManager();
-		Chisel.Editors.PointMeshManager	pointManager			= new Chisel.Editors.PointMeshManager();
-		Chisel.Editors.PolygonMeshManager	polygonManager			= new Chisel.Editors.PolygonMeshManager();
+		readonly LineMeshManager    zTestLinesManager	= new();
+		readonly LineMeshManager    noZTestLinesManager	= new();
+		readonly PointMeshManager   pointManager		= new();
+		readonly PolygonMeshManager	polygonManager		= new();
 
         public void Destroy()
         {
@@ -261,7 +261,7 @@ namespace Chisel.Editors
                 indices.Length > 0 &&
                 (indices.Length & 1) == 0)
             {
-                noZTestLinesManager.DrawLines(transformation, vertices, indices, color, thickness: 0.5f, dashSize: GUIConstants.invisibleInnerLineDots);
+                noZTestLinesManager.DrawLines(transformation, vertices, indices, color, thickness: 0.5f, dashSize: GUIConstants.kInvisibleInnerLineDots);
             }
         }
         
@@ -269,13 +269,13 @@ namespace Chisel.Editors
         { 
             Color outerColor		 = wireframeColor;
             Color innerColor		 = outerColor;
-            innerColor.a *= GUIConstants.innerFactor;
+            innerColor.a *= GUIConstants.kInnerFactor;
 
             Color outerOccludedColor = wireframeColor;// * GUIConstants.occludedFactor;
             Color innerOccludedColor = wireframeColor;// * GUIConstants.occludedFactor;
             
             outerOccludedColor.a *= 0.5f;
-            innerOccludedColor.a *= 0.5f * GUIConstants.innerFactor;;
+            innerOccludedColor.a *= 0.5f * GUIConstants.kInnerFactor;;
 
             DrawOutlines(transformation, wireframe, outerColor, outerOccludedColor, innerColor, innerOccludedColor, thickness, onlyInnerLines, showInnerLines);
         }
@@ -299,7 +299,7 @@ namespace Chisel.Editors
                 return;
 
             if (thickness <= 0)
-                thickness = GUIConstants.defaultLineScale;
+                thickness = GUIConstants.kDefaultLineScale;
 
             if (!onlyInnerLines && wireframe.VisibleOuterLines != null && wireframe.VisibleOuterLines.Length > 0)
                 zTestLinesManager.DrawLines(transformation, wireframe.Vertices, wireframe.VisibleOuterLines, outerColor, thickness: thickness);
@@ -311,7 +311,7 @@ namespace Chisel.Editors
             //    zTestLinesManager.DrawLines(transformation, wireframe.Vertices, wireframe.InvisibleOuterLines, outerOccludedColor, dashSize: GUIConstants.invisibleInnerLineDots, thickness: GUIConstants.defaultLineScale);
             
             if (!onlyInnerLines && wireframe.VisibleOuterLines != null && wireframe.VisibleOuterLines.Length > 0)
-                noZTestLinesManager.DrawLines(transformation, wireframe.Vertices, wireframe.VisibleOuterLines, innerOccludedColor, thickness: thickness, dashSize: GUIConstants.invisibleInnerLineDots);
+                noZTestLinesManager.DrawLines(transformation, wireframe.Vertices, wireframe.VisibleOuterLines, innerOccludedColor, thickness: thickness, dashSize: GUIConstants.kInvisibleInnerLineDots);
 
             //if (showInnerLines && wireframe.VisibleInnerLines != null && wireframe.VisibleInnerLines.Length > 0)
             //    noZTestLinesManager.DrawLines(transformation, wireframe.Vertices, wireframe.VisibleInnerLines, innerOccludedColor, thickness: thickness, dashSize: GUIConstants.invisibleInnerLineDots);
@@ -356,23 +356,23 @@ namespace Chisel.Editors
         {
             if (Event.current.type != EventType.Repaint)
                 return;
-            var zTestGenericLineMaterial    = Chisel.Editors.SceneHandleMaterialManager.ZTestGenericLine;
-            var noZTestGenericLineMaterial  = Chisel.Editors.SceneHandleMaterialManager.NoZTestGenericLine;
-            var coloredPolygonMaterial		= Chisel.Editors.SceneHandleMaterialManager.ColoredPolygonMaterial;
-            var customDotMaterial			= Chisel.Editors.SceneHandleMaterialManager.CustomDotMaterial;
-            var surfaceNoDepthMaterial		= Chisel.Editors.SceneHandleMaterialManager.SurfaceNoDepthMaterial;
+            var zTestGenericLineMaterial    = SceneHandleMaterialManager.ZTestGenericLine;
+            var noZTestGenericLineMaterial  = SceneHandleMaterialManager.NoZTestGenericLine;
+            var coloredPolygonMaterial		= SceneHandleMaterialManager.ColoredPolygonMaterial;
+            var customDotMaterial			= SceneHandleMaterialManager.CustomDotMaterial;
+            var surfaceNoDepthMaterial		= SceneHandleMaterialManager.SurfaceNoDepthMaterial;
 
             polygonManager.Render(camera, coloredPolygonMaterial);
 
-			Chisel.Editors.SceneHandleMaterialManager.LineDashMultiplier = 1.0f;
-			Chisel.Editors.SceneHandleMaterialManager.LineThicknessMultiplier = GUIConstants.defaultLineScale;
+			SceneHandleMaterialManager.LineDashMultiplier = 1.0f;
+			SceneHandleMaterialManager.LineThicknessMultiplier = GUIConstants.kDefaultLineScale;
             noZTestLinesManager.Render(camera, noZTestGenericLineMaterial);
 
-			Chisel.Editors.SceneHandleMaterialManager.LineDashMultiplier = 1.0f;
-			Chisel.Editors.SceneHandleMaterialManager.LineThicknessMultiplier = GUIConstants.defaultLineScale;
+			SceneHandleMaterialManager.LineDashMultiplier = 1.0f;
+			SceneHandleMaterialManager.LineThicknessMultiplier = GUIConstants.kDefaultLineScale;
             zTestLinesManager.Render(camera, zTestGenericLineMaterial);
 
-			Chisel.Editors.SceneHandleMaterialManager.LineAlphaMultiplier = 1.0f;
+			SceneHandleMaterialManager.LineAlphaMultiplier = 1.0f;
 
             pointManager.Render(camera, customDotMaterial, surfaceNoDepthMaterial);
         }

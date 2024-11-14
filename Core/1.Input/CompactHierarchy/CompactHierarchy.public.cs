@@ -37,7 +37,8 @@ namespace Chisel.Core
     [GenerateTestsForBurstCompatibility]
     public readonly struct CompactHierarchyID : IComparable<CompactHierarchyID>, IEquatable<CompactHierarchyID>
     {
-        public static readonly CompactHierarchyID Invalid = default;
+        readonly static CompactHierarchyID kInvalid = default;
+		public static CompactHierarchyID Invalid { [MethodImpl(MethodImplOptions.AggressiveInlining)] get { return kInvalid; } }
 
 		public readonly SlotIndex slotIndex;
 		internal CompactHierarchyID(SlotIndex slotIndex) { this.slotIndex = slotIndex; }
@@ -53,9 +54,11 @@ namespace Chisel.Core
         [EditorBrowsable(EditorBrowsableState.Never), MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public readonly override bool Equals(object obj) { if (obj is CompactHierarchyID id) return this == id; return false; }
         [EditorBrowsable(EditorBrowsableState.Never), MethodImpl(MethodImplOptions.AggressiveInlining)]
-		public readonly override int GetHashCode() { return slotIndex.GetHashCode(); }
+		public readonly override int GetHashCode() { return (int)Hash(); }
+		[EditorBrowsable(EditorBrowsableState.Never), MethodImpl(MethodImplOptions.AggressiveInlining)]
+		public readonly uint Hash() { return slotIndex.Hash(); }
 
-        [EditorBrowsable(EditorBrowsableState.Never), MethodImpl(MethodImplOptions.AggressiveInlining)]
+		[EditorBrowsable(EditorBrowsableState.Never), MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public readonly int CompareTo(CompactHierarchyID other) { return slotIndex.CompareTo(other.slotIndex); }
 
         [EditorBrowsable(EditorBrowsableState.Never), MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -66,15 +69,16 @@ namespace Chisel.Core
     [GenerateTestsForBurstCompatibility]
     public readonly struct CompactNodeID : IComparable<CompactNodeID>, IEquatable<CompactNodeID>
     {
-        public static readonly CompactNodeID Invalid = default;
+        readonly static CompactNodeID kInvalid = default;
+		public static CompactNodeID Invalid { [MethodImpl(MethodImplOptions.AggressiveInlining)] get { return kInvalid; } }
 
-        public readonly SlotIndex slotIndex;
+		public readonly SlotIndex slotIndex;
 
 		public readonly CompactHierarchyID hierarchyID;
 
         internal CompactNodeID(CompactHierarchyID hierarchyID, SlotIndex slotIndex) { this.hierarchyID = hierarchyID; this.slotIndex = slotIndex; }
 
-        [EditorBrowsable(EditorBrowsableState.Never), BurstDiscard]
+		[EditorBrowsable(EditorBrowsableState.Never), BurstDiscard]
         public readonly override string ToString() { return $"{nameof(slotIndex)} = {slotIndex}, {nameof(hierarchyID)} = {hierarchyID}"; }
 
         #region Comparison
@@ -86,9 +90,11 @@ namespace Chisel.Core
 		public readonly override bool Equals(object obj) { if (obj is CompactNodeID id) return this == id; return false; }
 
         [EditorBrowsable(EditorBrowsableState.Never), MethodImpl(MethodImplOptions.AggressiveInlining)]
-		public readonly override int GetHashCode() { return slotIndex.GetHashCode(); }
+		public readonly override int GetHashCode() { return (int)Hash(); }
+		[EditorBrowsable(EditorBrowsableState.Never), MethodImpl(MethodImplOptions.AggressiveInlining)]
+		public uint Hash() { unchecked { return (uint)math.hash(new uint2(slotIndex.Hash(), hierarchyID.Hash())); } }
 
-        [EditorBrowsable(EditorBrowsableState.Never), MethodImpl(MethodImplOptions.AggressiveInlining)]
+		[EditorBrowsable(EditorBrowsableState.Never), MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public readonly int CompareTo(CompactNodeID other)
         {
             var diff = hierarchyID.CompareTo(other.hierarchyID);
@@ -127,13 +133,13 @@ namespace Chisel.Core
         public NodeID           nodeID;         // TODO: figure out how to get rid of this
         public CompactNodeID    compactNodeID;     
         public CompactNodeID    parentID;       // TODO: rewrite updating code to use index here instead of ID (removes indirection)
-		//public SlotIndex        outlineID;      // TODO: remove need for this
-        public Int32            childCount;
+		public Int32            childCount;
         public Int32            childOffset;
 
-        public static readonly CompactChildNode Invalid = default;
+        readonly static CompactChildNode kInvalid = default;
+		public static CompactChildNode Invalid { [MethodImpl(MethodImplOptions.AggressiveInlining)] get { return kInvalid; } }
 
-        public override string ToString() { return $"{nameof(compactNodeID)} = {compactNodeID}, {nameof(parentID)} = {parentID}, {nameof(nodeInformation.instanceID)} = {nodeInformation.instanceID}, {nameof(childCount)} = {childCount}, {nameof(childOffset)} = {childOffset}, {nameof(nodeInformation.brushMeshHash)} = {nodeInformation.brushMeshHash}, {nameof(nodeInformation.operation)} = {nodeInformation.operation}, {nameof(nodeInformation.transformation)} = {nodeInformation.transformation}"; }
+		public override readonly string ToString() { return $"{nameof(compactNodeID)} = {compactNodeID}, {nameof(parentID)} = {parentID}, {nameof(nodeInformation.instanceID)} = {nodeInformation.instanceID}, {nameof(childCount)} = {childCount}, {nameof(childOffset)} = {childOffset}, {nameof(nodeInformation.brushMeshHash)} = {nodeInformation.brushMeshHash}, {nameof(nodeInformation.operation)} = {nodeInformation.operation}, {nameof(nodeInformation.transformation)} = {nodeInformation.transformation}"; }
     }
 
     // TODO: make sure everything is covered in tests

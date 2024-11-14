@@ -26,9 +26,9 @@ namespace Chisel.Editors
         static bool s_CurrHaveOperationNodes = false;
         static bool s_CurrHaveGenerators = false;
         static CSGOperationType? s_CurrOperation = null;
-        static readonly List<ChiselNodeComponent> s_Nodes = new();
-        static readonly List<IChiselHasOperation> s_OperationNodes = new();
-        static readonly List<ChiselGeneratorComponent> s_Generators = new();
+        readonly static List<ChiselNodeComponent> s_Nodes = new();
+        readonly static List<IChiselHasOperation> s_OperationNodes = new();
+        readonly static List<ChiselGeneratorComponent> s_Generators = new();
 
         static void UpdateSelection()
         {
@@ -120,7 +120,7 @@ namespace Chisel.Editors
         }
 
         static ExtraPickingData extraPickingData;
-		static readonly List<ExtraPickingData> extraPickingDatas = new();
+		readonly static List<ExtraPickingData> extraPickingDatas = new();
 
 		static bool record = false;
 

@@ -6,6 +6,7 @@ using Chisel.Components;
 using UnityEditor;
 using UnityEditor.Callbacks;
 using UnityEngine;
+using UnityEngine.Profiling;
 using UnityEngine.Rendering;
 using UnityEngine.SceneManagement;
 
@@ -15,7 +16,7 @@ namespace Chisel.Editors
 	{
 		const string kChiselSection	= "Chisel";
 
-		static readonly (string, DrawModeFlags)[] s_DrawModes = new[]
+		readonly static (string, DrawModeFlags)[] s_DrawModes = new[]
 		{
 			("Shadow Only Surfaces",		DrawModeFlags.HideRenderables | DrawModeFlags.ShowShadowOnly),
 			("Collider Surfaces",			DrawModeFlags.HideRenderables | DrawModeFlags.ShowColliders),
@@ -23,13 +24,35 @@ namespace Chisel.Editors
 			("Shadow Receiving Surfaces",	DrawModeFlags.HideRenderables | DrawModeFlags.ShowShadowReceivers),
 			("Hidden Surfaces",				DrawModeFlags.ShowShadowOnly | DrawModeFlags.ShowDiscarded | DrawModeFlags.ShowUserHidden)
 		};
-		static readonly Dictionary<string, DrawModeFlags> s_DrawModeLookup = new Dictionary<string, DrawModeFlags>();
+		readonly static Dictionary<string, DrawModeFlags> s_DrawModeLookup = new();
+		readonly static HashSet<Camera> s_KnownCameras = new();
 
 
-		static bool drawModesInitialized = false;
+		static bool s_Initialized = false;
+		static void Initialize()
+		{
+			if (s_Initialized)
+				return;
+			s_Initialized = true;
+			if (GraphicsSettings.defaultRenderPipeline == null)
+			{
+				RenderPipelineManager.beginCameraRendering -= CustomOnPostRender;
+				Camera.onPreCull -= DrawWithCamera;
+				Camera.onPreCull += DrawWithCamera;
+			}
+			else
+			{
+				Camera.onPreCull -= DrawWithCamera;
+				RenderPipelineManager.beginCameraRendering -= CustomOnPostRender;
+				RenderPipelineManager.beginCameraRendering += CustomOnPostRender;
+			}
+		}
+
+
+		static bool s_DrawModesInitialized = false;
 		static void SetupDrawModes()
 		{
-			if (drawModesInitialized)
+			if (s_DrawModesInitialized)
 				return;
 
 			s_DrawModeLookup.Clear();
@@ -40,11 +63,8 @@ namespace Chisel.Editors
 				SceneView.AddCameraMode(item.Item1, kChiselSection);
 			}
 
-			drawModesInitialized = true;
+			s_DrawModesInitialized = true;
 		}
-
-		static readonly HashSet<Camera> s_KnownCameras = new();
-
 		private static void CustomOnPostRender(ScriptableRenderContext context, Camera camera) { DrawWithCamera(camera); }
 
 		// TODO: Maybe have a manager to handle rendering for all models at the same time?
@@ -55,15 +75,25 @@ namespace Chisel.Editors
 		{
             if (!camera)
                 return;
+			Profiler.BeginSample("DrawWithCamera");
 			if (s_KnownCameras.Contains(camera))
 			{
+				Profiler.BeginSample("BeginDrawModeForCamera");
 				var drawModeFlags = ChiselUnityVisibilityManager.BeginDrawModeForCamera(camera);
+				Profiler.EndSample();
+				Profiler.BeginSample("OnRenderModels<drawModeFlags>");
 				ChiselModelManager.Instance.OnRenderModels(camera, drawModeFlags);
+				Profiler.EndSample();
+				Profiler.BeginSample("EndDrawModeForCamera");
 				ChiselUnityVisibilityManager.EndDrawModeForCamera();
-            } else
+				Profiler.EndSample();
+			} else
 			{
+				Profiler.BeginSample("OnRenderModels<None>");
 				ChiselModelManager.Instance.OnRenderModels(camera, DrawModeFlags.None);
+				Profiler.EndSample();
 			}
+			Profiler.EndSample();
 		}
 
 		[InitializeOnLoadMethod]
@@ -89,26 +119,6 @@ namespace Chisel.Editors
 		public static void OnPostprocessScene()
 		{
 			ChiselModelManager.Instance.HideDebugVisualizationSurfaces();
-		}
-
-		static bool initialized = false;
-		static void Initialize()
-		{
-			if (initialized)
-				return;
-			initialized = true;
-			if (GraphicsSettings.defaultRenderPipeline == null)
-			{
-				RenderPipelineManager.beginCameraRendering -= CustomOnPostRender;
-				Camera.onPreCull -= DrawWithCamera;
-				Camera.onPreCull += DrawWithCamera;
-			}
-			else
-			{
-				Camera.onPreCull -= DrawWithCamera;
-				RenderPipelineManager.beginCameraRendering -= CustomOnPostRender;
-				RenderPipelineManager.beginCameraRendering += CustomOnPostRender;
-			}
 		}
 
 		public static void HandleDrawMode(SceneView sceneView)

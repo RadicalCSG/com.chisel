@@ -4,6 +4,7 @@ using Chisel.Core;
 using Vector3 = UnityEngine.Vector3;
 using Plane = UnityEngine.Plane;
 using UnityEngine;
+using System.Runtime.CompilerServices;
 
 namespace Chisel.Components
 {
@@ -22,7 +23,7 @@ namespace Chisel.Components
         public CSGTreeBrushIntersection brushIntersection;
         public GameObject gameObject;
 
-        public readonly static ChiselIntersection None = new ChiselIntersection()
+        readonly static ChiselIntersection kNone = new()
         {
             model                   = null,
             treeNode                = null,
@@ -31,5 +32,7 @@ namespace Chisel.Components
             brushIntersection       = CSGTreeBrushIntersection.None,
             gameObject              = null
         };
+        
+        public static ref readonly ChiselIntersection None => ref kNone;
     };
 }

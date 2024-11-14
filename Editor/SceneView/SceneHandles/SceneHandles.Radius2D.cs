@@ -8,7 +8,7 @@ namespace Chisel.Editors
     {
         static float Size2DSlider(Vector3 center, Vector3 direction, Vector3 forward, Vector3 up, Vector3 right, float radius, Axes axes = Axes.None, bool renderDisc = true)
         {
-            var id = GUIUtility.GetControlID (s_Slider2DHash, FocusType.Keyboard);
+            var id = GUIUtility.GetControlID (kSlider2DHash, FocusType.Keyboard);
             return Size2DSlider(id, center, direction, forward, up, right, radius, axes, renderDisc);
         }
 
@@ -32,8 +32,8 @@ namespace Chisel.Editors
             maxRadius = Mathf.Abs(maxRadius); if (maxRadius < minRadius) maxRadius = minRadius;
 
             var isStatic		= (!Tools.hidden && EditorApplication.isPlaying && GameObjectExtensions.ContainsStatic(Selection.gameObjects));
-            var prevDisabled	= SceneHandles.disabled;
-            var prevColor		= SceneHandles.color;
+            var prevDisabled	= SceneHandles.Disabled;
+            var prevColor		= SceneHandles.Color;
 
             var forward = rotation * Vector3.forward;
             var up		= rotation * Vector3.up;
@@ -43,13 +43,13 @@ namespace Chisel.Editors
             GUI.changed = false;
             
             var isDisabled =  isStatic || prevDisabled || Snapping.AxisLocking[1];
-            SceneHandles.color = SceneHandles.StateColor(prevColor, isDisabled, false);
+            SceneHandles.Color = SceneHandles.StateColor(prevColor, isDisabled, false);
 
             radius = Size2DSlider(position,     up, forward, up, right, radius);
             radius = Size2DSlider(position,    -up, forward, up, right, radius);
             
             isDisabled =  isStatic || prevDisabled || Snapping.AxisLocking[0];
-            SceneHandles.color = SceneHandles.StateColor(prevColor, isDisabled, false);
+            SceneHandles.Color = SceneHandles.StateColor(prevColor, isDisabled, false);
 
             radius = Size2DSlider(position,  right, forward, up, right, radius);
             radius = Size2DSlider(position, -right, forward, up, right, radius);
@@ -61,12 +61,12 @@ namespace Chisel.Editors
             if (radius > 0 && renderDisc)
             { 
                 isDisabled =  isStatic || prevDisabled || (Snapping.AxisLocking[0] && Snapping.AxisLocking[1]);
-                SceneHandles.color = SceneHandles.StateColor(prevColor, isDisabled, false);
+                SceneHandles.Color = SceneHandles.StateColor(prevColor, isDisabled, false);
                 
                 SceneHandles.DrawWireDisc(position, forward, radius);
             
-                SceneHandles.disabled = prevDisabled;
-                SceneHandles.color = prevColor;
+                SceneHandles.Disabled = prevDisabled;
+                SceneHandles.Color = prevColor;
             }
             return radius;
         }
@@ -77,8 +77,8 @@ namespace Chisel.Editors
             maxRadius = Mathf.Abs(maxRadius); if (maxRadius < minRadius) maxRadius = minRadius;
 
             var isStatic		= (!Tools.hidden && EditorApplication.isPlaying && GameObjectExtensions.ContainsStatic(Selection.gameObjects));
-            var prevDisabled	= SceneHandles.disabled;
-            var prevColor		= SceneHandles.color;
+            var prevDisabled	= SceneHandles.Disabled;
+            var prevColor		= SceneHandles.Color;
             var prevChanged		= GUI.changed;
             var hasChanged		= false;
 
@@ -104,7 +104,7 @@ namespace Chisel.Editors
             bool noRotation = Event.current.shift;
             
             var isDisabled =  isStatic || prevDisabled;
-            SceneHandles.color = SceneHandles.StateColor(prevColor, isDisabled, false);
+            SceneHandles.Color = SceneHandles.StateColor(prevColor, isDisabled, false);
 
             Vector3 moveDelta = Vector3.zero;
             GUI.changed = false;
@@ -153,7 +153,7 @@ namespace Chisel.Editors
             GUI.changed |= prevChanged | hasChanged;
             
             isDisabled =  isStatic || prevDisabled || (Snapping.AxisLocking[0] && Snapping.AxisLocking[1]);
-            SceneHandles.color = SceneHandles.StateColor(prevColor, isDisabled, false);
+            SceneHandles.Color = SceneHandles.StateColor(prevColor, isDisabled, false);
 
             
             float radiusMagnitude = delta1.magnitude;
@@ -161,19 +161,19 @@ namespace Chisel.Editors
                 SceneHandles.DrawWireDisc(center, up, radiusMagnitude);
             
             
-            SceneHandles.disabled = prevDisabled;
-            SceneHandles.color = prevColor;
+            SceneHandles.Disabled = prevDisabled;
+            SceneHandles.Color = prevColor;
             return radius;
         }
 
         
-        internal static int s_Radius2DHash = "Radius2DHash".GetHashCode();
+        internal readonly static int kRadius2DHash = "Radius2DHash".GetHashCode();
         public static bool Radius2DHandle(Vector3 center, Vector3 up, ref Vector3 radius1, ref Vector3 radius2, float minRadius1 = 0, float minRadius2 = 0, float maxRadius1 = float.PositiveInfinity, float maxRadius2 = float.PositiveInfinity, bool renderDisc = true)
         {
-            var positionId0 = GUIUtility.GetControlID (s_Radius2DHash, FocusType.Keyboard);
-            var positionId1 = GUIUtility.GetControlID (s_Radius2DHash, FocusType.Keyboard);
-            var positionId2 = GUIUtility.GetControlID (s_Radius2DHash, FocusType.Keyboard);
-            var positionId3 = GUIUtility.GetControlID (s_Radius2DHash, FocusType.Keyboard);
+            var positionId0 = GUIUtility.GetControlID (kRadius2DHash, FocusType.Keyboard);
+            var positionId1 = GUIUtility.GetControlID (kRadius2DHash, FocusType.Keyboard);
+            var positionId2 = GUIUtility.GetControlID (kRadius2DHash, FocusType.Keyboard);
+            var positionId3 = GUIUtility.GetControlID (kRadius2DHash, FocusType.Keyboard);
 
             minRadius1 = Mathf.Abs(minRadius1); 
             minRadius2 = Mathf.Abs(minRadius2); 
@@ -181,9 +181,9 @@ namespace Chisel.Editors
             maxRadius2 = Mathf.Abs(maxRadius2); if (maxRadius2 < minRadius2) maxRadius2 = minRadius2;
 
             var isStatic		= (!Tools.hidden && EditorApplication.isPlaying && GameObjectExtensions.ContainsStatic(Selection.gameObjects));
-            var prevColor		= SceneHandles.color;
-            var prevMatrix		= SceneHandles.matrix;
-            var prevDisabled	= SceneHandles.disabled;
+            var prevColor		= SceneHandles.Color;
+            var prevMatrix		= SceneHandles.Matrix;
+            var prevDisabled	= SceneHandles.Disabled;
             var prevChanged		= GUI.changed;
 
             float size;
@@ -211,7 +211,7 @@ namespace Chisel.Editors
             var position3 = center - delta2;
 
             var isDisabled =  isStatic || prevDisabled;
-            SceneHandles.color = SceneHandles.StateColor(prevColor, isDisabled, false);
+            SceneHandles.Color = SceneHandles.StateColor(prevColor, isDisabled, false);
 
             bool noRotation = Event.current.shift;
 
@@ -354,7 +354,7 @@ namespace Chisel.Editors
             if (Event.current.type == EventType.Repaint)
             { 
                 isDisabled =  isStatic || prevDisabled || (Snapping.AxisLocking[0] && Snapping.AxisLocking[1]);
-                SceneHandles.color = SceneHandles.StateColor(prevColor, isDisabled, false);
+                SceneHandles.Color = SceneHandles.StateColor(prevColor, isDisabled, false);
 
             
                 if (delta1Magnitude > Vector3.kEpsilon && delta2Magnitude > Vector3.kEpsilon)
@@ -377,7 +377,7 @@ namespace Chisel.Editors
 
                     var newMatrix	= prevMatrix * ellipsis;
 
-                    SceneHandles.matrix = newMatrix; 
+                    SceneHandles.Matrix = newMatrix; 
                     if (renderDisc)
                         SceneHandles.DrawWireDisc(center, Vector3.forward, 1.0f);
                 } else
@@ -388,11 +388,11 @@ namespace Chisel.Editors
                     SceneHandles.DrawLine(position2, position3);
             }
 
-            SceneHandles.disabled = prevDisabled;
-            SceneHandles.matrix = prevMatrix;
-            SceneHandles.color = prevColor;
+            SceneHandles.Disabled = prevDisabled;
+            SceneHandles.Matrix = prevMatrix;
+            SceneHandles.Color = prevColor;
 
-            var focus = SceneHandleUtility.focusControl;
+            var focus = SceneHandleUtility.FocusControl;
             return  (focus == positionId0) ||
                     (focus == positionId1) ||
                     (focus == positionId2) ||

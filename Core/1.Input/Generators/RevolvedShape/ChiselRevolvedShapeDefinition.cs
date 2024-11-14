@@ -11,15 +11,16 @@ namespace Chisel.Core
     [Serializable]
     public struct ChiselRevolvedShape : IBranchGenerator
     {
-        public readonly static ChiselRevolvedShape DefaultValues = new ChiselRevolvedShape
-        {
+        readonly static ChiselRevolvedShape kDefaultSettings = new()
+		{
             startAngle		= 0.0f,
             totalAngle		= 360.0f,
             curveSegments	= 8,
             revolveSegments	= 8
         };
+		public static ref readonly ChiselRevolvedShape DefaultSettings => ref kDefaultSettings;
 
-        public int      curveSegments;
+		public int      curveSegments;
         public int      revolveSegments;
         public float    startAngle;
         public float    totalAngle;
@@ -106,7 +107,7 @@ namespace Chisel.Core
         #endregion
 
         #region Reset
-        public void Reset() { this = DefaultValues; }
+        public void Reset() { this = DefaultSettings; }
         #endregion
     }
 
@@ -115,22 +116,23 @@ namespace Chisel.Core
     {
         public const string kNodeTypeName = "Revolved Shape";
 
-        public static readonly Curve2D	kDefaultShape			= new Curve2D(new[]{ new CurveControlPoint2D(-1,-1), new CurveControlPoint2D( 1,-1), new CurveControlPoint2D( 1, 1), new CurveControlPoint2D(-1, 1) });
+        readonly static Curve2D	kDefaultShape = new(new[]{ new CurveControlPoint2D(-1,-1), new CurveControlPoint2D( 1,-1), new CurveControlPoint2D( 1, 1), new CurveControlPoint2D(-1, 1) });
+        public static ref readonly Curve2D DefaultShape => ref kDefaultShape;
 
-        public Curve2D  shape;
+		public Curve2D  shape;
 
         //[NamedItems(overflow = "Surface {0}")]
         //public ChiselSurfaceDefinition  surfaceDefinition;
 
         public override void Reset()
         {
-            shape = kDefaultShape;
+            shape = DefaultShape;
             base.Reset();
         }
 
         public override bool Validate() 
         {
-            shape ??= kDefaultShape;
+            shape ??= DefaultShape;
             return base.Validate(); 
         }
 

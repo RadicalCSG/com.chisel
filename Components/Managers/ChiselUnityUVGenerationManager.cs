@@ -7,23 +7,20 @@ using System.Runtime.CompilerServices;
 
 namespace Chisel.Components
 {
-    // TODO: get rid of all statics
-
-    // TODO: fix adding "generated" gameObject causing TransformChanged events that dirty model, which rebuilds components
     // TODO: Modifying a lightmap index *should also be undoable*
-    public sealed class ChiselUnityUVGenerationManager
+    public static class ChiselUnityUVGenerationManager
 	{
         const float kGenerateUVDelayTime = 1.0f;
-        static bool haveUVsToUpdate = false;
+        static bool s_HaveUVsToUpdate = false;
 
         public static void ForceUpdateDelayedUVGeneration()
         {
-            haveUVsToUpdate = true;
+            s_HaveUVsToUpdate = true;
         }
 
         public static bool NeedUVGeneration(ChiselModelComponent model)
         {
-            haveUVsToUpdate = false;
+            s_HaveUVsToUpdate = false;
 
             if (!model)
                 return false;
@@ -39,12 +36,12 @@ namespace Chisel.Components
         
         public static void DelayedUVGeneration(bool force = false)
         {
-            if (!haveUVsToUpdate && !force)
+            if (!s_HaveUVsToUpdate && !force)
                 return;
 
             float currentTime = Time.realtimeSinceStartup;
 
-            haveUVsToUpdate = false;
+            s_HaveUVsToUpdate = false;
             foreach (var model in ChiselModelManager.Instance.Models)
             {
                 if (!model)
@@ -73,7 +70,7 @@ namespace Chisel.Components
                         renderable.uvLightmapUpdateTime = 0;
                         GenerateLightmapUVsForInstance(model, renderable, force);
                     } else
-                        haveUVsToUpdate = true;
+                        s_HaveUVsToUpdate = true;
                 }
             }
         }
@@ -86,7 +83,7 @@ namespace Chisel.Components
                 renderable.meshRenderer.realtimeLightmapIndex = -1;
                 renderable.meshRenderer.lightmapIndex = -1;
                 renderable.uvLightmapUpdateTime = Time.realtimeSinceStartup;
-                haveUVsToUpdate = true;
+                s_HaveUVsToUpdate = true;
             }
         }
 

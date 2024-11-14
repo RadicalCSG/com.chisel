@@ -24,7 +24,7 @@ namespace Chisel.Core
 
         // Write
         [NoAlias, WriteOnly] public NativeList<NodeOrderNodeID>.ParallelWriter transformTreeBrushIndicesList;
-        [NoAlias, WriteOnly] public NativeList<NodeOrderNodeID>.ParallelWriter brushBoundsUpdateList;
+        //[NoAlias, WriteOnly] public NativeList<NodeOrderNodeID>.ParallelWriter brushBoundsUpdateList;
 
         public void Execute()
         {
@@ -47,14 +47,14 @@ namespace Chisel.Core
                         }
 
                         // Fix up all flags
-
+                        /*
                         if (compactHierarchy.IsStatusFlagSet(brushCompactNodeID, NodeStatusFlags.ShapeModified) ||
                             compactHierarchy.IsStatusFlagSet(brushCompactNodeID, NodeStatusFlags.TransformationModified))
                         {
                             if (compactHierarchy.IsValidCompactNodeID(brushCompactNodeID))
                                 brushBoundsUpdateList.AddNoResize(new NodeOrderNodeID { nodeOrder = indexOrder.nodeOrder, compactNodeID = brushCompactNodeID });
                         }
-
+                        */
                         if (compactHierarchy.IsStatusFlagSet(brushCompactNodeID, NodeStatusFlags.ShapeModified))
                         {
                             // Need to update the basePolygons for this node

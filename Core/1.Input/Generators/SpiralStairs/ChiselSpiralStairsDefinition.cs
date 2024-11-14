@@ -10,7 +10,7 @@ namespace Chisel.Core
     [Serializable]
     public struct ChiselSpiralStairs : IBranchGenerator
     {
-        public readonly static ChiselSpiralStairs DefaultValues = new ChiselSpiralStairs
+        readonly static ChiselSpiralStairs kDefaultSettings = new()
         {
             origin		    = float3.zero,
 
@@ -35,9 +35,10 @@ namespace Chisel.Core
 
             bottomSmoothingGroup    = 0
         };
+		public static ref readonly ChiselSpiralStairs DefaultSettings => ref kDefaultSettings;
 
-        // TODO: expose this to user
-        const int smoothSubDivisions = 3;
+		// TODO: expose this to user
+		const int smoothSubDivisions = 3;
 
         [DistanceValue] public float3   origin;
         [DistanceValue] public float	height;
@@ -217,7 +218,7 @@ namespace Chisel.Core
         #endregion
 
         #region Reset
-        public void Reset() { this = DefaultValues; }
+        public void Reset() { this = DefaultSettings; }
         #endregion
     }
 

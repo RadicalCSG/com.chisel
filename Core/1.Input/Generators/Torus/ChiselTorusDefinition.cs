@@ -11,7 +11,7 @@ namespace Chisel.Core
     [Serializable]
     public struct ChiselTorus : IBranchGenerator
     {
-        public readonly static ChiselTorus DefaultValues = new ChiselTorus
+        readonly static ChiselTorus kDefaultSettings = new()
         {
             tubeWidth           = 0.5f,
             tubeHeight          = 0.5f,
@@ -23,11 +23,12 @@ namespace Chisel.Core
             verticalSegments    = 8,
             fitCircle           = true
         };
+		public static ref readonly ChiselTorus DefaultSettings => ref kDefaultSettings;
 
-        // TODO: add scale the tube in y-direction (use transform instead?)
-        // TODO: add start/total angle of tube
+		// TODO: add scale the tube in y-direction (use transform instead?)
+		// TODO: add start/total angle of tube
 
-        public float    outerDiameter;
+		public float    outerDiameter;
         public float    tubeWidth;
         public float    tubeHeight;
         public float    tubeRotation;
@@ -126,7 +127,7 @@ namespace Chisel.Core
         #endregion
 
         #region Reset
-        public void Reset() { this = DefaultValues; }
+        public void Reset() { this = DefaultSettings; }
         #endregion
     }
 

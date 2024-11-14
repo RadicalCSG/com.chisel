@@ -11,7 +11,7 @@
 
         public override void OnUpdate(ref ChiselExtrudedShapeDefinition definition, float height)
         {
-            definition.path.segments[1].position = ChiselPathPoint.kDefaultDirection * height;
+            definition.path.segments[1].position = ChiselPathPoint.DefaultDirection * height;
         }
 
         public override void OnPaint(IChiselHandleRenderer renderer, Curve2D shape, float height)

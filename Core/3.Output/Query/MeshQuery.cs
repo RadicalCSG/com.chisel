@@ -78,7 +78,7 @@ namespace Chisel.Core
         }
         #endregion
 
-        public static readonly MeshQuery[] RenderOnly =
+        readonly static MeshQuery[] kRenderOnly =
         {
             // Renderables
             new(
@@ -118,8 +118,10 @@ namespace Chisel.Core
 			new(query: SurfaceDestinationFlags.ShadowReceiving),
 			new(query: SurfaceDestinationFlags.Discarded		 )
         };
+        public static ref readonly MeshQuery[] RenderOnly => ref kRenderOnly;
 
-        public static readonly MeshQuery[] CollisionOnly =
+
+		readonly static MeshQuery[] kCollisionOnly =
         {
             // Colliders
             new(
@@ -133,9 +135,10 @@ namespace Chisel.Core
 			new(query: SurfaceDestinationFlags.None,          mask: SurfaceDestinationFlags.Renderable),	// hidden surfaces
             new(query: SurfaceDestinationFlags.Discarded         ) // removed by CSG algorithm
         };
+		public static ref readonly MeshQuery[] CollisionOnly => ref kCollisionOnly;
 
-        // TODO: do not make this hardcoded
-        public static readonly MeshQuery[] DefaultQueries =
+		// TODO: do not make this hardcoded
+		readonly static MeshQuery[] kDefaultQueries =
         {
             // Renderables
             new(
@@ -184,6 +187,7 @@ namespace Chisel.Core
 			new(query: SurfaceDestinationFlags.RenderShadowsReceiving,  mask: SurfaceDestinationFlags.RenderShadowsReceiving),
 			new(query: SurfaceDestinationFlags.Discarded,                mask: SurfaceDestinationFlags.Discarded)               // removed by CSG algorithm
         };
-    }
+		public static ref readonly MeshQuery[] DefaultQueries => ref kDefaultQueries;
+	}
 }
  

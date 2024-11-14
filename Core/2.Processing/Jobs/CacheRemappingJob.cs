@@ -27,7 +27,7 @@ namespace Chisel.Core
                 return a.x.CompareTo(b.x);
             }
         }
-        static readonly IndexOrderComparer indexOrderComparer = new IndexOrderComparer();
+		readonly static IndexOrderComparer kIndexOrderComparer = new();
         #endregion
 
 		[NoAlias, ReadOnly] public CompactHierarchy.ReadOnly    compactHierarchy;
@@ -135,7 +135,7 @@ namespace Chisel.Core
                                 for (int b = a + 1; b < remapOldOrderToNewOrder.Length; b++)
                                 {
                                     var val_b = remapOldOrderToNewOrder[b];
-                                    var compare = indexOrderComparer.Compare(val_a, val_b);
+                                    var compare = kIndexOrderComparer.Compare(val_a, val_b);
                                     if (compare >= 0)
                                         continue;
 

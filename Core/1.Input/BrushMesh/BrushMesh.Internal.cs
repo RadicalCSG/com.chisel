@@ -322,6 +322,7 @@ namespace Chisel.Core
             return curHeuristic;
         }
 
+        // TODO: make this non-allocating
         private static Triangle[] SplitNonPlanarPolygon(BrushMesh subMesh, ref Polygon polygon)
         {
             var sTrianglePathCache      = new TrianglePathCache();

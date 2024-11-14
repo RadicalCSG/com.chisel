@@ -53,7 +53,7 @@ namespace Chisel.Core
 
         struct CompareSortByBasePlaneIndex : System.Collections.Generic.IComparer<BrushIntersectionLoop>
         {
-            public int Compare(BrushIntersectionLoop x, BrushIntersectionLoop y)
+            public readonly int Compare(BrushIntersectionLoop x, BrushIntersectionLoop y)
             {
                 var diff = x.surfaceInfo.basePlaneIndex - y.surfaceInfo.basePlaneIndex;
                 if (diff != 0)
@@ -63,7 +63,7 @@ namespace Chisel.Core
             }
         }
 
-        static readonly CompareSortByBasePlaneIndex kCompareSortByBasePlaneIndex = new CompareSortByBasePlaneIndex();
+		readonly static CompareSortByBasePlaneIndex kCompareSortByBasePlaneIndex = new CompareSortByBasePlaneIndex();
 
         void CopyFrom(NativeList<UnsafeList<Edge>> dst, int index, ref BrushIntersectionLoop brushIntersectionLoop, HashedVertices hashedTreeSpaceVertices, int extraCapacity)
         {
@@ -120,307 +120,317 @@ namespace Chisel.Core
                 return;
             }
 
-            NativeCollectionHelpers.EnsureMinimumSize(ref basePolygonSurfaceInfos, surfaceCount);
-            NativeCollectionHelpers.EnsureCapacityAndClear(ref hashedTreeSpaceVertices, HashedVertices.kMaxVertexCount);
-            NativeCollectionHelpers.EnsureSizeAndClear(ref basePolygonEdges, surfaceCount);
-
-            var intersectionOffset = outputSurfacesRange[brushNodeOrder].x;
-            var intersectionCount  = outputSurfacesRange[brushNodeOrder].y;
-            
-            hashedTreeSpaceVertices.AddUniqueVertices(ref basePolygonBlob.vertices); /*OUTPUT*/
-
-            if (intersectionCount == 0)
+            var hashedTreeSpaceVertices = new HashedVertices(HashedVertices.kMaxVertexCount, Allocator.Temp);
+            try
             {
-                // If we don't have any intersection loops, just convert basePolygonBlob to loops and be done
-                // TODO: should do this per surface!
+                //NativeCollectionHelpers.EnsureCapacityAndClear(ref hashedTreeSpaceVertices, HashedVertices.kMaxVertexCount);
 
-                for (int s = 0; s < basePolygonBlob.polygons.Length; s++)
+                NativeCollectionHelpers.EnsureMinimumSize(ref basePolygonSurfaceInfos, surfaceCount);
+                NativeCollectionHelpers.EnsureSizeAndClear(ref basePolygonEdges, surfaceCount);
+
+                var intersectionOffset = outputSurfacesRange[brushNodeOrder].x;
+                var intersectionCount = outputSurfacesRange[brushNodeOrder].y;
+
+                hashedTreeSpaceVertices.AddUniqueVertices(ref basePolygonBlob.vertices); /*OUTPUT*/
+
+                if (intersectionCount == 0)
                 {
-                    ref var input = ref basePolygonBlob.polygons[s];
-                    
-                    ref var nodeIndexOrder = ref basePolygonBlob.polygons[s].nodeIndexOrder;
-                    ref var surfaceInfo = ref basePolygonBlob.polygons[s].surfaceInfo;
-                    basePolygonSurfaceInfos[s] = new IndexSurfaceInfo
-                    {
-                        brushIndexOrder = nodeIndexOrder,
-                        interiorCategory = surfaceInfo.interiorCategory,
-                        basePlaneIndex = surfaceInfo.basePlaneIndex
-                    };
+                    // If we don't have any intersection loops, just convert basePolygonBlob to loops and be done
+                    // TODO: should do this per surface!
 
-                    if (input.endEdgeIndex == input.startEdgeIndex)
-                        continue;
-
-                    var edges = new UnsafeList<Edge>(input.endEdgeIndex - input.startEdgeIndex, Allocator.Temp);
-                    for (int e = input.startEdgeIndex; e < input.endEdgeIndex; e++)
-                        edges.AddNoResize(basePolygonBlob.edges[e]);
-                    basePolygonEdges[s] = edges;
-                }
-
-                if (intersectionEdges.IsCreated)
-                    intersectionEdges.Clear();
-
-                if (intersectionSurfaceInfos.IsCreated)
-                    intersectionSurfaceInfos.Clear();
-
-                var writeVertices = new UnsafeList<float3>(hashedTreeSpaceVertices.Length, allocator);
-                writeVertices.Resize(hashedTreeSpaceVertices.Length, NativeArrayOptions.UninitializedMemory);
-                for (int l = 0; l < hashedTreeSpaceVertices.Length; l++)
-                    writeVertices[l] = hashedTreeSpaceVertices[l];
-                loopVerticesLookup[brushIndexOrder.nodeOrder] = writeVertices;
-
-                output.BeginForEachIndex(index);
-                output.Write(brushIndexOrder);
-                output.Write(surfaceCount);
-            
-                output.Write(basePolygonEdges.Length);
-                for (int l = 0; l < basePolygonEdges.Length; l++)
-                {
-                    output.Write(basePolygonSurfaceInfos[l]);
-                    if (!basePolygonEdges[l].IsCreated)
-                    {
-                        output.Write(0);
-                        continue;
-                    }
-                    var edges = basePolygonEdges[l];
-                    output.Write(edges.Length);
-                    for (int e = 0; e < edges.Length; e++)
-                        output.Write(edges[e]);
-                }
-
-                output.Write(0);
-                output.EndForEachIndex();
-            } else
-            {
-                NativeCollectionHelpers.EnsureCapacityAndClear(ref brushIntersections, intersectionCount);
-                NativeCollectionHelpers.EnsureMinimumSizeAndClear(ref usedNodeOrders, maxNodeOrder);
-
-                var lastIntersectionIndex = intersectionCount + intersectionOffset;
-                for (int i = intersectionOffset; i < lastIntersectionIndex; i++)
-                {
-                    var item            = outputSurfaces[i];
-                    var otherNodeOrder1 = item.indexOrder1.nodeOrder;
-                    
-                    usedNodeOrders.Set(otherNodeOrder1, true);
-
-                    //Debug.Assert(outputSurface.surfaceInfo.brushIndex == pair.brushNodeIndex1);
-                    //Debug.Assert(outputSurface.surfaceInfo.basePlaneIndex == pair.basePlaneIndex);
-
-                    brushIntersections.AddNoResize(item);
-                }
-
-                NativeCollectionHelpers.EnsureSizeAndClear(ref intersectionEdges, brushIntersections.Length);
-
-                brushIntersections.Sort(kCompareSortByBasePlaneIndex);
-
-                NativeCollectionHelpers.EnsureMinimumSize(ref intersectionSurfaceSegments, surfaceCount + 1);
-                {
                     for (int s = 0; s < basePolygonBlob.polygons.Length; s++)
                     {
                         ref var input = ref basePolygonBlob.polygons[s];
 
-                        ref var surfaceInfo = ref basePolygonBlob.polygons[s].surfaceInfo;
                         ref var nodeIndexOrder = ref basePolygonBlob.polygons[s].nodeIndexOrder;
+                        ref var surfaceInfo = ref basePolygonBlob.polygons[s].surfaceInfo;
                         basePolygonSurfaceInfos[s] = new IndexSurfaceInfo
                         {
-                            brushIndexOrder     = nodeIndexOrder,
-                            interiorCategory    = surfaceInfo.interiorCategory,
-                            basePlaneIndex      = surfaceInfo.basePlaneIndex
+                            brushIndexOrder = nodeIndexOrder,
+                            interiorCategory = surfaceInfo.interiorCategory,
+                            basePlaneIndex = surfaceInfo.basePlaneIndex
                         };
 
                         if (input.endEdgeIndex == input.startEdgeIndex)
                             continue;
 
-                        var edges = new UnsafeList<Edge>((input.endEdgeIndex - input.startEdgeIndex) + (brushIntersections.Length * 4), Allocator.Temp);
+                        var edges = new UnsafeList<Edge>(input.endEdgeIndex - input.startEdgeIndex, Allocator.Temp);
                         for (int e = input.startEdgeIndex; e < input.endEdgeIndex; e++)
                             edges.AddNoResize(basePolygonBlob.edges[e]);
                         basePolygonEdges[s] = edges;
                     }
 
+                    if (intersectionEdges.IsCreated)
+                        intersectionEdges.Clear();
 
-                    int prevBasePlaneIndex = 0;
-                    int startIndex = 0;
-                    for (int l = 0; l < brushIntersections.Length; l++)
+                    if (intersectionSurfaceInfos.IsCreated)
+                        intersectionSurfaceInfos.Clear();
+
+                    var writeVertices = new UnsafeList<float3>(hashedTreeSpaceVertices.Length, allocator);
+                    writeVertices.Resize(hashedTreeSpaceVertices.Length, NativeArrayOptions.UninitializedMemory);
+                    for (int l = 0; l < hashedTreeSpaceVertices.Length; l++)
+                        writeVertices[l] = hashedTreeSpaceVertices[l];
+                    loopVerticesLookup[brushIndexOrder.nodeOrder] = writeVertices;
+
+                    output.BeginForEachIndex(index);
+                    output.Write(brushIndexOrder);
+                    output.Write(surfaceCount);
+
+                    output.Write(basePolygonEdges.Length);
+                    for (int l = 0; l < basePolygonEdges.Length; l++)
                     {
-                        var brushIntersectionLoop   = brushIntersections[l];
-                        ref var surfaceInfo         = ref brushIntersectionLoop.surfaceInfo;
-                        //UnityEngine.Debug.Assert(brushIntersectionLoop.indexOrder0.compactNodeID == brushIndexOrder.compactNodeID);
-                        UnityEngine.Debug.Assert(brushIntersectionLoop.indexOrder0.nodeOrder == brushIndexOrder.nodeOrder);
-
-                        var basePlaneIndex = surfaceInfo.basePlaneIndex;
-                        if (prevBasePlaneIndex != basePlaneIndex)
+                        output.Write(basePolygonSurfaceInfos[l]);
+                        if (!basePolygonEdges[l].IsCreated)
                         {
-                            intersectionSurfaceSegments[prevBasePlaneIndex] = new int2(startIndex, l - startIndex);
-                            startIndex = l;
-                            for (int s = prevBasePlaneIndex + 1; s < basePlaneIndex; s++)
-                                intersectionSurfaceSegments[s] = new int2(startIndex, 0);
-                            prevBasePlaneIndex = basePlaneIndex;
+                            output.Write(0);
+                            continue;
                         }
-                        CopyFrom(intersectionEdges, l, ref brushIntersectionLoop, hashedTreeSpaceVertices, brushIntersections.Length * 4);
+                        var edges = basePolygonEdges[l];
+                        output.Write(edges.Length);
+                        for (int e = 0; e < edges.Length; e++)
+                            output.Write(edges[e]);
                     }
 
-                    intersectionSurfaceSegments[prevBasePlaneIndex] = new int2(startIndex, brushIntersections.Length - startIndex);
-                    startIndex = brushIntersections.Length;
-                    for (int s = prevBasePlaneIndex + 1; s < surfaceCount; s++)
-                        intersectionSurfaceSegments[s] = new int2(startIndex, 0);
+                    output.Write(0);
+                    output.EndForEachIndex();
+                }
+                else
+                {
+                    NativeCollectionHelpers.EnsureCapacityAndClear(ref brushIntersections, intersectionCount);
+                    NativeCollectionHelpers.EnsureMinimumSizeAndClear(ref usedNodeOrders, maxNodeOrder);
 
-                    
-                    for (int s = 0; s < surfaceCount; s++)
+                    var lastIntersectionIndex = intersectionCount + intersectionOffset;
+                    for (int i = intersectionOffset; i < lastIntersectionIndex; i++)
                     {
-                        var intersectionSurfaceCount    = intersectionSurfaceSegments[s].y;
-                        var intersectionSurfaceOffset   = intersectionSurfaceSegments[s].x;
-                        for (int l0 = intersectionSurfaceCount - 1; l0 >= 0; l0--)
+                        var item = outputSurfaces[i];
+                        var otherNodeOrder1 = item.indexOrder1.nodeOrder;
+
+                        usedNodeOrders.Set(otherNodeOrder1, true);
+
+                        //Debug.Assert(outputSurface.surfaceInfo.brushIndex == pair.brushNodeIndex1);
+                        //Debug.Assert(outputSurface.surfaceInfo.basePlaneIndex == pair.basePlaneIndex);
+
+                        brushIntersections.AddNoResize(item);
+                    }
+
+                    NativeCollectionHelpers.EnsureSizeAndClear(ref intersectionEdges, brushIntersections.Length);
+
+                    brushIntersections.Sort(kCompareSortByBasePlaneIndex);
+
+                    NativeCollectionHelpers.EnsureMinimumSize(ref intersectionSurfaceSegments, surfaceCount + 1);
+                    {
+                        for (int s = 0; s < basePolygonBlob.polygons.Length; s++)
                         {
-                            //int intersectionBrushOrder0 = brushIntersections[intersectionSurfaceOffset + l0].indexOrder1.nodeOrder;
-                            var edges                   = intersectionEdges[intersectionSurfaceOffset + l0];
-                            for (int l1 = 0; l1 < intersectionSurfaceCount; l1++)
+                            ref var input = ref basePolygonBlob.polygons[s];
+
+                            ref var surfaceInfo = ref basePolygonBlob.polygons[s].surfaceInfo;
+                            ref var nodeIndexOrder = ref basePolygonBlob.polygons[s].nodeIndexOrder;
+                            basePolygonSurfaceInfos[s] = new IndexSurfaceInfo
                             {
-                                if (l0 == l1)
-                                    continue;
-                            
-                                int intersectionBrushOrder1 = brushIntersections[intersectionSurfaceOffset + l1].indexOrder1.nodeOrder;// intersectionIndex1.w;
+                                brushIndexOrder = nodeIndexOrder,
+                                interiorCategory = surfaceInfo.interiorCategory,
+                                basePlaneIndex = surfaceInfo.basePlaneIndex
+                            };
 
-                                FindLoopPlaneIntersections(brushTreeSpacePlaneCache.AsArray(), 
-                                                           intersectionBrushOrder1, 
-                                                           //intersectionBrushOrder0, 
-                                                           hashedTreeSpaceVertices, ref edges);
-
-                                // TODO: merge these so that intersections will be identical on both loops (without using math, use logic)
-                                // TODO: make sure that intersections between loops will be identical on OTHER brushes (without using math, use logic)
-                            }
-
-                            intersectionEdges[intersectionSurfaceOffset + l0] = edges;
-                        }
-                    }
-
-                    ref var selfPlanes = ref brushTreeSpacePlaneCache[brushIndexOrder.nodeOrder].Value.treeSpacePlanes;
-
-                    // TODO: should only intersect with all brushes that each particular basepolygon intersects with
-                    //       but also need adjency information between basePolygons to ensure that intersections exist on 
-                    //       both sides of each edge on a brush. 
-                    for (int otherBrushNodeOrder = 0; otherBrushNodeOrder < maxNodeOrder; otherBrushNodeOrder++)
-                    {
-                        if (!usedNodeOrders.IsSet(otherBrushNodeOrder) ||
-                            otherBrushNodeOrder == brushNodeOrder)
-                            continue;
-
-                        ref var otherPlanes = ref brushTreeSpacePlaneCache[otherBrushNodeOrder].Value.treeSpacePlanes;
-                        for (int b = 0; b < basePolygonEdges.Length; b++)
-                        {
-                            if (!basePolygonEdges[b].IsCreated)
+                            if (input.endEdgeIndex == input.startEdgeIndex)
                                 continue;
-                            var selfEdges = basePolygonEdges[b];
-                            //var before = selfEdges.Length;
 
-                            FindBasePolygonPlaneIntersections(ref otherPlanes, //ref selfPlanes, 
-                                                              ref selfEdges, hashedTreeSpaceVertices);
-                            basePolygonEdges[b] = selfEdges;
+                            var edges = new UnsafeList<Edge>((input.endEdgeIndex - input.startEdgeIndex) + (brushIntersections.Length * 4), Allocator.Temp);
+                            for (int e = input.startEdgeIndex; e < input.endEdgeIndex; e++)
+                                edges.AddNoResize(basePolygonBlob.edges[e]);
+                            basePolygonEdges[s] = edges;
                         }
-                    }
 
-                    for (int s = 0; s < surfaceCount; s++)
-                    {
-                        var intersectionSurfaceCount    = intersectionSurfaceSegments[s].y;
-                        var intersectionSurfaceOffset   = intersectionSurfaceSegments[s].x;
-                        if (intersectionSurfaceCount == 0)
-                            continue;
 
-                        if (!basePolygonEdges[s].IsCreated)
-                            continue;
-
-                        var bp_edges = basePolygonEdges[s];
-                        for (int l0 = 0; l0 < intersectionSurfaceCount; l0++)
+                        int prevBasePlaneIndex = 0;
+                        int startIndex = 0;
+                        for (int l = 0; l < brushIntersections.Length; l++)
                         {
-                            int intersectionBrushOrder  = brushIntersections[intersectionSurfaceOffset + l0].indexOrder1.nodeOrder;// intersectionIndex.w;
-                            var in_edges                = intersectionEdges[intersectionSurfaceOffset + l0];
-                            
-                            ref var otherPlanes = ref brushTreeSpacePlaneCache[intersectionBrushOrder].Value.treeSpacePlanes;
+                            var brushIntersectionLoop = brushIntersections[l];
+                            ref var surfaceInfo = ref brushIntersectionLoop.surfaceInfo;
+                            //UnityEngine.Debug.Assert(brushIntersectionLoop.indexOrder0.compactNodeID == brushIndexOrder.compactNodeID);
+                            UnityEngine.Debug.Assert(brushIntersectionLoop.indexOrder0.nodeOrder == brushIndexOrder.nodeOrder);
 
-                            FindLoopVertexOverlaps(ref selfPlanes, ref in_edges, bp_edges, hashedTreeSpaceVertices);
-                            intersectionEdges[intersectionSurfaceOffset + l0] = in_edges;
-
-                            // TODO: The following call, strictly speaking, is unncessary, but it'll hide bugs in other parts of the pipeline.
-                            //          it'll add missing vertices on overlapping loops, but they will be missing on touching surfaces, so there will be gaps.
-                            //          the alternative is that this surface could possible fail to triangulate and be completely missing .. (larger gap)
-                            //       Somehow it can also cause artifacts sometimes???
-                            //FindLoopVertexOverlaps(ref otherPlanes, ref bp_edges, in_edges, hashedTreeSpaceVertices);
+                            var basePlaneIndex = surfaceInfo.basePlaneIndex;
+                            if (prevBasePlaneIndex != basePlaneIndex)
+                            {
+                                intersectionSurfaceSegments[prevBasePlaneIndex] = new int2(startIndex, l - startIndex);
+                                startIndex = l;
+                                for (int s = prevBasePlaneIndex + 1; s < basePlaneIndex; s++)
+                                    intersectionSurfaceSegments[s] = new int2(startIndex, 0);
+                                prevBasePlaneIndex = basePlaneIndex;
+                            }
+                            CopyFrom(intersectionEdges, l, ref brushIntersectionLoop, hashedTreeSpaceVertices, brushIntersections.Length * 4);
                         }
-                    } 
 
-                    for (int i = 0; i < intersectionEdges.Length; i++)
-                    {
-                        // TODO: might not be necessary
-                        var edges = intersectionEdges[i];
-                        RemoveDuplicates(ref edges);
-                        intersectionEdges[i] = edges;
-                    }
-
-                    for (int i = 0; i < basePolygonEdges.Length; i++)
-                    {
-                        if (!basePolygonEdges[i].IsCreated)
-                            continue;
-                        // TODO: might not be necessary
-                        var edges = basePolygonEdges[i];
-                        RemoveDuplicates(ref edges);
-                        basePolygonEdges[i] = edges;
-                    }
+                        intersectionSurfaceSegments[prevBasePlaneIndex] = new int2(startIndex, brushIntersections.Length - startIndex);
+                        startIndex = brushIntersections.Length;
+                        for (int s = prevBasePlaneIndex + 1; s < surfaceCount; s++)
+                            intersectionSurfaceSegments[s] = new int2(startIndex, 0);
 
 
-                    // TODO: merge indices across multiple loops when vertices are identical
-                }
-
-
-                NativeCollectionHelpers.EnsureCapacityAndClear(ref intersectionSurfaceInfos, brushIntersections.Length);
-
-                for (int k = 0; k < brushIntersections.Length; k++)
-                {
-                    var intersection = brushIntersections[k];
-                    ref var surfaceInfo  = ref intersection.surfaceInfo;
-                    intersectionSurfaceInfos.AddNoResize(
-                        new IndexSurfaceInfo
+                        for (int s = 0; s < surfaceCount; s++)
                         {
-                            brushIndexOrder = intersection.indexOrder1,
-                            interiorCategory = surfaceInfo.interiorCategory,
-                            basePlaneIndex = surfaceInfo.basePlaneIndex
-                        }); //OUTPUT
-                }
+                            var intersectionSurfaceCount = intersectionSurfaceSegments[s].y;
+                            var intersectionSurfaceOffset = intersectionSurfaceSegments[s].x;
+                            for (int l0 = intersectionSurfaceCount - 1; l0 >= 0; l0--)
+                            {
+                                //int intersectionBrushOrder0 = brushIntersections[intersectionSurfaceOffset + l0].indexOrder1.nodeOrder;
+                                var edges = intersectionEdges[intersectionSurfaceOffset + l0];
+                                for (int l1 = 0; l1 < intersectionSurfaceCount; l1++)
+                                {
+                                    if (l0 == l1)
+                                        continue;
 
-                var writeVertices = new UnsafeList<float3>(hashedTreeSpaceVertices.Length, allocator);
-                writeVertices.Resize(hashedTreeSpaceVertices.Length, NativeArrayOptions.UninitializedMemory);
-                for (int l = 0; l < hashedTreeSpaceVertices.Length; l++)
-                    writeVertices[l] = hashedTreeSpaceVertices[l];
-                loopVerticesLookup[brushIndexOrder.nodeOrder] = writeVertices;
+                                    int intersectionBrushOrder1 = brushIntersections[intersectionSurfaceOffset + l1].indexOrder1.nodeOrder;// intersectionIndex1.w;
 
-                output.BeginForEachIndex(index);
-                output.Write(brushIndexOrder);
-                output.Write(surfaceCount);
+                                    FindLoopPlaneIntersections(brushTreeSpacePlaneCache.AsArray(),
+                                                               intersectionBrushOrder1,
+                                                               //intersectionBrushOrder0, 
+                                                               hashedTreeSpaceVertices, ref edges);
 
-                output.Write(basePolygonEdges.Length);
-                for (int l = 0; l < basePolygonEdges.Length; l++)
-                {
-                    output.Write(basePolygonSurfaceInfos[l]);
-                    if (!basePolygonEdges[l].IsCreated)
-                    {
-                        output.Write(0);
-                        continue;
+                                    // TODO: merge these so that intersections will be identical on both loops (without using math, use logic)
+                                    // TODO: make sure that intersections between loops will be identical on OTHER brushes (without using math, use logic)
+                                }
+
+                                intersectionEdges[intersectionSurfaceOffset + l0] = edges;
+                            }
+                        }
+
+                        ref var selfPlanes = ref brushTreeSpacePlaneCache[brushIndexOrder.nodeOrder].Value.treeSpacePlanes;
+
+                        // TODO: should only intersect with all brushes that each particular basepolygon intersects with
+                        //       but also need adjency information between basePolygons to ensure that intersections exist on 
+                        //       both sides of each edge on a brush. 
+                        for (int otherBrushNodeOrder = 0; otherBrushNodeOrder < maxNodeOrder; otherBrushNodeOrder++)
+                        {
+                            if (!usedNodeOrders.IsSet(otherBrushNodeOrder) ||
+                                otherBrushNodeOrder == brushNodeOrder)
+                                continue;
+
+                            ref var otherPlanes = ref brushTreeSpacePlaneCache[otherBrushNodeOrder].Value.treeSpacePlanes;
+                            for (int b = 0; b < basePolygonEdges.Length; b++)
+                            {
+                                if (!basePolygonEdges[b].IsCreated)
+                                    continue;
+                                var selfEdges = basePolygonEdges[b];
+                                //var before = selfEdges.Length;
+
+                                FindBasePolygonPlaneIntersections(ref otherPlanes, //ref selfPlanes, 
+                                                                  ref selfEdges, hashedTreeSpaceVertices);
+                                basePolygonEdges[b] = selfEdges;
+                            }
+                        }
+
+                        for (int s = 0; s < surfaceCount; s++)
+                        {
+                            var intersectionSurfaceCount = intersectionSurfaceSegments[s].y;
+                            var intersectionSurfaceOffset = intersectionSurfaceSegments[s].x;
+                            if (intersectionSurfaceCount == 0)
+                                continue;
+
+                            if (!basePolygonEdges[s].IsCreated)
+                                continue;
+
+                            var bp_edges = basePolygonEdges[s];
+                            for (int l0 = 0; l0 < intersectionSurfaceCount; l0++)
+                            {
+                                int intersectionBrushOrder = brushIntersections[intersectionSurfaceOffset + l0].indexOrder1.nodeOrder;// intersectionIndex.w;
+                                var in_edges = intersectionEdges[intersectionSurfaceOffset + l0];
+
+                                ref var otherPlanes = ref brushTreeSpacePlaneCache[intersectionBrushOrder].Value.treeSpacePlanes;
+
+                                FindLoopVertexOverlaps(ref selfPlanes, ref in_edges, bp_edges, hashedTreeSpaceVertices);
+                                intersectionEdges[intersectionSurfaceOffset + l0] = in_edges;
+
+                                // TODO: The following call, strictly speaking, is unncessary, but it'll hide bugs in other parts of the pipeline.
+                                //          it'll add missing vertices on overlapping loops, but they will be missing on touching surfaces, so there will be gaps.
+                                //          the alternative is that this surface could possible fail to triangulate and be completely missing .. (larger gap)
+                                //       Somehow it can also cause artifacts sometimes???
+                                //FindLoopVertexOverlaps(ref otherPlanes, ref bp_edges, in_edges, hashedTreeSpaceVertices);
+                            }
+                        }
+
+                        for (int i = 0; i < intersectionEdges.Length; i++)
+                        {
+                            // TODO: might not be necessary
+                            var edges = intersectionEdges[i];
+                            RemoveDuplicates(ref edges);
+                            intersectionEdges[i] = edges;
+                        }
+
+                        for (int i = 0; i < basePolygonEdges.Length; i++)
+                        {
+                            if (!basePolygonEdges[i].IsCreated)
+                                continue;
+                            // TODO: might not be necessary
+                            var edges = basePolygonEdges[i];
+                            RemoveDuplicates(ref edges);
+                            basePolygonEdges[i] = edges;
+                        }
+
+
+                        // TODO: merge indices across multiple loops when vertices are identical
                     }
-                    var edges = basePolygonEdges[l];
-                    output.Write(edges.Length);
-                    for (int e = 0; e < edges.Length; e++)
-                        output.Write(edges[e]);
-                }
 
-                output.Write(intersectionEdges.Length);
-                for (int l = 0; l < intersectionEdges.Length; l++)
-                {
-                    output.Write(intersectionSurfaceInfos[l]);
-                    var edges = intersectionEdges[l];
-                    output.Write(edges.Length);
-                    for (int e = 0; e < edges.Length; e++)
-                        output.Write(edges[e]);
+
+                    NativeCollectionHelpers.EnsureCapacityAndClear(ref intersectionSurfaceInfos, brushIntersections.Length);
+
+                    for (int k = 0; k < brushIntersections.Length; k++)
+                    {
+                        var intersection = brushIntersections[k];
+                        ref var surfaceInfo = ref intersection.surfaceInfo;
+                        intersectionSurfaceInfos.AddNoResize(
+                            new IndexSurfaceInfo
+                            {
+                                brushIndexOrder = intersection.indexOrder1,
+                                interiorCategory = surfaceInfo.interiorCategory,
+                                basePlaneIndex = surfaceInfo.basePlaneIndex
+                            }); //OUTPUT
+                    }
+
+                    var writeVertices = new UnsafeList<float3>(hashedTreeSpaceVertices.Length, allocator);
+                    writeVertices.Resize(hashedTreeSpaceVertices.Length, NativeArrayOptions.UninitializedMemory);
+                    for (int l = 0; l < hashedTreeSpaceVertices.Length; l++)
+                        writeVertices[l] = hashedTreeSpaceVertices[l];
+                    loopVerticesLookup[brushIndexOrder.nodeOrder] = writeVertices;
+
+                    output.BeginForEachIndex(index);
+                    output.Write(brushIndexOrder);
+                    output.Write(surfaceCount);
+
+                    output.Write(basePolygonEdges.Length);
+                    for (int l = 0; l < basePolygonEdges.Length; l++)
+                    {
+                        output.Write(basePolygonSurfaceInfos[l]);
+                        if (!basePolygonEdges[l].IsCreated)
+                        {
+                            output.Write(0);
+                            continue;
+                        }
+                        var edges = basePolygonEdges[l];
+                        output.Write(edges.Length);
+                        for (int e = 0; e < edges.Length; e++)
+                            output.Write(edges[e]);
+                    }
+
+                    output.Write(intersectionEdges.Length);
+                    for (int l = 0; l < intersectionEdges.Length; l++)
+                    {
+                        output.Write(intersectionSurfaceInfos[l]);
+                        var edges = intersectionEdges[l];
+                        output.Write(edges.Length);
+                        for (int e = 0; e < edges.Length; e++)
+                            output.Write(edges[e]);
+                    }
+                    output.EndForEachIndex();
                 }
-                output.EndForEachIndex();
             }
-        }
+            finally
+            {
+                hashedTreeSpaceVertices.Dispose();
+            }
+		}
 
         public void FindLoopPlaneIntersections(NativeArray<BlobAssetReference<BrushTreeSpacePlanes>> brushTreeSpacePlanes,
                                                int intersectionBrushOrder1, //int intersectionBrushOrder0,

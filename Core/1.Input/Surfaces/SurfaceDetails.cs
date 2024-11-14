@@ -65,11 +65,11 @@ namespace Chisel.Core
         // .. more UVMatrices can be added when more UV channels are supported
 
 
-        public static SurfaceDetails Default = new()
+        public static readonly SurfaceDetails Default = new()
         {
             smoothingGroup = 0,
             detailFlags    = SurfaceDetailFlags.Default,
-            UV0            = UVMatrix.centered
+            UV0            = UVMatrix.Centered
         };
 	}
 }

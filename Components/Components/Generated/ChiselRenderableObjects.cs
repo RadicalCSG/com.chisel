@@ -153,17 +153,13 @@ namespace Chisel.Components
             ChiselObjectUtility.RemoveContainerFlags(container);
         }
 
-        public static bool IsValid(ChiselRenderObjects renderObjects)
+        public bool IsValid()
         {
-            if (renderObjects == null)
+            if (!container  ||
+                !sharedMesh ||
+                !meshFilter ||
+                !meshRenderer)
                 return false;
-
-            if (!renderObjects.container  ||
-                !renderObjects.sharedMesh ||
-                !renderObjects.meshFilter ||
-                !renderObjects.meshRenderer)
-                return false;
-
             return true;
         }
 
@@ -363,7 +359,7 @@ namespace Chisel.Components
                     for (int i = 0; i < desiredCapacity; i++)
                     {
                         var meshDescription = vertexBufferContents.meshDescriptions[startIndex + i];
-                        var renderMaterial  = ChiselMaterialManager.GetMaterial(meshDescription.surfaceParameter);
+                        var renderMaterial  = meshDescription.surfaceParameter == 0 ? null : Resources.InstanceIDToObject(meshDescription.surfaceParameter) as Material;
                         instance.renderMaterials[i] = renderMaterial;
                     }
                     instance.SetMaterialsIfModified(instance.meshRenderer, instance.renderMaterials);
@@ -461,6 +457,8 @@ namespace Chisel.Components
 #if UNITY_EDITOR
         internal void UpdateVisibilityMesh(BrushVisibilityLookup visibilityLookup, bool showMesh)
         {
+            // TODO: FIXME: we need to cache this, this is re-generated each frame and causes a lot of garbage!!
+
             EnsureMeshesAllocated();
             var srcMesh = sharedMesh;
             var dstMesh = partialMesh;
@@ -509,16 +507,11 @@ namespace Chisel.Components
 
 
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
-		internal static bool IsValidMesh(Mesh mesh)
+		internal bool IsValidMesh(Mesh mesh)
 		{
 			return mesh != null && mesh.vertexCount != 0 && mesh.subMeshCount != 0;
 		}
 
-
-		static Shader brushPickingShader;
-		static Material brushPickingMaterial;
-		static int scenePickingPass;
-		static int pickingOffset;
 
 		public void RenderScenePickingPass(int hashcode, HashSet<int> skipSelectionID, int offset)
 		{
@@ -535,15 +528,7 @@ namespace Chisel.Components
 				return;
             }
 
-			if (brushPickingShader == null)
-			{
-				brushPickingShader = Shader.Find("Hidden/Chisel/Brush-Picking");
-				brushPickingMaterial = new Material(brushPickingShader) { hideFlags = HideFlags.HideAndDontSave };
-				scenePickingPass = brushPickingMaterial.FindPass("ScenePickingPass");
-				pickingOffset = Shader.PropertyToID("_Offset");
-			}
-			brushPickingMaterial.SetInteger(pickingOffset, offset);
-			if (brushPickingMaterial.SetPass(scenePickingPass))
+			if (BrushPickingMaterial.SetScenePickingPass(offset))
 			{
 				Graphics.DrawMeshNow(selectionMesh, container.transform.localToWorldMatrix);
 			}
@@ -633,7 +618,7 @@ namespace Chisel.Components
 
 		public static int RenderPickingModels(ManagedSubMeshTriangleLookup.NeedToRenderForPicking needToRenderForPicking, int selectionIndexOffset, List<SelectionOffset> selectionOffsets)
 		{
-			var brushVisibilityLookup = ChiselUnityVisibilityManager.brushVisibilityLookup;
+			var brushVisibilityLookup = ChiselUnityVisibilityManager.BrushVisibilityLookup;
             
             selectionOffsets.Clear();
             var instance = ChiselModelManager.Instance;

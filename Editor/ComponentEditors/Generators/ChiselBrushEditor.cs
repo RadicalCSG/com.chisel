@@ -6,7 +6,6 @@ using CanEditMultipleObjects = UnityEditor.CanEditMultipleObjects;
 using CustomEditor           = UnityEditor.CustomEditor;
 using Undo                   = UnityEditor.Undo;
 using GUIUtility             = UnityEngine.GUIUtility;
-using UnityEditor;
 
 namespace Chisel.Editors
 {
@@ -14,9 +13,10 @@ namespace Chisel.Editors
     [CanEditMultipleObjects]
     public sealed class ChiselBrushEditor : ChiselGeneratorEditor<ChiselBrushComponent>
     {
-        static readonly Dictionary<ChiselBrushComponent, ChiselEditableOutline> s_ActiveOutlines = new();
+        readonly static Dictionary<ChiselBrushComponent, ChiselEditableOutline> s_ActiveOutlines = new();
+		static bool s_GeneratorModified = false;
 
-        protected override void OnUndoRedoPerformed()
+		protected override void OnUndoRedoPerformed()
         {
             base.OnUndoRedoPerformed();
             var activeGenerators = s_ActiveOutlines.Keys.ToArray();
@@ -68,19 +68,16 @@ namespace Chisel.Editors
             var currentHotControl = GUIUtility.hotControl;
             // When we stop/start dragging or clicking something our hotControl changes. 
             // We detect this change, and together with generatorModified we know when a user operation is finished.
-            if (generatorModified && (currentHotControl != previousHotControl))
+            if (s_GeneratorModified && (currentHotControl != previousHotControl))
                 CommitChanges();
         }
-
-
-        static bool generatorModified = false;
 
         // Creates a new optimized/fixed brushMesh based on the brushMesh inside of the generator
         // this will not be copied to the generator until the current operation is complete. 
         // This prevents, for example, dragging an edge over another edge DURING a dragging operation messing things up.
         void UpdateEditableOutline(ChiselBrushComponent generator)
         {
-            generatorModified = true;
+            s_GeneratorModified = true;
             var outline = s_ActiveOutlines[generator];
 
             var internalBrushMesh = new BrushMesh(outline.brushMesh);
@@ -106,7 +103,7 @@ namespace Chisel.Editors
         // this to become permanent however, and that's what this method does.
         void CommitChanges()
         {
-            if (!generatorModified)
+            if (!s_GeneratorModified)
                 return;
 
             var activeGenerators = s_ActiveOutlines.Keys.ToList();
@@ -136,15 +133,15 @@ namespace Chisel.Editors
                     s_ActiveOutlines[generator] = new ChiselEditableOutline(generator);
             }
 
-            generatorModified = false;
+            s_GeneratorModified = false;
         }
 
         void CancelChanges()
         {
-            if (!generatorModified)
+            if (!s_GeneratorModified)
                 return;
 
-            generatorModified = false;
+            s_GeneratorModified = false;
             var activeGenerators = s_ActiveOutlines.Keys.ToArray();
             foreach (var generator in activeGenerators)
                 s_ActiveOutlines[generator] = new ChiselEditableOutline(generator);

@@ -93,7 +93,7 @@ namespace Chisel.Core
 
 		#region Operation tables           
 #if HAVE_SELF_CATEGORIES
-        public static readonly byte[] kOperationTables = // NOTE: burst supports static readonly tables like this
+        public readonly static byte[] kOperationTables = // NOTE: burst supports readonly static tables like this
         {
             // Additive set operation on polygons: output = (left-node || right-node)
             // Defines final output from combination of categorization of left and right node
@@ -164,7 +164,7 @@ namespace Chisel.Core
         public const int RowStride       = OperationCount;
         public const int OperationStride = OperationCount * RowStride;
 #else
-		public readonly static byte[] kOperationTables = // NOTE: burst supports static readonly tables like this
+		public readonly static byte[] kOperationTables = // NOTE: burst supports readonly static tables like this
         {
             // Regular Operation Tables
             // Additive set operation on polygons: output = (left-node || right-node)
@@ -327,10 +327,10 @@ namespace Chisel.Core
 		//public const int RemoveOverlappingOffset = OperationCount;
         public const int OperationStride         = OperationCount * RowStride;
 #endif
-#endregion
+		#endregion
 
-        
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+
+		[MethodImpl(MethodImplOptions.AggressiveInlining)]
         public CategoryRoutingRow(int operationIndex, CategoryIndex left, in CategoryRoutingRow right)
 		{
 #if HAVE_SELF_CATEGORIES

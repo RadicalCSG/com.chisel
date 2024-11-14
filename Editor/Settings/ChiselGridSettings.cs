@@ -5,11 +5,11 @@ namespace Chisel.Editors
 {
     public static class ChiselGridSettings
     {
-        static ReflectedInstanceProperty<object>    sceneViewGridsProperty  = typeof(SceneView).GetProperty<object>("sceneViewGrids");
-        static ReflectedInstanceProperty<float>     gridOpacityProperty     = ReflectionExtensions.GetProperty<float>("UnityEditor.SceneViewGrid", "gridOpacity");
-        static ReflectedInstanceProperty<int>       gridAxisProperty        = ReflectionExtensions.GetProperty<int>("UnityEditor.SceneViewGrid", "gridAxis");
+		readonly static ReflectedInstanceProperty<object> kSceneViewGridsProperty  = typeof(SceneView).GetProperty<object>("sceneViewGrids");
+		readonly static ReflectedInstanceProperty<float>  kGridOpacityProperty     = ReflectionExtensions.GetProperty<float>("UnityEditor.SceneViewGrid", "gridOpacity");
+		readonly static ReflectedInstanceProperty<int>    kGridAxisProperty        = ReflectionExtensions.GetProperty<int>("UnityEditor.SceneViewGrid", "gridAxis");
 
-        public static readonly ReflectedProperty<Vector3> Size              = ReflectionExtensions.GetStaticProperty<Vector3>("UnityEditor.GridSettings", "size");
+        public readonly static ReflectedProperty<Vector3> kSize              = ReflectionExtensions.GetStaticProperty<Vector3>("UnityEditor.GridSettings", "size");
 
         
         internal static void GridOnSceneGUI(SceneView sceneView)
@@ -22,8 +22,8 @@ namespace Chisel.Editors
                 ChiselEditorSettings.Save();
             }
 
-            var sceneViewGrids = sceneViewGridsProperty?.GetValue(sceneView);
-            GridRenderer.Opacity = gridOpacityProperty?.GetValue(sceneViewGrids) ?? 1.0f;
+            var sceneViewGrids = kSceneViewGridsProperty?.GetValue(sceneView);
+            GridRenderer.Opacity = kGridOpacityProperty?.GetValue(sceneViewGrids) ?? 1.0f;
 
             var activeTransform = Selection.activeTransform;
 
@@ -32,15 +32,15 @@ namespace Chisel.Editors
                 var rotation = Tools.handleRotation;
                 var center = (activeTransform && activeTransform.parent) ? activeTransform.parent.position : Vector3.zero;
 
-				Chisel.Editors.Grid.defaultGrid.GridToWorldSpace = Matrix4x4.TRS(center, rotation, Vector3.one);
+				Chisel.Editors.Grid.DefaultGrid.GridToWorldSpace = Matrix4x4.TRS(center, rotation, Vector3.one);
             } else
             {
-                var gridAxis = gridAxisProperty?.GetValue(sceneViewGrids) ?? 1;
+                var gridAxis = kGridAxisProperty?.GetValue(sceneViewGrids) ?? 1;
                 switch (gridAxis)
                 {
-                    case 0: Chisel.Editors.Grid.defaultGrid.GridToWorldSpace = Chisel.Editors.Grid.XYPlane; break;
-                    case 1: Chisel.Editors.Grid.defaultGrid.GridToWorldSpace = Chisel.Editors.Grid.XZPlane; break;
-                    case 2: Chisel.Editors.Grid.defaultGrid.GridToWorldSpace = Chisel.Editors.Grid.YZPlane; break;
+                    case 0: Chisel.Editors.Grid.DefaultGrid.GridToWorldSpace = Chisel.Editors.Grid.XYPlane; break;
+                    case 1: Chisel.Editors.Grid.DefaultGrid.GridToWorldSpace = Chisel.Editors.Grid.XZPlane; break;
+                    case 2: Chisel.Editors.Grid.DefaultGrid.GridToWorldSpace = Chisel.Editors.Grid.YZPlane; break;
                 }
             }
 
@@ -53,7 +53,7 @@ namespace Chisel.Editors
                 var grid = Chisel.Editors.Grid.HoverGrid;
                 if (grid != null)
                 {
-                    grid.Spacing = Chisel.Editors.Grid.defaultGrid.Spacing;
+                    grid.Spacing = Chisel.Editors.Grid.DefaultGrid.Spacing;
                 }
                 else
                 {
@@ -62,12 +62,12 @@ namespace Chisel.Editors
                 grid.Render(sceneView);
             }
 
-            if (Chisel.Editors.Grid.debugGrid != null)
+            if (Chisel.Editors.Grid.DebugGrid != null)
             {
 				//static ReflectedInstanceProperty<object> sceneViewGrids = typeof(SceneView).GetProperty<object>("sceneViewGrids");
 				//static ReflectedInstanceProperty<float> gridOpacity = ReflectionExtensions.GetProperty<float>("SceneViewGrid", "gridOpacity");
-				Chisel.Editors.Grid.debugGrid.Render(sceneView);
-            }
+				Chisel.Editors.Grid.DebugGrid.Render(sceneView);
+			}
         }
     }
 }

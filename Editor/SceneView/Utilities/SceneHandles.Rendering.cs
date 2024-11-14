@@ -9,24 +9,24 @@ namespace Chisel.Editors
 
         #region Pivot rendering
 
-        static Vector2[] circlePoints2D = null;
-        static Vector3[] circlePoints3D = null;
+        static Vector2[] s_CirclePoints2D = null;
+        static Vector3[] s_CirclePoints3D = null;
 
         static void SetupCirclePoints()
         {
             const int steps = 16;
-            circlePoints2D = new Vector2[steps];
-            circlePoints3D = new Vector3[steps];
+            s_CirclePoints2D = new Vector2[steps];
+            s_CirclePoints3D = new Vector3[steps];
             for (int i = 0; i < steps; i++)
             {
-                circlePoints2D[i] = new Vector2(
+                s_CirclePoints2D[i] = new Vector2(
                         (float)Mathf.Cos((i / (float)steps) * Mathf.PI * 2),
                         (float)Mathf.Sin((i / (float)steps) * Mathf.PI * 2)
                     );
             }
         }
 
-        static readonly Vector3[] linePoints = new Vector3[2];
+        readonly static Vector3[] s_LinePoints = new Vector3[2];
 
         public static void DrawCameraAlignedCircle(Vector3 position, float size, Color innerColor, Color outerColor)
         {
@@ -34,13 +34,13 @@ namespace Chisel.Editors
             var right = camera.transform.right;
             var up = camera.transform.up;
 
-            if (circlePoints2D == null)
+            if (s_CirclePoints2D == null)
                 SetupCirclePoints();
 
-            for (int i = 0; i < circlePoints2D.Length; i++)
+            for (int i = 0; i < s_CirclePoints2D.Length; i++)
             {
-                var circle = circlePoints2D[i];
-                circlePoints3D[i] = position + (((right * circle.x) + (up * circle.y)) * size);
+                var circle = s_CirclePoints2D[i];
+                s_CirclePoints3D[i] = position + (((right * circle.x) + (up * circle.y)) * size);
             }
 
             //position = UnityEditor.Handles.matrix.MultiplyPoint(position);
@@ -49,11 +49,11 @@ namespace Chisel.Editors
                 Color c = outerColor * new Color(1, 1, 1, .5f) + (UnityEditor.Handles.lighting ? new Color(0, 0, 0, .5f) : new Color(0, 0, 0, 0)) * new Color(1, 1, 1, 0.99f);
 
                 UnityEditor.Handles.color = c;
-                for (int i = circlePoints3D.Length - 1, j = 0; j < circlePoints3D.Length; i = j, j++)
+                for (int i = s_CirclePoints3D.Length - 1, j = 0; j < s_CirclePoints3D.Length; i = j, j++)
                 {
-                    linePoints[0] = circlePoints3D[i];
-                    linePoints[1] = circlePoints3D[j];
-                    UnityEditor.Handles.DrawAAPolyLine(6.0f, linePoints);
+                    s_LinePoints[0] = s_CirclePoints3D[i];
+                    s_LinePoints[1] = s_CirclePoints3D[j];
+                    UnityEditor.Handles.DrawAAPolyLine(6.0f, s_LinePoints);
                 }
             }
 
@@ -61,11 +61,11 @@ namespace Chisel.Editors
                 Color c = innerColor * new Color(1, 1, 1, .5f) + (UnityEditor.Handles.lighting ? new Color(0, 0, 0, .5f) : new Color(0, 0, 0, 0)) * new Color(1, 1, 1, 0.99f);
 
                 UnityEditor.Handles.color = c;
-                for (int i = circlePoints3D.Length - 1, j = 0; j < circlePoints3D.Length; i = j, j++)
+                for (int i = s_CirclePoints3D.Length - 1, j = 0; j < s_CirclePoints3D.Length; i = j, j++)
                 {
-                    linePoints[0] = circlePoints3D[i];
-                    linePoints[1] = circlePoints3D[j];
-                    UnityEditor.Handles.DrawAAPolyLine(2.0f, linePoints);
+                    s_LinePoints[0] = s_CirclePoints3D[i];
+                    s_LinePoints[1] = s_CirclePoints3D[j];
+                    UnityEditor.Handles.DrawAAPolyLine(2.0f, s_LinePoints);
                 }
             }
         }
@@ -76,13 +76,13 @@ namespace Chisel.Editors
             var right = camera.transform.right;
             var up = camera.transform.up;
 
-            if (circlePoints2D == null)
+            if (s_CirclePoints2D == null)
                 SetupCirclePoints();
 
-            var points = new Vector3[circlePoints2D.Length];
-            for (int i = 0; i < circlePoints2D.Length; i++)
+            var points = new Vector3[s_CirclePoints2D.Length];
+            for (int i = 0; i < s_CirclePoints2D.Length; i++)
             {
-                var circle = circlePoints2D[i];
+                var circle = s_CirclePoints2D[i];
                 points[i] = position + (((right * circle.x) + (up * circle.y)) * size);
             }
 
@@ -261,23 +261,23 @@ namespace Chisel.Editors
                 RenderSquareXZ(extents, extents.max.y);
         }
         
-        static readonly Vector3[] boxVertices = new Vector3[8]
+        readonly static Vector3[] kBoxVertices = new Vector3[8]
         {
-            new Vector3( -1, -1, -1), // 0
-            new Vector3( -1, +1, -1), // 1
-            new Vector3( +1, +1, -1), // 2
-            new Vector3( +1, -1, -1), // 3
+            new( -1, -1, -1), // 0
+            new( -1, +1, -1), // 1
+            new( +1, +1, -1), // 2
+            new( +1, -1, -1), // 3
 
-            new Vector3( -1, -1, +1), // 4  
-            new Vector3( -1, +1, +1), // 5
-            new Vector3( +1, +1, +1), // 6
-            new Vector3( +1, -1, +1)  // 7
+            new( -1, -1, +1), // 4  
+            new( -1, +1, +1), // 5
+            new( +1, +1, +1), // 6
+            new( +1, -1, +1)  // 7
         };
 
 
         public static void RenderBoxMeasurements(Bounds bounds)
         {
-            using (var drawingScope = new UnityEditor.Handles.DrawingScope(SceneHandles.measureColor))
+            using (var drawingScope = new UnityEditor.Handles.DrawingScope(SceneHandles.MeasureColor))
             {
                 if (bounds.size.y != 0)
                     Measurements.DrawLengths(bounds);
@@ -293,7 +293,7 @@ namespace Chisel.Editors
 
         public static void RenderBoxMeasurements(Matrix4x4 transformation, Bounds bounds)
         {
-            using (var drawingScope = new UnityEditor.Handles.DrawingScope(SceneHandles.measureColor, transformation))
+            using (var drawingScope = new UnityEditor.Handles.DrawingScope(SceneHandles.MeasureColor, transformation))
             {
                 if (bounds.size.y != 0)
                     Measurements.DrawLengths(bounds);
@@ -314,20 +314,20 @@ namespace Chisel.Editors
 
             using (new SceneHandles.DrawingScope(transformation * Matrix4x4.TRS(bounds.center, Quaternion.identity, bounds.extents)))
             {
-                SceneHandles.DrawDottedLine(boxVertices[0], boxVertices[1], 1.0f);
-                SceneHandles.DrawDottedLine(boxVertices[1], boxVertices[2], 1.0f);
-                SceneHandles.DrawDottedLine(boxVertices[2], boxVertices[3], 1.0f);
-                SceneHandles.DrawDottedLine(boxVertices[3], boxVertices[0], 1.0f);
+                SceneHandles.DrawDottedLine(kBoxVertices[0], kBoxVertices[1], 1.0f);
+                SceneHandles.DrawDottedLine(kBoxVertices[1], kBoxVertices[2], 1.0f);
+                SceneHandles.DrawDottedLine(kBoxVertices[2], kBoxVertices[3], 1.0f);
+                SceneHandles.DrawDottedLine(kBoxVertices[3], kBoxVertices[0], 1.0f);
                 
-                SceneHandles.DrawDottedLine(boxVertices[4], boxVertices[5], 1.0f);
-                SceneHandles.DrawDottedLine(boxVertices[5], boxVertices[6], 1.0f);
-                SceneHandles.DrawDottedLine(boxVertices[6], boxVertices[7], 1.0f);
-                SceneHandles.DrawDottedLine(boxVertices[7], boxVertices[4], 1.0f);
+                SceneHandles.DrawDottedLine(kBoxVertices[4], kBoxVertices[5], 1.0f);
+                SceneHandles.DrawDottedLine(kBoxVertices[5], kBoxVertices[6], 1.0f);
+                SceneHandles.DrawDottedLine(kBoxVertices[6], kBoxVertices[7], 1.0f);
+                SceneHandles.DrawDottedLine(kBoxVertices[7], kBoxVertices[4], 1.0f);
                 
-                SceneHandles.DrawDottedLine(boxVertices[0], boxVertices[4], 1.0f);
-                SceneHandles.DrawDottedLine(boxVertices[1], boxVertices[5], 1.0f);
-                SceneHandles.DrawDottedLine(boxVertices[2], boxVertices[6], 1.0f);
-                SceneHandles.DrawDottedLine(boxVertices[3], boxVertices[7], 1.0f);			
+                SceneHandles.DrawDottedLine(kBoxVertices[0], kBoxVertices[4], 1.0f);
+                SceneHandles.DrawDottedLine(kBoxVertices[1], kBoxVertices[5], 1.0f);
+                SceneHandles.DrawDottedLine(kBoxVertices[2], kBoxVertices[6], 1.0f);
+                SceneHandles.DrawDottedLine(kBoxVertices[3], kBoxVertices[7], 1.0f);			
             }
         }
         
@@ -360,8 +360,8 @@ namespace Chisel.Editors
             }
         }
         
-        static Vector3[]	cylinderVertices	 = null;
-        static int			prevCylinderSegments = 0;
+        static Vector3[]	s_CylinderVertices	 = null;
+        static int			s_PrevCylinderSegments = 0;
 
         public static void RenderCylinder(Matrix4x4 transformation, Bounds bounds, int segments)
         {
@@ -369,15 +369,13 @@ namespace Chisel.Editors
                 segments < 3)
                 return;
             
-            if (cylinderVertices == null ||
-                cylinderVertices.Length < segments * 2)
-                cylinderVertices = new Vector3[segments * 2];
+            if (s_CylinderVertices == null ||
+                s_CylinderVertices.Length < segments * 2)
+                s_CylinderVertices = new Vector3[segments * 2];
 
-            RenderSquareXZ(transformation, bounds);
-
-            if (prevCylinderSegments != segments)
+            if (s_PrevCylinderSegments != segments)
             {
-                prevCylinderSegments = segments;
+                s_PrevCylinderSegments = segments;
                 float angleOffset = ((segments&1) == 1) ? 0.0f : ((360.0f / segments) * 0.5f);
 
                 var xVector = Vector3.right; 
@@ -391,18 +389,20 @@ namespace Chisel.Editors
                     var topVertex	 = bottomVertex;
                     bottomVertex.y -= 1.0f;
                     topVertex.y    += 1.0f;
-                    cylinderVertices[v         ] = bottomVertex;
-                    cylinderVertices[v+segments] = topVertex;
+                    s_CylinderVertices[v         ] = bottomVertex;
+                    s_CylinderVertices[v+segments] = topVertex;
                 }
             }
+
+            RenderSquareXZ(transformation, bounds);
 
             using (new SceneHandles.DrawingScope(transformation * Matrix4x4.TRS(bounds.center, Quaternion.identity, bounds.extents)))
             {
                 for (int n0 = segments-1, n1 = 0; n1 < segments; n0 = n1, n1++)
                 {
-                    SceneHandles.DrawDottedLine(cylinderVertices[           n0], cylinderVertices[           n1], 1.0f);
-                    SceneHandles.DrawDottedLine(cylinderVertices[segments + n0], cylinderVertices[segments + n1], 1.0f);
-                    SceneHandles.DrawDottedLine(cylinderVertices[           n1], cylinderVertices[segments + n1], 1.0f);
+                    SceneHandles.DrawDottedLine(s_CylinderVertices[           n0], s_CylinderVertices[           n1], 1.0f);
+                    SceneHandles.DrawDottedLine(s_CylinderVertices[segments + n0], s_CylinderVertices[segments + n1], 1.0f);
+                    SceneHandles.DrawDottedLine(s_CylinderVertices[           n1], s_CylinderVertices[segments + n1], 1.0f);
                 }
             }
         }
@@ -460,9 +460,9 @@ namespace Chisel.Editors
                 RenderCrossXZ(extents, y, pivotPosition, snapResult); 
                 RenderBox(extents);
             
-                var color = SceneHandles.color;
+                var color = SceneHandles.Color;
                 color.a *= 0.5f;
-                SceneHandles.color = color;
+                SceneHandles.Color = color;
             
                 if (y != 0)
                 {

@@ -19,14 +19,20 @@ namespace Chisel.Components
 		NativeHashMap<int, VisibilityState> instanceIDVisibilityStateLookup;
 
 		public void Dispose()
-        {
-            if (compactNodeIDVisibilityStateLookup.IsCreated)
+		{
+			if (compactNodeIDVisibilityStateLookup.IsCreated)  
                 compactNodeIDVisibilityStateLookup.Dispose();
             compactNodeIDVisibilityStateLookup = default;
 
 			if (instanceIDVisibilityStateLookup.IsCreated)
 				instanceIDVisibilityStateLookup.Dispose();
 			instanceIDVisibilityStateLookup = default;
+		}
+
+        internal void Clear()
+		{
+			compactNodeIDVisibilityStateLookup.Clear();
+			instanceIDVisibilityStateLookup.Clear();
 		}
 
         [GenerateTestsForBurstCompatibility]
@@ -110,12 +116,14 @@ namespace Chisel.Components
 
         public void UpdateVisibility(IEnumerable<ChiselModelComponent> models)
         {
-			// TODO: 1. turn off rendering regular meshes when we have partial visibility of model contents
-			//       2. find a way to render partial mesh instead
-			//          A. needs to show lightmap of original mesh, even when modified
-			//          B. updating lightmaps needs to still work as if original mesh is changed
-			if (!compactNodeIDVisibilityStateLookup.IsCreated)
+            // TODO: 1. turn off rendering regular meshes when we have partial visibility of model contents
+            //       2. find a way to render partial mesh instead
+            //          A. needs to show lightmap of original mesh, even when modified
+            //          B. updating lightmaps needs to still work as if original mesh is changed
+            if (!compactNodeIDVisibilityStateLookup.IsCreated)
+			{
 				compactNodeIDVisibilityStateLookup = new NativeHashMap<CompactNodeID, VisibilityState>(2048, Allocator.Persistent);
+            }
 			compactNodeIDVisibilityStateLookup.Clear();
 
 			if (!instanceIDVisibilityStateLookup.IsCreated)

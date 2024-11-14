@@ -127,17 +127,16 @@ namespace Chisel.Editors
             return surfaceHashSet.ToArray();
         }
 
-        static readonly List<SurfaceReference>      s_FoundSurfaceReferences    = new List<SurfaceReference>();
 
         public void UpdateDrag()
         {
             var selectAllSurfaces = UnityEngine.Event.current.shift;
-            
-            { 
-                s_FoundSurfaceReferences.Clear();
-                ChiselClickSelectionManager.FindSurfaceReferences(Event.current.mousePosition, selectAllSurfaces, s_FoundSurfaceReferences, out _, out _);
-                var surfaceReferences = s_FoundSurfaceReferences.ToArray();
-                s_FoundSurfaceReferences.Clear();
+
+			{
+				var foundSurfaceReferences = ListPool<SurfaceReference>.Get();
+                ChiselClickSelectionManager.FindSurfaceReferences(Event.current.mousePosition, selectAllSurfaces, foundSurfaceReferences, out _, out _);
+                var surfaceReferences = foundSurfaceReferences.ToArray();
+				ListPool<SurfaceReference>.Release(foundSurfaceReferences);
                 if (!Equals(prevSurfaceReferences, surfaceReferences))
                 {
                     UndoPrevSurfaceReference();

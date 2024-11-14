@@ -9,16 +9,17 @@ namespace Chisel.Core
     [Serializable]
     public struct ChiselHemisphere : IBrushGenerator
     {
-        public readonly static ChiselHemisphere DefaultValues = new ChiselHemisphere
-        {
+        readonly static ChiselHemisphere kDefaultSettings = new()
+		{
             diameterXYZ		    = new float3(1.0f, 0.5f, 1.0f),
             rotation			= 0.0f,
             horizontalSegments	= 8,
             verticalSegments	= 8
         };
+		public static ref readonly ChiselHemisphere DefaultSettings => ref kDefaultSettings;
 
 
-        [DistanceValue] public float3   diameterXYZ;
+		[DistanceValue] public float3   diameterXYZ;
         public float                    rotation; // TODO: useless?
         public int                      horizontalSegments;
         public int                      verticalSegments;
@@ -65,7 +66,7 @@ namespace Chisel.Core
         #endregion
 
         #region Reset
-        public void Reset() { this = DefaultValues; }
+        public void Reset() { this = DefaultSettings; }
         #endregion
     }
 

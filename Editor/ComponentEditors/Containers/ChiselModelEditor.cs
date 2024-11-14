@@ -8,6 +8,7 @@ using Chisel.Components;
 using UnityEngine.Rendering;
 using System.Collections.Generic;
 using UnityEngine.Profiling;
+using UnityEngine.Pool;
 
 namespace Chisel.Editors
 {
@@ -43,74 +44,74 @@ namespace Chisel.Editors
             return model;
         }
 
-        static readonly GUIContent LightingContent                        = new("Lighting");
-        static readonly GUIContent ProbesContent                          = new("Probes");
-        static readonly GUIContent AdditionalSettingsContent              = new("Additional Settings");
-        static readonly GUIContent GenerationSettingsContent              = new("Geometry Output");
-        static readonly GUIContent ColliderSettingsContent                = new("Collider");
-        static readonly GUIContent CreateRenderComponentsContents         = new("Renderable");
-        static readonly GUIContent CreateColliderComponentsContents       = new("Collidable");
-        static readonly GUIContent UnwrapParamsContents                   = new("UV Generation");
+        readonly static GUIContent kLightingContent                        = new("Lighting");
+        readonly static GUIContent kProbesContent                          = new("Probes");
+        readonly static GUIContent kAdditionalSettingsContent              = new("Additional Settings");
+        readonly static GUIContent kGenerationSettingsContent              = new("Geometry Output");
+        readonly static GUIContent kColliderSettingsContent                = new("Collider");
+        readonly static GUIContent kCreateRenderComponentsContents         = new("Renderable");
+        readonly static GUIContent kCreateColliderComponentsContents       = new("Collidable");
+        readonly static GUIContent kUnwrapParamsContents                   = new("UV Generation");
 
-        static readonly GUIContent ForceBuildUVsContents                  = new("Build", "Manually build lightmap UVs for generated meshes. This operation can be slow for more complicated meshes");
-        static readonly GUIContent ForceRebuildUVsContents                = new("Rebuild", "Manually rebuild lightmap UVs for generated meshes. This operation can be slow for more complicated meshes");
-        static readonly GUIContent AutoRebuildUVsContents                 = new("Auto UV Generation", "Automatically lightmap UVs for generated meshes. This operation can be slow for more complicated meshes");
-        static readonly GUIContent NeedsLightmapBuildContents             = new("In order for lightmapping to work properly the lightmap UVs need to be build.");
-        static readonly GUIContent NeedsLightmapRebuildContents           = new("In order for lightmapping to work properly the lightmap UVs need to be rebuild.");
+        readonly static GUIContent kForceBuildUVsContents                  = new("Build", "Manually build lightmap UVs for generated meshes. This operation can be slow for more complicated meshes");
+        readonly static GUIContent kForceRebuildUVsContents                = new("Rebuild", "Manually rebuild lightmap UVs for generated meshes. This operation can be slow for more complicated meshes");
+        readonly static GUIContent kAutoRebuildUVsContents                 = new("Auto UV Generation", "Automatically lightmap UVs for generated meshes. This operation can be slow for more complicated meshes");
+        readonly static GUIContent kNeedsLightmapBuildContents             = new("In order for lightmapping to work properly the lightmap UVs need to be build.");
+        readonly static GUIContent kNeedsLightmapRebuildContents           = new("In order for lightmapping to work properly the lightmap UVs need to be rebuild.");
 
-        static readonly GUIContent MotionVectorsContent                   = new("Motion Vectors", "Specifies whether the Model renders 'Per Object Motion', 'Camera Motion', or 'No Motion' vectors to the Camera Motion Vector Texture.");
-        static readonly GUIContent LightmappingContents                   = new("Lightmapping");
-        static readonly GUIContent GINotEnabledInfoContents               = new("Lightmapping settings are currently disabled. Enable Baked Global Illumination or Realtime Global Illumination to display these settings.");
-        static readonly GUIContent UVChartingContents                     = new("UV Charting Control");
-        static readonly GUIContent ImportantGIContents                    = new("Prioritize Illumination", "When enabled, the object will be marked as a priority object and always included in lighting calculations. Useful for objects that will be strongly emissive to make sure that other objects will be illuminated by this object.");
-        static readonly GUIContent ScaleInLightmapContents                = new("Scale In Lightmap", "Specifies the relative size of object's UVs within a lightmap. A value of 0 will result in the object not being light mapped, but still contribute lighting to other objects in the Scene.");
-        static readonly GUIContent OptimizeRealtimeUVsContents            = new("Optimize Realtime UVs", "Specifies whether the generated model UVs get optimized for Realtime Global Illumination or not. When enabled, the UVs can get merged, scaled, and packed for optimization purposes. When disabled, the UVs will get scaled and packed, but not merged.");
-        static readonly GUIContent AutoUVMaxDistanceContents              = new("Max Distance", "Specifies the maximum worldspace distance to be used for UV chart simplification. If charts are within this distance they will be simplified for optimization purposes.");
-        static readonly GUIContent AutoUVMaxAngleContents                 = new("Max Angle", "Specifies the maximum angle in degrees between faces sharing a UV edge. If the angle between the faces is below this value, the UV charts will be simplified.");
-        static readonly GUIContent IgnoreNormalsForChartDetectionContents = new("Ignore Normals", "When enabled, prevents the UV charts from being split during the precompute process for Realtime Global Illumination lighting.");
-        static readonly GUIContent LightmapParametersContents             = new("Lightmap Parameters", "Allows the adjustment of advanced parameters that affect the process of generating a lightmap for an object using global illumination.");
-        static readonly GUIContent DynamicOccludeeContents                = new("Dynamic Occluded", "Controls if dynamic occlusion culling should be performed for this model.");
-        static readonly GUIContent ProbeAnchorContents                    = new("Anchor Override", "Specifies the Transform ` that will be used for sampling the light probes and reflection probes.");
-        static readonly GUIContent ReflectionProbeUsageContents           = new("Reflection Probes", "Specifies if or how the object is affected by reflections in the Scene. This property cannot be disabled in deferred rendering modes.");
-        static readonly GUIContent LightProbeUsageContents                = new("Light Probes", "Specifies how Light Probes will handle the interpolation of lighting and occlusion. Disabled if the object is set to Lightmap Static.");
-        static readonly GUIContent LightProbeVolumeOverrideContents       = new("Proxy Volume Override", "If set, the Model will use the Light Probe Proxy Volume component from another GameObject.");
-        static readonly GUIContent LightProbeCustomContents               = new("The Custom Provided mode is not supported.");
-        static readonly GUIContent LightProbeVolumeContents               = new("A valid Light Probe Proxy Volume component could not be found.");
-        static readonly GUIContent LightProbeVolumeUnsupportedContents    = new("The Light Probe Proxy Volume feature is unsupported by the current graphics hardware or API configuration. Simple 'Blend Probes' mode will be used instead.");
-        static readonly GUIContent RenderingLayerMaskStyle                = new("Rendering Layer Mask", "Mask that can be used with SRP DrawRenderers command to filter renderers outside of the normal layering system.");
-        static readonly GUIContent StaticBatchingWarningContents          = new("This model is statically batched and uses an instanced shader at the same time. Instancing will be disabled in such a case. Consider disabling static batching if you want it to be instanced.");
-        static readonly GUIContent NoNormalsNoLightmappingContents        = new("VertexChannels is set to not have any normals. Normals are needed for lightmapping.");
-        //static readonly GUIContent LightmapInfoBoxContents              = new("To enable generation of lightmaps for this Model, please enable the 'Lightmap Static' property.");
-        static readonly GUIContent ClampedPackingResolutionContents       = new("Object's size in the realtime lightmap has reached the maximum size. Try dividing large brushes into smaller pieces.");
-        static readonly GUIContent UVOverlapContents                      = new("This model has overlapping UVs. This is caused by Unity's own code.");
-        static readonly GUIContent ClampedSizeContents                    = new("Object's size in lightmap has reached the max atlas size.", "If you need higher resolution for this object, try dividing large brushes into smaller pieces or set higher max atlas size via the LightmapEditorSettings class.");
-        static readonly GUIContent IsTriggerContents                      = new("Is Trigger", "Is this model a trigger? Triggers are only supported on convex models.");
-        static readonly GUIContent ConvextContents                        = new("Convex", "Create a convex collider for this model?");
-        static readonly GUIContent VertexChannelMaskContents              = new("Vertex Channel Mask", "Select which vertex channels will be used in the generated meshes");
-        //static readonly GUIContent SkinWidthContents                    = new("Skin Width", "How far out to inflate the mesh when building collision mesh.");
-        static readonly GUIContent CookingOptionsContents                 = new("Cooking Options", "Options affecting the result of the mesh processing by the physics engine.");
-        static readonly GUIContent DefaultModelContents                   = new("This model is the default model, all nodes that are not part of a model are automatically added to this model.");
-        static readonly GUIContent StitchLightmapSeamsContents            = new("Stitch Seams", "When enabled, seams in baked lightmaps will get smoothed.");
-        static readonly GUIContent ContributeGIContents                   = new("Contribute Global Illumination", "When enabled, this GameObject influences lightmaps and Light Probes. If you want this object itself to be lightmapped, you must enable this property.");
-        static readonly GUIContent MinimumChartSizeContents               = new("Min Chart Size", "Specifies the minimum texel size used for a UV chart. If stitching is required, a value of 4 will create a chart of 4x4 texels to store lighting and directionality. If stitching is not required, a value of 2 will reduce the texel density and provide better lighting build times and run time performance.");
-        static readonly GUIContent ReceiveGITitle                         = new("Receive Global Illumination", "If enabled, this GameObject receives global illumination from lightmaps or Light Probes. To use lightmaps, Contribute Global Illumination must be enabled.");
+        readonly static GUIContent kMotionVectorsContent                   = new("Motion Vectors", "Specifies whether the Model renders 'Per Object Motion', 'Camera Motion', or 'No Motion' vectors to the Camera Motion Vector Texture.");
+        readonly static GUIContent kLightmappingContents                   = new("Lightmapping");
+        readonly static GUIContent kGINotEnabledInfoContents               = new("Lightmapping settings are currently disabled. Enable Baked Global Illumination or Realtime Global Illumination to display these settings.");
+        readonly static GUIContent kUVChartingContents                     = new("UV Charting Control");
+        readonly static GUIContent kImportantGIContents                    = new("Prioritize Illumination", "When enabled, the object will be marked as a priority object and always included in lighting calculations. Useful for objects that will be strongly emissive to make sure that other objects will be illuminated by this object.");
+        readonly static GUIContent kScaleInLightmapContents                = new("Scale In Lightmap", "Specifies the relative size of object's UVs within a lightmap. A value of 0 will result in the object not being light mapped, but still contribute lighting to other objects in the Scene.");
+        readonly static GUIContent kOptimizeRealtimeUVsContents            = new("Optimize Realtime UVs", "Specifies whether the generated model UVs get optimized for Realtime Global Illumination or not. When enabled, the UVs can get merged, scaled, and packed for optimization purposes. When disabled, the UVs will get scaled and packed, but not merged.");
+        readonly static GUIContent kAutoUVMaxDistanceContents              = new("Max Distance", "Specifies the maximum worldspace distance to be used for UV chart simplification. If charts are within this distance they will be simplified for optimization purposes.");
+        readonly static GUIContent kAutoUVMaxAngleContents                 = new("Max Angle", "Specifies the maximum angle in degrees between faces sharing a UV edge. If the angle between the faces is below this value, the UV charts will be simplified.");
+        readonly static GUIContent kIgnoreNormalsForChartDetectionContents = new("Ignore Normals", "When enabled, prevents the UV charts from being split during the precompute process for Realtime Global Illumination lighting.");
+        readonly static GUIContent kLightmapParametersContents             = new("Lightmap Parameters", "Allows the adjustment of advanced parameters that affect the process of generating a lightmap for an object using global illumination.");
+        readonly static GUIContent kDynamicOccludeeContents                = new("Dynamic Occluded", "Controls if dynamic occlusion culling should be performed for this model.");
+        readonly static GUIContent kProbeAnchorContents                    = new("Anchor Override", "Specifies the Transform ` that will be used for sampling the light probes and reflection probes.");
+        readonly static GUIContent kReflectionProbeUsageContents           = new("Reflection Probes", "Specifies if or how the object is affected by reflections in the Scene. This property cannot be disabled in deferred rendering modes.");
+		readonly static GUIContent kLightProbeUsageContents                = new("Light Probes", "Specifies how Light Probes will handle the interpolation of lighting and occlusion. Disabled if the object is set to Lightmap Static.");
+        readonly static GUIContent kLightProbeVolumeOverrideContents       = new("Proxy Volume Override", "If set, the Model will use the Light Probe Proxy Volume component from another GameObject.");
+        readonly static GUIContent kLightProbeCustomContents               = new("The Custom Provided mode is not supported.");
+        readonly static GUIContent kLightProbeVolumeContents               = new("A valid Light Probe Proxy Volume component could not be found.");
+        readonly static GUIContent kLightProbeVolumeUnsupportedContents    = new("The Light Probe Proxy Volume feature is unsupported by the current graphics hardware or API configuration. Simple 'Blend Probes' mode will be used instead.");
+        readonly static GUIContent kRenderingLayerMaskStyle                = new("Rendering Layer Mask", "Mask that can be used with SRP DrawRenderers command to filter renderers outside of the normal layering system.");
+        readonly static GUIContent kStaticBatchingWarningContents          = new("This model is statically batched and uses an instanced shader at the same time. Instancing will be disabled in such a case. Consider disabling static batching if you want it to be instanced.");
+        readonly static GUIContent kNoNormalsNoLightmappingContents        = new("VertexChannels is set to not have any normals. Normals are needed for lightmapping.");
+        //readonly static GUIContent kLightmapInfoBoxContents              = new("To enable generation of lightmaps for this Model, please enable the 'Lightmap Static' property.");
+        readonly static GUIContent kClampedPackingResolutionContents       = new("Object's size in the realtime lightmap has reached the maximum size. Try dividing large brushes into smaller pieces.");
+        readonly static GUIContent kUVOverlapContents                      = new("This model has overlapping UVs. This is caused by Unity's own code.");
+        readonly static GUIContent kClampedSizeContents                    = new("Object's size in lightmap has reached the max atlas size.", "If you need higher resolution for this object, try dividing large brushes into smaller pieces or set higher max atlas size via the LightmapEditorSettings class.");
+        readonly static GUIContent kIsTriggerContents                      = new("Is Trigger", "Is this model a trigger? Triggers are only supported on convex models.");
+        readonly static GUIContent kConvextContents                        = new("Convex", "Create a convex collider for this model?");
+        readonly static GUIContent kVertexChannelMaskContents              = new("Vertex Channel Mask", "Select which vertex channels will be used in the generated meshes");
+        //readonly static GUIContent kSkinWidthContents                    = new("Skin Width", "How far out to inflate the mesh when building collision mesh.");
+        readonly static GUIContent kCookingOptionsContents                 = new("Cooking Options", "Options affecting the result of the mesh processing by the physics engine.");
+        readonly static GUIContent kDefaultModelContents                   = new("This model is the default model, all nodes that are not part of a model are automatically added to this model.");
+        readonly static GUIContent kStitchLightmapSeamsContents            = new("Stitch Seams", "When enabled, seams in baked lightmaps will get smoothed.");
+        readonly static GUIContent kContributeGIContents                   = new("Contribute Global Illumination", "When enabled, this GameObject influences lightmaps and Light Probes. If you want this object itself to be lightmapped, you must enable this property.");
+        readonly static GUIContent kMinimumChartSizeContents               = new("Min Chart Size", "Specifies the minimum texel size used for a UV chart. If stitching is required, a value of 4 will create a chart of 4x4 texels to store lighting and directionality. If stitching is not required, a value of 2 will reduce the texel density and provide better lighting build times and run time performance.");
+        readonly static GUIContent kReceiveGITitle                         = new("Receive Global Illumination", "If enabled, this GameObject receives global illumination from lightmaps or Light Probes. To use lightmaps, Contribute Global Illumination must be enabled.");
         
-        static readonly int[] MinimumChartSizeValues        = { 2, 4 };
-        static readonly GUIContent[] MinimumChartSizeStrings =
+        readonly static int[]        kMinimumChartSizeValues        = { 2, 4 };
+        readonly static GUIContent[] kMinimumChartSizeStrings =
         {
-            new GUIContent("2 (Minimum)"),
-            new GUIContent("4 (Stitchable)"),
+            new("2 (Minimum)"),
+            new("4 (Stitchable)"),
         };
 
-        public static readonly int[]        ReceiveGILightmapValues = { (int)ReceiveGI.Lightmaps, (int)ReceiveGI.LightProbes };
-        public static readonly GUIContent[] ReceiveGILightmapStrings =
+        readonly static int[]        kReceiveGILightmapValues = { (int)ReceiveGI.Lightmaps, (int)ReceiveGI.LightProbes };
+        readonly static GUIContent[] kReceiveGILightmapStrings =
         {
-                new GUIContent("Lightmaps"),
-                new GUIContent("Light Probes")
-            };
+            new("Lightmaps"),
+            new("Light Probes")
+        };
 
 
-        static GUIContent[] ReflectionProbeUsageOptionsContents;
+        static GUIContent[] s_ReflectionProbeUsageOptionsContents;
 
 
 
@@ -150,7 +151,7 @@ namespace Chisel.Editors
         SerializedProperty probeAnchorProp;
         SerializedProperty stitchLightmapSeamsProp;
 
-        SerializedObject gameObjectsSerializedObject;
+        SerializedObject   gameObjectsSerializedObject;
         SerializedProperty staticEditorFlagsProp;
 
 
@@ -168,24 +169,32 @@ namespace Chisel.Editors
         bool showChartingSettings;
         bool showUnwrapParams;
 
+		UnityEngine.Object[] childNodes;
 
-        delegate float GetCachedMeshSurfaceAreaDelegate(MeshRenderer meshRenderer);
+		readonly static ChiselComponentInspectorMessageHandler s_Messages = new();
+		//private Vector2 modelMessagesScrollPosition = Vector2.zero;
+		Vector2 childMessagesScrollPosition = Vector2.zero;
+
+
+		delegate float GetCachedMeshSurfaceAreaDelegate(MeshRenderer meshRenderer);
         delegate bool HasClampedResolutionDelegate(Renderer renderer);
         delegate bool HasUVOverlapsDelegate(Renderer renderer);
         delegate bool HasInstancingDelegate(Shader s);
 
 		delegate void LightmapParametersGUIDelegate(SerializedProperty prop, GUIContent content);
-		static readonly LightmapParametersGUIDelegate LightmapParametersGUI = ReflectionExtensions.CreateDelegate<LightmapParametersGUIDelegate>("UnityEditor.RendererLightingSettings", "LightmapParametersGUI");
-		static readonly HasClampedResolutionDelegate HasClampedResolution = typeof(Lightmapping).CreateDelegate<HasClampedResolutionDelegate>("HasClampedResolution");
-		static readonly HasUVOverlapsDelegate HasUVOverlaps = typeof(Lightmapping).CreateDelegate<HasUVOverlapsDelegate>("HasUVOverlaps");
+		readonly static LightmapParametersGUIDelegate kLightmapParametersGUI = ReflectionExtensions.CreateDelegate<LightmapParametersGUIDelegate>("UnityEditor.RendererLightingSettings", "LightmapParametersGUI");
+		readonly static HasClampedResolutionDelegate kHasClampedResolution = typeof(Lightmapping).CreateDelegate<HasClampedResolutionDelegate>("HasClampedResolution");
+		readonly static HasUVOverlapsDelegate kHasUVOverlaps = typeof(Lightmapping).CreateDelegate<HasUVOverlapsDelegate>("HasUVOverlaps");
 
-		static GetCachedMeshSurfaceAreaDelegate GetCachedMeshSurfaceArea    = ReflectionExtensions.CreateDelegate<GetCachedMeshSurfaceAreaDelegate>("UnityEditor.InternalMeshUtil", "GetCachedMeshSurfaceArea");
-        static HasInstancingDelegate            HasInstancing               = typeof(ShaderUtil).CreateDelegate<HasInstancingDelegate>("HasInstancing");
-         
-        internal void OnEnable()
+		readonly static GetCachedMeshSurfaceAreaDelegate kGetCachedMeshSurfaceArea    = ReflectionExtensions.CreateDelegate<GetCachedMeshSurfaceAreaDelegate>("UnityEditor.InternalMeshUtil", "GetCachedMeshSurfaceArea");
+		readonly static HasInstancingDelegate            kHasInstancing               = typeof(ShaderUtil).CreateDelegate<HasInstancingDelegate>("HasInstancing");
+
+		readonly static ReflectedInstanceProperty<int> HasMultipleDifferentValuesBitwise = typeof(SerializedProperty).GetProperty<int>("hasMultipleDifferentValuesBitwise");
+
+		internal void OnEnable()
         {
-            if (ReflectionProbeUsageOptionsContents == null)
-                ReflectionProbeUsageOptionsContents = (Enum.GetNames(typeof(ReflectionProbeUsage)).Select(x => ObjectNames.NicifyVariableName(x)).ToArray()).Select(x => new GUIContent(x)).ToArray();
+            if (s_ReflectionProbeUsageOptionsContents == null)
+                s_ReflectionProbeUsageOptionsContents = (Enum.GetNames(typeof(ReflectionProbeUsage)).Select(x => ObjectNames.NicifyVariableName(x)).ToArray()).Select(x => new GUIContent(x)).ToArray();
 
             showLighting            = EditorPrefs.GetBool(kDisplayLightingKey, false);
             showProbes              = EditorPrefs.GetBool(kDisplayProbesKey, false);
@@ -250,23 +259,28 @@ namespace Chisel.Editors
 			}
 
 
-			HashSet<UnityEngine.Object> uniqueChildNodes = new HashSet<UnityEngine.Object>();
-			if (targets.Length == 1)
-			{
-				var modelTarget = targets[0] as ChiselModelComponent;
-                if (modelTarget)
+			var uniqueChildNodes = HashSetPool<UnityEngine.Object>.Get();
+            try
+            {
+                if (targets.Length == 1)
                 {
-                    foreach (var child in modelTarget.GetComponentsInChildren<ChiselNodeComponent>(includeInactive: false))
+                    var modelTarget = targets[0] as ChiselModelComponent;
+                    if (modelTarget)
                     {
-						if (child.isActiveAndEnabled)
-						    uniqueChildNodes.Add(child);
+                        foreach (var child in modelTarget.GetComponentsInChildren<ChiselNodeComponent>(includeInactive: false))
+                        {
+                            if (child.isActiveAndEnabled)
+                                uniqueChildNodes.Add(child);
+                        }
                     }
                 }
+                childNodes = uniqueChildNodes.ToArray();
+            }
+            finally
+            {
+				HashSetPool<UnityEngine.Object>.Release(uniqueChildNodes);
 			}
-			childNodes = uniqueChildNodes.ToArray();
 		}
-
-		UnityEngine.Object[] childNodes;
 
 		bool IsPreset
 		{
@@ -312,9 +326,6 @@ namespace Chisel.Editors
                 SceneModeUtility.SetStaticFlags(gameObjectsSerializedObject.targetObjects, (int)StaticEditorFlags.ContributeGI, value);
             }
         }
-
-
-        ReflectedInstanceProperty<int> HasMultipleDifferentValuesBitwise = typeof(SerializedProperty).GetProperty<int>("hasMultipleDifferentValuesBitwise");
 
         bool MixedGIValue
         {
@@ -377,7 +388,7 @@ namespace Chisel.Editors
 
         float GetLargestCachedMeshSurfaceAreaForTargets(float defaultValue)
         {
-            if (target == null || GetCachedMeshSurfaceArea == null)
+            if (target == null || kGetCachedMeshSurfaceArea == null)
                 return defaultValue;
             float largestSurfaceArea = -1;
             foreach(var target in targets)
@@ -396,7 +407,7 @@ namespace Chisel.Editors
                     var meshRenderer = renderable.meshRenderer;
                     if (!meshRenderer)
                         continue;
-                    largestSurfaceArea = Mathf.Max(largestSurfaceArea, GetCachedMeshSurfaceArea(meshRenderer));
+                    largestSurfaceArea = Mathf.Max(largestSurfaceArea, kGetCachedMeshSurfaceArea(meshRenderer));
                 }
             }
             if (largestSurfaceArea >= 0)
@@ -406,7 +417,7 @@ namespace Chisel.Editors
 
         bool TargetsHaveClampedResolution()
         {
-            if (target == null || HasClampedResolution == null)
+            if (target == null || kHasClampedResolution == null)
                 return false;
             foreach (var target in targets)
             {
@@ -424,7 +435,7 @@ namespace Chisel.Editors
                     var meshRenderer = renderable.meshRenderer;
                     if (!meshRenderer)
                         continue;
-                    if (HasClampedResolution(meshRenderer))
+                    if (kHasClampedResolution(meshRenderer))
                         return true;
                 }
             }
@@ -433,7 +444,7 @@ namespace Chisel.Editors
 
         bool TargetsHaveUVOverlaps()
         {
-            if (target == null || HasUVOverlaps == null)
+            if (target == null || kHasUVOverlaps == null)
                 return false;
             foreach (var target in targets)
             {
@@ -451,7 +462,7 @@ namespace Chisel.Editors
                     var meshRenderer = renderable.meshRenderer;
                     if (!meshRenderer)
                         continue;
-                    if (HasUVOverlaps(meshRenderer))
+                    if (kHasUVOverlaps(meshRenderer))
                         return true;
                 }
             }
@@ -460,7 +471,7 @@ namespace Chisel.Editors
 
         bool TargetsUseInstancingShader()
         {
-            if (target == null || HasInstancing == null)
+            if (target == null || kHasInstancing == null)
                 return false;
             foreach (var target in targets)
             {
@@ -477,7 +488,7 @@ namespace Chisel.Editors
                         continue;
                     foreach (var material in renderable.renderMaterials)
                     {
-                        if (material != null && material.enableInstancing && material.shader != null && HasInstancing(material.shader))
+                        if (material != null && material.enableInstancing && material.shader != null && kHasInstancing(material.shader))
                             return true;
                     }
                 }
@@ -565,9 +576,9 @@ namespace Chisel.Editors
                 {
                     // LightProbeUsage has non-sequential enum values. Extra care is to be taken.
                     Rect r = EditorGUILayout.GetControlRect(true, EditorGUIUtility.singleLineHeight, EditorStyles.popup);
-                    EditorGUI.BeginProperty(r, LightProbeUsageContents, lightProbeUsageProp);
+                    EditorGUI.BeginProperty(r, kLightProbeUsageContents, lightProbeUsageProp);
                     EditorGUI.BeginChangeCheck();
-                    var newValue = EditorGUI.EnumPopup(r, LightProbeUsageContents, (LightProbeUsage)lightProbeUsageProp.intValue);
+                    var newValue = EditorGUI.EnumPopup(r, kLightProbeUsageContents, (LightProbeUsage)lightProbeUsageProp.intValue);
                     if (EditorGUI.EndChangeCheck())
                         lightProbeUsageProp.intValue = (int)(LightProbeUsage)newValue;
                     EditorGUI.EndProperty();
@@ -578,19 +589,19 @@ namespace Chisel.Editors
                             lightProbeUsageProp.intValue == (int)LightProbeUsage.UseProxyVolume)
                         {
                             EditorGUI.indentLevel++;
-                            EditorGUILayout.PropertyField(lightProbeVolumeOverrideProp, LightProbeVolumeOverrideContents);
+                            EditorGUILayout.PropertyField(lightProbeVolumeOverrideProp, kLightProbeVolumeOverrideContents);
                             EditorGUI.indentLevel--;
                         } else 
                         if (lightProbeUsageProp.intValue == (int)LightProbeUsage.CustomProvided)
                         {
                             EditorGUI.indentLevel++;
-                            EditorGUILayout.HelpBox(LightProbeCustomContents.text, MessageType.Error);
+                            EditorGUILayout.HelpBox(kLightProbeCustomContents.text, MessageType.Error);
                             EditorGUI.indentLevel--;
                         }
                     }
                 } else
                 {
-                    EditorGUILayout.EnumPopup(LightProbeUsageContents, LightProbeUsage.Off);
+                    EditorGUILayout.EnumPopup(kLightProbeUsageContents, LightProbeUsage.Off);
                 }
             }
         }
@@ -605,11 +616,11 @@ namespace Chisel.Editors
                     bool hasLightProbeProxyOrOverride = HasLightProbeProxyOrOverride();
                     if (hasLightProbeProxyOrOverride && AreLightProbesAllowed())
                     {
-                        EditorGUILayout.HelpBox(LightProbeVolumeContents.text, MessageType.Warning);
+                        EditorGUILayout.HelpBox(kLightProbeVolumeContents.text, MessageType.Warning);
                     }
                 } else
                 {
-                    EditorGUILayout.HelpBox(LightProbeVolumeUnsupportedContents.text, MessageType.Warning);
+                    EditorGUILayout.HelpBox(kLightProbeVolumeUnsupportedContents.text, MessageType.Warning);
                 }
             }
         }
@@ -624,11 +635,11 @@ namespace Chisel.Editors
                 // reflection probe usage field; UI disabled when using deferred reflections
                 if (isDeferredReflections)
                 {
-                    EditorGUILayout.EnumPopup(ReflectionProbeUsageContents, (reflectionProbeUsageProp.intValue != (int)ReflectionProbeUsage.Off) ? ReflectionProbeUsage.Simple : ReflectionProbeUsage.Off);
+                    EditorGUILayout.EnumPopup(kReflectionProbeUsageContents, (reflectionProbeUsageProp.intValue != (int)ReflectionProbeUsage.Off) ? ReflectionProbeUsage.Simple : ReflectionProbeUsage.Off);
                 } else
                 {
                     Rect r = EditorGUILayout.GetControlRect(true, EditorGUIUtility.singleLineHeight, EditorStyles.popup);
-                    ChiselEditorUtility.Popup(r, reflectionProbeUsageProp, ReflectionProbeUsageOptionsContents, ReflectionProbeUsageContents);
+                    ChiselEditorUtility.Popup(r, reflectionProbeUsageProp, s_ReflectionProbeUsageOptionsContents, kReflectionProbeUsageContents);
                 }
             }
         }
@@ -640,7 +651,7 @@ namespace Chisel.Editors
             bool needsRendering			= useReflectionProbes || lightProbesEnabled;
 
             if (needsRendering)
-                EditorGUILayout.PropertyField(probeAnchorProp, ProbeAnchorContents);
+                EditorGUILayout.PropertyField(probeAnchorProp, kProbeAnchorContents);
 
             return needsRendering;
         }
@@ -665,10 +676,10 @@ namespace Chisel.Editors
             var lightmapScaleValue = lodScale * lightmapScaleProp.floatValue;
 
             var rect = EditorGUILayout.GetControlRect();
-            EditorGUI.BeginProperty(rect, ScaleInLightmapContents, lightmapScaleProp);
+            EditorGUI.BeginProperty(rect, kScaleInLightmapContents, lightmapScaleProp);
             EditorGUI.BeginChangeCheck();
             {
-                lightmapScaleValue = EditorGUI.FloatField(rect, ScaleInLightmapContents, lightmapScaleValue);
+                lightmapScaleValue = EditorGUI.FloatField(rect, kScaleInLightmapContents, lightmapScaleValue);
             }
             if (EditorGUI.EndChangeCheck())
                 lightmapScaleProp.floatValue = Mathf.Max(lightmapScaleValue / Mathf.Max(lodScale, float.Epsilon), 0.0f);
@@ -704,7 +715,7 @@ namespace Chisel.Editors
             var sizeInLightmap = Mathf.Sqrt(cachedSurfaceArea) * lightingSettings.lightmapResolution * lightmapScale;
             
             if (sizeInLightmap > lightingSettings.lightmapMaxSize)
-                EditorGUILayout.HelpBox(ClampedSizeContents.text, MessageType.Info);
+                EditorGUILayout.HelpBox(kClampedSizeContents.text, MessageType.Info);
         }
 
         void RendererUVSettings()
@@ -713,7 +724,7 @@ namespace Chisel.Editors
 
             var optimizeRealtimeUVs = !preserveUVsProp.boolValue;
             EditorGUI.BeginChangeCheck();
-            optimizeRealtimeUVs = EditorGUILayout.Toggle(OptimizeRealtimeUVsContents, optimizeRealtimeUVs);
+            optimizeRealtimeUVs = EditorGUILayout.Toggle(kOptimizeRealtimeUVsContents, optimizeRealtimeUVs);
 
             if (EditorGUI.EndChangeCheck())
                 preserveUVsProp.boolValue = !optimizeRealtimeUVs;
@@ -723,10 +734,10 @@ namespace Chisel.Editors
                 var disabledAutoUVs = preserveUVsProp.boolValue;
                 using (new EditorGUI.DisabledScope(disabledAutoUVs))
                 {
-                    EditorGUILayout.PropertyField(autoUVMaxDistanceProp, AutoUVMaxDistanceContents);
+                    EditorGUILayout.PropertyField(autoUVMaxDistanceProp, kAutoUVMaxDistanceContents);
                     if (autoUVMaxDistanceProp.floatValue < 0.0f)
                         autoUVMaxDistanceProp.floatValue = 0.0f;
-                    EditorGUILayout.Slider(autoUVMaxAngleProp, 0, 180, AutoUVMaxAngleContents);
+                    EditorGUILayout.Slider(autoUVMaxAngleProp, 0, 180, kAutoUVMaxAngleContents);
                     if (autoUVMaxAngleProp.floatValue < 0.0f)
                         autoUVMaxAngleProp.floatValue = 0.0f;
                     if (autoUVMaxAngleProp.floatValue > 180.0f)
@@ -735,9 +746,9 @@ namespace Chisel.Editors
             }
             EditorGUI.indentLevel--;
 
-            EditorGUILayout.PropertyField(ignoreNormalsForChartDetectionProp, IgnoreNormalsForChartDetectionContents);
+            EditorGUILayout.PropertyField(ignoreNormalsForChartDetectionProp, kIgnoreNormalsForChartDetectionContents);
 
-            EditorGUILayout.IntPopup(minimumChartSizeProp, MinimumChartSizeStrings, MinimumChartSizeValues, MinimumChartSizeContents);
+            EditorGUILayout.IntPopup(minimumChartSizeProp, kMinimumChartSizeStrings, kMinimumChartSizeValues, kMinimumChartSizeContents);
             EditorGUI.indentLevel--;
         }
 
@@ -748,11 +759,11 @@ namespace Chisel.Editors
 
             if (SupportedRenderingFeatures.active.motionVectors && motionVectorsProp != null)
             {
-                EditorGUILayout.IntPopup(motionVectorsProp, new[] { new GUIContent("Camera Motion Only"), new GUIContent("Per Object Motion"), new GUIContent("Force No Motion") }, new[] { 0, 1, 2 }, MotionVectorsContent);
+                EditorGUILayout.IntPopup(motionVectorsProp, new[] { new GUIContent("Camera Motion Only"), new GUIContent("Per Object Motion"), new GUIContent("Force No Motion") }, new[] { 0, 1, 2 }, kMotionVectorsContent);
             }
 
             if (allowOcclusionWhenDynamicProp != null)
-                EditorGUILayout.PropertyField(allowOcclusionWhenDynamicProp, DynamicOccludeeContents);
+                EditorGUILayout.PropertyField(allowOcclusionWhenDynamicProp, kDynamicOccludeeContents);
 
             RenderRenderingLayer();
         }
@@ -764,7 +775,7 @@ namespace Chisel.Editors
                 return;
 
             // TODO: Make Position show up instead of "None" when nothing is selected
-            ChiselEditorUtility.EnumFlagsField(VertexChannelMaskContents, vertexChannelMaskProp, typeof(VertexChannelFlags), EditorStyles.popup);
+            ChiselEditorUtility.EnumFlagsField(kVertexChannelMaskContents, vertexChannelMaskProp, typeof(VertexChannelFlags), EditorStyles.popup);
         }
 
 
@@ -775,7 +786,7 @@ namespace Chisel.Editors
             EditorGUI.showMixedValue = mixedValue;
 
             EditorGUI.BeginChangeCheck();
-            contributeGI = EditorGUILayout.Toggle(ContributeGIContents, contributeGI);
+            contributeGI = EditorGUILayout.Toggle(kContributeGIContents, contributeGI);
 
             if (EditorGUI.EndChangeCheck())
             {
@@ -801,7 +812,7 @@ namespace Chisel.Editors
 
             if (!GIEnabled)
             {
-                EditorGUILayout.HelpBox(GINotEnabledInfoContents.text, MessageType.Info);
+                EditorGUILayout.HelpBox(kGINotEnabledInfoContents.text, MessageType.Info);
                 return;
             }
 
@@ -810,13 +821,13 @@ namespace Chisel.Editors
                 EditorGUI.BeginChangeCheck();
 
                 EditorGUI.showMixedValue = showMixedGIValue;
-                receiveGI = (ReceiveGI)EditorGUILayout.IntPopup(ReceiveGITitle, (int)receiveGI, ReceiveGILightmapStrings, ReceiveGILightmapValues);
+                receiveGI = (ReceiveGI)EditorGUILayout.IntPopup(kReceiveGITitle, (int)receiveGI, kReceiveGILightmapStrings, kReceiveGILightmapValues);
                 EditorGUI.showMixedValue = false;
 
                 if (EditorGUI.EndChangeCheck())
                     receiveGIProp.intValue = (int)receiveGI;
 
-                if (showEnlightenSettings) EditorGUILayout.PropertyField(importantGIProp, ImportantGIContents);
+                if (showEnlightenSettings) EditorGUILayout.PropertyField(importantGIProp, kImportantGIContents);
 
                 if (receiveGI == ReceiveGI.LightProbes && !showMixedGIValue)
                 {
@@ -828,7 +839,7 @@ namespace Chisel.Editors
                 using (new EditorGUI.DisabledScope(true))
                 {
                     EditorGUI.showMixedValue = showMixedGIValue;
-                    EditorGUILayout.IntPopup(ReceiveGITitle, (int)ReceiveGI.LightProbes, ReceiveGILightmapStrings, ReceiveGILightmapValues);
+                    EditorGUILayout.IntPopup(kReceiveGITitle, (int)ReceiveGI.LightProbes, kReceiveGILightmapStrings, kReceiveGILightmapValues);
                     EditorGUI.showMixedValue = false;
                 }
             }
@@ -839,20 +850,20 @@ namespace Chisel.Editors
             }*/
         }
 
-        static string[] __layerNameCache;
+        static string[] s_layerNameCache;
         static string[] LayerNames
         {
             get
             {
-                if (__layerNameCache == null)
+                if (s_layerNameCache == null)
                 {
-                    __layerNameCache = new string[32];
-                    for (int i = 0; i < __layerNameCache.Length; ++i)
+                    s_layerNameCache = new string[32];
+                    for (int i = 0; i < s_layerNameCache.Length; ++i)
                     {
-                        __layerNameCache[i] = string.Format("Layer{0}", i + 1);
+                        s_layerNameCache[i] = string.Format("Layer{0}", i + 1);
                     }
                 }
-                return __layerNameCache;
+                return s_layerNameCache;
             }
         }
 
@@ -874,8 +885,8 @@ namespace Chisel.Editors
             EditorGUI.BeginChangeCheck();
 
             var rect = EditorGUILayout.GetControlRect();
-            EditorGUI.BeginProperty(rect, RenderingLayerMaskStyle, renderingLayerMaskProp);
-            mask = EditorGUI.MaskField(rect, RenderingLayerMaskStyle, mask, LayerNames);
+            EditorGUI.BeginProperty(rect, kRenderingLayerMaskStyle, renderingLayerMaskProp);
+            mask = EditorGUI.MaskField(rect, kRenderingLayerMaskStyle, mask, LayerNames);
             EditorGUI.EndProperty();
 
             if (EditorGUI.EndChangeCheck())
@@ -907,7 +918,7 @@ namespace Chisel.Editors
             {
                 if (BatchingStatic)
                 {
-                    EditorGUILayout.HelpBox(StaticBatchingWarningContents.text, MessageType.Warning, true);
+                    EditorGUILayout.HelpBox(kStaticBatchingWarningContents.text, MessageType.Warning, true);
                 }
             }
 
@@ -925,10 +936,10 @@ namespace Chisel.Editors
                 if (!autoRebuildUVsProp.boolValue && needLightmapRebuild)
                 {
                     EditorGUILayout.BeginHorizontal(EditorStyles.helpBox); 
-                    var messageContents = needLightmapRebuild ? NeedsLightmapBuildContents : NeedsLightmapRebuildContents;
+                    var messageContents = needLightmapRebuild ? kNeedsLightmapBuildContents : kNeedsLightmapRebuildContents;
                     GUILayout.Label(EditorGUIUtility.TrTextContent(messageContents.text, ChiselEditorUtility.GetHelpIcon(MessageType.Warning)), EditorStyles.wordWrappedLabel);
                     GUILayout.Space(3);
-                    var buttonContents = needLightmapRebuild ? ForceBuildUVsContents : ForceRebuildUVsContents;
+                    var buttonContents = needLightmapRebuild ? kForceBuildUVsContents : kForceRebuildUVsContents;
                     if (GUILayout.Button(buttonContents, GUILayout.ExpandWidth(false)))
                     {
 						ChiselUnityUVGenerationManager.DelayedUVGeneration(force: true);
@@ -938,7 +949,7 @@ namespace Chisel.Editors
             }
 
 
-            showLighting = EditorGUILayout.BeginFoldoutHeaderGroup(showLighting, LightingContent);
+            showLighting = EditorGUILayout.BeginFoldoutHeaderGroup(showLighting, kLightingContent);
             if (showLighting)
             {
                 EditorGUI.indentLevel++;
@@ -949,12 +960,12 @@ namespace Chisel.Editors
 
             if (haveLightmaps)
             {
-                showUnwrapParams = EditorGUILayout.BeginFoldoutHeaderGroup(showUnwrapParams, UnwrapParamsContents);
+                showUnwrapParams = EditorGUILayout.BeginFoldoutHeaderGroup(showUnwrapParams, kUnwrapParamsContents);
                 if (showUnwrapParams)
                 {
                     EditorGUI.indentLevel++;
                     EditorGUI.BeginChangeCheck();
-                    EditorGUILayout.PropertyField(autoRebuildUVsProp, AutoRebuildUVsContents);
+                    EditorGUILayout.PropertyField(autoRebuildUVsProp, kAutoRebuildUVsContents);
                     if (EditorGUI.EndChangeCheck())
                     {
                         if (autoRebuildUVsProp.boolValue)
@@ -969,7 +980,7 @@ namespace Chisel.Editors
                 }
                 EditorGUILayout.EndFoldoutHeaderGroup();
 
-                showLightmapSettings = EditorGUILayout.BeginFoldoutHeaderGroup(showLightmapSettings, LightmappingContents);
+                showLightmapSettings = EditorGUILayout.BeginFoldoutHeaderGroup(showLightmapSettings, kLightmappingContents);
                 if (showLightmapSettings)
                 {
                     EditorGUI.indentLevel++;
@@ -978,7 +989,7 @@ namespace Chisel.Editors
                     
                     if (showEnlightenSettings)
                     {
-                        showChartingSettings = EditorGUILayout.BeginFoldoutHeaderGroup(showChartingSettings, UVChartingContents);
+                        showChartingSettings = EditorGUILayout.BeginFoldoutHeaderGroup(showChartingSettings, kUVChartingContents);
                         if (showChartingSettings)
                             RendererUVSettings();
                         EditorGUILayout.EndFoldoutHeaderGroup();
@@ -988,24 +999,24 @@ namespace Chisel.Editors
 
                     ShowClampedSizeInLightmapGUI(lightmapScale);
 
-                    if (showEnlightenSettings) EditorGUILayout.PropertyField(importantGIProp, ImportantGIContents);
+                    if (showEnlightenSettings) EditorGUILayout.PropertyField(importantGIProp, kImportantGIContents);
 
                     if (showProgressiveSettings && stitchLightmapSeamsProp != null)
-                        EditorGUILayout.PropertyField(stitchLightmapSeamsProp, StitchLightmapSeamsContents);
+                        EditorGUILayout.PropertyField(stitchLightmapSeamsProp, kStitchLightmapSeamsContents);
 
-                    if (LightmapParametersGUI != null && lightmapParametersProp != null)
-                        LightmapParametersGUI(lightmapParametersProp, LightmapParametersContents);
+                    if (kLightmapParametersGUI != null && lightmapParametersProp != null)
+                        kLightmapParametersGUI(lightmapParametersProp, kLightmapParametersContents);
 
                     EditorGUILayout.Space();
 
                     if (TargetsHaveClampedResolution())
-                        EditorGUILayout.HelpBox(ClampedPackingResolutionContents.text, MessageType.Warning);
+                        EditorGUILayout.HelpBox(kClampedPackingResolutionContents.text, MessageType.Warning);
 
                     if ((vertexChannelMaskProp.intValue & (int)VertexChannelFlags.Normal) != (int)VertexChannelFlags.Normal)
-                        EditorGUILayout.HelpBox(NoNormalsNoLightmappingContents.text, MessageType.Warning);
+                        EditorGUILayout.HelpBox(kNoNormalsNoLightmappingContents.text, MessageType.Warning);
 
                     if (TargetsHaveUVOverlaps())
-                        EditorGUILayout.HelpBox(UVOverlapContents.text, MessageType.Warning);
+                        EditorGUILayout.HelpBox(kUVOverlapContents.text, MessageType.Warning);
                     EditorGUI.indentLevel--;
                 }
                 EditorGUILayout.EndFoldoutHeaderGroup();
@@ -1015,7 +1026,7 @@ namespace Chisel.Editors
 
             if (SupportedRenderingFeatures.active.rendererProbes)
             {
-                showProbes = EditorGUILayout.BeginFoldoutHeaderGroup(showProbes, ProbesContent);
+                showProbes = EditorGUILayout.BeginFoldoutHeaderGroup(showProbes, kProbesContent);
                 if (showProbes)
                 {
                     EditorGUI.indentLevel++;
@@ -1025,7 +1036,7 @@ namespace Chisel.Editors
                 EditorGUILayout.EndFoldoutHeaderGroup();
             }
 
-            showAdditionalSettings = EditorGUILayout.BeginFoldoutHeaderGroup(showAdditionalSettings, AdditionalSettingsContent);
+            showAdditionalSettings = EditorGUILayout.BeginFoldoutHeaderGroup(showAdditionalSettings, kAdditionalSettingsContent);
             if (showAdditionalSettings)
             {
                 EditorGUI.indentLevel++;
@@ -1068,11 +1079,6 @@ namespace Chisel.Editors
 
         }
 
-		static readonly ChiselComponentInspectorMessageHandler messages = new();
-
-        Vector2 modelMessagesScrollPosition = Vector2.zero;
-		Vector2 childMessagesScrollPosition = Vector2.zero;
-        
 		public override void OnInspectorGUI()
         {
             Profiler.BeginSample("OnInspectorGUI");
@@ -1087,23 +1093,23 @@ namespace Chisel.Editors
                 if (serializedObject != null) serializedObject.Update();
 
                 if (IsDefaultModel())
-                    EditorGUILayout.HelpBox(DefaultModelContents.text, MessageType.Warning);
+                    EditorGUILayout.HelpBox(kDefaultModelContents.text, MessageType.Warning);
 
                 if (targets.Length == 1)
                 {
-                    messages.StartWarnings(childMessagesScrollPosition);
-                    ChiselMessages.ShowMessages(childNodes, messages);
-					childMessagesScrollPosition = messages.EndWarnings();
+                    s_Messages.StartWarnings(childMessagesScrollPosition);
+                    ChiselMessages.ShowMessages(childNodes, s_Messages);
+					childMessagesScrollPosition = s_Messages.EndWarnings();
                 }
 
 				EditorGUI.BeginChangeCheck();
                 {
-                    showGenerationSettings = EditorGUILayout.BeginFoldoutHeaderGroup(showGenerationSettings, GenerationSettingsContent);
+                    showGenerationSettings = EditorGUILayout.BeginFoldoutHeaderGroup(showGenerationSettings, kGenerationSettingsContent);
                     if (showGenerationSettings)
                     {
                         EditorGUI.indentLevel++;
-                        EditorGUILayout.PropertyField(createColliderComponentsProp, CreateColliderComponentsContents);
-                        EditorGUILayout.PropertyField(createRenderComponentsProp, CreateRenderComponentsContents);
+                        EditorGUILayout.PropertyField(createColliderComponentsProp, kCreateColliderComponentsContents);
+                        EditorGUILayout.PropertyField(createRenderComponentsProp, kCreateRenderComponentsContents);
 
                         EditorGUI.BeginDisabledGroup(!createRenderComponentsProp.boolValue);
                         {
@@ -1121,17 +1127,17 @@ namespace Chisel.Editors
 
                     if (createColliderComponentsProp.boolValue)
                     {
-                        showColliderSettings = EditorGUILayout.BeginFoldoutHeaderGroup(showColliderSettings, ColliderSettingsContent);
+                        showColliderSettings = EditorGUILayout.BeginFoldoutHeaderGroup(showColliderSettings, kColliderSettingsContent);
                         if (showColliderSettings)
                         {
                             EditorGUI.indentLevel++;
-                            EditorGUILayout.PropertyField(convexProp, ConvextContents);
+                            EditorGUILayout.PropertyField(convexProp, kConvextContents);
                             using (new EditorGUI.DisabledScope(!convexProp.boolValue))
                             {
-                                EditorGUILayout.PropertyField(isTriggerProp, IsTriggerContents);
+                                EditorGUILayout.PropertyField(isTriggerProp, kIsTriggerContents);
                             }
                             {
-                                ChiselEditorUtility.EnumFlagsField(CookingOptionsContents, cookingOptionsProp, typeof(MeshColliderCookingOptions), EditorStyles.popup);
+                                ChiselEditorUtility.EnumFlagsField(kCookingOptionsContents, cookingOptionsProp, typeof(MeshColliderCookingOptions), EditorStyles.popup);
                             }
                             EditorGUI.indentLevel--;
                         }

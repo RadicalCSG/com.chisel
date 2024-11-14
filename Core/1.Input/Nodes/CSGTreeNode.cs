@@ -170,16 +170,17 @@ namespace Chisel.Core
         /// <param name="node">The <see cref="Chisel.Core.CSGTreeNode"/> to be convert into a <see cref="Chisel.Core.CSGTreeBrush"/></param>
         /// <returns>A valid <see cref="Chisel.Core.CSGTreeBrush"/> if <paramref name="node"/> actually was one, otherwise an invalid node.</returns>
         public static explicit operator CSGTreeBrush  (CSGTreeNode   node  ) { if (!node.Valid || node.Type != CSGNodeType.Brush) return CSGTreeBrush.Invalid; else return CSGTreeBrush.Encapsulate(node.nodeID); }
-        
-        #endregion
-        
-        /// <value>An invalid node</value>
-        public static readonly CSGTreeNode Invalid = new CSGTreeNode { nodeID = NodeID.Invalid };
-        
-#if UNITY_EDITOR
-        #region Inspector State
 
-        public readonly bool Visible         { get { return CompactHierarchyManager.IsBrushVisible(nodeID); } set { CompactHierarchyManager.SetVisibility(nodeID, value); } }
+        #endregion
+
+        /// <value>An invalid node</value>
+        readonly static CSGTreeNode kInvalid = new() { nodeID = NodeID.Invalid };
+		public static ref readonly CSGTreeNode Invalid => ref kInvalid;
+
+#if UNITY_EDITOR
+		#region Inspector State
+
+		public readonly bool Visible         { get { return CompactHierarchyManager.IsBrushVisible(nodeID); } set { CompactHierarchyManager.SetVisibility(nodeID, value); } }
         public readonly bool PickingEnabled  { get { return CompactHierarchyManager.IsBrushPickingEnabled(nodeID); } set { CompactHierarchyManager.SetPickingEnabled(nodeID, value); } }
         public readonly bool IsSelectable    { get { return CompactHierarchyManager.IsBrushSelectable(nodeID); } }
 

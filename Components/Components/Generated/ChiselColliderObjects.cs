@@ -11,7 +11,7 @@ namespace Chisel.Components
 {
     public struct ChiselColliderObjectUpdate
     {
-        public int              meshIndex;
+        public int meshIndex;
     }
 
     [Serializable, BurstCompile(CompileSynchronously = true)]
@@ -27,7 +27,7 @@ namespace Chisel.Components
         private ChiselColliderObjects() { }
         public static ChiselColliderObjects Create(GameObject container, int surfaceParameter)
         {
-            var physicsMaterial = ChiselMaterialManager.GetPhysicMaterial(surfaceParameter);
+            var physicsMaterial = surfaceParameter == 0 ? null : Resources.InstanceIDToObject(surfaceParameter) as PhysicsMaterial;
             var sharedMesh      = new Mesh { name = ChiselGeneratedObjects.kGeneratedMeshColliderName };
             var meshCollider    = container.AddComponent<MeshCollider>();
             var colliderObjects = new ChiselColliderObjects
@@ -61,13 +61,10 @@ namespace Chisel.Components
             ChiselObjectUtility.RemoveContainerFlags(meshCollider);
         }
 
-        public static bool IsValid(ChiselColliderObjects colliderObjects)
+        public bool IsValid()
         {
-            if (colliderObjects == null)
-                return false;
-
-            if (!colliderObjects.sharedMesh ||
-                !colliderObjects.meshCollider)
+            if (!sharedMesh ||
+                !meshCollider)
                 return false;
 
             return true;
@@ -185,15 +182,16 @@ namespace Chisel.Components
             }
             //*/
 
-            bakingSettings.Dispose(allJobHandles);
+            var disposeJob = bakingSettings.Dispose(allJobHandles);
             bakingSettings = default;
 
             allJobHandles.Complete();
+            disposeJob.Complete();
 
-            //*/
-            //*
-            // TODO: is there a way to defer forcing the collider to update?
-            for (int i = 0; i < colliders.Length; i++)
+			//*/
+			//*
+			// TODO: is there a way to defer forcing the collider to update?
+			for (int i = 0; i < colliders.Length; i++)
             {
                 var meshCollider = colliders[i].meshCollider;
                 if (!meshCollider)

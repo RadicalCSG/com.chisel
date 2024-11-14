@@ -12,10 +12,10 @@ namespace Chisel.Editors
     {
         public const float kDistanceEpsilon = 0.001f;
 
-        internal static int s_PointDrawingHash = "PointDrawingHash".GetHashCode();
+        internal readonly static int kPointDrawingHash = "PointDrawingHash".GetHashCode();
         public static void PointDrawHandle(Rect dragArea, ref List<Vector3> points, out Matrix4x4 transformation, out ChiselModelComponent modelBeneathCursor, bool releaseOnMouseUp = true, Chisel.Editors.SceneHandles.CapFunction capFunction = null)
         {
-            var id = GUIUtility.GetControlID(s_PointDrawingHash, FocusType.Keyboard);
+            var id = GUIUtility.GetControlID(kPointDrawingHash, FocusType.Keyboard);
             PointDrawing.Do(id, dragArea, ref points, out transformation, out modelBeneathCursor, releaseOnMouseUp, capFunction);
         }
 
@@ -215,7 +215,7 @@ namespace Chisel.Editors
                     if (points.Count == 0)
                         break;
 
-                    if (SceneHandleUtility.focusControl != id)
+                    if (SceneHandleUtility.FocusControl != id)
                         break;
 
                     using (new UnityEditor.Handles.DrawingScope(Matrix4x4.identity))

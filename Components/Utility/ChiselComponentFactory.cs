@@ -8,8 +8,8 @@ namespace Chisel.Components
 {
     // TODO: rename
     public sealed class ChiselComponentFactory
-    {
-        public static T AddComponent<T>(GameObject gameObject) where T : ChiselNodeComponent
+	{
+		public static T AddComponent<T>(GameObject gameObject) where T : ChiselNodeComponent
         {
             // TODO: ensure we're creating this in the active scene
             // TODO: handle scene being locked by version control
@@ -71,7 +71,8 @@ namespace Chisel.Components
                 transform.SetLocal(trsMatrix);
         }
 
-        static Dictionary<string, string> cleanedupTypenames = new();
+        // TODO: put in its own class
+		readonly static Dictionary<string, string> s_CleanedupTypenames = new();
 
         public static T Create<T>(string name, Transform parent, Matrix4x4 trsMatrix) where T : ChiselNodeComponent
         {
@@ -81,14 +82,14 @@ namespace Chisel.Components
             if (string.IsNullOrEmpty(name))
 			{
 				string orgTypename = typeof(T).Name;
-                if (!cleanedupTypenames.TryGetValue(orgTypename, out var typename))
+                if (!s_CleanedupTypenames.TryGetValue(orgTypename, out var typename))
                 {
                     typename = orgTypename;
                     if (typename.StartsWith("Chisel"))
                         typename = typename.Substring("Chisel".Length);
                     if (typename.EndsWith("Component"))
                         typename = typename.Substring(0, typename.Length - "Component".Length);
-                    cleanedupTypenames[orgTypename] = typename;
+                    s_CleanedupTypenames[orgTypename] = typename;
                 }
 #if UNITY_EDITOR
 				name = UnityEditor.GameObjectUtility.GetUniqueNameForSibling(parent, typename);

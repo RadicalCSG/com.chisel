@@ -9,8 +9,17 @@ namespace Chisel.Components
     public abstract class ChiselBrushGeneratorComponent<DefinitionType, Generator> : ChiselNodeGeneratorComponent<DefinitionType>
         where Generator      : unmanaged, IBrushGenerator
         where DefinitionType : SerializedBrushGenerator<Generator>, new()
-    {
-        CSGTreeBrush GenerateTopNode(in CSGTree tree, CSGTreeNode node, int instanceID, CSGOperationType operation)
+	{
+		[RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+		static void ResetState()
+		{
+            s_JobPool.Dispose();
+			s_JobPool.AllocateOrClear();
+		}
+
+		readonly static GeneratorBrushJobPool<Generator> s_JobPool = new();
+
+		CSGTreeBrush GenerateTopNode(in CSGTree tree, CSGTreeNode node, int instanceID, CSGOperationType operation)
         {
             var brush = (CSGTreeBrush)node;
             if (!brush.Valid)
@@ -23,8 +32,6 @@ namespace Chisel.Components
                 brush.Operation = operation;
             return brush;
         }
-
-        static readonly GeneratorBrushJobPool<Generator> s_JobPool = new();
         protected override bool EnsureTopNodeCreatedInternal(in CSGTree tree, ref CSGTreeNode node, int instanceID)
         {
             if (!OnValidateDefinition())
@@ -65,7 +72,16 @@ namespace Chisel.Components
     public abstract class ChiselBranchGeneratorComponent<Generator, DefinitionType> : ChiselNodeGeneratorComponent<DefinitionType>
         where Generator      : unmanaged, IBranchGenerator
         where DefinitionType : SerializedBranchGenerator<Generator>, new()
-    {
+	{
+		[RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+		static void ResetState()
+		{
+			s_JobPool.Dispose();
+			s_JobPool.AllocateOrClear();
+		}
+
+		readonly static GeneratorBranchJobPool<Generator> s_JobPool = new();
+
         CSGTreeBranch GenerateTopNode(in CSGTree tree, CSGTreeBranch branch, int instanceID, CSGOperationType operation)
         {
             if (!branch.Valid)
@@ -78,8 +94,6 @@ namespace Chisel.Components
                 branch.Operation = operation;
             return branch;
         }
-
-        static readonly GeneratorBranchJobPool<Generator> s_JobPool = new();
         protected override bool EnsureTopNodeCreatedInternal(in CSGTree tree, ref CSGTreeNode node, int instanceID)
         {
 			if (!OnValidateDefinition())

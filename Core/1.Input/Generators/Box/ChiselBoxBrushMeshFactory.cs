@@ -235,7 +235,7 @@ namespace Chisel.Core
 			box = new BrushMesh
             {
                 polygons	= CreateBoxPolygons(),
-                halfEdges	= boxHalfEdges.ToArray(),
+                halfEdges	= kBoxHalfEdges.ToArray(),
                 vertices	= CreateBoxVertices(min, max)
 			};
             box.UpdateHalfEdgePolygonIndices();
@@ -249,7 +249,7 @@ namespace Chisel.Core
 			box = new BrushMesh
             {
                 polygons	= CreateBoxPolygons(descriptionIndex),
-                halfEdges	= boxHalfEdges.ToArray(),
+                halfEdges	= kBoxHalfEdges.ToArray(),
                 vertices	= CreateBoxVertices(min, max)
 			};
             box.UpdateHalfEdgePolygonIndices();

@@ -12,8 +12,8 @@ namespace Chisel.Editors
     //[EditorTool("Chisel " + kToolName + " Tool")]
     class ChiselPlacementTool : ChiselEditToolBase
     {
-        static ChiselPlacementTool instance = null;
-        ChiselPlacementTool() { instance = this; }
+        static ChiselPlacementTool s_Instance = null;
+        ChiselPlacementTool() { s_Instance = this; }
 
         public const string kToolName = "Placement";
         public override string ToolName => kToolName;
@@ -129,9 +129,9 @@ namespace Chisel.Editors
 
         public static void UpdatePlacementToolIcon()
         {
-            if (instance != null)
+            if (s_Instance != null)
             {
-                instance.UpdateIcon();
+                s_Instance.UpdateIcon();
             }
         }
     }

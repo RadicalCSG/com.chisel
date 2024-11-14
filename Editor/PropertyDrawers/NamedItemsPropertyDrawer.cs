@@ -8,10 +8,10 @@ namespace Chisel.Editors
     [CustomPropertyDrawer(typeof(NamedItemsAttribute))]
     public sealed class NamedItemsPropertyDrawer : PropertyDrawer
     {
-        static readonly GUIContent kMissingSurfacesContents             = new GUIContent("This generator is not set up properly and doesn't have the correct number of surfaces.");
-        static readonly GUIContent kMultipleDifferentSurfacesContents   = new GUIContent("Multiple generators are selected with different surfaces.");
+        readonly static GUIContent kMissingSurfacesContents             = new("This generator is not set up properly and doesn't have the correct number of surfaces.");
+        readonly static GUIContent kMultipleDifferentSurfacesContents   = new("Multiple generators are selected with different surfaces.");
 
-        static GUIContent tempPropertyContent = new GUIContent();
+        static GUIContent s_TempPropertyContent = new GUIContent();
 
         public override float GetPropertyHeight(SerializedProperty property, GUIContent label)
         {
@@ -73,16 +73,16 @@ namespace Chisel.Editors
                     for (int i = 0; i < Mathf.Min(namedItems.surfaceNames.Length, surfacesArrayProperty.arraySize); i++)
                     {
                         elementProperty = surfacesArrayProperty.GetArrayElementAtIndex(i);
-                        tempPropertyContent.text = namedItems.surfaceNames[i];
-                        EditorGUILayout.PropertyField(elementProperty, tempPropertyContent, true);
+                        s_TempPropertyContent.text = namedItems.surfaceNames[i];
+                        EditorGUILayout.PropertyField(elementProperty, s_TempPropertyContent, true);
                     }
                 }
 
                 for (int i = startIndex; i < surfacesArrayProperty.arraySize; i++)
                 {
-                    tempPropertyContent.text = string.Format(namedItems.overflow, (i - startIndex) + 1);
+                    s_TempPropertyContent.text = string.Format(namedItems.overflow, (i - startIndex) + 1);
                     elementProperty = surfacesArrayProperty.GetArrayElementAtIndex(i);
-                    EditorGUILayout.PropertyField(elementProperty, tempPropertyContent, true);
+                    EditorGUILayout.PropertyField(elementProperty, s_TempPropertyContent, true);
                 }
                 EditorGUI.indentLevel--;
             }

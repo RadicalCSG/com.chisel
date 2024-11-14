@@ -55,18 +55,16 @@ namespace Chisel.Core
         {
             var surfaceCount = 5;
 
-            using (var builder = new BlobBuilder(Allocator.Temp, surfaceCount * UnsafeUtility.SizeOf<InternalChiselSurface>()))
-            {
-                ref var root    = ref builder.ConstructRoot<InternalChiselSurfaceArray>();
-                var surfaces    = builder.Allocate(ref root.surfaces, surfaceCount);
-                surfaces[0] = surface0;
-                surfaces[1] = surface1;
-                surfaces[2] = surface2;
-                surfaces[3] = surface3;
-                surfaces[4] = surface4;
-                return builder.CreateBlobAssetReference<InternalChiselSurfaceArray>(allocator);
-            }
-        }
+			using var builder = new BlobBuilder(Allocator.Temp, surfaceCount * UnsafeUtility.SizeOf<InternalChiselSurface>());
+			ref var root = ref builder.ConstructRoot<InternalChiselSurfaceArray>();
+			var surfaces = builder.Allocate(ref root.surfaces, surfaceCount);
+			surfaces[0] = surface0;
+			surfaces[1] = surface1;
+			surfaces[2] = surface2;
+			surfaces[3] = surface3;
+			surfaces[4] = surface4;
+			return builder.CreateBlobAssetReference<InternalChiselSurfaceArray>(allocator);
+		}
         
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -80,30 +78,26 @@ namespace Chisel.Core
         {
             var surfaceCount = 6;
 
-            using (var builder = new BlobBuilder(Allocator.Temp, surfaceCount * UnsafeUtility.SizeOf<InternalChiselSurface>()))
-            {
-                ref var root    = ref builder.ConstructRoot<InternalChiselSurfaceArray>();
-                var surfaces    = builder.Allocate(ref root.surfaces, surfaceCount);
-                surfaces[0] = surface0;
-                surfaces[1] = surface1;
-                surfaces[2] = surface2;
-                surfaces[3] = surface3;
-                surfaces[4] = surface4;
-                surfaces[5] = surface5;
-                return builder.CreateBlobAssetReference<InternalChiselSurfaceArray>(allocator);
-            }
-        }
+			using var builder = new BlobBuilder(Allocator.Temp, surfaceCount * UnsafeUtility.SizeOf<InternalChiselSurface>());
+			ref var root = ref builder.ConstructRoot<InternalChiselSurfaceArray>();
+			var surfaces = builder.Allocate(ref root.surfaces, surfaceCount);
+			surfaces[0] = surface0;
+			surfaces[1] = surface1;
+			surfaces[2] = surface2;
+			surfaces[3] = surface3;
+			surfaces[4] = surface4;
+			surfaces[5] = surface5;
+			return builder.CreateBlobAssetReference<InternalChiselSurfaceArray>(allocator);
+		}
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static BlobAssetReference<InternalChiselSurfaceArray> BuildInternalSurfaceArrayBlob(int surfaceCount, Allocator allocator)
         {
-            using (var builder = new BlobBuilder(Allocator.Temp, surfaceCount * UnsafeUtility.SizeOf<InternalChiselSurface>()))
-            {
-                ref var root = ref builder.ConstructRoot<InternalChiselSurfaceArray>();
-                var surfaces = builder.Allocate(ref root.surfaces, surfaceCount);
-                return builder.CreateBlobAssetReference<InternalChiselSurfaceArray>(allocator);
-            }
-        }
+			using var builder = new BlobBuilder(Allocator.Temp, surfaceCount * UnsafeUtility.SizeOf<InternalChiselSurface>());
+			ref var root = ref builder.ConstructRoot<InternalChiselSurfaceArray>();
+			var surfaces = builder.Allocate(ref root.surfaces, surfaceCount);
+			return builder.CreateBlobAssetReference<InternalChiselSurfaceArray>(allocator);
+		}
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static BlobAssetReference<InternalChiselSurfaceArray> BuildInternalSurfaceArrayBlob(in ChiselSurfaceArray surfaceArray, Allocator allocator)
@@ -114,15 +108,13 @@ namespace Chisel.Core
                 return BlobAssetReference<InternalChiselSurfaceArray>.Null;
 
             var surfaceCount = surfaceArray.surfaces.Length;
-            using (var builder = new BlobBuilder(Allocator.Temp, surfaceCount * UnsafeUtility.SizeOf<InternalChiselSurface>()))
-            {
-                ref var root    = ref builder.ConstructRoot<InternalChiselSurfaceArray>();
-                var surfaces    = builder.Allocate(ref root.surfaces, surfaceCount);
-                for (int i = 0; i < surfaceCount; i++)
-                    surfaces[i] = InternalChiselSurface.Convert(surfaceArray.surfaces[i]);
-                return builder.CreateBlobAssetReference<InternalChiselSurfaceArray>(allocator);
-            }
-        }
+			using var builder = new BlobBuilder(Allocator.Temp, surfaceCount * UnsafeUtility.SizeOf<InternalChiselSurface>());
+			ref var root = ref builder.ConstructRoot<InternalChiselSurfaceArray>();
+			var surfaces = builder.Allocate(ref root.surfaces, surfaceCount);
+			for (int i = 0; i < surfaceCount; i++)
+				surfaces[i] = InternalChiselSurface.Convert(surfaceArray.surfaces[i]);
+			return builder.CreateBlobAssetReference<InternalChiselSurfaceArray>(allocator);
+		}
 
         public static BlobAssetReference<BrushMeshBlob> ConvertToBrushMeshBlob(BrushMesh brushMesh, in ChiselSurfaceArray surfaceArray, Allocator allocator = Allocator.Persistent)
         {
@@ -133,10 +125,7 @@ namespace Chisel.Core
                 brushMesh.vertices.Length < BrushMesh.kMinimumVertices ||
                 brushMesh.polygons.Length < BrushMesh.kMinimumPolygons ||
                 brushMesh.halfEdges.Length < BrushMesh.kMinimumHalfEdges)
-            {
-				Debug.Log("(1)");
 				return BlobAssetReference<BrushMeshBlob>.Null;
-            }
 
             brushMesh.CalculatePlanes();
             brushMesh.UpdateHalfEdgePolygonIndices();

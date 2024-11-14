@@ -9,9 +9,9 @@ namespace Chisel.Editors
     public sealed class SurfaceDetailsPropertyDrawer : PropertyDrawer
     {
         const float kSpacing = 2;
-        public static readonly GUIContent	kUV0Contents            = new("UV");
-        public static readonly GUIContent	kSurfaceFlagsContents   = new("Surface Flags");
-        public static readonly GUIContent	kSmoothingGroupContents = new("Smoothing Groups");
+        public readonly static GUIContent	kUV0Contents            = new("UV");
+        public readonly static GUIContent	kSurfaceFlagsContents   = new("Surface Flags");
+        public readonly static GUIContent	kSmoothingGroupContents = new("Smoothing Groups");
 
         public override float GetPropertyHeight(SerializedProperty property, GUIContent label)
         {

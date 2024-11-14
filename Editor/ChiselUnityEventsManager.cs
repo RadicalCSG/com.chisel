@@ -6,6 +6,7 @@ using UnityEditor.EditorTools;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityEngine.Profiling;
+using UnityEngine.Pool;
 #if !UNITY_2020_2_OR_NEWER
 using ToolManager = UnityEditor.EditorTools;
 #endif
@@ -82,10 +83,10 @@ namespace Chisel.Editors
 
 
 			// Triggered when currently active/selected item has changed.
-			ChiselSurfaceSelectionManager.selectionChanged -= OnSurfaceSelectionChanged;
-            ChiselSurfaceSelectionManager.selectionChanged += OnSurfaceSelectionChanged;
-            ChiselSurfaceSelectionManager.hoverChanged -= OnSurfaceHoverChanged;
-            ChiselSurfaceSelectionManager.hoverChanged += OnSurfaceHoverChanged;
+			ChiselSurfaceSelectionManager.SelectionChanged -= OnSurfaceSelectionChanged;
+            ChiselSurfaceSelectionManager.SelectionChanged += OnSurfaceSelectionChanged;
+            ChiselSurfaceSelectionManager.HoverChanged -= OnSurfaceHoverChanged;
+            ChiselSurfaceSelectionManager.HoverChanged += OnSurfaceHoverChanged;
 
             ChiselNodeHierarchyManager.NodeHierarchyReset -= OnHierarchyReset;
             ChiselNodeHierarchyManager.NodeHierarchyReset += OnHierarchyReset;
@@ -289,79 +290,59 @@ namespace Chisel.Editors
             ChiselOutlineRenderer.OnUndoRedoPerformed();
 
         }
-        /*
-        static bool profilerStarted = false;
-        public static void ProfileFrame(string filename)
-        {
-            if (profilerStarted)
-                return;
-            profilerStarted = true;
-            Profiler.logFile = filename; //Also supports passing "myLog.raw"
-            Profiler.enableBinaryLog = true;
-            Profiler.enabled = true;
-            // Optional, if more memory is needed for the buffer
-            Profiler.maxUsedMemory = 1024 * 1024 * 1024;
-            
-            EditorApplication.update -= EndProfiling;
-            EditorApplication.update += EndProfiling;
-        }
 
-        static void EndProfiling()
-        {
-            profilerStarted = false;
-            EditorApplication.update -= EndProfiling;
-            // Optional, to close the file when done
-            Profiler.enabled = false;
-            Profiler.logFile = "";
-        }
-        */
-
-        static readonly HashSet<ChiselNodeComponent>	modifiedNodes		= new HashSet<ChiselNodeComponent>();
-        static readonly HashSet<Transform>	processedTransforms = new HashSet<Transform>();
-
-        private static void OnWillFlushUndoRecord()
+		private static void OnWillFlushUndoRecord()
         {
             ChiselModelManager.Instance.OnWillFlushUndoRecord();
         }
-
-        static readonly List<ChiselNodeComponent> s_ChildNodes = new List<ChiselNodeComponent>();
 
         private static UnityEditor.UndoPropertyModification[] OnPostprocessModifications(UnityEditor.UndoPropertyModification[] modifications)
         {
             // Note: this is not always properly called 
             //			- when? can't remember? maybe prefab related?
-            modifiedNodes.Clear();
-            processedTransforms.Clear();
-            for (int i = 0; i < modifications.Length; i++)
+
+            var modifiedNodes = HashSetPool<ChiselNodeComponent>.Get();
+			var processedTransforms = HashSetPool<Transform>.Get();
+            var childNodes = ListPool<ChiselNodeComponent>.Get();
+			try
             {
-                var currentValue = modifications[i].currentValue;
-                var transform	 = currentValue.target as Transform;
-                if (object.Equals(null, transform))
-                    continue;
+                for (int i = 0; i < modifications.Length; i++)
+                {
+                    var currentValue = modifications[i].currentValue;
+                    var transform = currentValue.target as Transform;
+                    if (object.Equals(null, transform))
+                        continue;
 
-                if (processedTransforms.Contains(transform))
-                    continue;
+                    if (processedTransforms.Contains(transform))
+                        continue;
 
-                var propertyPath = currentValue.propertyPath;
-                if (!propertyPath.StartsWith("m_Local"))
-                    continue;
+                    var propertyPath = currentValue.propertyPath;
+                    if (!propertyPath.StartsWith("m_Local"))
+                        continue;
 
-                processedTransforms.Add(transform);
+                    processedTransforms.Add(transform);
 
-                s_ChildNodes.Clear();
-                transform.GetComponentsInChildren<ChiselNodeComponent>(false, s_ChildNodes);
-                if (s_ChildNodes.Count == 0)
-                    continue;
-                if (s_ChildNodes[0] is ChiselModelComponent)
-                    continue;
-                for (int n = 0; n < s_ChildNodes.Count; n++)
-                    modifiedNodes.Add(s_ChildNodes[n]);
+                    childNodes.Clear();
+                    transform.GetComponentsInChildren<ChiselNodeComponent>(false, childNodes);
+                    if (childNodes.Count == 0)
+                        continue;
+                    if (childNodes[0] is ChiselModelComponent)
+                        continue;
+                    for (int n = 0; n < childNodes.Count; n++)
+                        modifiedNodes.Add(childNodes[n]);
+                }
+                if (modifiedNodes.Count > 0)
+                {
+                    ChiselNodeHierarchyManager.NotifyTransformationChanged(modifiedNodes);
+                }
+                return modifications;
             }
-            if (modifiedNodes.Count > 0)
-            {
-                ChiselNodeHierarchyManager.NotifyTransformationChanged(modifiedNodes);
-            }
-            return modifications;
+            finally
+			{
+				HashSetPool<ChiselNodeComponent>.Release(modifiedNodes);
+				HashSetPool<Transform>.Release(processedTransforms);
+				ListPool<ChiselNodeComponent>.Release(childNodes);
+			}
         }
     }
 

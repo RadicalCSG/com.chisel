@@ -12,8 +12,129 @@ namespace Chisel.Editors
 #if true
     // This window is a helper window to see what the CSG tree looks like internally
     sealed class ChiselInternalHierarchyView : EditorWindow
-    {
-        ChiselInternalHierarchyView()
+	{
+		Dictionary<CSGTreeNode, bool> openNodes = new();
+		readonly static List<ChiselInternalHierarchyView> s_Windows = new();
+
+		static ChiselInternalHierarchyView window;
+
+		//const int kIconWidth = 20;
+		const int kScrollWidth = 20;
+		const int kItemIndent = 20;
+		const int kPadding = 2;
+		static Vector2 s_ScrollPos;
+
+
+		class Styles
+		{
+			public GUIStyle emptyItem;
+			public GUIStyle emptySelected;
+			public GUIStyle foldOut;
+			public GUIStyle foldOutSelected;
+
+			public GUIStyle emptyLabelItem;
+			public GUIStyle emptyLabelSelected;
+			public GUIStyle foldOutLabel;
+			public GUIStyle foldOutLabelSelected;
+
+			public Color backGroundColor;
+		};
+
+		static Styles s_Styles;
+		static void UpdateStyles()
+		{
+			if (s_Styles != null)
+				return;
+
+			s_Styles = new Styles
+			{
+				emptyItem = new GUIStyle(EditorStyles.foldout)
+			};
+
+			s_Styles.emptyItem.active.background = null;
+			s_Styles.emptyItem.hover.background = null;
+			s_Styles.emptyItem.normal.background = null;
+			s_Styles.emptyItem.focused.background = null;
+
+			s_Styles.emptyItem.onActive.background = null;
+			s_Styles.emptyItem.onHover.background = null;
+			s_Styles.emptyItem.onNormal.background = null;
+			s_Styles.emptyItem.onFocused.background = null;
+
+			s_Styles.emptySelected = new GUIStyle(s_Styles.emptyItem);
+			s_Styles.emptySelected.normal = s_Styles.emptySelected.active;
+			s_Styles.emptySelected.onNormal = s_Styles.emptySelected.onActive;
+
+
+			s_Styles.emptyLabelItem = new GUIStyle(EditorStyles.label);
+			s_Styles.emptyLabelSelected = new GUIStyle(s_Styles.emptyLabelItem);
+			s_Styles.emptyLabelSelected.normal = s_Styles.emptyLabelSelected.active;
+			s_Styles.emptyLabelSelected.onNormal = s_Styles.emptyLabelSelected.onActive;
+
+
+			s_Styles.foldOut = new GUIStyle(EditorStyles.foldout);
+			s_Styles.foldOut.focused = s_Styles.foldOut.normal;
+			s_Styles.foldOut.active = s_Styles.foldOut.normal;
+			s_Styles.foldOut.onNormal = s_Styles.foldOut.normal;
+			s_Styles.foldOut.onActive = s_Styles.foldOut.normal;
+
+			s_Styles.foldOutSelected = new GUIStyle(EditorStyles.foldout);
+			s_Styles.foldOutSelected.normal = s_Styles.foldOutSelected.active;
+			s_Styles.foldOutSelected.onNormal = s_Styles.foldOutSelected.onActive;
+
+
+
+			s_Styles.foldOutLabel = new GUIStyle(EditorStyles.label);
+			s_Styles.foldOutLabel.active = s_Styles.foldOutLabel.normal;
+			s_Styles.foldOutLabel.onActive = s_Styles.foldOutLabel.onNormal;
+
+			s_Styles.foldOutLabelSelected = new GUIStyle(EditorStyles.label);
+			s_Styles.foldOutLabelSelected.normal = s_Styles.foldOutLabelSelected.active;
+			s_Styles.foldOutLabelSelected.onNormal = s_Styles.foldOutLabelSelected.onActive;
+
+			s_Styles.backGroundColor = s_Styles.foldOutLabelSelected.onNormal.textColor;
+			s_Styles.backGroundColor.a = 0.5f;
+
+			GUIStyleState selected = s_Styles.foldOutLabelSelected.normal;
+			selected.textColor = Color.white;
+			s_Styles.foldOutSelected.normal = selected;
+			s_Styles.foldOutSelected.onNormal = selected;
+			s_Styles.foldOutSelected.active = selected;
+			s_Styles.foldOutSelected.onActive = selected;
+			s_Styles.foldOutSelected.focused = selected;
+			s_Styles.foldOutSelected.onFocused = selected;
+
+			s_Styles.foldOutLabelSelected.normal = selected;
+			s_Styles.foldOutLabelSelected.onNormal = selected;
+			s_Styles.foldOutLabelSelected.active = selected;
+			s_Styles.foldOutLabelSelected.onActive = selected;
+			s_Styles.foldOutLabelSelected.focused = selected;
+			s_Styles.foldOutLabelSelected.onFocused = selected;
+
+			s_Styles.emptyLabelSelected.normal = selected;
+			s_Styles.emptyLabelSelected.onNormal = selected;
+			s_Styles.emptyLabelSelected.active = selected;
+			s_Styles.emptyLabelSelected.onActive = selected;
+			s_Styles.emptyLabelSelected.focused = selected;
+			s_Styles.emptyLabelSelected.onFocused = selected;
+
+			s_Styles.emptyItem.active = s_Styles.emptyItem.normal;
+			s_Styles.emptyItem.onActive = s_Styles.emptyItem.onNormal;
+		}
+
+		sealed class StackItem
+		{
+			public StackItem(CSGTreeNode[] _children, float _xpos = 0) { children = _children; index = 0; count = children.Length; xpos = _xpos; }
+			public int index;
+			public int count;
+			public float xpos;
+			public CSGTreeNode[] children;
+		}
+
+		readonly static List<StackItem> s_ItemStack = new();
+
+
+		ChiselInternalHierarchyView()
         {
             s_Windows.Add(this);
         }
@@ -42,9 +163,6 @@ namespace Chisel.Editors
             s_Windows.Remove(this);
         }
 
-        Dictionary<CSGTreeNode, bool> openNodes = new();
-        static readonly List<ChiselInternalHierarchyView> s_Windows = new();
-
         public static void RepaintAll()
         {
             foreach (var window in s_Windows)
@@ -60,120 +178,6 @@ namespace Chisel.Editors
             window = (ChiselInternalHierarchyView)EditorWindow.GetWindow(typeof(ChiselInternalHierarchyView), false, "Internal Chisel Hierarchy");
             window.autoRepaintOnSceneChange = true;
         }
-
-        static ChiselInternalHierarchyView window;
-
-        class Styles
-        {
-            public GUIStyle emptyItem;
-            public GUIStyle emptySelected;
-            public GUIStyle foldOut;
-            public GUIStyle foldOutSelected;
-
-            public GUIStyle emptyLabelItem;
-            public GUIStyle emptyLabelSelected;
-            public GUIStyle foldOutLabel;
-            public GUIStyle foldOutLabelSelected;
-
-            public Color backGroundColor;
-        };
-
-        static Styles styles;
-
-        static void UpdateStyles()
-        {
-            styles = new Styles();
-            styles.emptyItem = new GUIStyle(EditorStyles.foldout);
-
-            styles.emptyItem.active.background = null;
-            styles.emptyItem.hover.background = null;
-            styles.emptyItem.normal.background = null;
-            styles.emptyItem.focused.background = null;
-
-            styles.emptyItem.onActive.background = null;
-            styles.emptyItem.onHover.background = null;
-            styles.emptyItem.onNormal.background = null;
-            styles.emptyItem.onFocused.background = null;
-
-            styles.emptySelected = new GUIStyle(styles.emptyItem);
-            styles.emptySelected.normal = styles.emptySelected.active;
-            styles.emptySelected.onNormal = styles.emptySelected.onActive;
-
-
-            styles.emptyLabelItem = new GUIStyle(EditorStyles.label);
-            styles.emptyLabelSelected = new GUIStyle(styles.emptyLabelItem);
-            styles.emptyLabelSelected.normal = styles.emptyLabelSelected.active;
-            styles.emptyLabelSelected.onNormal = styles.emptyLabelSelected.onActive;
-
-
-            styles.foldOut = new GUIStyle(EditorStyles.foldout);
-            styles.foldOut.focused	= styles.foldOut.normal;
-            styles.foldOut.active	= styles.foldOut.normal;
-            styles.foldOut.onNormal = styles.foldOut.normal;
-            styles.foldOut.onActive = styles.foldOut.normal;
-
-            styles.foldOutSelected = new GUIStyle(EditorStyles.foldout);
-            styles.foldOutSelected.normal = styles.foldOutSelected.active;
-            styles.foldOutSelected.onNormal = styles.foldOutSelected.onActive;
-
-
-
-            styles.foldOutLabel = new GUIStyle(EditorStyles.label);
-            styles.foldOutLabel.active		= styles.foldOutLabel.normal;
-            styles.foldOutLabel.onActive	= styles.foldOutLabel.onNormal;
-
-            styles.foldOutLabelSelected				= new GUIStyle(EditorStyles.label);
-            styles.foldOutLabelSelected.normal		= styles.foldOutLabelSelected.active;
-            styles.foldOutLabelSelected.onNormal	= styles.foldOutLabelSelected.onActive;
-
-            styles.backGroundColor = styles.foldOutLabelSelected.onNormal.textColor;
-            styles.backGroundColor.a = 0.5f;
-            
-            GUIStyleState selected = styles.foldOutLabelSelected.normal;
-            selected.textColor = Color.white;
-            styles.foldOutSelected.normal		= selected;
-            styles.foldOutSelected.onNormal		= selected;
-            styles.foldOutSelected.active		= selected;
-            styles.foldOutSelected.onActive		= selected;
-            styles.foldOutSelected.focused		= selected;
-            styles.foldOutSelected.onFocused	= selected;
-
-            styles.foldOutLabelSelected.normal		= selected;
-            styles.foldOutLabelSelected.onNormal	= selected;
-            styles.foldOutLabelSelected.active		= selected;
-            styles.foldOutLabelSelected.onActive	= selected;
-            styles.foldOutLabelSelected.focused		= selected;
-            styles.foldOutLabelSelected.onFocused	= selected;
-
-            styles.emptyLabelSelected.normal = selected;
-            styles.emptyLabelSelected.onNormal = selected;
-            styles.emptyLabelSelected.active = selected;
-            styles.emptyLabelSelected.onActive = selected;
-            styles.emptyLabelSelected.focused = selected;
-            styles.emptyLabelSelected.onFocused = selected;
-
-
-
-
-            styles.emptyItem.active = styles.emptyItem.normal;
-            styles.emptyItem.onActive = styles.emptyItem.onNormal;
-        }
-
-        const int kScrollWidth = 20;
-        const int kItemIndent = 20;
-        const int kIconWidth = 20;
-        const int kPadding = 2;
-        static Vector2 m_ScrollPos;
-
-        sealed class StackItem
-        {
-            public StackItem(CSGTreeNode[] _children, float _xpos = 0) { children = _children; index = 0; count = children.Length; xpos = _xpos; }
-            public int index;
-            public int count;
-            public float xpos;
-            public CSGTreeNode[] children;
-        }
-        static readonly List<StackItem> s_ItemStack = new();
 
         static int GetVisibleItems(CSGTreeNode[] hierarchyItems, ref Dictionary<CSGTreeNode, bool> openNodes)
         {
@@ -303,8 +307,8 @@ namespace Chisel.Editors
                     var name			= NameForTreeNode(child);
                     var selected		= selectedInstanceIDs.Contains(instanceID);
                     var labelStyle		= (childCount > 0) ?
-                                            (selected ? styles.foldOutLabelSelected : styles.foldOutLabel) :
-                                            (selected ? styles.emptyLabelSelected : styles.emptyLabelItem);
+                                            (selected ? s_Styles.foldOutLabelSelected : s_Styles.foldOutLabel) :
+                                            (selected ? s_Styles.emptyLabelSelected : s_Styles.emptyLabelItem);
 
 
                     bool isOpen;
@@ -315,7 +319,7 @@ namespace Chisel.Editors
 
                     if (selected)
                     {
-                        GUI.backgroundColor = styles.backGroundColor;
+                        GUI.backgroundColor = s_Styles.backGroundColor;
                         var extended = itemRect;
                         extended.x = 0;
                         GUI.Box(extended, GUIContent.none);
@@ -328,7 +332,7 @@ namespace Chisel.Editors
                     labelRect.x += labelOffset;
                     labelRect.width -= labelOffset;
                     if (childCount > 0)
-                        openNodes[child] = EditorGUI.Foldout(foldOutRect, isOpen, string.Empty, true, styles.foldOut);
+                        openNodes[child] = EditorGUI.Foldout(foldOutRect, isOpen, string.Empty, true, s_Styles.foldOut);
 
                     if (!child.Valid)
                         GUI.color = Color.red;
@@ -366,8 +370,7 @@ namespace Chisel.Editors
 
         void OnGUI()
         {
-            if (styles == null)
-                UpdateStyles();
+            UpdateStyles();
             
             var selectedInstanceIDs = new HashSet<int>();
 
@@ -418,11 +421,11 @@ namespace Chisel.Editors
                     itemRect.y = kPadding;
                     itemRect.height = kItemHeight;
 
-                    m_ScrollPos = GUI.BeginScrollView(itemArea, m_ScrollPos, totalRect);
+                    s_ScrollPos = GUI.BeginScrollView(itemArea, s_ScrollPos, totalRect);
                     {
                         Rect visibleArea = itemArea;
-                        visibleArea.x += m_ScrollPos.x;
-                        visibleArea.y += m_ScrollPos.y;
+                        visibleArea.x += s_ScrollPos.x;
+                        visibleArea.y += s_ScrollPos.y;
                 
                         AddFoldOuts(ref itemRect, ref visibleArea, allRootNodes, selectedInstanceIDs, ref openNodes);
                     }

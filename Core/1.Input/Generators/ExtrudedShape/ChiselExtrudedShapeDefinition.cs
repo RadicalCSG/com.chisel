@@ -10,12 +10,13 @@ namespace Chisel.Core
     [Serializable]
     public struct ChiselExtrudedShape : IBranchGenerator
     {
-        public readonly static ChiselExtrudedShape DefaultValues = new ChiselExtrudedShape
+        readonly static ChiselExtrudedShape kDefaultSettings = new()
         {
             curveSegments = 8
         };
+		public static ref readonly ChiselExtrudedShape DefaultSettings => ref kDefaultSettings;
 
-        public int curveSegments;
+		public int curveSegments;
 
         [UnityEngine.HideInInspector, NonSerialized] public BlobAssetReference<ChiselPathBlob>     pathBlob;
         [UnityEngine.HideInInspector, NonSerialized] public BlobAssetReference<ChiselCurve2DBlob>  curveBlob;
@@ -100,7 +101,7 @@ namespace Chisel.Core
         #endregion
 
         #region Reset
-        public void Reset() { this = DefaultValues; }
+        public void Reset() { this = DefaultSettings; }
         #endregion
     }
 
@@ -109,7 +110,7 @@ namespace Chisel.Core
     {
         public const string kNodeTypeName = "Extruded Shape";
 
-        public static readonly Curve2D  kDefaultShape           = new Curve2D(new[]{ new CurveControlPoint2D(-1,-1), new CurveControlPoint2D( 1,-1), new CurveControlPoint2D( 1, 1), new CurveControlPoint2D(-1, 1) });
+        public readonly static Curve2D  kDefaultShape           = new Curve2D(new[]{ new CurveControlPoint2D(-1,-1), new CurveControlPoint2D( 1,-1), new CurveControlPoint2D( 1, 1), new CurveControlPoint2D(-1, 1) });
 
         public Curve2D                  shape;
         public ChiselPath               path;

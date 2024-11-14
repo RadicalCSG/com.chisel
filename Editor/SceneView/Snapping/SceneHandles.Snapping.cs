@@ -373,80 +373,76 @@ namespace Chisel.Editors
         {
             get
             {
-                return Grid.defaultGrid.Spacing;
+                return Grid.DefaultGrid.Spacing;
             }
             set
             {
-                if (Grid.defaultGrid.Spacing == value)
+                if (Grid.DefaultGrid.Spacing == value)
                     return;
-                Grid.defaultGrid.Spacing = value;
-                if (SnappingSettingsModified != null)
-                    SnappingSettingsModified();
-            }
+                Grid.DefaultGrid.Spacing = value;
+				SnappingSettingsModified?.Invoke();
+			}
         }
         #endregion
         
         #region RotateSnappingStep
-        private static float	_rotateSnappingStep = 15.0f;
+        private static float	s_RotateSnappingStep = 15.0f;
         public static float		RotateSnappingStep
         {
             get
             {
-                return _rotateSnappingStep;
+                return s_RotateSnappingStep;
             }
             set
             {
-                if (_rotateSnappingStep == value)
+                if (s_RotateSnappingStep == value)
                     return;
-                _rotateSnappingStep = value;
-                if (SnappingSettingsModified != null)
-                    SnappingSettingsModified();
-            }
+                s_RotateSnappingStep = value;
+				SnappingSettingsModified?.Invoke();
+			}
         }
         #endregion
         
         #region ScaleSnappingStep
-        private static float	_scaleSnappingStep = 0.1f;
+        private static float	s_ScaleSnappingStep = 0.1f;
         public static float		ScaleSnappingStep
         {
             get
             {
-                return _scaleSnappingStep;
+                return s_ScaleSnappingStep;
             }
             set
             {
-                if (_scaleSnappingStep == value)
+                if (s_ScaleSnappingStep == value)
                     return;
-                _scaleSnappingStep = value;
-                if (SnappingSettingsModified != null)
-                    SnappingSettingsModified();
-            }
+                s_ScaleSnappingStep = value;
+				SnappingSettingsModified?.Invoke();
+			}
         }
         #endregion
         
 
         #region AxisLocking
-        private static readonly bool[] AxisLockingArray = new bool[3] {false, false, false};
+        private readonly static bool[] s_AxisLockingArray = new bool[3] {false, false, false};
 
         [NotNull]
         public static bool[]	AxisLocking
         {
             get
             {
-                return AxisLockingArray;
+                return s_AxisLockingArray;
             }
             set
             {
                 if (value.Length != 3)
                     return;
-                if (value[0] == AxisLockingArray[0] &&
-                    value[1] == AxisLockingArray[1] &&
-                    value[2] == AxisLockingArray[2])
+                if (value[0] == s_AxisLockingArray[0] &&
+                    value[1] == s_AxisLockingArray[1] &&
+                    value[2] == s_AxisLockingArray[2])
                     return;
-                Array.Copy(value, AxisLockingArray, 3);
-                if (SnappingSettingsModified != null)
-                    SnappingSettingsModified();
-            }
+                Array.Copy(value, s_AxisLockingArray, 3);
+				SnappingSettingsModified?.Invoke();
+			}
         }
         #endregion
         
@@ -455,25 +451,25 @@ namespace Chisel.Editors
         {
             get
             {
-                if (AxisLockingArray[0])			// -YZ
+                if (s_AxisLockingArray[0])			// -YZ
                 {
-                    if (AxisLockingArray[1])		// --Z
+                    if (s_AxisLockingArray[1])		// --Z
                     {
-                        if (AxisLockingArray[2])	// ---
+                        if (s_AxisLockingArray[2])	// ---
                             return Axes.None;		
                         return Axes.Z;				
                     } else
-                    if (AxisLockingArray[2])		// -Y-
+                    if (s_AxisLockingArray[2])		// -Y-
                         return Axes.Y;
                     return Axes.YZ;
                 } else
-                if (AxisLockingArray[1])			// X-Z
+                if (s_AxisLockingArray[1])			// X-Z
                 {
-                    if (AxisLockingArray[2])		// X--
+                    if (s_AxisLockingArray[2])		// X--
                         return Axes.X;
                     return Axes.XZ;
                 } else
-                if (AxisLockingArray[2])			// XY-
+                if (s_AxisLockingArray[2])			// XY-
                 {
                     return Axes.XY;
                 }
@@ -483,15 +479,15 @@ namespace Chisel.Editors
             {
                 switch (value)
                 {
-                    case Axes.None:	{ AxisLockingArray[0] = true;  AxisLockingArray[1] = true;  AxisLockingArray[2] = true;  break; }
-                    case Axes.X:	{ AxisLockingArray[0] = false; AxisLockingArray[1] = true;  AxisLockingArray[2] = true;  break; }
-                    case Axes.Y:	{ AxisLockingArray[0] = true;  AxisLockingArray[1] = false; AxisLockingArray[2] = true;  break; }
-                    case Axes.Z:	{ AxisLockingArray[0] = true;  AxisLockingArray[1] = true;  AxisLockingArray[2] = false; break; }
-                    case Axes.XY:	{ AxisLockingArray[0] = false; AxisLockingArray[1] = false; AxisLockingArray[2] = true;  break; }
-                    case Axes.XZ:	{ AxisLockingArray[0] = false; AxisLockingArray[1] = true;  AxisLockingArray[2] = false; break; }
-                    case Axes.YZ:	{ AxisLockingArray[0] = true;  AxisLockingArray[1] = false; AxisLockingArray[2] = false; break; }
+                    case Axes.None:	{ s_AxisLockingArray[0] = true;  s_AxisLockingArray[1] = true;  s_AxisLockingArray[2] = true;  break; }
+                    case Axes.X:	{ s_AxisLockingArray[0] = false; s_AxisLockingArray[1] = true;  s_AxisLockingArray[2] = true;  break; }
+                    case Axes.Y:	{ s_AxisLockingArray[0] = true;  s_AxisLockingArray[1] = false; s_AxisLockingArray[2] = true;  break; }
+                    case Axes.Z:	{ s_AxisLockingArray[0] = true;  s_AxisLockingArray[1] = true;  s_AxisLockingArray[2] = false; break; }
+                    case Axes.XY:	{ s_AxisLockingArray[0] = false; s_AxisLockingArray[1] = false; s_AxisLockingArray[2] = true;  break; }
+                    case Axes.XZ:	{ s_AxisLockingArray[0] = false; s_AxisLockingArray[1] = true;  s_AxisLockingArray[2] = false; break; }
+                    case Axes.YZ:	{ s_AxisLockingArray[0] = true;  s_AxisLockingArray[1] = false; s_AxisLockingArray[2] = false; break; }
                     default:
-                    case Axes.XYZ:	{ AxisLockingArray[0] = false; AxisLockingArray[1] = false; AxisLockingArray[2] = false; break; }
+                    case Axes.XYZ:	{ s_AxisLockingArray[0] = false; s_AxisLockingArray[1] = false; s_AxisLockingArray[2] = false; break; }
                 }
                 if (SnappingSettingsModified != null)
                     SnappingSettingsModified();
@@ -504,13 +500,13 @@ namespace Chisel.Editors
             {
                 default:
                 case Axes.None:	return false;
-                case Axes.X:	return AxisLockingArray[0];
-                case Axes.Y:	return AxisLockingArray[1];
-                case Axes.Z:	return AxisLockingArray[2];
-                case Axes.XY:	return AxisLockingArray[0] && AxisLockingArray[1];
-                case Axes.XZ:	return AxisLockingArray[0] && AxisLockingArray[2]; 
-                case Axes.YZ:	return AxisLockingArray[1] && AxisLockingArray[2]; 
-                case Axes.XYZ:	return AxisLockingArray[0] && AxisLockingArray[1] && AxisLockingArray[2];
+                case Axes.X:	return s_AxisLockingArray[0];
+                case Axes.Y:	return s_AxisLockingArray[1];
+                case Axes.Z:	return s_AxisLockingArray[2];
+                case Axes.XY:	return s_AxisLockingArray[0] && s_AxisLockingArray[1];
+                case Axes.XZ:	return s_AxisLockingArray[0] && s_AxisLockingArray[2]; 
+                case Axes.YZ:	return s_AxisLockingArray[1] && s_AxisLockingArray[2]; 
+                case Axes.XYZ:	return s_AxisLockingArray[0] && s_AxisLockingArray[1] && s_AxisLockingArray[2];
             }
         }
 
@@ -520,15 +516,15 @@ namespace Chisel.Editors
             {
                 default:
                 case Axis.None:	return false;
-                case Axis.X:	return AxisLockingArray[0];
-                case Axis.Y:	return AxisLockingArray[1];
-                case Axis.Z:	return AxisLockingArray[2];
+                case Axis.X:	return s_AxisLockingArray[0];
+                case Axis.Y:	return s_AxisLockingArray[1];
+                case Axis.Z:	return s_AxisLockingArray[2];
             }
         }
         
-        public static bool		AxisLockX { get { return AxisLockingArray[0]; } set { AxisLockingArray[0] = value; } }
-        public static bool		AxisLockY { get { return AxisLockingArray[1]; } set { AxisLockingArray[1] = value; } }
-        public static bool		AxisLockZ { get { return AxisLockingArray[2]; } set { AxisLockingArray[2] = value; } }
+        public static bool		AxisLockX { get { return s_AxisLockingArray[0]; } set { s_AxisLockingArray[0] = value; } }
+        public static bool		AxisLockY { get { return s_AxisLockingArray[1]; } set { s_AxisLockingArray[1] = value; } }
+        public static bool		AxisLockZ { get { return s_AxisLockingArray[2]; } set { s_AxisLockingArray[2] = value; } }
         #endregion
 
         public static Vector3 SnapPoint(Vector3 position, Grid grid, Axes enabledAxes = Axes.XYZ)
@@ -538,7 +534,7 @@ namespace Chisel.Editors
 
         public static Vector3 SnapPoint(Vector3 position, Axes enabledAxes = Axes.XYZ)
         {
-            return SnapPoint(position, Grid.defaultGrid, enabledAxes);
+            return SnapPoint(position, Grid.DefaultGrid, enabledAxes);
         }
 
         public static (float, float, float, float) SnapBounds(Extents1D currentExtents, float snappingStep)
@@ -761,8 +757,8 @@ namespace Chisel.Editors
             this.slideExtents = GetExtentsOfPointArray(matrix, points, this.slideOrigin, this.slideDirection);
         }
         
-        static readonly List<Vector3>       s_CustomSnapPoints    = new List<Vector3>();
-        static readonly List<float>         s_CustomDistances     = new List<float>();
+        readonly static List<Vector3>       s_CustomSnapPoints    = new List<Vector3>();
+        readonly static List<float>         s_CustomDistances     = new List<float>();
         
         public Vector3 SnapExtents1D(Vector3 currentPosition)
         {
@@ -793,7 +789,7 @@ namespace Chisel.Editors
 
             var quantized_min_extents   = float.PositiveInfinity;
             var quantized_max_extents   = float.PositiveInfinity;
-            var snappedExtents          = Extents1D.empty;
+            var snappedExtents          = Extents1D.Empty;
             if (boundsActive)
             {
                 (float abs_distance, float snappedOffset, float quantized_min, float quantized_max) = Snapping.SnapBounds(this.slideExtents + distanceToOrigin, this.snappingStep);

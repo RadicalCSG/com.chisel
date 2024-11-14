@@ -14,7 +14,7 @@ namespace Chisel.Editors
                 return;
 
             // Only apply matrix to the position because its camera facing
-            position = SceneHandles.matrix.MultiplyPoint(position);
+            position = SceneHandles.Matrix.MultiplyPoint(position);
 
             var camera		= Camera.current;
             var transform	= camera.transform;
@@ -26,7 +26,7 @@ namespace Chisel.Editors
             var p2 = position + (-sideways - up);
             var p3 = position + (-sideways + up);
 
-            Color col = SceneHandles.color;
+            Color col = SceneHandles.Color;
 
             var material = SceneHandleMaterialManager.CustomDotMaterial;
             if (material && material.SetPass(0))
@@ -66,7 +66,7 @@ namespace Chisel.Editors
                 return;
 
             // Only apply matrix to the position because its camera facing
-            position = SceneHandles.matrix.MultiplyPoint(position);
+            position = SceneHandles.Matrix.MultiplyPoint(position);
 
             var camera		= Camera.current;
             var transform	= camera.transform;
@@ -81,7 +81,7 @@ namespace Chisel.Editors
             var p2 = position + ( sideways);
             var p3 = position + ( up      );
 
-            Color col = SceneHandles.color;
+            Color col = SceneHandles.Color;
 
             var material = SceneHandleMaterialManager.CustomDotMaterial;
             if (material && material.SetPass(0))
@@ -121,7 +121,7 @@ namespace Chisel.Editors
                 return;
 
             // Only apply matrix to the position because its camera facing
-            position = SceneHandles.matrix.MultiplyPoint(position);
+            position = SceneHandles.Matrix.MultiplyPoint(position);
 
             var camera		= Camera.current;
             var transform	= camera.transform;
@@ -135,7 +135,7 @@ namespace Chisel.Editors
             var p1 = position + (-up           );
             var p2 = position + ( sideways + up);
 
-            Color col = SceneHandles.color;
+            Color col = SceneHandles.Color;
 
             var material = SceneHandleMaterialManager.CustomDotMaterial;
             if (material && material.SetPass(0))
@@ -167,51 +167,51 @@ namespace Chisel.Editors
             }
         }
 
-        static Vector2[] circlePoints = null;
-        static Vector3[] circleRotatedPoints = null;
+        static Vector2[] s_CirclePoints = null;
+        static Vector3[] s_CircleRotatedPoints = null;
 
         public static void RenderBorderedCircle(Vector3 position, float size)
         {
             if (Event.current.type != EventType.Repaint)
                 return;
             
-            if (circlePoints == null ||
-                circleRotatedPoints == null ||
-                circlePoints.Length + 1 != circleRotatedPoints.Length)
+            if (s_CirclePoints == null ||
+                s_CircleRotatedPoints == null ||
+                s_CirclePoints.Length + 1 != s_CircleRotatedPoints.Length)
             {
                 const int kCircleSteps = 12;
                 
-                circlePoints = new Vector2[kCircleSteps];
+                s_CirclePoints = new Vector2[kCircleSteps];
                 for (int i = 0; i < kCircleSteps; i++)
                 {
-                    circlePoints[i] = new Vector2(
+                    s_CirclePoints[i] = new Vector2(
                             (float)Mathf.Cos((i / (float)kCircleSteps) * Mathf.PI * 2),
                             (float)Mathf.Sin((i / (float)kCircleSteps) * Mathf.PI * 2)
                         );
                 }
-                circleRotatedPoints = new Vector3[kCircleSteps + 1];
+                s_CircleRotatedPoints = new Vector3[kCircleSteps + 1];
             }
 
 
             // Only apply matrix to the position because its camera facing
-            position = SceneHandles.matrix.MultiplyPoint(position);
+            position = SceneHandles.Matrix.MultiplyPoint(position);
 
             var camera		= Camera.current;
             var transform	= camera.transform;
             var sideways	= transform.right;
             var up			= transform.up;
             
-            for (int i = 0; i < circlePoints.Length; i++)
+            for (int i = 0; i < s_CirclePoints.Length; i++)
             {
                 const float kCircleSize = 1.2f; // to make it roughly equal size to the other dots
-                var circle = circlePoints[i];
+                var circle = s_CirclePoints[i];
                 var sizex = circle.x * size;
                 var sizey = circle.y * size;
-                circleRotatedPoints[i] = position + (((sideways * sizex) + (up * sizey)) * kCircleSize);
+                s_CircleRotatedPoints[i] = position + (((sideways * sizex) + (up * sizey)) * kCircleSize);
             }
-            circleRotatedPoints[circlePoints.Length] = circleRotatedPoints[0];
+            s_CircleRotatedPoints[s_CirclePoints.Length] = s_CircleRotatedPoints[0];
 
-            Color col = SceneHandles.color;
+            Color col = SceneHandles.Color;
 
             var material = SceneHandleMaterialManager.CustomDotMaterial;
             if (material && material.SetPass(0))
@@ -219,11 +219,11 @@ namespace Chisel.Editors
                 GL.Begin(GL.TRIANGLES);
                 {
                     GL.Color(col);
-                    for (int i = 1; i < circleRotatedPoints.Length - 1; i++)
+                    for (int i = 1; i < s_CircleRotatedPoints.Length - 1; i++)
                     {
-                        GL.Vertex(circleRotatedPoints[0]);
-                        GL.Vertex(circleRotatedPoints[i]);
-                        GL.Vertex(circleRotatedPoints[i + 1]);
+                        GL.Vertex(s_CircleRotatedPoints[0]);
+                        GL.Vertex(s_CircleRotatedPoints[i]);
+                        GL.Vertex(s_CircleRotatedPoints[i + 1]);
                     }
                 }
                 GL.End();
@@ -238,13 +238,13 @@ namespace Chisel.Editors
                     col.g = 0.0f;
                     col.b = 0.0f;
                     GL.Color(col);
-                    GL.Vertex(circleRotatedPoints[0]);
-                    for (int i = 1; i < circleRotatedPoints.Length; i++)
+                    GL.Vertex(s_CircleRotatedPoints[0]);
+                    for (int i = 1; i < s_CircleRotatedPoints.Length; i++)
                     {
-                        GL.Vertex(circleRotatedPoints[i]);
-                        GL.Vertex(circleRotatedPoints[i]);
+                        GL.Vertex(s_CircleRotatedPoints[i]);
+                        GL.Vertex(s_CircleRotatedPoints[i]);
                     }
-                    GL.Vertex(circleRotatedPoints[0]);
+                    GL.Vertex(s_CircleRotatedPoints[0]);
                 }
                 GL.End();
             }
@@ -273,11 +273,11 @@ namespace Chisel.Editors
                 case EventType.Repaint:
                 {
                     RenderBorderedCircle(position, size);
-                    var prevColor = SceneHandles.color;
+                    var prevColor = SceneHandles.Color;
                     var color = prevColor;
                     color.a = 1.0f;
 
-                    var currentFocusControl = SceneHandleUtility.focusControl;
+                    var currentFocusControl = SceneHandleUtility.FocusControl;
                     if (currentFocusControl == controlID)
                     {
                         using (new SceneHandles.DrawingScope(color))
@@ -293,13 +293,13 @@ namespace Chisel.Editors
                         }
                     } else
                     {
-                        SceneHandles.color = color;
+                        SceneHandles.Color = color;
                         var normal = rotation * Vector3.forward;
-                        linePoints[0] = position;
-                        linePoints[1] = position + (normal * size * 10);
-                        DrawAAPolyLine(3.5f, linePoints);
+                        s_LinePoints[0] = position;
+                        s_LinePoints[1] = position + (normal * size * 10);
+                        DrawAAPolyLine(3.5f, s_LinePoints);
 
-                        SceneHandles.color = prevColor;
+                        SceneHandles.Color = prevColor;
                     }
                     break;
                 }
@@ -311,42 +311,42 @@ namespace Chisel.Editors
             if (Event.current.type != EventType.Repaint)
                 return;
             
-            if (circlePoints == null ||
-                circleRotatedPoints == null ||
-                circlePoints.Length != circleRotatedPoints.Length + 1)
+            if (s_CirclePoints == null ||
+                s_CircleRotatedPoints == null ||
+                s_CirclePoints.Length != s_CircleRotatedPoints.Length + 1)
             {
                 const int kCircleSteps = 12;
                 
-                circlePoints = new Vector2[kCircleSteps];
+                s_CirclePoints = new Vector2[kCircleSteps];
                 for (int i = 0; i < kCircleSteps; i++)
                 {
-                    circlePoints[i] = new Vector2(
+                    s_CirclePoints[i] = new Vector2(
                             (float)Mathf.Cos((i / (float)kCircleSteps) * Mathf.PI * 2),
                             (float)Mathf.Sin((i / (float)kCircleSteps) * Mathf.PI * 2)
                         );
                 }
-                circleRotatedPoints = new Vector3[kCircleSteps + 1];
+                s_CircleRotatedPoints = new Vector3[kCircleSteps + 1];
             }
 
 
             // Only apply matrix to the position because its camera facing
-            position = SceneHandles.matrix.MultiplyPoint(position);
+            position = SceneHandles.Matrix.MultiplyPoint(position);
 
 
             var sideways	= rotation * Vector3.right;
             var up			= rotation * Vector3.up;
             
-            for (int i = 0; i < circlePoints.Length; i++)
+            for (int i = 0; i < s_CirclePoints.Length; i++)
             {
                 const float kCircleSize = 1.2f; // to make it roughly equal size to the other dots
-                var circle = circlePoints[i];
+                var circle = s_CirclePoints[i];
                 var sizex = circle.x * size;
                 var sizey = circle.y * size;
-                circleRotatedPoints[i] = position + (((sideways * sizex) + (up * sizey)) * kCircleSize);
+                s_CircleRotatedPoints[i] = position + (((sideways * sizex) + (up * sizey)) * kCircleSize);
             }
-            circleRotatedPoints[circlePoints.Length] = circleRotatedPoints[0];
+            s_CircleRotatedPoints[s_CirclePoints.Length] = s_CircleRotatedPoints[0];
 
-            Color col = SceneHandles.color;
+            Color col = SceneHandles.Color;
 
             var material = SceneHandleMaterialManager.CustomDotMaterial;
             if (material && material.SetPass(0))
@@ -354,11 +354,11 @@ namespace Chisel.Editors
                 GL.Begin(GL.TRIANGLES);
                 {
                     GL.Color(col);
-                    for (int i = 1; i < circleRotatedPoints.Length - 1; i++)
+                    for (int i = 1; i < s_CircleRotatedPoints.Length - 1; i++)
                     {
-                        GL.Vertex(circleRotatedPoints[0]);
-                        GL.Vertex(circleRotatedPoints[i]);
-                        GL.Vertex(circleRotatedPoints[i + 1]);
+                        GL.Vertex(s_CircleRotatedPoints[0]);
+                        GL.Vertex(s_CircleRotatedPoints[i]);
+                        GL.Vertex(s_CircleRotatedPoints[i + 1]);
                     }
                 }
                 GL.End();
@@ -373,13 +373,13 @@ namespace Chisel.Editors
                     col.g = 0.0f;
                     col.b = 0.0f;
                     GL.Color(col);
-                    GL.Vertex(circleRotatedPoints[0]);
-                    for (int i = 1; i < circleRotatedPoints.Length; i++)
+                    GL.Vertex(s_CircleRotatedPoints[0]);
+                    for (int i = 1; i < s_CircleRotatedPoints.Length; i++)
                     {
-                        GL.Vertex(circleRotatedPoints[i]);
-                        GL.Vertex(circleRotatedPoints[i]);
+                        GL.Vertex(s_CircleRotatedPoints[i]);
+                        GL.Vertex(s_CircleRotatedPoints[i]);
                     }
-                    GL.Vertex(circleRotatedPoints[0]);
+                    GL.Vertex(s_CircleRotatedPoints[0]);
                 }
                 GL.End();
             }
@@ -487,10 +487,10 @@ namespace Chisel.Editors
 
         internal static bool IsHovering(int controlID, Event evt)
         {
-            return controlID == HandleUtility.nearestControl && GUIUtility.hotControl == 0 && !viewToolActive;
+            return controlID == HandleUtility.nearestControl && GUIUtility.hotControl == 0 && !ViewToolActive;
         }
 
-        internal static bool viewToolActive
+        internal static bool ViewToolActive
         {
             get
             {

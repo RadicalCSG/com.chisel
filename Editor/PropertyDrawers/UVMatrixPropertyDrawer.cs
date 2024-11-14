@@ -24,17 +24,17 @@ namespace Chisel.Editors
         }
 
         /*
-        static readonly GUIContent[] xyzw = new []
+        readonly static GUIContent[] xyzw = new []
         {
-            new GUIContent("X"),
-            new GUIContent("Y"),
-            new GUIContent("Z"),
-            new GUIContent("W"),
+            new("X"),
+            new("Y"),
+            new("Z"),
+            new("W"),
         };
         */
-        static readonly GUIContent kTranslationContent  = new GUIContent("Translation");
-        static readonly GUIContent kScaleContent        = new GUIContent("Scale");
-        static readonly GUIContent kRotationContent     = new GUIContent("Rotation");
+        readonly static GUIContent kTranslationContent  = new("Translation");
+        readonly static GUIContent kScaleContent        = new("Scale");
+        readonly static GUIContent kRotationContent     = new("Rotation");
 
         class UVMatrixState
         {

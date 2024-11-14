@@ -11,14 +11,15 @@ namespace Chisel.Core
     [Serializable]
     public struct ChiselPathedStairs : IBranchGenerator
     {
-        public readonly static ChiselPathedStairs DefaultValues = new ChiselPathedStairs
-        {
+        readonly static ChiselPathedStairs kDefaultSettings = new()
+		{
             curveSegments   = 8,
             closed          = true,
-            stairs          = ChiselLinearStairs.DefaultValues
-        };
+            stairs          = ChiselLinearStairs.DefaultSettings
+		};
+		public static ref readonly ChiselPathedStairs DefaultSettings => ref kDefaultSettings;
 
-        [NonSerialized] public bool closed;
+		[NonSerialized] public bool closed;
 
         public int curveSegments;
 
@@ -110,7 +111,7 @@ namespace Chisel.Core
         #endregion
 
         #region Reset
-        public void Reset() { this = DefaultValues; }
+        public void Reset() { this = DefaultSettings; }
         #endregion
     }
 
@@ -119,22 +120,24 @@ namespace Chisel.Core
     {
         public const string kNodeTypeName = "Pathed Stairs";
 
-        public static readonly Curve2D	kDefaultShape			= new Curve2D(new[]{ new CurveControlPoint2D(-1,-1), new CurveControlPoint2D( 1,-1), new CurveControlPoint2D( 1, 1), new CurveControlPoint2D(-1, 1) });
+        readonly static Curve2D	kDefaultShape = new(new[]{ new CurveControlPoint2D(-1,-1), new CurveControlPoint2D( 1,-1), new CurveControlPoint2D( 1, 1), new CurveControlPoint2D(-1, 1) });
+        public static ref readonly Curve2D DefaultShape => ref kDefaultShape;
 
-        public Curve2D					shape;
+
+		public Curve2D shape;
         
         // TODO: do not use this data structure, find common stuff and share between the definitions ...
         //public ChiselLinearStairsDefinition stairs;
 
         public override void Reset()
         {
-            shape = kDefaultShape;
+            shape = DefaultShape;
             base.Reset();
         }
 
         public override bool Validate() 
         {
-            shape ??= kDefaultShape;
+            shape ??= DefaultShape;
             return base.Validate(); 
         }
 
