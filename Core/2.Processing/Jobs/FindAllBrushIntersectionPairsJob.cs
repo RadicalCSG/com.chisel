@@ -31,10 +31,10 @@ namespace Chisel.Core
         [NoAlias, WriteOnly] public NativeParallelHashSet<IndexOrder>.ParallelWriter    brushesThatNeedIndirectUpdateHashMap;
 
         // Per thread scratch memory
-        [NativeDisableContainerSafetyRestriction] NativeArray<float4>   transformedPlanes0;
-        [NativeDisableContainerSafetyRestriction] NativeArray<float4>   transformedPlanes1;
-        [NativeDisableContainerSafetyRestriction] NativeBitArray        foundBrushes;
-        [NativeDisableContainerSafetyRestriction] NativeBitArray        usedBrushes;
+        //[NativeDisableContainerSafetyRestriction] NativeArray<float4>   transformedPlanes0;
+        //[NativeDisableContainerSafetyRestriction] NativeArray<float4>   transformedPlanes1;
+        //[NativeDisableContainerSafetyRestriction] NativeBitArray        foundBrushes;
+        //[NativeDisableContainerSafetyRestriction] NativeBitArray        usedBrushes;
 
         public void Execute(int index1)
         {
@@ -54,8 +54,9 @@ namespace Chisel.Core
                         if (brush0NodeOrder <= brush1NodeOrder)
                             continue;
                         var result = IntersectionUtility.FindIntersection(brush0NodeOrder, brush1NodeOrder, 
-                                                                          ref brushMeshLookup, ref brushTreeSpaceBounds, ref transformationCache,
-                                                                          ref transformedPlanes0, ref transformedPlanes1);
+                                                                          ref brushMeshLookup, ref brushTreeSpaceBounds, ref transformationCache//,
+                                                                          //ref transformedPlanes0, ref transformedPlanes1
+                                                                          );
                         if (result == IntersectionType.NoIntersection)
                             continue;
                         result = IntersectionUtility.Flip(result);
@@ -66,55 +67,66 @@ namespace Chisel.Core
                 return;
             }
 
-            NativeCollectionHelpers.EnsureMinimumSizeAndClear(ref foundBrushes, allTreeBrushIndexOrders.Length);
-            NativeCollectionHelpers.EnsureMinimumSizeAndClear(ref usedBrushes, allTreeBrushIndexOrders.Length);
+            var foundBrushes = new NativeBitArray(allTreeBrushIndexOrders.Length, Allocator.Temp);
+			//NativeCollectionHelpers.EnsureMinimumSizeAndClear(ref foundBrushes, allTreeBrushIndexOrders.Length);
+			var usedBrushes = new NativeBitArray(allTreeBrushIndexOrders.Length, Allocator.Temp);
+			//NativeCollectionHelpers.EnsureMinimumSizeAndClear(ref usedBrushes, allTreeBrushIndexOrders.Length);
+			try
+			{ 
 
-            // TODO: figure out a way to avoid needing this
-            for (int a = 0; a < rebuildTreeBrushIndexOrders.Length; a++)
-                foundBrushes.Set(rebuildTreeBrushIndexOrders[a].nodeOrder, true);
+                // TODO: figure out a way to avoid needing this
+                for (int a = 0; a < rebuildTreeBrushIndexOrders.Length; a++)
+                    foundBrushes.Set(rebuildTreeBrushIndexOrders[a].nodeOrder, true);
 
-            //for (int index1 = 0; index1 < updateBrushIndicesArray.Length; index1++)
-            {
-                var brush1IndexOrder = rebuildTreeBrushIndexOrders[index1];
-                int brush1NodeOrder  = brush1IndexOrder.nodeOrder;
-
-                var brush1Intersections = brushBrushIntersections[brush1NodeOrder];
-                if (!brush1Intersections.IsCreated)
-                    brush1Intersections = new UnsafeList<BrushIntersectWith>(16, allocator);
-                for (int index0 = 0; index0 < allTreeBrushIndexOrders.Length; index0++)
+                //for (int index1 = 0; index1 < updateBrushIndicesArray.Length; index1++)
                 {
-                    var brush0IndexOrder    = allTreeBrushIndexOrders[index0];
-                    int brush0NodeOrder     = brush0IndexOrder.nodeOrder;
-                    if (brush0NodeOrder == brush1NodeOrder)
-                        continue;
-                    var found = foundBrushes.IsSet(brush0NodeOrder);
-                    if (brush0NodeOrder < brush1NodeOrder && found)
-                        continue;
-                    var result = IntersectionUtility.FindIntersection(brush0NodeOrder, brush1NodeOrder,
-                                                                      ref brushMeshLookup, ref brushTreeSpaceBounds, ref transformationCache,
-                                                                      ref transformedPlanes0, ref transformedPlanes1);
-                    if (result == IntersectionType.NoIntersection)
-                        continue;
-                    if (!found)
+                    var brush1IndexOrder = rebuildTreeBrushIndexOrders[index1];
+                    int brush1NodeOrder  = brush1IndexOrder.nodeOrder;
+
+                    var brush1Intersections = brushBrushIntersections[brush1NodeOrder];
+                    if (!brush1Intersections.IsCreated)
+                        brush1Intersections = new UnsafeList<BrushIntersectWith>(16, allocator);
+                    for (int index0 = 0; index0 < allTreeBrushIndexOrders.Length; index0++)
                     {
-                        if (!usedBrushes.IsSet(brush0IndexOrder.nodeOrder))
+                        var brush0IndexOrder    = allTreeBrushIndexOrders[index0];
+                        int brush0NodeOrder     = brush0IndexOrder.nodeOrder;
+                        if (brush0NodeOrder == brush1NodeOrder)
+                            continue;
+                        var found = foundBrushes.IsSet(brush0NodeOrder);
+                        if (brush0NodeOrder < brush1NodeOrder && found)
+                            continue;
+                        var result = IntersectionUtility.FindIntersection(brush0NodeOrder, brush1NodeOrder,
+                                                                          ref brushMeshLookup, ref brushTreeSpaceBounds, ref transformationCache//,
+                                                                          //ref transformedPlanes0, ref transformedPlanes1
+                                                                          );
+                        if (result == IntersectionType.NoIntersection)
+                            continue;
+                        if (!found)
                         {
-                            usedBrushes.Set(brush0IndexOrder.nodeOrder, true);
-                            brushesThatNeedIndirectUpdateHashMap.Add(brush0IndexOrder);
-                            result = IntersectionUtility.Flip(result);
-                            IntersectionUtility.StoreIntersection(ref brush1Intersections, brush0IndexOrder, result);
-                        }
-                    } else
-                    {
-                        if (brush0NodeOrder > brush1NodeOrder)
+                            if (!usedBrushes.IsSet(brush0IndexOrder.nodeOrder))
+                            {
+                                usedBrushes.Set(brush0IndexOrder.nodeOrder, true);
+                                brushesThatNeedIndirectUpdateHashMap.Add(brush0IndexOrder);
+                                result = IntersectionUtility.Flip(result);
+                                IntersectionUtility.StoreIntersection(ref brush1Intersections, brush0IndexOrder, result);
+                            }
+                        } else
                         {
-                            result = IntersectionUtility.Flip(result);
-                            IntersectionUtility.StoreIntersection(ref brush1Intersections, brush0IndexOrder, result);
+                            if (brush0NodeOrder > brush1NodeOrder)
+                            {
+                                result = IntersectionUtility.Flip(result);
+                                IntersectionUtility.StoreIntersection(ref brush1Intersections, brush0IndexOrder, result);
+                            }
                         }
                     }
+                    brushBrushIntersections[brush1NodeOrder] = brush1Intersections;
                 }
-                brushBrushIntersections[brush1NodeOrder] = brush1Intersections;
             }
+            finally
+            {
+                foundBrushes.Dispose();
+                usedBrushes.Dispose();
+			}
         }
     }
 
@@ -148,31 +160,39 @@ namespace Chisel.Core
         [NoAlias, WriteOnly] public NativeList<IndexOrder>.ParallelWriter   allUpdateBrushIndexOrders;
 
         // Per thread scratch memory
-        [NativeDisableContainerSafetyRestriction] NativeList<IndexOrder>    requiredTemporaryBullShitByDOTS;
-
-        [NativeDisableContainerSafetyRestriction] NativeBitArray            foundBrushes;
+        //[NativeDisableContainerSafetyRestriction] NativeList<IndexOrder>    requiredTemporaryBullShitByDOTS;
+        //[NativeDisableContainerSafetyRestriction] NativeBitArray            foundBrushes;
 
         public void Execute()
         {
-            NativeCollectionHelpers.EnsureCapacityAndClear(ref requiredTemporaryBullShitByDOTS, allTreeBrushIndexOrders.Length);
-            NativeCollectionHelpers.EnsureMinimumSizeAndClear(ref foundBrushes, allTreeBrushIndexOrders.Length);
-
-            for (int i = 0; i < rebuildTreeBrushIndexOrders.Length; i++)
+            var requiredTemporaryBullShitByDOTS = new NativeList<IndexOrder>(allTreeBrushIndexOrders.Length, Allocator.Temp);
+            var foundBrushes = new NativeBitArray(allTreeBrushIndexOrders.Length, Allocator.Temp);
+			//NativeCollectionHelpers.EnsureCapacityAndClear(ref requiredTemporaryBullShitByDOTS, allTreeBrushIndexOrders.Length);
+            //NativeCollectionHelpers.EnsureMinimumSizeAndClear(ref foundBrushes, allTreeBrushIndexOrders.Length);
+            try
             {
-                foundBrushes.Set(rebuildTreeBrushIndexOrders[i].nodeOrder, true);
-                requiredTemporaryBullShitByDOTS.AddNoResize(rebuildTreeBrushIndexOrders[i]);
-            }
-            for (int i = 0; i < brushesThatNeedIndirectUpdate.Length; i++)
-            {
-                var indexOrder = brushesThatNeedIndirectUpdate[i];
-                if (!foundBrushes.IsSet(indexOrder.nodeOrder))
+                for (int i = 0; i < rebuildTreeBrushIndexOrders.Length; i++)
                 {
-                    requiredTemporaryBullShitByDOTS.AddNoResize(indexOrder);
-                    foundBrushes.Set(indexOrder.nodeOrder, true);
+                    foundBrushes.Set(rebuildTreeBrushIndexOrders[i].nodeOrder, true);
+                    requiredTemporaryBullShitByDOTS.AddNoResize(rebuildTreeBrushIndexOrders[i]);
                 }
+                for (int i = 0; i < brushesThatNeedIndirectUpdate.Length; i++)
+                {
+                    var indexOrder = brushesThatNeedIndirectUpdate[i];
+                    if (!foundBrushes.IsSet(indexOrder.nodeOrder))
+                    {
+                        requiredTemporaryBullShitByDOTS.AddNoResize(indexOrder);
+                        foundBrushes.Set(indexOrder.nodeOrder, true);
+                    }
+                }
+                requiredTemporaryBullShitByDOTS.Sort(new IntersectionUtility.IndexOrderComparer());
+                allUpdateBrushIndexOrders.AddRangeNoResize(requiredTemporaryBullShitByDOTS);
             }
-            requiredTemporaryBullShitByDOTS.Sort(new IntersectionUtility.IndexOrderComparer());
-            allUpdateBrushIndexOrders.AddRangeNoResize(requiredTemporaryBullShitByDOTS);
+            finally
+			{
+				requiredTemporaryBullShitByDOTS.Dispose();
+				foundBrushes.Dispose();
+			}
         }
     }
     
@@ -194,8 +214,8 @@ namespace Chisel.Core
         [NoAlias] public NativeArray<UnsafeList<BrushIntersectWith>>        brushBrushIntersections;
 
         // Per thread scratch memory
-        [NativeDisableContainerSafetyRestriction] NativeArray<float4>       transformedPlanes0;
-        [NativeDisableContainerSafetyRestriction] NativeArray<float4>       transformedPlanes1;
+        //[NativeDisableContainerSafetyRestriction] NativeArray<float4>       transformedPlanes0;
+        //[NativeDisableContainerSafetyRestriction] NativeArray<float4>       transformedPlanes1;
 
         public void Execute(int index1)
         {
@@ -219,8 +239,9 @@ namespace Chisel.Core
                     if (brush0NodeOrder > brush1NodeOrder)
                     {
                         var result = IntersectionUtility.FindIntersection(brush0NodeOrder, brush1NodeOrder,
-                                                                          ref brushMeshLookup, ref brushTreeSpaceBounds, ref transformationCache,
-                                                                          ref transformedPlanes0, ref transformedPlanes1);
+                                                                          ref brushMeshLookup, ref brushTreeSpaceBounds, ref transformationCache//,
+                                                                          //ref transformedPlanes0, ref transformedPlanes1
+                                                                          );
                         if (result == IntersectionType.NoIntersection)
                             continue;
                         result = IntersectionUtility.Flip(result);
@@ -228,8 +249,9 @@ namespace Chisel.Core
                     } else
                     {
                         var result = IntersectionUtility.FindIntersection(brush1NodeOrder, brush0NodeOrder,
-                                                                          ref brushMeshLookup, ref brushTreeSpaceBounds, ref transformationCache,
-                                                                          ref transformedPlanes0, ref transformedPlanes1);
+                                                                          ref brushMeshLookup, ref brushTreeSpaceBounds, ref transformationCache//,
+                                                                          //ref transformedPlanes0, ref transformedPlanes1
+                                                                          );
                         if (result == IntersectionType.NoIntersection)
                             continue;
                         IntersectionUtility.StoreIntersection(ref brush1Intersections, brush0IndexOrder, result);
@@ -509,55 +531,74 @@ namespace Chisel.Core
                                                               [NoAlias, ReadOnly] ref float4x4            nodeToTree0SpaceMatrix,
                                                               [NoAlias, ReadOnly] ref BrushMeshBlob       brushMesh1,
                                                               [NoAlias, ReadOnly] ref float4x4            treeToNode1SpaceMatrix,
-                                                              [NoAlias, ReadOnly] ref float4x4            nodeToTree1SpaceMatrix,
-                                                              [NoAlias, ReadOnly] ref NativeArray<float4> transformedPlanes0,
-                                                              [NoAlias, ReadOnly] ref NativeArray<float4> transformedPlanes1)
+                                                              [NoAlias, ReadOnly] ref float4x4            nodeToTree1SpaceMatrix//,
+                                                              //[NoAlias, ReadOnly] ref NativeArray<float4> transformedPlanes0,
+                                                              //[NoAlias, ReadOnly] ref NativeArray<float4> transformedPlanes1
+                                                              )
         {
             ref var brushPlanes0   = ref brushMesh0.localPlanes;
 
-            NativeCollectionHelpers.EnsureMinimumSize(ref transformedPlanes0, brushPlanes0.Length);
-            TransformOtherIntoBrushSpace(ref treeToNode0SpaceMatrix, ref nodeToTree1SpaceMatrix, ref brushPlanes0, transformedPlanes0);
+            var transformedPlanes0 = new NativeArray<float4>(brushPlanes0.Length, Allocator.Temp);
 
-            ref var brushVertices1 = ref brushMesh1.localVertices;
-            int negativeSides1 = 0;
-            for (var i = 0; i < brushPlanes0.Length; i++)
+			try
             {
-                var plane0 = transformedPlanes0[i];
-                int side = WhichSide(ref brushVertices1, plane0, kBoundsDistanceEpsilon);
-                if (side < 0) negativeSides1++;
-                if (side > 0) return IntersectionType.NoIntersection;
-            }
+                //NativeCollectionHelpers.EnsureMinimumSize(ref transformedPlanes0, brushPlanes0.Length);
+                TransformOtherIntoBrushSpace(ref treeToNode0SpaceMatrix, ref nodeToTree1SpaceMatrix, ref brushPlanes0, transformedPlanes0);
 
-            //if (intersectingSides1 != transformedPlanes0.Length) return IntersectionType.Intersection;
-            //if (intersectingSides > 0) return IntersectionType.Intersection;
-            //if (positiveSides1 > 0) return IntersectionType.NoIntersection;
-            //if (negativeSides > 0 && positiveSides > 0) return IntersectionType.Intersection;
-            if (negativeSides1 == brushPlanes0.Length)
-                return IntersectionType.BInsideA;
+                ref var brushVertices1 = ref brushMesh1.localVertices;
+                int negativeSides1 = 0;
+                for (var i = 0; i < brushPlanes0.Length; i++)
+                {
+                    var plane0 = transformedPlanes0[i];
+                    int side = WhichSide(ref brushVertices1, plane0, kBoundsDistanceEpsilon);
+                    if (side < 0) negativeSides1++;
+                    if (side > 0) return IntersectionType.NoIntersection;
+                }
+
+                //if (intersectingSides1 != transformedPlanes0.Length) return IntersectionType.Intersection;
+                //if (intersectingSides > 0) return IntersectionType.Intersection;
+                //if (positiveSides1 > 0) return IntersectionType.NoIntersection;
+                //if (negativeSides > 0 && positiveSides > 0) return IntersectionType.Intersection;
+                if (negativeSides1 == brushPlanes0.Length)
+                    return IntersectionType.BInsideA;
+            }
+            finally
+            {
+                transformedPlanes0.Dispose();
+			}
 
             ref var brushPlanes1    = ref brushMesh1.localPlanes;
-            //*
+			//*
 
-            NativeCollectionHelpers.EnsureMinimumSize(ref transformedPlanes1, brushPlanes1.Length);
-            TransformOtherIntoBrushSpace(ref treeToNode1SpaceMatrix, ref nodeToTree0SpaceMatrix, ref brushPlanes1, transformedPlanes1);
+			var transformedPlanes1 = new NativeArray<float4>(brushPlanes1.Length, Allocator.Temp);
 
-
-            ref var brushVertices0 = ref brushMesh0.localVertices;
-            int negativeSides2 = 0;
-            int intersectingSides2 = 0;
-            for (var i = 0; i < brushPlanes1.Length; i++)
+            try
             {
-                var plane1 = transformedPlanes1[i];
-                int side = WhichSide(ref brushVertices0, plane1, kBoundsDistanceEpsilon);
-                if (side < 0) negativeSides2++;
-                if (side > 0) return IntersectionType.NoIntersection;
-                if (side == 0) intersectingSides2++;
-            }
+                //NativeCollectionHelpers.EnsureMinimumSize(ref transformedPlanes1, brushPlanes1.Length);
+                TransformOtherIntoBrushSpace(ref treeToNode1SpaceMatrix, ref nodeToTree0SpaceMatrix, ref brushPlanes1, transformedPlanes1);
 
-            if (intersectingSides2 > 0) return IntersectionType.Intersection;
-            //if (negativeSides > 0 && positiveSides > 0) return IntersectionType.Intersection;
-            if (negativeSides2 == brushPlanes1.Length)
-                return IntersectionType.AInsideB;
+
+                ref var brushVertices0 = ref brushMesh0.localVertices;
+                int negativeSides2 = 0;
+                int intersectingSides2 = 0;
+                for (var i = 0; i < brushPlanes1.Length; i++)
+                {
+                    var plane1 = transformedPlanes1[i];
+                    int side = WhichSide(ref brushVertices0, plane1, kBoundsDistanceEpsilon);
+                    if (side < 0) negativeSides2++;
+                    if (side > 0) return IntersectionType.NoIntersection;
+                    if (side == 0) intersectingSides2++;
+                }
+
+                if (intersectingSides2 > 0) return IntersectionType.Intersection;
+                //if (negativeSides > 0 && positiveSides > 0) return IntersectionType.Intersection;
+                if (negativeSides2 == brushPlanes1.Length)
+                    return IntersectionType.AInsideB;
+            }
+            finally
+            {
+                transformedPlanes1.Dispose();
+			}
             
             return IntersectionType.Intersection;//*/
         }
@@ -593,9 +634,10 @@ namespace Chisel.Core
         public static IntersectionType FindIntersection(int brush0NodeOrder, int brush1NodeOrder,
                                                         [NoAlias, ReadOnly] ref NativeArray<BlobAssetReference<BrushMeshBlob>> brushMeshLookup,
                                                         [NoAlias, ReadOnly] ref NativeList<MinMaxAABB>          brushTreeSpaceBounds,
-                                                        [NoAlias, ReadOnly] ref NativeList<NodeTransformations> transformations,
-                                                        [NoAlias, ReadOnly] ref NativeArray<float4>             transformedPlanes0,
-                                                        [NoAlias, ReadOnly] ref NativeArray<float4>             transformedPlanes1)
+                                                        [NoAlias, ReadOnly] ref NativeList<NodeTransformations> transformations//,
+                                                        //[NoAlias, ReadOnly] ref NativeArray<float4>             transformedPlanes0,
+                                                        //[NoAlias, ReadOnly] ref NativeArray<float4>             transformedPlanes1
+                                                        )
         {
             var brushMesh0 = brushMeshLookup[brush0NodeOrder];
             var brushMesh1 = brushMeshLookup[brush1NodeOrder];
@@ -621,9 +663,10 @@ namespace Chisel.Core
                                                                     ref nodeToTree0SpaceMatrix,
                                                                     ref brushMesh1.Value,
                                                                     ref treeToNode1SpaceMatrix,
-                                                                    ref nodeToTree1SpaceMatrix,
-                                                                    ref transformedPlanes0,
-                                                                    ref transformedPlanes1);
+                                                                    ref nodeToTree1SpaceMatrix//,
+                                                                    //ref transformedPlanes0,
+                                                                    //ref transformedPlanes1
+                                                                    );
           
             return result;
         }

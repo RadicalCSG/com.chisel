@@ -23,7 +23,7 @@ namespace Chisel.Core
         [NoAlias] public NativeArray<BlobAssetReference<BrushTreeSpaceVerticesBlob>>        treeSpaceVerticesArray;
 
         // Per thread scratch memory
-        [NativeDisableContainerSafetyRestriction] HashedVertices mergeVertices;
+        //[NativeDisableContainerSafetyRestriction] HashedVertices mergeVertices;
 
         public void Execute(int b)
         {
@@ -38,8 +38,8 @@ namespace Chisel.Core
                 return;
             ref var vertices  = ref treeSpaceVerticesBlob.Value.treeSpaceVertices;
     
-            mergeVertices = new HashedVertices(math.max(vertices.Length, 1000), Allocator.Temp);
-            NativeCollectionHelpers.EnsureCapacityAndClear(ref mergeVertices, math.max(vertices.Length, 1000));
+            var mergeVertices = new HashedVertices(math.max(vertices.Length, 1000), Allocator.Temp);
+            //NativeCollectionHelpers.EnsureCapacityAndClear(ref mergeVertices, math.max(vertices.Length, 1000));
             try
             {
                 mergeVertices.AddUniqueVertices(ref vertices);
