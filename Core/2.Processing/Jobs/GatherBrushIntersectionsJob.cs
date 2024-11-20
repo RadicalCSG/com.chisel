@@ -47,64 +47,71 @@ namespace Chisel.Core
         {
             var minCount = brushBrushIntersections.Length * 16;
 
-            NativeCollectionHelpers.EnsureCapacityAndClear(ref intersections, minCount);
-
-            for (int i = 0; i < brushBrushIntersections.Length; i++)
-            {
-                if (!brushBrushIntersections[i].IsCreated)
-                    continue;
-                var subArray = brushBrushIntersections[i];
-                for (int j = 0; j < subArray.Length; j++)
+			var intersections = new NativeList<BrushPair> (minCount, Allocator.Temp);
+			//NativeCollectionHelpers.EnsureCapacityAndClear(ref intersections, minCount);
+            try
+            { 
+                for (int i = 0; i < brushBrushIntersections.Length; i++)
                 {
-                    var intersectWith = subArray[j];
-                    var pair = new BrushPair
+                    if (!brushBrushIntersections[i].IsCreated)
+                        continue;
+                    var subArray = brushBrushIntersections[i];
+                    for (int j = 0; j < subArray.Length; j++)
                     {
-                        brushNodeOrder0 = i,
-                        brushNodeOrder1 = intersectWith.brushNodeOrder1,
-                        type = intersectWith.type
-                    };
-                    intersections.Add(pair);
-                    pair.Flip();
-                    intersections.Add(pair);
+                        var intersectWith = subArray[j];
+                        var pair = new BrushPair
+                        {
+                            brushNodeOrder0 = i,
+                            brushNodeOrder1 = intersectWith.brushNodeOrder1,
+                            type = intersectWith.type
+                        };
+                        intersections.Add(pair);
+                        pair.Flip();
+                        intersections.Add(pair);
+                    }
                 }
-            }
-            brushIntersectionsWith.Clear();
-            if (intersections.Length == 0)
-                return;
+                brushIntersectionsWith.Clear();
+                if (intersections.Length == 0)
+                    return;
 
-            if (brushIntersectionsWith.Capacity < intersections.Length)
-                brushIntersectionsWith.Capacity = intersections.Length;
+                if (brushIntersectionsWith.Capacity < intersections.Length)
+                    brushIntersectionsWith.Capacity = intersections.Length;
 
-            intersections.Sort(new ListComparer());           
+                intersections.Sort(new ListComparer());           
 
-            var currentPair = intersections[0];
-            int previousOrder = currentPair.brushNodeOrder0;
-            brushIntersectionsWith.AddNoResize(new BrushIntersectWith
-            {
-                brushNodeOrder1 = currentPair.brushNodeOrder1,
-                type            = currentPair.type,
-            });
-            int2 range = new int2(0, 1);
-            for (int i = 1; i < intersections.Length; i++)
-            {
-                currentPair = intersections[i];
-                int currentOrder = currentPair.brushNodeOrder0;
+                var currentPair = intersections[0];
+                int previousOrder = currentPair.brushNodeOrder0;
                 brushIntersectionsWith.AddNoResize(new BrushIntersectWith
                 {
                     brushNodeOrder1 = currentPair.brushNodeOrder1,
                     type            = currentPair.type,
                 });
-                if (currentOrder != previousOrder)
+                int2 range = new int2(0, 1);
+                for (int i = 1; i < intersections.Length; i++)
                 {
-                    //Debug.Log($"{previousOrder} {range}");
-                    brushIntersectionsWithRange[previousOrder] = range;
-                    previousOrder = currentOrder;
-                    range.x = i;
-                    range.y = 1;
-                } else
-                    range.y++;
+                    currentPair = intersections[i];
+                    int currentOrder = currentPair.brushNodeOrder0;
+                    brushIntersectionsWith.AddNoResize(new BrushIntersectWith
+                    {
+                        brushNodeOrder1 = currentPair.brushNodeOrder1,
+                        type            = currentPair.type,
+                    });
+                    if (currentOrder != previousOrder)
+                    {
+                        //Debug.Log($"{previousOrder} {range}");
+                        brushIntersectionsWithRange[previousOrder] = range;
+                        previousOrder = currentOrder;
+                        range.x = i;
+                        range.y = 1;
+                    } else
+                        range.y++;
+                }
+                brushIntersectionsWithRange[previousOrder] = range;
             }
-            brushIntersectionsWithRange[previousOrder] = range;
+            finally
+            {
+                intersections.Dispose();
+			}
         }
     }
 }
