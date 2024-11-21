@@ -43,7 +43,7 @@ namespace Chisel.Core
             return (1 - t) * (1 - t) * (1 - t) * p0 + 3 * t * (1 - t) * (1 - t) * p1 + 3 * t * t * (1 - t) * p2 + t * t * t * p3;
         }
 
-        public void GetPathVertices(int shapeCurveSegments, NativeList<SegmentVertex> shapeVertices)
+        public void AddPathVertices(int shapeCurveSegments, NativeList<SegmentVertex> shapeVertices)
         {
             var length = controlPoints.Length;
 
@@ -83,11 +83,11 @@ namespace Chisel.Core
             }
         }
 
-        public void GetPathVertices(int shapeCurveSegments, out UnsafeList<SegmentVertex> shapeVertices, Allocator allocator)
+        public UnsafeList<SegmentVertex> GetPathVertices(int shapeCurveSegments, Allocator allocator)
         {
             var length = controlPoints.Length;
 
-            shapeVertices = new UnsafeList<SegmentVertex>(length * (1 + math.max(1, shapeCurveSegments)), allocator);
+            var shapeVertices = new UnsafeList<SegmentVertex>(length * (1 + math.max(1, shapeCurveSegments)), allocator);
             for (int i = 0; i < length; i++)
             {
                 var index1 = i;
@@ -122,7 +122,8 @@ namespace Chisel.Core
                     shapeVertices.Add(new SegmentVertex { position = PointOnBezier(v1, v0, v3, v2, n / (float)shapeCurveSegments), segmentIndex = i });
                 }
             }
-        }
+            return shapeVertices;
+		}
 
         // TODO: put somewhere else
         static float CalculateOrientation(NativeList<SegmentVertex> vertices, Range range)
@@ -156,124 +157,121 @@ namespace Chisel.Core
             return direction;
         }
 
-
+        /*
         public bool ConvexPartition(int curveSegments, out NativeList<SegmentVertex> polygonVerticesArray, out NativeList<int> polygonVerticesSegments, Allocator allocator)
         {
-            using (var shapeVertices = new NativeList<SegmentVertex>(Allocator.Temp))
-            {
-                GetPathVertices(curveSegments, shapeVertices);
+			using var shapeVertices = new NativeList<SegmentVertex>(Allocator.Temp);
+			AddPathVertices(curveSegments, shapeVertices);
 
-                polygonVerticesArray = new NativeList<SegmentVertex>(allocator);
-                polygonVerticesSegments = new NativeList<int>(allocator);
+			polygonVerticesArray = new NativeList<SegmentVertex>(allocator);
+			polygonVerticesSegments = new NativeList<int>(allocator);
 
-                //Profiler.BeginSample("ConvexPartition");
-                if (shapeVertices.Length == 3)
-                { 
-                    polygonVerticesArray.ResizeUninitialized(3);
-                    polygonVerticesArray[0] = shapeVertices[0];
-                    polygonVerticesArray[1] = shapeVertices[1];
-                    polygonVerticesArray[2] = shapeVertices[2];
+			//Profiler.BeginSample("ConvexPartition");
+			if (shapeVertices.Length == 3)
+			{
+				polygonVerticesArray.ResizeUninitialized(3);
+				polygonVerticesArray[0] = shapeVertices[0];
+				polygonVerticesArray[1] = shapeVertices[1];
+				polygonVerticesArray[2] = shapeVertices[2];
 
-                    polygonVerticesSegments.ResizeUninitialized(1);
-                    polygonVerticesSegments[0] = polygonVerticesArray.Length;
-                } else
-                {
-                    if (!External.BayazitDecomposerBursted.ConvexPartition(shapeVertices,
-                                                                           polygonVerticesArray,
-                                                                           polygonVerticesSegments))
-                    {
-                        polygonVerticesArray.Dispose();
-                        polygonVerticesSegments.Dispose();
-                        polygonVerticesArray    = default;
-                        polygonVerticesSegments = default;
-                        return false;
-                    }
+				polygonVerticesSegments.ResizeUninitialized(1);
+				polygonVerticesSegments[0] = polygonVerticesArray.Length;
+			}
+			else
+			{
+				if (!External.BayazitDecomposerBursted.ConvexPartition(shapeVertices,
+																	   polygonVerticesArray,
+																	   polygonVerticesSegments))
+				{
+					polygonVerticesArray.Dispose();
+					polygonVerticesSegments.Dispose();
+					polygonVerticesArray = default;
+					polygonVerticesSegments = default;
+					return false;
+				}
 
-                    for (int i = 0; i < polygonVerticesSegments.Length; i++)
-                    {
-                        var range = new Range
-                        {
-                            start   = i == 0 ? 0 : polygonVerticesSegments[i - 1],
-                            end     =              polygonVerticesSegments[i    ]
-                        };
+				for (int i = 0; i < polygonVerticesSegments.Length; i++)
+				{
+					var range = new Range
+					{
+						start = i == 0 ? 0 : polygonVerticesSegments[i - 1],
+						end = polygonVerticesSegments[i]
+					};
 
-                        if (CalculateOrientation(polygonVerticesArray, range) < 0)
-                            External.BayazitDecomposerBursted.Reverse(polygonVerticesArray, range);
-                    }
-                }
-                //Profiler.EndSample();
+					if (CalculateOrientation(polygonVerticesArray, range) < 0)
+						External.BayazitDecomposerBursted.Reverse(polygonVerticesArray, range);
+				}
+			}
+			//Profiler.EndSample();
 
-                //Debug.Assert(polygonVerticesArray.Length == 0 || polygonVerticesArray.Length == polygonVerticesSegments[polygonVerticesSegments.Length - 1]);
-                return true;
-            }
-        }
+			//Debug.Assert(polygonVerticesArray.Length == 0 || polygonVerticesArray.Length == polygonVerticesSegments[polygonVerticesSegments.Length - 1]);
+			return true;
+		}
+        */
 
         public bool ConvexPartition(int curveSegments, out UnsafeList<SegmentVertex> polygonVerticesArray, out UnsafeList<int> polygonVerticesSegments, Allocator allocator)
         {
-            using (var shapeVertices = new NativeList<SegmentVertex>(Allocator.Temp))
-            {
-                GetPathVertices(curveSegments, shapeVertices);
+			using var shapeVertices = new NativeList<SegmentVertex>(Allocator.Temp);
+			AddPathVertices(curveSegments, shapeVertices);
 
-                //Profiler.BeginSample("ConvexPartition");
-                if (shapeVertices.Length == 3)
-                {
-                    polygonVerticesArray = new UnsafeList<SegmentVertex>(3, allocator);
-                    polygonVerticesSegments = new UnsafeList<int>(1, allocator);
+			//Profiler.BeginSample("ConvexPartition");
+			if (shapeVertices.Length == 3)
+			{
+				polygonVerticesArray = new UnsafeList<SegmentVertex>(3, allocator);
+				polygonVerticesSegments = new UnsafeList<int>(1, allocator);
 
-                    polygonVerticesArray.Resize(3, NativeArrayOptions.UninitializedMemory);
-                    polygonVerticesArray[0] = shapeVertices[0];
-                    polygonVerticesArray[1] = shapeVertices[1];
-                    polygonVerticesArray[2] = shapeVertices[2];
+				polygonVerticesArray.Resize(3, NativeArrayOptions.UninitializedMemory);
+				polygonVerticesArray[0] = shapeVertices[0];
+				polygonVerticesArray[1] = shapeVertices[1];
+				polygonVerticesArray[2] = shapeVertices[2];
 
-                    polygonVerticesSegments.Resize(1, NativeArrayOptions.UninitializedMemory);
-                    polygonVerticesSegments[0] = polygonVerticesArray.Length;
-                } else
-                {
-                    polygonVerticesArray    = new UnsafeList<SegmentVertex>(shapeVertices.Length * math.max(1, shapeVertices.Length / 2), allocator);
-                    polygonVerticesSegments = new UnsafeList<int>(shapeVertices.Length, allocator);
-                    if (!External.BayazitDecomposerBursted.ConvexPartition(shapeVertices,
-                                                                           ref polygonVerticesArray,
-                                                                           ref polygonVerticesSegments))
-                    {
-                        polygonVerticesArray.Dispose();
-                        polygonVerticesSegments.Dispose();
-                        polygonVerticesArray    = default;
-                        polygonVerticesSegments = default;
-                        return false;
-                    }
-                }
+				polygonVerticesSegments.Resize(1, NativeArrayOptions.UninitializedMemory);
+				polygonVerticesSegments[0] = polygonVerticesArray.Length;
+			}
+			else
+			{
+				polygonVerticesArray = new UnsafeList<SegmentVertex>(shapeVertices.Length * math.max(1, shapeVertices.Length / 2), allocator);
+				polygonVerticesSegments = new UnsafeList<int>(shapeVertices.Length, allocator);
+				if (!External.BayazitDecomposerBursted.ConvexPartition(shapeVertices,
+																	   ref polygonVerticesArray,
+																	   ref polygonVerticesSegments))
+				{
+					polygonVerticesArray.Dispose();
+					polygonVerticesSegments.Dispose();
+					polygonVerticesArray = default;
+					polygonVerticesSegments = default;
+					return false;
+				}
+			}
 
-                for (int i = 0; i < polygonVerticesSegments.Length; i++)
-                {
-                    var range = new Range
-                    {
-                        start   = i == 0 ? 0 : polygonVerticesSegments[i - 1],
-                        end     =              polygonVerticesSegments[i    ]
-                    };
+			for (int i = 0; i < polygonVerticesSegments.Length; i++)
+			{
+				var range = new Range
+				{
+					start = i == 0 ? 0 : polygonVerticesSegments[i - 1],
+					end = polygonVerticesSegments[i]
+				};
 
-                    if (CalculateOrientation(polygonVerticesArray, range) < 0)
-                        External.BayazitDecomposerBursted.Reverse(polygonVerticesArray, range);
-                }
-                //Profiler.EndSample();
+				if (CalculateOrientation(polygonVerticesArray, range) < 0)
+					External.BayazitDecomposerBursted.Reverse(polygonVerticesArray, range);
+			}
+			//Profiler.EndSample();
 
-                //Debug.Assert(polygonVerticesArray.Length == 0 || polygonVerticesArray.Length == polygonVerticesSegments[polygonVerticesSegments.Length - 1]);
-                return true;
-            }
-        }
+			//Debug.Assert(polygonVerticesArray.Length == 0 || polygonVerticesArray.Length == polygonVerticesSegments[polygonVerticesSegments.Length - 1]);
+			return true;
+		}
 
         public static BlobAssetReference<ChiselCurve2DBlob> Convert(Curve2D curve, Allocator allocator)
         {
-            using (var builder = new BlobBuilder(Allocator.Temp))
-            {
-                ref var root = ref builder.ConstructRoot<ChiselCurve2DBlob>();
-                root.closed = curve.closed;
-                var srcControlPoints = curve.controlPoints;
-                var dstControlPoints = builder.Allocate(ref root.controlPoints, srcControlPoints.Length);
-                // TODO: just use fixed-array + memcpy
-                for (int i = 0; i < srcControlPoints.Length; i++)
-                    dstControlPoints[i] = Convert(srcControlPoints[i]);
-                return builder.CreateBlobAssetReference<ChiselCurve2DBlob>(allocator);
-            }
-        }
+			using var builder = new BlobBuilder(Allocator.Temp);
+			ref var root = ref builder.ConstructRoot<ChiselCurve2DBlob>();
+			root.closed = curve.closed;
+			var srcControlPoints = curve.controlPoints;
+			var dstControlPoints = builder.Allocate(ref root.controlPoints, srcControlPoints.Length);
+			// TODO: just use fixed-array + memcpy
+			for (int i = 0; i < srcControlPoints.Length; i++)
+				dstControlPoints[i] = Convert(srcControlPoints[i]);
+			return builder.CreateBlobAssetReference<ChiselCurve2DBlob>(allocator);
+		}
     }
 }

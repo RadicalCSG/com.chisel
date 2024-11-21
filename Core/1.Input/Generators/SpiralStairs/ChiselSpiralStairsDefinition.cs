@@ -103,58 +103,52 @@ namespace Chisel.Core
 
         public bool GenerateNodes(BlobAssetReference<InternalChiselSurfaceArray> surfaceDefinitionBlob, NativeList<GeneratedNode> nodes, Allocator allocator)
         {
-            var generatedBrushMeshes = new NativeList<BlobAssetReference<BrushMeshBlob>>(nodes.Length, Allocator.Temp);
-            try
+            NativeList<BlobAssetReference<BrushMeshBlob>> generatedBrushMeshes;
+			using var _generatedBrushMeshes = generatedBrushMeshes = new NativeList<BlobAssetReference<BrushMeshBlob>>(nodes.Length, Allocator.Temp);
+            generatedBrushMeshes.Resize(nodes.Length, NativeArrayOptions.ClearMemory);
+            if (!BrushMeshFactory.GenerateSpiralStairs(generatedBrushMeshes,
+                                                        ref this,
+                                                        in surfaceDefinitionBlob,
+                                                        allocator))
             {
-                generatedBrushMeshes.Resize(nodes.Length, NativeArrayOptions.ClearMemory);
-                if (!BrushMeshFactory.GenerateSpiralStairs(generatedBrushMeshes,
-                                                           ref this,
-                                                           in surfaceDefinitionBlob,
-                                                           allocator))
-                {
-                    for (int i = 0; i < generatedBrushMeshes.Length; i++)
-                    {
-                        if (generatedBrushMeshes[i].IsCreated)
-                            generatedBrushMeshes[i].Dispose();
-                        generatedBrushMeshes[i] = default;
-                    }
-                    return false;
-                }
                 for (int i = 0; i < generatedBrushMeshes.Length; i++)
-                    nodes[i] = GeneratedNode.GenerateBrush(generatedBrushMeshes[i]);
-
-                // TODO: clean this up
                 {
-                    var subMeshIndex = TreadStart - CylinderSubMeshCount;
-                    var node = nodes[subMeshIndex];
-                    node.operation = CSGOperationType.Intersecting;
-                    nodes[subMeshIndex] = node;
-
-                    subMeshIndex = RequiredSubMeshCount - CylinderSubMeshCount;
-                    node = nodes[subMeshIndex];
-                    node.operation = CSGOperationType.Intersecting;
-                    nodes[subMeshIndex] = node;
+                    if (generatedBrushMeshes[i].IsCreated)
+                        generatedBrushMeshes[i].Dispose();
+                    generatedBrushMeshes[i] = default;
                 }
-
-                if (HaveInnerCylinder)
-                {
-                    var subMeshIndex = TreadStart - 1;
-                    var node = nodes[subMeshIndex];
-                    node.operation = CSGOperationType.Subtractive;
-                    nodes[subMeshIndex] = node;
-
-                    subMeshIndex = RequiredSubMeshCount - 1;
-                    node = nodes[subMeshIndex];
-                    node.operation = CSGOperationType.Subtractive;
-                    nodes[subMeshIndex] = node;
-                }
-
-                return true;
+                return false;
             }
-            finally
+            for (int i = 0; i < generatedBrushMeshes.Length; i++)
+                nodes[i] = GeneratedNode.GenerateBrush(generatedBrushMeshes[i]);
+
+            // TODO: clean this up
             {
-                generatedBrushMeshes.Dispose();
+                var subMeshIndex = TreadStart - CylinderSubMeshCount;
+                var node = nodes[subMeshIndex];
+                node.operation = CSGOperationType.Intersecting;
+                nodes[subMeshIndex] = node;
+
+                subMeshIndex = RequiredSubMeshCount - CylinderSubMeshCount;
+                node = nodes[subMeshIndex];
+                node.operation = CSGOperationType.Intersecting;
+                nodes[subMeshIndex] = node;
             }
+
+            if (HaveInnerCylinder)
+            {
+                var subMeshIndex = TreadStart - 1;
+                var node = nodes[subMeshIndex];
+                node.operation = CSGOperationType.Subtractive;
+                nodes[subMeshIndex] = node;
+
+                subMeshIndex = RequiredSubMeshCount - 1;
+                node = nodes[subMeshIndex];
+                node.operation = CSGOperationType.Subtractive;
+                nodes[subMeshIndex] = node;
+            }
+
+            return true;
         }
 
         public void Dispose() {}

@@ -2,14 +2,23 @@ using System.Runtime.CompilerServices;
 using UnityEngine;
 using Unity.Collections;
 using Unity.Entities;
+using System;
 
 namespace Chisel.Core
 {
-    public struct RefCountedBrushMeshBlob
+    public struct RefCountedBrushMeshBlob : IDisposable
     {
         public int refCount;
         public BlobAssetReference<BrushMeshBlob> brushMeshBlob;
-    }
+
+		public void Dispose()
+		{
+            refCount = 0;
+            if (brushMeshBlob.IsCreated)
+                brushMeshBlob.Dispose();
+            brushMeshBlob = default;
+		}
+	}
 
     internal sealed class ChiselMeshLookup : ScriptableObject
     {
@@ -24,17 +33,20 @@ namespace Chisel.Core
 
 			public void Dispose()
             {
+                // Confirmed to get disposed
                 if (brushMeshBlobCache.IsCreated)
                 {
                     try
                     {
-                        using var items = brushMeshBlobCache.GetValueArray(Allocator.Persistent);                        
+                        using var items = brushMeshBlobCache.GetValueArray(Allocator.Temp);
                         foreach (var item in items)
                         {
                             if (item.brushMeshBlob.IsCreated)
-                                item.brushMeshBlob.Dispose();
+                            {
+                                item.Dispose();
+							}
                         }
-                    }
+					}
                     finally
                     {
                         brushMeshBlobCache.Dispose();
@@ -75,8 +87,9 @@ namespace Chisel.Core
         internal void OnDisable() { Dispose(); }
 		private void OnDestroy() { Dispose(); }
 
-		public void Dispose() 
+		public void Dispose()
 		{
+			// Confirmed to be called
 			data.Dispose();
 			instance = null;
 		}

@@ -101,6 +101,7 @@ namespace Chisel.Core
 
         public JobHandle Dispose(JobHandle dependency) 
         {
+            // Confirmed to be called
             JobHandle lastJobHandle = default;
             if (meshDescriptions    .IsCreated) lastJobHandle = JobHandle.CombineDependencies(lastJobHandle, meshDescriptions       .Dispose(dependency));
             if (subMeshSections     .IsCreated) lastJobHandle = JobHandle.CombineDependencies(lastJobHandle, subMeshSections        .Dispose(dependency));

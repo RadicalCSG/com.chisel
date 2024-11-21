@@ -72,112 +72,104 @@ namespace Chisel.Core
             var maxNodes    = math.max(1, brushesTouchedByBrushValue.brushIntersections.Length);
             var maxRoutes   = maxNodes * kMaxRoutesPerNode;
 
-            
-            var queuedEvents = new NativeArray<QueuedEvent>(4096, Allocator.Temp);
-			var tempStackArray = new NativeArray<CategoryStackNode>(maxRoutes, Allocator.Temp);
-			var combineUsedIndices = new NativeBitArray(maxRoutes, Allocator.Temp);
-#if USE_OPTIMIZATIONS
-			var combineIndexRemap = new NativeArray<byte>(maxRoutes, Allocator.Temp);
-#endif
-			var routingSteps = new NativeArray<int>(maxRoutes, Allocator.Temp);
-			var routingTable = new NativeArray<CategoryStackNode>(maxRoutes, Allocator.Temp);
 
-            //NativeCollectionHelpers.EnsureMinimumSize(ref routingTable, maxRoutes);
-            //NativeCollectionHelpers.EnsureMinimumSize(ref tempStackArray, maxRoutes);
-            //NativeCollectionHelpers.EnsureMinimumSize(ref queuedEvents, 4096);
-            //NativeCollectionHelpers.EnsureMinimumSize(ref routingSteps, maxRoutes);
-            //NativeCollectionHelpers.EnsureMinimumSizeAndClear(ref combineUsedIndices, maxRoutes);
+            NativeArray<QueuedEvent> queuedEvents;
+            using var _queuedEvents = queuedEvents = new NativeArray<QueuedEvent>(4096, Allocator.Temp);
+			//NativeCollectionHelpers.EnsureMinimumSize(ref queuedEvents, 4096);
+			
+            NativeArray<CategoryStackNode> tempStackArray;
+			using var _tempStackArray = tempStackArray = new NativeArray<CategoryStackNode>(maxRoutes, Allocator.Temp);
+			//NativeCollectionHelpers.EnsureMinimumSize(ref tempStackArray, maxRoutes);
+			
+            NativeBitArray combineUsedIndices;
+			using var _combineUsedIndices = combineUsedIndices = new NativeBitArray(maxRoutes, Allocator.Temp);
+			//NativeCollectionHelpers.EnsureMinimumSizeAndClear(ref combineUsedIndices, maxRoutes);
 #if USE_OPTIMIZATIONS
-            //NativeCollectionHelpers.EnsureMinimumSizeAndClear(ref combineIndexRemap, maxRoutes);
+			NativeArray<byte> combineIndexRemap;
+			using var _combineIndexRemap = combineIndexRemap = new NativeArray<byte>(maxRoutes, Allocator.Temp);
+			//NativeCollectionHelpers.EnsureMinimumSizeAndClear(ref combineIndexRemap, maxRoutes);
 #endif
-            try
+			NativeArray<int> routingSteps;
+			using var _routingSteps = routingSteps = new NativeArray<int>(maxRoutes, Allocator.Temp);
+			//NativeCollectionHelpers.EnsureMinimumSize(ref routingSteps, maxRoutes);
+
+			NativeArray<CategoryStackNode> routingTable;
+			using var _routingTable = routingTable = new NativeArray<CategoryStackNode>(maxRoutes, Allocator.Temp);
+			//NativeCollectionHelpers.EnsureMinimumSize(ref routingTable, maxRoutes);
+
+
+			var categoryStackNodeCount = GetStackNodes(processedNodeID, ref brushesTouchedByBrushValue,
+                                                        ref routingTable,
+                                                        ref compactTree.compactHierarchy,
+                                                        ref queuedEvents,
+                                                        ref tempStackArray,
+                                                        ref combineUsedIndices,
+#if USE_OPTIMIZATIONS
+                                                        ref combineIndexRemap,
+#endif
+                                                        ref routingSteps);
+
+            var totalInputsSize = 16 + (categoryStackNodeCount * UnsafeUtility.SizeOf<byte>());
+            var totalRoutingRowsSize = 16 + (categoryStackNodeCount * UnsafeUtility.SizeOf<CategoryRoutingRow>());
+            var totalLookupsSize = 16 + (categoryStackNodeCount * UnsafeUtility.SizeOf<RoutingLookup>());
+            var totalNodesSize = 16 + (categoryStackNodeCount * UnsafeUtility.SizeOf<int>());
+            var totalSize = totalInputsSize + totalRoutingRowsSize + totalLookupsSize + totalNodesSize;
+
+			using var builder = new BlobBuilder(Allocator.Temp, totalSize);
+            ref var root = ref builder.ConstructRoot<RoutingTable>();
+            var routingRows = builder.Allocate(ref root.routingRows, categoryStackNodeCount);
+
+            // TODO: clean up
+            int nodeCounter = 1;
+            routingRows[0] = routingTable[0].routingRow;
+            var prevNodeID = routingTable[0].NodeIDValue;
+            for (int i = 1; i < categoryStackNodeCount; i++)
             {
-
-                var categoryStackNodeCount = GetStackNodes(processedNodeID, ref brushesTouchedByBrushValue,
-                                                           ref routingTable,
-                                                           ref compactTree.compactHierarchy,
-                                                           ref queuedEvents,
-                                                           ref tempStackArray,
-                                                           ref combineUsedIndices,
-#if USE_OPTIMIZATIONS
-                                                           ref combineIndexRemap,
-#endif
-                                                           ref routingSteps);
-
-                var totalInputsSize = 16 + (categoryStackNodeCount * UnsafeUtility.SizeOf<byte>());
-                var totalRoutingRowsSize = 16 + (categoryStackNodeCount * UnsafeUtility.SizeOf<CategoryRoutingRow>());
-                var totalLookupsSize = 16 + (categoryStackNodeCount * UnsafeUtility.SizeOf<RoutingLookup>());
-                var totalNodesSize = 16 + (categoryStackNodeCount * UnsafeUtility.SizeOf<int>());
-                var totalSize = totalInputsSize + totalRoutingRowsSize + totalLookupsSize + totalNodesSize;
-
-                var builder = new BlobBuilder(Allocator.Temp, totalSize);
-                ref var root = ref builder.ConstructRoot<RoutingTable>();
-                var routingRows = builder.Allocate(ref root.routingRows, categoryStackNodeCount);
-
-                // TODO: clean up
-                int nodeCounter = 1;
-                routingRows[0] = routingTable[0].routingRow;
-                var prevNodeID = routingTable[0].NodeIDValue;
-                for (int i = 1; i < categoryStackNodeCount; i++)
-                {
-                    routingRows[i] = routingTable[i].routingRow;
-                    var curNodeID = routingTable[i].NodeIDValue;
-                    if (prevNodeID != curNodeID)
-                        nodeCounter++;
-                    prevNodeID = curNodeID;
-                }
-
-                var routingLookups = builder.Allocate(ref root.routingLookups, nodeCounter);
-
-                {
-                    // TODO: clean up
-                    nodeCounter = 0;
-                    for (int i = 0; i < categoryStackNodeCount;)
-                    {
-                        var cuttingNodeID = routingTable[i].NodeIDValue;
-                        int startIndex = i;
-                        i++;
-                        while (i < categoryStackNodeCount && routingTable[i].NodeIDValue == cuttingNodeID)
-                            i++;
-                        int endIndex = i;
-
-                        routingLookups[nodeCounter] = new RoutingLookup { startIndex = startIndex, endIndex = endIndex };
-                        nodeCounter++;
-                    }
-
-                    int maxNodeID = 0;
-                    int minNodeID = 0;
-                    for (int i = 0; i < nodeCounter; i++)
-                    {
-                        var NodeID = routingTable[routingLookups[i].startIndex].NodeIDValue;
-                        minNodeID = math.min(minNodeID, NodeID);
-                        maxNodeID = math.max(maxNodeID, NodeID);
-                    }
-                    root.nodeIDOffset = minNodeID;
-
-                    var indexToTableIndexCount = (maxNodeID + 1) - minNodeID;
-                    var nodeIDToTableIndex = builder.Allocate(ref root.nodeIDToTableIndex, indexToTableIndexCount);
-                    for (int i = 0; i < indexToTableIndexCount; i++)
-                        nodeIDToTableIndex[i] = -1;
-                    for (int i = 0; i < nodeCounter; i++)
-                        nodeIDToTableIndex[routingTable[routingLookups[i].startIndex].NodeIDValue - minNodeID] = i;
-
-                    var routingTableBlob = builder.CreateBlobAssetReference<RoutingTable>(Allocator.Persistent);
-                    routingTableLookup[processedNodeOrder] = routingTableBlob;
-                }
-                builder.Dispose();
+                routingRows[i] = routingTable[i].routingRow;
+                var curNodeID = routingTable[i].NodeIDValue;
+                if (prevNodeID != curNodeID)
+                    nodeCounter++;
+                prevNodeID = curNodeID;
             }
-            finally
-			{
-				queuedEvents.Dispose();
-				tempStackArray.Dispose();
-				combineUsedIndices.Dispose();
-#if USE_OPTIMIZATIONS
-				combineIndexRemap.Dispose();
-#endif
-				routingSteps.Dispose();
-				routingTable.Dispose();
-			}
+
+            var routingLookups = builder.Allocate(ref root.routingLookups, nodeCounter);
+
+            {
+                // TODO: clean up
+                nodeCounter = 0;
+                for (int i = 0; i < categoryStackNodeCount;)
+                {
+                    var cuttingNodeID = routingTable[i].NodeIDValue;
+                    int startIndex = i;
+                    i++;
+                    while (i < categoryStackNodeCount && routingTable[i].NodeIDValue == cuttingNodeID)
+                        i++;
+                    int endIndex = i;
+
+                    routingLookups[nodeCounter] = new RoutingLookup { startIndex = startIndex, endIndex = endIndex };
+                    nodeCounter++;
+                }
+
+                int maxNodeID = 0;
+                int minNodeID = 0;
+                for (int i = 0; i < nodeCounter; i++)
+                {
+                    var NodeID = routingTable[routingLookups[i].startIndex].NodeIDValue;
+                    minNodeID = math.min(minNodeID, NodeID);
+                    maxNodeID = math.max(maxNodeID, NodeID);
+                }
+                root.nodeIDOffset = minNodeID;
+
+                var indexToTableIndexCount = (maxNodeID + 1) - minNodeID;
+                var nodeIDToTableIndex = builder.Allocate(ref root.nodeIDToTableIndex, indexToTableIndexCount);
+                for (int i = 0; i < indexToTableIndexCount; i++)
+                    nodeIDToTableIndex[i] = -1;
+                for (int i = 0; i < nodeCounter; i++)
+                    nodeIDToTableIndex[routingTable[routingLookups[i].startIndex].NodeIDValue - minNodeID] = i;
+
+                var routingTableBlob = builder.CreateBlobAssetReference<RoutingTable>(Allocator.Persistent);
+                routingTableLookup[processedNodeOrder] = routingTableBlob;
+            }
         }
 
 

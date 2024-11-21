@@ -24,8 +24,9 @@ namespace Chisel.Core
 
 			builder.Construct(ref root.vertices, ref localVertices);
 
-			var visibleOuterLines = new UnsafeList<int>(halfEdges.Length * 2, Allocator.Persistent);
-			var surfaceVisibleOuterLines = new UnsafeList<int>(halfEdges.Length * 2, Allocator.Persistent);
+			using var visibleOuterLines = new UnsafeList<int>(halfEdges.Length * 2, Allocator.Persistent);
+			using var surfaceVisibleOuterLines = new UnsafeList<int>(halfEdges.Length * 2, Allocator.Persistent);
+			
 			var surfaceVisibleOuterLineRanges = builder.Allocate(ref root.surfaceVisibleOuterLineRanges, polygons.Length);
 			for (int p = 0; p < polygons.Length; p++)
 			{
@@ -43,7 +44,7 @@ namespace Chisel.Core
 						visibleOuterLines.Add(vertexIndex0);
 						visibleOuterLines.Add(vertexIndex1);
 					}
-					surfaceVisibleOuterLines.Add(vertexIndex0);
+					surfaceVisibleOuterLines.Add(vertexIndex0); 
 					surfaceVisibleOuterLines.Add(vertexIndex1);
 				}
 				surfaceVisibleOuterLineRanges[p] = surfaceVisibleOuterLines.Length;

@@ -47,9 +47,9 @@ namespace Chisel.Core
             brushMesh = BlobAssetReference<BrushMeshBlob>.Null;
             if (topHeight > bottomHeight) 
             {
-                { var temp = topHeight; topHeight = bottomHeight; bottomHeight = temp; }
-                { var temp = topDiameter; topDiameter = bottomDiameter; bottomDiameter = temp; }
-            }
+                (bottomHeight, topHeight) = (topHeight, bottomHeight);
+				(bottomDiameter, topDiameter) = (topDiameter, bottomDiameter);
+			}
             if (segments < 3 || (topHeight - bottomHeight) == 0 || (bottomDiameter.x == 0 && topDiameter.x == 0) || (bottomDiameter.y == 0 && topDiameter.y == 0))
                 return false;
 
@@ -57,59 +57,59 @@ namespace Chisel.Core
             if (surfaceDefinition.surfaces.Length < segments + 2)
                 return false;
 
-            using (var builder = new BlobBuilder(Allocator.Temp))
-            {
-                ref var root = ref builder.ConstructRoot<BrushMeshBlob>();
-				BlobBuilderArray<float3>                    localVertices;
-				BlobBuilderArray<BrushMeshBlob.HalfEdge>    halfEdges;
-				BlobBuilderArray<BrushMeshBlob.Polygon>     polygons;
+			using var builder = new BlobBuilder(Allocator.Temp);
+			ref var root = ref builder.ConstructRoot<BrushMeshBlob>();
+			BlobBuilderArray<float3> localVertices;
+			BlobBuilderArray<BrushMeshBlob.HalfEdge> halfEdges;
+			BlobBuilderArray<BrushMeshBlob.Polygon> polygons;
 
-                // TODO: handle situation where ellipsoid is a line
+			// TODO: handle situation where ellipsoid is a line
 
-                if (topDiameter.x == 0)
-                {
-                    GetConeFrustumVertices(topHeight, 
-                                           bottomDiameter, bottomHeight, 
-                                           rotation, segments, 
-                                           in builder, ref root, out localVertices, inverse: false, fitToBounds: fitToBounds);
+			if (topDiameter.x == 0)
+			{
+				GetConeFrustumVertices(topHeight,
+									   bottomDiameter, bottomHeight,
+									   rotation, segments,
+									   in builder, ref root, out localVertices, inverse: false, fitToBounds: fitToBounds);
 
-                    // TODO: the polygon/half-edge part would be the same for any extruded shape and should be re-used
-                    CreateConeSubMesh(segments, in localVertices, in surfaceDefinitionBlob, in builder, ref root, out polygons, out halfEdges);
-                } else
-                if (bottomDiameter.x == 0)
-                {
-                    GetConeFrustumVertices(bottomHeight, 
-                                           topDiameter, topHeight, 
-                                           rotation, segments, 
-                                           in builder, ref root, out localVertices, inverse: true, fitToBounds: fitToBounds);
+				// TODO: the polygon/half-edge part would be the same for any extruded shape and should be re-used
+				CreateConeSubMesh(segments, in localVertices, in surfaceDefinitionBlob, in builder, ref root, out polygons, out halfEdges);
+			}
+			else
+			if (bottomDiameter.x == 0)
+			{
+				GetConeFrustumVertices(bottomHeight,
+									   topDiameter, topHeight,
+									   rotation, segments,
+									   in builder, ref root, out localVertices, inverse: true, fitToBounds: fitToBounds);
 
-                    // TODO: the polygon/half-edge part would be the same for any extruded shape and should be re-used
-                    CreateConeSubMesh(segments, in localVertices, in surfaceDefinitionBlob, in builder, ref root, out polygons, out halfEdges);
-                } else
-                {
-                    GetConicalFrustumVertices(topDiameter,    topHeight,
-                                              bottomDiameter, bottomHeight, 
-                                              rotation, segments, 
-                                              in builder, ref root, out localVertices, fitToBounds: fitToBounds);
+				// TODO: the polygon/half-edge part would be the same for any extruded shape and should be re-used
+				CreateConeSubMesh(segments, in localVertices, in surfaceDefinitionBlob, in builder, ref root, out polygons, out halfEdges);
+			}
+			else
+			{
+				GetConicalFrustumVertices(topDiameter, topHeight,
+										  bottomDiameter, bottomHeight,
+										  rotation, segments,
+										  in builder, ref root, out localVertices, fitToBounds: fitToBounds);
 
-                    // TODO: the polygon/half-edge part would be the same for any extruded shape and should be re-used
-                    CreateExtrudedSubMesh(segments, 0, 1, in localVertices, in surfaceDefinitionBlob, in builder, ref root, out polygons, out halfEdges);
-                }
+				// TODO: the polygon/half-edge part would be the same for any extruded shape and should be re-used
+				CreateExtrudedSubMesh(segments, 0, 1, in localVertices, in surfaceDefinitionBlob, in builder, ref root, out polygons, out halfEdges);
+			}
 
-                if (!Validate(in localVertices, in halfEdges, in polygons, logErrors: true))
-                    return false;
-                
-                var localPlanes             = builder.Allocate(ref root.localPlanes, polygons.Length);
-                root.localPlaneCount = polygons.Length;
-                // TODO: calculate corner planes
-                var halfEdgePolygonIndices  = builder.Allocate(ref root.halfEdgePolygonIndices, halfEdges.Length);
-                CalculatePlanes(ref localPlanes, in polygons, in halfEdges, in localVertices);
-                UpdateHalfEdgePolygonIndices(ref halfEdgePolygonIndices, in polygons);
-                root.localBounds = CalculateBounds(in localVertices);
-                brushMesh = builder.CreateBlobAssetReference<BrushMeshBlob>(allocator);
-                return true;
-            }
-        }
+			if (!Validate(in localVertices, in halfEdges, in polygons, logErrors: true))
+				return false;
+
+			var localPlanes = builder.Allocate(ref root.localPlanes, polygons.Length);
+			root.localPlaneCount = polygons.Length;
+			// TODO: calculate corner planes
+			var halfEdgePolygonIndices = builder.Allocate(ref root.halfEdgePolygonIndices, halfEdges.Length);
+			CalculatePlanes(ref localPlanes, in polygons, in halfEdges, in localVertices);
+			UpdateHalfEdgePolygonIndices(ref halfEdgePolygonIndices, in polygons);
+			root.localBounds = CalculateBounds(in localVertices);
+			brushMesh = builder.CreateBlobAssetReference<BrushMeshBlob>(allocator);
+			return true;
+		}
         
         // TODO: could probably figure out "inverse" from direction of topY compared to bottomY
         public static void GetConeFrustumVertices(float topHeight, float2 bottomDiameter, float bottomHeight, float rotation, int segments, 

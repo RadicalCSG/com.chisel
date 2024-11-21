@@ -35,7 +35,7 @@ namespace Chisel.Core
 
             var totalSize = 16 + (localPlanes.Length * UnsafeUtility.SizeOf<float4>());
 
-            var builder = new BlobBuilder(Allocator.Temp, totalSize);
+			using var builder = new BlobBuilder(Allocator.Temp, totalSize);
             ref var root = ref builder.ConstructRoot<BrushTreeSpacePlanes>();
             var treeSpacePlaneArray = builder.Allocate(ref root.treeSpacePlanes, localPlanes.Length);
             for (int i = 0; i < localPlanes.Length; i++)
@@ -46,7 +46,6 @@ namespace Chisel.Core
                 treeSpacePlaneArray[i] = treePlane;
             }
             var result = builder.CreateBlobAssetReference<BrushTreeSpacePlanes>(Allocator.Persistent);
-            builder.Dispose();
             return result;
         }
 

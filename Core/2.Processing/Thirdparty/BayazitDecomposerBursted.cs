@@ -38,174 +38,164 @@ namespace Chisel.Core.External
         {
             Debug.Assert(srcVertices.Length > 3);
 
-            var allVertices = new NativeList<SegmentVertex>(Allocator.Temp);
-            var ranges      = new NativeList<Range>(Allocator.Temp);
+            using var allVertices = new NativeList<SegmentVertex>(Allocator.Temp);
+			using var ranges      = new NativeList<Range>(Allocator.Temp);
 
-            try
+            allVertices.AddRange(srcVertices.AsArray());
+            ranges.Add(new Range { start = 0, end = srcVertices.Length });
+
+            var originalVertexCount = srcVertices.Length * 2;
+
+            int counter = 0;
+            while (counter < ranges.Length)
             {
-                allVertices.AddRange(srcVertices.AsArray());
-                ranges.Add(new Range { start = 0, end = srcVertices.Length });
+                var vertices = allVertices;
+                var range = ranges[counter];
 
-                var originalVertexCount = srcVertices.Length * 2;
-
-                int counter = 0;
-                while (counter < ranges.Length)
+                counter++;
+                if (counter > originalVertexCount)
                 {
-                    var vertices = allVertices;
-                    var range = ranges[counter];
+                    Debug.LogWarning($"counter > {originalVertexCount}");
+                    return false;
+                }
 
-                    counter++;
-                    if (counter > originalVertexCount)
-                    {
-                        Debug.LogWarning($"counter > {originalVertexCount}");
-                        return false;
-                    }
+                var count = range.Length;
+                if (count == 0)
+                    continue;
 
-                    var count = range.Length;
-                    if (count == 0)
+                ForceCounterClockWise(vertices, range);
+
+                int reflexIndex;
+                for (reflexIndex = 0; reflexIndex < count; ++reflexIndex)
+                {
+                    if (Reflex(reflexIndex, vertices, range))
+                        break;
+                }
+
+                // Check if polygon is already convex
+                if (reflexIndex == count)
+                {
+                    // Check if polygon is degenerate, in which case we skip it
+                    if (math.abs(GetSignedDoubleArea(vertices, range)) <= 0.0f)
                         continue;
 
-                    ForceCounterClockWise(vertices, range);
+                    var desiredCapacity = outputVertices.Length + range.Length;
+                    if (outputVertices.Capacity < desiredCapacity)
+                        outputVertices.Capacity = desiredCapacity;
+                    for (int n = range.start; n < range.end; n++)
+                        outputVertices.Add(vertices[n]);
+                    outputRanges.Add(outputVertices.Length);
+                    continue;
+                }
 
-                    int reflexIndex;
-                    for (reflexIndex = 0; reflexIndex < count; ++reflexIndex)
+                int i = reflexIndex;
+
+                var lowerDist = float.PositiveInfinity;
+                var lowerInt = float2.zero;
+                var lowerIndex = 0;
+
+                var upperDist = float.PositiveInfinity;
+                var upperInt = float2.zero;
+                var upperIndex = 0;
+                for (int j = 0; j < count; ++j)
+                {
+                    // if line intersects with an edge
+                    if (Left   (At(i - 1, vertices, range).position, At(i, vertices, range).position, At(j    , vertices, range).position) &&
+                        RightOn(At(i - 1, vertices, range).position, At(i, vertices, range).position, At(j - 1, vertices, range).position))
                     {
-                        if (Reflex(reflexIndex, vertices, range))
-                            break;
+                        // find the point of intersection
+                        var p = LineIntersect(At(i - 1, vertices, range).position, 
+                                                At(i    , vertices, range).position, 
+                                                At(j    , vertices, range).position, 
+                                                At(j - 1, vertices, range).position);
+                        if (RightOn(At(i + 1, vertices, range).position, 
+                                    At(i    , vertices, range).position, p))
+                        {
+                            // make sure it's inside the poly
+                            var d = SquareDist(At(i, vertices, range).position, p);
+                            if (d < lowerDist)
+                            {
+                                // keep only the closest intersection
+                                lowerDist = d;
+                                lowerInt = p;
+                                lowerIndex = j;
+                            }
+                        }
                     }
 
-                    // Check if polygon is already convex
-                    if (reflexIndex == count)
+                    if (Left   (At(i + 1, vertices, range).position, At(i, vertices, range).position, At(j + 1, vertices, range).position) &&
+                        RightOn(At(i + 1, vertices, range).position, At(i, vertices, range).position, At(j    , vertices, range).position))
                     {
-                        // Check if polygon is degenerate, in which case we skip it
-                        if (math.abs(GetSignedDoubleArea(vertices, range)) <= 0.0f)
+                        var p = LineIntersect(At(i + 1, vertices, range).position, 
+                                                At(i    , vertices, range).position, 
+                                                At(j    , vertices, range).position, 
+                                                At(j + 1, vertices, range).position);
+                        if (LeftOn(At(i - 1, vertices, range).position, 
+                                    At(i    , vertices, range).position, p))
+                        {
+                            var d = SquareDist(At(i, vertices, range).position, p);
+                            if (d < upperDist)
+                            {
+                                upperDist = d;
+                                upperIndex = j;
+                                upperInt = p;
+                            }
+                        }
+                    }
+                }
+
+
+                // if there are no vertices to connect to, choose a float2 in the middle
+                if (lowerIndex == (upperIndex + 1) % count)
+                {
+                    var sp = ((lowerInt + upperInt) / 2.0f);
+
+                    var newRange = Copy(i, upperIndex, vertices, range, allVertices);
+                    allVertices.Add(new SegmentVertex { position = sp, segmentIndex = defaultSegment });
+                    newRange.end++;
+                    ranges.Add(newRange);
+
+                    newRange = Copy(lowerIndex, i, vertices, range, allVertices);
+                    allVertices.Add(new SegmentVertex { position = sp, segmentIndex = defaultSegment });
+                    newRange.end++;
+                    ranges.Add(newRange);
+                } else
+                {
+                    double highestScore = 0;
+                    double bestIndex = lowerIndex;
+                    while (upperIndex < lowerIndex)
+                        upperIndex += count;
+
+                    for (int j = lowerIndex; j <= upperIndex; ++j)
+                    {
+                        if (!CanSee(i, j, vertices, range))
                             continue;
 
-                        var desiredCapacity = outputVertices.Length + range.Length;
-                        if (outputVertices.Capacity < desiredCapacity)
-                            outputVertices.Capacity = desiredCapacity;
-                        for (int n = range.start; n < range.end; n++)
-                            outputVertices.Add(vertices[n]);
-                        outputRanges.Add(outputVertices.Length);
-                        continue;
-                    }
-
-                    int i = reflexIndex;
-
-                    var lowerDist = float.PositiveInfinity;
-                    var lowerInt = float2.zero;
-                    var lowerIndex = 0;
-
-                    var upperDist = float.PositiveInfinity;
-                    var upperInt = float2.zero;
-                    var upperIndex = 0;
-                    for (int j = 0; j < count; ++j)
-                    {
-                        // if line intersects with an edge
-                        if (Left   (At(i - 1, vertices, range).position, At(i, vertices, range).position, At(j    , vertices, range).position) &&
-                            RightOn(At(i - 1, vertices, range).position, At(i, vertices, range).position, At(j - 1, vertices, range).position))
+                        double score = 1 / (SquareDist(At(i, vertices, range).position, 
+                                                        At(j, vertices, range).position) + 1);
+                        if (Reflex(j, vertices, range))
                         {
-                            // find the point of intersection
-                            var p = LineIntersect(At(i - 1, vertices, range).position, 
-                                                  At(i    , vertices, range).position, 
-                                                  At(j    , vertices, range).position, 
-                                                  At(j - 1, vertices, range).position);
-                            if (RightOn(At(i + 1, vertices, range).position, 
-                                        At(i    , vertices, range).position, p))
-                            {
-                                // make sure it's inside the poly
-                                var d = SquareDist(At(i, vertices, range).position, p);
-                                if (d < lowerDist)
-                                {
-                                    // keep only the closest intersection
-                                    lowerDist = d;
-                                    lowerInt = p;
-                                    lowerIndex = j;
-                                }
-                            }
-                        }
+                            if (RightOn(At(j - 1, vertices, range).position, At(j, vertices, range).position, At(i, vertices, range).position) &&
+                                LeftOn (At(j + 1, vertices, range).position, At(j, vertices, range).position, At(i, vertices, range).position))
+                                score += 3;
+                            else
+                                score += 2;
+                        } else
+                            score += 1;
 
-                        if (Left   (At(i + 1, vertices, range).position, At(i, vertices, range).position, At(j + 1, vertices, range).position) &&
-                            RightOn(At(i + 1, vertices, range).position, At(i, vertices, range).position, At(j    , vertices, range).position))
+                        if (score > highestScore)
                         {
-                            var p = LineIntersect(At(i + 1, vertices, range).position, 
-                                                  At(i    , vertices, range).position, 
-                                                  At(j    , vertices, range).position, 
-                                                  At(j + 1, vertices, range).position);
-                            if (LeftOn(At(i - 1, vertices, range).position, 
-                                       At(i    , vertices, range).position, p))
-                            {
-                                var d = SquareDist(At(i, vertices, range).position, p);
-                                if (d < upperDist)
-                                {
-                                    upperDist = d;
-                                    upperIndex = j;
-                                    upperInt = p;
-                                }
-                            }
+                            bestIndex = j;
+                            highestScore = score;
                         }
                     }
 
-
-                    // if there are no vertices to connect to, choose a float2 in the middle
-                    if (lowerIndex == (upperIndex + 1) % count)
-                    {
-                        var sp = ((lowerInt + upperInt) / 2.0f);
-
-                        var newRange = Copy(i, upperIndex, vertices, range, allVertices);
-                        allVertices.Add(new SegmentVertex { position = sp, segmentIndex = defaultSegment });
-                        newRange.end++;
-                        ranges.Add(newRange);
-
-                        newRange = Copy(lowerIndex, i, vertices, range, allVertices);
-                        allVertices.Add(new SegmentVertex { position = sp, segmentIndex = defaultSegment });
-                        newRange.end++;
-                        ranges.Add(newRange);
-                    } else
-                    {
-                        double highestScore = 0;
-                        double bestIndex = lowerIndex;
-                        while (upperIndex < lowerIndex)
-                            upperIndex += count;
-
-                        for (int j = lowerIndex; j <= upperIndex; ++j)
-                        {
-                            if (!CanSee(i, j, vertices, range))
-                                continue;
-
-                            double score = 1 / (SquareDist(At(i, vertices, range).position, 
-                                                           At(j, vertices, range).position) + 1);
-                            if (Reflex(j, vertices, range))
-                            {
-                                if (RightOn(At(j - 1, vertices, range).position, At(j, vertices, range).position, At(i, vertices, range).position) &&
-                                    LeftOn (At(j + 1, vertices, range).position, At(j, vertices, range).position, At(i, vertices, range).position))
-                                    score += 3;
-                                else
-                                    score += 2;
-                            } else
-                                score += 1;
-
-                            if (score > highestScore)
-                            {
-                                bestIndex = j;
-                                highestScore = score;
-                            }
-                        }
-
-                        ranges.Add(Copy(i, (int)(bestIndex), vertices, range, allVertices));
-                        ranges.Add(Copy((int)(bestIndex), i, vertices, range, allVertices));
-                    }
-
+                    ranges.Add(Copy(i, (int)(bestIndex), vertices, range, allVertices));
+                    ranges.Add(Copy((int)(bestIndex), i, vertices, range, allVertices));
                 }
-                return outputRanges.Length > 0;
+
             }
-            finally
-            {
-                allVertices.Dispose();
-                allVertices = default;
-                ranges.Dispose();
-                ranges = default;
-            }
+            return outputRanges.Length > 0;
         }
 
 
@@ -217,174 +207,164 @@ namespace Chisel.Core.External
         {
             Debug.Assert(srcVertices.Length > 3);
 
-            var allVertices = new NativeList<SegmentVertex>(Allocator.Temp);
-            var ranges      = new NativeList<Range>(Allocator.Temp);
+            using var allVertices = new NativeList<SegmentVertex>(Allocator.Temp);
+			using var ranges      = new NativeList<Range>(Allocator.Temp);
 
-            try
+            allVertices.AddRange(srcVertices.AsArray());
+            ranges.Add(new Range { start = 0, end = srcVertices.Length });
+
+            var originalVertexCount = srcVertices.Length * 2;
+
+            int counter = 0;
+            while (counter < ranges.Length)
             {
-                allVertices.AddRange(srcVertices.AsArray());
-                ranges.Add(new Range { start = 0, end = srcVertices.Length });
+                var vertices = allVertices;
+                var range = ranges[counter];
 
-                var originalVertexCount = srcVertices.Length * 2;
-
-                int counter = 0;
-                while (counter < ranges.Length)
+                counter++;
+                if (counter > originalVertexCount)
                 {
-                    var vertices = allVertices;
-                    var range = ranges[counter];
+                    Debug.LogWarning($"counter > {originalVertexCount}");
+                    return false;
+                }
 
-                    counter++;
-                    if (counter > originalVertexCount)
-                    {
-                        Debug.LogWarning($"counter > {originalVertexCount}");
-                        return false;
-                    }
+                var count = range.Length;
+                if (count == 0)
+                    continue;
 
-                    var count = range.Length;
-                    if (count == 0)
+                ForceCounterClockWise(vertices, range);
+
+                int reflexIndex;
+                for (reflexIndex = 0; reflexIndex < count; ++reflexIndex)
+                {
+                    if (Reflex(reflexIndex, vertices, range))
+                        break;
+                }
+
+                // Check if polygon is already convex
+                if (reflexIndex == count)
+                {
+                    // Check if polygon is degenerate, in which case we skip it
+                    if (math.abs(GetSignedDoubleArea(vertices, range)) <= 0.0f)
                         continue;
 
-                    ForceCounterClockWise(vertices, range);
+                    var desiredCapacity = outputVertices.Length + range.Length;
+                    if (outputVertices.Capacity < desiredCapacity)
+                        outputVertices.Capacity = desiredCapacity;
+                    for (int n = range.start; n < range.end; n++)
+                        outputVertices.Add(vertices[n]);
+                    outputRanges.Add(outputVertices.Length);
+                    continue;
+                }
 
-                    int reflexIndex;
-                    for (reflexIndex = 0; reflexIndex < count; ++reflexIndex)
+                int i = reflexIndex;
+
+                var lowerDist = float.PositiveInfinity;
+                var lowerInt = float2.zero;
+                var lowerIndex = 0;
+
+                var upperDist = float.PositiveInfinity;
+                var upperInt = float2.zero;
+                var upperIndex = 0;
+                for (int j = 0; j < count; ++j)
+                {
+                    // if line intersects with an edge
+                    if (Left   (At(i - 1, vertices, range).position, At(i, vertices, range).position, At(j    , vertices, range).position) &&
+                        RightOn(At(i - 1, vertices, range).position, At(i, vertices, range).position, At(j - 1, vertices, range).position))
                     {
-                        if (Reflex(reflexIndex, vertices, range))
-                            break;
+                        // find the point of intersection
+                        var p = LineIntersect(At(i - 1, vertices, range).position, 
+                                                At(i    , vertices, range).position, 
+                                                At(j    , vertices, range).position, 
+                                                At(j - 1, vertices, range).position);
+                        if (RightOn(At(i + 1, vertices, range).position, 
+                                    At(i    , vertices, range).position, p))
+                        {
+                            // make sure it's inside the poly
+                            var d = SquareDist(At(i, vertices, range).position, p);
+                            if (d < lowerDist)
+                            {
+                                // keep only the closest intersection
+                                lowerDist = d;
+                                lowerInt = p;
+                                lowerIndex = j;
+                            }
+                        }
                     }
 
-                    // Check if polygon is already convex
-                    if (reflexIndex == count)
+                    if (Left   (At(i + 1, vertices, range).position, At(i, vertices, range).position, At(j + 1, vertices, range).position) &&
+                        RightOn(At(i + 1, vertices, range).position, At(i, vertices, range).position, At(j    , vertices, range).position))
                     {
-                        // Check if polygon is degenerate, in which case we skip it
-                        if (math.abs(GetSignedDoubleArea(vertices, range)) <= 0.0f)
+                        var p = LineIntersect(At(i + 1, vertices, range).position, 
+                                                At(i    , vertices, range).position, 
+                                                At(j    , vertices, range).position, 
+                                                At(j + 1, vertices, range).position);
+                        if (LeftOn(At(i - 1, vertices, range).position, 
+                                    At(i    , vertices, range).position, p))
+                        {
+                            var d = SquareDist(At(i, vertices, range).position, p);
+                            if (d < upperDist)
+                            {
+                                upperDist = d;
+                                upperIndex = j;
+                                upperInt = p;
+                            }
+                        }
+                    }
+                }
+
+
+                // if there are no vertices to connect to, choose a float2 in the middle
+                if (lowerIndex == (upperIndex + 1) % count)
+                {
+                    var sp = ((lowerInt + upperInt) / 2.0f);
+
+                    var newRange = Copy(i, upperIndex, vertices, range, allVertices);
+                    allVertices.Add(new SegmentVertex { position = sp, segmentIndex = defaultSegment });
+                    newRange.end++;
+                    ranges.Add(newRange);
+
+                    newRange = Copy(lowerIndex, i, vertices, range, allVertices);
+                    allVertices.Add(new SegmentVertex { position = sp, segmentIndex = defaultSegment });
+                    newRange.end++;
+                    ranges.Add(newRange);
+                } else
+                {
+                    double highestScore = 0;
+                    double bestIndex = lowerIndex;
+                    while (upperIndex < lowerIndex)
+                        upperIndex += count;
+
+                    for (int j = lowerIndex; j <= upperIndex; ++j)
+                    {
+                        if (!CanSee(i, j, vertices, range))
                             continue;
 
-                        var desiredCapacity = outputVertices.Length + range.Length;
-                        if (outputVertices.Capacity < desiredCapacity)
-                            outputVertices.Capacity = desiredCapacity;
-                        for (int n = range.start; n < range.end; n++)
-                            outputVertices.Add(vertices[n]);
-                        outputRanges.Add(outputVertices.Length);
-                        continue;
-                    }
-
-                    int i = reflexIndex;
-
-                    var lowerDist = float.PositiveInfinity;
-                    var lowerInt = float2.zero;
-                    var lowerIndex = 0;
-
-                    var upperDist = float.PositiveInfinity;
-                    var upperInt = float2.zero;
-                    var upperIndex = 0;
-                    for (int j = 0; j < count; ++j)
-                    {
-                        // if line intersects with an edge
-                        if (Left   (At(i - 1, vertices, range).position, At(i, vertices, range).position, At(j    , vertices, range).position) &&
-                            RightOn(At(i - 1, vertices, range).position, At(i, vertices, range).position, At(j - 1, vertices, range).position))
+                        double score = 1 / (SquareDist(At(i, vertices, range).position, 
+                                                        At(j, vertices, range).position) + 1);
+                        if (Reflex(j, vertices, range))
                         {
-                            // find the point of intersection
-                            var p = LineIntersect(At(i - 1, vertices, range).position, 
-                                                  At(i    , vertices, range).position, 
-                                                  At(j    , vertices, range).position, 
-                                                  At(j - 1, vertices, range).position);
-                            if (RightOn(At(i + 1, vertices, range).position, 
-                                        At(i    , vertices, range).position, p))
-                            {
-                                // make sure it's inside the poly
-                                var d = SquareDist(At(i, vertices, range).position, p);
-                                if (d < lowerDist)
-                                {
-                                    // keep only the closest intersection
-                                    lowerDist = d;
-                                    lowerInt = p;
-                                    lowerIndex = j;
-                                }
-                            }
-                        }
+                            if (RightOn(At(j - 1, vertices, range).position, At(j, vertices, range).position, At(i, vertices, range).position) &&
+                                LeftOn (At(j + 1, vertices, range).position, At(j, vertices, range).position, At(i, vertices, range).position))
+                                score += 3;
+                            else
+                                score += 2;
+                        } else
+                            score += 1;
 
-                        if (Left   (At(i + 1, vertices, range).position, At(i, vertices, range).position, At(j + 1, vertices, range).position) &&
-                            RightOn(At(i + 1, vertices, range).position, At(i, vertices, range).position, At(j    , vertices, range).position))
+                        if (score > highestScore)
                         {
-                            var p = LineIntersect(At(i + 1, vertices, range).position, 
-                                                  At(i    , vertices, range).position, 
-                                                  At(j    , vertices, range).position, 
-                                                  At(j + 1, vertices, range).position);
-                            if (LeftOn(At(i - 1, vertices, range).position, 
-                                       At(i    , vertices, range).position, p))
-                            {
-                                var d = SquareDist(At(i, vertices, range).position, p);
-                                if (d < upperDist)
-                                {
-                                    upperDist = d;
-                                    upperIndex = j;
-                                    upperInt = p;
-                                }
-                            }
+                            bestIndex = j;
+                            highestScore = score;
                         }
                     }
 
-
-                    // if there are no vertices to connect to, choose a float2 in the middle
-                    if (lowerIndex == (upperIndex + 1) % count)
-                    {
-                        var sp = ((lowerInt + upperInt) / 2.0f);
-
-                        var newRange = Copy(i, upperIndex, vertices, range, allVertices);
-                        allVertices.Add(new SegmentVertex { position = sp, segmentIndex = defaultSegment });
-                        newRange.end++;
-                        ranges.Add(newRange);
-
-                        newRange = Copy(lowerIndex, i, vertices, range, allVertices);
-                        allVertices.Add(new SegmentVertex { position = sp, segmentIndex = defaultSegment });
-                        newRange.end++;
-                        ranges.Add(newRange);
-                    } else
-                    {
-                        double highestScore = 0;
-                        double bestIndex = lowerIndex;
-                        while (upperIndex < lowerIndex)
-                            upperIndex += count;
-
-                        for (int j = lowerIndex; j <= upperIndex; ++j)
-                        {
-                            if (!CanSee(i, j, vertices, range))
-                                continue;
-
-                            double score = 1 / (SquareDist(At(i, vertices, range).position, 
-                                                           At(j, vertices, range).position) + 1);
-                            if (Reflex(j, vertices, range))
-                            {
-                                if (RightOn(At(j - 1, vertices, range).position, At(j, vertices, range).position, At(i, vertices, range).position) &&
-                                    LeftOn (At(j + 1, vertices, range).position, At(j, vertices, range).position, At(i, vertices, range).position))
-                                    score += 3;
-                                else
-                                    score += 2;
-                            } else
-                                score += 1;
-
-                            if (score > highestScore)
-                            {
-                                bestIndex = j;
-                                highestScore = score;
-                            }
-                        }
-
-                        ranges.Add(Copy(i, (int)(bestIndex), vertices, range, allVertices));
-                        ranges.Add(Copy((int)(bestIndex), i, vertices, range, allVertices));
-                    }
-
+                    ranges.Add(Copy(i, (int)(bestIndex), vertices, range, allVertices));
+                    ranges.Add(Copy((int)(bestIndex), i, vertices, range, allVertices));
                 }
-                return outputRanges.Length > 0;
+
             }
-            finally
-            {
-                allVertices.Dispose();
-                allVertices = default;
-                ranges.Dispose();
-                ranges = default;
-            }
+            return outputRanges.Length > 0;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]

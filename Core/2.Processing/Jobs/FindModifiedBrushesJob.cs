@@ -31,52 +31,50 @@ namespace Chisel.Core
             if (rebuildTreeBrushIndexOrders.Capacity < brushCount)
                 rebuildTreeBrushIndexOrders.Capacity = brushCount;
 
-            using (var usedBrushes = new NativeBitArray(brushes.Length, Allocator.Temp, NativeArrayOptions.ClearMemory))
-            {
-                for (int nodeOrder = 0; nodeOrder < brushes.Length; nodeOrder++)
-                {
-                    var brushCompactNodeID = brushes[nodeOrder];
-                    if (compactHierarchy.IsAnyStatusFlagSet(brushCompactNodeID))
-                    {
-                        var indexOrder = allTreeBrushIndexOrders[nodeOrder];
-                        Debug.Assert(indexOrder.nodeOrder == nodeOrder);
-                        if (!usedBrushes.IsSet(nodeOrder))
-                        {
-                            usedBrushes.Set(nodeOrder, true);
-                            rebuildTreeBrushIndexOrders.AddNoResize(indexOrder);
-                        }
+			using var usedBrushes = new NativeBitArray(brushes.Length, Allocator.Temp, NativeArrayOptions.ClearMemory);
+			for (int nodeOrder = 0; nodeOrder < brushes.Length; nodeOrder++)
+			{
+				var brushCompactNodeID = brushes[nodeOrder];
+				if (compactHierarchy.IsAnyStatusFlagSet(brushCompactNodeID))
+				{
+					var indexOrder = allTreeBrushIndexOrders[nodeOrder];
+					Debug.Assert(indexOrder.nodeOrder == nodeOrder);
+					if (!usedBrushes.IsSet(nodeOrder))
+					{
+						usedBrushes.Set(nodeOrder, true);
+						rebuildTreeBrushIndexOrders.AddNoResize(indexOrder);
+					}
 
-                        // Fix up all flags
-                        /*
-                        if (compactHierarchy.IsStatusFlagSet(brushCompactNodeID, NodeStatusFlags.ShapeModified) ||
-                            compactHierarchy.IsStatusFlagSet(brushCompactNodeID, NodeStatusFlags.TransformationModified))
-                        {
-                            if (compactHierarchy.IsValidCompactNodeID(brushCompactNodeID))
-                                brushBoundsUpdateList.AddNoResize(new NodeOrderNodeID { nodeOrder = indexOrder.nodeOrder, compactNodeID = brushCompactNodeID });
-                        }
-                        */
-                        if (compactHierarchy.IsStatusFlagSet(brushCompactNodeID, NodeStatusFlags.ShapeModified))
-                        {
-                            // Need to update the basePolygons for this node
-                            compactHierarchy.ClearStatusFlag(brushCompactNodeID, NodeStatusFlags.ShapeModified);
-                            compactHierarchy.SetStatusFlag(brushCompactNodeID, NodeStatusFlags.NeedAllTouchingUpdated);
-                        }
+					// Fix up all flags
+					/*
+					if (compactHierarchy.IsStatusFlagSet(brushCompactNodeID, NodeStatusFlags.ShapeModified) ||
+						compactHierarchy.IsStatusFlagSet(brushCompactNodeID, NodeStatusFlags.TransformationModified))
+					{
+						if (compactHierarchy.IsValidCompactNodeID(brushCompactNodeID))
+							brushBoundsUpdateList.AddNoResize(new NodeOrderNodeID { nodeOrder = indexOrder.nodeOrder, compactNodeID = brushCompactNodeID });
+					}
+					*/
+					if (compactHierarchy.IsStatusFlagSet(brushCompactNodeID, NodeStatusFlags.ShapeModified))
+					{
+						// Need to update the basePolygons for this node
+						compactHierarchy.ClearStatusFlag(brushCompactNodeID, NodeStatusFlags.ShapeModified);
+						compactHierarchy.SetStatusFlag(brushCompactNodeID, NodeStatusFlags.NeedAllTouchingUpdated);
+					}
 
-                        if (compactHierarchy.IsStatusFlagSet(brushCompactNodeID, NodeStatusFlags.HierarchyModified))
-                            compactHierarchy.SetStatusFlag(brushCompactNodeID, NodeStatusFlags.NeedAllTouchingUpdated);
+					if (compactHierarchy.IsStatusFlagSet(brushCompactNodeID, NodeStatusFlags.HierarchyModified))
+						compactHierarchy.SetStatusFlag(brushCompactNodeID, NodeStatusFlags.NeedAllTouchingUpdated);
 
-                        if (compactHierarchy.IsStatusFlagSet(brushCompactNodeID, NodeStatusFlags.TransformationModified))
-                        {
-                            if (compactHierarchy.IsValidCompactNodeID(brushCompactNodeID))
-                            {
-                                transformTreeBrushIndicesList.AddNoResize(new NodeOrderNodeID { nodeOrder = indexOrder.nodeOrder, compactNodeID = brushCompactNodeID });
-                            }
-                            compactHierarchy.ClearStatusFlag(brushCompactNodeID, NodeStatusFlags.TransformationModified);
-                            compactHierarchy.SetStatusFlag(brushCompactNodeID, NodeStatusFlags.NeedAllTouchingUpdated);
-                        }
-                    }
-                }
-            }
-        }
+					if (compactHierarchy.IsStatusFlagSet(brushCompactNodeID, NodeStatusFlags.TransformationModified))
+					{
+						if (compactHierarchy.IsValidCompactNodeID(brushCompactNodeID))
+						{
+							transformTreeBrushIndicesList.AddNoResize(new NodeOrderNodeID { nodeOrder = indexOrder.nodeOrder, compactNodeID = brushCompactNodeID });
+						}
+						compactHierarchy.ClearStatusFlag(brushCompactNodeID, NodeStatusFlags.TransformationModified);
+						compactHierarchy.SetStatusFlag(brushCompactNodeID, NodeStatusFlags.NeedAllTouchingUpdated);
+					}
+				}
+			}
+		}
     }
 }

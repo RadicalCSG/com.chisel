@@ -166,7 +166,6 @@ namespace Chisel.Core
             {
                 brushMeshToBrush = new UnsafeParallelHashMap<int, CompactNodeID>(16384, allocator),
                 compactNodes     = new UnsafeList<CompactChildNode>(1024, allocator),
-				//brushOutlineManager = BrushOutlineManager .Create(allocator),
 				slotIndexMap     = SlotIndexMap.Create(allocator),
                 HierarchyID      = hierarchyID,
                 isCreated        = true

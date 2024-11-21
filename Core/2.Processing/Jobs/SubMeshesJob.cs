@@ -153,8 +153,8 @@ namespace Chisel.Core
                 subMeshSurfaces[t].Dispose();
                 subMeshSurfaces[t] = default;
             }
-            var subMeshSurfaceList = new UnsafeList<SubMeshSurface>(requiredSurfaceCount, allocator);
 
+            var subMeshSurfaceList = new UnsafeList<SubMeshSurface>(requiredSurfaceCount, allocator);
             for (int b = 0, count_b = brushRenderData.Length; b < count_b; b++)
             {
                 var brushData         = brushRenderData[b];
@@ -196,9 +196,6 @@ namespace Chisel.Core
         // Write
         [NoAlias, WriteOnly] public NativeList<SubMeshDescriptions> subMeshDescriptions;
 
-        // Per thread scratch memory
-        [NativeDisableContainerSafetyRestriction, NoAlias] NativeList<SubMeshDescriptions> sectionSubMeshCounts;
-
         public void Execute()
         {
             // TODO: figure out why this order matters
@@ -216,61 +213,55 @@ namespace Chisel.Core
                 return;
 
             var meshQuery       = meshQueries[t];
-            
-            sectionSubMeshCounts = new NativeList<SubMeshDescriptions>(surfaceCount, Allocator.Temp);
-            try
-            { 
-                var currentSubMesh  = new SubMeshDescriptions
-                {
-                    meshQueryIndex      = t,
-                    subMeshQueryIndex   = 0,
-                    meshQuery           = meshQuery,
-                    surfacesOffset      = 0,
-                    surfaceParameter    = subMeshSurfaceList[0].surfaceParameter
-                };
-                for (int b = 0; b < surfaceCount; b++)
-                {
-                    var subMeshSurface              = subMeshSurfaceList[b];
-                    var surfaceParameter            = subMeshSurface.surfaceParameter;
-                    var surfaceVertexCount          = subMeshSurface.vertexCount;
-                    var surfaceIndexCount           = subMeshSurface.indexCount;
 
-                    if (currentSubMesh.surfaceParameter != surfaceParameter)
-                    {
-                        // Store the previous subMeshCount
-                        if (currentSubMesh.indexCount > 0 && currentSubMesh.vertexCount > 0)
-                            sectionSubMeshCounts.AddNoResize(currentSubMesh);
+			NativeList<SubMeshDescriptions> sectionSubMeshCounts; 
+			using var _sectionSubMeshCounts = sectionSubMeshCounts = new NativeList<SubMeshDescriptions>(surfaceCount, Allocator.Temp);
+            var currentSubMesh  = new SubMeshDescriptions
+            {
+                meshQueryIndex      = t,
+                subMeshQueryIndex   = 0,
+                meshQuery           = meshQuery,
+                surfacesOffset      = 0,
+                surfaceParameter    = subMeshSurfaceList[0].surfaceParameter
+            };
+            for (int b = 0; b < surfaceCount; b++)
+            {
+                var subMeshSurface              = subMeshSurfaceList[b];
+                var surfaceParameter            = subMeshSurface.surfaceParameter;
+                var surfaceVertexCount          = subMeshSurface.vertexCount;
+                var surfaceIndexCount           = subMeshSurface.indexCount;
+
+                if (currentSubMesh.surfaceParameter != surfaceParameter)
+                {
+                    // Store the previous subMeshCount
+                    if (currentSubMesh.indexCount > 0 && currentSubMesh.vertexCount > 0)
+                        sectionSubMeshCounts.AddNoResize(currentSubMesh);
                         
-                        // Create the new SubMeshCount
-                        currentSubMesh.surfaceHashValue = 0;
-                        currentSubMesh.geometryHashValue = 0;
+                    // Create the new SubMeshCount
+                    currentSubMesh.surfaceHashValue = 0;
+                    currentSubMesh.geometryHashValue = 0;
                     
-                        currentSubMesh.indexCount = 0;
-                        currentSubMesh.vertexCount = 0;
+                    currentSubMesh.indexCount = 0;
+                    currentSubMesh.vertexCount = 0;
 
-					    currentSubMesh.surfacesOffset += currentSubMesh.surfacesCount;
-					    currentSubMesh.surfacesCount = 0;
-                        currentSubMesh.surfaceParameter = surfaceParameter;
-                        currentSubMesh.subMeshQueryIndex++;
-                    } 
+					currentSubMesh.surfacesOffset += currentSubMesh.surfacesCount;
+					currentSubMesh.surfacesCount = 0;
+                    currentSubMesh.surfaceParameter = surfaceParameter;
+                    currentSubMesh.subMeshQueryIndex++;
+                } 
 
-                    currentSubMesh.indexCount += surfaceIndexCount;
-                    currentSubMesh.vertexCount += surfaceVertexCount;
-                    currentSubMesh.surfaceHashValue  = math.hash(new uint2(currentSubMesh.surfaceHashValue, subMeshSurface.surfaceHashValue));
-                    currentSubMesh.geometryHashValue = math.hash(new uint2(currentSubMesh.geometryHashValue, subMeshSurface.geometryHashValue));
-                    currentSubMesh.surfacesCount++;
-                }
-
-                // Store the last subMeshCount
-                if (currentSubMesh.indexCount > 0 && currentSubMesh.vertexCount > 0)
-                    sectionSubMeshCounts.AddNoResize(currentSubMesh);
-
-                subMeshDescriptions.AddRangeNoResize(sectionSubMeshCounts);
+                currentSubMesh.indexCount += surfaceIndexCount;
+                currentSubMesh.vertexCount += surfaceVertexCount;
+                currentSubMesh.surfaceHashValue  = math.hash(new uint2(currentSubMesh.surfaceHashValue, subMeshSurface.surfaceHashValue));
+                currentSubMesh.geometryHashValue = math.hash(new uint2(currentSubMesh.geometryHashValue, subMeshSurface.geometryHashValue));
+                currentSubMesh.surfacesCount++;
             }
-            finally
-			{
-				sectionSubMeshCounts.Dispose();
-			}
+
+            // Store the last subMeshCount
+            if (currentSubMesh.indexCount > 0 && currentSubMesh.vertexCount > 0)
+                sectionSubMeshCounts.AddNoResize(currentSubMesh);
+
+            subMeshDescriptions.AddRangeNoResize(sectionSubMeshCounts);
 		}
     }
     

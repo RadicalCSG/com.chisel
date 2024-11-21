@@ -11,6 +11,7 @@ using Unity.Jobs;
 using Unity.Mathematics;
 using UnityEngine;
 using UnityEngine.Pool;
+using UnityEngine.UIElements;
 
 using Debug = UnityEngine.Debug;
 using ReadOnlyAttribute = Unity.Collections.ReadOnlyAttribute;
@@ -68,10 +69,11 @@ namespace Chisel.Core
         
         public void Dispose()
         {
+            // Confirmed to be disposed
             Clear();
             if (hierarchyIDLookup.IsCreated) hierarchyIDLookup.Dispose(); hierarchyIDLookup = default;
             if (nodeIDLookup     .IsCreated) nodeIDLookup     .Dispose(); nodeIDLookup = default;
-            if (hierarchies      .IsCreated) hierarchies      .Dispose(); hierarchies = default;
+            if (hierarchies      .IsCreated) hierarchies      .DisposeDeep(); hierarchies = default;
             if (nodes            .IsCreated) nodes            .Dispose(); nodes = default;
 			if (allTrees         .IsCreated) allTrees         .Dispose(); allTrees = default;
             if (updatedTrees     .IsCreated) updatedTrees     .Dispose(); updatedTrees = default;
@@ -192,7 +194,7 @@ namespace Chisel.Core
                 return;
 
             var index = hierarchyIDLookup.FreeSlotIndex(hierarchyID.slotIndex);
-            if (index < 0 || index >= hierarchies.Length)
+            if (!hierarchies.IsCreated || index < 0 || index >= hierarchies.Length)
                 return;
 
             // This method is called from Dispose, so shouldn't call dispose (would cause circular loop)
@@ -338,18 +340,16 @@ namespace Chisel.Core
             if (allNodes.Capacity < hierarchyCount)
                 allNodes.Capacity = hierarchyCount;
 
-            using (var tempNodes = new NativeList<CSGTreeNode>(Allocator.Temp))
-            {
-                for (int i = 0; i < hierarchyCount; i++)
-                {
-                    if (!hierarchies[i].IsCreated)
-                        continue;
-                    tempNodes.Clear();
-                    hierarchies[i].GetAllNodes(tempNodes);
-                    allNodes.AddRange(tempNodes.AsArray());
-                }
-            }
-        }
+			using var tempNodes = new NativeList<CSGTreeNode>(Allocator.Temp);
+			for (int i = 0; i < hierarchyCount; i++)
+			{
+				if (!hierarchies[i].IsCreated)
+					continue;
+				tempNodes.Clear();
+				hierarchies[i].GetAllNodes(tempNodes);
+				allNodes.AddRange(tempNodes.AsArray());
+			}
+		}
 
         public void GetAllTrees(NativeList<CSGTree> allTrees)
         {
@@ -816,7 +816,7 @@ namespace Chisel.Core
 
         public struct ReadOnlyInstanceIDLookup
 		{
-            [ReadOnly] SlotIndexMap                    hierarchyIDLookup;
+            [ReadOnly] SlotIndexMap                 hierarchyIDLookup;
 			[ReadOnly] NativeList<CompactHierarchy> hierarchies;
 
 			public ReadOnlyInstanceIDLookup(SlotIndexMap hierarchyIDLookup, NativeList<CompactHierarchy> hierarchies)
@@ -1187,7 +1187,7 @@ namespace Chisel.Core
                 currHierarchy.Dispose();
                 currHierarchy = default;
                 FreeNodeID(nodeID);
-                return true;
+                return true; 
             }
 
             var oldParent = GetParentOfNode(nodeID);
@@ -1533,12 +1533,10 @@ namespace Chisel.Core
         internal bool InsertChildNode(NodeID parent, int index, NodeID item)
         {
             var treeNode = CSGTreeNode.Find(item);
-            var nodeArray = new NativeArray<CSGTreeNode>(1, Allocator.Temp);
+            NativeArray<CSGTreeNode> nodeArray;
+			using var _nodeArray = nodeArray = new NativeArray<CSGTreeNode>(1, Allocator.Temp);
             nodeArray[0] = treeNode;
-            using (nodeArray)
-            {
-                return InsertChildNodeRange(parent, index, nodeArray);
-            }
+            return InsertChildNodeRange(parent, index, nodeArray);
         }
 
         [return: MarshalAs(UnmanagedType.U1)]
@@ -1563,106 +1561,102 @@ namespace Chisel.Core
 
             ref var newParentHierarchy = ref GetHierarchy(newParentHierarchyID);
 
-            using (var newChildren = new NativeList<CompactNodeID>(array.Length, Allocator.Temp))
+            using var newChildren = new NativeList<CompactNodeID>(array.Length, Allocator.Temp);
+            newParentHierarchy.ReserveChildren(array.Length);
+
+            using var usedTreeNodes = new NativeParallelHashSet<CSGTreeNode>(array.Length, Allocator.Temp);
+            for (int i = 0; i < array.Length; i++)
             {
-                newParentHierarchy.ReserveChildren(array.Length);
+                var treeNode = array[i];
 
-                using (var usedTreeNodes = new NativeParallelHashSet<CSGTreeNode>(array.Length, Allocator.Temp))
+                if (!usedTreeNodes.Add(treeNode))
                 {
-                    for (int i = 0; i < array.Length; i++)
+                    Debug.LogError("Have duplicate child");
+                    return false;
+                }
+
+                var childNode = treeNode.nodeID;
+                if (childNode == NodeID.Invalid)
+                {
+                    Debug.LogError("Cannot add invalid node as child");
+                    return false;
+                }
+
+                if (parent == childNode)
+                {
+                    Debug.LogError("Cannot add self as child");
+                    return false;
+                }
+
+                if (!IsValidNodeID(childNode, out var childIndex))
+                {
+                    Debug.LogError("!IsValidNodeID(childNode)");
+                    return false;
+                }
+
+                var childCompactNodeID = nodes[childIndex];
+                if (!IsValidCompactNodeID(childCompactNodeID))
+                {
+                    Debug.LogError("!IsValidCompactNodeID(childNode)");
+                    return false;
+                }
+
+                var currParentHierarchyID = childCompactNodeID.hierarchyID;
+                if (currParentHierarchyID == CompactHierarchyID.Invalid)
+                {
+                    Debug.LogError("currParentHierarchyID == CompactHierarchyID.Invalid");
+                    return false;
+                }
+
+                ref var oldParentHierarchy = ref GetHierarchy(currParentHierarchyID);
+                if (childCompactNodeID == oldParentHierarchy.RootID ||
+                    childCompactNodeID == newParentHierarchy.RootID)
+                {
+                    Debug.LogError("Cannot add a tree as a child");
+                    return false;
+                }
+
+                var oldParentNodeID = oldParentHierarchy.ParentOf(childCompactNodeID);
+                if (currParentHierarchyID != newParentHierarchyID)
+                {
+                    // Create new copy of item in new hierarchy
+                    var newCompactNodeID = MoveChildNode(childCompactNodeID, ref oldParentHierarchy, ref newParentHierarchy, true);
+
+                    nodes[childIndex] = newCompactNodeID;
+
+                    // Delete item in old hierarchy
+                    oldParentHierarchy.DeleteRecursive(childCompactNodeID);
+                    childCompactNodeID = newCompactNodeID;
+
+                    SetDirty(oldParentHierarchy.RootID);
+                } else
+                {
+                    if (oldParentHierarchy.GetTypeOfNode(childCompactNodeID) != CSGNodeType.Brush)
                     {
-                        var treeNode = array[i];
-
-                        if (!usedTreeNodes.Add(treeNode))
+                        // We cannot add a child to its own descendant (would create a loop)
+                        if (oldParentHierarchy.IsDescendant(childCompactNodeID, newParentCompactNodeID))
                         {
-                            Debug.LogError("Have duplicate child");
+                            Debug.LogError("Cannot add child to one of its ancestors (would create infinite loop)");
                             return false;
                         }
-
-                        var childNode = treeNode.nodeID;
-                        if (childNode == NodeID.Invalid)
-                        {
-                            Debug.LogError("Cannot add invalid node as child");
-                            return false;
-                        }
-
-                        if (parent == childNode)
-                        {
-                            Debug.LogError("Cannot add self as child");
-                            return false;
-                        }
-
-                        if (!IsValidNodeID(childNode, out var childIndex))
-                        {
-                            Debug.LogError("!IsValidNodeID(childNode)");
-                            return false;
-                        }
-
-                        var childCompactNodeID = nodes[childIndex];
-                        if (!IsValidCompactNodeID(childCompactNodeID))
-                        {
-                            Debug.LogError("!IsValidCompactNodeID(childNode)");
-                            return false;
-                        }
-
-                        var currParentHierarchyID = childCompactNodeID.hierarchyID;
-                        if (currParentHierarchyID == CompactHierarchyID.Invalid)
-                        {
-                            Debug.LogError("currParentHierarchyID == CompactHierarchyID.Invalid");
-                            return false;
-                        }
-
-                        ref var oldParentHierarchy = ref GetHierarchy(currParentHierarchyID);
-                        if (childCompactNodeID == oldParentHierarchy.RootID ||
-                            childCompactNodeID == newParentHierarchy.RootID)
-                        {
-                            Debug.LogError("Cannot add a tree as a child");
-                            return false;
-                        }
-
-                        var oldParentNodeID = oldParentHierarchy.ParentOf(childCompactNodeID);
-                        if (currParentHierarchyID != newParentHierarchyID)
-                        {
-                            // Create new copy of item in new hierarchy
-                            var newCompactNodeID = MoveChildNode(childCompactNodeID, ref oldParentHierarchy, ref newParentHierarchy, true);
-
-                            nodes[childIndex] = newCompactNodeID;
-
-                            // Delete item in old hierarchy
-                            oldParentHierarchy.DeleteRecursive(childCompactNodeID);
-                            childCompactNodeID = newCompactNodeID;
-
-                            SetDirty(oldParentHierarchy.RootID);
-                        } else
-                        {
-                            if (oldParentHierarchy.GetTypeOfNode(childCompactNodeID) != CSGNodeType.Brush)
-                            {
-                                // We cannot add a child to its own descendant (would create a loop)
-                                if (oldParentHierarchy.IsDescendant(childCompactNodeID, newParentCompactNodeID))
-                                {
-                                    Debug.LogError("Cannot add child to one of its ancestors (would create infinite loop)");
-                                    return false;
-                                }
-                            }
-                        }
-
-                        if (oldParentNodeID != CompactNodeID.Invalid)
-                        {
-                            oldParentHierarchy.SetDirty(oldParentNodeID);
-                        }
-
-                        newChildren.AddNoResize(childCompactNodeID);
-
-                        SetDirty(childNode);
                     }
                 }
 
-                if (newChildren.Length == 0)
-                    return true;
+                if (oldParentNodeID != CompactNodeID.Invalid)
+                {
+                    oldParentHierarchy.SetDirty(oldParentNodeID);
+                }
 
-                newParentHierarchy.SetChildrenUnchecked(ref hierarchyIDLookup, hierarchies, ref nodeIDLookup, nodes, newParentCompactNodeID, newChildren, ignoreBrushMeshHashes: true);
+                newChildren.AddNoResize(childCompactNodeID);
+
+                SetDirty(childNode);
             }
 
+            if (newChildren.Length == 0)
+                return true;
+
+            newParentHierarchy.SetChildrenUnchecked(ref hierarchyIDLookup, hierarchies, ref nodeIDLookup, nodes, newParentCompactNodeID, newChildren, ignoreBrushMeshHashes: true);
+            
             SetDirty(newParentHierarchy.RootID);
             SetDirty(parent);
             return true;
@@ -1775,28 +1769,21 @@ namespace Chisel.Core
                 return false;
             }
 
-            var list = new NativeList<CompactNodeID>(count, Allocator.Temp);
-            try
+            using var list = new NativeList<CompactNodeID>(count, Allocator.Temp);
+            for (int i = index; i < index + range; i++)
             {
-                for (int i = index; i < index + range; i++)
-                {
-                    var childID = hierarchy.GetChildCompactNodeIDAtInternal(parentCompactNodeID, i);
-                    list.Add(childID);
-                }
+                var childID = hierarchy.GetChildCompactNodeIDAtInternal(parentCompactNodeID, i);
+                list.Add(childID);
+            }
 
-                var result = hierarchy.DetachChildrenFromParentAt(parentCompactNodeID, index, range);
-                if (result)
-                {
-                    SetDirty(parent);
-                    for (int i = 0; i < list.Length; i++)
-                        SetDirty(list[i]);
-                }
-                return result;
-            }
-            finally
+            var result = hierarchy.DetachChildrenFromParentAt(parentCompactNodeID, index, range);
+            if (result)
             {
-                list.Dispose();
+                SetDirty(parent);
+                for (int i = 0; i < list.Length; i++)
+                    SetDirty(list[i]);
             }
+            return result;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -1834,9 +1821,9 @@ namespace Chisel.Core
     }
 
     // TODO: create "ReadOnlyCompact...Manager" wrapper can be used in jobs
-    public partial class CompactHierarchyManager : IDisposable
+    public static partial class CompactHierarchyManager
     {
-        static CompactHierarchyManagerInstance  instance;
+        static CompactHierarchyManagerInstance instance = default;
         
         // Burst forces us to write unmaintable code
         internal static NativeList<CompactHierarchy> HierarchyList { get { return instance.hierarchies; } }
@@ -1860,18 +1847,25 @@ namespace Chisel.Core
 
 #if UNITY_EDITOR
 		[UnityEditor.InitializeOnLoadMethod]
-        static void StaticInitialize()
-        {
-            UnityEditor.AssemblyReloadEvents.beforeAssemblyReload -= OnBeforeAssemblyReload;
+		static void StaticInitialize()
+		{
+			UnityEditor.AssemblyReloadEvents.beforeAssemblyReload -= OnBeforeAssemblyReload;
             UnityEditor.AssemblyReloadEvents.beforeAssemblyReload += OnBeforeAssemblyReload;
             UnityEditor.AssemblyReloadEvents.afterAssemblyReload -= OnAfterAssemblyReload; 
             UnityEditor.AssemblyReloadEvents.afterAssemblyReload += OnAfterAssemblyReload;
         }
          
-        static void OnBeforeAssemblyReload() { instance.Dispose(); instance = default; }
+        static void OnBeforeAssemblyReload() 
+        {
+            Dispose();
+			instance.Dispose(); instance = default;
+		}
 
         // TODO: need a runtime equivalent
-        static void OnAfterAssemblyReload() { instance.Initialize(); }
+        static void OnAfterAssemblyReload()
+		{ 
+			instance.Initialize(); 
+        }
 #endif
 
         [return: MarshalAs(UnmanagedType.U1)]
@@ -1883,17 +1877,19 @@ namespace Chisel.Core
             brushSelectableState.Clear();
         }
 
-        public void Dispose()
+        public static void Dispose()
         {
+            // Confirmed to be called
             var prevHierarchies = instance.hierarchies;
             instance.hierarchies = default;
             if (prevHierarchies.IsCreated)
 			{
 				for (int i = 0; i < prevHierarchies.Length; i++)
                 {
-                    var prevHierarchy = prevHierarchies[i];
+                    var prevHierarchy = prevHierarchies[i]; 
 					prevHierarchies[i] = default;
-					prevHierarchy.Dispose();
+                    if (prevHierarchy.IsCreated) 
+					    prevHierarchy.Dispose();
 				}
                 prevHierarchies.Clear();
 				prevHierarchies.Dispose();

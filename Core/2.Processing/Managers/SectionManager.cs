@@ -76,10 +76,11 @@ namespace Chisel.Core
             if (sections.IsCreated) sections.Clear();
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        //[MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void Dispose()
-        {
-            if (sections.IsCreated) sections.Dispose(); sections = default;
+		{
+            // Confirmed to be called
+			if (sections.IsCreated) sections.Dispose(); sections = default;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]

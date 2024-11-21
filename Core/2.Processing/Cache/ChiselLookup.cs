@@ -47,7 +47,7 @@ namespace Chisel.Core
                 brushesTouchedByBrushCache  = new NativeList<BlobAssetReference<BrushesTouchedByBrush>>(1000, Allocator.Persistent);
                 brushRenderBufferCache      = new NativeList<BlobAssetReference<ChiselBrushRenderBuffer>>(1000, Allocator.Persistent);
 
-                parameters                  = new NativeArray<ChiselLayerParameters>(SurfaceDestinationParameters.ParameterCount, Allocator.Persistent);
+                parameters = new NativeArray<ChiselLayerParameters>(SurfaceDestinationParameters.ParameterCount, Allocator.Persistent);
                 for (int i = 0; i < parameters.Length; i++)
                 {
                     var parameter = parameters[i];
@@ -95,6 +95,7 @@ namespace Chisel.Core
 
             internal void Dispose()
             {
+                // Confirmed to be called
                 if (allKnownBrushMeshIndices.IsCreated)
                 {
                     allKnownBrushMeshIndices.Clear();
@@ -106,13 +107,14 @@ namespace Chisel.Core
                 brushIDValues = default;
                 if (basePolygonCache.IsCreated)
                 {
+                    // Confirmed to be called
                     for (int i = 0; i < basePolygonCache.Length; i++)
-                    {
-                        if (basePolygonCache[i].IsCreated)
-                            basePolygonCache[i].Dispose();
+					{
+						if (basePolygonCache[i].IsCreated)
+							basePolygonCache[i].Dispose();
                         basePolygonCache[i] = default;
                     }
-                    basePolygonCache.Clear();
+                    basePolygonCache.Clear(); 
                     basePolygonCache.Dispose();
                 }
                 basePolygonCache = default;
@@ -124,10 +126,11 @@ namespace Chisel.Core
                 brushTreeSpaceBoundCache = default;
                 if (treeSpaceVerticesCache.IsCreated)
                 {
+					// Confirmed to be called
                     for (int i = 0; i < treeSpaceVerticesCache.Length; i++)
-                    {
-                        if (treeSpaceVerticesCache[i].IsCreated)
-                            treeSpaceVerticesCache[i].Dispose();
+					{
+						if (treeSpaceVerticesCache[i].IsCreated)
+							treeSpaceVerticesCache[i].Dispose();
                         treeSpaceVerticesCache[i] = default;
                     }
                     treeSpaceVerticesCache.Clear();
@@ -135,11 +138,12 @@ namespace Chisel.Core
                 }
                 treeSpaceVerticesCache = default;
                 if (routingTableCache.IsCreated)
-                {
-                    for (int i = 0; i < routingTableCache.Length; i++)
+				{
+					// Confirmed to be called
+					for (int i = 0; i < routingTableCache.Length; i++)
                     {
                         if (routingTableCache[i].IsCreated)
-                            routingTableCache[i].Dispose();
+							routingTableCache[i].Dispose();
                         routingTableCache[i] = default;
                     }
                     routingTableCache.Clear();
@@ -147,11 +151,12 @@ namespace Chisel.Core
                 }
                 routingTableCache = default;
                 if (brushTreeSpacePlaneCache.IsCreated)
-                {
-                    for (int i = 0; i < brushTreeSpacePlaneCache.Length; i++)
+				{
+                    // Confirmed to be called
+					for (int i = 0; i < brushTreeSpacePlaneCache.Length; i++)
                     {
                         if (brushTreeSpacePlaneCache[i].IsCreated)
-                            brushTreeSpacePlaneCache[i].Dispose();
+							brushTreeSpacePlaneCache[i].Dispose();
                         brushTreeSpacePlaneCache[i] = default;
                     }
                     brushTreeSpacePlaneCache.Clear();
@@ -159,8 +164,9 @@ namespace Chisel.Core
                 }
                 brushTreeSpacePlaneCache = default;
                 if (brushesTouchedByBrushCache.IsCreated)
-                {
-                    for (int i = 0; i < brushesTouchedByBrushCache.Length; i++)
+				{
+                    // Confirmed to be called
+					for (int i = 0; i < brushesTouchedByBrushCache.Length; i++)
                     {
                         if (brushesTouchedByBrushCache[i].IsCreated)
                             brushesTouchedByBrushCache[i].Dispose();
@@ -178,7 +184,8 @@ namespace Chisel.Core
                 transformationCache = default;
                 if (brushRenderBufferCache.IsCreated)
                 {
-                    for (int i = 0; i < brushRenderBufferCache.Length; i++)
+					// Confirmed to be called
+					for (int i = 0; i < brushRenderBufferCache.Length; i++)
                     {
                         if (brushRenderBufferCache[i].IsCreated)
                             brushRenderBufferCache[i].Dispose();
@@ -192,11 +199,12 @@ namespace Chisel.Core
                     brushRenderBufferLookup.Dispose();
                 brushRenderBufferLookup = default;
                 if (parameters.IsCreated)
-                {
-                    for (int i = 0; i < parameters.Length; i++)
+				{
+					// Confirmed to be called
+					for (int i = 0; i < parameters.Length; i++)
                     {
                         if (parameters[i].IsCreated)
-                            parameters[i].Dispose();
+							parameters[i].Dispose();
                         parameters[i] = default;
                     }
                     parameters.Dispose();
@@ -246,6 +254,7 @@ namespace Chisel.Core
         
         void Dispose()
 		{
+			// Confirmed to be called
 			foreach (var data in chiselTreeData)
 			{
 				data?.Dispose();
