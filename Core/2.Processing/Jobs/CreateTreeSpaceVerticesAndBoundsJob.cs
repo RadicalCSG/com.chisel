@@ -30,14 +30,13 @@ namespace Chisel.Core
 
         static BlobAssetReference<BrushTreeSpaceVerticesBlob> Build(ref BlobArray<float3> localVertices, float4x4 nodeToTreeSpaceMatrix)
         {
-            var totalSize   = localVertices.Length * sizeof(float3);
-            var builder     = new BlobBuilder(Allocator.Temp, math.max(4, totalSize));
-            ref var root    = ref builder.ConstructRoot<BrushTreeSpaceVerticesBlob>();
+            var totalSize     = localVertices.Length * sizeof(float3);
+            using var builder = new BlobBuilder(Allocator.Temp, math.max(4, totalSize));
+            ref var root      = ref builder.ConstructRoot<BrushTreeSpaceVerticesBlob>();
             var treeSpaceVertices = builder.Allocate(ref root.treeSpaceVertices, localVertices.Length);
             for (int i = 0; i < localVertices.Length; i++)
                 treeSpaceVertices[i] = math.mul(nodeToTreeSpaceMatrix, new float4(localVertices[i], 1)).xyz;
             var result = builder.CreateBlobAssetReference<BrushTreeSpaceVerticesBlob>(Allocator.Persistent);
-            builder.Dispose();
             return result;
         }
 

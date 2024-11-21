@@ -144,46 +144,42 @@ namespace Chisel.Core
             return description.subMeshCount;
         }
 
-        public bool GenerateNodes(BlobAssetReference<InternalChiselSurfaceArray> surfaceDefinitionBlob, NativeList<GeneratedNode> nodes, Allocator allocator)
+        public readonly bool GenerateNodes(BlobAssetReference<InternalChiselSurfaceArray> surfaceDefinitionBlob, NativeList<GeneratedNode> nodes, Allocator allocator)
         {
-            var generatedBrushMeshes = new NativeList<BlobAssetReference<BrushMeshBlob>>(nodes.Length, Allocator.Temp);
-            try
+            NativeList<BlobAssetReference<BrushMeshBlob>> generatedBrushMeshes;
+			using var _generatedBrushMeshes = generatedBrushMeshes = new NativeList<BlobAssetReference<BrushMeshBlob>>(nodes.Length, Allocator.Temp);
+
+            generatedBrushMeshes.Resize(nodes.Length, NativeArrayOptions.ClearMemory);
+            var description = new BrushMeshFactory.LineairStairsData(bounds,
+                                                                    stepHeight, stepDepth,
+                                                                    treadHeight,
+                                                                    nosingDepth, nosingWidth,
+                                                                    plateauHeight,
+                                                                    riserType, riserDepth,
+                                                                    leftSide, rightSide,
+                                                                    sideWidth, sideHeight, sideDepth);
+            const int subMeshOffset = 0;
+            if (!BrushMeshFactory.GenerateLinearStairsSubMeshes(generatedBrushMeshes,
+                                                                subMeshOffset,
+                                                                in description,
+                                                                in surfaceDefinitionBlob,
+                                                                allocator))
             {
-                generatedBrushMeshes.Resize(nodes.Length, NativeArrayOptions.ClearMemory);
-                var description = new BrushMeshFactory.LineairStairsData(bounds,
-                                                                        stepHeight, stepDepth,
-                                                                        treadHeight,
-                                                                        nosingDepth, nosingWidth,
-                                                                        plateauHeight,
-                                                                        riserType, riserDepth,
-                                                                        leftSide, rightSide,
-                                                                        sideWidth, sideHeight, sideDepth);
-                const int subMeshOffset = 0;
-                if (!BrushMeshFactory.GenerateLinearStairsSubMeshes(generatedBrushMeshes,
-                                                                    subMeshOffset,
-                                                                    in description,
-                                                                    in surfaceDefinitionBlob,
-                                                                    allocator))
-                {
-                    for (int i = 0; i < generatedBrushMeshes.Length; i++)
-                    {
-                        if (generatedBrushMeshes[i].IsCreated)
-                            generatedBrushMeshes[i].Dispose();
-                        generatedBrushMeshes[i] = default;
-                    }
-                    return false;
-                }
                 for (int i = 0; i < generatedBrushMeshes.Length; i++)
-                    nodes[i] = GeneratedNode.GenerateBrush(generatedBrushMeshes[i]);
+                {
+                    if (generatedBrushMeshes[i].IsCreated)
+                        generatedBrushMeshes[i].Dispose();
+                    generatedBrushMeshes[i] = default;
+                }
+                return false;
             }
-            finally
-            {
-                generatedBrushMeshes.Dispose();
-            }
+            for (int i = 0; i < generatedBrushMeshes.Length; i++)
+                nodes[i] = GeneratedNode.GenerateBrush(generatedBrushMeshes[i]);
+            
             return true;
         }
 
-        public void Dispose() {}
+        public readonly void Dispose() {}
         #endregion
 
         #region Surfaces

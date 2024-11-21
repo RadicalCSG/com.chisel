@@ -97,7 +97,6 @@ namespace Chisel.Core
         public NativeList<float4x4> GetMatrices(Allocator allocator)
         {
             var matrices = new NativeList<float4x4>(allocator) { segments[0].ToMatrix() };
-
             for (int s = 1; s < segments.Length; s++)
             {
                 var pathPointA = segments[s - 1];
@@ -131,7 +130,6 @@ namespace Chisel.Core
         public UnsafeList<float4x4> GetUnsafeMatrices(Allocator allocator)
         {
             var matrices = new UnsafeList<float4x4>(segments.Length, allocator) { segments[0].ToMatrix() };
-
             for (int s = 1; s < segments.Length; s++)
             {
                 var pathPointA = segments[s - 1];
@@ -179,15 +177,13 @@ namespace Chisel.Core
         public static BlobAssetReference<ChiselPathBlob> Convert(ChiselPath path, Allocator allocator)
         {
             path.UpgradeIfNecessary();
-            using (var builder = new BlobBuilder(Allocator.Temp))
-            {
-                ref var root = ref builder.ConstructRoot<ChiselPathBlob>();
-                var srcControlPoints = path.segments;
-                var dstControlPoints = builder.Allocate(ref root.segments, srcControlPoints.Length);
-                for (int i = 0; i < srcControlPoints.Length; i++)
-                    dstControlPoints[i] = Convert(srcControlPoints[i]);
-                return builder.CreateBlobAssetReference<ChiselPathBlob>(allocator);
-            }
-        }
+			using var builder = new BlobBuilder(Allocator.Temp);
+			ref var root = ref builder.ConstructRoot<ChiselPathBlob>();
+			var srcControlPoints = path.segments;
+			var dstControlPoints = builder.Allocate(ref root.segments, srcControlPoints.Length);
+			for (int i = 0; i < srcControlPoints.Length; i++)
+				dstControlPoints[i] = Convert(srcControlPoints[i]);
+			return builder.CreateBlobAssetReference<ChiselPathBlob>(allocator);
+		}
     }
 }

@@ -34,7 +34,8 @@ namespace Chisel.Core
         {
             ref var curve = ref curveBlob.Value;
             var bounds = stairs.bounds;
-            curve.GetPathVertices(curveSegments, out shapeVertices, Allocator.Persistent);
+            if (shapeVertices.IsCreated) shapeVertices.Dispose();
+			shapeVertices = curve.GetPathVertices(curveSegments, Allocator.Persistent);
             if (shapeVertices.Length < 2)
                 return 0;
 
@@ -47,42 +48,40 @@ namespace Chisel.Core
 
         public bool GenerateNodes(BlobAssetReference<InternalChiselSurfaceArray> surfaceDefinitionBlob, NativeList<GeneratedNode> nodes, Allocator allocator)
         {
-            var generatedBrushMeshes = new NativeList<BlobAssetReference<BrushMeshBlob>>(nodes.Length, Allocator.Temp);
-            try
-            {
-                generatedBrushMeshes.Resize(nodes.Length, NativeArrayOptions.ClearMemory);
-                ref var curve = ref curveBlob.Value;
-                var bounds = stairs.bounds;
+            if (!shapeVertices.IsCreated)
+                return false;
+            NativeList<BlobAssetReference<BrushMeshBlob>> generatedBrushMeshes;
+			using var _generatedBrushMeshes = generatedBrushMeshes = new NativeList<BlobAssetReference<BrushMeshBlob>>(nodes.Length, Allocator.Temp);
+            generatedBrushMeshes.Resize(nodes.Length, NativeArrayOptions.ClearMemory);
+                
+            ref var curve = ref curveBlob.Value;
+            var bounds = stairs.bounds;
 
-                if (!BrushMeshFactory.GeneratePathedStairs(generatedBrushMeshes,
-                                                            shapeVertices, closed, bounds,
-                                                            stairs.stepHeight, stairs.stepDepth, stairs.treadHeight, stairs.nosingDepth,
-                                                            stairs.plateauHeight, stairs.riserType, stairs.riserDepth,
-                                                            stairs.leftSide, stairs.rightSide,
-                                                            stairs.sideWidth, stairs.sideHeight, stairs.sideDepth,
-                                                            in surfaceDefinitionBlob, allocator))
-                {
-                    for (int i = 0; i < generatedBrushMeshes.Length; i++)
-                    {
-                        if (generatedBrushMeshes[i].IsCreated)
-                            generatedBrushMeshes[i].Dispose();
-                        generatedBrushMeshes[i] = default;
-                    }
-                    return false;
-                }
-                for (int i = 0; i < generatedBrushMeshes.Length; i++)
-                    nodes[i] = GeneratedNode.GenerateBrush(generatedBrushMeshes[i]);
-                return true;
-            }
-            finally
+            if (!BrushMeshFactory.GeneratePathedStairs(generatedBrushMeshes,
+                                                        shapeVertices, closed, bounds,
+                                                        stairs.stepHeight, stairs.stepDepth, stairs.treadHeight, stairs.nosingDepth,
+                                                        stairs.plateauHeight, stairs.riserType, stairs.riserDepth,
+                                                        stairs.leftSide, stairs.rightSide,
+                                                        stairs.sideWidth, stairs.sideHeight, stairs.sideDepth,
+                                                        in surfaceDefinitionBlob, allocator))
             {
-                generatedBrushMeshes.Dispose();
+                for (int i = 0; i < generatedBrushMeshes.Length; i++)
+                {
+                    if (generatedBrushMeshes[i].IsCreated)
+                        generatedBrushMeshes[i].Dispose();
+                    generatedBrushMeshes[i] = default;
+                }
+                return false;
             }
+            for (int i = 0; i < generatedBrushMeshes.Length; i++)
+                nodes[i] = GeneratedNode.GenerateBrush(generatedBrushMeshes[i]);
+            return true;
         }
 
         public void Dispose()
         {
-            if (curveBlob.IsCreated) curveBlob.Dispose(); curveBlob = default;
+            if (shapeVertices.IsCreated) shapeVertices.Dispose(); shapeVertices = default;
+			if (curveBlob.IsCreated) curveBlob.Dispose(); curveBlob = default;
         }
         #endregion
 

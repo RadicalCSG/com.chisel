@@ -55,8 +55,11 @@ namespace Chisel.Core
 
             var desiredBrushIDValueToBottomUpLength = (maxBrushIDValue + 1) - minBrushIDValue;
 
-            var brushIDValueToAncestorLegend = new NativeArray<int>(desiredBrushIDValueToBottomUpLength, Allocator.Temp);
-            var brushIDValueToOrder = new NativeArray<int>(desiredBrushIDValueToBottomUpLength, Allocator.Temp);
+			NativeArray<int> brushIDValueToAncestorLegend;
+			using var _brushIDValueToAncestorLegend = brushIDValueToAncestorLegend = new NativeArray<int>(desiredBrushIDValueToBottomUpLength, Allocator.Temp);
+			
+			NativeArray<int> brushIDValueToOrder;
+			using var _brushIDValueToOrder = brushIDValueToOrder = new NativeArray<int>(desiredBrushIDValueToBottomUpLength, Allocator.Temp);
 
 			using var brushAncestorLegend = new NativeList<BrushAncestorLegend>(brushes.Length, Allocator.Temp);
 			using var brushAncestorsIDValues = new NativeList<int>(brushes.Length, Allocator.Temp);
@@ -88,10 +91,11 @@ namespace Chisel.Core
 				});
 			}
 
-			var nodeQueue = new NativeList<CompactTopDownBuilderNode>(brushes.Length, Allocator.Temp);
-			var hierarchyNodes = new NativeList<CompactHierarchyNode>(brushes.Length, Allocator.Temp);
-			using (brushIDValueToAncestorLegend)
-			using (brushIDValueToOrder)
+			NativeList<CompactTopDownBuilderNode> nodeQueue;
+			using var _nodeQueue = nodeQueue = new NativeList<CompactTopDownBuilderNode>(brushes.Length, Allocator.Temp);
+			
+			NativeList<CompactHierarchyNode> hierarchyNodes;
+			using var _hierarchyNodes = hierarchyNodes = new NativeList<CompactHierarchyNode>(brushes.Length, Allocator.Temp);
 			{
 				if (brushAncestorLegend.Length == 0)
 					return BlobAssetReference<CompactTree>.Null;
@@ -165,22 +169,17 @@ namespace Chisel.Core
 					}
 				}
 
-				using (hierarchyNodes)
-				using (nodeQueue)
-				{
-					var builder = new BlobBuilder(Allocator.Temp);
-					ref var root = ref builder.ConstructRoot<CompactTree>();
-					builder.Construct(ref root.compactHierarchy, hierarchyNodes);
-					builder.Construct(ref root.brushAncestorLegend, brushAncestorLegend);
-					builder.Construct(ref root.brushAncestors, brushAncestorsIDValues);
-					root.minBrushIDValue = minBrushIDValue;
-					root.minNodeIDValue = minNodeIDValue;
-					root.maxNodeIDValue = maxNodeIDValue;
-					builder.Construct(ref root.brushIDValueToAncestorLegend, brushIDValueToAncestorLegend, desiredBrushIDValueToBottomUpLength);
-					var compactTree = builder.CreateBlobAssetReference<CompactTree>(Allocator.Persistent);
-					builder.Dispose();
-					return compactTree;
-				}
+				using var builder = new BlobBuilder(Allocator.Temp);
+				ref var root = ref builder.ConstructRoot<CompactTree>();
+				builder.Construct(ref root.compactHierarchy, hierarchyNodes);
+				builder.Construct(ref root.brushAncestorLegend, brushAncestorLegend);
+				builder.Construct(ref root.brushAncestors, brushAncestorsIDValues);
+				root.minBrushIDValue = minBrushIDValue;
+				root.minNodeIDValue = minNodeIDValue;
+				root.maxNodeIDValue = maxNodeIDValue;
+				builder.Construct(ref root.brushIDValueToAncestorLegend, brushIDValueToAncestorLegend, desiredBrushIDValueToBottomUpLength);
+				var compactTree = builder.CreateBlobAssetReference<CompactTree>(Allocator.Persistent);
+				return compactTree;
 			}
 		}
 

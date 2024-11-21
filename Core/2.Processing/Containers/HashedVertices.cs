@@ -427,15 +427,16 @@ namespace Chisel.Core
 
         #region Dispose
         public void Dispose()
-        {
+		{
+			// Confirmed to be called
 #if ENABLE_UNITY_COLLECTIONS_CHECKS
-            DisposeSentinel.Dispose(ref m_Safety, ref m_DisposeSentinel);
+			DisposeSentinel.Dispose(ref m_Safety, ref m_DisposeSentinel);
 #endif
             UnsafeList<float3>.Destroy(m_Vertices);
             m_Vertices = null;
             UnsafeList<ushort>.Destroy(m_ChainedIndices);
             m_ChainedIndices = null;
-            UnsafeUtility.Free(m_HashTable, m_AllocatorLabel);
+			UnsafeUtility.Free(m_HashTable, m_AllocatorLabel);
             m_HashTable = null; 
         }
         #endregion

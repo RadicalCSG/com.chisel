@@ -20,6 +20,7 @@ namespace Chisel.Components
 
 		public void Dispose()
 		{
+			// Confirmed to be called
 			if (compactNodeIDVisibilityStateLookup.IsCreated)  
                 compactNodeIDVisibilityStateLookup.Dispose();
             compactNodeIDVisibilityStateLookup = default;
@@ -80,15 +81,7 @@ namespace Chisel.Components
             }
             return true;
         }
-        /*
-        public void UpdateVisibility(ChiselGeneratorComponent node)
-        {
-            if (!visibilityStateLookup.IsCreated)
-				visibilityStateLookup = new NativeHashMap<CompactNodeID, VisibilityState>(2048, Allocator.Persistent);
-			var sceneVisibilityManager = SceneVisibilityManager.instance;
-            UpdateVisibility(sceneVisibilityManager, node);
-        }
-        */
+
         void UpdateVisibility(SceneVisibilityManager sceneVisibilityManager, ChiselGeneratorComponent node)
         {
             var treeNode = node.TopTreeNode;
@@ -121,9 +114,7 @@ namespace Chisel.Components
             //          A. needs to show lightmap of original mesh, even when modified
             //          B. updating lightmaps needs to still work as if original mesh is changed
             if (!compactNodeIDVisibilityStateLookup.IsCreated)
-			{
 				compactNodeIDVisibilityStateLookup = new NativeHashMap<CompactNodeID, VisibilityState>(2048, Allocator.Persistent);
-            }
 			compactNodeIDVisibilityStateLookup.Clear();
 
 			if (!instanceIDVisibilityStateLookup.IsCreated)

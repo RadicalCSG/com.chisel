@@ -14,40 +14,38 @@ namespace Chisel.Core
                                            Allocator                                            allocator)
         {
             brushMesh = BlobAssetReference<BrushMeshBlob>.Null;
-            using (var builder = new BlobBuilder(Allocator.Temp))
-            {
-                ref var root = ref builder.ConstructRoot<BrushMeshBlob>();
-                if (!GenerateCapsuleVertices(in settings, in builder, ref root, out var localVertices))
-                    return false;
+			using var builder = new BlobBuilder(Allocator.Temp);
+			ref var root = ref builder.ConstructRoot<BrushMeshBlob>();
+			if (!GenerateCapsuleVertices(in settings, in builder, ref root, out var localVertices))
+				return false;
 
-                var bottomCap		= !settings.HaveRoundedBottom;
-                var topCap			= !settings.HaveRoundedTop;
-                var sides			= settings.sides;
-                var segments		= settings.Segments;
-                var bottomVertex	= settings.BottomVertex;
-                var topVertex		= settings.TopVertex;
+			var bottomCap = !settings.HaveRoundedBottom;
+			var topCap = !settings.HaveRoundedTop;
+			var sides = settings.sides;
+			var segments = settings.Segments;
+			var bottomVertex = settings.BottomVertex;
+			var topVertex = settings.TopVertex;
 
-                if (!GenerateSegmentedSubMesh(sides, segments,
-                                              topCap, bottomCap,
-                                              topVertex, bottomVertex,
-                                              in localVertices, 
-                                              ref surfaceDefinition.Value,
-                                              in builder, ref root,
-                                              out var polygons,
-                                              out var halfEdges))
-                    return false;
+			if (!GenerateSegmentedSubMesh(sides, segments,
+										  topCap, bottomCap,
+										  topVertex, bottomVertex,
+										  in localVertices,
+										  ref surfaceDefinition.Value,
+										  in builder, ref root,
+										  out var polygons,
+										  out var halfEdges))
+				return false;
 
-                var localPlanes             = builder.Allocate(ref root.localPlanes, polygons.Length);
-                root.localPlaneCount = polygons.Length;
-                // TODO: calculate corner planes
-                var halfEdgePolygonIndices  = builder.Allocate(ref root.halfEdgePolygonIndices, halfEdges.Length);
-                CalculatePlanes(ref localPlanes, in polygons, in halfEdges, in localVertices);
-                UpdateHalfEdgePolygonIndices(ref halfEdgePolygonIndices, in polygons);
-                root.localBounds = CalculateBounds(in localVertices);
-                brushMesh = builder.CreateBlobAssetReference<BrushMeshBlob>(allocator);
-                return true;
-            }
-        }
+			var localPlanes = builder.Allocate(ref root.localPlanes, polygons.Length);
+			root.localPlaneCount = polygons.Length;
+			// TODO: calculate corner planes
+			var halfEdgePolygonIndices = builder.Allocate(ref root.halfEdgePolygonIndices, halfEdges.Length);
+			CalculatePlanes(ref localPlanes, in polygons, in halfEdges, in localVertices);
+			UpdateHalfEdgePolygonIndices(ref halfEdgePolygonIndices, in polygons);
+			root.localBounds = CalculateBounds(in localVertices);
+			brushMesh = builder.CreateBlobAssetReference<BrushMeshBlob>(allocator);
+			return true;
+		}
 
         public static bool GenerateCapsuleVertices(in ChiselCapsule     settings,
                                                    in BlobBuilder       builder, 

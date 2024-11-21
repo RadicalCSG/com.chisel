@@ -701,6 +701,7 @@ namespace Chisel
 				nativeList.AddNoResize(src[i]);
 			return nativeList;
 		}
+
 		public static NativeList<T> ToNativeList<T>(this HashSet<T> src, Allocator allocator) where T : unmanaged
 		{
 			CollectionChecks.CheckReadAndThrow(src);

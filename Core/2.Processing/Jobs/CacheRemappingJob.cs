@@ -62,8 +62,11 @@ namespace Chisel.Core
             var previousBrushIDValuesLength = brushIDValues.Length;
             if (previousBrushIDValuesLength > 0)
             {
-                var indexLookup = new NativeArray<int>(nodeIDValueToNodeOrder.Length, Allocator.Temp);
-                var remapOldOrderToNewOrder = new NativeArray<int2>(previousBrushIDValuesLength, Allocator.Temp);
+				NativeArray<int> indexLookup;
+				using var _indexLookup = indexLookup = new NativeArray<int>(nodeIDValueToNodeOrder.Length, Allocator.Temp);
+				
+				NativeArray<int2> remapOldOrderToNewOrder;
+				using var _remapOldOrderToNewOrder = remapOldOrderToNewOrder = new NativeArray<int2>(previousBrushIDValuesLength, Allocator.Temp);
 
                 for (int n = 0; n < brushCount; n++)
                 {
@@ -71,158 +74,152 @@ namespace Chisel.Core
                     var offsetIDValue = compactNodeID.slotIndex.index - nodeIDValueToNodeOrderOffset;
                     indexLookup[offsetIDValue] = (n + 1);
                 }
-                using (indexLookup)
-                {
-                    using (var removedBrushes = new NativeList<IndexOrder>(previousBrushIDValuesLength, Allocator.Temp))
-                    { 
-                        var maxCount = math.max(brushCount, previousBrushIDValuesLength) + 1;
-                        for (int n = 0; n < previousBrushIDValuesLength; n++)
-                        {
-                            var sourceID        = brushIDValues[n];
-                            var sourceIDValue   = sourceID.slotIndex.index;
-                            var sourceOffset    = sourceIDValue - nodeIDValueToNodeOrderOffset;
-                            var destination     = (sourceOffset < 0 || sourceOffset >= nodeIDValueToNodeOrder.Length) ? -1 : indexLookup[sourceOffset] - 1;
-                            if (destination == -1)
-                            {
-                                removedBrushes.Add(new IndexOrder { compactNodeID = sourceID, nodeOrder = n });
-                                destination = -1;
-                                needRemapping = true;
-                            } else
-                                maxCount = math.max(maxCount, destination + 1);
-                            remapOldOrderToNewOrder[n] = new int2(n, destination);
-                            needRemapping = needRemapping || (n != destination);
-                        }
-                            
-                        if (needRemapping)
-                        {
-                            for (int b = 0; b < removedBrushes.Length; b++)
-                            {
-                                var indexOrder  = removedBrushes[b];
-                                //int nodeIndex = indexOrder.nodeIndex;
-                                int nodeOrder   = indexOrder.nodeOrder;
 
-                                var brushTouchedByBrush = brushesTouchedByBrushCache[nodeOrder];
-                                if (!brushTouchedByBrush.IsCreated ||
-                                    brushTouchedByBrush == BlobAssetReference<BrushesTouchedByBrush>.Null)
-                                    continue;
+				using var removedBrushes = new NativeList<IndexOrder>(previousBrushIDValuesLength, Allocator.Temp);
+				var maxCount = math.max(brushCount, previousBrushIDValuesLength) + 1;
+				for (int n = 0; n < previousBrushIDValuesLength; n++)
+				{
+					var sourceID = brushIDValues[n];
+					var sourceIDValue = sourceID.slotIndex.index;
+					var sourceOffset = sourceIDValue - nodeIDValueToNodeOrderOffset;
+					var destination = (sourceOffset < 0 || sourceOffset >= nodeIDValueToNodeOrder.Length) ? -1 : indexLookup[sourceOffset] - 1;
+					if (destination == -1)
+					{
+						removedBrushes.Add(new IndexOrder { compactNodeID = sourceID, nodeOrder = n });
+						destination = -1;
+						needRemapping = true;
+					}
+					else
+						maxCount = math.max(maxCount, destination + 1);
+					remapOldOrderToNewOrder[n] = new int2(n, destination);
+					needRemapping = needRemapping || (n != destination);
+				}
 
-                                ref var brushIntersections = ref brushTouchedByBrush.Value.brushIntersections;
-                                for (int i = 0; i < brushIntersections.Length; i++)
-                                {
-                                    var otherBrushID        = brushIntersections[i].nodeIndexOrder.compactNodeID;
-                                    
-                                    if (!compactHierarchy.IsValidCompactNodeID(otherBrushID))
-                                        continue;
+				if (needRemapping)
+				{
+					for (int b = 0; b < removedBrushes.Length; b++)
+					{
+						var indexOrder = removedBrushes[b];
+						//int nodeIndex = indexOrder.nodeIndex;
+						int nodeOrder = indexOrder.nodeOrder;
 
-                                    // TODO: investigate how a brush can be "valid" but not be part of treeBrushes
-                                    if (!brushes.Contains(otherBrushID))
-                                        continue;
+						var brushTouchedByBrush = brushesTouchedByBrushCache[nodeOrder];
+						if (!brushTouchedByBrush.IsCreated ||
+							brushTouchedByBrush == BlobAssetReference<BrushesTouchedByBrush>.Null)
+							continue;
 
-                                    var otherBrushIDValue   = otherBrushID.slotIndex.index;
-                                    var otherBrushOrder     = nodeIDValueToNodeOrder[otherBrushIDValue - nodeIDValueToNodeOrderOffset];
-                                    var otherIndexOrder     = new IndexOrder { compactNodeID = otherBrushID, nodeOrder = otherBrushOrder };
-                                    brushesThatNeedIndirectUpdateHashMap.Add(otherIndexOrder);
-                                }
-                            }
+						ref var brushIntersections = ref brushTouchedByBrush.Value.brushIntersections;
+						for (int i = 0; i < brushIntersections.Length; i++)
+						{
+							var otherBrushID = brushIntersections[i].nodeIndexOrder.compactNodeID;
 
-                            // Cannot rely on unity code. Sorting does not work. do you guys not test anything??
-                            //remapOldOrderToNewOrder.Sort(indexOrderComparer);
+							if (!compactHierarchy.IsValidCompactNodeID(otherBrushID))
+								continue;
 
-                            // TODO: OPTIMIZE!
-                            for (int a = 0; a < remapOldOrderToNewOrder.Length - 1; a++)
-                            {
-                                var val_a = remapOldOrderToNewOrder[a];
-                                for (int b = a + 1; b < remapOldOrderToNewOrder.Length; b++)
-                                {
-                                    var val_b = remapOldOrderToNewOrder[b];
-                                    var compare = kIndexOrderComparer.Compare(val_a, val_b);
-                                    if (compare >= 0)
-                                        continue;
+							// TODO: investigate how a brush can be "valid" but not be part of treeBrushes
+							if (!brushes.Contains(otherBrushID))
+								continue;
 
-                                    remapOldOrderToNewOrder[b] = val_a;
-                                    remapOldOrderToNewOrder[a] = val_b;
-                                    val_a = val_b;
-                                }
-                            }
-                            for (int n = 0; n < previousBrushIDValuesLength; n++)
-                            {
-                                var overwrittenValue = remapOldOrderToNewOrder[n].y;
-                                var originValue = remapOldOrderToNewOrder[n].x;
-                                if (overwrittenValue == originValue)
-                                    continue;
-                                // TODO: OPTIMIZE!
-                                for (int n2 = n + 1; n2 < previousBrushIDValuesLength; n2++)
-                                {
-                                    var tmp = remapOldOrderToNewOrder[n2];
-                                    if (tmp.x == overwrittenValue)
-                                    {
-                                        if (tmp.y == originValue ||
-                                            tmp.y >= previousBrushIDValuesLength)
-                                        {
-                                            remapOldOrderToNewOrder[n2] = new int2(-1, -1);
-                                            break;
-                                        }
-                                        remapOldOrderToNewOrder[n2] = new int2(originValue, tmp.y);
-                                        break;
-                                    }
-                                }
-                            }
-                                
-                            using (remapOldOrderToNewOrder)
-                            {
-                                if (basePolygonCache.Length < maxCount)
-                                    basePolygonCache.Resize(maxCount, NativeArrayOptions.ClearMemory);
-                                if (routingTableCache.Length < maxCount)
-                                    routingTableCache.Resize(maxCount, NativeArrayOptions.ClearMemory);
-                                if (transformationCache.Length < maxCount)
-                                    transformationCache.Resize(maxCount, NativeArrayOptions.ClearMemory);
-                                if (treeSpaceVerticesCache.Length < maxCount)
-                                    treeSpaceVerticesCache.Resize(maxCount, NativeArrayOptions.ClearMemory);
-                                if (brushRenderBufferCache.Length < maxCount)
-                                    brushRenderBufferCache.Resize(maxCount, NativeArrayOptions.ClearMemory);
-                                if (brushTreeSpaceBoundCache.Length < maxCount)
-                                    brushTreeSpaceBoundCache.Resize(maxCount, NativeArrayOptions.ClearMemory);
-                                if (brushTreeSpacePlaneCache.Length < maxCount)
-                                    brushTreeSpacePlaneCache.Resize(maxCount, NativeArrayOptions.ClearMemory);
-                                if (brushesTouchedByBrushCache.Length < maxCount)
-                                    brushesTouchedByBrushCache.Resize(maxCount, NativeArrayOptions.ClearMemory);
-                                    
-                                for (int n = 0; n < previousBrushIDValuesLength; n++)
-                                {
-                                    var source = remapOldOrderToNewOrder[n].x;
-                                    var destination = remapOldOrderToNewOrder[n].y;
-                                    if (source == -1)
-                                        continue;
+							var otherBrushIDValue = otherBrushID.slotIndex.index;
+							var otherBrushOrder = nodeIDValueToNodeOrder[otherBrushIDValue - nodeIDValueToNodeOrderOffset];
+							var otherIndexOrder = new IndexOrder { compactNodeID = otherBrushID, nodeOrder = otherBrushOrder };
+							brushesThatNeedIndirectUpdateHashMap.Add(otherIndexOrder);
+						}
+					}
 
-                                    if (source == destination)
-                                        continue;
+					// Cannot rely on unity code. Sorting does not work. do you guys not test anything??
+					//remapOldOrderToNewOrder.Sort(indexOrderComparer);
 
-                                    if (destination == -1)
-                                    {
-                                        { var tmp = basePolygonCache[source]; basePolygonCache[source] = default; if (tmp.IsCreated) tmp.Dispose(); }
-                                        { var tmp = routingTableCache[source]; routingTableCache[source] = default; if (tmp.IsCreated) tmp.Dispose(); }
-                                        { var tmp = transformationCache[source]; transformationCache[source] = default; }
-                                        { var tmp = brushRenderBufferCache[source]; brushRenderBufferCache[source] = default; if (tmp.IsCreated) tmp.Dispose(); }
-                                        { var tmp = treeSpaceVerticesCache[source]; treeSpaceVerticesCache[source] = default; if (tmp.IsCreated) tmp.Dispose(); }
-                                        { var tmp = brushTreeSpaceBoundCache[source]; brushTreeSpaceBoundCache[source] = default; }
-                                        { var tmp = brushTreeSpacePlaneCache[source]; brushTreeSpacePlaneCache[source] = default; if (tmp.IsCreated) tmp.Dispose(); }
-                                        { var tmp = brushesTouchedByBrushCache[source]; brushesTouchedByBrushCache[source] = default; if (tmp.IsCreated) tmp.Dispose(); }
-                                        continue;
-                                    }
+					// TODO: OPTIMIZE!
+					for (int a = 0; a < remapOldOrderToNewOrder.Length - 1; a++)
+					{
+						var val_a = remapOldOrderToNewOrder[a];
+						for (int b = a + 1; b < remapOldOrderToNewOrder.Length; b++)
+						{
+							var val_b = remapOldOrderToNewOrder[b];
+							var compare = kIndexOrderComparer.Compare(val_a, val_b);
+							if (compare >= 0)
+								continue;
 
-									(basePolygonCache[source], basePolygonCache[destination]) = (basePolygonCache[destination], basePolygonCache[source]);
-									(routingTableCache[source], routingTableCache[destination]) = (routingTableCache[destination], routingTableCache[source]);
-									(transformationCache[source], transformationCache[destination]) = (transformationCache[destination], transformationCache[source]);
-									(brushRenderBufferCache[source], brushRenderBufferCache[destination]) = (brushRenderBufferCache[destination], brushRenderBufferCache[source]);
-									(treeSpaceVerticesCache[source], treeSpaceVerticesCache[destination]) = (treeSpaceVerticesCache[destination], treeSpaceVerticesCache[source]);
-									(brushTreeSpaceBoundCache[source], brushTreeSpaceBoundCache[destination]) = (brushTreeSpaceBoundCache[destination], brushTreeSpaceBoundCache[source]);
-									(brushTreeSpacePlaneCache[source], brushTreeSpacePlaneCache[destination]) = (brushTreeSpacePlaneCache[destination], brushTreeSpacePlaneCache[source]);
-									(brushesTouchedByBrushCache[source], brushesTouchedByBrushCache[destination]) = (brushesTouchedByBrushCache[destination], brushesTouchedByBrushCache[source]);
+							remapOldOrderToNewOrder[b] = val_a;
+							remapOldOrderToNewOrder[a] = val_b;
+							val_a = val_b;
+						}
+					}
+					for (int n = 0; n < previousBrushIDValuesLength; n++)
+					{
+						var overwrittenValue = remapOldOrderToNewOrder[n].y;
+						var originValue = remapOldOrderToNewOrder[n].x;
+						if (overwrittenValue == originValue)
+							continue;
+						// TODO: OPTIMIZE!
+						for (int n2 = n + 1; n2 < previousBrushIDValuesLength; n2++)
+						{
+							var tmp = remapOldOrderToNewOrder[n2];
+							if (tmp.x == overwrittenValue)
+							{
+								if (tmp.y == originValue ||
+									tmp.y >= previousBrushIDValuesLength)
+								{
+									remapOldOrderToNewOrder[n2] = new int2(-1, -1);
+									break;
 								}
-                            }
-                        }
-                    }
-                }
+								remapOldOrderToNewOrder[n2] = new int2(originValue, tmp.y);
+								break;
+							}
+						}
+					}
+
+					if (basePolygonCache.Length < maxCount)
+						basePolygonCache.Resize(maxCount, NativeArrayOptions.ClearMemory);
+					if (routingTableCache.Length < maxCount)
+						routingTableCache.Resize(maxCount, NativeArrayOptions.ClearMemory);
+					if (transformationCache.Length < maxCount)
+						transformationCache.Resize(maxCount, NativeArrayOptions.ClearMemory);
+					if (treeSpaceVerticesCache.Length < maxCount)
+						treeSpaceVerticesCache.Resize(maxCount, NativeArrayOptions.ClearMemory);
+					if (brushRenderBufferCache.Length < maxCount)
+						brushRenderBufferCache.Resize(maxCount, NativeArrayOptions.ClearMemory);
+					if (brushTreeSpaceBoundCache.Length < maxCount)
+						brushTreeSpaceBoundCache.Resize(maxCount, NativeArrayOptions.ClearMemory);
+					if (brushTreeSpacePlaneCache.Length < maxCount)
+						brushTreeSpacePlaneCache.Resize(maxCount, NativeArrayOptions.ClearMemory);
+					if (brushesTouchedByBrushCache.Length < maxCount)
+						brushesTouchedByBrushCache.Resize(maxCount, NativeArrayOptions.ClearMemory);
+
+					for (int n = 0; n < previousBrushIDValuesLength; n++)
+					{
+						var source = remapOldOrderToNewOrder[n].x;
+						var destination = remapOldOrderToNewOrder[n].y;
+						if (source == -1)
+							continue;
+
+						if (source == destination)
+							continue;
+
+						if (destination == -1)
+						{
+							{ var tmp = basePolygonCache[source]; basePolygonCache[source] = default; if (tmp.IsCreated) tmp.Dispose(); }
+							{ var tmp = routingTableCache[source]; routingTableCache[source] = default; if (tmp.IsCreated) tmp.Dispose(); }
+							{ var tmp = transformationCache[source]; transformationCache[source] = default; }
+							{ var tmp = brushRenderBufferCache[source]; brushRenderBufferCache[source] = default; if (tmp.IsCreated) tmp.Dispose(); }
+							{ var tmp = treeSpaceVerticesCache[source]; treeSpaceVerticesCache[source] = default; if (tmp.IsCreated) tmp.Dispose(); }
+							{ var tmp = brushTreeSpaceBoundCache[source]; brushTreeSpaceBoundCache[source] = default; }
+							{ var tmp = brushTreeSpacePlaneCache[source]; brushTreeSpacePlaneCache[source] = default; if (tmp.IsCreated) tmp.Dispose(); }
+							{ var tmp = brushesTouchedByBrushCache[source]; brushesTouchedByBrushCache[source] = default; if (tmp.IsCreated) tmp.Dispose(); }
+							continue;
+						}
+
+						(basePolygonCache[source], basePolygonCache[destination]) = (basePolygonCache[destination], basePolygonCache[source]);
+						(routingTableCache[source], routingTableCache[destination]) = (routingTableCache[destination], routingTableCache[source]);
+						(transformationCache[source], transformationCache[destination]) = (transformationCache[destination], transformationCache[source]);
+						(brushRenderBufferCache[source], brushRenderBufferCache[destination]) = (brushRenderBufferCache[destination], brushRenderBufferCache[source]);
+						(treeSpaceVerticesCache[source], treeSpaceVerticesCache[destination]) = (treeSpaceVerticesCache[destination], treeSpaceVerticesCache[source]);
+						(brushTreeSpaceBoundCache[source], brushTreeSpaceBoundCache[destination]) = (brushTreeSpaceBoundCache[destination], brushTreeSpaceBoundCache[source]);
+						(brushTreeSpacePlaneCache[source], brushTreeSpacePlaneCache[destination]) = (brushTreeSpacePlaneCache[destination], brushTreeSpacePlaneCache[source]);
+						(brushesTouchedByBrushCache[source], brushesTouchedByBrushCache[destination]) = (brushesTouchedByBrushCache[destination], brushesTouchedByBrushCache[source]);
+					}
+				}
             }
 
             needRemappingRef.Value = needRemapping;

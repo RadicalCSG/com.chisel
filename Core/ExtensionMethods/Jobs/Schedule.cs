@@ -154,8 +154,10 @@ namespace Chisel.Core
         {
             JobHandle currentHandle = default;
             if (runInParallel)
-                currentHandle = list.Dispose(dependencies);
-            else
+            {
+				//UnityEngine.Debug.Log($"SafeDispose <{typeof(T)}>");
+				currentHandle = list.Dispose(dependencies);
+            } else
                 list.Dispose();
             list = default;
             return currentHandle;
@@ -220,7 +222,7 @@ namespace Chisel.Core
 			if (runInParallel)
 			{
 				var result = reference.Dispose(currentHandle);
-				reference = default;
+				reference = default; 
 				return result;
 			}
 
@@ -267,7 +269,7 @@ namespace Chisel.Core
             }
 
             currentHandle.Complete();
-            reference.Dispose();
+            reference.Dispose(); 
             reference = default; 
             return default;
         }
@@ -369,9 +371,11 @@ namespace Chisel.Core
             for (int i = 0; i < list.Length; i++)
             {
                 if (list[i].IsCreated)
-                    list[i].Dispose();
+				{
+					list[i].Dispose();
+                }
                 list[i] = default;
-            }
+            } 
             list.Clear();
         }
     }

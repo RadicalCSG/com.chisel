@@ -1094,14 +1094,86 @@ namespace Chisel.Core
 				if (alltreeSpacePlanes.IsCreated) alltreeSpacePlanes.Dispose();
 				if (allSegments.IsCreated) allSegments.Dispose();
 				if (allCombinedEdges.IsCreated) allCombinedEdges.Dispose();
-				if (holeIndices.IsCreated) holeIndices.Dispose();
-				if (surfaceLoopIndices.IsCreated) surfaceLoopIndices.Dispose();
-				if (allEdges.IsCreated) allEdges.Dispose();
-				if (intersectionLoops.IsCreated) intersectionLoops.Dispose();
-				if (basePolygonEdges.IsCreated) basePolygonEdges.Dispose();
 				if (hashedTreeSpaceVertices.IsCreated) hashedTreeSpaceVertices.Dispose();
 				if (indexRemap.IsCreated) indexRemap.Dispose();
-				if (intersectionEdges.IsCreated) intersectionEdges.Dispose();
+                if (holeIndices.IsCreated)
+				{
+					if (holeIndices.IsCreated)
+					{
+						for (int i = 0; i < holeIndices.Length; i++)
+						{
+							if (holeIndices[i].IsCreated)
+								holeIndices[i].Dispose();
+							holeIndices[i] = default;
+						}
+					}
+					holeIndices.Dispose();
+                }
+                if (surfaceLoopIndices.IsCreated)
+				{
+					if (surfaceLoopIndices.IsCreated)
+					{
+						for (int i = 0; i < surfaceLoopIndices.Length; i++)
+						{
+							if (surfaceLoopIndices[i].IsCreated)
+								surfaceLoopIndices[i].Dispose();
+							surfaceLoopIndices[i] = default;
+						}
+					}
+					surfaceLoopIndices.Dispose();
+                }
+                if (allEdges.IsCreated)
+				{ 
+					if (allEdges.IsCreated)
+					{
+						for (int i = 0; i < allEdges.Length; i++)
+						{
+							if (allEdges[i].IsCreated)
+								allEdges[i].Dispose();
+							allEdges[i] = default;
+						}
+					}
+					allEdges.Dispose();
+                }
+                if (intersectionLoops.IsCreated)
+				{
+					if (intersectionLoops.IsCreated)
+					{
+						for (int i = 0; i < intersectionLoops.Length; i++) 
+						{
+							if (intersectionLoops[i].IsCreated)
+								intersectionLoops[i].Dispose();
+							intersectionLoops[i] = default;
+						}
+					}
+					intersectionLoops.Dispose();
+                }
+                if (basePolygonEdges.IsCreated)
+				{
+					if (basePolygonEdges.IsCreated)
+					{
+						for (int i = 0; i < basePolygonEdges.Length; i++)
+						{
+							if (basePolygonEdges[i].IsCreated)
+								basePolygonEdges[i].Dispose();
+							basePolygonEdges[i] = default;
+						}
+					}
+					basePolygonEdges.Dispose();
+                }
+                if (intersectionEdges.IsCreated)
+				{
+					if (intersectionEdges.IsCreated)
+					{
+						for (int i = 0; i < intersectionEdges.Length; i++)
+						{
+							if (intersectionEdges[i].IsCreated)
+								intersectionEdges[i].Dispose();
+							intersectionEdges[i] = default;
+						}
+					}
+					intersectionEdges.Dispose();
+                }
 			}
         }
     }

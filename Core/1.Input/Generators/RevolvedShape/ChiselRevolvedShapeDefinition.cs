@@ -26,9 +26,9 @@ namespace Chisel.Core
         public float    totalAngle;
 
         [UnityEngine.HideInInspector, NonSerialized] public BlobAssetReference<ChiselCurve2DBlob>   curveBlob;
+        [UnityEngine.HideInInspector, NonSerialized] internal UnsafeList<float4x4>                  pathMatrices;
         [UnityEngine.HideInInspector, NonSerialized] internal UnsafeList<SegmentVertex>             polygonVerticesList;
         [UnityEngine.HideInInspector, NonSerialized] internal UnsafeList<int>                       polygonVerticesSegments;
-        [UnityEngine.HideInInspector, NonSerialized] internal UnsafeList<float4x4>                  pathMatrices;
                 
         #region Generate
         public int PrepareAndCountRequiredBrushMeshes()
@@ -37,50 +37,45 @@ namespace Chisel.Core
             if (!curve.ConvexPartition(curveSegments, out polygonVerticesList, out polygonVerticesSegments, Allocator.Persistent))
                 return 0;
 
-            BrushMeshFactory.GetCircleMatrices(out pathMatrices, revolveSegments, new float3(0, 1, 0), Allocator.Persistent);
+            if (pathMatrices.IsCreated) pathMatrices.Dispose();
+			pathMatrices = BrushMeshFactory.GetCircleMatrices(revolveSegments, new float3(0, 1, 0), Allocator.Persistent);
 
             BrushMeshFactory.Split2DPolygonAlongOriginXAxis(ref polygonVerticesList, ref polygonVerticesSegments);
 
             return polygonVerticesSegments.Length * (pathMatrices.Length - 1);
         }
 
-        public bool GenerateNodes(BlobAssetReference<InternalChiselSurfaceArray> surfaceDefinitionBlob, NativeList<GeneratedNode> nodes, Allocator allocator)
+        public readonly bool GenerateNodes(BlobAssetReference<InternalChiselSurfaceArray> surfaceDefinitionBlob, NativeList<GeneratedNode> nodes, Allocator allocator)
         {
-            var generatedBrushMeshes = new NativeList<BlobAssetReference<BrushMeshBlob>>(nodes.Length, Allocator.Temp);
-            try
+            NativeList<BlobAssetReference<BrushMeshBlob>> generatedBrushMeshes;
+			using var _generatedBrushMeshes = generatedBrushMeshes = new NativeList<BlobAssetReference<BrushMeshBlob>>(nodes.Length, Allocator.Temp);
+            generatedBrushMeshes.Resize(nodes.Length, NativeArrayOptions.ClearMemory);
+            if (!BrushMeshFactory.GenerateExtrudedShape(generatedBrushMeshes,
+                                                        in polygonVerticesList,
+                                                        in polygonVerticesSegments,
+                                                        in pathMatrices,
+                                                        in surfaceDefinitionBlob,
+                                                        allocator))
             {
-                generatedBrushMeshes.Resize(nodes.Length, NativeArrayOptions.ClearMemory);
-                if (!BrushMeshFactory.GenerateExtrudedShape(generatedBrushMeshes,
-                                                            in polygonVerticesList,
-                                                            in polygonVerticesSegments,
-                                                            in pathMatrices,
-                                                            in surfaceDefinitionBlob,
-                                                            allocator))
-                {
-                    for (int i = 0; i < generatedBrushMeshes.Length; i++)
-                    {
-                        if (generatedBrushMeshes[i].IsCreated)
-                            generatedBrushMeshes[i].Dispose();
-                        generatedBrushMeshes[i] = default;
-                    }
-                    return false;
-                }
                 for (int i = 0; i < generatedBrushMeshes.Length; i++)
-                    nodes[i] = GeneratedNode.GenerateBrush(generatedBrushMeshes[i]);
-                return true;
+                {
+                    if (generatedBrushMeshes[i].IsCreated)
+                        generatedBrushMeshes[i].Dispose();
+                    generatedBrushMeshes[i] = default;
+                }
+                return false;
             }
-            finally
-            {
-                generatedBrushMeshes.Dispose();
-            }
+            for (int i = 0; i < generatedBrushMeshes.Length; i++)
+                nodes[i] = GeneratedNode.GenerateBrush(generatedBrushMeshes[i]);
+            return true;
         }
 
         public void Dispose()
         {
             if (curveBlob.IsCreated) curveBlob.Dispose(); curveBlob = default;
-            if (polygonVerticesList.IsCreated) polygonVerticesList.Dispose(); polygonVerticesList = default;
+			if (pathMatrices.IsCreated) pathMatrices.Dispose(); pathMatrices = default;
+			if (polygonVerticesList.IsCreated) polygonVerticesList.Dispose(); polygonVerticesList = default;
             if (polygonVerticesSegments.IsCreated) polygonVerticesSegments.Dispose(); polygonVerticesSegments = default;
-            if (pathMatrices.IsCreated) pathMatrices.Dispose(); pathMatrices = default;
         }
         #endregion
 

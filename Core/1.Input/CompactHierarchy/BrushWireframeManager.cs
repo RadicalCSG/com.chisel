@@ -59,18 +59,31 @@ namespace Chisel.Core
 			nativeOutline.Dispose();
 			outlineLookup.Remove(compactNodeID);
 		}
-		
+
 		public void Dispose()
 		{
+			// Confirmed to get disposed
 			if (!outlineLookup.IsCreated)
 				return;
 
-			var values = outlineLookup.GetValueArray(Allocator.Temp);
-			foreach (var value in values)
-				value.Dispose();
-			values.Dispose();
-
-			outlineLookup.Dispose(); outlineLookup = default;
+			try
+			{
+				var values = outlineLookup.GetValueArray(Allocator.Temp);
+				try
+				{
+					foreach (var value in values)
+						value.Dispose();
+				}
+				finally
+				{
+					values.Dispose();
+				}
+			}
+			finally
+			{ 
+				outlineLookup.Dispose();
+				outlineLookup = default;
+			}
 		}
 	}
 }

@@ -169,19 +169,20 @@ namespace Chisel.Core
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void Clear()
         {
+            if (freeSlots.IsCreated) freeSlots.Clear();
             if (slotToIndex.IsCreated) slotToIndex.Clear();
             if (indexToSlot.IsCreated) indexToSlot.Clear();
             if (sectionManager.IsCreated) sectionManager.Clear();
-            if (freeSlots.IsCreated) freeSlots.Clear();
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void Dispose()
-        {
-            if (slotToIndex.IsCreated) slotToIndex.Dispose(); slotToIndex = default;
+		{
+			// Confirmed to be called
+            if (freeSlots.IsCreated) freeSlots.Dispose(); freeSlots = default;
+			if (slotToIndex.IsCreated) slotToIndex.Dispose(); slotToIndex = default;
             if (indexToSlot.IsCreated) indexToSlot.Dispose(); indexToSlot = default;
             if (sectionManager.IsCreated) sectionManager.Dispose(); sectionManager = default;
-            if (freeSlots.IsCreated) freeSlots.Dispose(); freeSlots = default;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]

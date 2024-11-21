@@ -34,64 +34,63 @@ namespace Chisel.Core
             Debug.Assert(SurfaceDestinationParameters.kSurfaceDestinationParameterFlagMask.Length == SurfaceDestinationParameters.ParameterCount);
 
             var capacity = math.max(1, math.max(allKnownBrushMeshIndices.Count(), brushCount));
-            var removeBrushMeshIndices = new NativeParallelHashSet<int>(capacity, Allocator.Temp);
+            
+            NativeParallelHashSet<int> removeBrushMeshIndices;
+			using var _removeBrushMeshIndices = removeBrushMeshIndices = new NativeParallelHashSet<int>(capacity, Allocator.Temp);
+            for (int nodeOrder = 0; nodeOrder < brushCount; nodeOrder++)
             {
-                for (int nodeOrder = 0; nodeOrder < brushCount; nodeOrder++)
+                var brushCompactNodeID = brushes[nodeOrder];
+                int brushMeshHash = -1;
+                if (!compactHierarchy.IsValidCompactNodeID(brushCompactNodeID) ||
+                    // NOTE: Assignment is intended, this is not supposed to be a comparison
+                    (brushMeshHash = compactHierarchy.GetBrushMeshID(brushCompactNodeID)) == 0)
                 {
-                    var brushCompactNodeID = brushes[nodeOrder];
-                    int brushMeshHash = -1;
-                    if (!compactHierarchy.IsValidCompactNodeID(brushCompactNodeID) ||
-                        // NOTE: Assignment is intended, this is not supposed to be a comparison
-                        (brushMeshHash = compactHierarchy.GetBrushMeshID(brushCompactNodeID)) == 0)
-                    {
-                        // The brushMeshID is invalid: a Generator created/didn't update a TreeBrush correctly, or the input values didn't produce a valid mesh (for example; 0 height cube)
-                        Debug.LogError($"Brush with ID ({brushCompactNodeID}) has its brushMeshID set to ({brushMeshHash}), which is invalid.");
-                        allBrushMeshIDs[nodeOrder] = 0;
-                    } else
-                    {
-                        allBrushMeshIDs[nodeOrder] = brushMeshHash;
-
-                        if (removeBrushMeshIndices.Add(brushMeshHash))
-                            allKnownBrushMeshIndices.Remove(brushMeshHash);
-                        else
-                            allKnownBrushMeshIndices.Add(brushMeshHash);
-                    } 
-                }
-
-                // TODO: optimize all of this, especially slow for complete update
-
-                // Regular index operator will return a copy instead of a reference *sigh* 
-                var parameterPtr = (ChiselLayerParameters*)parameters.GetUnsafePtr();
-                var brushMeshIndicesArray = allKnownBrushMeshIndices.ToNativeArray(Allocator.Temp); // NativeHashSet iterator is broken, so need to copy it to an array *sigh*
-                foreach (int brushMeshHash in brushMeshIndicesArray)
+                    // The brushMeshID is invalid: a Generator created/didn't update a TreeBrush correctly, or the input values didn't produce a valid mesh (for example; 0 height cube)
+                    Debug.LogError($"Brush with ID ({brushCompactNodeID}) has its brushMeshID set to ({brushMeshHash}), which is invalid.");
+                    allBrushMeshIDs[nodeOrder] = 0;
+                } else
                 {
-                    //if (removeBrushMeshIndices.Contains(brushMeshHash)) 
-                    //    continue;
+                    allBrushMeshIDs[nodeOrder] = brushMeshHash;
+
+                    if (removeBrushMeshIndices.Add(brushMeshHash))
+                        allKnownBrushMeshIndices.Remove(brushMeshHash);
+                    else
+                        allKnownBrushMeshIndices.Add(brushMeshHash);
+                } 
+            }
+
+            // TODO: optimize all of this, especially slow for complete update
+
+            // Regular index operator will return a copy instead of a reference *sigh* 
+            var parameterPtr = (ChiselLayerParameters*)parameters.GetUnsafePtr();
+            
+            using var brushMeshIndicesArray = allKnownBrushMeshIndices.ToNativeArray(Allocator.Temp); // NativeHashSet iterator is broken, so need to copy it to an array *sigh*
+            foreach (int brushMeshHash in brushMeshIndicesArray)
+            {
+                //if (removeBrushMeshIndices.Contains(brushMeshHash)) 
+                //    continue;
                     
-                    if (!brushMeshBlobs.ContainsKey(brushMeshHash))
-                        continue;
+                if (!brushMeshBlobs.ContainsKey(brushMeshHash))
+                    continue;
 
-                    ref var polygons = ref brushMeshBlobs[brushMeshHash].brushMeshBlob.Value.polygons;
-                    for (int p = 0; p < polygons.Length; p++)
+                ref var polygons = ref brushMeshBlobs[brushMeshHash].brushMeshBlob.Value.polygons;
+                for (int p = 0; p < polygons.Length; p++)
+                {
+                    ref var polygon = ref polygons[p];
+                    var destinationFlags = polygon.surface.destinationFlags;
+                    for (int l = 0; l < SurfaceDestinationParameters.ParameterCount; l++)
                     {
-                        ref var polygon = ref polygons[p];
-                        var destinationFlags = polygon.surface.destinationFlags;
-                        for (int l = 0; l < SurfaceDestinationParameters.ParameterCount; l++)
-                        {
-                            var surfaceDestinationMask = SurfaceDestinationParameters.kSurfaceDestinationParameterFlagMask[l];
-                            if ((destinationFlags & surfaceDestinationMask) != 0) parameterPtr[l].RegisterParameter(polygon.surface.parameters.parameters[l]);
-                        }
+                        var surfaceDestinationMask = SurfaceDestinationParameters.kSurfaceDestinationParameterFlagMask[l];
+                        if ((destinationFlags & surfaceDestinationMask) != 0) parameterPtr[l].RegisterParameter(polygon.surface.parameters.parameters[l]);
                     }
                 }
-                brushMeshIndicesArray.Dispose();
-
-                //foreach (int brushMeshHash in removeBrushMeshIndices)
-                //    allKnownBrushMeshIndices.Remove(brushMeshHash);
-
-                for (int l = 0; l < SurfaceDestinationParameters.ParameterCount; l++)
-                    parameterCounts[l] = parameterPtr[l].uniqueParameterCount;
             }
-            removeBrushMeshIndices.Dispose();
+
+            //foreach (int brushMeshHash in removeBrushMeshIndices)
+            //    allKnownBrushMeshIndices.Remove(brushMeshHash);
+
+            for (int l = 0; l < SurfaceDestinationParameters.ParameterCount; l++)
+                parameterCounts[l] = parameterPtr[l].uniqueParameterCount;
         }
     }
 }

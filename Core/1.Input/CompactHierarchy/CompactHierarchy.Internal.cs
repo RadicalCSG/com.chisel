@@ -269,8 +269,9 @@ namespace Chisel.Core
 
 
         public void Dispose()
-        {
-            isCreated = false;
+		{
+            // Confirmed to be called
+			isCreated = false;
             if (brushMeshToBrush.IsCreated) brushMeshToBrush.Dispose(); brushMeshToBrush = default;
             if (compactNodes.IsCreated) compactNodes.Dispose(); compactNodes = default;
 
@@ -1179,40 +1180,34 @@ namespace Chisel.Core
             {
                 if (nodes.IsCreated) nodes.Add(RootID);
                 var compactNodesPtr = compactNodes.Ptr;
-                var nodeStack = new NativeList<int>(math.max(1, compactNodes.Length), Allocator.Temp);
-                try
+                using var nodeStack = new NativeList<int>(math.max(1, compactNodes.Length), Allocator.Temp);
+                
+                nodeStack.Add(rootIndex);
+                while (nodeStack.Length > 0)
                 {
-                    nodeStack.Add(rootIndex);
-                    while (nodeStack.Length > 0)
+                    var lastNodeStackIndex = nodeStack.Length - 1;
+                    var nodeIndex = nodeStack[lastNodeStackIndex];
+                    nodeStack.RemoveAt(lastNodeStackIndex);
+                    ref var node = ref compactNodesPtr[nodeIndex];
+
+                    if (!IsValidCompactNodeID(node.compactNodeID))
+                        continue;
+
+                    if (nodes.IsCreated &&
+                        node.compactNodeID != RootID)
                     {
-                        var lastNodeStackIndex = nodeStack.Length - 1;
-                        var nodeIndex = nodeStack[lastNodeStackIndex];
-                        nodeStack.RemoveAt(lastNodeStackIndex);
-                        ref var node = ref compactNodesPtr[nodeIndex];
-
-                        if (!IsValidCompactNodeID(node.compactNodeID))
-                            continue;
-
-                        if (nodes.IsCreated &&
-                            node.compactNodeID != RootID)
-                        {
-                            nodes.Add(node.compactNodeID);
-                        }
-                        if (node.childCount > 0)
-                        {
-                            for (int i = 0, childIndex = node.childOffset + node.childCount - 1, childCount = node.childCount; i < childCount; i++, childIndex--)
-                                nodeStack.Add(childIndex);
-                        }
-                        else
-                        if (node.nodeInformation.brushMeshHash != Int32.MaxValue && brushes.IsCreated)
-                        {
-                            brushes.Add(node.compactNodeID);
-                        }
+                        nodes.Add(node.compactNodeID);
                     }
-                }
-                finally
-                {
-                    nodeStack.Dispose();
+                    if (node.childCount > 0)
+                    {
+                        for (int i = 0, childIndex = node.childOffset + node.childCount - 1, childCount = node.childCount; i < childCount; i++, childIndex--)
+                            nodeStack.Add(childIndex);
+                    }
+                    else
+                    if (node.nodeInformation.brushMeshHash != Int32.MaxValue && brushes.IsCreated)
+                    {
+                        brushes.Add(node.compactNodeID);
+                    }
                 }
             }
         }

@@ -20,7 +20,7 @@ namespace Chisel.Core
         public int uniqueParameterCount;
 
 
-        public bool IsCreated
+        public readonly bool IsCreated
         {
             get
             {
@@ -74,8 +74,9 @@ namespace Chisel.Core
         }
 
         internal void Dispose()
-        {
-            if (uniqueParameters.IsCreated) { uniqueParameters.Dispose(); uniqueParameters = default; }
+		{
+			// Confirmed to be called
+			if (uniqueParameters.IsCreated) { uniqueParameters.Dispose(); uniqueParameters = default; }
             uniqueParameterCount = 0;
         }
 
@@ -83,6 +84,6 @@ namespace Chisel.Core
         {
             uniqueParameters.Clear();
             uniqueParameterCount = 0;
-        }
+        } 
     }
 }

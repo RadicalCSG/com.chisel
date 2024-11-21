@@ -23,7 +23,7 @@ namespace Chisel.Core
 
         [UnityEngine.HideInInspector, NonSerialized] internal UnsafeList<SegmentVertex>            polygonVerticesList;
         [UnityEngine.HideInInspector, NonSerialized] internal UnsafeList<int>                      polygonVerticesSegments;
-
+         
         #region Generate
         public int PrepareAndCountRequiredBrushMeshes()
         {
@@ -38,43 +38,38 @@ namespace Chisel.Core
         }
 
         public bool GenerateNodes(BlobAssetReference<InternalChiselSurfaceArray> surfaceDefinitionBlob, NativeList<GeneratedNode> nodes, Allocator allocator)
-        {
-            // TODO: maybe just not bother with pathblob and just convert to path-matrices directly?
-            using (var pathMatrices = pathBlob.Value.GetUnsafeMatrices(Allocator.Temp))
-            {
-                var generatedBrushMeshes = new NativeList<BlobAssetReference<BrushMeshBlob>>(nodes.Length, Allocator.Temp);
-                try
-                {
-                    generatedBrushMeshes.Resize(nodes.Length, NativeArrayOptions.ClearMemory);
-                    if (!BrushMeshFactory.GenerateExtrudedShape(generatedBrushMeshes,
-                                                                in polygonVerticesList,
-                                                                in polygonVerticesSegments,
-                                                                in pathMatrices,
-                                                                in surfaceDefinitionBlob,
-                                                                allocator))
-                    {
-                        for (int i = 0; i < generatedBrushMeshes.Length; i++)
-                        {
-                            if (generatedBrushMeshes[i].IsCreated)
-                                generatedBrushMeshes[i].Dispose();
-                            generatedBrushMeshes[i] = default;
-                        }
-                        return false;
-                    }
-                    for (int i = 0; i < generatedBrushMeshes.Length; i++)
-                        nodes[i] = GeneratedNode.GenerateBrush(generatedBrushMeshes[i]);
-                    return true;
-                }
-                finally
-                {
-                    generatedBrushMeshes.Dispose();
-                }
-            }
-        }
+		{
+			NativeList<BlobAssetReference<BrushMeshBlob>> generatedBrushMeshes;
+			using var _generatedBrushMeshes = generatedBrushMeshes = new NativeList<BlobAssetReference<BrushMeshBlob>>(nodes.Length, Allocator.Temp);
+			generatedBrushMeshes.Resize(nodes.Length, NativeArrayOptions.ClearMemory);
+
+			// TODO: maybe just not bother with pathblob and just convert to path-matrices directly?
+			using var pathMatrices = pathBlob.Value.GetUnsafeMatrices(Allocator.Temp);
+
+			if (!BrushMeshFactory.GenerateExtrudedShape(generatedBrushMeshes,
+														in polygonVerticesList,
+														in polygonVerticesSegments,
+														in pathMatrices,
+														in surfaceDefinitionBlob,
+														allocator))
+			{
+				for (int i = 0; i < generatedBrushMeshes.Length; i++)
+				{
+					if (generatedBrushMeshes[i].IsCreated)
+						generatedBrushMeshes[i].Dispose();
+					generatedBrushMeshes[i] = default;
+				}
+				return false;
+			}
+			for (int i = 0; i < generatedBrushMeshes.Length; i++)
+				nodes[i] = GeneratedNode.GenerateBrush(generatedBrushMeshes[i]);
+			return true;
+		}
 
         public void Dispose()
-        {
-            if (pathBlob.IsCreated) pathBlob.Dispose();
+		{
+			// Confirmed to be called
+			if (pathBlob.IsCreated) pathBlob.Dispose();
             if (curveBlob.IsCreated) curveBlob.Dispose();
             if (polygonVerticesList.IsCreated) polygonVerticesList.Dispose();
             if (polygonVerticesSegments.IsCreated) polygonVerticesSegments.Dispose();

@@ -35,15 +35,13 @@ namespace Chisel.Core
             Debug.Assert(CompactHierarchyManager.IsValidNodeID(branchNodeID));
             if (children != null && children.Length > 0)
             {
-                using (var childrenNativeArray = children.ToNativeArray(Allocator.Temp))
-                {
-                    if (!CompactHierarchyManager.SetChildNodes(branchNodeID, childrenNativeArray))
-                    {
-                        CompactHierarchyManager.DestroyNode(branchNodeID);
-                        return CSGTreeBranch.Invalid;
-                    }
-                }
-            }
+				using var childrenNativeArray = children.ToNativeArray(Allocator.Temp);
+				if (!CompactHierarchyManager.SetChildNodes(branchNodeID, childrenNativeArray))
+				{
+					CompactHierarchyManager.DestroyNode(branchNodeID);
+					return CSGTreeBranch.Invalid;
+				}
+			}
             CompactHierarchyManager.SetDirty(branchNodeID);
             return CSGTreeBranch.Find(branchNodeID);
         }
