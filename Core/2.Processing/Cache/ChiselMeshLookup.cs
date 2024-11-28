@@ -24,11 +24,11 @@ namespace Chisel.Core
     {
         public class Data
 		{
-            public NativeParallelHashMap<int, RefCountedBrushMeshBlob> brushMeshBlobCache;
+            public NativeParallelHashMap<int, RefCountedBrushMeshBlob> brushMeshBlobCache; // Confirmed to get disposed
 
-            internal void Initialize()
+			internal void Initialize()
             {
-                brushMeshBlobCache = new NativeParallelHashMap<int, RefCountedBrushMeshBlob>(1000, Allocator.Persistent);
+                brushMeshBlobCache = new NativeParallelHashMap<int, RefCountedBrushMeshBlob>(1000, Allocator.Persistent); // Confirmed to get disposed
 			}
 
 			public void Dispose()

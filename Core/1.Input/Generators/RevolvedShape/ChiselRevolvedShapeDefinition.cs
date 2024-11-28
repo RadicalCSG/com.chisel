@@ -34,19 +34,20 @@ namespace Chisel.Core
         public int PrepareAndCountRequiredBrushMeshes()
         {
             ref var curve = ref curveBlob.Value;
-            if (!curve.ConvexPartition(curveSegments, out polygonVerticesList, out polygonVerticesSegments, Allocator.Persistent))
-                return 0;
+            if (!curve.ConvexPartition(curveSegments, out polygonVerticesList, out polygonVerticesSegments)) // Indirect
+				return 0;
 
             if (pathMatrices.IsCreated) pathMatrices.Dispose();
-			pathMatrices = BrushMeshFactory.GetCircleMatrices(revolveSegments, new float3(0, 1, 0), Allocator.Persistent);
+			pathMatrices = BrushMeshFactory.GetCircleMatrices(revolveSegments, new float3(0, 1, 0)); // Indirect
 
             BrushMeshFactory.Split2DPolygonAlongOriginXAxis(ref polygonVerticesList, ref polygonVerticesSegments);
 
             return polygonVerticesSegments.Length * (pathMatrices.Length - 1);
         }
 
-        public readonly bool GenerateNodes(BlobAssetReference<InternalChiselSurfaceArray> surfaceDefinitionBlob, NativeList<GeneratedNode> nodes, Allocator allocator)
-        {
+        public readonly bool GenerateNodes(BlobAssetReference<InternalChiselSurfaceArray> surfaceDefinitionBlob, NativeList<GeneratedNode> nodes, 
+                                           Allocator allocator = Allocator.Persistent)// Indirect
+		{
             NativeList<BlobAssetReference<BrushMeshBlob>> generatedBrushMeshes;
 			using var _generatedBrushMeshes = generatedBrushMeshes = new NativeList<BlobAssetReference<BrushMeshBlob>>(nodes.Length, Allocator.Temp);
             generatedBrushMeshes.Resize(nodes.Length, NativeArrayOptions.ClearMemory);
@@ -55,8 +56,8 @@ namespace Chisel.Core
                                                         in polygonVerticesSegments,
                                                         in pathMatrices,
                                                         in surfaceDefinitionBlob,
-                                                        allocator))
-            {
+                                                        allocator))// Indirect
+			{
                 for (int i = 0; i < generatedBrushMeshes.Length; i++)
                 {
                     if (generatedBrushMeshes[i].IsCreated)
@@ -66,8 +67,8 @@ namespace Chisel.Core
                 return false;
             }
             for (int i = 0; i < generatedBrushMeshes.Length; i++)
-                nodes[i] = GeneratedNode.GenerateBrush(generatedBrushMeshes[i]);
-            return true;
+                nodes[i] = GeneratedNode.GenerateBrush(generatedBrushMeshes[i]); // Confirmed to dispose
+			return true;
         }
 
         public void Dispose()

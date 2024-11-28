@@ -54,7 +54,7 @@ namespace Chisel.Core
             return horizontalSegments;
         }
 
-        public readonly bool GenerateNodes(BlobAssetReference<InternalChiselSurfaceArray> surfaceDefinitionBlob, NativeList<GeneratedNode> nodes, Allocator allocator)
+        public readonly bool GenerateNodes(BlobAssetReference<InternalChiselSurfaceArray> surfaceDefinitionBlob, NativeList<GeneratedNode> nodes, Allocator allocator = Allocator.Persistent)// Indirect
         {
             NativeList<BlobAssetReference<BrushMeshBlob>> generatedBrushMeshes;
 			using var _generatedBrushMeshes = generatedBrushMeshes = new NativeList<BlobAssetReference<BrushMeshBlob>>(nodes.Length, Allocator.Temp);
@@ -76,8 +76,8 @@ namespace Chisel.Core
                                                 verticalSegments,
                                                 horizontalSegments,
                                                 in surfaceDefinitionBlob,
-                                                allocator))
-            {
+                                                allocator))// Indirect
+			{
                 for (int i = 0; i < generatedBrushMeshes.Length; i++)
                 {
                     if (generatedBrushMeshes[i].IsCreated)
@@ -88,8 +88,8 @@ namespace Chisel.Core
             }
 
             for (int i = 0; i < generatedBrushMeshes.Length; i++)
-                nodes[i] = GeneratedNode.GenerateBrush(generatedBrushMeshes[i]);
-            return true;
+                nodes[i] = GeneratedNode.GenerateBrush(generatedBrushMeshes[i]); // Confirmed to dispose
+			return true;
         }
 
         public void Dispose() { }

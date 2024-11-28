@@ -64,20 +64,20 @@ namespace Chisel.Core
 
 		public void EnsureInitialized()
         {
-            if (!meshDescriptions.IsCreated) meshDescriptions = new NativeList<GeneratedMeshDescription>(Allocator.Persistent);
-            else meshDescriptions.Clear();
-            if (!subMeshSections.IsCreated) subMeshSections = new NativeList<SubMeshSection>(Allocator.Persistent);
-            else subMeshSections.Clear();
-            if (!meshes.IsCreated) meshes = new NativeList<Mesh.MeshData>(Allocator.Persistent);
-            if (!subMeshTriangleLookups.IsCreated) subMeshTriangleLookups = new NativeList<BlobAssetReference<SubMeshTriangleLookup>>(Allocator.Persistent);
+            if (!meshDescriptions.IsCreated) meshDescriptions = new NativeList<GeneratedMeshDescription>(Allocator.Persistent); // Confirmed to get disposed
+			else meshDescriptions.Clear();
+            if (!subMeshSections.IsCreated) subMeshSections = new NativeList<SubMeshSection>(Allocator.Persistent); // Confirmed to get disposed
+			else subMeshSections.Clear();
+            if (!meshes.IsCreated) meshes = new NativeList<Mesh.MeshData>(Allocator.Persistent); // Confirmed to get disposed
+			if (!subMeshTriangleLookups.IsCreated) subMeshTriangleLookups = new NativeList<BlobAssetReference<SubMeshTriangleLookup>>(Allocator.Persistent); // Confirmed to get disposed
 
 			if (!colliderDescriptors.IsCreated)
-				colliderDescriptors = new NativeArray<VertexAttributeDescriptor>(kColliderDescriptors, Allocator.Persistent);
+				colliderDescriptors = new NativeArray<VertexAttributeDescriptor>(kColliderDescriptors, Allocator.Persistent); // Confirmed to get disposed
 			if (!renderDescriptors.IsCreated)
-                renderDescriptors = new NativeArray<VertexAttributeDescriptor>(kRenderDescriptors, Allocator.Persistent);
+                renderDescriptors = new NativeArray<VertexAttributeDescriptor>(kRenderDescriptors, Allocator.Persistent); // Confirmed to get disposed
 			if (!selectDescriptors.IsCreated)
-				selectDescriptors = new NativeArray<VertexAttributeDescriptor>(kSelectDescriptors, Allocator.Persistent);
-        }
+				selectDescriptors = new NativeArray<VertexAttributeDescriptor>(kSelectDescriptors, Allocator.Persistent); // Confirmed to get disposed
+		}
 
         public void Clear()
         {

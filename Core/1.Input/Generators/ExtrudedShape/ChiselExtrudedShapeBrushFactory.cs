@@ -60,8 +60,8 @@ namespace Chisel.Core
                                                         in UnsafeList<int>              polygonVerticesSegments,
                                                         in UnsafeList<float4x4>         pathMatrices,
                                                         in BlobAssetReference<InternalChiselSurfaceArray> surfaceDefinitionBlob,
-                                                        Allocator allocator)
-        {
+                                                        Allocator allocator = Allocator.Persistent)// Indirect
+		{
             // TODO: make each extruded quad split into two triangles when it's not a perfect plane,
             //			split it to make sure it's convex
 
@@ -128,8 +128,8 @@ namespace Chisel.Core
                         CalculatePlanes(ref localPlanes, in polygons, in halfEdges, in localVertices);
                         UpdateHalfEdgePolygonIndices(ref halfEdgePolygonIndices, in polygons);
                         root.localBounds = CalculateBounds(in localVertices);
-                        brushMeshes[brushMeshIndex] = builder.CreateBlobAssetReference<BrushMeshBlob>(allocator);
-                        brushMeshIndex++;
+                        brushMeshes[brushMeshIndex] = builder.CreateBlobAssetReference<BrushMeshBlob>(allocator); // Allocator.Persistent / Confirmed to dispose
+						brushMeshIndex++;
                     }
                 }
             }

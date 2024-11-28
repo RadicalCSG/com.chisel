@@ -279,8 +279,8 @@ namespace Chisel.Core
                     localPlane            = localPlane
                 };
             }
-            var basePolygonsBlob = builder.CreateBlobAssetReference<BasePolygonsBlob>(Allocator.Persistent);
+            var basePolygonsBlob = builder.CreateBlobAssetReference<BasePolygonsBlob>(Allocator.Persistent); // Confirmed to be disposed
             basePolygonCache[nodeOrder] = basePolygonsBlob;
 		}
     }
-}
+}   

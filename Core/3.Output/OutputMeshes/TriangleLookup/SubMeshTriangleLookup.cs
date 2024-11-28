@@ -46,8 +46,8 @@ namespace Chisel.Core
 							NativeList<SubMeshDescriptions> subMeshDescriptions,
 							NativeArray<UnsafeList<SubMeshSurface>> subMeshSurfaces,
 							CompactHierarchyManagerInstance.ReadOnlyInstanceIDLookup instanceIDLookup,
-							Allocator allocator)
-        {
+							Allocator allocator = Allocator.Persistent)// Indirect
+		{
             var totalVertexCount    = subMeshSection.totalVertexCount;
             var totalIndexCount     = subMeshSection.totalIndexCount;
             var startIndex          = subMeshSection.startIndex;
@@ -124,7 +124,7 @@ namespace Chisel.Core
 			root.hashCode = (int)hashCode;
 			builder.Construct(ref root.selectionIndexDescriptions, selectionIndexDescriptions);
 
-			return builder.CreateBlobAssetReference<SubMeshTriangleLookup>(allocator);
+			return builder.CreateBlobAssetReference<SubMeshTriangleLookup>(allocator);//Allocator.Persistent / Confirmed to be disposed
 		}
 
 		public void CopyTo(ManagedSubMeshTriangleLookup managedSubMeshTriangleLookup)

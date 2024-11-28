@@ -18,8 +18,6 @@ namespace Chisel.Core
 		// Read/Write
         [NoAlias] public BrushWireframeManager brushWireframeManager;
 
-		public Allocator allocator;
-
 		public void Execute()
         {
             for (int index = 0; index < allUpdateBrushIndexOrders.Length; index++)
@@ -29,7 +27,7 @@ namespace Chisel.Core
                 var brushMeshHash   = compactHierarchy.GetBrushMeshID(brushNodeID);
                 if (brushMeshBlobs.TryGetValue(brushMeshHash, out var item) && item.brushMeshBlob.IsCreated)
                 {
-					var wireframeBlob = NativeWireframeBlob.Create(ref item.brushMeshBlob.Value, allocator);
+					var wireframeBlob = NativeWireframeBlob.Create(ref item.brushMeshBlob.Value);
 					brushWireframeManager.SetWireframe(brushNodeID, wireframeBlob);
                 }
             }

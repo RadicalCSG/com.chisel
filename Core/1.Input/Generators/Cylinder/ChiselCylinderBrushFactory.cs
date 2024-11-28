@@ -27,13 +27,13 @@ namespace Chisel.Core
                                                    bool     fitToBounds, 
                                                    in BlobAssetReference<InternalChiselSurfaceArray> surfaceDefinitionBlob,
                                                    out BlobAssetReference<BrushMeshBlob> brushMesh,
-                                                   Allocator allocator)
-        {
+                                                   Allocator allocator = Allocator.Persistent)// Indirect
+		{
             return GenerateConicalFrustumSubMesh(new float2(diameter, diameter), topHeight, 
                                                  new float2(diameter, diameter), bottomHeight, 
                                                  rotation, sides, fitToBounds, 
-                                                 in surfaceDefinitionBlob, out brushMesh, allocator);
-        }
+                                                 in surfaceDefinitionBlob, out brushMesh, allocator);// Indirect
+		}
 
         public static bool GenerateConicalFrustumSubMesh(float2 topDiameter,    float topHeight,
                                                          float2 bottomDiameter, float bottomHeight, 
@@ -41,9 +41,9 @@ namespace Chisel.Core
                                                          int                    segments, 
                                                          bool                   fitToBounds, 
                                                          in BlobAssetReference<InternalChiselSurfaceArray> surfaceDefinitionBlob,
-                                                         out BlobAssetReference<BrushMeshBlob>                brushMesh,
-                                                         Allocator                                            allocator)
-        {
+                                                         out BlobAssetReference<BrushMeshBlob>             brushMesh,
+                                                         Allocator                                         allocator = Allocator.Persistent)// Indirect
+		{
             brushMesh = BlobAssetReference<BrushMeshBlob>.Null;
             if (topHeight > bottomHeight) 
             {
@@ -107,7 +107,7 @@ namespace Chisel.Core
 			CalculatePlanes(ref localPlanes, in polygons, in halfEdges, in localVertices);
 			UpdateHalfEdgePolygonIndices(ref halfEdgePolygonIndices, in polygons);
 			root.localBounds = CalculateBounds(in localVertices);
-			brushMesh = builder.CreateBlobAssetReference<BrushMeshBlob>(allocator);
+			brushMesh = builder.CreateBlobAssetReference<BrushMeshBlob>(allocator); // Allocator.Persistent / Confirmed to dispose
 			return true;
 		}
         

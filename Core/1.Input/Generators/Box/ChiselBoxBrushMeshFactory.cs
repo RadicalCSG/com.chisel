@@ -43,8 +43,8 @@ namespace Chisel.Core
         public static bool CreateBox(float3 min, float3 max, 
                                      in BlobAssetReference<InternalChiselSurfaceArray> surfaceDefinition, 
                                      out BlobAssetReference<BrushMeshBlob> brushMesh,
-                                     Allocator allocator)
-        {
+                                     Allocator allocator = Allocator.Persistent)// Indirect
+		{
             brushMesh = BlobAssetReference<BrushMeshBlob>.Null;
             if (!BoundsExtensions.IsValid(min, max))
                 return false;
@@ -64,7 +64,7 @@ namespace Chisel.Core
 
 			brushMesh = CreateBox(vertex0, vertex1, vertex2, vertex3, vertex4, vertex5, vertex6, vertex7,
 																  in surfaceDefinition,
-																  allocator);
+																  allocator);// Indirect
 			return brushMesh != BlobAssetReference<BrushMeshBlob>.Null;
 		}
 
@@ -73,8 +73,8 @@ namespace Chisel.Core
         public static BlobAssetReference<BrushMeshBlob> CreateBox(float3 vertex0, float3 vertex1, float3 vertex2, float3 vertex3,
                                                                   float3 vertex4, float3 vertex5, float3 vertex6, float3 vertex7,
                                                                   in BlobAssetReference<InternalChiselSurfaceArray> surfaceDefinition, 
-                                                                  Allocator allocator)
-        {
+                                                                  Allocator allocator = Allocator.Persistent)// Indirect
+		{
             if (surfaceDefinition == BlobAssetReference<InternalChiselSurfaceArray>.Null)
                 return BlobAssetReference<BrushMeshBlob>.Null;
 
@@ -225,7 +225,7 @@ namespace Chisel.Core
 
 			CalculatePlanes(ref localPlanes, in polygons, in halfEdges, in localVertices);
 			root.localBounds = CalculateBounds(in localVertices);
-			return builder.CreateBlobAssetReference<BrushMeshBlob>(allocator);
+			return builder.CreateBlobAssetReference<BrushMeshBlob>(allocator); // Allocator.Persistent / Confirmed to dispose
 		}
 
         public static void CreateBox(Vector3 min, Vector3 max, out BrushMesh box)

@@ -77,7 +77,7 @@ namespace Chisel.Core
                                                 float	            sideHeight,
                                                 float	            sideDepth,
                                                 in BlobAssetReference<InternalChiselSurfaceArray> surfaceDefinitionBlob,
-                                                Allocator allocator)
+                                                Allocator           allocator = Allocator.Persistent)// Indirect
         {
             var absDepth    = math.abs(bounds.Max.z - bounds.Min.z);
             var absHeight   = math.abs(bounds.Max.y - bounds.Min.y);
@@ -161,7 +161,7 @@ namespace Chisel.Core
                 if (subMeshCount == 0)
                     continue;
 
-                if (!GenerateLinearStairsSubMeshes(brushMeshes, subMeshIndex, in description, in surfaceDefinitionBlob, allocator))
+                if (!GenerateLinearStairsSubMeshes(brushMeshes, subMeshIndex, in description, in surfaceDefinitionBlob, allocator)) // Indirect
                     return false;
 
                 for (int m = 0; m < subMeshCount; m++)

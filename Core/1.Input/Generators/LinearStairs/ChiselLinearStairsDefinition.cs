@@ -144,8 +144,9 @@ namespace Chisel.Core
             return description.subMeshCount;
         }
 
-        public readonly bool GenerateNodes(BlobAssetReference<InternalChiselSurfaceArray> surfaceDefinitionBlob, NativeList<GeneratedNode> nodes, Allocator allocator)
-        {
+        public readonly bool GenerateNodes(BlobAssetReference<InternalChiselSurfaceArray> surfaceDefinitionBlob, 
+                                           NativeList<GeneratedNode> nodes, Allocator allocator = Allocator.Persistent)// Indirect
+		{
             NativeList<BlobAssetReference<BrushMeshBlob>> generatedBrushMeshes;
 			using var _generatedBrushMeshes = generatedBrushMeshes = new NativeList<BlobAssetReference<BrushMeshBlob>>(nodes.Length, Allocator.Temp);
 
@@ -163,8 +164,8 @@ namespace Chisel.Core
                                                                 subMeshOffset,
                                                                 in description,
                                                                 in surfaceDefinitionBlob,
-                                                                allocator))
-            {
+                                                                allocator))// Indirect
+			{
                 for (int i = 0; i < generatedBrushMeshes.Length; i++)
                 {
                     if (generatedBrushMeshes[i].IsCreated)

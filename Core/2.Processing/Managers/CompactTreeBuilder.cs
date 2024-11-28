@@ -16,8 +16,9 @@ namespace Chisel.Core
         public static BlobAssetReference<CompactTree> Create(CompactHierarchy.ReadOnly  compactHierarchy, 
                                                              NativeArray<CompactNodeID> nodes, 
                                                              NativeArray<CompactNodeID> brushes, 
-                                                             CompactNodeID              treeCompactNodeID)
-        {
+                                                             CompactNodeID              treeCompactNodeID,
+															 Allocator					allocator = Allocator.Persistent)// Indirect
+		{
             if (brushes.Length == 0)
                 return BlobAssetReference<CompactTree>.Null;
 
@@ -178,8 +179,7 @@ namespace Chisel.Core
 				root.minNodeIDValue = minNodeIDValue;
 				root.maxNodeIDValue = maxNodeIDValue;
 				builder.Construct(ref root.brushIDValueToAncestorLegend, brushIDValueToAncestorLegend, desiredBrushIDValueToBottomUpLength);
-				var compactTree = builder.CreateBlobAssetReference<CompactTree>(Allocator.Persistent);
-				return compactTree;
+				return builder.CreateBlobAssetReference<CompactTree>(allocator); // Allocator.Persistent / Confirmed to be disposed
 			}
 		}
 

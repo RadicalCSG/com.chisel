@@ -160,14 +160,15 @@ namespace Chisel.Core
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal static CompactHierarchy CreateHierarchy(CompactHierarchyID hierarchyID, NodeID nodeID, Int32 instanceID, Allocator allocator)
-        {
+        internal static CompactHierarchy CreateHierarchy(CompactHierarchyID hierarchyID, 
+                                                         NodeID nodeID, Int32 instanceID, Allocator allocator = Allocator.Persistent) // Indirect
+		{
             var compactHierarchy = new CompactHierarchy
             {
-                brushMeshToBrush = new UnsafeParallelHashMap<int, CompactNodeID>(16384, allocator),
-                compactNodes     = new UnsafeList<CompactChildNode>(1024, allocator),
-				slotIndexMap     = SlotIndexMap.Create(allocator),
-                HierarchyID      = hierarchyID,
+                brushMeshToBrush = new UnsafeParallelHashMap<int, CompactNodeID>(16384, allocator), // Confirmed to be disposed
+				compactNodes     = new UnsafeList<CompactChildNode>(1024, allocator), // Confirmed to be disposed
+				slotIndexMap     = SlotIndexMap.Create(allocator), // Confirmed to be disposed
+				HierarchyID      = hierarchyID,
                 isCreated        = true
             };
             compactHierarchy.RootID = compactHierarchy.CreateNode(nodeID, new CompactNode

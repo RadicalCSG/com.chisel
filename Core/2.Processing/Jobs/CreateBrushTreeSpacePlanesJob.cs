@@ -45,8 +45,8 @@ namespace Chisel.Core
                 treePlane /= math.length(treePlane.xyz);
                 treeSpacePlaneArray[i] = treePlane;
             }
-            var result = builder.CreateBlobAssetReference<BrushTreeSpacePlanes>(Allocator.Persistent);
-            return result;
+            var result = builder.CreateBlobAssetReference<BrushTreeSpacePlanes>(Allocator.Persistent); // Confirmed to be disposed
+			return result;
         }
 
         public void Execute(int index)

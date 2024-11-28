@@ -209,7 +209,8 @@ namespace Chisel.Core
 		}
         */
 
-        public bool ConvexPartition(int curveSegments, out UnsafeList<SegmentVertex> polygonVerticesArray, out UnsafeList<int> polygonVerticesSegments, Allocator allocator)
+        public bool ConvexPartition(int curveSegments, out UnsafeList<SegmentVertex> polygonVerticesArray, out UnsafeList<int> polygonVerticesSegments, 
+                                    Allocator allocator = Allocator.Persistent) // Indirect
         {
 			using var shapeVertices = new NativeList<SegmentVertex>(Allocator.Temp);
 			AddPathVertices(curveSegments, shapeVertices);
@@ -217,8 +218,8 @@ namespace Chisel.Core
 			//Profiler.BeginSample("ConvexPartition");
 			if (shapeVertices.Length == 3)
 			{
-				polygonVerticesArray = new UnsafeList<SegmentVertex>(3, allocator);
-				polygonVerticesSegments = new UnsafeList<int>(1, allocator);
+				polygonVerticesArray = new UnsafeList<SegmentVertex>(3, allocator);//Allocator.Persistent
+				polygonVerticesSegments = new UnsafeList<int>(1, allocator);//Allocator.Persistent
 
 				polygonVerticesArray.Resize(3, NativeArrayOptions.UninitializedMemory);
 				polygonVerticesArray[0] = shapeVertices[0];
@@ -230,8 +231,8 @@ namespace Chisel.Core
 			}
 			else
 			{
-				polygonVerticesArray = new UnsafeList<SegmentVertex>(shapeVertices.Length * math.max(1, shapeVertices.Length / 2), allocator);
-				polygonVerticesSegments = new UnsafeList<int>(shapeVertices.Length, allocator);
+				polygonVerticesArray = new UnsafeList<SegmentVertex>(shapeVertices.Length * math.max(1, shapeVertices.Length / 2), allocator);//Allocator.Persistent
+				polygonVerticesSegments = new UnsafeList<int>(shapeVertices.Length, allocator);//Allocator.Persistent
 				if (!External.BayazitDecomposerBursted.ConvexPartition(shapeVertices,
 																	   ref polygonVerticesArray,
 																	   ref polygonVerticesSegments))

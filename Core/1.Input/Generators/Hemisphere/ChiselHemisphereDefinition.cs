@@ -26,16 +26,17 @@ namespace Chisel.Core
 
 
         #region Generate
-        public BlobAssetReference<BrushMeshBlob> GenerateMesh(BlobAssetReference<InternalChiselSurfaceArray> surfaceDefinitionBlob, Allocator allocator)
-        {
+        public readonly BlobAssetReference<BrushMeshBlob> GenerateMesh(BlobAssetReference<InternalChiselSurfaceArray> surfaceDefinitionBlob, 
+                                                                       Allocator allocator = Allocator.Persistent)// Indirect
+		{
             if (!BrushMeshFactory.GenerateHemisphere(diameterXYZ,
                                                      rotation, // TODO: useless?
                                                      horizontalSegments,
                                                      verticalSegments,
                                                      in surfaceDefinitionBlob,
                                                      out var newBrushMesh,
-                                                     allocator))
-                return default;
+                                                     allocator))// Indirect
+				return default;
             return newBrushMesh;
         }
         #endregion
