@@ -106,19 +106,19 @@ namespace Chisel.Core
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static UnsafeList<float4x4> GetCircleMatrices(int segments, float3 axis, Allocator allocator)
+        public static UnsafeList<float4x4> GetCircleMatrices(int segments, float3 axis, Allocator allocator = Allocator.Persistent)
         {
             return GetCircleMatrices(segments, axis, 360, allocator);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static UnsafeList<float4x4> GetCircleMatrices(int segments, float3 axis, float totalAngle, Allocator allocator)
+        public static UnsafeList<float4x4> GetCircleMatrices(int segments, float3 axis, float totalAngle, Allocator allocator = Allocator.Persistent)
         {
             var radiansPerSegment = math.radians(totalAngle / segments);
 
             segments++;
 
-            var matrices = new UnsafeList<float4x4>(segments, allocator);
+            var matrices = new UnsafeList<float4x4>(segments, allocator); // Allocator.Persistent
             matrices.Resize(segments, NativeArrayOptions.ClearMemory);
             for (int s = 0; s < segments; s++)
             {

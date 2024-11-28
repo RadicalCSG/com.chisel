@@ -332,8 +332,8 @@ namespace Chisel.Core
 			        root.surfaceOffset = 0;
                     root.surfaceCount = surfaceRenderBuffers.Length;
 
-                    var brushRenderBuffer = builder.CreateBlobAssetReference<ChiselBrushRenderBuffer>(Allocator.Persistent);
-                    if (brushRenderBufferCache[brushNodeOrder].IsCreated)
+                    var brushRenderBuffer = builder.CreateBlobAssetReference<ChiselBrushRenderBuffer>(Allocator.Persistent); // Confirmed to be disposed
+					if (brushRenderBufferCache[brushNodeOrder].IsCreated)
                     {
                         brushRenderBufferCache[brushNodeOrder].Dispose();
                         brushRenderBufferCache[brushNodeOrder] = default;

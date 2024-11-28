@@ -30,7 +30,7 @@ namespace Chisel.Core
 		}
 
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
-		public void SetWireframe(CompactNodeID compactNodeID, BlobAssetReference<NativeWireframeBlob> nativeOutline)
+		public void SetWireframe(CompactNodeID compactNodeID, BlobAssetReference<NativeWireframeBlob> nativeOutline) // Confirmed to be disposed
 		{
 			Debug.Assert(IsCreated);
 			if (outlineLookup.TryGetValue(compactNodeID, out var oldOutline))
@@ -38,7 +38,7 @@ namespace Chisel.Core
 				oldOutline.Dispose();
 				outlineLookup.Remove(compactNodeID);
 			}
-			outlineLookup[compactNodeID] = nativeOutline;
+			outlineLookup[compactNodeID] = nativeOutline; // Confirmed to be disposed
 		}
 
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]

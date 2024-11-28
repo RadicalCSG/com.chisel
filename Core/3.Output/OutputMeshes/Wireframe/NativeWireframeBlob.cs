@@ -13,7 +13,7 @@ namespace Chisel.Core
         public BlobArray<int> surfaceVisibleOuterLineRanges;
         public uint hash;
 
-        public static BlobAssetReference<NativeWireframeBlob> Create(ref BrushMeshBlob brushMesh, Allocator allocator)
+        public static BlobAssetReference<NativeWireframeBlob> Create(ref BrushMeshBlob brushMesh, Allocator allocator = Allocator.Persistent)// Indirect
 		{
 			using var builder = new BlobBuilder(Allocator.Temp);
 			ref var root = ref builder.ConstructRoot<NativeWireframeBlob>();
@@ -24,8 +24,8 @@ namespace Chisel.Core
 
 			builder.Construct(ref root.vertices, ref localVertices);
 
-			using var visibleOuterLines = new UnsafeList<int>(halfEdges.Length * 2, Allocator.Persistent);
-			using var surfaceVisibleOuterLines = new UnsafeList<int>(halfEdges.Length * 2, Allocator.Persistent);
+			using var visibleOuterLines = new UnsafeList<int>(halfEdges.Length * 2, Allocator.Temp);
+			using var surfaceVisibleOuterLines = new UnsafeList<int>(halfEdges.Length * 2, Allocator.Temp);
 			
 			var surfaceVisibleOuterLineRanges = builder.Allocate(ref root.surfaceVisibleOuterLineRanges, polygons.Length);
 			for (int p = 0; p < polygons.Length; p++)
@@ -56,7 +56,7 @@ namespace Chisel.Core
 									   visibleOuterLines.Hash(),
 									   surfaceVisibleOuterLines.Hash(),
 									   root.surfaceVisibleOuterLineRanges.Hash()));
-			return builder.CreateBlobAssetReference<NativeWireframeBlob>(allocator);
+			return builder.CreateBlobAssetReference<NativeWireframeBlob>(allocator); // Allocator.Persistent / Confirmed to be disposed
 		}
     }
 }

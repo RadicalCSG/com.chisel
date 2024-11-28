@@ -46,7 +46,8 @@ namespace Chisel.Core
                                                             stairs.sideWidth, stairs.sideHeight, stairs.sideDepth);
         }
 
-        public bool GenerateNodes(BlobAssetReference<InternalChiselSurfaceArray> surfaceDefinitionBlob, NativeList<GeneratedNode> nodes, Allocator allocator)
+        public bool GenerateNodes(BlobAssetReference<InternalChiselSurfaceArray> surfaceDefinitionBlob, NativeList<GeneratedNode> nodes, 
+                                  Allocator allocator = Allocator.Persistent) // Indirect
         {
             if (!shapeVertices.IsCreated)
                 return false;
@@ -63,8 +64,8 @@ namespace Chisel.Core
                                                         stairs.plateauHeight, stairs.riserType, stairs.riserDepth,
                                                         stairs.leftSide, stairs.rightSide,
                                                         stairs.sideWidth, stairs.sideHeight, stairs.sideDepth,
-                                                        in surfaceDefinitionBlob, allocator))
-            {
+                                                        in surfaceDefinitionBlob, allocator)) // Indirect
+			{
                 for (int i = 0; i < generatedBrushMeshes.Length; i++)
                 {
                     if (generatedBrushMeshes[i].IsCreated)
@@ -74,8 +75,8 @@ namespace Chisel.Core
                 return false;
             }
             for (int i = 0; i < generatedBrushMeshes.Length; i++)
-                nodes[i] = GeneratedNode.GenerateBrush(generatedBrushMeshes[i]);
-            return true;
+                nodes[i] = GeneratedNode.GenerateBrush(generatedBrushMeshes[i]); // Confirmed to dispose
+			return true;
         }
 
         public void Dispose()

@@ -32,23 +32,23 @@ namespace Chisel.Core
 
 			internal void Initialize()
             {
-                brushIDValues               = new NativeList<CompactNodeID>(1000, Allocator.Persistent);
-                allKnownBrushMeshIndices    = new NativeParallelHashSet<int>(1000, Allocator.Persistent);
+                brushIDValues               = new NativeList<CompactNodeID>(1000, Allocator.Persistent); // Confirmed to get disposed
+				allKnownBrushMeshIndices    = new NativeParallelHashSet<int>(1000, Allocator.Persistent); // Confirmed to get disposed
 
-                brushRenderBufferLookup     = new NativeParallelHashMap<CompactNodeID, BlobAssetReference<ChiselBrushRenderBuffer>>(1000, Allocator.Persistent);
+				brushRenderBufferLookup     = new NativeParallelHashMap<CompactNodeID, BlobAssetReference<ChiselBrushRenderBuffer>>(1000, Allocator.Persistent); // Confirmed to get disposed
 
-                // brushIndex
-                brushTreeSpaceBoundCache    = new NativeList<MinMaxAABB>(1000, Allocator.Persistent);
-                transformationCache         = new NativeList<NodeTransformations>(1000, Allocator.Persistent);
-                basePolygonCache            = new NativeList<BlobAssetReference<BasePolygonsBlob>>(1000, Allocator.Persistent);
-                treeSpaceVerticesCache      = new NativeList<BlobAssetReference<BrushTreeSpaceVerticesBlob>>(1000, Allocator.Persistent);
-                routingTableCache           = new NativeList<BlobAssetReference<RoutingTable>>(1000, Allocator.Persistent);
-                brushTreeSpacePlaneCache    = new NativeList<BlobAssetReference<BrushTreeSpacePlanes>>(1000, Allocator.Persistent);
-                brushesTouchedByBrushCache  = new NativeList<BlobAssetReference<BrushesTouchedByBrush>>(1000, Allocator.Persistent);
-                brushRenderBufferCache      = new NativeList<BlobAssetReference<ChiselBrushRenderBuffer>>(1000, Allocator.Persistent);
+				// brushIndex
+				brushTreeSpaceBoundCache    = new NativeList<MinMaxAABB>(1000, Allocator.Persistent); // Confirmed to get disposed
+				transformationCache         = new NativeList<NodeTransformations>(1000, Allocator.Persistent); // Confirmed to get disposed
+				basePolygonCache            = new NativeList<BlobAssetReference<BasePolygonsBlob>>(1000, Allocator.Persistent); // Confirmed to get disposed
+				treeSpaceVerticesCache      = new NativeList<BlobAssetReference<BrushTreeSpaceVerticesBlob>>(1000, Allocator.Persistent); // Confirmed to get disposed
+				routingTableCache           = new NativeList<BlobAssetReference<RoutingTable>>(1000, Allocator.Persistent); // Confirmed to get disposed
+				brushTreeSpacePlaneCache    = new NativeList<BlobAssetReference<BrushTreeSpacePlanes>>(1000, Allocator.Persistent); // Confirmed to get disposed
+				brushesTouchedByBrushCache  = new NativeList<BlobAssetReference<BrushesTouchedByBrush>>(1000, Allocator.Persistent); // Confirmed to get disposed
+				brushRenderBufferCache      = new NativeList<BlobAssetReference<ChiselBrushRenderBuffer>>(1000, Allocator.Persistent); // Confirmed to get disposed
 
-                parameters = new NativeArray<ChiselLayerParameters>(SurfaceDestinationParameters.ParameterCount, Allocator.Persistent);
-                for (int i = 0; i < parameters.Length; i++)
+				parameters = new NativeArray<ChiselLayerParameters>(SurfaceDestinationParameters.ParameterCount, Allocator.Persistent); // Confirmed to get disposed
+				for (int i = 0; i < parameters.Length; i++)
                 {
                     var parameter = parameters[i];
                     parameter.Initialize(); 

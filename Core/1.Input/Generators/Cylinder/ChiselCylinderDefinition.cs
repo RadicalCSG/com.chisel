@@ -219,8 +219,9 @@ namespace Chisel.Core
         #endregion
 
         #region Generate
-        public readonly BlobAssetReference<BrushMeshBlob> GenerateMesh(BlobAssetReference<InternalChiselSurfaceArray> surfaceDefinitionBlob, Allocator allocator)
-        {
+        public readonly BlobAssetReference<BrushMeshBlob> GenerateMesh(BlobAssetReference<InternalChiselSurfaceArray> surfaceDefinitionBlob, 
+                                                                       Allocator allocator = Allocator.Persistent)// Indirect
+		{
             var topDiameter     = new float2(topDiameterX, topDiameterZ);
             var bottomDiameter  = new float2(bottomDiameterX, bottomDiameterZ);
 
@@ -245,8 +246,8 @@ namespace Chisel.Core
                                                                 rotation, sides, fitToBounds, 
                                                                 in surfaceDefinitionBlob, 
                                                                 out var newBrushMesh, 
-                                                                allocator))
-                return default;
+                                                                allocator))// Indirect
+				return default;
             return newBrushMesh;
         }
         #endregion

@@ -313,10 +313,10 @@ namespace Chisel.Core
         [NativeDisableUnsafePtrRestriction] internal UnsafeList<ushort>*    m_ChainedIndices;
         [NativeDisableUnsafePtrRestriction] internal void*                  m_HashTable;
 
-        // Keep track of where the memory for this was allocated
-        Allocator m_AllocatorLabel;
+		// Keep track of where the memory for this was allocated
+		readonly Allocator m_AllocatorLabel;
 
-        public bool IsCreated => m_Vertices != null && m_ChainedIndices != null && m_ChainedIndices != null;
+        public readonly bool IsCreated => m_Vertices != null && m_ChainedIndices != null && m_ChainedIndices != null;
 
         public NativeArray<float3> AsArray()
         {
@@ -336,7 +336,7 @@ namespace Chisel.Core
 
         #region Constructors
 
-        public HashedVertices(int minCapacity, Allocator allocator = Allocator.Persistent)
+        public HashedVertices(int minCapacity, Allocator allocator)
             : this(minCapacity, minCapacity, allocator, 2)
         {
         }
@@ -397,8 +397,8 @@ namespace Chisel.Core
             AtomicSafetyHandle.SetBumpSecondaryVersionOnScheduleWrite(m_Safety, true);
 #endif
         }
-
-        public HashedVertices(HashedVertices otherHashedVertices, Allocator allocator = Allocator.Persistent)
+        /*
+        public HashedVertices(HashedVertices otherHashedVertices, Allocator allocator)
             : this((otherHashedVertices.m_Vertices != null) ? otherHashedVertices.m_Vertices->Length : 1, (otherHashedVertices.m_ChainedIndices != null) ? otherHashedVertices.m_ChainedIndices->Length : 1, allocator, 2)
         {
             CheckAllocated(otherHashedVertices);
@@ -406,7 +406,7 @@ namespace Chisel.Core
             m_Vertices->AddRangeNoResize(*otherHashedVertices.m_Vertices);
         }
 
-        public HashedVertices([ReadOnly] ref BlobArray<float3> uniqueVertices, Allocator allocator = Allocator.Persistent)
+        public HashedVertices([ReadOnly] ref BlobArray<float3> uniqueVertices, Allocator allocator)
             : this(uniqueVertices.Length, allocator)
         {
             // Add Unique vertex
@@ -422,7 +422,7 @@ namespace Chisel.Core
                 m_ChainedIndices->AddNoResize((ushort)prevChainIndex);
                 ((ushort*)m_HashTable)[(int)hashCode] = (ushort)(newChainIndex + 1);
             }
-        }
+        }*/
         #endregion
 
         #region Dispose

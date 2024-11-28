@@ -12,7 +12,7 @@ namespace Chisel.Core
                                                                 float   tubeRotation, float startAngle, float totalAngle,
                                                                 int     verticalSegments, int horizontalSegments,
                                                                 bool    fitCircle,
-                                                                Allocator allocator)
+                                                                Allocator allocator = Allocator.Temp)
         {
             var tubeRadiusX		= (tubeWidth  * 0.5f);
             var tubeRadiusY		= (tubeHeight * 0.5f);
@@ -73,8 +73,8 @@ namespace Chisel.Core
         public static bool GenerateTorus(NativeList<BlobAssetReference<BrushMeshBlob>> brushMeshes, 
                                                 in NativeArray<float3> vertices, int verticalSegments, int horizontalSegments,
                                                 in BlobAssetReference<InternalChiselSurfaceArray> surfaceDefinitionBlob,
-                                                Allocator allocator)
-        {
+                                                Allocator allocator = Allocator.Persistent)// Indirect
+		{
             NativeArray<int> segmentIndices;
 			using var _segmentIndices = segmentIndices = new NativeArray<int>(2 + verticalSegments, Allocator.Temp);
 
@@ -112,7 +112,7 @@ namespace Chisel.Core
 				CalculatePlanes(ref localPlanes, in polygons, in halfEdges, in localVertices);
 				UpdateHalfEdgePolygonIndices(ref halfEdgePolygonIndices, in polygons);
 				root.localBounds = CalculateBounds(in localVertices);
-				brushMeshes[n0] = builder.CreateBlobAssetReference<BrushMeshBlob>(allocator);
+				brushMeshes[n0] = builder.CreateBlobAssetReference<BrushMeshBlob>(allocator); // Allocator.Persistent / Confirmed to dispose
 			}
             return true;
         }

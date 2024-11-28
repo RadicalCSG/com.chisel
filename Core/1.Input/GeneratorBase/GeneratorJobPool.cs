@@ -64,7 +64,7 @@ namespace Chisel.Core
         }
 
         [BurstCompile(CompileSynchronously = true)]
-        struct ResizeTempLists : IJob
+        struct ResizeTempListsJob : IJob
         {
             [NoAlias, ReadOnly] public NativeArray<int> totalCounts;
 
@@ -123,7 +123,7 @@ namespace Chisel.Core
                 Profiler.BeginSample("GenPool_Allocator"); 
                 generatedNodeDefinitions    = new NativeList<GeneratedNodeDefinition>(defaultAllocator);
                 brushMeshBlobs              = new NativeList<BlobAssetReference<BrushMeshBlob>>(defaultAllocator);
-                var resizeTempLists = new ResizeTempLists
+                var resizeTempLists = new ResizeTempListsJob
                 {
                     // Read
                     totalCounts                 = totalCounts,
@@ -375,7 +375,7 @@ namespace Chisel.Core
                 return;
             }
 
-            brushMeshes[index] = generators[index].GenerateMesh(surfaceArrays[index], Allocator.Persistent);
+            brushMeshes[index] = generators[index].GenerateMesh(surfaceArrays[index]);
         }
     }
 
@@ -471,11 +471,11 @@ namespace Chisel.Core
             previousJobHandle.Complete(); // <- make sure we've completed the previous schedule
             previousJobHandle = default;
             
-            if (generators    .IsCreated) generators    .Clear(); else generators     = new NativeList<Generator>(Allocator.Persistent);
-            if (brushMeshes   .IsCreated) brushMeshes   .Clear(); else brushMeshes    = new NativeList<BlobAssetReference<BrushMeshBlob>>(Allocator.Persistent);
-            if (surfaceArrays .IsCreated) surfaceArrays .Clear(); else surfaceArrays  = new NativeList<BlobAssetReference<InternalChiselSurfaceArray>>(Allocator.Persistent);
-            if (generatorNodes.IsCreated) generatorNodes.Clear(); else generatorNodes = new NativeList<NodeID>(Allocator.Persistent);
-        }
+            if (generators    .IsCreated) generators    .Clear(); else generators     = new NativeList<Generator>(Allocator.Persistent); // Confirmed to be disposed
+			if (brushMeshes   .IsCreated) brushMeshes   .Clear(); else brushMeshes    = new NativeList<BlobAssetReference<BrushMeshBlob>>(Allocator.Persistent); // Confirmed to be disposed
+			if (surfaceArrays .IsCreated) surfaceArrays .Clear(); else surfaceArrays  = new NativeList<BlobAssetReference<InternalChiselSurfaceArray>>(Allocator.Persistent); // Confirmed to be disposed
+			if (generatorNodes.IsCreated) generatorNodes.Clear(); else generatorNodes = new NativeList<NodeID>(Allocator.Persistent); // Confirmed to be disposed
+		}
 
 		public void Dispose()
 		{
@@ -687,7 +687,7 @@ namespace Chisel.Core
 
                     ref var setting = ref settings->ElementAt(index);
                     if (!surfaceArrays[index].IsCreated ||
-                        !setting.GenerateNodes(surfaceArrays[index], nodes, Allocator.Persistent))
+                        !setting.GenerateNodes(surfaceArrays[index], nodes))
                     {
                         range = new Range { start = 0, end = 0 };
                         return;
@@ -727,12 +727,12 @@ namespace Chisel.Core
             previousJobHandle.Complete(); // <- make sure we've completed the previous schedule
             previousJobHandle = default;
 
-            if (generatorRootNodeIDs.IsCreated) generatorRootNodeIDs.Clear(); else generatorRootNodeIDs = new NativeList<NodeID>(Allocator.Persistent);
-            if (generatorNodeRanges .IsCreated) generatorNodeRanges .Clear(); else generatorNodeRanges  = new NativeList<Range>(Allocator.Persistent);
-            if (surfaceArrays       .IsCreated) surfaceArrays       .Clear(); else surfaceArrays        = new NativeList<BlobAssetReference<InternalChiselSurfaceArray>>(Allocator.Persistent);
-            if (generatedNodes      .IsCreated) generatedNodes      .Clear(); else generatedNodes       = new NativeList<GeneratedNode>(Allocator.Persistent);
-            if (generators          .IsCreated) generators          .Clear(); else generators           = new NativeList<Generator>(Allocator.Persistent);
-        }
+            if (generatorRootNodeIDs.IsCreated) generatorRootNodeIDs.Clear(); else generatorRootNodeIDs = new NativeList<NodeID>(Allocator.Persistent); // Confirmed to be disposed
+			if (generatorNodeRanges .IsCreated) generatorNodeRanges .Clear(); else generatorNodeRanges  = new NativeList<Range>(Allocator.Persistent); // Confirmed to be disposed
+			if (surfaceArrays       .IsCreated) surfaceArrays       .Clear(); else surfaceArrays        = new NativeList<BlobAssetReference<InternalChiselSurfaceArray>>(Allocator.Persistent); // Confirmed to be disposed
+			if (generatedNodes      .IsCreated) generatedNodes      .Clear(); else generatedNodes       = new NativeList<GeneratedNode>(Allocator.Persistent); // Confirmed to be disposed
+			if (generators          .IsCreated) generators          .Clear(); else generators           = new NativeList<Generator>(Allocator.Persistent); // Confirmed to be disposed
+		}
 
 		public void Dispose()
         {

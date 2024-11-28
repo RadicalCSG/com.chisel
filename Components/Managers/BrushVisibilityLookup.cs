@@ -114,11 +114,11 @@ namespace Chisel.Components
             //          A. needs to show lightmap of original mesh, even when modified
             //          B. updating lightmaps needs to still work as if original mesh is changed
             if (!compactNodeIDVisibilityStateLookup.IsCreated)
-				compactNodeIDVisibilityStateLookup = new NativeHashMap<CompactNodeID, VisibilityState>(2048, Allocator.Persistent);
+				compactNodeIDVisibilityStateLookup = new NativeHashMap<CompactNodeID, VisibilityState>(2048, Allocator.Persistent); // Confirmed to be disposed
 			compactNodeIDVisibilityStateLookup.Clear();
 
 			if (!instanceIDVisibilityStateLookup.IsCreated)
-				instanceIDVisibilityStateLookup = new NativeHashMap<int, VisibilityState>(2048, Allocator.Persistent);
+				instanceIDVisibilityStateLookup = new NativeHashMap<int, VisibilityState>(2048, Allocator.Persistent); // Confirmed to be disposed
 			instanceIDVisibilityStateLookup.Clear();
 
 			var sceneVisibilityManager = SceneVisibilityManager.instance;

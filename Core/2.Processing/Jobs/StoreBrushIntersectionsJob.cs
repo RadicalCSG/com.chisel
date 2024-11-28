@@ -68,9 +68,10 @@ namespace Chisel.Core
         static BlobAssetReference<BrushesTouchedByBrush> GenerateBrushesTouchedByBrush([NoAlias, ReadOnly] ref CompactTree                 compactTree, 
                                                                                        [NoAlias, ReadOnly] NativeArray<IndexOrder>         allTreeBrushIndexOrders, 
                                                                                        IndexOrder brushIndexOrder, CompactNodeID           rootNodeID,
-                                                                                       [NoAlias, ReadOnly] NativeArray<BrushIntersectWith> brushIntersectionsWith, int intersectionOffset, int intersectionCount)
-                                                                                       //[NoAlias] ref NativeList<BrushIntersection>         scratch_brushIntersection)
-        {
+                                                                                       [NoAlias, ReadOnly] NativeArray<BrushIntersectWith> brushIntersectionsWith, int intersectionOffset, int intersectionCount,
+                                                                                       //[NoAlias] ref NativeList<BrushIntersection>         scratch_brushIntersection,
+                                                                                       Allocator allocator = Allocator.Persistent)// Indirect
+		{
             var brushNodeID     = brushIndexOrder.compactNodeID;            
             var minBrushIDValue = compactTree.minBrushIDValue;
             var minNodeIDValue  = compactTree.minNodeIDValue;
@@ -139,8 +140,7 @@ namespace Chisel.Core
             builder.Construct(ref root.intersectionBits, bitset.twoBits);
             root.BitCount = bitset.Length;
             root.BitOffset = bitset.Offset;
-            var result = builder.CreateBlobAssetReference<BrushesTouchedByBrush>(Allocator.Persistent);
-            return result;
+            return builder.CreateBlobAssetReference<BrushesTouchedByBrush>(allocator);// Allocator.Persistent / Confirmed to be disposed
 		}
 
         public void Execute(int index)

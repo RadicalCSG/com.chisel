@@ -30,8 +30,8 @@ namespace Chisel.Core
                                                                                          float3 vertex3,
                                                                                          float3 vertex4,
                                                                                          in BlobAssetReference<InternalChiselSurfaceArray> surfaceArray, 
-                                                                                         Allocator allocator)
-        {
+                                                                                         Allocator allocator = Allocator.Persistent)// Indirect
+		{
             if (surfaceArray == BlobAssetReference<InternalChiselSurfaceArray>.Null)
                 return BlobAssetReference<BrushMeshBlob>.Null;
 
@@ -160,7 +160,7 @@ namespace Chisel.Core
 
 			CalculatePlanes(ref localPlanes, in polygons, in halfEdges, in localVertices);
 			root.localBounds = CalculateBounds(in localVertices);
-			return builder.CreateBlobAssetReference<BrushMeshBlob>(allocator);
+			return builder.CreateBlobAssetReference<BrushMeshBlob>(allocator);//Allocator.Persistent / Confirmed to dispose
 		}
 
 		readonly static BrushMesh.HalfEdge[] kSquarePyramidHalfEdges = new[]
@@ -214,8 +214,8 @@ namespace Chisel.Core
                                                                                              float3 vertex2,
                                                                                              float3 vertex3,
                                                                                              in BlobAssetReference<InternalChiselSurfaceArray> surfaceArray, 
-                                                                                             Allocator allocator)
-        {
+                                                                                             Allocator allocator = Allocator.Persistent)// Indirect
+		{
             if (surfaceArray == BlobAssetReference<InternalChiselSurfaceArray>.Null)
                 return BlobAssetReference<BrushMeshBlob>.Null;
 
@@ -322,7 +322,7 @@ namespace Chisel.Core
 
 			CalculatePlanes(ref localPlanes, in polygons, in halfEdges, in localVertices);
 			root.localBounds = CalculateBounds(in localVertices);
-			return builder.CreateBlobAssetReference<BrushMeshBlob>(allocator);
+			return builder.CreateBlobAssetReference<BrushMeshBlob>(allocator);//Allocator.Persistent / Confirmed to dispose
 		}
 
 		readonly static BrushMesh.HalfEdge[] kTriangularPyramidHalfEdges = new[]
@@ -381,8 +381,8 @@ namespace Chisel.Core
                                                                                  float3 vertex4,
                                                                                  float3 vertex5,
                                                                                  in BlobAssetReference<InternalChiselSurfaceArray> surfaceArray, 
-                                                                                 Allocator allocator)
-        {
+                                                                                 Allocator allocator = Allocator.Persistent)// Indirect
+		{
             if (surfaceArray == BlobAssetReference<InternalChiselSurfaceArray>.Null)
                 return BlobAssetReference<BrushMeshBlob>.Null;
 
@@ -519,7 +519,7 @@ namespace Chisel.Core
 
 			CalculatePlanes(ref localPlanes, in polygons, in halfEdges, in localVertices);
 			root.localBounds = CalculateBounds(in localVertices);
-			return builder.CreateBlobAssetReference<BrushMeshBlob>(allocator);
+			return builder.CreateBlobAssetReference<BrushMeshBlob>(allocator);//Allocator.Persistent / Confirmed to dispose
 		}
 
 

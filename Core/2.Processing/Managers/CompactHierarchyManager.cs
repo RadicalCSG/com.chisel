@@ -56,14 +56,13 @@ namespace Chisel.Core
 		public void Initialize()
         {
             Dispose();
-            Allocator allocator = Allocator.Persistent;
-			hierarchyIDLookup   = SlotIndexMap.Create(allocator);
-            nodeIDLookup        = SlotIndexMap.Create(allocator);
-            hierarchies         = new NativeList<CompactHierarchy>(allocator);
-            nodes               = new NativeList<CompactNodeID>(allocator);
-			allTrees            = new NativeList<CSGTree>(allocator);
-            updatedTrees        = new NativeList<CSGTree>(allocator);
-			brushOutlineManager = BrushWireframeManager.Create(allocator);
+            hierarchyIDLookup   = SlotIndexMap.Create(Allocator.Persistent); // Confirmed to be disposed
+            nodeIDLookup        = SlotIndexMap.Create(Allocator.Persistent); // Confirmed to be disposed
+			hierarchies         = new NativeList<CompactHierarchy>(Allocator.Persistent); // Confirmed to be disposed
+			nodes               = new NativeList<CompactNodeID>(Allocator.Persistent); // Confirmed to be disposed
+			allTrees            = new NativeList<CSGTree>(Allocator.Persistent); // Confirmed to be disposed
+			updatedTrees        = new NativeList<CSGTree>(Allocator.Persistent); // Confirmed to be disposed
+			brushOutlineManager = BrushWireframeManager.Create(Allocator.Persistent); // Confirmed to be disposed
 			defaultHierarchyID  = CreateHierarchy().HierarchyID;
         }
         
@@ -148,8 +147,8 @@ namespace Chisel.Core
         {
             var rootNodeID = CreateNodeID(out var rootNodeIndex);
             var hierarchyID = CreateHierarchyID(out var hierarchyIndex);
-            var hierarchy = CompactHierarchy.CreateHierarchy(hierarchyID, rootNodeID, instanceID, Allocator.Persistent);
-            if (hierarchies[hierarchyIndex].IsCreated)
+            var hierarchy = CompactHierarchy.CreateHierarchy(hierarchyID, rootNodeID, instanceID, Allocator.Persistent); // Confirmed to get disposed
+			if (hierarchies[hierarchyIndex].IsCreated)
             {
                 hierarchies[hierarchyIndex].Dispose();
                 hierarchies[hierarchyIndex] = default;

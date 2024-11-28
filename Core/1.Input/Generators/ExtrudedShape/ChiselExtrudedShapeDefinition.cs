@@ -31,13 +31,14 @@ namespace Chisel.Core
                 return 0; 
 
             ref var curve = ref curveBlob.Value;
-            if (!curve.ConvexPartition(curveSegments, out polygonVerticesList, out polygonVerticesSegments, Allocator.Persistent))
+            if (!curve.ConvexPartition(curveSegments, out polygonVerticesList, out polygonVerticesSegments))
                 return 0;
 
             return polygonVerticesSegments.Length;
         }
 
-        public bool GenerateNodes(BlobAssetReference<InternalChiselSurfaceArray> surfaceDefinitionBlob, NativeList<GeneratedNode> nodes, Allocator allocator)
+        public bool GenerateNodes(BlobAssetReference<InternalChiselSurfaceArray> surfaceDefinitionBlob, 
+                                  NativeList<GeneratedNode> nodes, Allocator allocator = Allocator.Persistent)// Indirect
 		{
 			NativeList<BlobAssetReference<BrushMeshBlob>> generatedBrushMeshes;
 			using var _generatedBrushMeshes = generatedBrushMeshes = new NativeList<BlobAssetReference<BrushMeshBlob>>(nodes.Length, Allocator.Temp);
@@ -51,7 +52,7 @@ namespace Chisel.Core
 														in polygonVerticesSegments,
 														in pathMatrices,
 														in surfaceDefinitionBlob,
-														allocator))
+														allocator))// Indirect
 			{
 				for (int i = 0; i < generatedBrushMeshes.Length; i++)
 				{
@@ -62,7 +63,7 @@ namespace Chisel.Core
 				return false;
 			}
 			for (int i = 0; i < generatedBrushMeshes.Length; i++)
-				nodes[i] = GeneratedNode.GenerateBrush(generatedBrushMeshes[i]);
+				nodes[i] = GeneratedNode.GenerateBrush(generatedBrushMeshes[i]); // Confirmed to dispose
 			return true;
 		}
 

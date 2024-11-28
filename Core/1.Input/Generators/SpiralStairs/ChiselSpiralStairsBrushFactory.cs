@@ -9,11 +9,11 @@ namespace Chisel.Core
     {
         // TODO: create helper method to cut brushes, use that instead of intersection + subtraction brushes
         // TODO: create spiral sides support
-        public static bool GenerateSpiralStairs(NativeList<BlobAssetReference<BrushMeshBlob>>        brushMeshes, 
-                                                ref ChiselSpiralStairs                               definition, 
+        public static bool GenerateSpiralStairs(NativeList<BlobAssetReference<BrushMeshBlob>>     brushMeshes, // Confirmed to dispose
+												ref ChiselSpiralStairs                            definition, 
                                                 in BlobAssetReference<InternalChiselSurfaceArray> surfaceDefinitionBlob,
-                                                Allocator                                            allocator)
-        {
+                                                Allocator                                         allocator = Allocator.Persistent)// Indirect
+		{
             const bool fitToBounds = false;
             const float kEpsilon = 0.001f;
 
@@ -122,8 +122,8 @@ namespace Chisel.Core
                                                        new float3(o1.x, minY, o1.y), // 6
                                                        new float3(o0.x, minY, o0.y), // 7
                                                        in surfaceDefinitionBlob,
-                                                       allocator);
-                            if (i == 0)
+                                                       allocator);// Indirect
+							if (i == 0)
                                 minY -= treadHeight;
 
                             minY += stepHeight;
@@ -192,8 +192,8 @@ namespace Chisel.Core
                                                                                                  new float3(o0.x, maxY, o0.y), // 3
                                                                                                  new float3(o1.x, maxY, o1.y), // 4
                                                                                                  in surfaceDefinitionBlob,
-                                                                                                 allocator);
-                                    subMeshIndex++;
+                                                                                                 allocator);// Indirect
+									subMeshIndex++;
                                 }
 
                                 {
@@ -203,8 +203,8 @@ namespace Chisel.Core
                                                                                                      new float3(i1.x, maxY, i1.y), // 2
                                                                                                      new float3(o1.x, maxY, o1.y), // 3,
                                                                                                      in surfaceDefinitionBlob, 
-                                                                                                     allocator);
-                                    subMeshIndex++;
+                                                                                                     allocator);// Indirect
+									subMeshIndex++;
                                 }
                             
                                 o0 = i0;
@@ -218,8 +218,8 @@ namespace Chisel.Core
                                                                                                  new float3(     i0.x, minY,     i0.y), // 1
                                                                                                  new float3( origin.x, minY, origin.y), // 3
                                                                                                  in surfaceDefinitionBlob, 
-                                                                                                 allocator);
-                                subMeshIndex++;
+                                                                                                 allocator);// Indirect
+								subMeshIndex++;
                             }
 
                             {
@@ -229,8 +229,8 @@ namespace Chisel.Core
                                                                                                  new float3( origin.x, maxY, origin.y), // 1
                                                                                                  new float3( origin.x, minY, origin.y), // 3
                                                                                                  in surfaceDefinitionBlob, 
-                                                                                                 allocator);
-                                subMeshIndex++;
+                                                                                                 allocator);// Indirect
+								subMeshIndex++;
                             }
 
                             if (i == 0)
@@ -268,8 +268,8 @@ namespace Chisel.Core
                                                                       new float3(     o1.x, maxY,     o1.y), // 4
                                                                       new float3(     o0.x, maxY,     o0.y), // 5
                                                                       in surfaceDefinitionBlob, 
-                                                                      allocator);
-                            if (i == 0)
+                                                                      allocator);// Indirect
+							if (i == 0)
                                 minY -= treadHeight;
 
                             if (riserType != StairsRiserType.FillDown)
@@ -282,11 +282,11 @@ namespace Chisel.Core
                         var subMeshIndex = treadStart - cylinderSubMeshCount;
 
 
-                        if (!BrushMeshFactory.GenerateCylinderSubMesh(outerDiameter, origin.y, origin.y + height, 0, outerSides, fitToBounds: fitToBounds,
-                                                                        in outerCylinderSurfaceDefinitionBlob,
-                                                                        out var brushMeshBlob,
-                                                                        allocator))
-                            return false;
+                        if (!GenerateCylinderSubMesh(outerDiameter, origin.y, origin.y + height, 0, outerSides, fitToBounds: fitToBounds,
+                                                     in outerCylinderSurfaceDefinitionBlob,
+                                                     out var brushMeshBlob,
+                                                     allocator))// Indirect
+							return false;
                         brushMeshes[subMeshIndex] = brushMeshBlob;
                         //brushContainer.operations[subMeshIndex] = CSGOperationType.Intersecting;
                     }
@@ -297,11 +297,11 @@ namespace Chisel.Core
 
 
 
-                        if (!BrushMeshFactory.GenerateCylinderSubMesh(innerDiameter, origin.y, origin.y + height, 0, innerSides, fitToBounds: fitToBounds,
-                                                                        in innerCylinderSurfaceDefinitionBlob,
-                                                                        out var brushMeshBlob,
-                                                                        allocator))
-                            return false;
+                        if (!GenerateCylinderSubMesh(innerDiameter, origin.y, origin.y + height, 0, innerSides, fitToBounds: fitToBounds,
+                                                     in innerCylinderSurfaceDefinitionBlob,
+                                                     out var brushMeshBlob,
+                                                     allocator))// Indirect
+							return false;
                         brushMeshes[subMeshIndex] = brushMeshBlob;
                         //brushContainer.operations[subMeshIndex] = CSGOperationType.Subtractive;
                     }
@@ -345,22 +345,20 @@ namespace Chisel.Core
                                                    new float3(o0.x, minY, o0.y), // 7
                                                    new float3(o1.x, minY, o1.y), // 6
                                                    in surfaceDefinitionBlob,
-                                                   allocator);
+                                                   allocator);// Indirect
 
-                        minY += stepHeight;
+						minY += stepHeight;
                         maxY += stepHeight;
                     }
                 }
 
 
                 {
-                    var subMeshIndex = subMeshCount - cylinderSubMeshCount;
-                
-                    if (!BrushMeshFactory.GenerateCylinderSubMesh(outerDiameter + nosingWidth, origin.y, origin.y + height, 0, outerSides, fitToBounds: fitToBounds,
-                                                                    in outerCylinderSurfaceDefinitionBlob,
-                                                                    out var brushMeshBlob,
-                                                                    allocator))
-                        return false;
+                    var subMeshIndex = subMeshCount - cylinderSubMeshCount;                
+                    if (!GenerateCylinderSubMesh(outerDiameter + nosingWidth, origin.y, origin.y + height, 0, outerSides, fitToBounds: fitToBounds,
+                                                 in outerCylinderSurfaceDefinitionBlob,
+                                                 out var brushMeshBlob, allocator))// Indirect
+						return false;
                     brushMeshes[subMeshIndex] = brushMeshBlob;
                     //brushContainer.operations[subMeshIndex] = CSGOperationType.Intersecting;
                 }
@@ -368,11 +366,10 @@ namespace Chisel.Core
                 if (haveInnerCyl)
                 {
                     var subMeshIndex = subMeshCount - 1;
-                    if (!BrushMeshFactory.GenerateCylinderSubMesh(innerDiameter - nosingWidth, origin.y, origin.y + height, 0, innerSides, fitToBounds: fitToBounds,
-                                                                    in innerCylinderSurfaceDefinitionBlob,
-                                                                    out var brushMeshBlob,
-                                                                    allocator))
-                        return false;
+                    if (!GenerateCylinderSubMesh(innerDiameter - nosingWidth, origin.y, origin.y + height, 0, innerSides, fitToBounds: fitToBounds,
+                                                 in innerCylinderSurfaceDefinitionBlob,
+                                                 out var brushMeshBlob, allocator))// Indirect
+						return false;
                     brushMeshes[subMeshIndex] = brushMeshBlob;
                     //brushContainer.operations[subMeshIndex] = CSGOperationType.Subtractive;
                 }

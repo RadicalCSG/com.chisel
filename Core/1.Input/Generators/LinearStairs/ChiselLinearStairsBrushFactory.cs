@@ -9,8 +9,10 @@ namespace Chisel.Core
     public sealed partial class BrushMeshFactory
     {
         // TODO: Fix all overlapping brushes
-        internal static bool GenerateLinearStairsSubMeshes(NativeList<BlobAssetReference<BrushMeshBlob>> brushMeshes, int subMeshOffset, in LineairStairsData description, in BlobAssetReference<InternalChiselSurfaceArray> surfaceDefinitionBlob, Allocator allocator)
-        {
+        internal static bool GenerateLinearStairsSubMeshes(NativeList<BlobAssetReference<BrushMeshBlob>> brushMeshes, int subMeshOffset, 
+                                                           in LineairStairsData description, in BlobAssetReference<InternalChiselSurfaceArray> surfaceDefinitionBlob, 
+                                                           Allocator allocator = Allocator.Persistent)// Indirect
+		{
             // TODO: properly assign all materials
 
             ref var surfaceDefinition = ref surfaceDefinitionBlob.Value;
@@ -57,7 +59,7 @@ namespace Chisel.Core
                         var maxZ = math.min(description.bounds.Max.z, max.z);
 
                         NativeArray<float3> vertices;
-						using var _vertices = vertices = new NativeArray<float3>(4, allocator);
+						using var _vertices = vertices = new NativeArray<float3>(4, Allocator.Temp);
                         if (i == 0 || description.riserType != StairsRiserType.Smooth)
                         {
                             vertices[0] = new float3(min.x, min.y, minZ);	// 0
@@ -73,7 +75,7 @@ namespace Chisel.Core
                         }
 
                         NativeArray<int> indices;
-						using var _indices = indices = new NativeArray<int>(6, allocator);
+						using var _indices = indices = new NativeArray<int>(6, Allocator.Temp);
                         indices[0] = 0;
                         indices[1] = 1;
                         indices[2] = 2;
@@ -81,9 +83,9 @@ namespace Chisel.Core
                         indices[4] = 2;
                         indices[5] = 3;
 
-                        brushMeshes[subMeshOffset + i] = CreateExtrudedSubMeshBlob(vertices, extrusion, indices, ref surfaceDefinition, allocator);
+                        brushMeshes[subMeshOffset + i] = CreateExtrudedSubMeshBlob(vertices, extrusion, indices, ref surfaceDefinition, allocator);// Indirect
 
-                        if (description.riserType != StairsRiserType.FillDown)
+						if (description.riserType != StairsRiserType.FillDown)
                             min.z += description.stepDepth;
                         max.z += description.stepDepth;
                         min.y -= description.stepHeight;
@@ -104,7 +106,7 @@ namespace Chisel.Core
                         }
 
                         NativeArray<float3> vertices;
-						using var _vertices = vertices = new NativeArray<float3>(4, allocator);
+						using var _vertices = vertices = new NativeArray<float3>(4, Allocator.Temp);
                         vertices[0] = new float3(min.x, min.y, min.z); // 0
                         vertices[0] = new float3(min.x, min.y, max.z); // 1
                         vertices[0] = new float3(min.x, max.y, max.z); // 2
@@ -112,7 +114,7 @@ namespace Chisel.Core
                         var extrusion = new float3(max.x - min.x, 0, 0);
 
                         NativeArray<int> indices;
-						using var _indices = indices = new NativeArray<int>(6, allocator);
+						using var _indices = indices = new NativeArray<int>(6, Allocator.Temp);
                         indices[0] = 0;
                         indices[1] = 1;
                         indices[2] = 2;
@@ -120,9 +122,9 @@ namespace Chisel.Core
                         indices[4] = 2;
                         indices[5] = 3;
 
-                        brushMeshes[subMeshOffset + description.startTread + i] = CreateExtrudedSubMeshBlob(vertices, extrusion, indices, ref surfaceDefinition, allocator);
+                        brushMeshes[subMeshOffset + description.startTread + i] = CreateExtrudedSubMeshBlob(vertices, extrusion, indices, ref surfaceDefinition, allocator);// Indirect
 
-                        min += stepOffset;
+						min += stepOffset;
                         max += stepOffset;
                     }
                 }
@@ -132,22 +134,25 @@ namespace Chisel.Core
                     var minX = description.bounds.Max.x - description.sideWidth;
                     var maxX = description.bounds.Max.x;
 
-                    GenerateStairsSide(brushMeshes, subMeshOffset + description.startLeftSide, description.stepCount, minX, maxX, description.leftSideType, in description, ref surfaceDefinition, description.leftSideDescription, allocator);
-                }
+                    GenerateStairsSide(brushMeshes, subMeshOffset + description.startLeftSide, description.stepCount, minX, maxX, 
+                                       description.leftSideType, in description, ref surfaceDefinition, description.leftSideDescription, allocator);// Indirect
+				}
 
                 if (description.rightSideDescription.enabled)
                 {
                     var minX = description.bounds.Min.x;
                     var maxX = description.bounds.Min.x + description.sideWidth;
 
-                    GenerateStairsSide(brushMeshes, subMeshOffset + description.startRightSide, description.stepCount, minX, maxX, description.rightSideType, in description, ref surfaceDefinition, description.rightSideDescription, allocator);
-                }
+                    GenerateStairsSide(brushMeshes, subMeshOffset + description.startRightSide, description.stepCount, minX, maxX, description.rightSideType, 
+                                       in description, ref surfaceDefinition, description.rightSideDescription, allocator);// Indirect
+				}
             }
             return true;
         }
 
-        static BlobAssetReference<BrushMeshBlob> CreateExtrudedSubMeshBlob([ReadOnly] NativeArray<float3> vertices, float3 extrusion, [ReadOnly] NativeArray<int> indices, ref InternalChiselSurfaceArray surfaceDefinition, Allocator allocator)
-        {
+        static BlobAssetReference<BrushMeshBlob> CreateExtrudedSubMeshBlob([ReadOnly] NativeArray<float3> vertices, float3 extrusion, [ReadOnly] NativeArray<int> indices, 
+                                                                           ref InternalChiselSurfaceArray surfaceDefinition, Allocator allocator = Allocator.Persistent)// Indirect
+		{
 			using var builder = new BlobBuilder(Allocator.Temp);
 			ref var root = ref builder.ConstructRoot<BrushMeshBlob>();
 			if (BrushMeshFactory.CreateExtrudedSubMesh(vertices, extrusion, indices,
@@ -168,14 +173,16 @@ namespace Chisel.Core
 				CalculatePlanes(ref localPlanes, in polygons, in halfEdges, in localVertices);
 				UpdateHalfEdgePolygonIndices(ref halfEdgePolygonIndices, in polygons);
 				root.localBounds = CalculateBounds(in localVertices);
-				return builder.CreateBlobAssetReference<BrushMeshBlob>(allocator);
+				return builder.CreateBlobAssetReference<BrushMeshBlob>(allocator); // Allocator.Persistent / Confirmed to dispose
 			}
 			else
 				return BlobAssetReference<BrushMeshBlob>.Null;
 		}
 
-        private static void GenerateStairsSide(NativeList<BlobAssetReference<BrushMeshBlob>> brushMeshes, int startIndex, int stepCount, float minX, float maxX, StairsSideType sideType, in LineairStairsData description, ref InternalChiselSurfaceArray surfaceDefinition, in LinearStairsSideData side, Allocator allocator)
-        {
+        private static void GenerateStairsSide(NativeList<BlobAssetReference<BrushMeshBlob>> brushMeshes, int startIndex, int stepCount, float minX, float maxX, 
+                                               StairsSideType sideType, in LineairStairsData description, ref InternalChiselSurfaceArray surfaceDefinition, 
+                                               in LinearStairsSideData side, Allocator allocator = Allocator.Persistent)// Indirect
+		{
             var min = new float3(minX, description.bounds.Max.y - description.treadHeight - description.stepHeight, description.bounds.Min.z + description.stepDepthOffset);
             var max = new float3(maxX, description.bounds.Max.y - description.treadHeight                         , description.bounds.Min.z + description.stepDepthOffset + description.stepDepth);
 
@@ -199,14 +206,14 @@ namespace Chisel.Core
                     var z1 = min.z - description.sideDepth;
 
                     NativeArray<float3> vertices;
-					using var _vertices = vertices = new NativeArray<float3>(4, allocator);
+					using var _vertices = vertices = new NativeArray<float3>(4, Allocator.Temp);
                     vertices[0] = new float3(min.x, y0, z0); // 0
                     vertices[1] = new float3(min.x, y1, z0); // 1
                     vertices[2] = new float3(min.x, y1, z1); // 2
                     vertices[3] = new float3(min.x, y0, z1); // 3
 
                     NativeArray<int> indices;
-					using var _indices = indices = new NativeArray<int>(6, allocator);
+					using var _indices = indices = new NativeArray<int>(6, Allocator.Temp);
                     indices[0] = 0; 
                     indices[1] = 1; 
                     indices[2] = 2;
@@ -214,8 +221,8 @@ namespace Chisel.Core
                     indices[4] = 2; 
                     indices[5] = 3;
 
-                    brushMeshes[startIndex] = CreateExtrudedSubMeshBlob(vertices, extrusion, indices, ref surfaceDefinition, allocator);
-                } else
+                    brushMeshes[startIndex] = CreateExtrudedSubMeshBlob(vertices, extrusion, indices, ref surfaceDefinition, allocator);// Indirect
+				} else
                     startIndex--;
 
                 // "wall" on stair steps
@@ -245,14 +252,14 @@ namespace Chisel.Core
                     //              * z1 y2 
 
                     NativeArray<float3> vertices;
-					using var _vertices = vertices = new NativeArray<float3>(4, allocator);
+					using var _vertices = vertices = new NativeArray<float3>(4, Allocator.Temp);
                     vertices[0] = new float3(min.x, y0, z0); // 0
                     vertices[1] = new float3(min.x, y1, z0); // 1
                     vertices[2] = new float3(min.x, y2, z1); // 2
                     vertices[3] = new float3(min.x, y3, z1); // 3
 
                     NativeArray<int> indices;
-					using var _indices = indices = new NativeArray<int>(6, allocator);
+					using var _indices = indices = new NativeArray<int>(6, Allocator.Temp);
                     indices[0] = 0;
                     indices[1] = 1;
                     indices[2] = 2;
@@ -260,8 +267,8 @@ namespace Chisel.Core
                     indices[4] = 2;
                     indices[5] = 3;
 
-                    brushMeshes[startIndex + 1] = CreateExtrudedSubMeshBlob(vertices, extrusion, indices, ref surfaceDefinition, allocator);
-                } else
+                    brushMeshes[startIndex + 1] = CreateExtrudedSubMeshBlob(vertices, extrusion, indices, ref surfaceDefinition, allocator);// Indirect
+				} else
                 {
                     var y1 = max.y;
                     var y0 = y1 + description.sideHeight;
@@ -297,7 +304,7 @@ namespace Chisel.Core
                         // y2 z2 *----------* y2 z1 
 
                         NativeArray<float3> vertices;
-						using var _vertices = vertices = new NativeArray<float3>(5, allocator);
+						using var _vertices = vertices = new NativeArray<float3>(5, Allocator.Temp);
                         vertices[0] = new float3(min.x, y0, z2); // 0
                         vertices[1] = new float3(min.x, y2, z2); // 1
                         vertices[2] = new float3(min.x, y2, z1); // 2
@@ -305,7 +312,7 @@ namespace Chisel.Core
                         vertices[4] = new float3(min.x, y0, z0); // 4
 
                         NativeArray<int> indices;
-						using var _indices = indices = new NativeArray<int>(9, allocator);
+						using var _indices = indices = new NativeArray<int>(9, Allocator.Temp);
                         indices[0] = 0;
                         indices[1] = 1;
                         indices[2] = 2;
@@ -316,8 +323,8 @@ namespace Chisel.Core
                         indices[7] = 3;
                         indices[8] = 4; // TODO: fix this
                                 
-                        brushMeshes[startIndex + 1] = CreateExtrudedSubMeshBlob(vertices, extrusion, indices, ref surfaceDefinition, allocator);
-                    } else
+                        brushMeshes[startIndex + 1] = CreateExtrudedSubMeshBlob(vertices, extrusion, indices, ref surfaceDefinition, allocator);// Indirect
+					} else
                     if (z3 > maxZ)
                     {
                         var z4 = maxZ;
@@ -337,7 +344,7 @@ namespace Chisel.Core
 
                         {
                             NativeArray<float3> vertices;
-							using var _vertices = vertices = new NativeArray<float3>(5, allocator);
+							using var _vertices = vertices = new NativeArray<float3>(5, Allocator.Temp);
                             vertices[0] = new float3(min.x, y0, z2); // 0
                             vertices[1] = new float3(min.x, y1, z2); // 1
                             vertices[2] = new float3(min.x, y5, z4); // 2
@@ -345,7 +352,7 @@ namespace Chisel.Core
                             vertices[4] = new float3(min.x, y0, z0); // 4
 
                             NativeArray<int> indices;
-							using var _indices = indices = new NativeArray<int>(9, allocator);
+							using var _indices = indices = new NativeArray<int>(9, Allocator.Temp);
                             indices[0] = 0;
                             indices[1] = 1;
                             indices[2] = 2;
@@ -356,8 +363,8 @@ namespace Chisel.Core
                             indices[7] = 3;
                             indices[8] = 4;
                                     
-                            brushMeshes[startIndex + 1] = CreateExtrudedSubMeshBlob(vertices, extrusion, indices, ref surfaceDefinition, allocator);
-                        }
+                            brushMeshes[startIndex + 1] = CreateExtrudedSubMeshBlob(vertices, extrusion, indices, ref surfaceDefinition, allocator);// Indirect
+						}
 
                         if ((description.sideDepth * aspect) < (description.plateauHeight - description.treadHeight))
                         {
@@ -372,14 +379,14 @@ namespace Chisel.Core
                             // y7 z4 *----* y7 z1 
 
                             NativeArray<float3> vertices;
-							using var _vertices = vertices = new NativeArray<float3>(4, allocator);
+							using var _vertices = vertices = new NativeArray<float3>(4, Allocator.Temp);
                             vertices[0] = new float3(min.x, y6, z4); // 0
                             vertices[1] = new float3(min.x, y7, z4); // 1
                             vertices[2] = new float3(min.x, y7, z1); // 2
                             vertices[3] = new float3(min.x, y3, z1); // 3
 
                             NativeArray<int> indices;
-							using var _indices = indices = new NativeArray<int>(6, allocator);
+							using var _indices = indices = new NativeArray<int>(6, Allocator.Temp);
                             indices[0] = 0;
                             indices[1] = 1;
                             indices[2] = 2;
@@ -387,8 +394,8 @@ namespace Chisel.Core
                             indices[4] = 2;
                             indices[5] = 3;
 
-                            brushMeshes[startIndex + 2] = CreateExtrudedSubMeshBlob(vertices, extrusion, indices, ref surfaceDefinition, allocator);
-                        }
+                            brushMeshes[startIndex + 2] = CreateExtrudedSubMeshBlob(vertices, extrusion, indices, ref surfaceDefinition, allocator);// Indirect
+						}
                     } else
                     {
                         // y0 z2 *---* y0 z0 
@@ -408,7 +415,7 @@ namespace Chisel.Core
                         //        y2 z3 *---* y2 z1 
 
                         NativeArray<float3> vertices;
-						using var _vertices = vertices = new NativeArray<float3>(6, allocator);
+						using var _vertices = vertices = new NativeArray<float3>(6, Allocator.Temp);
                         vertices[0] = new float3(min.x, y0, z2); // 0
                         vertices[1] = new float3(min.x, y1, z2); // 1
                         vertices[2] = new float3(min.x, y2, z3); // 2
@@ -417,7 +424,7 @@ namespace Chisel.Core
                         vertices[5] = new float3(min.x, y0, z0); // 5
 
                         NativeArray<int> indices;
-						using var _indices = indices = new NativeArray<int>(9, allocator);
+						using var _indices = indices = new NativeArray<int>(9, Allocator.Temp);
                         indices[0] = 0;
                         indices[1] = 1;
                         indices[2] = 2;
@@ -428,8 +435,8 @@ namespace Chisel.Core
                         indices[7] = 3;
                         indices[8] = 4;
                                 
-                        brushMeshes[startIndex + 1] = CreateExtrudedSubMeshBlob(vertices, extrusion, indices, ref surfaceDefinition, allocator);
-                    }
+                        brushMeshes[startIndex + 1] = CreateExtrudedSubMeshBlob(vertices, extrusion, indices, ref surfaceDefinition, allocator);// Indirect
+					}
                 }
             } else
             if (sideType == StairsSideType.Up)
@@ -447,14 +454,14 @@ namespace Chisel.Core
                     var z0 = description.bounds.Min.z;
                     var z1 = min.z;
                     NativeArray<float3> vertices;
-					using var _vertices = vertices = new NativeArray<float3>(4, allocator);
+					using var _vertices = vertices = new NativeArray<float3>(4, Allocator.Temp);
                     vertices[0] = new float3(min.x, y0, z0); // 0
                     vertices[1] = new float3(min.x, y1, z0); // 1
                     vertices[2] = new float3(min.x, y1, z1); // 2
                     vertices[3] = new float3(min.x, y0, z1); // 3
 
                     NativeArray<int> indices;
-					using var _indices = indices = new NativeArray<int>(6, allocator);
+					using var _indices = indices = new NativeArray<int>(6, Allocator.Temp);
                     indices[0] = 0;
                     indices[1] = 1;
                     indices[2] = 2;
@@ -462,8 +469,8 @@ namespace Chisel.Core
                     indices[4] = 2;
                     indices[5] = 3;
 
-                    brushMeshes[startIndex] = CreateExtrudedSubMeshBlob(vertices, extrusion, indices, ref surfaceDefinition, allocator);
-                } else
+                    brushMeshes[startIndex] = CreateExtrudedSubMeshBlob(vertices, extrusion, indices, ref surfaceDefinition, allocator);// Indirect
+				} else
                     startIndex--;
                 // "wall" on stair steps
                 for (int i = 0, j = startIndex + 1; i < stepCount; i++, j++)
@@ -485,14 +492,14 @@ namespace Chisel.Core
                     // z0 y1 *----* z1 y2 
 
                     NativeArray<float3> vertices;
-					using var _vertices = vertices = new NativeArray<float3>(4, allocator);
+					using var _vertices = vertices = new NativeArray<float3>(4, Allocator.Temp);
                     vertices[0] = new float3(min.x, y0, z0); // 0
                     vertices[1] = new float3(min.x, y1, z0); // 1
                     vertices[2] = new float3(min.x, y1, z1); // 2
                     vertices[3] = new float3(min.x, y3, z1); // 3
 
                     NativeArray<int> indices;
-					using var _indices = indices = new NativeArray<int>(6, allocator);
+					using var _indices = indices = new NativeArray<int>(6, Allocator.Temp);
                     indices[0] = 0;
                     indices[1] = 1;
                     indices[2] = 2;
@@ -500,9 +507,9 @@ namespace Chisel.Core
                     indices[4] = 2;
                     indices[5] = 3;
                     
-                    brushMeshes[j] = CreateExtrudedSubMeshBlob(vertices, extrusion, indices, ref surfaceDefinition, allocator);
+                    brushMeshes[j] = CreateExtrudedSubMeshBlob(vertices, extrusion, indices, ref surfaceDefinition, allocator);// Indirect
 
-                    min.z += description.stepDepth;
+					min.z += description.stepDepth;
                     max.z += description.stepDepth;
                     min.y -= description.stepHeight;
                     max.y -= description.stepHeight;
@@ -529,13 +536,13 @@ namespace Chisel.Core
                         //             \|
                         //              * z1 y1 
                         NativeArray<float3> vertices;
-						using var _vertices = vertices = new NativeArray<float3>(3, allocator);
+						using var _vertices = vertices = new NativeArray<float3>(3, Allocator.Temp);
                         vertices[0] = new float3(min.x, y0, z0); // 0
                         vertices[1] = new float3(min.x, y1, z1); // 1
                         vertices[2] = new float3(min.x, y0, z1); // 2
 
                         NativeArray<int> indices;
-						using var _indices = indices = new NativeArray<int>(6, allocator);
+						using var _indices = indices = new NativeArray<int>(6, Allocator.Temp);
                         indices[0] = 0;
                         indices[1] = 1;
                         indices[2] = 2;
@@ -543,9 +550,9 @@ namespace Chisel.Core
                         indices[4] = 2;
                         indices[5] = 3;
                         
-                        brushMeshes[j] = CreateExtrudedSubMeshBlob(vertices, extrusion, indices, ref surfaceDefinition, allocator);
+                        brushMeshes[j] = CreateExtrudedSubMeshBlob(vertices, extrusion, indices, ref surfaceDefinition, allocator);// Indirect
 
-                        min.z += description.stepDepth;
+						min.z += description.stepDepth;
                         max.z += description.stepDepth;
                         min.y -= description.stepHeight;
                         max.y -= description.stepHeight;
@@ -573,14 +580,14 @@ namespace Chisel.Core
                                 //       |         |
                                 // z3 y2 *---------* z1 y2 
                                 NativeArray<float3> vertices;
-								using var _vertices = vertices = new NativeArray<float3>(4, allocator);
+								using var _vertices = vertices = new NativeArray<float3>(4, Allocator.Temp);
                                 vertices[0] = new float3(min.x, y0, z3); // 0
                                 vertices[1] = new float3(min.x, y2, z3); // 1
                                 vertices[2] = new float3(min.x, y2, z1); // 2
                                 vertices[3] = new float3(min.x, y0, z1); // 3
 
                                 NativeArray<int> indices;
-								using var _indices = indices = new NativeArray<int>(6, allocator);
+								using var _indices = indices = new NativeArray<int>(6, Allocator.Temp);
                                 indices[0] = 0;
                                 indices[1] = 1;
                                 indices[2] = 2;
@@ -588,9 +595,9 @@ namespace Chisel.Core
                                 indices[4] = 2;
                                 indices[5] = 3;
                                 
-                                brushMeshes[startIndex] = CreateExtrudedSubMeshBlob(vertices, extrusion, indices, ref surfaceDefinition, allocator);
+                                brushMeshes[startIndex] = CreateExtrudedSubMeshBlob(vertices, extrusion, indices, ref surfaceDefinition, allocator);// Indirect
 
-                                min.z += description.stepDepth;
+								min.z += description.stepDepth;
                                 max.z += description.stepDepth;
                                 min.y -= description.stepHeight;
                                 max.y -= description.stepHeight;
@@ -612,7 +619,7 @@ namespace Chisel.Core
                                 //             \   |
                                 //        y2 z2 *--* z1 y2
                                 NativeArray<float3> vertices;
-								using var _vertices = vertices = new NativeArray<float3>(5, allocator);
+								using var _vertices = vertices = new NativeArray<float3>(5, Allocator.Temp);
                                 vertices[0] = new float3(min.x, y0, z3); // 0
                                 vertices[1] = new float3(min.x, y3, z3); // 1
                                 vertices[2] = new float3(min.x, y2, z2); // 2
@@ -620,7 +627,7 @@ namespace Chisel.Core
                                 vertices[4] = new float3(min.x, y0, z1); // 4
 
                                 NativeArray<int> indices;
-								using var _indices = indices = new NativeArray<int>(6, allocator);
+								using var _indices = indices = new NativeArray<int>(6, Allocator.Temp);
                                 indices[0] = 0;
                                 indices[1] = 1;
                                 indices[2] = 2;
@@ -628,9 +635,9 @@ namespace Chisel.Core
                                 indices[4] = 2;
                                 indices[5] = 3;
                                 
-                                brushMeshes[startIndex] = CreateExtrudedSubMeshBlob(vertices, extrusion, indices, ref surfaceDefinition, allocator);
+                                brushMeshes[startIndex] = CreateExtrudedSubMeshBlob(vertices, extrusion, indices, ref surfaceDefinition, allocator);// Indirect
 
-                                min.z += description.stepDepth;
+								min.z += description.stepDepth;
                                 max.z += description.stepDepth;
                                 min.y -= description.stepHeight;
                                 max.y -= description.stepHeight;
@@ -645,14 +652,14 @@ namespace Chisel.Core
                                 //             \   |
                                 //        z2 y2 *--* z1 y2 
                                 NativeArray<float3> vertices;
-								using var _vertices = vertices = new NativeArray<float3>(4, allocator);
+								using var _vertices = vertices = new NativeArray<float3>(4, Allocator.Temp);
                                 vertices[0] = new float3(min.x, y0, z0); // 0
                                 vertices[1] = new float3(min.x, y2, z2); // 1
                                 vertices[2] = new float3(min.x, y2, z1); // 2
                                 vertices[3] = new float3(min.x, y0, z1); // 3
 
                                 NativeArray<int> indices;
-								using var _indices = indices = new NativeArray<int>(6, allocator);
+								using var _indices = indices = new NativeArray<int>(6, Allocator.Temp);
                                 indices[0] = 0;
                                 indices[1] = 1;
                                 indices[2] = 2;
@@ -660,9 +667,9 @@ namespace Chisel.Core
                                 indices[4] = 2;
                                 indices[5] = 3;
 
-                                brushMeshes[startIndex] = CreateExtrudedSubMeshBlob(vertices, extrusion, indices, ref surfaceDefinition, allocator);
+                                brushMeshes[startIndex] = CreateExtrudedSubMeshBlob(vertices, extrusion, indices, ref surfaceDefinition, allocator);// Indirect
 
-                                min.z += description.stepDepth;
+								min.z += description.stepDepth;
                                 max.z += description.stepDepth;
                                 min.y -= description.stepHeight;
                                 max.y -= description.stepHeight;
@@ -685,14 +692,14 @@ namespace Chisel.Core
                             //             \|
                             //              * z1 y1 
                             NativeArray<float3> vertices;
-							using var _vertices = vertices = new NativeArray<float3>(4, allocator);
+							using var _vertices = vertices = new NativeArray<float3>(4, Allocator.Temp);
                             vertices[0] = new float3(min.x, y0, z2); // 0
                             vertices[1] = new float3(min.x, y2, z2); // 1
                             vertices[2] = new float3(min.x, y1, z1); // 2
                             vertices[3] = new float3(min.x, y0, z1); // 3
 
                             NativeArray<int> indices;
-                            using var _indices = indices = new NativeArray<int>(6, allocator);
+                            using var _indices = indices = new NativeArray<int>(6, Allocator.Temp);
                             indices[0] = 0;
                             indices[1] = 1;
                             indices[2] = 2;
@@ -700,9 +707,9 @@ namespace Chisel.Core
                             indices[4] = 2;
                             indices[5] = 3;
                             
-                            brushMeshes[startIndex] = CreateExtrudedSubMeshBlob(vertices, extrusion, indices, ref surfaceDefinition, allocator);
+                            brushMeshes[startIndex] = CreateExtrudedSubMeshBlob(vertices, extrusion, indices, ref surfaceDefinition, allocator);// Indirect
 
-                            min.z += description.stepDepth;
+							min.z += description.stepDepth;
                             max.z += description.stepDepth;
                             min.y -= description.stepHeight;
                             max.y -= description.stepHeight;
@@ -717,13 +724,13 @@ namespace Chisel.Core
                             //             \|
                             //              * z1 y1 
                             NativeArray<float3> vertices;
-							using var _vertices = vertices = new NativeArray<float3>(3, allocator);
+							using var _vertices = vertices = new NativeArray<float3>(3, Allocator.Temp);
                             vertices[0] = new float3(min.x, y0, z0); // 0
                             vertices[1] = new float3(min.x, y1, z1); // 1
                             vertices[2] = new float3(min.x, y0, z1); // 2
 
                             NativeArray<int> indices;
-							using var _indices = indices = new NativeArray<int>(6, allocator);
+							using var _indices = indices = new NativeArray<int>(6, Allocator.Temp);
                             indices[0] = 0;
                             indices[1] = 1;
                             indices[2] = 2;
@@ -731,9 +738,9 @@ namespace Chisel.Core
                             indices[4] = 2;
                             indices[5] = 3;
                             
-                            brushMeshes[startIndex] = CreateExtrudedSubMeshBlob(vertices, extrusion, indices, ref surfaceDefinition, allocator);
+                            brushMeshes[startIndex] = CreateExtrudedSubMeshBlob(vertices, extrusion, indices, ref surfaceDefinition, allocator);// Indirect
 
-                            min.z += description.stepDepth;
+							min.z += description.stepDepth;
                             max.z += description.stepDepth;
                             min.y -= description.stepHeight;
                             max.y -= description.stepHeight;
@@ -756,14 +763,14 @@ namespace Chisel.Core
                             //       |      |
                             // z0 y3 *------* z1 y3 
                             NativeArray<float3> vertices;
-							using var _vertices = vertices = new NativeArray<float3>(4, allocator);
+							using var _vertices = vertices = new NativeArray<float3>(4, Allocator.Temp);
                             vertices[0] = new float3(min.x, y0, z0); // 0
                             vertices[1] = new float3(min.x, y3, z0); // 1
                             vertices[2] = new float3(min.x, y3, z1); // 2
                             vertices[3] = new float3(min.x, y0, z1); // 3
 
                             NativeArray<int> indices;
-							using var _indices = indices = new NativeArray<int>(6, allocator);
+							using var _indices = indices = new NativeArray<int>(6, Allocator.Temp);
                             indices[0] = 0;
                             indices[1] = 1;
                             indices[2] = 2;
@@ -771,8 +778,8 @@ namespace Chisel.Core
                             indices[4] = 2;
                             indices[5] = 3;
                             
-                            brushMeshes[j] = CreateExtrudedSubMeshBlob(vertices, extrusion, indices, ref surfaceDefinition, allocator);
-                        } else
+                            brushMeshes[j] = CreateExtrudedSubMeshBlob(vertices, extrusion, indices, ref surfaceDefinition, allocator);// Indirect
+						} else
                         if (y1 < description.bounds.Min.y)
                         {
                             var z2 = max.z - ((description.bounds.Min.y - y1) / aspect);
@@ -790,7 +797,7 @@ namespace Chisel.Core
                             //             \   |
                             //        y3 z2 *--* z1 y3
                             NativeArray<float3> vertices;
-							using var _vertices = vertices = new NativeArray<float3>(5, allocator);
+							using var _vertices = vertices = new NativeArray<float3>(5, Allocator.Temp);
                             vertices[0] = new float3(min.x, y0, z0); // 0
                             vertices[1] = new float3(min.x, y2, z0); // 1
                             vertices[2] = new float3(min.x, y3, z2); // 2
@@ -798,7 +805,7 @@ namespace Chisel.Core
                             vertices[4] = new float3(min.x, y0, z1); // 4
 
                             NativeArray<int> indices;
-							using var _indices = indices = new NativeArray<int>(6, allocator);
+							using var _indices = indices = new NativeArray<int>(6, Allocator.Temp);
                             indices[0] = 0;
                             indices[1] = 1;
                             indices[2] = 2;
@@ -806,8 +813,8 @@ namespace Chisel.Core
                             indices[4] = 2;
                             indices[5] = 3;
 
-                            brushMeshes[j] = CreateExtrudedSubMeshBlob(vertices, extrusion, indices, ref surfaceDefinition, allocator);
-                        } else
+                            brushMeshes[j] = CreateExtrudedSubMeshBlob(vertices, extrusion, indices, ref surfaceDefinition, allocator);// Indirect
+						} else
                         {
                             // z0 y0 *------* z1 y0 
                             //       |      |
@@ -822,14 +829,14 @@ namespace Chisel.Core
                             //             \|
                             //              * z1 y1 
                             NativeArray<float3> vertices;
-							using var _vertices = vertices = new NativeArray<float3>(4, allocator);
+							using var _vertices = vertices = new NativeArray<float3>(4, Allocator.Temp);
                             vertices[0] = new float3(min.x, y0, z0); // 0
                             vertices[1] = new float3(min.x, y2, z0); // 1
                             vertices[2] = new float3(min.x, y1, z1); // 2
                             vertices[3] = new float3(min.x, y0, z1); // 3
 
                             NativeArray<int> indices;
-							using var _indices = indices = new NativeArray<int>(6, allocator);
+							using var _indices = indices = new NativeArray<int>(6, Allocator.Temp);
                             indices[0] = 0;
                             indices[1] = 1;
                             indices[2] = 2;
@@ -837,8 +844,8 @@ namespace Chisel.Core
                             indices[4] = 2;
                             indices[5] = 3;
 
-                            brushMeshes[j] = CreateExtrudedSubMeshBlob(vertices, extrusion, indices, ref surfaceDefinition, allocator);
-                        }
+                            brushMeshes[j] = CreateExtrudedSubMeshBlob(vertices, extrusion, indices, ref surfaceDefinition, allocator);// Indirect
+						}
 
                         min.z += description.stepDepth;
                         max.z += description.stepDepth;
@@ -867,13 +874,13 @@ namespace Chisel.Core
                             //       |  \
                             // y3 z0 *---* y3 z1 
                             NativeArray<float3> vertices;
-							using var _vertices = vertices = new NativeArray<float3>(3, allocator);
+							using var _vertices = vertices = new NativeArray<float3>(3, Allocator.Temp);
                             vertices[0] = new float3(min.x, y1, z0); // 0
                             vertices[1] = new float3(min.x, y3, z0); // 1
                             vertices[2] = new float3(min.x, y3, z1); // 2
 
                             NativeArray<int> indices;
-							using var _indices = indices = new NativeArray<int>(6, allocator);
+							using var _indices = indices = new NativeArray<int>(6, Allocator.Temp);
                             indices[0] = 0;
                             indices[1] = 1;
                             indices[2] = 2;
@@ -881,8 +888,8 @@ namespace Chisel.Core
                             indices[4] = 2;
                             indices[5] = 3;
 
-                            brushMeshes[startIndex + stepCount] = CreateExtrudedSubMeshBlob(vertices, extrusion, indices, ref surfaceDefinition, allocator);
-                        } else
+                            brushMeshes[startIndex + stepCount] = CreateExtrudedSubMeshBlob(vertices, extrusion, indices, ref surfaceDefinition, allocator);// Indirect
+						} else
                         {
                             // y1 z0 *
                             //       |\  
@@ -892,14 +899,14 @@ namespace Chisel.Core
                             //       |   |
                             // y3 z0 *---* y3 z1 
                             NativeArray<float3> vertices;
-							using var _vertices = vertices = new NativeArray<float3>(4, allocator);
+							using var _vertices = vertices = new NativeArray<float3>(4, Allocator.Temp);
                             vertices[0] = new float3(min.x, y1, z0); // 0
                             vertices[1] = new float3(min.x, y3, z0); // 1
                             vertices[2] = new float3(min.x, y3, z1); // 2
                             vertices[3] = new float3(min.x, y2, z1); // 3
 
                             NativeArray<int> indices;
-							using var _indices = indices = new NativeArray<int>(6, allocator);
+							using var _indices = indices = new NativeArray<int>(6, Allocator.Temp);
                             indices[0] = 0;
                             indices[1] = 1;
                             indices[2] = 2;
@@ -907,8 +914,8 @@ namespace Chisel.Core
                             indices[4] = 2;
                             indices[5] = 3;
                             
-                            brushMeshes[startIndex + stepCount] = CreateExtrudedSubMeshBlob(vertices, extrusion, indices, ref surfaceDefinition, allocator);
-                        }
+                            brushMeshes[startIndex + stepCount] = CreateExtrudedSubMeshBlob(vertices, extrusion, indices, ref surfaceDefinition, allocator);// Indirect
+						}
                     }
                 }
                 {
@@ -923,14 +930,14 @@ namespace Chisel.Core
 					//       |      |
 					// z0 y3 *------* z1 y3 
 					NativeArray<float3> vertices;
-					using var _vertices = vertices = new NativeArray<float3>(4, allocator);
+					using var _vertices = vertices = new NativeArray<float3>(4, Allocator.Temp);
                     vertices[0] = new float3(min.x, y0, z0); // 0
                     vertices[1] = new float3(min.x, y3, z0); // 1
                     vertices[2] = new float3(min.x, y3, z1); // 2
                     vertices[3] = new float3(min.x, y0, z1); // 3
 
 					NativeArray<int> indices;
-					using var _indices = indices = new NativeArray<int>(6, allocator);
+					using var _indices = indices = new NativeArray<int>(6, Allocator.Temp);
                     indices[0] = 0;
                     indices[1] = 1;
                     indices[2] = 2;
@@ -938,8 +945,8 @@ namespace Chisel.Core
                     indices[4] = 2;
                     indices[5] = 3;
 
-                    brushMeshes[startIndex + stepCount - 1] = CreateExtrudedSubMeshBlob(vertices, extrusion, indices, ref surfaceDefinition, allocator);
-                }
+                    brushMeshes[startIndex + stepCount - 1] = CreateExtrudedSubMeshBlob(vertices, extrusion, indices, ref surfaceDefinition, allocator);// Indirect
+				}
             }
         }
 

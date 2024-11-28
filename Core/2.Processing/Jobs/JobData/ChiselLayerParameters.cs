@@ -69,8 +69,8 @@ namespace Chisel.Core
 
         internal void Initialize()
         {
-            uniqueParameters = new UnsafeParallelHashMap<int, ChiselLayerParameterIndex>(1000, Allocator.Persistent);
-            uniqueParameterCount = 0;
+            uniqueParameters = new UnsafeParallelHashMap<int, ChiselLayerParameterIndex>(1000, Allocator.Persistent); // Confirmed to get disposed
+			uniqueParameterCount = 0;
         }
 
         internal void Dispose()

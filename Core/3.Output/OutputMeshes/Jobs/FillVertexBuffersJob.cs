@@ -224,15 +224,14 @@ namespace Chisel.Core
 
 		// Read / Write
 		[NoAlias, NativeDisableContainerSafetyRestriction] public NativeList<BlobAssetReference<SubMeshTriangleLookup>> subMeshTriangleLookups;
-		public Allocator allocator;
-
+		
 		public void Execute(int renderIndex)
         {
             var update = meshUpdates[renderIndex];
 			subMeshTriangleLookups[update.contentsIndex] =
 				SubMeshTriangleLookup.Create(
                     update.subMeshSection, subMeshDescriptions, subMeshSurfaces, 
-                    instanceIDLookup, allocator);
+                    instanceIDLookup);
 		}
     }        
 }

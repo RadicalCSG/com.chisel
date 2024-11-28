@@ -13,8 +13,8 @@ namespace Chisel.Core
                                                   float bottomLength,  int bottomSides, 
                                                   in BlobAssetReference<InternalChiselSurfaceArray> surfaceDefinitionBlob,
                                                   out BlobAssetReference<BrushMeshBlob> brushMesh,
-                                                  Allocator allocator)
-        {
+                                                  Allocator allocator = Allocator.Persistent)// Indirect
+		{
             brushMesh = BlobAssetReference<BrushMeshBlob>.Null;
 			using var builder = new BlobBuilder(Allocator.Temp);
 			ref var root = ref builder.ConstructRoot<BrushMeshBlob>();
@@ -44,7 +44,7 @@ namespace Chisel.Core
 			CalculatePlanes(ref localPlanes, in polygons, in halfEdges, in localVertices);
 			UpdateHalfEdgePolygonIndices(ref halfEdgePolygonIndices, in polygons);
 			root.localBounds = CalculateBounds(in localVertices);
-			brushMesh = builder.CreateBlobAssetReference<BrushMeshBlob>(allocator);
+			brushMesh = builder.CreateBlobAssetReference<BrushMeshBlob>(allocator); // Allocator.Persistent / Confirmed to dispose
 			return true;
 		}
 

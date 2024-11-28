@@ -167,8 +167,8 @@ namespace Chisel.Core
                 for (int i = 0; i < nodeCounter; i++)
                     nodeIDToTableIndex[routingTable[routingLookups[i].startIndex].NodeIDValue - minNodeID] = i;
 
-                var routingTableBlob = builder.CreateBlobAssetReference<RoutingTable>(Allocator.Persistent);
-                routingTableLookup[processedNodeOrder] = routingTableBlob;
+                var routingTableBlob = builder.CreateBlobAssetReference<RoutingTable>(Allocator.Persistent); // Confirmed to be disposed
+				routingTableLookup[processedNodeOrder] = routingTableBlob;
             }
         }
 
