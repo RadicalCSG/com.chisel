@@ -1,23 +1,27 @@
 ﻿using System;
+
+using Unity.Entities;
 using Unity.Mathematics;
 
 namespace Chisel.Core
 {
     sealed partial class ChiselWireframe
     {
-        // TODO: generate outlines somewhere in managed code
-
-
-        private static uint GetBrushOutlineHash(CSGTreeBrush brush)
+        private static uint GetOutlineHash(CSGTreeBrush brush)
         {
-            return brush.Outline.hash;
+            if (!brush.Outline.IsCreated)
+                return 0;
+            return brush.Outline.Value.hash;
         }
 
-        private static bool GetBrushOutlineValues(CSGTreeBrush      brush,
-                                                  ref float3[]      vertices,
-                                                  ref Int32[]       visibleOuterLines)
+        private static bool GetOutlineValues(CSGTreeBrush      brush,
+                                             ref float3[]      vertices,
+                                             ref Int32[]       visibleOuterLines)
         {
-            ref var brushOutline = ref brush.Outline;
+            if (brush.Outline == BlobAssetReference<NativeWireframeBlob>.Null ||
+				!brush.Outline.IsCreated)
+                return false;
+            ref var brushOutline = ref brush.Outline.Value;
             if (brushOutline.vertices.Length < BrushMesh.kMinimumVertices)
             {
                 //UnityEngine.Debug.Log($"{brushOutline.vertices.Length} {brushOutline.surfaceVisibleOuterLines.Length} {brushOutline.visibleOuterLines.Length} {brushOutline.hash}");
@@ -25,8 +29,8 @@ namespace Chisel.Core
             }
 
             // TODO: once we switch to managed code, remove need to copy outlines
-            vertices            = brushOutline.vertices.ToArray();
-            visibleOuterLines   = brushOutline.visibleOuterLines.ToArray();
+            vertices          = brushOutline.vertices.ToArray();
+            visibleOuterLines = brushOutline.visibleOuterLines.ToArray();
             return true;
         }
 
@@ -34,13 +38,16 @@ namespace Chisel.Core
                                                     Int32           surfaceIndex,
                                                     ref float3[]    vertices,
                                                     ref Int32[]     visibleOuterLines)
-        {
-            ref var brushOutline = ref brush.Outline;
-            if (brushOutline.vertices.Length < BrushMesh.kMinimumVertices)
+		{
+			if (brush.Outline == BlobAssetReference<NativeWireframeBlob>.Null ||
+				!brush.Outline.IsCreated)
+				return false;
+			ref var brushOutline = ref brush.Outline.Value;
+			if (brushOutline.vertices.Length < BrushMesh.kMinimumVertices)
                 return false;
 
-            var surfaceOutlineRanges = brushOutline.surfaceVisibleOuterLineRanges;
-            if (!surfaceOutlineRanges.IsCreated || surfaceIndex < 0 || surfaceIndex >= surfaceOutlineRanges.Length)
+            ref var surfaceOutlineRanges = ref brushOutline.surfaceVisibleOuterLineRanges;
+            if (surfaceIndex < 0 || surfaceIndex >= surfaceOutlineRanges.Length)
                 return false;
 
             var startIndex  = surfaceIndex == 0 ? 0 : surfaceOutlineRanges[surfaceIndex - 1];
@@ -49,7 +56,7 @@ namespace Chisel.Core
             if (count <= 0)
                 return false;
 
-            var surfaceOutlines = brushOutline.surfaceVisibleOuterLines;
+            ref var surfaceOutlines = ref brushOutline.surfaceVisibleOuterLines;
             if (startIndex < 0 || lastIndex > surfaceOutlines.Length)
                 return false;
 
@@ -71,7 +78,7 @@ namespace Chisel.Core
             if (!success)
                 return null;
 
-            wireframe.outlineHash = GetBrushOutlineHash(brush);
+            wireframe.outlineHash = GetOutlineHash(brush);
             return wireframe;
         }
 
@@ -85,34 +92,34 @@ namespace Chisel.Core
             if (!success)
                 return false;
 
-            wireframe.outlineHash = GetBrushOutlineHash(wireframe.originBrush);
+            wireframe.outlineHash = GetOutlineHash(wireframe.originBrush);
             return true;
         }
 
         private static ChiselWireframe CreateBrushWireframe(CSGTreeBrush brush)
         {
             var wireframe = new ChiselWireframe { originBrush = brush };
-            bool success = GetBrushOutlineValues(brush,
+            bool success = GetOutlineValues(brush,
                                                  ref wireframe.vertices,
                                                  ref wireframe.visibleOuterLines);
 
             if (!success)
                 return null;
 
-            wireframe.outlineHash = GetBrushOutlineHash(brush);
+            wireframe.outlineHash = GetOutlineHash(brush);
             return wireframe;
         }
 
         private static bool UpdateBrushWireframe(ChiselWireframe wireframe)
         {
-            bool success = GetBrushOutlineValues(wireframe.originBrush,
+            bool success = GetOutlineValues(wireframe.originBrush,
                                                  ref wireframe.vertices,
                                                  ref wireframe.visibleOuterLines);
 
             if (!success)
                 return false;
 
-            wireframe.outlineHash = GetBrushOutlineHash(wireframe.originBrush);
+            wireframe.outlineHash = GetOutlineHash(wireframe.originBrush);
             return true;
         }
     }

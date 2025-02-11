@@ -9,9 +9,9 @@ namespace Chisel.Editors
     public sealed class ChiselSurfaceDefinitionPropertyDrawer : PropertyDrawer
     {
 		// TODO: make these shared resources since this name is used in several places (with identical context)
-		private static readonly GUIContent  kSurfacesContent        = new("Surfaces");
-        private static readonly GUIContent  kSurfacePropertyContent = new();
+		private readonly static GUIContent  kSurfacesContent        = new("Surfaces");
 		private const string                kSurfacePropertyName    = "Surface {0}";
+        private static GUIContent           s_SurfacePropertyContent = new();
 
 
         public override float GetPropertyHeight(SerializedProperty property, GUIContent label)
@@ -55,9 +55,9 @@ namespace Chisel.Editors
                             SerializedProperty elementProperty;
                             for (int i = 0; i < surfacesProp.arraySize; i++)
                             {
-                                kSurfacePropertyContent.text = string.Format(kSurfacePropertyName, (i + 1));
+                                s_SurfacePropertyContent.text = string.Format(kSurfacePropertyName, (i + 1));
                                 elementProperty = surfacesProp.GetArrayElementAtIndex(i);
-                                EditorGUILayout.PropertyField(elementProperty, kSurfacePropertyContent, true);
+                                EditorGUILayout.PropertyField(elementProperty, s_SurfacePropertyContent, true);
                             }
                         }
                         finally

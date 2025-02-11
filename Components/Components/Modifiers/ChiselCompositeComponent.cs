@@ -5,7 +5,7 @@ namespace Chisel.Components
 {
     [ExecuteInEditMode, HelpURL(kDocumentationBaseURL + kNodeTypeName + kDocumentationExtension)]
     [DisallowMultipleComponent, AddComponentMenu("Chisel/" + kNodeTypeName)]
-    public sealed class ChiselCompositeComponent : ChiselNode, IChiselHasOperation
+    public sealed class ChiselCompositeComponent : ChiselNodeComponent, IChiselHasOperation
     {
         // This ensures names remain identical and the field actually exists, or a compile error occurs.
         public const string kOperationFieldName     = nameof(operation);
@@ -65,7 +65,7 @@ namespace Chisel.Components
             if (Node.Valid)
                 Debug.LogWarning($"{nameof(ChiselCompositeComponent)} already has a treeNode, but trying to create a new one", this);
             var tree = this.hierarchyItem.Model.Node;
-            Node = tree.CreateBranch(userID: GetInstanceID());
+            Node = tree.CreateBranch(instanceID: GetInstanceID());
             Node.Operation = operation;
             return Node;
         }

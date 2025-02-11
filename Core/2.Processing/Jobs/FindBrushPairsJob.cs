@@ -22,14 +22,15 @@ namespace Chisel.Core
         [NoAlias] public NativeList<BrushPair2> uniqueBrushPairs;
 
         // Per thread scratch memory
-        [NativeDisableContainerSafetyRestriction] NativeBitArray usedLookup;
+        //[NativeDisableContainerSafetyRestriction] NativeBitArray usedLookup;
 
         public void Execute()
         {
             var maxPairs = (maxOrder * maxOrder);
 
-            NativeCollectionHelpers.EnsureMinimumSizeAndClear(ref usedLookup, maxPairs);
-
+            NativeBitArray usedLookup;
+			using var _usedLookup = usedLookup = new NativeBitArray(maxPairs, Allocator.Temp);
+			//NativeCollectionHelpers.EnsureMinimumSizeAndClear(ref usedLookup, maxPairs);
             uniqueBrushPairs.Clear();
 
             int requiredCapacity = 0;

@@ -8,7 +8,7 @@ namespace Chisel.Editors
     [CustomPropertyDrawer(typeof(SmoothingGroup))]
     public sealed class SmoothingGroupPropertyDrawer : PropertyDrawer
     {
-        static readonly GUIContent[] kBits = new[]
+        readonly static GUIContent[] kBits = new[]
         {
             new GUIContent( "1"), new GUIContent( "2"), new GUIContent( "3"), new GUIContent( "4"),
             new GUIContent( "5"), new GUIContent( "6"), new GUIContent( "7"), new GUIContent( "8"),

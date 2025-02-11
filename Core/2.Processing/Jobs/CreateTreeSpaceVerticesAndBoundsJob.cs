@@ -13,37 +13,30 @@ namespace Chisel.Core
 {
     [BurstCompile(CompileSynchronously = true)]
     unsafe struct CreateTreeSpaceVerticesAndBoundsJob : IJobParallelForDefer
-    {        
-        public void InitializeLookups()
-        {
-            hierarchyIDLookupPtr    = (IDManager*)UnsafeUtility.AddressOf(ref CompactHierarchyManager.HierarchyIDLookup);
-        }
-
-        // Read
-        [NativeDisableUnsafePtrRestriction, NoAlias, ReadOnly] public IDManager*    hierarchyIDLookupPtr;
-        [NoAlias, ReadOnly] public NativeList<IndexOrder>                           rebuildTreeBrushIndexOrders;
+    {
+		// Read
+		[NoAlias, ReadOnly] public NativeList<IndexOrder>                           rebuildTreeBrushIndexOrders;
         [NoAlias, ReadOnly] public NativeList<NodeTransformations>                  transformationCache;
         [NoAlias, ReadOnly] public NativeArray<BlobAssetReference<BrushMeshBlob>>   brushMeshLookup;
 
         // Read/Write
-        [NativeDisableContainerSafetyRestriction, NoAlias, ReadOnly] public NativeArray<CompactHierarchy> hierarchyList;
+		[NativeDisableParallelForRestriction, NoAlias] public CompactHierarchyManagerInstance.ReadWrite compactHierarchyManager;
 
-        // Write
-        [NativeDisableParallelForRestriction]
+		// Write
+		[NativeDisableParallelForRestriction]
         [NoAlias, WriteOnly] public NativeList<MinMaxAABB> brushTreeSpaceBounds;
         [NativeDisableParallelForRestriction]
         [NoAlias, WriteOnly] public NativeList<BlobAssetReference<BrushTreeSpaceVerticesBlob>>  treeSpaceVerticesCache;
 
         static BlobAssetReference<BrushTreeSpaceVerticesBlob> Build(ref BlobArray<float3> localVertices, float4x4 nodeToTreeSpaceMatrix)
         {
-            var totalSize   = localVertices.Length * sizeof(float3);
-            var builder     = new BlobBuilder(Allocator.Temp, math.max(4, totalSize));
-            ref var root    = ref builder.ConstructRoot<BrushTreeSpaceVerticesBlob>();
+            var totalSize     = localVertices.Length * sizeof(float3);
+            using var builder = new BlobBuilder(Allocator.Temp, math.max(4, totalSize));
+            ref var root      = ref builder.ConstructRoot<BrushTreeSpaceVerticesBlob>();
             var treeSpaceVertices = builder.Allocate(ref root.treeSpaceVertices, localVertices.Length);
             for (int i = 0; i < localVertices.Length; i++)
                 treeSpaceVertices[i] = math.mul(nodeToTreeSpaceMatrix, new float4(localVertices[i], 1)).xyz;
             var result = builder.CreateBlobAssetReference<BrushTreeSpaceVerticesBlob>(Allocator.Persistent);
-            builder.Dispose();
             return result;
         }
 
@@ -54,12 +47,11 @@ namespace Chisel.Core
             var compactNodeID   = brushIndexOrder.compactNodeID;
             var transform       = transformationCache[brushNodeOrder];
 
-            ref var hierarchyIDLookup   = ref UnsafeUtility.AsRef<IDManager>(hierarchyIDLookupPtr);
-            var hierarchyIndex          = CompactHierarchyManager.GetHierarchyIndexUnsafe(ref hierarchyIDLookup, compactNodeID);
-            var hierarchyListPtr        = (CompactHierarchy*)hierarchyList.GetUnsafePtr();
-            ref var compactHierarchy    = ref hierarchyListPtr[hierarchyIndex];
-            
-            var mesh            = brushMeshLookup[brushNodeOrder];
+            var hierarchyIndex = compactHierarchyManager.GetHierarchyIndex(compactNodeID);
+            Debug.Assert(hierarchyIndex >= 0);
+            ref var compactHierarchy = ref compactHierarchyManager.GetHierarchyByIndex(hierarchyIndex);
+
+			var mesh            = brushMeshLookup[brushNodeOrder];
             if (mesh == BlobAssetReference<BrushMeshBlob>.Null ||
                 !mesh.IsCreated)
             {

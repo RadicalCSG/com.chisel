@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using Chisel.Core;
 using Chisel.Components;
 using UnityEditor;
+using UnityEngine;
+using UnityEngine.Pool;
 
 namespace Chisel.Editors
 {
@@ -18,22 +20,20 @@ namespace Chisel.Editors
         }
 
         public static Action NodeOperationUpdated;
-        //public static Action NodesSelectionUpdated;
         public static Action OperationNodesSelectionUpdated;
         public static Action GeneratorSelectionUpdated;
 
-        //static bool s_CurrHaveNodes = false;
         static bool s_CurrHaveOperationNodes = false;
         static bool s_CurrHaveGenerators = false;
         static CSGOperationType? s_CurrOperation = null;
-        static readonly List<ChiselNode> s_Nodes = new();
-        static readonly List<IChiselHasOperation> s_OperationNodes = new();
-        static readonly List<ChiselGeneratorComponent> s_Generators = new();
+        readonly static List<ChiselNodeComponent> s_Nodes = new();
+        readonly static List<IChiselHasOperation> s_OperationNodes = new();
+        readonly static List<ChiselGeneratorComponent> s_Generators = new();
 
         static void UpdateSelection()
         {
             s_Nodes.Clear();
-            s_Nodes.AddRange(Selection.GetFiltered<ChiselNode>(SelectionMode.DeepAssets));
+            s_Nodes.AddRange(Selection.GetFiltered<ChiselNodeComponent>(SelectionMode.DeepAssets));
             s_Generators.Clear();
             s_OperationNodes.Clear();
             foreach (var node in s_Nodes)
@@ -51,17 +51,11 @@ namespace Chisel.Editors
             var prevOperation = s_CurrOperation;
             UpdateOperationSelection();
 
-            //var prevHaveNodes = currHaveNodes;
-            //s_CurrHaveNodes = s_Nodes.Count > 0;
-
             var prevHaveGenerators = s_CurrHaveGenerators;
             s_CurrHaveGenerators = s_Generators.Count > 0;
 
             var prevHaveOperationNodes = s_CurrHaveOperationNodes;
             s_CurrHaveOperationNodes = s_OperationNodes.Count > 0;
-
-            //if (prevHaveNodes || currHaveNodes)
-            //    NodesSelectionUpdated?.Invoke();
 
             if (prevHaveGenerators || s_CurrHaveGenerators)
                 GeneratorSelectionUpdated?.Invoke();
@@ -108,11 +102,194 @@ namespace Chisel.Editors
         public static IReadOnlyList<ChiselGeneratorComponent> SelectedGenerators { get { return s_Generators; } }
         public static bool AreGeneratorsSelected { get { return s_Generators.Count > 0; } }
 
-        public static IReadOnlyList<ChiselNode> SelectedNodes { get { return s_Nodes; } }
+        public static IReadOnlyList<ChiselNodeComponent> SelectedNodes { get { return s_Nodes; } }
         public static bool AreNodesSelected { get { return s_Nodes.Count > 0; } }
 
         public static IReadOnlyList<IChiselHasOperation> SelectedOperationNodes { get { return s_OperationNodes; } }
         public static bool AreOperationNodesSelected { get { return s_OperationNodes.Count > 0; } }
         public static CSGOperationType? OperationOfSelectedNodes { get { return s_CurrOperation; } }
+
+        
+        struct ExtraPickingData
+        {
+            public SelectionDescription selectionDescription;
+			public Vector3              worldIntersectionPos;
+			public Vector3              worldCameraOrigin;
+			public float                cameraDistance;
+			public GameObject           selectionGameObject;
+        }
+
+        static ExtraPickingData extraPickingData;
+		readonly static List<ExtraPickingData> extraPickingDatas = new();
+
+		static bool record = false;
+
+        public static void GetOverlappingObjects(Vector2 screenPos, List<ChiselIntersection> outputIntersections)
+		{
+			var outputObjects = ListPool<UnityEngine.Object>.Get();
+            try
+			{
+				record = true;
+				extraPickingDatas.Clear();
+				HandleUtility.GetOverlappingObjects(screenPos, outputObjects);
+				record = false;
+				outputIntersections.Clear();
+				foreach (var extraPickingData in extraPickingDatas)
+				{
+					var intersection = Convert(extraPickingData);
+					outputIntersections.Add(intersection);
+				}
+				outputIntersections.Sort(delegate (ChiselIntersection x, ChiselIntersection y)
+				{
+					return x.brushIntersection.surfaceIntersection.distance.CompareTo(y.brushIntersection.surfaceIntersection.distance);
+				});
+			}
+            finally
+			{
+				record = false;
+				ListPool<UnityEngine.Object>.Release(outputObjects);
+			}
+        }
+
+		public static GameObject PickClosestGameObject(Vector2 screenPos, out ChiselIntersection intersection)
+		{
+			intersection = ChiselIntersection.None;
+			var outputIntersections = ListPool<ChiselIntersection>.Get();
+			try
+			{
+				GetOverlappingObjects(screenPos, outputIntersections);
+				if (outputIntersections.Count == 0)
+					return null;
+				intersection = outputIntersections[0];
+				return intersection.gameObject;
+			}
+			finally
+			{
+				ListPool<ChiselIntersection>.Release(outputIntersections);
+			}
+		}
+
+		static ChiselIntersection Convert(ExtraPickingData extraPickingData)
+		{
+            if (extraPickingData.selectionGameObject == null)
+                return ChiselIntersection.None;
+
+            if (!extraPickingData.selectionGameObject.TryGetComponent<ChiselNodeComponent>(out var chiselNode))
+                return ChiselIntersection.None;
+            
+			var model = chiselNode.hierarchyItem.Model;
+            if (!model)
+				return ChiselIntersection.None;
+
+			var treeBrush = CSGTreeBrush.Find(extraPickingData.selectionDescription.brushNodeID);
+            if (treeBrush == CSGTreeBrush.Invalid)
+				return ChiselIntersection.None;
+
+			var brushMeshBlob = BrushMeshManager.GetBrushMeshBlob(treeBrush.BrushMesh.BrushMeshID);
+            if (!brushMeshBlob.IsCreated)
+				return ChiselIntersection.None;
+
+			var surfaceIndex = extraPickingData.selectionDescription.surfaceIndex;
+
+			ref var brushMesh = ref brushMeshBlob.Value;
+			ref var planes = ref brushMesh.localPlanes;
+			var nodeToTreeSpace = (Matrix4x4)treeBrush.NodeToTreeSpaceMatrix;
+			var plane = new Plane(planes[surfaceIndex].xyz, planes[surfaceIndex].w);
+			var result_localPlane = plane;
+			var result_isReversed = false; // TODO: make this work somehow?
+
+			var treePlane = nodeToTreeSpace.TransformPlane(result_localPlane);
+			var result_treePlane = result_isReversed ? treePlane.flipped : treePlane;
+
+			var worldToLocalMatrix = model.transform.worldToLocalMatrix;
+
+			var localRayStart = worldToLocalMatrix.MultiplyPoint(extraPickingData.worldCameraOrigin);
+			var localRayVector = worldToLocalMatrix.MultiplyVector((extraPickingData.worldIntersectionPos - extraPickingData.worldCameraOrigin).normalized);
+			var localRay = new Ray(localRayStart, localRayVector);
+
+			var result_treeIntersection = Vector3.zero;
+			if (result_treePlane.Raycast(localRay, out float result_dist))
+			{
+				result_treeIntersection = localRay.GetPoint(result_dist);
+			}
+
+			CSGTreeBrushIntersection brushIntersection = new()
+			{
+				tree = treeBrush.Tree,
+				brush = treeBrush,
+
+				surfaceIndex = surfaceIndex,
+
+				surfaceIntersection = new ChiselSurfaceIntersection()
+				{
+					treePlane = result_treePlane,
+					treePlaneIntersection = result_treeIntersection,
+					distance = result_dist,
+				}
+			};
+            var chiselIntersection = ChiselSceneQuery.Convert(brushIntersection);
+            chiselIntersection.gameObject = extraPickingData.selectionGameObject;
+			return chiselIntersection;
+		}
+
+		public static ChiselIntersection LastIntersection
+        { 
+            get
+			{
+                return Convert(extraPickingData);
+			}
+        }
+
+		public static UnityEditor.RenderPickingResult PickingCallback(in UnityEditor.RenderPickingArgs args)
+        {
+            extraPickingData = default;
+			var selectionOffsets = new List<SelectionOffset>();
+			int pickingOffset = args.pickingIndex;
+			int pickingIndex = ChiselRenderObjects.RenderPickingModels(args.NeedToRenderForPicking, pickingOffset, selectionOffsets);
+
+			UnityEditor.RenderPickingResult result = 
+                new(pickingIndex - pickingOffset,
+		            delegate(int localPickingIndex, Vector3 worldPos, float depth)
+			        {
+                        localPickingIndex += pickingOffset;
+						for (int i = 0; i < selectionOffsets.Count; i++)
+                        {
+                            var selectionOffset = selectionOffsets[i];
+                            if (localPickingIndex < selectionOffset.offset)
+                            {
+                                Debug.Log("picking index not found");
+                                return null;
+                            }
+							if (localPickingIndex >= selectionOffset.offset + selectionOffset.Count)
+                                continue;
+
+                            var cameraPos = Camera.current.transform.position;
+							extraPickingData = new ExtraPickingData
+                            {
+                                selectionDescription = selectionOffset.selectionIndexDescriptions[localPickingIndex - selectionOffset.offset],
+                                worldIntersectionPos = worldPos,
+                                worldCameraOrigin = cameraPos,
+								cameraDistance = (worldPos - cameraPos).magnitude
+							};
+
+							var obj = Resources.InstanceIDToObject(extraPickingData.selectionDescription.instanceID);
+                            if (obj is MonoBehaviour monoBehaviour)
+								extraPickingData.selectionGameObject = monoBehaviour.gameObject;
+                            else
+							    extraPickingData.selectionGameObject = obj as GameObject;
+
+							if (record)
+                            {
+                                extraPickingDatas.Add(extraPickingData);
+							}
+
+							return obj;
+						}
+						Debug.Log("picking index not found");
+						return null;
+					});
+
+			return result;
+        }
     }
 }

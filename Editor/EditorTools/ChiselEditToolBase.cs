@@ -60,7 +60,7 @@ namespace Chisel.Editors
 
         public void OnEnable()
         {
-            lastSelectedTool = null; 
+            s_LastSelectedTool = null; 
             EditorApplication.delayCall -= OnDelayedEnable;
             EditorApplication.delayCall += OnDelayedEnable;
         }
@@ -68,13 +68,13 @@ namespace Chisel.Editors
         void OnDisable()
         {
             EditorApplication.delayCall -= OnDelayedEnable;
-            if (lastSelectedTool != null)
-                lastSelectedTool.OnDeactivate();
+            if (s_LastSelectedTool != null)
+                s_LastSelectedTool.OnDeactivate();
         }
 
         public void Awake()
         {
-            lastSelectedTool = null;
+            s_LastSelectedTool = null;
             UpdateIcon();
         }
 
@@ -109,23 +109,23 @@ namespace Chisel.Editors
         }
 
 
-        static ChiselEditToolBase lastSelectedTool = null;
-        static Type lastRememberedToolType = null;
+        static ChiselEditToolBase s_LastSelectedTool = null;
+        static Type s_LastRememberedToolType = null;
 
         public static void ClearLastRememberedType()
         { 
-            lastRememberedToolType = null; 
+            s_LastRememberedToolType = null; 
         }
 
         public void ToolNotActivatingBugWorkAround()
         {
-            if (lastSelectedTool == null)
+            if (s_LastSelectedTool == null)
             {
                 if (Tools.current != Tool.Custom &&
-                    lastRememberedToolType != null)
+                    s_LastRememberedToolType != null)
                 {
-                    ToolManager.SetActiveTool(lastRememberedToolType);
-                    lastRememberedToolType = null;
+                    ToolManager.SetActiveTool(s_LastRememberedToolType);
+                    s_LastRememberedToolType = null;
                 } else
                 if (ToolManager.activeToolType == this.GetType())
                 {
@@ -137,11 +137,11 @@ namespace Chisel.Editors
         public override void OnToolGUI(EditorWindow window)
         {
             var matrix = Handles.matrix;
-            if (lastSelectedTool == null ||
-                lastSelectedTool != this)
+            if (s_LastSelectedTool == null ||
+                s_LastSelectedTool != this)
             {
-                if (lastSelectedTool != null)
-                    lastSelectedTool.OnDeactivate();
+                if (s_LastSelectedTool != null)
+                    s_LastSelectedTool.OnDeactivate();
                 OnActivate();
             }
             var sceneView = window as SceneView;
@@ -155,8 +155,8 @@ namespace Chisel.Editors
 
         public virtual void OnActivate()
         {
-            lastSelectedTool = this;
-            lastRememberedToolType = this.GetType();
+            s_LastSelectedTool = this;
+            s_LastRememberedToolType = this.GetType();
 			Chisel.Editors.Snapping.SnapMask = ToolUsedSnappingModes;
             SnapSettingChanged?.Invoke();
         }

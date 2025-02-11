@@ -61,70 +61,67 @@ namespace Chisel.Editors
         #endregion
 
         #region Instance
-        static ChiselOutlineRenderer _instance;
+        static ChiselOutlineRenderer s_Instance;
         public static ChiselOutlineRenderer Instance
         {
             get
             {
-                if (_instance)
-                    return _instance;
+                if (s_Instance)
+                    return s_Instance;
 
-#if UNITY_2023_1_OR_NEWER
 				var foundInstances = UnityEngine.Object.FindObjectsByType<ChiselOutlineRenderer>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
-#else
-                var foundInstances = UnityEngine.Object.FindObjectsOfType<ChiselOutlineRenderer>();
-#endif
                 if (foundInstances == null ||
                     foundInstances.Length == 0)
                 {
-                    _instance = ScriptableObject.CreateInstance<ChiselOutlineRenderer>();					
-                    _instance.hideFlags = HideFlags.HideAndDontSave;
-                    return _instance;
+                    s_Instance = ScriptableObject.CreateInstance<ChiselOutlineRenderer>();					
+                    s_Instance.hideFlags = HideFlags.HideAndDontSave;
+                    return s_Instance;
                 }
 
-                _instance = foundInstances[0];
-                return _instance;
+                s_Instance = foundInstances[0];
+                return s_Instance;
             }
         }
-#endregion
+        #endregion
 
         ChiselRenderer	brushOutlineRenderer;
         ChiselRenderer	surfaceOutlineRenderer;
 
-        // NOTE: handle-renderers often take the orientation of the camera into account (for example: backfaced surfaces) so they need to be camera specific
-        Dictionary<Camera, ChiselRenderer>	handleRenderers = new Dictionary<Camera, ChiselRenderer>();
-        
-        static readonly Dictionary<SurfaceReference, ChiselWireframe> surfaceOutlineCache = new Dictionary<SurfaceReference, ChiselWireframe>();
-        readonly Dictionary<SurfaceOutline, ChiselWireframe>	surfaceOutlines		= new Dictionary<SurfaceOutline, ChiselWireframe>();
-        readonly Dictionary<SurfaceOutline, ChiselWireframe>	surfaceOutlineFixes	= new Dictionary<SurfaceOutline, ChiselWireframe>();
-        readonly HashSet<SurfaceOutline>	foundSurfaceOutlines	= new HashSet<SurfaceOutline>();
-        readonly HashSet<SurfaceOutline>	removedSurfaces			= new HashSet<SurfaceOutline>();
+        readonly static Dictionary<SurfaceReference, ChiselWireframe> s_SurfaceOutlineCache = new();
 
-        readonly Dictionary<BrushOutline, ChiselWireframe>		brushOutlines		= new Dictionary<BrushOutline, ChiselWireframe>();
-        readonly Dictionary<BrushOutline, ChiselWireframe>		brushOutlineFixes	= new Dictionary<BrushOutline, ChiselWireframe>();
-        readonly HashSet<CSGTreeBrush>		brushDirectlySelected	= new HashSet<CSGTreeBrush>();
-        readonly HashSet<CSGTreeBrush>		foundTreeBrushes		= new HashSet<CSGTreeBrush>();
-        readonly HashSet<BrushOutline>		foundBrushOutlines		= new HashSet<BrushOutline>();
-        readonly HashSet<BrushOutline>		removedBrushes			= new HashSet<BrushOutline>();
+		// NOTE: handle-renderers often take the orientation of the camera into account (for example: backfaced surfaces) so they need to be camera specific
+		readonly Dictionary<Camera, ChiselRenderer>          handleRenderers        = new();
 
-        static bool updateBrushSelection	= false;
-        static bool updateBrushWireframe	= false;
-        static bool updateBrushLineCache	= false;
+		readonly Dictionary<SurfaceOutline, ChiselWireframe> surfaceOutlines		= new();
+        readonly Dictionary<SurfaceOutline, ChiselWireframe> surfaceOutlineFixes	= new();
+        readonly HashSet<SurfaceOutline>	                 foundSurfaceOutlines	= new();
+        readonly HashSet<SurfaceOutline>	                 removedSurfaces		= new();
 
-        static bool updateSurfaceSelection	= false;
-        static bool updateSurfaceWireframe	= false;
-        static bool updateSurfaceLineCache	= false;
-        static bool clearSurfaceCache	    = false;
+        readonly Dictionary<BrushOutline, ChiselWireframe>   brushOutlines		    = new();
+        readonly Dictionary<BrushOutline, ChiselWireframe>   brushOutlineFixes	    = new();
+        readonly HashSet<CSGTreeBrush>		                 brushDirectlySelected	= new();
+        readonly HashSet<CSGTreeBrush>		                 foundTreeBrushes		= new();
+        readonly HashSet<BrushOutline>		                 foundBrushOutlines		= new();
+        readonly HashSet<BrushOutline>		                 removedBrushes			= new();
 
-        static VisualizationMode visualizationMode = VisualizationMode.Outline;
+        static bool s_UpdateBrushSelection	= false;
+        static bool s_UpdateBrushWireframe	= false;
+        static bool s_UpdateBrushLineCache	= false;
+
+        static bool s_UpdateSurfaceSelection = false;
+        static bool s_UpdateSurfaceWireframe = false;
+        static bool s_UpdateSurfaceLineCache = false;
+        static bool s_ClearSurfaceCache	     = false;
+
+        static VisualizationMode s_VisualizationMode = VisualizationMode.Outline;
         public static VisualizationMode VisualizationMode
         {
-            get { return visualizationMode; }
+            get { return s_VisualizationMode; }
             set
             {
-                visualizationMode       = value;
-                updateBrushWireframe	= true;
-                updateSurfaceWireframe	= true;
+                s_VisualizationMode       = value;
+                s_UpdateBrushWireframe	= true;
+                s_UpdateSurfaceWireframe	= true;
             }
         }
 
@@ -157,42 +154,42 @@ namespace Chisel.Editors
         {
             // Defer since we could potentially get several events before we actually render
             // also, not everything might be set up correctly just yet.
-            updateBrushSelection = true;
-            updateSurfaceSelection = true;
+            s_UpdateBrushSelection = true;
+            s_UpdateSurfaceSelection = true;
         }
 
         internal void OnSyncedBrushesChanged()
         {
             // Defer since we could potentially get several events before we actually render
             // also, not everything might be set up correctly just yet.
-            updateBrushSelection = true;
-            updateSurfaceSelection = true;
-            clearSurfaceCache = true;
+            s_UpdateBrushSelection = true;
+            s_UpdateSurfaceSelection = true;
+            s_ClearSurfaceCache = true;
         }
 
         internal void OnSelectionChanged()
         {
             // Defer since we could potentially get several events before we actually render
             // also, not everything might be set up correctly just yet.
-            updateBrushSelection = true;
-            updateSurfaceSelection = true;
+            s_UpdateBrushSelection = true;
+            s_UpdateSurfaceSelection = true;
         }
 
         internal void OnSurfaceSelectionChanged()
         {
             // Defer since we could potentially get several events before we actually render
-            updateSurfaceSelection = true;
+            s_UpdateSurfaceSelection = true;
         }
         
         internal void OnSurfaceHoverChanged()
         {
             // Defer since we could potentially get several events before we actually render
-            updateSurfaceSelection = true;
+            s_UpdateSurfaceSelection = true;
         }
         
         static internal void OnUndoRedoPerformed()
         {
-            clearSurfaceCache = true;
+            s_ClearSurfaceCache = true;
         }
 
 
@@ -200,18 +197,18 @@ namespace Chisel.Editors
         {
             // Defer since we could potentially get several events before we actually render
             // also, not everything might be set up correctly just yet.
-            updateBrushWireframe = true;
-            updateSurfaceWireframe = true;
-            clearSurfaceCache = true;
+            s_UpdateBrushWireframe = true;
+            s_UpdateSurfaceWireframe = true;
+            s_ClearSurfaceCache = true;
         }
 
         internal void OnTransformationChanged()
         {
             // Defer since we could potentially get several events before we actually render
             // also, not everything might be set up correctly just yet.
-            updateBrushLineCache = true;
-            updateSurfaceLineCache = true;
-            clearSurfaceCache = true;
+            s_UpdateBrushLineCache = true;
+            s_UpdateSurfaceLineCache = true;
+            s_ClearSurfaceCache = true;
         }
 
 
@@ -228,14 +225,14 @@ namespace Chisel.Editors
             foundBrushOutlines.Clear();
             removedBrushes.Clear();
             
-            updateBrushSelection = true;
-            updateBrushWireframe = false;
-            updateBrushLineCache = false;
+            s_UpdateBrushSelection = true;
+            s_UpdateBrushWireframe = false;
+            s_UpdateBrushLineCache = false;
 
-            updateSurfaceSelection = true;
-            updateSurfaceWireframe = false;
-            updateSurfaceLineCache = false;
-            clearSurfaceCache = true;
+            s_UpdateSurfaceSelection = true;
+            s_UpdateSurfaceWireframe = false;
+            s_UpdateSurfaceLineCache = false;
+            s_ClearSurfaceCache = true;
         }
 
         void UpdateBrushSelection()
@@ -247,17 +244,17 @@ namespace Chisel.Editors
                 for (int i = 0; i < objects.Length; i++)
                 {
                     var obj = objects[i];
-                    ChiselNode[] nodes = null;
+                    ChiselNodeComponent[] nodes = null;
                     var gameObject = obj as GameObject;
                     if (!Equals(null, gameObject))
                     {
-                        nodes = gameObject.GetComponentsInChildren<ChiselNode>();
+                        nodes = gameObject.GetComponentsInChildren<ChiselNodeComponent>();
                     } else
                     {
                         var behaviour = obj as Behaviour;
                         if (!Equals(null, behaviour))
                         {
-                            nodes = behaviour.GetComponents<ChiselNode>();
+                            nodes = behaviour.GetComponents<ChiselNodeComponent>();
                         }
                     }
 
@@ -270,7 +267,7 @@ namespace Chisel.Editors
                             if (node == null)
                                 continue;
                             foundTreeBrushes.Clear();
-                            ChiselGeneratedComponentManager.GetAllTreeBrushes(node, foundTreeBrushes);
+							ChiselModelManager.Instance.GetAllTreeBrushes(node, foundTreeBrushes);
                             if (foundTreeBrushes.Count > 0)
                             {
                                 var directSelected = (// if component is directly select
@@ -332,7 +329,7 @@ namespace Chisel.Editors
             }
             
             foundBrushOutlines.Clear();
-            updateBrushWireframe = true;
+            s_UpdateBrushWireframe = true;
         }
         
         void UpdateSurfaceSelection()
@@ -387,7 +384,7 @@ namespace Chisel.Editors
                 }
             }
             foundSurfaceOutlines.Clear();
-            updateSurfaceWireframe = true;
+            s_UpdateSurfaceWireframe = true;
         }
 
         static void CleanUpHandleRenderers()
@@ -419,11 +416,10 @@ namespace Chisel.Editors
         static ChiselRenderer GetHandleRenderer(Camera camera)
         {
             var handleRenderers = Instance.handleRenderers;
-            ChiselRenderer renderer;
-            if (handleRenderers.TryGetValue(camera, out renderer))
-                return renderer;
+			if (handleRenderers.TryGetValue(camera, out ChiselRenderer renderer))
+				return renderer;
 
-            CleanUpHandleRenderers();
+			CleanUpHandleRenderers();
 
             renderer = new ChiselRenderer();
             handleRenderers[camera] = renderer;
@@ -512,16 +508,16 @@ namespace Chisel.Editors
                 brushOutlines[pair.Key] = pair.Value;
             }
             brushOutlineFixes.Clear();
-            updateBrushLineCache = true;
+            s_UpdateBrushLineCache = true;
         }
 
         // TODO: put somewhere else
         public static ChiselWireframe GetSurfaceWireframe(SurfaceReference surface)
         {
-            if (!surfaceOutlineCache.TryGetValue(surface, out ChiselWireframe wireframe))
+            if (!s_SurfaceOutlineCache.TryGetValue(surface, out ChiselWireframe wireframe))
             {
                 wireframe = ChiselWireframe.CreateWireframe(surface.TreeBrush, surface.surfaceIndex);
-                surfaceOutlineCache[surface] = wireframe;
+                s_SurfaceOutlineCache[surface] = wireframe;
             }
             return wireframe;
         }
@@ -562,26 +558,26 @@ namespace Chisel.Editors
                 surfaceOutlines[pair.Key] = pair.Value;
             }
             surfaceOutlineFixes.Clear();
-            updateSurfaceLineCache = true;
+            s_UpdateSurfaceLineCache = true;
         }
 
         void UpdateBrushState()
         {
-            if (updateBrushSelection)
+            if (s_UpdateBrushSelection)
             {
-                updateBrushSelection = false;
+                s_UpdateBrushSelection = false;
                 UpdateBrushSelection();
-                updateBrushWireframe = true;
+                s_UpdateBrushWireframe = true;
             }
-            if (updateBrushWireframe)
+            if (s_UpdateBrushWireframe)
             {
-                updateBrushWireframe = false;
+                s_UpdateBrushWireframe = false;
                 UpdateBrushWireframe();
-                updateBrushLineCache = true;
+                s_UpdateBrushLineCache = true;
             }
-            if (updateBrushLineCache)
+            if (s_UpdateBrushLineCache)
             {
-                updateBrushLineCache = false;
+                s_UpdateBrushLineCache = false;
                 brushOutlineRenderer.Begin();
 
                 foreach (var pair in brushOutlines)
@@ -635,28 +631,28 @@ namespace Chisel.Editors
 
         void UpdateSurfaceState()
         {
-            if (clearSurfaceCache)
+            if (s_ClearSurfaceCache)
             {
-                surfaceOutlineCache.Clear();
-                clearSurfaceCache = false;
+                s_SurfaceOutlineCache.Clear();
+                s_ClearSurfaceCache = false;
             }
-            if (updateSurfaceSelection)
+            if (s_UpdateSurfaceSelection)
             {
-                updateSurfaceSelection = false;
+                s_UpdateSurfaceSelection = false;
                 UpdateSurfaceSelection();
-                updateSurfaceWireframe = true;
+                s_UpdateSurfaceWireframe = true;
             }
-            if (updateSurfaceWireframe)
+            if (s_UpdateSurfaceWireframe)
             {
-                updateSurfaceWireframe = false;
+                s_UpdateSurfaceWireframe = false;
                 UpdateSurfaceWireframe();
-                updateSurfaceLineCache = true;
+                s_UpdateSurfaceLineCache = true;
             }
-            if (updateSurfaceLineCache)
+            if (s_UpdateSurfaceLineCache)
             {
                 var selection	= ChiselSurfaceSelectionManager.Selection;
                 var hovered		= ChiselSurfaceSelectionManager.Hovered;
-                updateSurfaceLineCache = false;
+                s_UpdateSurfaceLineCache = false;
                 surfaceOutlineRenderer.Begin();
                 foreach (var pair in surfaceOutlines)
                 {
@@ -746,7 +742,7 @@ namespace Chisel.Editors
             handleRenderer.RenderAll(camera);
             handleRenderer.Begin();
             
-            var focus = Chisel.Editors.SceneHandleUtility.focusControl;
+            var focus = Chisel.Editors.SceneHandleUtility.FocusControl;
             if (prevFocus != focus)
             {
                 prevFocus = focus;

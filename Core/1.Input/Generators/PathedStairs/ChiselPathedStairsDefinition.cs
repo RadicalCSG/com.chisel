@@ -11,14 +11,15 @@ namespace Chisel.Core
     [Serializable]
     public struct ChiselPathedStairs : IBranchGenerator
     {
-        public readonly static ChiselPathedStairs DefaultValues = new ChiselPathedStairs
-        {
+        readonly static ChiselPathedStairs kDefaultSettings = new()
+		{
             curveSegments   = 8,
             closed          = true,
-            stairs          = ChiselLinearStairs.DefaultValues
-        };
+            stairs          = ChiselLinearStairs.DefaultSettings
+		};
+		public static ref readonly ChiselPathedStairs DefaultSettings => ref kDefaultSettings;
 
-        [NonSerialized] public bool closed;
+		[NonSerialized] public bool closed;
 
         public int curveSegments;
 
@@ -33,7 +34,8 @@ namespace Chisel.Core
         {
             ref var curve = ref curveBlob.Value;
             var bounds = stairs.bounds;
-            curve.GetPathVertices(curveSegments, out shapeVertices, Allocator.Persistent);
+            if (shapeVertices.IsCreated) shapeVertices.Dispose();
+			shapeVertices = curve.GetPathVertices(curveSegments, Allocator.Persistent);
             if (shapeVertices.Length < 2)
                 return 0;
 
@@ -44,44 +46,43 @@ namespace Chisel.Core
                                                             stairs.sideWidth, stairs.sideHeight, stairs.sideDepth);
         }
 
-        public bool GenerateNodes(BlobAssetReference<InternalChiselSurfaceArray> surfaceDefinitionBlob, NativeList<GeneratedNode> nodes, Allocator allocator)
+        public bool GenerateNodes(BlobAssetReference<InternalChiselSurfaceArray> surfaceDefinitionBlob, NativeList<GeneratedNode> nodes, 
+                                  Allocator allocator = Allocator.Persistent) // Indirect
         {
-            var generatedBrushMeshes = new NativeList<BlobAssetReference<BrushMeshBlob>>(nodes.Length, Allocator.Temp);
-            try
-            {
-                generatedBrushMeshes.Resize(nodes.Length, NativeArrayOptions.ClearMemory);
-                ref var curve = ref curveBlob.Value;
-                var bounds = stairs.bounds;
+            if (!shapeVertices.IsCreated)
+                return false;
+            NativeList<BlobAssetReference<BrushMeshBlob>> generatedBrushMeshes;
+			using var _generatedBrushMeshes = generatedBrushMeshes = new NativeList<BlobAssetReference<BrushMeshBlob>>(nodes.Length, Allocator.Temp);
+            generatedBrushMeshes.Resize(nodes.Length, NativeArrayOptions.ClearMemory);
+                
+            ref var curve = ref curveBlob.Value;
+            var bounds = stairs.bounds;
 
-                if (!BrushMeshFactory.GeneratePathedStairs(generatedBrushMeshes,
-                                                            shapeVertices, closed, bounds,
-                                                            stairs.stepHeight, stairs.stepDepth, stairs.treadHeight, stairs.nosingDepth,
-                                                            stairs.plateauHeight, stairs.riserType, stairs.riserDepth,
-                                                            stairs.leftSide, stairs.rightSide,
-                                                            stairs.sideWidth, stairs.sideHeight, stairs.sideDepth,
-                                                            in surfaceDefinitionBlob, allocator))
-                {
-                    for (int i = 0; i < generatedBrushMeshes.Length; i++)
-                    {
-                        if (generatedBrushMeshes[i].IsCreated)
-                            generatedBrushMeshes[i].Dispose();
-                        generatedBrushMeshes[i] = default;
-                    }
-                    return false;
-                }
+            if (!BrushMeshFactory.GeneratePathedStairs(generatedBrushMeshes,
+                                                        shapeVertices, closed, bounds,
+                                                        stairs.stepHeight, stairs.stepDepth, stairs.treadHeight, stairs.nosingDepth,
+                                                        stairs.plateauHeight, stairs.riserType, stairs.riserDepth,
+                                                        stairs.leftSide, stairs.rightSide,
+                                                        stairs.sideWidth, stairs.sideHeight, stairs.sideDepth,
+                                                        in surfaceDefinitionBlob, allocator)) // Indirect
+			{
                 for (int i = 0; i < generatedBrushMeshes.Length; i++)
-                    nodes[i] = GeneratedNode.GenerateBrush(generatedBrushMeshes[i]);
-                return true;
+                {
+                    if (generatedBrushMeshes[i].IsCreated)
+                        generatedBrushMeshes[i].Dispose();
+                    generatedBrushMeshes[i] = default;
+                }
+                return false;
             }
-            finally
-            {
-                generatedBrushMeshes.Dispose();
-            }
+            for (int i = 0; i < generatedBrushMeshes.Length; i++)
+                nodes[i] = GeneratedNode.GenerateBrush(generatedBrushMeshes[i]); // Confirmed to dispose
+			return true;
         }
 
         public void Dispose()
         {
-            if (curveBlob.IsCreated) curveBlob.Dispose(); curveBlob = default;
+            if (shapeVertices.IsCreated) shapeVertices.Dispose(); shapeVertices = default;
+			if (curveBlob.IsCreated) curveBlob.Dispose(); curveBlob = default;
         }
         #endregion
 
@@ -110,7 +111,7 @@ namespace Chisel.Core
         #endregion
 
         #region Reset
-        public void Reset() { this = DefaultValues; }
+        public void Reset() { this = DefaultSettings; }
         #endregion
     }
 
@@ -119,22 +120,24 @@ namespace Chisel.Core
     {
         public const string kNodeTypeName = "Pathed Stairs";
 
-        public static readonly Curve2D	kDefaultShape			= new Curve2D(new[]{ new CurveControlPoint2D(-1,-1), new CurveControlPoint2D( 1,-1), new CurveControlPoint2D( 1, 1), new CurveControlPoint2D(-1, 1) });
+        readonly static Curve2D	kDefaultShape = new(new[]{ new CurveControlPoint2D(-1,-1), new CurveControlPoint2D( 1,-1), new CurveControlPoint2D( 1, 1), new CurveControlPoint2D(-1, 1) });
+        public static ref readonly Curve2D DefaultShape => ref kDefaultShape;
 
-        public Curve2D					shape;
+
+		public Curve2D shape;
         
         // TODO: do not use this data structure, find common stuff and share between the definitions ...
         //public ChiselLinearStairsDefinition stairs;
 
         public override void Reset()
         {
-            shape = kDefaultShape;
+            shape = DefaultShape;
             base.Reset();
         }
 
         public override bool Validate() 
         {
-            shape ??= kDefaultShape;
+            shape ??= DefaultShape;
             return base.Validate(); 
         }
 

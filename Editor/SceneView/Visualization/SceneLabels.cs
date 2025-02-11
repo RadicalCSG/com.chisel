@@ -23,7 +23,7 @@ namespace Chisel.Editors
             }
         }
 
-        static readonly Dictionary<StyleLookup, GUIStyle> s_LabelColorStyle = new();
+        readonly static Dictionary<StyleLookup, GUIStyle> s_LabelColorStyle = new();
         static GUIStyle GetLabelStyle(Color color, int padding, int fontSize = 11, FontStyle fontStyle = FontStyle.Normal)
         {
             var lookup = new StyleLookup() { padding = padding, color = color, fontSize = fontSize, fontStyle = fontStyle };
@@ -45,7 +45,7 @@ namespace Chisel.Editors
                 },
                 fontStyle = FontStyle.Bold
             };
-            style.normal.textColor  = SceneHandles.color;
+            style.normal.textColor  = SceneHandles.Color;
 
             s_LabelColorStyle[lookup] = style;
             return style;
@@ -53,13 +53,13 @@ namespace Chisel.Editors
 
         public static Rect DrawLabel(UnityEngine.Vector3 position, UnityEngine.Vector3 alignmentDirection, string text, int fontSize = 11, FontStyle fontStyle = FontStyle.Normal, int padding = 4)
         {
-            var style = GetLabelStyle(SceneHandles.color, padding, fontSize, fontStyle);
+            var style = GetLabelStyle(SceneHandles.Color, padding, fontSize, fontStyle);
             return DrawLabel(position, alignmentDirection, new GUIContent(text), style);
         }
 
         public static Rect DrawLabel(UnityEngine.Vector3 position, UnityEngine.Vector3 alignmentDirection, GUIContent content, int fontSize = 11, FontStyle fontStyle = FontStyle.Normal, int padding = 4)
         {
-            var style = GetLabelStyle(SceneHandles.color, padding, fontSize, fontStyle);
+            var style = GetLabelStyle(SceneHandles.Color, padding, fontSize, fontStyle);
             return DrawLabel(position, alignmentDirection, content, style);
         }
 
@@ -77,18 +77,16 @@ namespace Chisel.Editors
             return new Rect(screenpos.x, screenpos.y, size.x, size.y);
         }
 
-        static Rect emptyRect = new Rect();
-
         public static Rect DrawLabel(UnityEngine.Vector3 position, UnityEngine.Vector3 alignmentDirection, GUIContent content, GUIStyle style)
         {
             if (Event.current.type == EventType.Repaint)
             { 
-                var matrix  = SceneHandles.matrix;
+                var matrix  = SceneHandles.Matrix;
                 var pt      = UnityEngine.Camera.current.WorldToViewportPoint(matrix.MultiplyPoint(position));
 
                 // cull if behind camera
                 if (pt.z < 0)
-                    return emptyRect;
+                    return default;
 
                 var rect = GetLabelRect(position, alignmentDirection, content, style);
                 SceneHandles.BeginGUI();
@@ -100,7 +98,7 @@ namespace Chisel.Editors
             } else
             if (Event.current.type == EventType.Layout)
                 return GetLabelRect(position, alignmentDirection, content, style);
-            return emptyRect;
+            return default;
         }
 
 
@@ -109,26 +107,26 @@ namespace Chisel.Editors
             return ClickableLabel(position, alignmentDirection, new GUIContent(text), fontSize, fontStyle, padding);
         }
 
-        static float dragDistance = 0;
+        static float s_DragDistance = 0;
         const float kMinimumClickDistance = 8;
-        static readonly int s_ClickableLabelHash = "ClickableLabel".GetHashCode();
+		readonly static int kClickableLabelHash = "ClickableLabel".GetHashCode();
         public static bool ClickableLabel(UnityEngine.Vector3 position, UnityEngine.Vector3 alignmentDirection, GUIContent content, int fontSize = 11, FontStyle fontStyle = FontStyle.Normal, int padding = 4)
         {
-            var id = GUIUtility.GetControlID(s_ClickableLabelHash, FocusType.Keyboard);
+            var id = GUIUtility.GetControlID(kClickableLabelHash, FocusType.Keyboard);
             var prevColor = UnityEditor.Handles.color;
             if (Event.current.type == EventType.Repaint)
             {
-                var focusControl        = Chisel.Editors.SceneHandleUtility.focusControl;
-                var focusColor          = (focusControl == id) ? Chisel.Editors.SceneHandles.selectedColor : prevColor;
-                UnityEditor.Handles.color = SceneHandles.disabled ? Color.Lerp(focusColor, Chisel.Editors.SceneHandles.staticColor, Chisel.Editors.SceneHandles.staticBlend) : focusColor;
+                var focusControl        = Chisel.Editors.SceneHandleUtility.FocusControl;
+                var focusColor          = (focusControl == id) ? Chisel.Editors.SceneHandles.SelectedColor : prevColor;
+                UnityEditor.Handles.color = SceneHandles.Disabled ? Color.Lerp(focusColor, Chisel.Editors.SceneHandles.StaticColor, Chisel.Editors.SceneHandles.StaticBlend) : focusColor;
             }
 
-            var style = GetLabelStyle(SceneHandles.color, padding, fontSize, fontStyle);
+            var style = GetLabelStyle(SceneHandles.Color, padding, fontSize, fontStyle);
             var rect = DrawLabel(position, alignmentDirection, content, style);
 
             UnityEditor.Handles.color = prevColor;
 
-            if (SceneHandles.disabled)
+            if (SceneHandles.Disabled)
                 return false;
 
             var evt     = Event.current;
@@ -159,7 +157,7 @@ namespace Chisel.Editors
                     GUIUtility.hotControl = GUIUtility.keyboardControl = id;
                     evt.Use();
                     UnityEditor.EditorGUIUtility.SetWantsMouseJumping(1);
-                    dragDistance = 0;
+                    s_DragDistance = 0;
                     break;
                 }
                 case EventType.MouseDrag:
@@ -167,13 +165,13 @@ namespace Chisel.Editors
                     if (GUIUtility.hotControl != id)
                         break;
 
-                    dragDistance += evt.delta.magnitude;
+                    s_DragDistance += evt.delta.magnitude;
                     evt.Use();
                     break;
                 }
                 case EventType.MouseMove:
                 {
-                    dragDistance = 0;
+                    s_DragDistance = 0;
                     break;
                 }
                 case EventType.MouseUp:
@@ -185,8 +183,8 @@ namespace Chisel.Editors
                     GUIUtility.keyboardControl = 0;
                     evt.Use();
                     UnityEditor.EditorGUIUtility.SetWantsMouseJumping(0);
-                    var result = dragDistance < kMinimumClickDistance;
-                    dragDistance = 0;
+                    var result = s_DragDistance < kMinimumClickDistance;
+                    s_DragDistance = 0;
                     return result;
                 }
             }

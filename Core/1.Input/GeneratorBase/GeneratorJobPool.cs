@@ -1,7 +1,6 @@
 using System;
 using System.Linq;
 using System.Collections.Generic;
-using Chisel.Core;
 using Unity.Burst;
 using Unity.Collections;
 using Unity.Mathematics;
@@ -31,7 +30,7 @@ namespace Chisel.Core
     [BurstCompile(CompileSynchronously = true)]
     public class GeneratorJobPoolManager : System.IDisposable
     {
-        System.Collections.Generic.HashSet<IGeneratorJobPool> generatorPools = new System.Collections.Generic.HashSet<IGeneratorJobPool>();
+        System.Collections.Generic.HashSet<IGeneratorJobPool> generatorPools = new();
 
         static GeneratorJobPoolManager s_Instance;
         public static GeneratorJobPoolManager Instance => (s_Instance ??= new GeneratorJobPoolManager());
@@ -46,27 +45,26 @@ namespace Chisel.Core
             UnityEditor.AssemblyReloadEvents.beforeAssemblyReload -= OnAssemblyReload;
             UnityEditor.AssemblyReloadEvents.beforeAssemblyReload += OnAssemblyReload;
         }
-
+         
         private static void OnAssemblyReload()
         {
-            if (s_Instance != null) 
-                s_Instance.Dispose();
+            s_Instance?.Dispose();
             s_Instance = null;
         }
 #endif
 
-        static JobHandle previousJobHandle = default;
+        static JobHandle s_PreviousJobHandle = default;
 
         public static void Clear() 
         {
-            previousJobHandle.Complete();
+            s_PreviousJobHandle.Complete();
             var allGeneratorPools = Instance.generatorPools;
             foreach (var pool in allGeneratorPools)
                 pool.AllocateOrClear();
         }
 
         [BurstCompile(CompileSynchronously = true)]
-        struct ResizeTempLists : IJob
+        struct ResizeTempListsJob : IJob
         {
             [NoAlias, ReadOnly] public NativeArray<int> totalCounts;
 
@@ -85,7 +83,7 @@ namespace Chisel.Core
 
         const Allocator defaultAllocator = Allocator.TempJob;
 
-        static readonly List<IGeneratorJobPool> generatorJobs = new List<IGeneratorJobPool>();
+		readonly static List<IGeneratorJobPool> s_GeneratorJobs = new List<IGeneratorJobPool>();
 
         // TODO: Optimize this
         public static JobHandle ScheduleJobs(bool runInParallel, JobHandle dependsOn = default)
@@ -95,13 +93,13 @@ namespace Chisel.Core
             var combinedJobHandle = (JobHandle)default;
             var allGeneratorPools = Instance.generatorPools;
             Profiler.BeginSample("GenPool_Generate");
-            generatorJobs.Clear();
+            s_GeneratorJobs.Clear();
             foreach (var pool in allGeneratorPools)
             {
                 if (pool.HasJobs)
-                    generatorJobs.Add(pool);
+                    s_GeneratorJobs.Add(pool);
             }
-            foreach (var pool in generatorJobs)
+            foreach (var pool in s_GeneratorJobs)
                 combinedJobHandle = JobHandle.CombineDependencies(combinedJobHandle, pool.ScheduleGenerateJob(runInParallel, dependsOn));
             Profiler.EndSample();
 
@@ -113,9 +111,9 @@ namespace Chisel.Core
             try
             {
                 Profiler.BeginSample("GenPool_UpdateHierarchy");
-                totalCounts = new NativeArray<int>(generatorJobs.Count, defaultAllocator);
+                totalCounts = new NativeArray<int>(s_GeneratorJobs.Count, defaultAllocator);
                 int index = 0;
-                foreach (var pool in generatorJobs)
+                foreach (var pool in s_GeneratorJobs)
                 {
                     lastJobHandle = pool.ScheduleUpdateHierarchyJob(runInParallel, lastJobHandle, index, totalCounts);
                     index++;
@@ -125,7 +123,7 @@ namespace Chisel.Core
                 Profiler.BeginSample("GenPool_Allocator"); 
                 generatedNodeDefinitions    = new NativeList<GeneratedNodeDefinition>(defaultAllocator);
                 brushMeshBlobs              = new NativeList<BlobAssetReference<BrushMeshBlob>>(defaultAllocator);
-                var resizeTempLists = new ResizeTempLists
+                var resizeTempLists = new ResizeTempListsJob
                 {
                     // Read
                     totalCounts                 = totalCounts,
@@ -144,7 +142,7 @@ namespace Chisel.Core
                 Profiler.BeginSample("GenPool_Schedule");
                 lastJobHandle = default;
                 combinedJobHandle = allocateJobHandle;
-                foreach (var pool in generatorJobs)
+                foreach (var pool in s_GeneratorJobs)
                 {
                     var scheduleJobHandle = pool.ScheduleInitializeArraysJob(runInParallel, 
                                                                              // Read
@@ -161,7 +159,7 @@ namespace Chisel.Core
                 lastJobHandle = JobHandle.CombineDependencies(allocateJobHandle, combinedJobHandle);
                 lastJobHandle = BrushMeshManager.ScheduleBrushRegistration(runInParallel, brushMeshBlobs, generatedNodeDefinitions, lastJobHandle);
                 lastJobHandle = ScheduleAssignMeshesJob(runInParallel, hierarchyList, generatedNodeDefinitions, lastJobHandle);
-                previousJobHandle = lastJobHandle;
+                s_PreviousJobHandle = lastJobHandle;
                 Profiler.EndSample();
             }
             finally
@@ -169,14 +167,20 @@ namespace Chisel.Core
                 Profiler.BeginSample("GenPool_Dispose");
                 var totalCountsDisposeJobHandle                 = totalCounts.Dispose(allocateJobHandle);
                 totalCounts = default;
+                
                 var generatedNodeDefinitionsDisposeJobHandle    = generatedNodeDefinitions.Dispose(lastJobHandle);
                 generatedNodeDefinitions = default;
+                
                 var brushMeshBlobsDisposeJobHandle              = brushMeshBlobs.Dispose(lastJobHandle);
                 brushMeshBlobs = default;
+                
                 var allDisposes = JobHandle.CombineDependencies(totalCountsDisposeJobHandle,
                                                                 generatedNodeDefinitionsDisposeJobHandle,
                                                                 brushMeshBlobsDisposeJobHandle);
-                Profiler.EndSample();
+				lastJobHandle = JobHandle.CombineDependencies(allDisposes, lastJobHandle);
+				s_PreviousJobHandle = lastJobHandle;
+
+				Profiler.EndSample();
             }
 
             return lastJobHandle;
@@ -189,7 +193,7 @@ namespace Chisel.Core
 
             struct GeneratedNodeDefinitionSorter : IComparer<GeneratedNodeDefinition>
             {
-                public int Compare(GeneratedNodeDefinition x, GeneratedNodeDefinition y)
+                public readonly int Compare(GeneratedNodeDefinition x, GeneratedNodeDefinition y)
                 {
                     var x_hierarchyID = x.hierarchyIndex;
                     var y_hierarchyID = y.hierarchyIndex;
@@ -197,8 +201,8 @@ namespace Chisel.Core
                     if (x_hierarchyID != y_hierarchyID)
                         return x_hierarchyID - y_hierarchyID;
                     
-                    var x_parentCompactNodeID = x.parentCompactNodeID.value;
-                    var y_parentCompactNodeID = y.parentCompactNodeID.value;
+                    var x_parentCompactNodeID = x.parentCompactNodeID.slotIndex.index;
+                    var y_parentCompactNodeID = y.parentCompactNodeID.slotIndex.index;
                     if (x_parentCompactNodeID != y_parentCompactNodeID)
                         return x_parentCompactNodeID - y_parentCompactNodeID;
 
@@ -207,30 +211,31 @@ namespace Chisel.Core
                     if (x_siblingIndex != y_siblingIndex)
                         return x_siblingIndex - y_siblingIndex;
 
-                    var x_compactNodeID = x.compactNodeID.value;
-                    var y_compactNodeID = y.compactNodeID.value;
+                    var x_compactNodeID = x.compactNodeID.slotIndex.index;
+                    var y_compactNodeID = y.compactNodeID.slotIndex.index;
                     if (x_compactNodeID != y_compactNodeID)
                         return x_compactNodeID - y_compactNodeID;
                     return 0;
                 }
             }
 
-            static readonly GeneratedNodeDefinitionSorter generatedNodeDefinitionSorter = new GeneratedNodeDefinitionSorter();
+			readonly static GeneratedNodeDefinitionSorter kGeneratedNodeDefinitionSorter = new();
 
             public void Execute()
             {
-                generatedNodeDefinitions.Sort(generatedNodeDefinitionSorter);
+                generatedNodeDefinitions.Sort(kGeneratedNodeDefinitionSorter);
             }
         }
 
 
         [BurstCompile(CompileSynchronously = true)]
         unsafe struct AssignMeshesJob : IJob
-        {            
+        {          
+            // TODO: get rid of this
             public void InitializeLookups()
             {
-                hierarchyIDLookupPtr = (IDManager*)UnsafeUtility.AddressOf(ref CompactHierarchyManager.HierarchyIDLookup);
-                nodeIDLookupPtr = (IDManager*)UnsafeUtility.AddressOf(ref CompactHierarchyManager.NodeIDLookup);
+                hierarchyIDLookupPtr = (SlotIndexMap*)UnsafeUtility.AddressOf(ref CompactHierarchyManager.HierarchyIDLookup);
+                nodeIDLookupPtr = (SlotIndexMap*)UnsafeUtility.AddressOf(ref CompactHierarchyManager.NodeIDLookup);
                 nodesLookup = CompactHierarchyManager.Nodes;
             }
 
@@ -238,9 +243,9 @@ namespace Chisel.Core
             [NoAlias, ReadOnly] public NativeList<GeneratedNodeDefinition>      generatedNodeDefinitions;
 
             // Read/Write
-            [NoAlias] public PointerReference<IDManager>                        hierarchyIDLookupRef;
-            [NativeDisableUnsafePtrRestriction, NoAlias] public IDManager*      hierarchyIDLookupPtr;
-            [NativeDisableUnsafePtrRestriction, NoAlias] public IDManager*      nodeIDLookupPtr;
+            [NoAlias] public PointerReference<SlotIndexMap>                        hierarchyIDLookupRef;
+            [NativeDisableUnsafePtrRestriction, NoAlias] public SlotIndexMap*      hierarchyIDLookupPtr;
+            [NativeDisableUnsafePtrRestriction, NoAlias] public SlotIndexMap*      nodeIDLookupPtr;
             [NoAlias] public NativeList<CompactNodeID>                          nodesLookup;
             [NoAlias] public NativeList<CompactHierarchy>                       hierarchyList;
             [NativeDisableContainerSafetyRestriction]
@@ -253,7 +258,7 @@ namespace Chisel.Core
 
                 ref var hierarchyIDLookup   = ref hierarchyIDLookupRef.Value;// UnsafeUtility.AsRef<IDManager>(hierarchyIDLookupPtr);
                 //ref var hierarchyIDLookup   = ref UnsafeUtility.AsRef<IDManager>(hierarchyIDLookupPtr);
-                ref var nodeIDLookup        = ref UnsafeUtility.AsRef<IDManager>(nodeIDLookupPtr);
+                ref var nodeIDLookup        = ref UnsafeUtility.AsRef<SlotIndexMap>(nodeIDLookupPtr);
 
                 // TODO: set all unique hierarchies dirty separately, somehow. Make this job parallel
                 var hierarchyListPtr = (CompactHierarchy*)hierarchyList.GetUnsafePtr();
@@ -290,10 +295,10 @@ namespace Chisel.Core
             }
         }
 
-        static JobHandle ScheduleAssignMeshesJob(bool                                   runInParallel, 
-                                                 NativeList<CompactHierarchy>           hierarchyList,
-                                                 NativeList<GeneratedNodeDefinition>    generatedNodeDefinitions,
-                                                 JobHandle                              dependsOn)
+        static JobHandle ScheduleAssignMeshesJob(bool                                runInParallel, 
+                                                 NativeList<CompactHierarchy>        hierarchyList,
+                                                 NativeList<GeneratedNodeDefinition> generatedNodeDefinitions,
+                                                 JobHandle                           dependsOn)
         {
             var sortJob             = new HierarchySortJob { generatedNodeDefinitions = generatedNodeDefinitions };
             var sortJobHandle       = sortJob.Schedule(runInParallel, dependsOn);
@@ -304,7 +309,7 @@ namespace Chisel.Core
                 generatedNodeDefinitions = generatedNodeDefinitions,
 
                 // Read/Write
-                hierarchyIDLookupRef     = new PointerReference<IDManager>(ref CompactHierarchyManager.HierarchyIDLookup),
+                hierarchyIDLookupRef     = new PointerReference<SlotIndexMap>(ref CompactHierarchyManager.HierarchyIDLookup),
                 hierarchyList            = hierarchyList,
                 brushMeshBlobCache       = brushMeshBlobCache
             };
@@ -313,13 +318,14 @@ namespace Chisel.Core
         }
 
         public void Dispose()
-        {
-            if (generatorPools == null)
+		{
+			// Confirmed to be called
+			if (generatorPools == null)
                 return;
 
             var allGeneratorPools = generatorPools.ToArray();
             for (int i = allGeneratorPools.Length - 1; i >= 0; i--)
-            {
+            { 
                 try 
                 { 
                     allGeneratorPools[i].Dispose(); 
@@ -330,8 +336,8 @@ namespace Chisel.Core
                     Debug.LogException(ex);
                 }
             }
-
-            generatorPools.Clear();
+             
+			generatorPools.Clear();
             generatorPools = null;
         }
     }
@@ -354,10 +360,11 @@ namespace Chisel.Core
     struct CreateBrushesJob<Generator> : IJobParallelForDefer
         where Generator : unmanaged, IBrushGenerator
     {
-        [NoAlias, ReadOnly] public NativeList<Generator> settings;
+        [NoAlias, ReadOnly] public NativeList<Generator> generators;
         [NoAlias, ReadOnly] public NativeList<BlobAssetReference<InternalChiselSurfaceArray>> surfaceArrays;
+
         [NativeDisableParallelForRestriction]
-        [NoAlias] public NativeList<BlobAssetReference<BrushMeshBlob>> brushMeshes;
+        [NoAlias, WriteOnly] public NativeList<BlobAssetReference<BrushMeshBlob>> brushMeshes;
 
         public void Execute(int index)
         {
@@ -368,7 +375,7 @@ namespace Chisel.Core
                 return;
             }
 
-            brushMeshes[index] = settings[index].GenerateMesh(surfaceArrays[index], Allocator.Persistent);
+            brushMeshes[index] = generators[index].GenerateMesh(surfaceArrays[index]);
         }
     }
 
@@ -388,16 +395,17 @@ namespace Chisel.Core
     [BurstCompile(CompileSynchronously = true)] 
     unsafe struct InitializeArraysJob : IJob
     {
+        // TODO: get rid of this
         public void InitializeLookups()
         {
-            hierarchyIDLookupPtr = (IDManager*)UnsafeUtility.AddressOf(ref CompactHierarchyManager.HierarchyIDLookup);
-            nodeIDLookupPtr = (IDManager*)UnsafeUtility.AddressOf(ref CompactHierarchyManager.NodeIDLookup);
+            hierarchyIDLookupPtr = (SlotIndexMap*)UnsafeUtility.AddressOf(ref CompactHierarchyManager.HierarchyIDLookup);
+            nodeIDLookupPtr = (SlotIndexMap*)UnsafeUtility.AddressOf(ref CompactHierarchyManager.NodeIDLookup);
             nodesLookup = CompactHierarchyManager.Nodes;
         }
 
         // Read
-        [NativeDisableUnsafePtrRestriction, NoAlias, ReadOnly] public IDManager*    hierarchyIDLookupPtr;
-        [NativeDisableUnsafePtrRestriction, NoAlias, ReadOnly] public IDManager*    nodeIDLookupPtr;
+        [NativeDisableUnsafePtrRestriction, NoAlias, ReadOnly] public SlotIndexMap*    hierarchyIDLookupPtr;
+        [NativeDisableUnsafePtrRestriction, NoAlias, ReadOnly] public SlotIndexMap*    nodeIDLookupPtr;
         [NoAlias, ReadOnly] public NativeList<CompactNodeID>                        nodesLookup;
 
         [NoAlias, ReadOnly] public NativeList<NodeID>                             nodes;
@@ -410,8 +418,8 @@ namespace Chisel.Core
 
         public void Execute()
         {
-            ref var hierarchyIDLookup = ref UnsafeUtility.AsRef<IDManager>(hierarchyIDLookupPtr);
-            ref var nodeIDLookup = ref UnsafeUtility.AsRef<IDManager>(nodeIDLookupPtr);
+            ref var hierarchyIDLookup = ref UnsafeUtility.AsRef<SlotIndexMap>(hierarchyIDLookupPtr);
+            ref var nodeIDLookup = ref UnsafeUtility.AsRef<SlotIndexMap>(nodeIDLookupPtr);
             var hierarchyListPtr = (CompactHierarchy*)hierarchyList.GetUnsafeReadOnlyPtr();
             for (int i = 0; i < nodes.Length; i++) 
             {
@@ -443,9 +451,9 @@ namespace Chisel.Core
     public class GeneratorBrushJobPool<Generator> : IGeneratorJobPool
         where Generator : unmanaged, IBrushGenerator
     {
-        NativeList<BlobAssetReference<InternalChiselSurfaceArray>> surfaceArrays;
         NativeList<Generator>                                      generators;
         NativeList<BlobAssetReference<BrushMeshBlob>>              brushMeshes;
+        NativeList<BlobAssetReference<InternalChiselSurfaceArray>> surfaceArrays;
         NativeList<NodeID>                                         generatorNodes;
 
         JobHandle updateHierarchyJobHandle = default;
@@ -463,23 +471,24 @@ namespace Chisel.Core
             previousJobHandle.Complete(); // <- make sure we've completed the previous schedule
             previousJobHandle = default;
             
-            if (surfaceArrays.IsCreated) surfaceArrays.Clear(); else surfaceArrays = new NativeList<BlobAssetReference<InternalChiselSurfaceArray>>(Allocator.Persistent);
-            if (brushMeshes       .IsCreated) brushMeshes       .Clear(); else brushMeshes        = new NativeList<BlobAssetReference<BrushMeshBlob>>(Allocator.Persistent);
-            if (generators        .IsCreated) generators        .Clear(); else generators         = new NativeList<Generator>(Allocator.Persistent);
-            if (generatorNodes    .IsCreated) generatorNodes    .Clear(); else generatorNodes     = new NativeList<NodeID>(Allocator.Persistent);
-        }
+            if (generators    .IsCreated) generators    .Clear(); else generators     = new NativeList<Generator>(Allocator.Persistent); // Confirmed to be disposed
+			if (brushMeshes   .IsCreated) brushMeshes   .Clear(); else brushMeshes    = new NativeList<BlobAssetReference<BrushMeshBlob>>(Allocator.Persistent); // Confirmed to be disposed
+			if (surfaceArrays .IsCreated) surfaceArrays .Clear(); else surfaceArrays  = new NativeList<BlobAssetReference<InternalChiselSurfaceArray>>(Allocator.Persistent); // Confirmed to be disposed
+			if (generatorNodes.IsCreated) generatorNodes.Clear(); else generatorNodes = new NativeList<NodeID>(Allocator.Persistent); // Confirmed to be disposed
+		}
 
-        public void Dispose()
-        {
-            GeneratorJobPoolManager.Unregister(this);
-            if (surfaceArrays.IsCreated) surfaceArrays.DisposeDeep();
-            if (brushMeshes       .IsCreated) brushMeshes       .Dispose();
-            if (generators        .IsCreated) generators        .Dispose();
-            if (generatorNodes    .IsCreated) generatorNodes    .Dispose();
+		public void Dispose()
+		{
+			// Confirmed to be called ChiselBox/ChiselCylinder
+			GeneratorJobPoolManager.Unregister(this);
+            if (generators    .IsCreated) generators    .Dispose();
+            if (brushMeshes   .IsCreated) brushMeshes   .Dispose();
+            if (surfaceArrays .IsCreated) surfaceArrays .DisposeDeep();
+            if (generatorNodes.IsCreated) generatorNodes.Dispose();
 
-            surfaceArrays = default;
-            brushMeshes = default;
-            generators = default;
+			generators = default;
+			brushMeshes = default;
+			surfaceArrays = default;
             generatorNodes = default;
         }
 
@@ -528,7 +537,7 @@ namespace Chisel.Core
 
             if (!generatorNodes.IsCreated)
                 return dependsOn;
-
+            
             for (int i = generatorNodes.Length - 1; i >= 0; i--)
             {
                 var nodeID = generatorNodes[i];
@@ -551,8 +560,11 @@ namespace Chisel.Core
             brushMeshes.Resize(generators.Length, NativeArrayOptions.ClearMemory);
             var job = new CreateBrushesJob<Generator>
             {
-                settings      = generators,
+                // read
+                generators    = generators,
                 surfaceArrays = surfaceArrays,
+
+                // write
                 brushMeshes   = brushMeshes
             };
             var createJobHandle = job.Schedule(runInParallel, generators, 8, dependsOn);
@@ -650,7 +662,7 @@ namespace Chisel.Core
     unsafe struct BranchCreateBrushesJob<Generator> : IJobParallelForDefer
         where Generator : unmanaged, IBranchGenerator
     {
-        [NoAlias, ReadOnly] public NativeList<BlobAssetReference<InternalChiselSurfaceArray>>  surfaceArrays;
+        [NoAlias, ReadOnly] public NativeList<BlobAssetReference<InternalChiselSurfaceArray>> surfaceArrays;
         [NoAlias, ReadOnly] public NativeList<Generator> generators; // required because it's used for the count of IJobParallelForDefer
 
         [NativeDisableUnsafePtrRestriction]
@@ -675,7 +687,7 @@ namespace Chisel.Core
 
                     ref var setting = ref settings->ElementAt(index);
                     if (!surfaceArrays[index].IsCreated ||
-                        !setting.GenerateNodes(surfaceArrays[index], nodes, Allocator.Persistent))
+                        !setting.GenerateNodes(surfaceArrays[index], nodes))
                     {
                         range = new Range { start = 0, end = 0 };
                         return;
@@ -715,19 +727,20 @@ namespace Chisel.Core
             previousJobHandle.Complete(); // <- make sure we've completed the previous schedule
             previousJobHandle = default;
 
-            if (generatorRootNodeIDs.IsCreated) generatorRootNodeIDs.Clear(); else generatorRootNodeIDs = new NativeList<NodeID>(Allocator.Persistent);
-            if (generatorNodeRanges .IsCreated) generatorNodeRanges .Clear(); else generatorNodeRanges  = new NativeList<Range>(Allocator.Persistent);
-            if (surfaceArrays       .IsCreated) surfaceArrays       .Clear(); else surfaceArrays        = new NativeList<BlobAssetReference<InternalChiselSurfaceArray>>(Allocator.Persistent);
-            if (generatedNodes      .IsCreated) generatedNodes      .Clear(); else generatedNodes       = new NativeList<GeneratedNode>(Allocator.Persistent);
-            if (generators          .IsCreated) generators          .Clear(); else generators           = new NativeList<Generator>(Allocator.Persistent);
-        }
+            if (generatorRootNodeIDs.IsCreated) generatorRootNodeIDs.Clear(); else generatorRootNodeIDs = new NativeList<NodeID>(Allocator.Persistent); // Confirmed to be disposed
+			if (generatorNodeRanges .IsCreated) generatorNodeRanges .Clear(); else generatorNodeRanges  = new NativeList<Range>(Allocator.Persistent); // Confirmed to be disposed
+			if (surfaceArrays       .IsCreated) surfaceArrays       .Clear(); else surfaceArrays        = new NativeList<BlobAssetReference<InternalChiselSurfaceArray>>(Allocator.Persistent); // Confirmed to be disposed
+			if (generatedNodes      .IsCreated) generatedNodes      .Clear(); else generatedNodes       = new NativeList<GeneratedNode>(Allocator.Persistent); // Confirmed to be disposed
+			if (generators          .IsCreated) generators          .Clear(); else generators           = new NativeList<Generator>(Allocator.Persistent); // Confirmed to be disposed
+		}
 
-        public void Dispose()
+		public void Dispose()
         {
+            // Confirmed to be called ChiselExtrudedShape
             GeneratorJobPoolManager.Unregister(this);
             if (generatorRootNodeIDs.IsCreated) generatorRootNodeIDs.SafeDispose();
             if (generatorNodeRanges .IsCreated) generatorNodeRanges .SafeDispose();
-            if (surfaceArrays       .IsCreated) surfaceArrays  .DisposeDeep();
+            if (surfaceArrays       .IsCreated) surfaceArrays       .DisposeDeep(); // Confirmed to be called on children
             if (generatedNodes      .IsCreated) generatedNodes      .SafeDispose();
             if (generators          .IsCreated) generators          .SafeDispose();
             
@@ -811,26 +824,26 @@ namespace Chisel.Core
             var brushCounts = new NativeArray<int>(generators.Length, defaultAllocator);
             var countBrushesJob = new BranchPrepareAndCountBrushesJob<Generator>
             {
-                settings            = generators.GetUnsafeList(),
-                generators          = generators,// required because it's used for the count of IJobParallelForDefer
-                brushCounts         = brushCounts
+                settings       = generators.GetUnsafeList(),
+                generators     = generators,// required because it's used for the count of IJobParallelForDefer
+                brushCounts    = brushCounts
             };
             var brushCountJobHandle = countBrushesJob.Schedule(runInParallel, generators, 8, dependsOn);
             
             var allocateBrushesJob = new BranchAllocateBrushesJob<Generator>
             {
-                brushCounts         = brushCounts,
-                ranges              = generatorNodeRanges.GetUnsafeList(),
-                generatedNodes      = generatedNodes
+                brushCounts    = brushCounts,
+                ranges         = generatorNodeRanges.GetUnsafeList(),
+                generatedNodes = generatedNodes
             };
             var allocateBrushesJobHandle = allocateBrushesJob.Schedule(runInParallel, brushCountJobHandle);
 
             var createJob = new BranchCreateBrushesJob<Generator>
             {
-                settings            = generators.GetUnsafeList(),
-                generators          = generators, // required because it's used for the count of IJobParallelForDefer
-                ranges              = generatorNodeRanges.GetUnsafeList(),
-                generatedNodes      = generatedNodes,
+                settings       = generators.GetUnsafeList(),
+                generators     = generators, // required because it's used for the count of IJobParallelForDefer
+                ranges         = generatorNodeRanges.GetUnsafeList(),
+                generatedNodes = generatedNodes,
                 surfaceArrays  = surfaceArrays
             };
             var createJobHandle = createJob.Schedule(runInParallel, generators, 8, allocateBrushesJobHandle);
@@ -867,15 +880,13 @@ namespace Chisel.Core
                 {
                     var tree = branch.Tree;
                     var newBrushCount = desiredBrushCount - branch.Count;
-                    var newRange = new NativeArray<CSGTreeNode>(newBrushCount, Allocator.Temp);
-                    try
-                    {
-                        var userID = branch.UserID;
-                        for (int i = 0; i < newBrushCount; i++)
-                            newRange[i] = tree.CreateBrush(userID: userID, operation: CSGOperationType.Additive);
-                        branch.AddRange(newRange);
-                    }
-                    finally { newRange.Dispose(); }
+                    NativeArray<CSGTreeNode> newRange;
+					using var _newRange = newRange = new NativeArray<CSGTreeNode>(newBrushCount, Allocator.Temp);
+
+                    var instanceID = branch.InstanceID;
+                    for (int i = 0; i < newBrushCount; i++)
+                        newRange[i] = tree.CreateBrush(instanceID: instanceID, operation: CSGOperationType.Additive);
+                    branch.AddRange(newRange);
                 } else
                 {
                     for (int i = branch.Count - 1; i >= desiredBrushCount; i--)
@@ -939,14 +950,14 @@ namespace Chisel.Core
         {
             public void InitializeLookups()
             {
-                hierarchyIDLookupPtr = (IDManager*)UnsafeUtility.AddressOf(ref CompactHierarchyManager.HierarchyIDLookup);
-                nodeIDLookupPtr = (IDManager*)UnsafeUtility.AddressOf(ref CompactHierarchyManager.NodeIDLookup);
+                hierarchyIDLookupPtr = (SlotIndexMap*)UnsafeUtility.AddressOf(ref CompactHierarchyManager.HierarchyIDLookup);
+                nodeIDLookupPtr = (SlotIndexMap*)UnsafeUtility.AddressOf(ref CompactHierarchyManager.NodeIDLookup);
                 nodesLookup = CompactHierarchyManager.Nodes;
             }
 
             // Read
-            [NativeDisableUnsafePtrRestriction, NoAlias, ReadOnly] public IDManager*    hierarchyIDLookupPtr;
-            [NativeDisableUnsafePtrRestriction, NoAlias, ReadOnly] public IDManager*    nodeIDLookupPtr;
+            [NativeDisableUnsafePtrRestriction, NoAlias, ReadOnly] public SlotIndexMap*    hierarchyIDLookupPtr;
+            [NativeDisableUnsafePtrRestriction, NoAlias, ReadOnly] public SlotIndexMap*    nodeIDLookupPtr;
             [NoAlias, ReadOnly] public NativeList<CompactNodeID>                        nodesLookup;
 
             [NoAlias, ReadOnly] public NativeList<NodeID>               generatorRootNodeIDs;
@@ -960,8 +971,8 @@ namespace Chisel.Core
 
             public void Execute()
             {
-                ref var hierarchyIDLookup = ref UnsafeUtility.AsRef<IDManager>(hierarchyIDLookupPtr);
-                ref var nodeIDLookup = ref UnsafeUtility.AsRef<IDManager>(nodeIDLookupPtr);
+                ref var hierarchyIDLookup = ref UnsafeUtility.AsRef<SlotIndexMap>(hierarchyIDLookupPtr);
+                ref var nodeIDLookup = ref UnsafeUtility.AsRef<SlotIndexMap>(nodeIDLookupPtr);
                 var hierarchyListPtr = (CompactHierarchy*)hierarchyList.GetUnsafeReadOnlyPtr();
                 for (int i = 0; i < generatorRootNodeIDs.Length; i++)
                 {
@@ -969,14 +980,15 @@ namespace Chisel.Core
                     if (range.Length == 0)
                         continue;
                     
-                    var rootNodeID              = generatorRootNodeIDs[i];
-                    var rootCompactNodeID       = CompactHierarchyManager.GetCompactNodeIDNoError(ref nodeIDLookup, nodesLookup, rootNodeID);
-                    var hierarchyIndex          = CompactHierarchyManager.GetHierarchyIndexUnsafe(ref hierarchyIDLookup, rootCompactNodeID);
-                    ref var compactHierarchy    = ref hierarchyListPtr[hierarchyIndex];
-                    
+                    var rootNodeID           = generatorRootNodeIDs[i];
+                    var rootCompactNodeID    = CompactHierarchyManager.GetCompactNodeIDNoError(ref nodeIDLookup, nodesLookup, rootNodeID);
+                    var hierarchyIndex       = CompactHierarchyManager.GetHierarchyIndexUnsafe(ref hierarchyIDLookup, rootCompactNodeID);
+                    ref var compactHierarchy = ref hierarchyListPtr[hierarchyIndex];
+
                     // TODO: just pass an array of compactNodeIDs along from the place were we create these nodes (no lookup needed)
                     // TODO: how can we re-use existing compactNodeIDs instead re-creating them when possible?
-                    var childCompactNodeIDs     = new NativeArray<CompactNodeID>(range.Length, Allocator.Temp);
+                    NativeArray<CompactNodeID> childCompactNodeIDs;
+					using var _childCompactNodeIDs = childCompactNodeIDs = new NativeArray<CompactNodeID>(range.Length, Allocator.Temp);
                     for (int b = 0; b < range.Length; b++)
                         childCompactNodeIDs[b] = compactHierarchy.GetChildCompactNodeIDAtNoError(rootCompactNodeID, b);
 
@@ -986,10 +998,10 @@ namespace Chisel.Core
                     int prevParentIndex = -1;
                     for (int b = 0, m = range.start; m < range.end; b++, m++)
                     {
-                        var compactNodeID       = childCompactNodeIDs[b];
-                        var operation           = generatedNodes[m].operation;
-                        var brushMeshBlob       = generatedNodes[m].brushMesh;
-                        var parentIndex         = generatedNodes[m].parentIndex;
+                        var compactNodeID = childCompactNodeIDs[b];
+                        var operation     = generatedNodes[m].operation;
+                        var brushMeshBlob = generatedNodes[m].brushMesh;
+                        var parentIndex   = generatedNodes[m].parentIndex;
                         if (parentIndex < prevParentIndex || parentIndex >= b)
                             parentIndex = prevParentIndex;
                         if (prevParentIndex != parentIndex)
@@ -1008,8 +1020,6 @@ namespace Chisel.Core
                         brushMeshBlobs.AddNoResize(brushMeshBlob);
                         siblingIndex++;
                     }
-
-                    childCompactNodeIDs.Dispose();
                 }
             }
         }
@@ -1045,5 +1055,5 @@ namespace Chisel.Core
             generatedNodes = default;
             return combinedJobHandle;
         }
-    }
+	}
 }

@@ -16,7 +16,7 @@ namespace Chisel.Core
 
     public interface IBrushGenerator
     {
-		BlobAssetReference<BrushMeshBlob> GenerateMesh(BlobAssetReference<InternalChiselSurfaceArray> internalSurfaceArrayBlob, Allocator allocator);
+		BlobAssetReference<BrushMeshBlob> GenerateMesh(BlobAssetReference<InternalChiselSurfaceArray> internalSurfaceArrayBlob, Allocator allocator = Allocator.Persistent);// Indirect
         void Reset();
         int RequiredSurfaceCount { get; }
         void UpdateSurfaces(ref ChiselSurfaceArray surfaceArray);
@@ -61,12 +61,14 @@ namespace Chisel.Core
         public BlobAssetReference<BrushMeshBlob>  brushMesh;      // Note: ignored if type is not Brush
 
 
-        public static GeneratedNode GenerateBrush(BlobAssetReference<BrushMeshBlob> brushMesh, CSGOperationType operation = CSGOperationType.Additive, int parentIndex = -1)
+		// Confirmed to dispose brushMesh
+		public static GeneratedNode GenerateBrush(BlobAssetReference<BrushMeshBlob> brushMesh, CSGOperationType operation = CSGOperationType.Additive, int parentIndex = -1)
         {
             return GenerateBrush(brushMesh, float4x4.identity, operation, parentIndex);
         }
 
-        public static GeneratedNode GenerateBrush(BlobAssetReference<BrushMeshBlob> brushMesh, float4x4 transformation, CSGOperationType operation = CSGOperationType.Additive, int parentIndex = -1)
+		// Confirmed to dispose brushMesh
+		public static GeneratedNode GenerateBrush(BlobAssetReference<BrushMeshBlob> brushMesh, float4x4 transformation, CSGOperationType operation = CSGOperationType.Additive, int parentIndex = -1)
         {
             return new GeneratedNode
             {
@@ -97,8 +99,8 @@ namespace Chisel.Core
     public interface IBranchGenerator
     {
         int PrepareAndCountRequiredBrushMeshes();
-        bool GenerateNodes(BlobAssetReference<InternalChiselSurfaceArray> internalSurfaceArrayBlob, NativeList<GeneratedNode> nodes, Allocator allocator);
-        void Dispose();
+        bool GenerateNodes(BlobAssetReference<InternalChiselSurfaceArray> internalSurfaceArrayBlob, NativeList<GeneratedNode> nodes, Allocator allocator = Allocator.Persistent);// Indirect
+		void Dispose();
 
         void Reset();
         int RequiredSurfaceCount { get; }

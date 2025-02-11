@@ -9,7 +9,7 @@ namespace Chisel.Editors
 {
     public static class PIvotUtility
     {
-        public static Vector3 FindSelectionWorldSpaceCenter(ChiselNode selectedNode)
+        public static Vector3 FindSelectionWorldSpaceCenter(ChiselNodeComponent selectedNode)
         {
             var hierarchyItem = selectedNode.hierarchyItem;
             var bounds = hierarchyItem.Bounds; // Note: bounds in tree space, not world space
@@ -18,7 +18,7 @@ namespace Chisel.Editors
             return center;
         }
 
-        public static Vector3 FindSelectionWorldSpaceCenter(IReadOnlyList<ChiselNode> selectedNodes)
+        public static Vector3 FindSelectionWorldSpaceCenter(IReadOnlyList<ChiselNodeComponent> selectedNodes)
         {
             if (selectedNodes == null || selectedNodes.Count == 0)
                 return Vector3.zero;
@@ -52,14 +52,14 @@ namespace Chisel.Editors
             return center;
         }
 
-        public static void MovePivotTo(IReadOnlyList<ChiselNode> nodes, Vector3 newPosition)
+        public static void MovePivotTo(IReadOnlyList<ChiselNodeComponent> nodes, Vector3 newPosition)
         {
             // TODO: optimize
             var nodesWithChildObjects = new HashSet<UnityEngine.Object>();
-            var nodesWithChildren = new HashSet<ChiselNode>();
+            var nodesWithChildren = new HashSet<ChiselNodeComponent>();
             foreach (var node in nodes)
             {
-                var children = node.GetComponentsInChildren<ChiselNode>(includeInactive: true);
+                var children = node.GetComponentsInChildren<ChiselNodeComponent>(includeInactive: true);
                 foreach (var child in children)
                 {
                     nodesWithChildren.Add(child);
@@ -73,14 +73,14 @@ namespace Chisel.Editors
                 node.SetPivot(newPosition);
         }
 
-        public static void MovePivotToCenter(IReadOnlyList<ChiselNode> nodes)
+        public static void MovePivotToCenter(IReadOnlyList<ChiselNodeComponent> nodes)
         {
             // TODO: optimize
             var nodesWithChildObjects = new HashSet<UnityEngine.Object>();
-            var nodesWithChildren = new HashSet<ChiselNode>();
+            var nodesWithChildren = new HashSet<ChiselNodeComponent>();
             foreach (var node in nodes)
             {
-                var children = node.GetComponentsInChildren<ChiselNode>(includeInactive: true);
+                var children = node.GetComponentsInChildren<ChiselNodeComponent>(includeInactive: true);
                 foreach (var child in children)
                 {
                     nodesWithChildren.Add(child);

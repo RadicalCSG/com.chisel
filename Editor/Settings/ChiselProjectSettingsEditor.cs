@@ -9,25 +9,25 @@ namespace Chisel.Editors
 	{
 		class SettingsContent
 		{
-			public static readonly GUIContent MaterialSection = EditorGUIUtility.TrTextContent("Materials");
+			public readonly static GUIContent kMaterialSection = EditorGUIUtility.TrTextContent("Materials");
 
-			public static readonly GUIContent DefaultMaterialsSection = EditorGUIUtility.TrTextContent("Default");
+			public readonly static GUIContent kDefaultMaterialsSection = EditorGUIUtility.TrTextContent("Default");
 
-			public static readonly GUIContent DefaultFloorMaterial  = EditorGUIUtility.TrTextContent("Floor");
-			public static readonly GUIContent DefaultStepMaterial   = EditorGUIUtility.TrTextContent("Step");
-			public static readonly GUIContent DefaultTreadMaterial  = EditorGUIUtility.TrTextContent("Tread");
-			public static readonly GUIContent DefaultWallMaterial   = EditorGUIUtility.TrTextContent("Wall");
-			public static readonly GUIContent DefaultPhysicMaterial = EditorGUIUtility.TrTextContent("Physics");
+			public readonly static GUIContent kDefaultFloorMaterial  = EditorGUIUtility.TrTextContent("Floor");
+			public readonly static GUIContent kDefaultStepMaterial   = EditorGUIUtility.TrTextContent("Step");
+			public readonly static GUIContent kDefaultTreadMaterial  = EditorGUIUtility.TrTextContent("Tread");
+			public readonly static GUIContent kDefaultWallMaterial   = EditorGUIUtility.TrTextContent("Wall");
+			public readonly static GUIContent kDefaultPhysicMaterial = EditorGUIUtility.TrTextContent("Physics");
 
 
-			public static readonly GUIContent VisualizationSurfaceMaterialsSection = EditorGUIUtility.TrTextContent("Surface Visualization");
+			public readonly static GUIContent kVisualizationSurfaceMaterialsSection = EditorGUIUtility.TrTextContent("Surface Visualization");
 
-			public static readonly GUIContent HiddenSurfacesMaterial		  = EditorGUIUtility.TrTextContent("User Hidden");
-			public static readonly GUIContent DiscardedSurfacesMaterial		  = EditorGUIUtility.TrTextContent("Removed By Chisel");
-			public static readonly GUIContent ShadowCastingSurfacesMaterial   = EditorGUIUtility.TrTextContent("Shadow-Casting");
-			public static readonly GUIContent ShadowOnlySurfacesMaterial	  = EditorGUIUtility.TrTextContent("Shadow-Only");
-			public static readonly GUIContent ShadowReceivingSurfacesMaterial = EditorGUIUtility.TrTextContent("Shadow-Receiving");
-			public static readonly GUIContent CollisionSurfacesMaterial		  = EditorGUIUtility.TrTextContent("Collision");
+			public readonly static GUIContent kHiddenSurfacesMaterial		   = EditorGUIUtility.TrTextContent("User Hidden");
+			public readonly static GUIContent kDiscardedSurfacesMaterial	   = EditorGUIUtility.TrTextContent("Removed By Chisel");
+			public readonly static GUIContent kShadowCastingSurfacesMaterial   = EditorGUIUtility.TrTextContent("Shadow-Casting");
+			public readonly static GUIContent kShadowOnlySurfacesMaterial	   = EditorGUIUtility.TrTextContent("Shadow-Only");
+			public readonly static GUIContent kShadowReceivingSurfacesMaterial = EditorGUIUtility.TrTextContent("Shadow-Receiving");
+			public readonly static GUIContent kCollisionSurfacesMaterial	   = EditorGUIUtility.TrTextContent("Collision");
 		};
 
 		SerializedProperty m_DefaultFloorMaterialProp;
@@ -73,32 +73,32 @@ namespace Chisel.Editors
 				return;
 			serializedObject.Update();
 
-			GUILayout.Label(SettingsContent.MaterialSection, EditorStyles.boldLabel);
+			GUILayout.Label(SettingsContent.kMaterialSection, EditorStyles.boldLabel);
 			EditorGUILayout.Space();
 			
 			using (new EditorGUI.IndentLevelScope(1))
 			{
-				EditorGUILayout.LabelField(SettingsContent.DefaultMaterialsSection, EditorStyles.boldLabel);
+				EditorGUILayout.LabelField(SettingsContent.kDefaultMaterialsSection, EditorStyles.boldLabel);
 				using (new EditorGUI.IndentLevelScope(1))
 				{
-					EditorGUILayout.PropertyField(m_DefaultFloorMaterialProp, SettingsContent.DefaultFloorMaterial);
-					EditorGUILayout.PropertyField(m_DefaultStepMaterialProp, SettingsContent.DefaultStepMaterial);
-					EditorGUILayout.PropertyField(m_DefaultTreadMaterialProp, SettingsContent.DefaultTreadMaterial);
-					EditorGUILayout.PropertyField(m_DefaultWallMaterialProp, SettingsContent.DefaultWallMaterial);
-					EditorGUILayout.PropertyField(m_DefaultPhysicMaterialProp, SettingsContent.DefaultPhysicMaterial);
+					EditorGUILayout.PropertyField(m_DefaultFloorMaterialProp, SettingsContent.kDefaultFloorMaterial);
+					EditorGUILayout.PropertyField(m_DefaultStepMaterialProp, SettingsContent.kDefaultStepMaterial);
+					EditorGUILayout.PropertyField(m_DefaultTreadMaterialProp, SettingsContent.kDefaultTreadMaterial);
+					EditorGUILayout.PropertyField(m_DefaultWallMaterialProp, SettingsContent.kDefaultWallMaterial);
+					EditorGUILayout.PropertyField(m_DefaultPhysicMaterialProp, SettingsContent.kDefaultPhysicMaterial);
 				}
 				EditorGUILayout.Space();
 
-				EditorGUILayout.LabelField(SettingsContent.VisualizationSurfaceMaterialsSection, EditorStyles.boldLabel);
+				EditorGUILayout.LabelField(SettingsContent.kVisualizationSurfaceMaterialsSection, EditorStyles.boldLabel);
 				using (new EditorGUI.IndentLevelScope(1))
 				{
-					EditorGUILayout.PropertyField(m_HiddenSurfacesMaterialProp, SettingsContent.HiddenSurfacesMaterial);
-					EditorGUILayout.PropertyField(m_DiscardedSurfacesMaterialProp, SettingsContent.DiscardedSurfacesMaterial);
+					EditorGUILayout.PropertyField(m_HiddenSurfacesMaterialProp, SettingsContent.kHiddenSurfacesMaterial);
+					EditorGUILayout.PropertyField(m_DiscardedSurfacesMaterialProp, SettingsContent.kDiscardedSurfacesMaterial);
 
-					EditorGUILayout.PropertyField(m_ShadowCastingSurfacesMaterialProp, SettingsContent.ShadowCastingSurfacesMaterial);
-					EditorGUILayout.PropertyField(m_ShadowOnlySurfacesMaterialProp, SettingsContent.ShadowOnlySurfacesMaterial);
-					EditorGUILayout.PropertyField(m_ShadowReceivingSurfacesMaterialProp, SettingsContent.ShadowReceivingSurfacesMaterial);
-					EditorGUILayout.PropertyField(m_CollisionOnlySurfacesMaterialProp, SettingsContent.CollisionSurfacesMaterial);
+					EditorGUILayout.PropertyField(m_ShadowCastingSurfacesMaterialProp, SettingsContent.kShadowCastingSurfacesMaterial);
+					EditorGUILayout.PropertyField(m_ShadowOnlySurfacesMaterialProp, SettingsContent.kShadowOnlySurfacesMaterial);
+					EditorGUILayout.PropertyField(m_ShadowReceivingSurfacesMaterialProp, SettingsContent.kShadowReceivingSurfacesMaterial);
+					EditorGUILayout.PropertyField(m_CollisionOnlySurfacesMaterialProp, SettingsContent.kCollisionSurfacesMaterial);
 				}
 				EditorGUILayout.Space();
 

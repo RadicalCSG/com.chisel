@@ -8,11 +8,11 @@ namespace Chisel.Editors
 {
 	public class Measurements
 	{
-		public static bool Show = true;
+		public static bool Show { get; set; } = true;
 
 		public static void DrawFlatArrow(UnityEngine.Vector3 center, UnityEngine.Vector3 direction, float handleSize)
 		{
-			var invMatrix	= SceneHandles.inverseMatrix;
+			var invMatrix	= SceneHandles.InverseMatrix;
 
 			var camera		= UnityEngine.Camera.current;
 			var camPos		= invMatrix.MultiplyPoint(camera.transform.position);
@@ -20,11 +20,11 @@ namespace Chisel.Editors
 			DrawFlatArrow(center, direction, camDir, handleSize);
 		}
 
-		static readonly Vector3[] arrowPoints = new Vector3[3];
+		readonly static Vector3[] s_ArrowPoints = new Vector3[3];
 		public static void DrawFlatArrow(UnityEngine.Vector3 center, UnityEngine.Vector3 direction, UnityEngine.Vector3 forward, float handleSize)
 		{
-			var matrix		= SceneHandles.matrix;
-			SceneHandles.matrix = UnityEngine.Matrix4x4.identity;
+			var matrix		= SceneHandles.Matrix;
+			SceneHandles.Matrix = UnityEngine.Matrix4x4.identity;
 
 			center		= matrix.MultiplyPoint(center);
 			var xdir	= matrix.MultiplyVector(direction).normalized;
@@ -33,12 +33,12 @@ namespace Chisel.Editors
 			ydir *= 0.3f * handleSize;
 			xdir *= handleSize;
 
-			arrowPoints[0] = center;
-			arrowPoints[1] = center + (xdir - ydir);
-			arrowPoints[2] = center + (xdir + ydir);
-			SceneHandles.DrawAAConvexPolygon(arrowPoints);
+			s_ArrowPoints[0] = center;
+			s_ArrowPoints[1] = center + (xdir - ydir);
+			s_ArrowPoints[2] = center + (xdir + ydir);
+			SceneHandles.DrawAAConvexPolygon(s_ArrowPoints);
 
-			SceneHandles.matrix = matrix;
+			SceneHandles.Matrix = matrix;
 		}
 
 		readonly struct LabelStyle : IEquatable<LabelStyle>
@@ -62,27 +62,27 @@ namespace Chisel.Editors
 
             public override bool Equals(object obj)
 			{
-				if (!(obj is LabelStyle))
-					return false;
-				return Equals((LabelStyle)obj);
+				if (obj is LabelStyle label)
+					return Equals(label);
+				return false;
             }
         }
 
-		static readonly Dictionary<LabelStyle, GUIStyle> labelStyles = new Dictionary<LabelStyle, GUIStyle>();
-		static readonly GUIContent tempContent = new GUIContent();
+		readonly static Dictionary<LabelStyle, GUIStyle> s_LabelStyles = new();
+		readonly static GUIContent s_TempContent = new();
 		public static Rect DrawLabel(UnityEngine.Vector3 position, UnityEngine.Vector3 alignmentDirection, int padding, string text)
 		{
-			var matrix = SceneHandles.matrix;
+			var matrix = SceneHandles.Matrix;
 			var pt = UnityEngine.Camera.current.WorldToViewportPoint(matrix.MultiplyPoint(position));
 			// cull if behind camera
 			if (pt.z < 0)
 				return new Rect();
 
-			var labelStyle = new LabelStyle(SceneHandles.color, padding);
-			if (!labelStyles.TryGetValue(labelStyle, out GUIStyle style))
+			var labelStyle = new LabelStyle(SceneHandles.Color, padding);
+			if (!s_LabelStyles.TryGetValue(labelStyle, out GUIStyle style))
 			{
 				style = new UnityEngine.GUIStyle();
-				style.normal.textColor	= SceneHandles.color;
+				style.normal.textColor	= SceneHandles.Color;
 				style.alignment			= UnityEngine.TextAnchor.UpperLeft;
 
 				// some eyeballed offsets because CalcSize returns a non-centered rect
@@ -90,14 +90,14 @@ namespace Chisel.Editors
 				style.padding.right		= padding;
 				style.padding.top		= 1 + padding;
 				style.padding.bottom	= 4 + padding;
-				labelStyles[labelStyle] = style;
+				s_LabelStyles[labelStyle] = style;
 			}
 
 
 			//SceneHandles.Label(position, text, style); = alignment is broken, positioning of text on coordinate is *weird*
 
-			tempContent.text = text;
-			var size		= style.CalcSize(tempContent);
+			s_TempContent.text = text;
+			var size		= style.CalcSize(s_TempContent);
 			var halfSize	= size * 0.5f;
 			var screenpos	= UnityEditor.HandleUtility.WorldToGUIPoint(position);
 			var screendir	= (UnityEditor.HandleUtility.WorldToGUIPoint(position + alignmentDirection) - screenpos).normalized;
@@ -112,25 +112,25 @@ namespace Chisel.Editors
 			{
 				SceneHandles.BeginGUI();
 				{
-					GUI.Label(rect, tempContent, style);
+					GUI.Label(rect, s_TempContent, style);
 				}
 				SceneHandles.EndGUI();
 			}
 			return rect;
 		}
 
-		static bool canClick = false;
-		static readonly int s_DistanceLabelHash = "DistanceLabel".GetHashCode();
+		static bool s_CanClick = false;
+		readonly static int kDistanceLabelHash = "DistanceLabel".GetHashCode();
 		public static void DrawUnitLabel(UnityEngine.Vector3 position, UnityEngine.Vector3 alignmentDirection, int padding, float distance, string name = null)
 		{
 			// TODO: click on unit to change unit, but click on number to be able to type in number ...
 
 			var rect = DrawLabel(position, alignmentDirection, padding, Units.ToDistanceString(distance, name));
 
-			if (SceneHandles.disabled)
+			if (SceneHandles.Disabled)
 				return;
 
-			var id = GUIUtility.GetControlID (s_DistanceLabelHash, FocusType.Keyboard);
+			var id = GUIUtility.GetControlID (kDistanceLabelHash, FocusType.Keyboard);
 			
 			var evt = Event.current;
 			var type = evt.GetTypeForControl(id);
@@ -165,7 +165,7 @@ namespace Chisel.Editors
 					GUIUtility.hotControl = GUIUtility.keyboardControl = id;
 					evt.Use();
 					UnityEditor.EditorGUIUtility.SetWantsMouseJumping(1);
-					canClick = true;
+					s_CanClick = true;
 					break;
 				}
 				case EventType.MouseDrag:
@@ -173,7 +173,7 @@ namespace Chisel.Editors
 					if (GUIUtility.hotControl != id)
 						break;
 
-					canClick = false;
+					s_CanClick = false;
 					evt.Use();
 					break;
 				}
@@ -186,9 +186,9 @@ namespace Chisel.Editors
 					GUIUtility.keyboardControl = 0;
 					evt.Use();
 					UnityEditor.EditorGUIUtility.SetWantsMouseJumping(0);
-					if (canClick)
+					if (s_CanClick)
 						Units.ActiveDistanceUnit = Units.CycleToNextUnit(Units.ActiveDistanceUnit);
-					canClick = false;
+					s_CanClick = false;
 					break;
 				}
 			}
@@ -196,9 +196,9 @@ namespace Chisel.Editors
 
 		public static void DrawLength(UnityEngine.Vector3 from, UnityEngine.Vector3 to)
 		{
-			var prevColor = SceneHandles.color;
-			SceneHandles.color = SceneHandles.StateColor(SceneHandles.measureColor);
-			var invMatrix	= SceneHandles.inverseMatrix;
+			var prevColor = SceneHandles.Color;
+			SceneHandles.Color = SceneHandles.StateColor(SceneHandles.MeasureColor);
+			var invMatrix	= SceneHandles.InverseMatrix;
 
 			var camera		= UnityEngine.Camera.current;
 			var camPos		= invMatrix.MultiplyPoint(camera.transform.position);
@@ -218,14 +218,14 @@ namespace Chisel.Editors
 		//	SceneHandles.DrawLine(to   - right, to   + right);
 			
 			DrawUnitLabel(center, right, 2, length);
-			SceneHandles.color = prevColor;
+			SceneHandles.Color = prevColor;
 		}
 
 		public static void DrawLength(UnityEngine.Vector3 from, UnityEngine.Vector3 to, float forceValue)
 		{
-			var prevColor = SceneHandles.color;
-			SceneHandles.color = SceneHandles.StateColor(SceneHandles.measureColor);
-			var invMatrix	= SceneHandles.inverseMatrix;
+			var prevColor = SceneHandles.Color;
+			SceneHandles.Color = SceneHandles.StateColor(SceneHandles.MeasureColor);
+			var invMatrix	= SceneHandles.InverseMatrix;
 
 			var camera		= UnityEngine.Camera.current;
 			var camPos		= invMatrix.MultiplyPoint(camera.transform.position);
@@ -245,7 +245,7 @@ namespace Chisel.Editors
 			//	SceneHandles.DrawLine(to   - right, to   + right);
 
 			DrawUnitLabel(center, right, 2, forceValue);
-			SceneHandles.color = prevColor;
+			SceneHandles.Color = prevColor;
 		}
 
 		public static void DrawLengthsXY(Rect rect, Axes activeAxes = Axes.XYZ, Axes visibleAxes = Axes.XYZ, Axes selectedAxes = Axes.None)
@@ -255,8 +255,8 @@ namespace Chisel.Editors
 			// TODO: don't make the side lines move around when resizing, be smarter about handlesize
 			//			-> maybe limit the projected line to the screen?
 			
-			var invMatrix	= SceneHandles.inverseMatrix;
-			var prevColor	= SceneHandles.color;
+			var invMatrix	= SceneHandles.InverseMatrix;
+			var prevColor	= SceneHandles.Color;
 			var color		= prevColor;
 			var color2		= color;
 			color2.a *= 0.5f;
@@ -328,7 +328,7 @@ namespace Chisel.Editors
 			var directionX	= Mathf.Abs(angleX.y) <= Mathf.Abs(angleX.z);
 			var directionY	= Mathf.Abs(angleY.x) <= Mathf.Abs(angleY.z);
 			
-			var disabled	= SceneHandles.disabled;
+			var disabled	= SceneHandles.Disabled;
 
 			const int labelPadding = 2;
 			if (showX && ((visibleAxes & Axes.X) == Axes.X))
@@ -347,11 +347,11 @@ namespace Chisel.Editors
 				var toSize		= Mathf.Min(absLengthX / 3.0f, UnityEditor.HandleUtility.GetHandleSize(toOfs) * 0.2f);
 				var center		= (toOfs + fromOfs) * 0.5f;
 
-				SceneHandles.color = SceneHandles.StateColor(color2, !active, selected);
+				SceneHandles.Color = SceneHandles.StateColor(color2, !active, selected);
 				SceneHandles.DrawLine(fromX, fromOfs);
 				SceneHandles.DrawLine(toX,   toOfs);
 
-				SceneHandles.color = SceneHandles.StateColor(color, !active, selected);
+				SceneHandles.Color = SceneHandles.StateColor(color, !active, selected);
 				SceneHandles.DrawLine(fromOfs, toOfs);
 				DrawFlatArrow(fromOfs,  Vector3.right, camDir, fromSize);
 				DrawFlatArrow(toOfs,   -Vector3.right, camDir, toSize  );
@@ -374,25 +374,23 @@ namespace Chisel.Editors
 				var toSize		= Mathf.Min(absLengthY / 3.0f, UnityEditor.HandleUtility.GetHandleSize(toOfs  ) * 0.2f);
 				var center		= (toOfs + fromOfs) * 0.5f;
 
-				SceneHandles.color = SceneHandles.StateColor(color2, !active, selected);
+				SceneHandles.Color = SceneHandles.StateColor(color2, !active, selected);
 				SceneHandles.DrawLine(fromY, fromOfs);
 				SceneHandles.DrawLine(toY,   toOfs);
 
-				SceneHandles.color = SceneHandles.StateColor(color, !active, selected);
+				SceneHandles.Color = SceneHandles.StateColor(color, !active, selected);
 				SceneHandles.DrawLine(fromOfs, toOfs);
 				DrawFlatArrow(fromOfs,  Vector3.up, camDir, fromSize);
 				DrawFlatArrow(toOfs,   -Vector3.up, camDir, toSize  );
 				DrawUnitLabel(center, offset, labelPadding, lengthY, "Y");
 			}
-			SceneHandles.color = prevColor;
+			SceneHandles.Color = prevColor;
 		}
 
 		public static void DrawLengthsXZ(Matrix4x4 transformation, Rect rect, Axes activeAxes = Axes.XYZ, Axes visibleAxes = Axes.XYZ, Axes selectedAxes = Axes.None)
 		{
-			using (var drawingScope = new UnityEditor.Handles.DrawingScope(SceneHandles.measureColor, transformation))
-			{
-				DrawLengthsXZ(rect, activeAxes, visibleAxes, selectedAxes);
-			}
+			using var drawingScope = new UnityEditor.Handles.DrawingScope(SceneHandles.MeasureColor, transformation);
+			DrawLengthsXZ(rect, activeAxes, visibleAxes, selectedAxes);
 		}
 
 		public static void DrawLengthsXZ(Rect rect, Axes activeAxes = Axes.XYZ, Axes visibleAxes = Axes.XYZ, Axes selectedAxes = Axes.None)
@@ -402,8 +400,8 @@ namespace Chisel.Editors
 			// TODO: don't make the side lines move around when resizing, be smarter about handlesize
 			//			-> maybe limit the projected line to the screen?
 			
-			var invMatrix	= SceneHandles.inverseMatrix;
-			var prevColor	= SceneHandles.color;
+			var invMatrix	= SceneHandles.InverseMatrix;
+			var prevColor	= SceneHandles.Color;
 			var color		= prevColor;
 			var color2		= color;
 			color2.a *= 0.5f;
@@ -481,7 +479,7 @@ namespace Chisel.Editors
 			var directionX	= Mathf.Abs(angleX.y) <= Mathf.Abs(angleX.z);
 			var directionZ	= Mathf.Abs(angleZ.y) <= Mathf.Abs(angleZ.x);
 
-			var disabled	= SceneHandles.disabled;
+			var disabled	= SceneHandles.Disabled;
 
 			const int labelPadding = 2;
 			if (showX && ((visibleAxes & Axes.X) == Axes.X))
@@ -501,11 +499,11 @@ namespace Chisel.Editors
 				var toSize		= Mathf.Min(absLengthX / 3.0f, UnityEditor.HandleUtility.GetHandleSize(toOfs  ) * 0.2f);
 				var center		= (toOfs + fromOfs) * 0.5f;
 				
-				SceneHandles.color = SceneHandles.StateColor(color2, axisDisabled, selected);
+				SceneHandles.Color = SceneHandles.StateColor(color2, axisDisabled, selected);
 				SceneHandles.DrawLine(fromX, fromOfs);
 				SceneHandles.DrawLine(toX,   toOfs);
 
-				SceneHandles.color = SceneHandles.StateColor(color, axisDisabled, selected);
+				SceneHandles.Color = SceneHandles.StateColor(color, axisDisabled, selected);
 				SceneHandles.DrawLine(fromOfs, toOfs);
 				DrawFlatArrow(fromOfs,  Vector3.right, camDir, fromSize);
 				DrawFlatArrow(toOfs,   -Vector3.right, camDir, toSize  );
@@ -529,17 +527,17 @@ namespace Chisel.Editors
 				var toSize		= Mathf.Min(absLengthZ / 3.0f, UnityEditor.HandleUtility.GetHandleSize(toOfs  ) * 0.2f);
 				var center		= (toOfs + fromOfs) * 0.5f;
 				
-				SceneHandles.color = SceneHandles.StateColor(color2, axisDisabled, selected);
+				SceneHandles.Color = SceneHandles.StateColor(color2, axisDisabled, selected);
 				SceneHandles.DrawLine(fromZ, fromOfs);
 				SceneHandles.DrawLine(toZ,   toOfs);
 				
-				SceneHandles.color = SceneHandles.StateColor(color, axisDisabled, selected);
+				SceneHandles.Color = SceneHandles.StateColor(color, axisDisabled, selected);
 				SceneHandles.DrawLine(fromOfs, toOfs);
 				DrawFlatArrow(fromOfs,  Vector3.forward, camDir, fromSize);
 				DrawFlatArrow(toOfs,   -Vector3.forward, camDir, toSize  );
 				DrawUnitLabel(center, offset, labelPadding, lengthZ, "Z");
 			}
-			SceneHandles.color = prevColor;
+			SceneHandles.Color = prevColor;
 		}
 
 		public static void DrawLengths(Bounds bounds, Axes activeAxes = Axes.XYZ, Axes visibleAxes = Axes.XYZ, Axes selectedAxes = Axes.None)
@@ -549,8 +547,8 @@ namespace Chisel.Editors
 			// TODO: don't make the side lines move around when resizing, be smarter about handlesize
 			//			-> maybe limit the projected line to the screen?
 			
-			var invMatrix	= SceneHandles.inverseMatrix;
-			var prevColor	= SceneHandles.color;
+			var invMatrix	= SceneHandles.InverseMatrix;
+			var prevColor	= SceneHandles.Color;
 			var color		= prevColor;
 			var color2		= color;
 			color2.a *= 0.5f;
@@ -643,7 +641,7 @@ namespace Chisel.Editors
 			var directionY	= Mathf.Abs(angleY.x) <= Mathf.Abs(angleY.z);
 			var directionZ	= Mathf.Abs(angleZ.y) <= Mathf.Abs(angleZ.x);
 
-			var disabled	= SceneHandles.disabled;
+			var disabled	= SceneHandles.Disabled;
 
 			const int labelPadding = 2;
 			if (showX && ((visibleAxes & Axes.X) == Axes.X))
@@ -663,11 +661,11 @@ namespace Chisel.Editors
 				var toSize		= Mathf.Min(absLengthX / 3.0f, UnityEditor.HandleUtility.GetHandleSize(toOfs  ) * 0.2f);
 				var center		= (toOfs + fromOfs) * 0.5f;
 				
-				SceneHandles.color = SceneHandles.StateColor(color2, axisDisabled, selected);
+				SceneHandles.Color = SceneHandles.StateColor(color2, axisDisabled, selected);
 				SceneHandles.DrawLine(fromX, fromOfs);
 				SceneHandles.DrawLine(toX,   toOfs);
 
-				SceneHandles.color = SceneHandles.StateColor(color, axisDisabled, selected);
+				SceneHandles.Color = SceneHandles.StateColor(color, axisDisabled, selected);
 				SceneHandles.DrawLine(fromOfs, toOfs);
 				DrawFlatArrow(fromOfs,  Vector3.right, camDir, fromSize);
 				DrawFlatArrow(toOfs,   -Vector3.right, camDir, toSize  );
@@ -691,11 +689,11 @@ namespace Chisel.Editors
 				var toSize		= Mathf.Min(absLengthY / 3.0f, UnityEditor.HandleUtility.GetHandleSize(toOfs  ) * 0.2f);
 				var center		= (toOfs + fromOfs) * 0.5f;
 				
-				SceneHandles.color = SceneHandles.StateColor(color2, axisDisabled, selected);
+				SceneHandles.Color = SceneHandles.StateColor(color2, axisDisabled, selected);
 				SceneHandles.DrawLine(fromY, fromOfs);
 				SceneHandles.DrawLine(toY,   toOfs);
 				
-				SceneHandles.color = SceneHandles.StateColor(color, axisDisabled, selected);
+				SceneHandles.Color = SceneHandles.StateColor(color, axisDisabled, selected);
 				SceneHandles.DrawLine(fromOfs, toOfs);
 				DrawFlatArrow(fromOfs,  Vector3.up, camDir, fromSize);
 				DrawFlatArrow(toOfs,   -Vector3.up, camDir, toSize  );
@@ -719,21 +717,21 @@ namespace Chisel.Editors
 				var toSize		= Mathf.Min(absLengthZ / 3.0f, UnityEditor.HandleUtility.GetHandleSize(toOfs  ) * 0.2f);
 				var center		= (toOfs + fromOfs) * 0.5f;
 				
-				SceneHandles.color = SceneHandles.StateColor(color2, axisDisabled, selected);
+				SceneHandles.Color = SceneHandles.StateColor(color2, axisDisabled, selected);
 				SceneHandles.DrawLine(fromZ, fromOfs);
 				SceneHandles.DrawLine(toZ,   toOfs);
 				
-				SceneHandles.color = SceneHandles.StateColor(color, axisDisabled, selected);
+				SceneHandles.Color = SceneHandles.StateColor(color, axisDisabled, selected);
 				SceneHandles.DrawLine(fromOfs, toOfs);
 				DrawFlatArrow(fromOfs,  Vector3.forward, camDir, fromSize);
 				DrawFlatArrow(toOfs,   -Vector3.forward, camDir, toSize  );
 				DrawUnitLabel(center, offset, labelPadding, lengthZ, "Z");
 			}
-			SceneHandles.color = prevColor;
+			SceneHandles.Color = prevColor;
 		}
 
-		static readonly UnityEngine.Vector3[] linePoints = new UnityEngine.Vector3[2];
-		static readonly UnityEngine.Vector3[] anglePoints = new UnityEngine.Vector3[64];
+		//readonly static UnityEngine.Vector3[] s_LinePoints = new UnityEngine.Vector3[2];
+		readonly static UnityEngine.Vector3[] s_AnglePoints = new UnityEngine.Vector3[64];
 		public static void DrawAngle(UnityEngine.Vector3 center, UnityEngine.Vector3 direction, UnityEngine.Vector3 axis, float angle)
 		{
 			var rotation	= UnityEngine.Quaternion.AngleAxis(angle, axis);
@@ -743,10 +741,10 @@ namespace Chisel.Editors
 			//var ydir		= UnityEngine.Vector3.Cross(xdir, axis);
 			var handleSize	= Mathf.Min(centerSize, maxSize);
 			var drawAngle	= UnityEngine.Mathf.Clamp(angle, -360, 360);
-			var realLength	= Mathf.Max(1, Mathf.CeilToInt((anglePoints.Length / 360.0f) * Mathf.Abs(drawAngle)));
+			var realLength	= Mathf.Max(1, Mathf.CeilToInt((s_AnglePoints.Length / 360.0f) * Mathf.Abs(drawAngle)));
 
 			var pointSize = centerSize * 0.04f;
-			SceneHandles.color = SceneHandles.StateColor(SceneHandles.measureColor);
+			SceneHandles.Color = SceneHandles.StateColor(SceneHandles.MeasureColor);
 			SceneHandles.DrawAAPolyLine(center + (xdir * pointSize), center + direction);
 			SceneHandles.DrawAAPolyLine(center + (rotation * (xdir * pointSize)), center + (rotation * direction));
 			
@@ -759,10 +757,10 @@ namespace Chisel.Editors
 				var curAngle = 0.0f;
 				for (int i = 0; i < realLength; i++)
 				{
-					anglePoints[i] = center + (UnityEngine.Quaternion.AngleAxis(curAngle, axis) * direction);
+					s_AnglePoints[i] = center + (UnityEngine.Quaternion.AngleAxis(curAngle, axis) * direction);
 					curAngle += angleStep;
 				}
-				SceneHandles.DrawDottedLines(anglePoints.Take(realLength).ToArray(), 4.0f);
+				SceneHandles.DrawDottedLines(s_AnglePoints.Take(realLength).ToArray(), 4.0f);
 
 				rotation = UnityEngine.Quaternion.AngleAxis(angle, axis);
 				var right		= rotation * Vector3.right;

@@ -18,7 +18,7 @@ namespace Chisel.Components
         public int                      descriptionIndex;
         public int                      surfaceIndex;
 
-        public SurfaceReference(ChiselNode node, int descriptionIndex, CSGTreeBrush brush, int surfaceIndex)
+        public SurfaceReference(ChiselNodeComponent node, int descriptionIndex, CSGTreeBrush brush, int surfaceIndex)
         {
             this.node                   = node as ChiselGeneratorComponent;
             this.brush                  = brush;
@@ -69,14 +69,12 @@ namespace Chisel.Components
             }
         }
 
-        // A default polygon to return when we actually can't return a polygon
-        //static BrushMeshBlob.Polygon s_DefaultPolygon = default;
         public UVMatrix UV0
         {
             get
             {
                 if (!node)
-                    return UVMatrix.identity;
+                    return UVMatrix.Identity;
 
                 return node.GetSurfaceUV0(descriptionIndex);
             }

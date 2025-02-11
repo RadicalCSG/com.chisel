@@ -35,7 +35,7 @@ namespace Chisel.Core
 
         // Write
         [NoAlias, WriteOnly] public NativeStream.Writer                     intersectingBrushesStream;
-
+        /*
         // Per thread scratch memory
         [NativeDisableContainerSafetyRestriction] NativeArray<int>          intersectingPlaneIndices0;
         [NativeDisableContainerSafetyRestriction] NativeArray<int>          intersectingPlaneIndices1;
@@ -55,7 +55,7 @@ namespace Chisel.Core
         [NativeDisableContainerSafetyRestriction] NativeArray<int2>         vertexIntersectionSegments0;
         [NativeDisableContainerSafetyRestriction] NativeArray<int2>         vertexIntersectionSegments1;
         [NativeDisableContainerSafetyRestriction] NativeBitArray            planeAvailable;
-        
+        */
 
         // TODO: turn into job
         static void GetIntersectingPlanes(IntersectionType                  type,
@@ -156,7 +156,8 @@ namespace Chisel.Core
                             bool                                    needTransform,
                             [NoAlias] ref NativeArray<PlanePair>    usedPlanePairs,
                             [NoAlias] ref NativeArray<float3>       usedVertices,
-                            out int     usedPlanePairsLength,
+							[NoAlias] ref NativeBitArray            planeAvailable,
+							out int     usedPlanePairsLength,
                             out int     usedVerticesLength)
         {
             NativeCollectionHelpers.EnsureMinimumSize(ref usedVertices, mesh.localVertices.Length);
@@ -381,106 +382,149 @@ namespace Chisel.Core
 
         public void Execute(int index)
         {
-            if (index >= uniqueBrushPairs.Length)
-                goto Fail;
+			NativeArray<int> intersectingPlaneIndices0 = default;
+			NativeArray<int> intersectingPlaneIndices1 = default;
+			NativeArray<SurfaceInfo> surfaceInfos0 = default;
+			NativeArray<SurfaceInfo> surfaceInfos1 = default;
+			NativeArray<float4> localSpacePlanes0 = default;
+			NativeArray<float4> localSpacePlanes1 = default;
+			NativeArray<float4> intersectingLocalSpacePlanes0 = default;
+			NativeArray<float4> intersectingLocalSpacePlanes1 = default;
+			NativeArray<float3> usedVertices0 = default;
+			NativeArray<float3> usedVertices1 = default;
+			NativeArray<int> vertexUsed = default;
+			NativeArray<PlanePair> usedPlanePairs0 = default;
+			NativeArray<PlanePair> usedPlanePairs1 = default;
+			NativeArray<ushort> vertexIntersectionPlanes0 = default;
+			NativeArray<ushort> vertexIntersectionPlanes1 = default;
+			NativeArray<int2> vertexIntersectionSegments0 = default;
+			NativeArray<int2> vertexIntersectionSegments1 = default;
+			NativeBitArray planeAvailable = default;
 
-            var brushPair = uniqueBrushPairs[index];
+            try
+            {
+                if (index >= uniqueBrushPairs.Length)
+                    goto Fail;
 
-            if (brushPair.type == IntersectionType.InvalidValue)
-                goto Fail;
+                var brushPair = uniqueBrushPairs[index];
 
-            var brushIndexOrder0 = brushPair.brushIndexOrder0;
-            var brushIndexOrder1 = brushPair.brushIndexOrder1;
-            int brushNodeOrder0 = brushIndexOrder0.nodeOrder;
-            int brushNodeOrder1 = brushIndexOrder1.nodeOrder;
+                if (brushPair.type == IntersectionType.InvalidValue)
+                    goto Fail;
 
-            var blobMesh0 = brushMeshLookup[brushNodeOrder0];
-            var blobMesh1 = brushMeshLookup[brushNodeOrder1];
+                var brushIndexOrder0 = brushPair.brushIndexOrder0;
+                var brushIndexOrder1 = brushPair.brushIndexOrder1;
+                int brushNodeOrder0 = brushIndexOrder0.nodeOrder;
+                int brushNodeOrder1 = brushIndexOrder1.nodeOrder;
 
-
-            var type = brushPair.type;
-            if (type != IntersectionType.Intersection &&
-                type != IntersectionType.AInsideB &&
-                type != IntersectionType.BInsideA) 
-                goto Fail;
+                var blobMesh0 = brushMeshLookup[brushNodeOrder0];
+                var blobMesh1 = brushMeshLookup[brushNodeOrder1];
 
 
-            ref var mesh0 = ref blobMesh0.Value;
-            ref var mesh1 = ref blobMesh1.Value;
+                var type = brushPair.type;
+                if (type != IntersectionType.Intersection &&
+                    type != IntersectionType.AInsideB &&
+                    type != IntersectionType.BInsideA)
+                    goto Fail;
 
-            var transformations0 = transformationCache[brushNodeOrder0];
-            var transformations1 = transformationCache[brushNodeOrder1];
+
+                ref var mesh0 = ref blobMesh0.Value;
+                ref var mesh1 = ref blobMesh1.Value;
+
+                var transformations0 = transformationCache[brushNodeOrder0];
+                var transformations1 = transformationCache[brushNodeOrder1];
 
 
-            var node1ToNode0 = math.mul(transformations0.treeToNode, transformations1.nodeToTree);
-            var inversedNode0ToNode1 = math.transpose(node1ToNode0);
-            GetIntersectingPlanes(type, ref mesh0.localPlanes, mesh0.localPlaneCount, ref mesh1.localVertices, mesh1.localBounds, inversedNode0ToNode1, ref intersectingPlaneIndices0, out int intersectingPlanesLength0, out int intersectingPlanesAndEdgesLength0);
-            if (intersectingPlanesLength0 == 0) goto Fail;
+                var node1ToNode0 = math.mul(transformations0.treeToNode, transformations1.nodeToTree);
+                var inversedNode0ToNode1 = math.transpose(node1ToNode0);
+                GetIntersectingPlanes(type, ref mesh0.localPlanes, mesh0.localPlaneCount, ref mesh1.localVertices, mesh1.localBounds, inversedNode0ToNode1, ref intersectingPlaneIndices0, out int intersectingPlanesLength0, out int intersectingPlanesAndEdgesLength0);
+                if (intersectingPlanesLength0 == 0) goto Fail;
 
-            var node0ToNode1 = math.mul(transformations1.treeToNode, transformations0.nodeToTree);
-            var inversedNode1ToNode0 = math.transpose(node0ToNode1);
-            GetIntersectingPlanes(type, ref mesh1.localPlanes, mesh1.localPlaneCount, ref mesh0.localVertices, mesh0.localBounds, inversedNode1ToNode0, ref intersectingPlaneIndices1, out int intersectingPlanesLength1, out int intersectingPlanesAndEdgesLength1);
-            if (intersectingPlanesLength1 == 0) goto Fail;
+                var node0ToNode1 = math.mul(transformations1.treeToNode, transformations0.nodeToTree);
+                var inversedNode1ToNode0 = math.transpose(node0ToNode1);
+                GetIntersectingPlanes(type, ref mesh1.localPlanes, mesh1.localPlaneCount, ref mesh0.localVertices, mesh0.localBounds, inversedNode1ToNode0, ref intersectingPlaneIndices1, out int intersectingPlanesLength1, out int intersectingPlanesAndEdgesLength1);
+                if (intersectingPlanesLength1 == 0) goto Fail;
 
-            // TODO: for each edge of each polygon that is considered an intersecting plane, find the plane that's in between both planes on each side of the edge, and add these planes.
-            //       this is to avoid very sharp plane intersections accepting vertices that are obviously outside of the convex polytope
+                // TODO: for each edge of each polygon that is considered an intersecting plane, find the plane that's in between both planes on each side of the edge, and add these planes.
+                //       this is to avoid very sharp plane intersections accepting vertices that are obviously outside of the convex polytope
 
-            GetLocalAndIndirectPlanes(ref mesh0.localPlanes,                       ref localSpacePlanes0, mesh0.localPlanes.Length,
-                                      ref mesh1.localPlanes, inversedNode1ToNode0, ref localSpacePlanes1, mesh1.localPlanes.Length,
-                                      ref intersectingPlaneIndices0, intersectingPlanesAndEdgesLength0, ref intersectingLocalSpacePlanes0,
-                                      ref intersectingPlaneIndices1, intersectingPlanesAndEdgesLength1, ref intersectingLocalSpacePlanes1);
+                GetLocalAndIndirectPlanes(ref mesh0.localPlanes, ref localSpacePlanes0, mesh0.localPlanes.Length,
+                                          ref mesh1.localPlanes, inversedNode1ToNode0, ref localSpacePlanes1, mesh1.localPlanes.Length,
+                                          ref intersectingPlaneIndices0, intersectingPlanesAndEdgesLength0, ref intersectingLocalSpacePlanes0,
+                                          ref intersectingPlaneIndices1, intersectingPlanesAndEdgesLength1, ref intersectingLocalSpacePlanes1);
 
-            FindPlanePairs(type, ref mesh0, intersectingPlaneIndices0, intersectingPlanesLength0, localSpacePlanes0, ref vertexUsed, float4x4.identity, false, ref usedPlanePairs0, ref usedVertices0, out int usedPlanePairsLength0, out int usedVerticesLength0);
-            FindPlanePairs(type, ref mesh1, intersectingPlaneIndices1, intersectingPlanesLength1, localSpacePlanes1, ref vertexUsed, node1ToNode0,      true,  ref usedPlanePairs1, ref usedVertices1, out int usedPlanePairsLength1, out int usedVerticesLength1);
-            
-            FindAlignedPlanes(type, ref intersectingPlaneIndices0, intersectingPlanesLength0, ref localSpacePlanes0, mesh0.localPlaneCount, ref surfaceInfos0,
-                                    ref intersectingPlaneIndices1, intersectingPlanesLength1, ref localSpacePlanes1, mesh1.localPlaneCount, ref surfaceInfos1);
+                FindPlanePairs(type, ref mesh0, intersectingPlaneIndices0, intersectingPlanesLength0, localSpacePlanes0, ref vertexUsed, float4x4.identity, false, ref usedPlanePairs0, ref usedVertices0, ref planeAvailable, out int usedPlanePairsLength0, out int usedVerticesLength0);
+                FindPlanePairs(type, ref mesh1, intersectingPlaneIndices1, intersectingPlanesLength1, localSpacePlanes1, ref vertexUsed, node1ToNode0, true, ref usedPlanePairs1, ref usedVertices1, ref planeAvailable, out int usedPlanePairsLength1, out int usedVerticesLength1);
 
-            FindPlanesIntersectingVertices(ref usedVertices0, usedVerticesLength0,
-                                           ref intersectingPlaneIndices0, intersectingPlanesLength0,
-                                           ref mesh0.localPlanes,
-                                           ref vertexIntersectionPlanes0, ref vertexIntersectionSegments0, out int vertexIntersectionPlaneCount0);
+                FindAlignedPlanes(type, ref intersectingPlaneIndices0, intersectingPlanesLength0, ref localSpacePlanes0, mesh0.localPlaneCount, ref surfaceInfos0,
+                                        ref intersectingPlaneIndices1, intersectingPlanesLength1, ref localSpacePlanes1, mesh1.localPlaneCount, ref surfaceInfos1);
 
-            FindPlanesIntersectingVertices(ref usedVertices1, usedVerticesLength1,
-                                           ref intersectingPlaneIndices1, intersectingPlanesLength1,
-                                           ref mesh1.localPlanes,
-                                           ref vertexIntersectionPlanes1, ref vertexIntersectionSegments1, out int vertexIntersectionPlaneCount1);
-            
-            // TODO: mix writing to stream with filling the lists, this would remove allocation + copy for those lists
-            intersectingBrushesStream.BeginForEachIndex(index);
-            intersectingBrushesStream.Write(type);
-            
-            intersectingBrushesStream.Write(brushIndexOrder0);
-            intersectingBrushesStream.Write(transformations0.nodeToTree);
-            intersectingBrushesStream.Write(node0ToNode1);
-			intersectingBrushesStream.Write(usedVertices0, usedVerticesLength0);
-			intersectingBrushesStream.Write(usedPlanePairs0, usedPlanePairsLength0);
-			intersectingBrushesStream.Write(intersectingLocalSpacePlanes0, intersectingPlanesAndEdgesLength0);
-            intersectingBrushesStream.Write(intersectingPlanesLength0);
-			intersectingBrushesStream.Write(intersectingPlaneIndices0, intersectingPlanesLength0);
-			intersectingBrushesStream.Write(vertexIntersectionPlanes0, vertexIntersectionPlaneCount0);
-			intersectingBrushesStream.Write(vertexIntersectionSegments0, usedVerticesLength0);
-            intersectingBrushesStream.Write(surfaceInfos0, mesh0.localPlaneCount);
+                FindPlanesIntersectingVertices(ref usedVertices0, usedVerticesLength0,
+                                               ref intersectingPlaneIndices0, intersectingPlanesLength0,
+                                               ref mesh0.localPlanes,
+                                               ref vertexIntersectionPlanes0, ref vertexIntersectionSegments0, out int vertexIntersectionPlaneCount0);
 
-            intersectingBrushesStream.Write(brushIndexOrder1);
-            intersectingBrushesStream.Write(transformations1.nodeToTree);
-            intersectingBrushesStream.Write(node1ToNode0);
-			intersectingBrushesStream.Write(usedVertices1, usedVerticesLength1);
-			intersectingBrushesStream.Write(usedPlanePairs1, usedPlanePairsLength1);
-			intersectingBrushesStream.Write(intersectingLocalSpacePlanes1, intersectingPlanesAndEdgesLength1);
-            intersectingBrushesStream.Write(intersectingPlanesLength1);
-			intersectingBrushesStream.Write(intersectingPlaneIndices1, intersectingPlanesLength1);
-			intersectingBrushesStream.Write(vertexIntersectionPlanes1, vertexIntersectionPlaneCount1);
-			intersectingBrushesStream.Write(vertexIntersectionSegments1, usedVerticesLength1);
-            intersectingBrushesStream.Write(surfaceInfos1, mesh1.localPlaneCount);
+                FindPlanesIntersectingVertices(ref usedVertices1, usedVerticesLength1,
+                                               ref intersectingPlaneIndices1, intersectingPlanesLength1,
+                                               ref mesh1.localPlanes,
+                                               ref vertexIntersectionPlanes1, ref vertexIntersectionSegments1, out int vertexIntersectionPlaneCount1);
 
-            intersectingBrushesStream.EndForEachIndex();
-            return;
-Fail:
-            intersectingBrushesStream.BeginForEachIndex(index);
-            intersectingBrushesStream.Write(IntersectionType.InvalidValue);
-            intersectingBrushesStream.EndForEachIndex();
-            return;
-        }
+                // TODO: mix writing to stream with filling the lists, this would remove allocation + copy for those lists
+                intersectingBrushesStream.BeginForEachIndex(index);
+                intersectingBrushesStream.Write(type);
+
+                intersectingBrushesStream.Write(brushIndexOrder0);
+                intersectingBrushesStream.Write(transformations0.nodeToTree);
+                intersectingBrushesStream.Write(node0ToNode1);
+                intersectingBrushesStream.Write(usedVertices0, usedVerticesLength0);
+                intersectingBrushesStream.Write(usedPlanePairs0, usedPlanePairsLength0);
+                intersectingBrushesStream.Write(intersectingLocalSpacePlanes0, intersectingPlanesAndEdgesLength0);
+                intersectingBrushesStream.Write(intersectingPlanesLength0);
+                intersectingBrushesStream.Write(intersectingPlaneIndices0, intersectingPlanesLength0);
+                intersectingBrushesStream.Write(vertexIntersectionPlanes0, vertexIntersectionPlaneCount0);
+                intersectingBrushesStream.Write(vertexIntersectionSegments0, usedVerticesLength0);
+                intersectingBrushesStream.Write(surfaceInfos0, mesh0.localPlaneCount);
+
+                intersectingBrushesStream.Write(brushIndexOrder1);
+                intersectingBrushesStream.Write(transformations1.nodeToTree);
+                intersectingBrushesStream.Write(node1ToNode0);
+                intersectingBrushesStream.Write(usedVertices1, usedVerticesLength1);
+                intersectingBrushesStream.Write(usedPlanePairs1, usedPlanePairsLength1);
+                intersectingBrushesStream.Write(intersectingLocalSpacePlanes1, intersectingPlanesAndEdgesLength1);
+                intersectingBrushesStream.Write(intersectingPlanesLength1);
+                intersectingBrushesStream.Write(intersectingPlaneIndices1, intersectingPlanesLength1);
+                intersectingBrushesStream.Write(vertexIntersectionPlanes1, vertexIntersectionPlaneCount1);
+                intersectingBrushesStream.Write(vertexIntersectionSegments1, usedVerticesLength1);
+                intersectingBrushesStream.Write(surfaceInfos1, mesh1.localPlaneCount);
+
+                intersectingBrushesStream.EndForEachIndex();
+                return;
+            Fail:
+                intersectingBrushesStream.BeginForEachIndex(index);
+                intersectingBrushesStream.Write(IntersectionType.InvalidValue);
+                intersectingBrushesStream.EndForEachIndex();
+                return;
+            }
+            finally
+            {
+                if (intersectingPlaneIndices0.IsCreated) intersectingPlaneIndices0.Dispose();
+                if (intersectingPlaneIndices1.IsCreated) intersectingPlaneIndices1.Dispose();
+				if (surfaceInfos0.IsCreated) surfaceInfos0.Dispose();
+				if (surfaceInfos1.IsCreated) surfaceInfos1.Dispose();
+				if (localSpacePlanes0.IsCreated) localSpacePlanes0.Dispose();
+				if (localSpacePlanes1.IsCreated) localSpacePlanes1.Dispose();
+				if (intersectingLocalSpacePlanes0.IsCreated) intersectingLocalSpacePlanes0.Dispose();
+				if (intersectingLocalSpacePlanes1.IsCreated) intersectingLocalSpacePlanes1.Dispose();
+				if (usedVertices0.IsCreated) usedVertices0.Dispose();
+				if (usedVertices1.IsCreated) usedVertices1.Dispose();
+				if (vertexUsed.IsCreated) vertexUsed.Dispose();
+				if (usedPlanePairs0.IsCreated) usedPlanePairs0.Dispose();
+				if (usedPlanePairs1.IsCreated) usedPlanePairs1.Dispose();
+				if (vertexIntersectionPlanes0.IsCreated) vertexIntersectionPlanes0.Dispose();
+				if (vertexIntersectionPlanes1.IsCreated) vertexIntersectionPlanes1.Dispose();
+				if (vertexIntersectionSegments0.IsCreated) vertexIntersectionSegments0.Dispose();
+				if (vertexIntersectionSegments1.IsCreated) vertexIntersectionSegments1.Dispose();
+				if (planeAvailable.IsCreated) planeAvailable.Dispose();
+			}
+		}
     }
 }

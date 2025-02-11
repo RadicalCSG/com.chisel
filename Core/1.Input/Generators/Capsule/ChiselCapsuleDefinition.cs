@@ -14,7 +14,7 @@ namespace Chisel.Core
         public const float	kDefaultHemisphereRatio	    = 0.25f;
         public const float	kDefaultHemisphereHeight	= kDefaultDiameter * kDefaultHemisphereRatio;
         
-        public static readonly ChiselCapsule DefaultSettings = new ChiselCapsule
+        readonly static ChiselCapsule kDefaultSettings = new()
         {
             height				= 1.0f,
             topHeight			= kDefaultHemisphereHeight,
@@ -28,8 +28,9 @@ namespace Chisel.Core
             topSegments			= 4,
             bottomSegments		= 4
         };
+		public static ChiselCapsule DefaultSettings { get { return kDefaultSettings; } }
 
-        public float    height;
+		public float    height;
         public float    topHeight;
         public float    bottomHeight;
         public float    offsetY;
@@ -78,13 +79,14 @@ namespace Chisel.Core
         #endregion
 
         #region Generate
-        public BlobAssetReference<BrushMeshBlob> GenerateMesh(BlobAssetReference<InternalChiselSurfaceArray> surfaceDefinitionBlob, Allocator allocator)
-        {
+        public readonly BlobAssetReference<BrushMeshBlob> GenerateMesh(BlobAssetReference<InternalChiselSurfaceArray> surfaceDefinitionBlob, 
+                                                                       Allocator allocator = Allocator.Persistent)// Indirect
+		{
             if (!BrushMeshFactory.GenerateCapsule(in this,
                                                   in surfaceDefinitionBlob,
                                                   out var newBrushMesh,
-                                                  allocator))
-                return default;
+                                                  allocator))// Indirect
+				return default;
             return newBrushMesh;
         }
         #endregion
@@ -203,6 +205,7 @@ namespace Chisel.Core
         {
             var baseColor		= handles.color;
             var normal			= Vector3.up;
+
 
             if (BrushMeshFactory.GenerateCapsuleVertices(ref settings, ref vertices))
             {

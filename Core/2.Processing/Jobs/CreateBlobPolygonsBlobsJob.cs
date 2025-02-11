@@ -25,13 +25,6 @@ namespace Chisel.Core
         [NoAlias, WriteOnly] public NativeList<BlobAssetReference<BasePolygonsBlob>>              basePolygonCache;
 
 
-        // Per thread scratch memory
-        [NativeDisableContainerSafetyRestriction] HashedVertices            hashedTreeSpaceVertices;
-        [NativeDisableContainerSafetyRestriction] NativeArray<Edge>         edges;
-        [NativeDisableContainerSafetyRestriction] NativeArray<ValidPolygon> validPolygons;
-        [NativeDisableContainerSafetyRestriction] NativeArray<Edge>         tempEdges;
-
-
         static bool IsDegenerate([NoAlias, ReadOnly] HashedVertices hashedTreeSpaceVertices, [NoAlias, ReadOnly] NativeArray<Edge> edges, int edgeCount)
         {
             if (edgeCount < 3)
@@ -147,18 +140,30 @@ namespace Chisel.Core
             ref var localPlanes         = ref mesh.Value.localPlanes;
             ref var polygons            = ref mesh.Value.polygons;
 
-            NativeCollectionHelpers.EnsureCapacityAndClear(ref hashedTreeSpaceVertices, math.max(treeSpaceVertices.Length, 1000));
+			HashedVertices hashedTreeSpaceVertices;
+			using var _hashedTreeSpaceVertices = hashedTreeSpaceVertices = new HashedVertices(math.max(treeSpaceVertices.Length, 1000), Allocator.Temp);
+
+			NativeArray<Edge> edges;
+			using var _edges = edges = new NativeArray<Edge>(halfEdges.Length, Allocator.Temp);
+			
+            NativeArray<ValidPolygon> validPolygons;
+			using var _validPolygons = validPolygons = new NativeArray<ValidPolygon>(polygons.Length, Allocator.Temp);
+
+			NativeArray<Edge> tempEdges;
+			using var _tempEdges = tempEdges = new NativeArray<Edge>(halfEdges.Length, Allocator.Temp);
+
+			//NativeCollectionHelpers.EnsureMinimumSize(ref edges, halfEdges.Length);
+			//NativeCollectionHelpers.EnsureMinimumSize(ref validPolygons, polygons.Length);
+			//NativeCollectionHelpers.EnsureMinimumSize(ref tempEdges, halfEdges.Length);
+			//NativeCollectionHelpers.EnsureCapacityAndClear(ref hashedTreeSpaceVertices, math.max(treeSpaceVertices.Length, 1000));
 
 
             var totalEdgeCount      = 0;
             var totalSurfaceCount   = 0;
 
-            NativeCollectionHelpers.EnsureMinimumSize(ref edges, halfEdges.Length);
-            NativeCollectionHelpers.EnsureMinimumSize(ref validPolygons, polygons.Length);
-
-            //var edges           = new NativeArray<Edge>(halfEdges.Length, Allocator.Temp);
-            //var validPolygons   = new NativeArray<ValidPolygon>(polygons.Length, Allocator.Temp);
-            for (int polygonIndex = 0; polygonIndex < polygons.Length; polygonIndex++)
+			//var edges           = new NativeArray<Edge>(halfEdges.Length, Allocator.Temp);
+			//var validPolygons   = new NativeArray<ValidPolygon>(polygons.Length, Allocator.Temp);
+			for (int polygonIndex = 0; polygonIndex < polygons.Length; polygonIndex++)
             {
                 var polygon = polygons[polygonIndex];
                 if (polygon.edgeCount < 3 || polygonIndex >= localPlanes.Length)
@@ -177,9 +182,8 @@ namespace Chisel.Core
 
                 int edgeCount = 0;
                 int startEdgeIndex = totalEdgeCount;
-
-                NativeCollectionHelpers.EnsureMinimumSize(ref tempEdges, halfEdges.Length);
                 
+
                 //var tempEdges = new NativeArray<Edge>(polygon.edgeCount, Allocator.Temp);
                 CopyPolygonToIndices(mesh, ref treeSpaceVertices, polygonIndex, hashedTreeSpaceVertices, tempEdges, ref edgeCount);
                 if (edgeCount == 0) // Can happen when multiple vertices are collapsed on eachother / degenerate polygon
@@ -245,7 +249,7 @@ namespace Chisel.Core
             var totalVertexSize     = 16 + (hashedTreeSpaceVertices.Length * UnsafeUtility.SizeOf<float3>());
             var totalSize           = totalEdgeSize + totalPolygonSize + totalSurfaceSize + totalVertexSize;
 
-            var builder = new BlobBuilder(Allocator.Temp, totalSize);
+            using var builder = new BlobBuilder(Allocator.Temp, totalSize);
             ref var root = ref builder.ConstructRoot<BasePolygonsBlob>();
             var polygonArray = builder.Allocate(ref root.polygons, totalSurfaceCount);
             builder.Construct(ref root.edges,    edges   , totalEdgeCount);
@@ -275,8 +279,8 @@ namespace Chisel.Core
                     localPlane            = localPlane
                 };
             }
-            var basePolygonsBlob = builder.CreateBlobAssetReference<BasePolygonsBlob>(Allocator.Persistent);
+            var basePolygonsBlob = builder.CreateBlobAssetReference<BasePolygonsBlob>(Allocator.Persistent); // Confirmed to be disposed
             basePolygonCache[nodeOrder] = basePolygonsBlob;
-        }
+		}
     }
-}
+}   

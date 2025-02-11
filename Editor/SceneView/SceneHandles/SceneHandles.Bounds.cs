@@ -6,12 +6,12 @@ namespace Chisel.Editors
 {
     public sealed partial class SceneHandles
     {
-        internal static int s_BoundsHash = "BoundsHash".GetHashCode();
+        internal readonly static int kBoundsHash = "BoundsHash".GetHashCode();
         
-        static readonly Vector3[]   s_BoundsVertices	= new Vector3[8];
+        readonly static Vector3[]   s_BoundsVertices	= new Vector3[8];
 
         // slideDir1, slideDir2, facing direction
-        static readonly int[,]		s_EdgeDirectionOffsets = new int[,]
+        readonly static int[,]		s_EdgeDirectionOffsets = new int[,]
         {
             {1,2,0}, {3,2,1}, {4,2,0}, {0,2,1},
 
@@ -21,7 +21,7 @@ namespace Chisel.Editors
         };
         
         
-        static readonly Axes[]		s_EdgeAxes = new Axes[]
+        readonly static Axes[]		s_EdgeAxes = new Axes[]
         {
             Axes.YZ, Axes.XZ, Axes.YZ, Axes.XZ,
 
@@ -30,13 +30,13 @@ namespace Chisel.Editors
             Axes.XY, Axes.XY, Axes.XY, Axes.XY
         };
         
-        static readonly Axes[]		s_BoundsAxes = new Axes[]
+        readonly static Axes[]		s_BoundsAxes = new Axes[]
         {
             Axes.X, Axes.Y, Axes.Z, Axes.X, Axes.Y, Axes.Z
         };
 
         // from-to vertex indices
-        static readonly int[,]		s_BoundsEdgeIndices	= new int[,]
+        readonly static int[,]		s_BoundsEdgeIndices	= new int[,]
         {
             {0, 1}, {1, 2}, {2, 3}, {3, 0}, 
                 
@@ -46,16 +46,16 @@ namespace Chisel.Editors
         };
         
         // min - max values of bounds, put in an array to be indexed by number
-        static readonly float[]     s_BoundsValues			= new float[6];
+        readonly static float[]     s_BoundsValues			= new float[6];
 
         // slide directions, put in array to be indexed by number
-        static readonly Vector3[]   s_BoundsSlideDirs		= new Vector3[3];
+        readonly static Vector3[]   s_BoundsSlideDirs		= new Vector3[3];
 
-        static readonly Vector3[]   s_BoundsSidePoint		= new Vector3[6];
-        static readonly bool[]		s_BoundsBackfaced		= new bool[6];
-        static readonly bool[]		s_BoundsAxisDisabled	= new bool[6];
-        static readonly bool[]      s_BoundsAxisHot			= new bool[6];
-        static readonly int[]		s_BoundsControlIds		= new int[6];
+        readonly static Vector3[]   s_BoundsSidePoint		= new Vector3[6];
+        readonly static bool[]		s_BoundsBackfaced		= new bool[6];
+        readonly static bool[]		s_BoundsAxisDisabled	= new bool[6];
+        readonly static bool[]      s_BoundsAxisHot			= new bool[6];
+        readonly static int[]		s_BoundsControlIds		= new int[6];
 
         const float kShowPointThreshold = 0.00001f;
 
@@ -70,7 +70,7 @@ namespace Chisel.Editors
             bool isControlHot = false;
             for (int i = 0; i < s_BoundsControlIds.Length; i++)
             {
-                s_BoundsControlIds[i] = GUIUtility.GetControlID(s_BoundsHash, FocusType.Keyboard);
+                s_BoundsControlIds[i] = GUIUtility.GetControlID(kBoundsHash, FocusType.Keyboard);
                 s_BoundsAxisHot[i] = s_BoundsControlIds[i] == hotControl;
                 isControlHot = isControlHot || s_BoundsAxisHot[i];
             }
@@ -115,7 +115,7 @@ namespace Chisel.Editors
             
             using (new SceneHandles.DrawingScope())
             {
-                var prevDisabled	= SceneHandles.disabled;
+                var prevDisabled	= SceneHandles.Disabled;
 
                 var isStatic = (!Tools.hidden && EditorApplication.isPlaying && GameObjectExtensions.ContainsStatic(Selection.gameObjects));
                 
@@ -126,14 +126,14 @@ namespace Chisel.Editors
                 }
 
                 var camera					= Camera.current;
-                var cameraLocalPos			= SceneHandles.inverseMatrix.MultiplyPoint(camera.transform.position);
-                var cameraLocalForward		= SceneHandles.inverseMatrix.MultiplyVector(camera.transform.forward);
+                var cameraLocalPos			= SceneHandles.InverseMatrix.MultiplyPoint(camera.transform.position);
+                var cameraLocalForward		= SceneHandles.InverseMatrix.MultiplyVector(camera.transform.forward);
                 var isCameraInsideBox		= bounds.Contains(cameraLocalPos);
                 var isCameraOrthographic	= camera.orthographic;
             
 
-                var boundsColor			= SceneHandles.handleColor;
-                var backfacedColor		= new Color(boundsColor.r, boundsColor.g, boundsColor.b, boundsColor.a * SceneHandles.backfaceAlphaMultiplier);
+                var boundsColor			= SceneHandles.HandleColor;
+                var backfacedColor		= new Color(boundsColor.r, boundsColor.g, boundsColor.b, boundsColor.a * SceneHandles.BackfaceAlphaMultiplier);
             
 
                 var prevGUIchanged = GUI.changed;
@@ -143,7 +143,7 @@ namespace Chisel.Editors
                 var selectedAxes = Axes.None;
 
                 // all sides of bounds
-                int currentFocusControl = SceneHandleUtility.focusControl;
+                int currentFocusControl = SceneHandleUtility.FocusControl;
                 for (int i = 0; i < s_BoundsValues.Length; i++)
                 {
                     var id = s_BoundsControlIds[i];
@@ -172,7 +172,7 @@ namespace Chisel.Editors
                         }
 
                         var sideColor = (s_BoundsBackfaced[i] ? backfacedColor: boundsColor);
-                        SceneHandles.color = SceneHandles.StateColor(sideColor, s_BoundsAxisDisabled[i], (currentFocusControl == id));
+                        SceneHandles.Color = SceneHandles.StateColor(sideColor, s_BoundsAxisDisabled[i], (currentFocusControl == id));
                     
                         if (currentFocusControl == id) 
                         {
@@ -186,7 +186,7 @@ namespace Chisel.Editors
                             selectedAxes = s_BoundsAxes[i];
                         }
                     
-                        if (s_BoundsBackfaced[i]) pointSize *= backfaceSizeMultiplier;
+                        if (s_BoundsBackfaced[i]) pointSize *= BackfaceSizeMultiplier;
                     }
                 
                     var steps		= snappingSteps ?? Snapping.MoveSnappingSteps;
@@ -201,7 +201,7 @@ namespace Chisel.Editors
                 // all edges of bounds
                 for (int i = 0; i < s_BoundsEdgeIndices.GetLength(0); i++)
                 {
-                    var id = GUIUtility.GetControlID (s_BoundsHash, FocusType.Keyboard);
+                    var id = GUIUtility.GetControlID (kBoundsHash, FocusType.Keyboard);
 
                     GUI.changed = false;
                     var index1		= s_BoundsEdgeIndices[i,0];
@@ -222,7 +222,7 @@ namespace Chisel.Editors
                         var highlight	 = (currentFocusControl == id) || (currentFocusControl == s_BoundsControlIds[offset1]) || (currentFocusControl == s_BoundsControlIds[offset2]);					
                         var edgeColor	 = (s_BoundsBackfaced[offset1] && s_BoundsBackfaced[offset2]) ? backfacedColor : boundsColor;
                         var edgeDisabled = (s_BoundsAxisDisabled[offset1] && s_BoundsAxisDisabled[offset2]);
-                        SceneHandles.color = SceneHandles.StateColor(edgeColor, edgeDisabled, highlight);
+                        SceneHandles.Color = SceneHandles.StateColor(edgeColor, edgeDisabled, highlight);
 
                         if (currentFocusControl == id)
                             selectedAxes = s_EdgeAxes[i];
@@ -282,7 +282,7 @@ namespace Chisel.Editors
 
                 // TODO: paint XZ intersection with grid plane + 'shadow' 
             
-                SceneHandles.disabled = prevDisabled;
+                SceneHandles.Disabled = prevDisabled;
             }
             
             return bounds;

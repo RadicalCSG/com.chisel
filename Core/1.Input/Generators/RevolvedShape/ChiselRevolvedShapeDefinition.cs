@@ -11,75 +11,72 @@ namespace Chisel.Core
     [Serializable]
     public struct ChiselRevolvedShape : IBranchGenerator
     {
-        public readonly static ChiselRevolvedShape DefaultValues = new ChiselRevolvedShape
-        {
+        readonly static ChiselRevolvedShape kDefaultSettings = new()
+		{
             startAngle		= 0.0f,
             totalAngle		= 360.0f,
             curveSegments	= 8,
             revolveSegments	= 8
         };
+		public static ref readonly ChiselRevolvedShape DefaultSettings => ref kDefaultSettings;
 
-        public int      curveSegments;
+		public int      curveSegments;
         public int      revolveSegments;
         public float    startAngle;
         public float    totalAngle;
 
         [UnityEngine.HideInInspector, NonSerialized] public BlobAssetReference<ChiselCurve2DBlob>   curveBlob;
+        [UnityEngine.HideInInspector, NonSerialized] internal UnsafeList<float4x4>                  pathMatrices;
         [UnityEngine.HideInInspector, NonSerialized] internal UnsafeList<SegmentVertex>             polygonVerticesList;
         [UnityEngine.HideInInspector, NonSerialized] internal UnsafeList<int>                       polygonVerticesSegments;
-        [UnityEngine.HideInInspector, NonSerialized] internal UnsafeList<float4x4>                  pathMatrices;
                 
         #region Generate
         public int PrepareAndCountRequiredBrushMeshes()
         {
             ref var curve = ref curveBlob.Value;
-            if (!curve.ConvexPartition(curveSegments, out polygonVerticesList, out polygonVerticesSegments, Allocator.Persistent))
-                return 0;
+            if (!curve.ConvexPartition(curveSegments, out polygonVerticesList, out polygonVerticesSegments)) // Indirect
+				return 0;
 
-            BrushMeshFactory.GetCircleMatrices(out pathMatrices, revolveSegments, new float3(0, 1, 0), Allocator.Persistent);
+            if (pathMatrices.IsCreated) pathMatrices.Dispose();
+			pathMatrices = BrushMeshFactory.GetCircleMatrices(revolveSegments, new float3(0, 1, 0)); // Indirect
 
             BrushMeshFactory.Split2DPolygonAlongOriginXAxis(ref polygonVerticesList, ref polygonVerticesSegments);
 
             return polygonVerticesSegments.Length * (pathMatrices.Length - 1);
         }
 
-        public bool GenerateNodes(BlobAssetReference<InternalChiselSurfaceArray> surfaceDefinitionBlob, NativeList<GeneratedNode> nodes, Allocator allocator)
-        {
-            var generatedBrushMeshes = new NativeList<BlobAssetReference<BrushMeshBlob>>(nodes.Length, Allocator.Temp);
-            try
-            {
-                generatedBrushMeshes.Resize(nodes.Length, NativeArrayOptions.ClearMemory);
-                if (!BrushMeshFactory.GenerateExtrudedShape(generatedBrushMeshes,
-                                                            in polygonVerticesList,
-                                                            in polygonVerticesSegments,
-                                                            in pathMatrices,
-                                                            in surfaceDefinitionBlob,
-                                                            allocator))
-                {
-                    for (int i = 0; i < generatedBrushMeshes.Length; i++)
-                    {
-                        if (generatedBrushMeshes[i].IsCreated)
-                            generatedBrushMeshes[i].Dispose();
-                        generatedBrushMeshes[i] = default;
-                    }
-                    return false;
-                }
+        public readonly bool GenerateNodes(BlobAssetReference<InternalChiselSurfaceArray> surfaceDefinitionBlob, NativeList<GeneratedNode> nodes, 
+                                           Allocator allocator = Allocator.Persistent)// Indirect
+		{
+            NativeList<BlobAssetReference<BrushMeshBlob>> generatedBrushMeshes;
+			using var _generatedBrushMeshes = generatedBrushMeshes = new NativeList<BlobAssetReference<BrushMeshBlob>>(nodes.Length, Allocator.Temp);
+            generatedBrushMeshes.Resize(nodes.Length, NativeArrayOptions.ClearMemory);
+            if (!BrushMeshFactory.GenerateExtrudedShape(generatedBrushMeshes,
+                                                        in polygonVerticesList,
+                                                        in polygonVerticesSegments,
+                                                        in pathMatrices,
+                                                        in surfaceDefinitionBlob,
+                                                        allocator))// Indirect
+			{
                 for (int i = 0; i < generatedBrushMeshes.Length; i++)
-                    nodes[i] = GeneratedNode.GenerateBrush(generatedBrushMeshes[i]);
-                return true;
+                {
+                    if (generatedBrushMeshes[i].IsCreated)
+                        generatedBrushMeshes[i].Dispose();
+                    generatedBrushMeshes[i] = default;
+                }
+                return false;
             }
-            finally
-            {
-                generatedBrushMeshes.Dispose();
-            }
+            for (int i = 0; i < generatedBrushMeshes.Length; i++)
+                nodes[i] = GeneratedNode.GenerateBrush(generatedBrushMeshes[i]); // Confirmed to dispose
+			return true;
         }
 
         public void Dispose()
         {
             if (curveBlob.IsCreated) curveBlob.Dispose(); curveBlob = default;
-            if (polygonVerticesList.IsCreated) polygonVerticesList.Dispose(); polygonVerticesList = default;
+			if (pathMatrices.IsCreated) pathMatrices.Dispose(); pathMatrices = default;
+			if (polygonVerticesList.IsCreated) polygonVerticesList.Dispose(); polygonVerticesList = default;
             if (polygonVerticesSegments.IsCreated) polygonVerticesSegments.Dispose(); polygonVerticesSegments = default;
-            if (pathMatrices.IsCreated) pathMatrices.Dispose(); pathMatrices = default;
         }
         #endregion
 
@@ -106,7 +103,7 @@ namespace Chisel.Core
         #endregion
 
         #region Reset
-        public void Reset() { this = DefaultValues; }
+        public void Reset() { this = DefaultSettings; }
         #endregion
     }
 
@@ -115,22 +112,23 @@ namespace Chisel.Core
     {
         public const string kNodeTypeName = "Revolved Shape";
 
-        public static readonly Curve2D	kDefaultShape			= new Curve2D(new[]{ new CurveControlPoint2D(-1,-1), new CurveControlPoint2D( 1,-1), new CurveControlPoint2D( 1, 1), new CurveControlPoint2D(-1, 1) });
+        readonly static Curve2D	kDefaultShape = new(new[]{ new CurveControlPoint2D(-1,-1), new CurveControlPoint2D( 1,-1), new CurveControlPoint2D( 1, 1), new CurveControlPoint2D(-1, 1) });
+        public static ref readonly Curve2D DefaultShape => ref kDefaultShape;
 
-        public Curve2D  shape;
+		public Curve2D  shape;
 
         //[NamedItems(overflow = "Surface {0}")]
         //public ChiselSurfaceDefinition  surfaceDefinition;
 
         public override void Reset()
         {
-            shape = kDefaultShape;
+            shape = DefaultShape;
             base.Reset();
         }
 
         public override bool Validate() 
         {
-            shape ??= kDefaultShape;
+            shape ??= DefaultShape;
             return base.Validate(); 
         }
 

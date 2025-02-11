@@ -21,12 +21,6 @@ namespace Chisel.Core
         // We want frustum selection to have a bit more space
         public const float kFrustumDistanceEpsilon  = kDistanceEpsilon * 100;
 
-
-        //private static readonly Vector3 PositiveY = new Vector3(0, 1, 0);
-        private static readonly Vector3 NegativeY = new Vector3(0, -1, 0);
-        private static readonly Vector3 PositiveZ = new Vector3(0, 0, 1);
-
-
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public static bool Equals(this Vector3 self, Vector3 other, double epsilon)
         {

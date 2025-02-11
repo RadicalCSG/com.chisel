@@ -300,14 +300,12 @@ namespace Chisel.Core
 
 #if ENABLE_UNITY_COLLECTIONS_CHECKS
         internal AtomicSafetyHandle m_Safety;
-#if UNITY_2020_1_OR_NEWER
-        private static readonly SharedStatic<int> s_staticSafetyId = SharedStatic<int>.GetOrCreate<HashedVertices>();
+        private readonly static SharedStatic<int> s_staticSafetyId = SharedStatic<int>.GetOrCreate<HashedVertices>();
         [BurstDiscard]
         private static void CreateStaticSafetyId()
         {
             s_staticSafetyId.Data = AtomicSafetyHandle.NewStaticSafetyId<HashedVertices>();
         }
-#endif
         [NativeSetClassTypeToNullOnSchedule]
         DisposeSentinel m_DisposeSentinel;
 #endif
@@ -315,10 +313,10 @@ namespace Chisel.Core
         [NativeDisableUnsafePtrRestriction] internal UnsafeList<ushort>*    m_ChainedIndices;
         [NativeDisableUnsafePtrRestriction] internal void*                  m_HashTable;
 
-        // Keep track of where the memory for this was allocated
-        Allocator m_AllocatorLabel;
+		// Keep track of where the memory for this was allocated
+		readonly Allocator m_AllocatorLabel;
 
-        public bool IsCreated => m_Vertices != null && m_ChainedIndices != null && m_ChainedIndices != null;
+        public readonly bool IsCreated => m_Vertices != null && m_ChainedIndices != null && m_ChainedIndices != null;
 
         public NativeArray<float3> AsArray()
         {
@@ -338,7 +336,7 @@ namespace Chisel.Core
 
         #region Constructors
 
-        public HashedVertices(int minCapacity, Allocator allocator = Allocator.Persistent)
+        public HashedVertices(int minCapacity, Allocator allocator)
             : this(minCapacity, minCapacity, allocator, 2)
         {
         }
@@ -380,31 +378,27 @@ namespace Chisel.Core
             CheckArgPositive(chainedIndicesCapacity);
 
             DisposeSentinel.Create(out m_Safety, out m_DisposeSentinel, disposeSentinelStackDepth, allocator);
-#if UNITY_2020_1_OR_NEWER
             if (s_staticSafetyId.Data == 0)
             {
                 CreateStaticSafetyId();
             }
             AtomicSafetyHandle.SetStaticSafetyId(ref m_Safety, s_staticSafetyId.Data);
-#endif
-#endif
-#if ENABLE_UNITY_COLLECTIONS_CHECKS
             DisposeSentinel.Create(out m_Safety, out m_DisposeSentinel, 0, allocator);
 #endif
             m_AllocatorLabel = allocator;
             var hashTableMemSize = (ushort)(kHashTableSize + 1) * UnsafeUtility.SizeOf<ushort>();
             m_HashTable = UnsafeUtility.Malloc(hashTableMemSize, UnsafeUtility.AlignOf<ushort>(), m_AllocatorLabel);
             UnsafeUtility.MemClear(m_HashTable, hashTableMemSize);
-            
-            m_Vertices          = UnsafeList<float3>.Create(vertexCapacity, allocator);
+
+			m_Vertices          = UnsafeList<float3>.Create(vertexCapacity, allocator);
             m_ChainedIndices    = UnsafeList<ushort>.Create(chainedIndicesCapacity, allocator);
 
 #if ENABLE_UNITY_COLLECTIONS_CHECKS
             AtomicSafetyHandle.SetBumpSecondaryVersionOnScheduleWrite(m_Safety, true);
 #endif
         }
-
-        public HashedVertices(HashedVertices otherHashedVertices, Allocator allocator = Allocator.Persistent)
+        /*
+        public HashedVertices(HashedVertices otherHashedVertices, Allocator allocator)
             : this((otherHashedVertices.m_Vertices != null) ? otherHashedVertices.m_Vertices->Length : 1, (otherHashedVertices.m_ChainedIndices != null) ? otherHashedVertices.m_ChainedIndices->Length : 1, allocator, 2)
         {
             CheckAllocated(otherHashedVertices);
@@ -412,7 +406,7 @@ namespace Chisel.Core
             m_Vertices->AddRangeNoResize(*otherHashedVertices.m_Vertices);
         }
 
-        public HashedVertices([ReadOnly] ref BlobArray<float3> uniqueVertices, Allocator allocator = Allocator.Persistent)
+        public HashedVertices([ReadOnly] ref BlobArray<float3> uniqueVertices, Allocator allocator)
             : this(uniqueVertices.Length, allocator)
         {
             // Add Unique vertex
@@ -428,21 +422,22 @@ namespace Chisel.Core
                 m_ChainedIndices->AddNoResize((ushort)prevChainIndex);
                 ((ushort*)m_HashTable)[(int)hashCode] = (ushort)(newChainIndex + 1);
             }
-        }
+        }*/
         #endregion
 
         #region Dispose
         public void Dispose()
-        {
+		{
+			// Confirmed to be called
 #if ENABLE_UNITY_COLLECTIONS_CHECKS
-            DisposeSentinel.Dispose(ref m_Safety, ref m_DisposeSentinel);
+			DisposeSentinel.Dispose(ref m_Safety, ref m_DisposeSentinel);
 #endif
             UnsafeList<float3>.Destroy(m_Vertices);
             m_Vertices = null;
             UnsafeList<ushort>.Destroy(m_ChainedIndices);
             m_ChainedIndices = null;
-            UnsafeUtility.Free(m_HashTable, m_AllocatorLabel);
-            m_HashTable = null;
+			UnsafeUtility.Free(m_HashTable, m_AllocatorLabel);
+            m_HashTable = null; 
         }
         #endregion
 

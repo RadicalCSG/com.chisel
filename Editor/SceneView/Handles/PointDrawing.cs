@@ -12,10 +12,10 @@ namespace Chisel.Editors
     {
         public const float kDistanceEpsilon = 0.001f;
 
-        internal static int s_PointDrawingHash = "PointDrawingHash".GetHashCode();
+        internal readonly static int kPointDrawingHash = "PointDrawingHash".GetHashCode();
         public static void PointDrawHandle(Rect dragArea, ref List<Vector3> points, out Matrix4x4 transformation, out ChiselModelComponent modelBeneathCursor, bool releaseOnMouseUp = true, Chisel.Editors.SceneHandles.CapFunction capFunction = null)
         {
-            var id = GUIUtility.GetControlID(s_PointDrawingHash, FocusType.Keyboard);
+            var id = GUIUtility.GetControlID(kPointDrawingHash, FocusType.Keyboard);
             PointDrawing.Do(id, dragArea, ref points, out transformation, out modelBeneathCursor, releaseOnMouseUp, capFunction);
         }
 
@@ -49,7 +49,7 @@ namespace Chisel.Editors
 			Chisel.Editors.Grid.HoverGrid = null;
             if (s_CurrentPointIndex == 0)
             {
-                s_StartIntersection = ChiselClickSelectionManager.GetPlaneIntersection(mousePosition, dragArea);
+				s_StartIntersection = dragArea.Contains(mousePosition) ? ChiselClickSelectionManager.GetPlaneIntersection(mousePosition) : null;
                 if (s_StartIntersection != null &&
                     s_StartIntersection.plane.normal.sqrMagnitude > 0) // TODO: figure out how this could happen
                 {
@@ -167,7 +167,7 @@ namespace Chisel.Editors
             UpdatePoints(points, newPoint);
 
             // reset the starting position
-            s_StartIntersection = ChiselClickSelectionManager.GetPlaneIntersection(s_MousePosition, dragArea);
+            s_StartIntersection = dragArea.Contains(s_MousePosition) ? ChiselClickSelectionManager.GetPlaneIntersection(s_MousePosition) : null;
             evt.Use();
         }
 
@@ -215,12 +215,12 @@ namespace Chisel.Editors
                     if (points.Count == 0)
                         break;
 
-                    if (SceneHandleUtility.focusControl != id)
+                    if (SceneHandleUtility.FocusControl != id)
                         break;
 
                     using (new UnityEditor.Handles.DrawingScope(Matrix4x4.identity))
                     {
-                        var orientation = s_StartIntersection.orientation;
+                        var orientation = s_StartIntersection.Orientation;
                         if (capFunction != null)
                         {
                             using (new UnityEditor.Handles.DrawingScope(s_Transform))

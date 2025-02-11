@@ -936,9 +936,6 @@ namespace Chisel.Core
             None = 3
         }
 
-        static SegmentTopology[]    segmentTopology;
-        static int[]                edgeIndices;
-
 
         public static bool Validate(in BlobBuilderArray<float3> vertices, in BlobBuilderArray<BrushMeshBlob.HalfEdge> halfEdges, in BlobBuilderArray<BrushMeshBlob.Polygon> polygons, bool logErrors = false)
         {

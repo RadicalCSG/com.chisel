@@ -42,7 +42,7 @@ namespace Chisel.Core
             list.Clear();
             list.Resize(exactSize, NativeArrayOptions.ClearMemory);
         }
-
+        /*
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void EnsureCapacityAndClear(ref HashedVertices hashedVertices, int desiredCapacity, Allocator allocator = Allocator.Temp)
         {
@@ -58,7 +58,7 @@ namespace Chisel.Core
                 } else
                     hashedVertices.Clear();
             }
-        }
+        }*/
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void EnsureCapacityAndClear<T>(ref NativeList<T> container, int desiredCapacity, Allocator allocator = Allocator.Temp)

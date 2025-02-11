@@ -6,43 +6,43 @@ namespace Chisel.Editors
 {
     public sealed partial class SceneHandles
     {
-        internal static int s_RectHash0 = "RectHash0".GetHashCode();
-        internal static int s_RectHash1 = "RectHash1".GetHashCode();
-        internal static int s_RectHash2 = "RectHash2".GetHashCode();
-        internal static int s_RectHash3 = "RectHash3".GetHashCode();
-        internal static int s_RectHash4 = "RectHash4".GetHashCode();
-        internal static int s_RectHash5 = "RectHash5".GetHashCode();
-        internal static int s_RectHash6 = "RectHash6".GetHashCode();
-        internal static int s_RectHash7 = "RectHash7".GetHashCode();
+        internal readonly static int kRectHash0 = "RectHash0".GetHashCode();
+		internal readonly static int kRectHash1 = "RectHash1".GetHashCode();
+		internal readonly static int kRectHash2 = "RectHash2".GetHashCode();
+		internal readonly static int kRectHash3 = "RectHash3".GetHashCode();
+		internal readonly static int kRectHash4 = "RectHash4".GetHashCode();
+		internal readonly static int kRectHash5 = "RectHash5".GetHashCode();
+		internal readonly static int kRectHash6 = "RectHash6".GetHashCode();
+		internal readonly static int kRectHash7 = "RectHash7".GetHashCode();
         
         public static Rect RectHandle(Rect rect, Quaternion rotation, CapFunction capFunction)
         {
-            var originalMatrix = SceneHandles.matrix;
-            SceneHandles.matrix = originalMatrix * Matrix4x4.TRS(Vector3.zero, rotation, Vector3.one);
+            var originalMatrix = SceneHandles.Matrix;
+            SceneHandles.Matrix = originalMatrix * Matrix4x4.TRS(Vector3.zero, rotation, Vector3.one);
             var result = RectHandle(rect, capFunction);
-            SceneHandles.matrix = originalMatrix;
+            SceneHandles.Matrix = originalMatrix;
             return result;
         }
         
         public static Rect RectHandle(Rect rect, CapFunction capFunction)
         {
-            var handlesMatrix = SceneHandles.matrix;
+            var handlesMatrix = SceneHandles.Matrix;
 
             var direction = Vector3.forward;
             var slideDirX = Vector3.right;
             var slideDirY = Vector3.up;
 
-            var point1Id = GUIUtility.GetControlID (s_RectHash0, FocusType.Keyboard);
-            var point2Id = GUIUtility.GetControlID (s_RectHash1, FocusType.Keyboard);
-            var point3Id = GUIUtility.GetControlID (s_RectHash2, FocusType.Keyboard);
-            var point4Id = GUIUtility.GetControlID (s_RectHash3, FocusType.Keyboard);
+            var point1Id = GUIUtility.GetControlID (kRectHash0, FocusType.Keyboard);
+            var point2Id = GUIUtility.GetControlID (kRectHash1, FocusType.Keyboard);
+            var point3Id = GUIUtility.GetControlID (kRectHash2, FocusType.Keyboard);
+            var point4Id = GUIUtility.GetControlID (kRectHash3, FocusType.Keyboard);
             
-            var edge1Id  = GUIUtility.GetControlID (s_RectHash4, FocusType.Keyboard);
-            var edge2Id  = GUIUtility.GetControlID (s_RectHash5, FocusType.Keyboard);
-            var edge3Id  = GUIUtility.GetControlID (s_RectHash6, FocusType.Keyboard);
-            var edge4Id	 = GUIUtility.GetControlID (s_RectHash7, FocusType.Keyboard);
+            var edge1Id  = GUIUtility.GetControlID (kRectHash4, FocusType.Keyboard);
+            var edge2Id  = GUIUtility.GetControlID (kRectHash5, FocusType.Keyboard);
+            var edge3Id  = GUIUtility.GetControlID (kRectHash6, FocusType.Keyboard);
+            var edge4Id	 = GUIUtility.GetControlID (kRectHash7, FocusType.Keyboard);
             
-            int currentFocusControl = SceneHandleUtility.focusControl;
+            int currentFocusControl = SceneHandleUtility.FocusControl;
 
             bool highlightEdge1 = (currentFocusControl == edge1Id) || (currentFocusControl == point1Id) || (currentFocusControl == point2Id);
             bool highlightEdge2 = (currentFocusControl == edge2Id) || (currentFocusControl == point3Id) || (currentFocusControl == point4Id);
@@ -63,8 +63,8 @@ namespace Chisel.Editors
             var point4 = new Vector3(xMin, yMax, 0);
             
             var isStatic		= (!Tools.hidden && EditorApplication.isPlaying && GameObjectExtensions.ContainsStatic(Selection.gameObjects));
-            var prevDisabled	= SceneHandles.disabled;
-            var prevColor		= SceneHandles.color;
+            var prevDisabled	= SceneHandles.Disabled;
+            var prevColor		= SceneHandles.Color;
 
             var xAxisDisabled	= isStatic || prevDisabled || Snapping.AxisLocking[0];
             var yAxisDisabled	= isStatic || prevDisabled || Snapping.AxisLocking[1];
@@ -74,40 +74,40 @@ namespace Chisel.Editors
             var prevGUIchanged = GUI.changed;
             
 
-            SceneHandles.disabled = yAxisDisabled;
+            SceneHandles.Disabled = yAxisDisabled;
             { 
                 GUI.changed = false;
                 position = (point1 + point2) * 0.5f;
-                SceneHandles.color = SceneHandles.StateColor(SceneHandles.yAxisColor, xAxisDisabled, highlightEdge1);
+                SceneHandles.Color = SceneHandles.StateColor(SceneHandles.YAxisColor, xAxisDisabled, highlightEdge1);
                 offset = Edge1DHandleOffset(edge1Id, Axis.Y, point1, point2, position, slideDirY, Snapping.MoveSnappingSteps.y, UnityEditor.HandleUtility.GetHandleSize(position) * 0.05f, null);
                 if (GUI.changed) { yMin += offset.y; prevGUIchanged = true; }
 
                 GUI.changed = false;
                 position = (point3 + point4) * 0.5f;
-                SceneHandles.color = SceneHandles.StateColor(SceneHandles.yAxisColor, xAxisDisabled, highlightEdge2);
+                SceneHandles.Color = SceneHandles.StateColor(SceneHandles.YAxisColor, xAxisDisabled, highlightEdge2);
                 offset = Edge1DHandleOffset(edge2Id, Axis.Y, point3, point4, position, slideDirY, Snapping.MoveSnappingSteps.y, UnityEditor.HandleUtility.GetHandleSize(position) * 0.05f, null);
                 if (GUI.changed) { yMax += offset.y; prevGUIchanged = true; }
             }
             
 
-            SceneHandles.disabled = xAxisDisabled;
+            SceneHandles.Disabled = xAxisDisabled;
             { 
                 GUI.changed = false;
                 position = (point2 + point3) * 0.5f;
-                SceneHandles.color = SceneHandles.StateColor(SceneHandles.yAxisColor, xAxisDisabled, highlightEdge3);
+                SceneHandles.Color = SceneHandles.StateColor(SceneHandles.YAxisColor, xAxisDisabled, highlightEdge3);
                 offset = Edge1DHandleOffset(edge3Id, Axis.X, point2, point3, position, slideDirX, Snapping.MoveSnappingSteps.x, UnityEditor.HandleUtility.GetHandleSize(position) * 0.05f, null);
                 if (GUI.changed) { xMax += offset.x; prevGUIchanged = true; }
 
                 GUI.changed = false;
                 position = (point4 + point1) * 0.5f;
-                SceneHandles.color = SceneHandles.StateColor(SceneHandles.yAxisColor, xAxisDisabled, highlightEdge4);
+                SceneHandles.Color = SceneHandles.StateColor(SceneHandles.YAxisColor, xAxisDisabled, highlightEdge4);
                 offset = Edge1DHandleOffset(edge4Id, Axis.X, point4, point1, position, slideDirX, Snapping.MoveSnappingSteps.x, UnityEditor.HandleUtility.GetHandleSize(position) * 0.05f, null);
                 if (GUI.changed) { xMin += offset.x; prevGUIchanged = true; }
             }
             
             
-            SceneHandles.disabled = xyAxiDisabled;
-            SceneHandles.color = SceneHandles.StateColor(SceneHandles.yAxisColor, xyAxiDisabled, false);
+            SceneHandles.Disabled = xyAxiDisabled;
+            SceneHandles.Color = SceneHandles.StateColor(SceneHandles.YAxisColor, xyAxiDisabled, false);
             { 
 
                 GUI.changed = false;
@@ -131,8 +131,8 @@ namespace Chisel.Editors
             rect.x = xMin; rect.width  = xMax - xMin;
             rect.y = yMin; rect.height = yMax - yMin;
 
-            SceneHandles.disabled = prevDisabled;
-            SceneHandles.color = prevColor;
+            SceneHandles.Disabled = prevDisabled;
+            SceneHandles.Color = prevColor;
 
             return rect;
         }

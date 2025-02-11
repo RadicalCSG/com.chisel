@@ -4,7 +4,7 @@ namespace Chisel.Components
 {
     public class ChiselBrushIntersection
     {
-        public ChiselNode		        node;
+        public ChiselNodeComponent		        node;
         public CSGTreeBrushIntersection intersection;
     };
 }

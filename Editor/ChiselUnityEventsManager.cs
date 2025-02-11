@@ -6,6 +6,7 @@ using UnityEditor.EditorTools;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityEngine.Profiling;
+using UnityEngine.Pool;
 #if !UNITY_2020_2_OR_NEWER
 using ToolManager = UnityEditor.EditorTools;
 #endif
@@ -43,19 +44,16 @@ namespace Chisel.Editors
             UnityEditor.Selection.selectionChanged -= OnSelectionChanged;
             UnityEditor.Selection.selectionChanged += OnSelectionChanged;
 
-            // Triggered when currently active/selected item has changed.
-            ChiselSurfaceSelectionManager.selectionChanged -= OnSurfaceSelectionChanged;
-            ChiselSurfaceSelectionManager.selectionChanged += OnSurfaceSelectionChanged;
-            ChiselSurfaceSelectionManager.hoverChanged -= OnSurfaceHoverChanged;
-            ChiselSurfaceSelectionManager.hoverChanged += OnSurfaceHoverChanged;
-
             UnityEditor.EditorApplication.playModeStateChanged -= OnPlayModeStateChanged;
             UnityEditor.EditorApplication.playModeStateChanged += OnPlayModeStateChanged;
 
 
-            // Triggered when changing visibility/picking in hierarchy
-            UnityEditor.SceneVisibilityManager.visibilityChanged += OnVisibilityChanged;
-            UnityEditor.SceneVisibilityManager.pickingChanged += OnPickingChanged;
+			// Triggered when changing visibility/picking in hierarchy
+			UnityEditor.SceneVisibilityManager.visibilityChanged -= OnVisibilityChanged;
+			UnityEditor.SceneVisibilityManager.visibilityChanged += OnVisibilityChanged;
+
+			UnityEditor.SceneVisibilityManager.pickingChanged -= OnPickingChanged;
+			UnityEditor.SceneVisibilityManager.pickingChanged += OnPickingChanged;
 
 
             // Callback that is triggered after an undo or redo was executed.
@@ -74,7 +72,21 @@ namespace Chisel.Editors
             UnityEditor.SceneView.duringSceneGui -= OnDuringSceneGUI;
             UnityEditor.SceneView.duringSceneGui += OnDuringSceneGUI;
 
-            UnityEditor.SceneManagement.EditorSceneManager.activeSceneChangedInEditMode += OnActiveSceneChanged;
+			UnityEditor.SceneManagement.EditorSceneManager.activeSceneChangedInEditMode -= OnActiveSceneChanged;
+			UnityEditor.SceneManagement.EditorSceneManager.activeSceneChangedInEditMode += OnActiveSceneChanged;
+			
+            ToolManager.activeToolChanged -= OnEditModeChanged;
+			ToolManager.activeToolChanged += OnEditModeChanged;
+
+			HandleUtility.UnregisterRenderPickingCallback(ChiselSelectionManager.PickingCallback);
+			HandleUtility.RegisterRenderPickingCallback(ChiselSelectionManager.PickingCallback);
+
+
+			// Triggered when currently active/selected item has changed.
+			ChiselSurfaceSelectionManager.SelectionChanged -= OnSurfaceSelectionChanged;
+            ChiselSurfaceSelectionManager.SelectionChanged += OnSurfaceSelectionChanged;
+            ChiselSurfaceSelectionManager.HoverChanged -= OnSurfaceHoverChanged;
+            ChiselSurfaceSelectionManager.HoverChanged += OnSurfaceHoverChanged;
 
             ChiselNodeHierarchyManager.NodeHierarchyReset -= OnHierarchyReset;
             ChiselNodeHierarchyManager.NodeHierarchyReset += OnHierarchyReset;
@@ -85,37 +97,35 @@ namespace Chisel.Editors
             ChiselNodeHierarchyManager.TransformationChanged -= OnTransformationChanged;
             ChiselNodeHierarchyManager.TransformationChanged += OnTransformationChanged;
 
-            ChiselGeneratedModelMeshManager.PostUpdateModels -= OnPostUpdateModels;
-            ChiselGeneratedModelMeshManager.PostUpdateModels += OnPostUpdateModels;
+			ChiselModelManager.Instance.PostUpdateModels -= OnPostUpdateModels;
+			ChiselModelManager.Instance.PostUpdateModels += OnPostUpdateModels;
 
-            ChiselGeneratedModelMeshManager.PostReset -= OnPostResetModels;
-            ChiselGeneratedModelMeshManager.PostReset += OnPostResetModels;
+			ChiselModelManager.Instance.PostReset -= OnPostResetModels;
+			ChiselModelManager.Instance.PostReset += OnPostResetModels;
 
-            ToolManager.activeToolChanged -= OnEditModeChanged;
-            ToolManager.activeToolChanged += OnEditModeChanged;
 
-            ChiselClickSelectionManager.Instance.OnReset();
-            ChiselOutlineRenderer.Instance.OnReset();
+			//ChiselClickSelectionManager.Instance.OnReset();
+			ChiselOutlineRenderer.Instance.OnReset();
         }
 
-        private static void OnHierarchyChanged()
+		private static void OnHierarchyChanged()
         {
             ChiselNodeHierarchyManager.CheckOrderOfChildNodesModifiedOfNonNodeGameObject();
         }
 
         private static void OnPickingChanged()
-        {
-            ChiselGeneratedComponentManager.OnVisibilityChanged();
+		{
+			ChiselUnityVisibilityManager.SetDirty();
         }
 
         private static void OnVisibilityChanged()
-        {
-            ChiselGeneratedComponentManager.OnVisibilityChanged();
-        }
+		{
+			ChiselUnityVisibilityManager.SetDirty();
+		}
 
         private static void OnActiveSceneChanged(Scene prevScene, Scene newScene)
         {
-            ChiselModelManager.OnActiveSceneChanged(prevScene, newScene);
+            ChiselModelManager.Instance.OnActiveSceneChanged(prevScene, newScene);
         }
 
         static void OnTransformationChanged()
@@ -150,7 +160,7 @@ namespace Chisel.Editors
                     (Event.current.type != EventType.MouseMove && Event.current.type != EventType.Layout))
                 {
                     ChiselDragAndDropManager.Instance.OnSceneGUI(sceneView);
-                    ChiselClickSelectionManager.Instance.OnSceneGUI(sceneView);
+					ChiselRectSelectionManager.OnSceneGUI(sceneView);
                 }
             }
             finally
@@ -172,7 +182,7 @@ namespace Chisel.Editors
 
         private static void OnSelectionChanged()
         {
-            ChiselClickSelectionManager.Instance.OnSelectionChanged();
+            //ChiselClickSelectionManager.Instance.OnSelectionChanged();
             ChiselOutlineRenderer.Instance.OnSelectionChanged();
         }
 
@@ -234,7 +244,7 @@ namespace Chisel.Editors
             try
             {
                 ChiselNodeHierarchyManager.Update();
-                ChiselGeneratedModelMeshManager.UpdateModels();
+				ChiselModelManager.Instance.UpdateModels();
                 ChiselNodeEditorBase.HandleCancelEvent();
             }
             catch (Exception ex) 
@@ -255,7 +265,7 @@ namespace Chisel.Editors
 
                 // TODO: implement material drag & drop support for meshes
 
-                var component = gameObject.GetComponent<ChiselNode>();
+                var component = gameObject.GetComponent<ChiselNodeComponent>();
                 if (!component)
                     return;
                 Editors.ChiselHierarchyWindowManager.OnHierarchyWindowItemGUI(instanceID, component, selectionRect);
@@ -280,79 +290,59 @@ namespace Chisel.Editors
             ChiselOutlineRenderer.OnUndoRedoPerformed();
 
         }
-        /*
-        static bool profilerStarted = false;
-        public static void ProfileFrame(string filename)
+
+		private static void OnWillFlushUndoRecord()
         {
-            if (profilerStarted)
-                return;
-            profilerStarted = true;
-            Profiler.logFile = filename; //Also supports passing "myLog.raw"
-            Profiler.enableBinaryLog = true;
-            Profiler.enabled = true;
-            // Optional, if more memory is needed for the buffer
-            Profiler.maxUsedMemory = 1024 * 1024 * 1024;
-            
-            EditorApplication.update -= EndProfiling;
-            EditorApplication.update += EndProfiling;
+            ChiselModelManager.Instance.OnWillFlushUndoRecord();
         }
-
-        static void EndProfiling()
-        {
-            profilerStarted = false;
-            EditorApplication.update -= EndProfiling;
-            // Optional, to close the file when done
-            Profiler.enabled = false;
-            Profiler.logFile = "";
-        }
-        */
-
-        static readonly HashSet<ChiselNode>	modifiedNodes		= new HashSet<ChiselNode>();
-        static readonly HashSet<Transform>	processedTransforms = new HashSet<Transform>();
-
-        private static void OnWillFlushUndoRecord()
-        {
-            ChiselModelManager.OnWillFlushUndoRecord();
-        }
-
-        static readonly List<ChiselNode> s_ChildNodes = new List<ChiselNode>();
 
         private static UnityEditor.UndoPropertyModification[] OnPostprocessModifications(UnityEditor.UndoPropertyModification[] modifications)
         {
             // Note: this is not always properly called 
             //			- when? can't remember? maybe prefab related?
-            modifiedNodes.Clear();
-            processedTransforms.Clear();
-            for (int i = 0; i < modifications.Length; i++)
+
+            var modifiedNodes = HashSetPool<ChiselNodeComponent>.Get();
+			var processedTransforms = HashSetPool<Transform>.Get();
+            var childNodes = ListPool<ChiselNodeComponent>.Get();
+			try
             {
-                var currentValue = modifications[i].currentValue;
-                var transform	 = currentValue.target as Transform;
-                if (object.Equals(null, transform))
-                    continue;
+                for (int i = 0; i < modifications.Length; i++)
+                {
+                    var currentValue = modifications[i].currentValue;
+                    var transform = currentValue.target as Transform;
+                    if (object.Equals(null, transform))
+                        continue;
 
-                if (processedTransforms.Contains(transform))
-                    continue;
+                    if (processedTransforms.Contains(transform))
+                        continue;
 
-                var propertyPath = currentValue.propertyPath;
-                if (!propertyPath.StartsWith("m_Local"))
-                    continue;
+                    var propertyPath = currentValue.propertyPath;
+                    if (!propertyPath.StartsWith("m_Local"))
+                        continue;
 
-                processedTransforms.Add(transform);
+                    processedTransforms.Add(transform);
 
-                s_ChildNodes.Clear();
-                transform.GetComponentsInChildren<ChiselNode>(false, s_ChildNodes);
-                if (s_ChildNodes.Count == 0)
-                    continue;
-                if (s_ChildNodes[0] is ChiselModelComponent)
-                    continue;
-                for (int n = 0; n < s_ChildNodes.Count; n++)
-                    modifiedNodes.Add(s_ChildNodes[n]);
+                    childNodes.Clear();
+                    transform.GetComponentsInChildren<ChiselNodeComponent>(false, childNodes);
+                    if (childNodes.Count == 0)
+                        continue;
+                    if (childNodes[0] is ChiselModelComponent)
+                        continue;
+                    for (int n = 0; n < childNodes.Count; n++)
+                        modifiedNodes.Add(childNodes[n]);
+                }
+                if (modifiedNodes.Count > 0)
+                {
+                    ChiselNodeHierarchyManager.NotifyTransformationChanged(modifiedNodes);
+                }
+                return modifications;
             }
-            if (modifiedNodes.Count > 0)
-            {
-                ChiselNodeHierarchyManager.NotifyTransformationChanged(modifiedNodes);
-            }
-            return modifications;
+            finally
+			{
+				HashSetPool<ChiselNodeComponent>.Release(modifiedNodes);
+				HashSetPool<Transform>.Release(processedTransforms);
+				ListPool<ChiselNodeComponent>.Release(childNodes);
+			}
         }
     }
 

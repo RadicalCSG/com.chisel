@@ -13,42 +13,40 @@ namespace Chisel.Core
                                                   float bottomLength,  int bottomSides, 
                                                   in BlobAssetReference<InternalChiselSurfaceArray> surfaceDefinitionBlob,
                                                   out BlobAssetReference<BrushMeshBlob> brushMesh,
-                                                  Allocator allocator)
-        {
+                                                  Allocator allocator = Allocator.Persistent)// Indirect
+		{
             brushMesh = BlobAssetReference<BrushMeshBlob>.Null;
-            using (var builder = new BlobBuilder(Allocator.Temp))
-            {
-                ref var root = ref builder.ConstructRoot<BrushMeshBlob>();
-                ref var surfaceDefinition = ref surfaceDefinitionBlob.Value;
-                if (!GenerateStadiumVertices(width, height, length,
-                                             topLength, topSides,
-                                             bottomLength, bottomSides, in builder, ref root, out var localVertices))
-                    return false;
-                
-                var haveRoundedTop      = (topLength    > 0) && (topSides    > 1);
-                var haveRoundedBottom   = (bottomLength > 0) && (bottomSides > 1);
-                var haveCenter			= (length - ((haveRoundedTop ? topLength : 0) + (haveRoundedBottom ? bottomLength : 0))) >= ChiselStadium.kNoCenterEpsilon;
-                var sides               = (haveCenter ? 2 : 0) + math.max(topSides, 1) + math.max(bottomSides, 1);
+			using var builder = new BlobBuilder(Allocator.Temp);
+			ref var root = ref builder.ConstructRoot<BrushMeshBlob>();
+			ref var surfaceDefinition = ref surfaceDefinitionBlob.Value;
+			if (!GenerateStadiumVertices(width, height, length,
+										 topLength, topSides,
+										 bottomLength, bottomSides, in builder, ref root, out var localVertices))
+				return false;
 
-                CreateExtrudedSubMesh(sides, 0, 1, 
-                                      in localVertices, in surfaceDefinitionBlob, in builder, ref root,
-                                      out var polygons, out var halfEdges);
+			var haveRoundedTop = (topLength > 0) && (topSides > 1);
+			var haveRoundedBottom = (bottomLength > 0) && (bottomSides > 1);
+			var haveCenter = (length - ((haveRoundedTop ? topLength : 0) + (haveRoundedBottom ? bottomLength : 0))) >= ChiselStadium.kNoCenterEpsilon;
+			var sides = (haveCenter ? 2 : 0) + math.max(topSides, 1) + math.max(bottomSides, 1);
 
-                // TODO: eventually remove when it's more battle tested
-                if (!Validate(in localVertices, in halfEdges, in polygons, logErrors: true))
-                    return false;
+			CreateExtrudedSubMesh(sides, 0, 1,
+								  in localVertices, in surfaceDefinitionBlob, in builder, ref root,
+								  out var polygons, out var halfEdges);
 
-                var localPlanes = builder.Allocate(ref root.localPlanes, polygons.Length);
-                root.localPlaneCount = polygons.Length;
-                // TODO: calculate corner planes
-                var halfEdgePolygonIndices = builder.Allocate(ref root.halfEdgePolygonIndices, halfEdges.Length);
-                CalculatePlanes(ref localPlanes, in polygons, in halfEdges, in localVertices);
-                UpdateHalfEdgePolygonIndices(ref halfEdgePolygonIndices, in polygons);
-                root.localBounds = CalculateBounds(in localVertices);
-                brushMesh = builder.CreateBlobAssetReference<BrushMeshBlob>(allocator);
-                return true;
-            }
-        }
+			// TODO: eventually remove when it's more battle tested
+			if (!Validate(in localVertices, in halfEdges, in polygons, logErrors: true))
+				return false;
+
+			var localPlanes = builder.Allocate(ref root.localPlanes, polygons.Length);
+			root.localPlaneCount = polygons.Length;
+			// TODO: calculate corner planes
+			var halfEdgePolygonIndices = builder.Allocate(ref root.halfEdgePolygonIndices, halfEdges.Length);
+			CalculatePlanes(ref localPlanes, in polygons, in halfEdges, in localVertices);
+			UpdateHalfEdgePolygonIndices(ref halfEdgePolygonIndices, in polygons);
+			root.localBounds = CalculateBounds(in localVertices);
+			brushMesh = builder.CreateBlobAssetReference<BrushMeshBlob>(allocator); // Allocator.Persistent / Confirmed to dispose
+			return true;
+		}
 
         public static bool GenerateStadiumVertices(float diameter, float height, float length,
                                                    float topLength, int topSides,

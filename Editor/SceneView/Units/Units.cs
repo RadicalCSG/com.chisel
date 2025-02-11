@@ -26,32 +26,27 @@ namespace Chisel.Editors
         public static DistanceUnit	ActiveDistanceUnit	= DistanceUnit.Meters;
         public static PixelUnit		ActivePixelUnit		= PixelUnit.Pixels;
 
+        const string kDegreeUnitSymbol	 = "°";
+        const string kPercentageUnitSymbol = "%";
 
-        public const string DegreeUnitSymbol		= "°";
-        public const string PercentageUnitSymbol	= "%";
-
-        public static readonly GUIContent DegreeUnitContent		= new GUIContent(DegreeUnitSymbol);
-        public static readonly GUIContent PercentageUnitContent	= new GUIContent(PercentageUnitSymbol);
-
-
-        static string[] pixelUnitStrings = 
+		readonly static string[] kPixelUnitStrings = 
         {
             string.Empty,
             "pixels"
         };
 
-        static GUIContent[] pixelUnitGUIContent = 
+		readonly static GUIContent[] kPixelUnitGUIContent = 
         {
-            new GUIContent(pixelUnitStrings[0]),
-            new GUIContent(pixelUnitStrings[1])
+            new(kPixelUnitStrings[0]),
+            new(kPixelUnitStrings[1])
         };
         
-        public static string		GetUnitString		(PixelUnit unit) { return pixelUnitStrings[(int)unit]; }
-        public static GUIContent	GetUnitGUIContent	(PixelUnit unit) { return pixelUnitGUIContent[(int)unit]; }
+        public static string	 GetUnitString		(PixelUnit unit) { return kPixelUnitStrings[(int)unit]; }
+        public static GUIContent GetUnitGUIContent	(PixelUnit unit) { return kPixelUnitGUIContent[(int)unit]; }
 
 
 
-        static string[] distanceUnitStrings = 
+		readonly static string[] kDistanceUnitStrings = 
         {
             "m",
             "cm",
@@ -60,17 +55,17 @@ namespace Chisel.Editors
             "\""
         };
 
-        static GUIContent[] distanceUnitGUIContent = 
+        static readonly GUIContent[] kDistanceUnitGUIContent = 
         {
-            new GUIContent(distanceUnitStrings[0]),
-            new GUIContent(distanceUnitStrings[1]),
-            new GUIContent(distanceUnitStrings[2]),
-            new GUIContent(distanceUnitStrings[3]),
-            new GUIContent(distanceUnitStrings[4])
+            new(kDistanceUnitStrings[0]),
+            new(kDistanceUnitStrings[1]),
+            new(kDistanceUnitStrings[2]),
+            new(kDistanceUnitStrings[3]),
+            new(kDistanceUnitStrings[4])
         };
 
-        public static string		GetUnitString		(DistanceUnit unit) { return distanceUnitStrings[(int)unit]; }
-        public static GUIContent	GetUnitGUIContent	(DistanceUnit unit) { return distanceUnitGUIContent[(int)unit]; }
+        public static string		GetUnitString		(DistanceUnit unit) { return kDistanceUnitStrings[(int)unit]; }
+        public static GUIContent	GetUnitGUIContent	(DistanceUnit unit) { return kDistanceUnitGUIContent[(int)unit]; }
         
 
 
@@ -177,30 +172,30 @@ namespace Chisel.Editors
         {
             var builder		= new StringBuilder();
             if (lockX) builder.Append("x: --\n");
-            else builder.AppendFormat(CultureInfo.InvariantCulture, "x: {0:F}{1}\n", value.x * 100, PercentageUnitSymbol);
+            else builder.AppendFormat(CultureInfo.InvariantCulture, "x: {0:F}{1}\n", value.x * 100, kPercentageUnitSymbol);
             if (lockY) builder.Append("y: --\n");
-            else builder.AppendFormat(CultureInfo.InvariantCulture, "y: {0:F}{1}\n", value.y * 100, PercentageUnitSymbol);
+            else builder.AppendFormat(CultureInfo.InvariantCulture, "y: {0:F}{1}\n", value.y * 100, kPercentageUnitSymbol);
             if (lockZ) builder.Append("z: --");
-            else builder.AppendFormat(CultureInfo.InvariantCulture, "z: {0:F}{1}",   value.z * 100, PercentageUnitSymbol);
+            else builder.AppendFormat(CultureInfo.InvariantCulture, "z: {0:F}{1}",   value.z * 100, kPercentageUnitSymbol);
             return builder.ToString();
         }
 
 
         public static string		ToAngleString		(float value)
         {
-            return string.Format(CultureInfo.InvariantCulture, "{0,4}{1}", value, DegreeUnitSymbol);//(value % 360));
+            return string.Format(CultureInfo.InvariantCulture, "{0,4}{1}", value, kDegreeUnitSymbol);//(value % 360));
         }
 
         public static string		ToRoundedAngleString(float value)
         {
-            return string.Format(CultureInfo.InvariantCulture, "{0:F}{1}", value, DegreeUnitSymbol);// (value % 360));
+            return string.Format(CultureInfo.InvariantCulture, "{0:F}{1}", value, kDegreeUnitSymbol);// (value % 360));
         }
         
-        const double meter_to_centimeter	= 100.0;
-        const double meter_to_millimeter	= 1000.0;
-        const double meter_to_inches		= 39.37007874;
-        const double meter_to_feet			= 3.28084;
-        const double emperial_rounding		= 10000000;
+        const double kMeterToCentimeter	= 100.0;
+        const double kMeterToMillimeter	= 1000.0;
+        const double kMeterToInches		= 39.37007874;
+        const double kMeterToFeet		= 3.28084;
+        const double kEmperialRounding	= 10000000;
 
         public static double		UnityToDistanceUnit	(DistanceUnit unit, float value)
         {
@@ -212,10 +207,10 @@ namespace Chisel.Editors
             {
                 // values are in meters by default in unity
                 case DistanceUnit.Meters:       return result;
-                case DistanceUnit.Centimeters:	result *= meter_to_centimeter; break;
-                case DistanceUnit.Millimeters:	result *= meter_to_millimeter; break;
-                case DistanceUnit.Inches:		result *= meter_to_inches; result = Math.Round(result * emperial_rounding) / emperial_rounding; break;
-                case DistanceUnit.Feet:			result *= meter_to_feet;   result = Math.Round(result * emperial_rounding) / emperial_rounding; break;
+                case DistanceUnit.Centimeters:	result *= kMeterToCentimeter; break;
+                case DistanceUnit.Millimeters:	result *= kMeterToMillimeter; break;
+                case DistanceUnit.Inches:		result *= kMeterToInches; result = Math.Round(result * kEmperialRounding) / kEmperialRounding; break;
+                case DistanceUnit.Feet:			result *= kMeterToFeet;   result = Math.Round(result * kEmperialRounding) / kEmperialRounding; break;
                 default:
                 {
                     Debug.LogWarning("Tried to convert value to unknown distance unit");
@@ -238,10 +233,10 @@ namespace Chisel.Editors
             {
                 // values are in meters by default in unity
                 case DistanceUnit.Meters:		break;
-                case DistanceUnit.Centimeters:	result /= meter_to_centimeter; break;
-                case DistanceUnit.Millimeters:	result /= meter_to_millimeter; break;
-                case DistanceUnit.Inches:		result /= meter_to_inches; result = Math.Round(result * emperial_rounding) / emperial_rounding; break;
-                case DistanceUnit.Feet:			result /= meter_to_feet;   result = Math.Round(result * emperial_rounding) / emperial_rounding; break;
+                case DistanceUnit.Centimeters:	result /= kMeterToCentimeter; break;
+                case DistanceUnit.Millimeters:	result /= kMeterToMillimeter; break;
+                case DistanceUnit.Inches:		result /= kMeterToInches; result = Math.Round(result * kEmperialRounding) / kEmperialRounding; break;
+                case DistanceUnit.Feet:			result /= kMeterToFeet;   result = Math.Round(result * kEmperialRounding) / kEmperialRounding; break;
                 default:
                 {
                     Debug.LogWarning("Tried to convert value from unknown distance unit");

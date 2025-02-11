@@ -1,5 +1,6 @@
 ﻿using System;
 using System.ComponentModel;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
 namespace Chisel.Core
@@ -38,8 +39,9 @@ namespace Chisel.Core
         }
         
         /// <value>An invalid instance</value>
-        public static readonly BrushMeshInstance InvalidInstance = new() { brushMeshHash = BrushMeshInstance.InvalidInstanceID };
-        internal const Int32 InvalidInstanceID = 0;
+        readonly static BrushMeshInstance kInvalidInstance = new() { brushMeshHash = BrushMeshInstance.InvalidInstanceID };
+		public static ref readonly BrushMeshInstance InvalidInstance => ref kInvalidInstance;
+		internal const Int32 InvalidInstanceID = 0;
         
         #region Comparison
         [EditorBrowsable(EditorBrowsableState.Never)]

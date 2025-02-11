@@ -5,20 +5,18 @@ namespace Chisel.Editors
 {
     public class GeometryUtility
     {		
-//		private static readonly Vector3 PositiveY = new Vector3(0, 1, 0);
-        private static readonly Vector3 NegativeY = new Vector3(0, -1, 0);
-        private static readonly Vector3 PositiveZ = new Vector3(0, 0, 1);
+//		private readonly static Vector3 s_PositiveY = new Vector3(0, 1, 0);
+        private readonly static Vector3 s_NegativeY = new(0, -1, 0);
+        private readonly static Vector3 s_PositiveZ = new(0, 0, 1);
 
         public static Vector3 CalculateTangent(Vector3 vector)
         {
             var absX = Mathf.Abs(vector.x);
             var absY = Mathf.Abs(vector.y);
-            var absZ = Mathf.Abs(vector.z);
-            
+            var absZ = Mathf.Abs(vector.z);            
             if (absY > absX && absY > absZ)
-                return PositiveZ;
-            
-            return NegativeY;
+                return s_PositiveZ;            
+            return s_NegativeY;
         }
 
         public static void CalculateTangents(Vector3 normal, out Vector3 tangent, out Vector3 binormal)

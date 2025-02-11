@@ -3,7 +3,9 @@ using UnityEngine;
 
 namespace Chisel.Editors
 {
-    public static class ChiselSceneGUIStyle
+	// TODO: cleanup
+	// TODO: find all places that have an IsProSkin check, and make them more consistent
+	public static class ChiselSceneGUIStyle
     {
         public const float kTopBarHeight = 22;
         public const float kBottomBarHeight = 22;
@@ -12,23 +14,25 @@ namespace Chisel.Editors
         const int kIconSize = 16;
         const int kOffsetToText = 3;
 
-        public static GUIStyle toolbarStyle;
-        public static GUIStyle windowStyle;
-        public static GUIStyle toggleStyle;
-        public static GUIStyle buttonStyle;
+        static GUIStyle s_ToolbarStyle;
+        //static GUIStyle s_WindowStyle;
+        //static GUIStyle s_ToggleStyle;
+        //static GUIStyle s_ButtonStyle;
+		static GUIStyle s_InspectorLabel;
+		static GUIStyle s_InspectorSelectedLabel;
 
 
-        public static GUIStyle inspectorLabel;
-        public static GUIStyle inspectorSelectedLabel;
+        public static GUIStyle InspectorLabel => s_InspectorLabel;
+        public static GUIStyle InspectorSelectedLabel => s_InspectorSelectedLabel;
 
-        public static bool isInitialized { get; private set; }
-        static bool isProSkin = true;
-        static bool prevIsProSkin = false;
+        public static bool IsInitialized { get; private set; }
+        static bool s_IsProSkin = true;
+        static bool s_PrevIsProSkin = false;
 
         public static GUISkin GetSceneSkin()
         {
-            isProSkin = EditorGUIUtility.isProSkin;
-            if (isProSkin)
+            s_IsProSkin = EditorGUIUtility.isProSkin;
+            if (s_IsProSkin)
             {
                 return EditorGUIUtility.GetBuiltinSkin(EditorSkin.Scene);
             } else
@@ -37,37 +41,43 @@ namespace Chisel.Editors
 
         public static void Update()
         {
-            isProSkin = EditorGUIUtility.isProSkin;
-            if (toolbarStyle != null && prevIsProSkin == isProSkin)
+            s_IsProSkin = EditorGUIUtility.isProSkin;
+            if (s_ToolbarStyle != null && s_PrevIsProSkin == s_IsProSkin)
                 return;
 
-            isInitialized = true;
-            inspectorLabel = new GUIStyle(GUI.skin.label);
-            inspectorLabel.padding = new RectOffset(kIconSize + kOffsetToText, 0, 0, 0);
+            IsInitialized = true;
+            s_InspectorLabel = new GUIStyle(GUI.skin.label);
+            s_InspectorLabel.padding = new RectOffset(kIconSize + kOffsetToText, 0, 0, 0);
 
-            inspectorSelectedLabel = new GUIStyle(inspectorLabel);
-            if (!isProSkin)
+            s_InspectorSelectedLabel = new GUIStyle(s_InspectorLabel);
+            if (!s_IsProSkin)
             {
-                inspectorSelectedLabel.normal.textColor = Color.white;
-                inspectorSelectedLabel.onNormal.textColor = Color.white;
+                s_InspectorSelectedLabel.normal.textColor = Color.white;
+                s_InspectorSelectedLabel.onNormal.textColor = Color.white;
             }
 
-            windowStyle = new GUIStyle(GUI.skin.window);
+			//s_WindowStyle = new GUIStyle(GUI.skin.window);
 
-            toolbarStyle = new GUIStyle(GUI.skin.window);
-            toolbarStyle.fixedHeight = kBottomBarHeight;
-            toolbarStyle.padding = new RectOffset(2, 6, 0, 1); 
-            toolbarStyle.contentOffset = Vector2.zero;
+			s_ToolbarStyle = new GUIStyle(GUI.skin.window)
+			{
+				fixedHeight = kBottomBarHeight,
+				padding = new RectOffset(2, 6, 0, 1),
+				contentOffset = Vector2.zero
+			};
+            /*
+			s_ToggleStyle = new GUIStyle(EditorStyles.toolbarButton)
+			{
+				fixedHeight = kBottomBarHeight - 2,
+				margin = new RectOffset(0, 0, 1, 0)
+			};
 
-            toggleStyle = new GUIStyle(EditorStyles.toolbarButton);
-            toggleStyle.fixedHeight = kBottomBarHeight - 2;
-            toggleStyle.margin = new RectOffset(0, 0, 1, 0);
-
-            buttonStyle = new GUIStyle(EditorStyles.toolbarButton);
-            buttonStyle.fixedHeight = kBottomBarHeight - 2;
-            buttonStyle.margin = new RectOffset(0, 0, 1, 0);
-
-            prevIsProSkin = isProSkin;
+			s_ButtonStyle = new GUIStyle(EditorStyles.toolbarButton)
+			{
+				fixedHeight = kBottomBarHeight - 2,
+				margin = new RectOffset(0, 0, 1, 0)
+			};
+            */
+			s_PrevIsProSkin = s_IsProSkin;
             ChiselEditorSettings.Load(); // <- put somewhere else
         }
     }

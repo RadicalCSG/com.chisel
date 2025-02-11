@@ -25,7 +25,8 @@ namespace Chisel.Core
 		public const uint kMinimumPolygons = 3;
 		public const uint kMinimumHalfEdges = 3 * 3;
 
-		static System.Text.StringBuilder errorMessageBuilder = new System.Text.StringBuilder();
+        // TODO: create logging class that encapsulates StringBuilder and only allocates it when needed?
+		static System.Text.StringBuilder errorMessageBuilder = new();
 		public bool ValidateData(out string errorMessage)
         {
             errorMessage = null;

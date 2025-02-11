@@ -29,6 +29,7 @@ namespace Chisel.Core
         [NoAlias, WriteOnly] public NativeStream.Writer     output;
 
         // Per thread scratch memory
+        /*
         [NativeDisableContainerSafetyRestriction, NoAlias] NativeArray<EdgeCategory>     categories1;
         [NativeDisableContainerSafetyRestriction, NoAlias] NativeArray<EdgeCategory>     categories2;
         [NativeDisableContainerSafetyRestriction, NoAlias] NativeArray<Edge>             outEdges;
@@ -49,6 +50,7 @@ namespace Chisel.Core
         [NativeDisableContainerSafetyRestriction, NoAlias] HashedVertices                hashedTreeSpaceVertices;
         [NativeDisableContainerSafetyRestriction, NoAlias] NativeArray<ushort>           indexRemap;
         [NativeDisableContainerSafetyRestriction, NoAlias] NativeList<UnsafeList<Edge>>  intersectionEdges;
+        */
 
         [BurstDiscard]
         private static void NotUniqueEdgeException() 
@@ -116,7 +118,13 @@ namespace Chisel.Core
                             [NoAlias] ref NativeList<IndexSurfaceInfo>  allInfos,
                             [NoAlias] ref NativeList<UnsafeList<Edge>>  allEdges,
 
-                            [NoAlias] in UnsafeList<Edge>               intersectionLoop, 
+							[NoAlias] ref NativeArray<Edge>             outEdges,
+							[NoAlias] ref NativeArray<int>              intersectedHoleIndices,
+                            [NoAlias] ref NativeArray<EdgeCategory>     categories1,
+                            [NoAlias] ref NativeArray<EdgeCategory>     categories2,
+
+
+							[NoAlias] in UnsafeList<Edge>               intersectionLoop, 
                             byte                                        intersectionCategory,
                             IndexSurfaceInfo                            intersectionInfo)
         {
@@ -375,7 +383,8 @@ namespace Chisel.Core
             return normal;
         }
 
-        void CleanUp(in NativeList<IndexSurfaceInfo> allInfos, ref NativeList<UnsafeList<Edge>> allEdges, in HashedVertices brushVertices, ref UnsafeList<int> loopIndices, ref NativeList<UnsafeList<int>> holeIndices)
+        void CleanUp(in NativeList<IndexSurfaceInfo> allInfos, ref NativeList<UnsafeList<Edge>> allEdges, in HashedVertices brushVertices, ref UnsafeList<int> loopIndices, ref NativeList<UnsafeList<int>> holeIndices,
+			        [NoAlias] ref NativeList<float4> alltreeSpacePlanes, [NoAlias] ref NativeList<LoopSegment> allSegments, [NoAlias] ref NativeList<Edge> allCombinedEdges, [NoAlias] ref NativeBitArray destroyedEdges)
         {
             for (int l = loopIndices.Length - 1; l >= 0; l--)
             {
@@ -700,341 +709,472 @@ namespace Chisel.Core
         }
 
         public void Execute(int index)
-        {
-            var count = input.BeginForEachIndex(index);
-            if (count == 0)
-            {
-                input.EndForEachIndex();
+		{
+			NativeArray<EdgeCategory> categories1 = default;
+			NativeArray<EdgeCategory> categories2 = default;
+			NativeArray<Edge> outEdges = default;
+			NativeArray<int> intersectedHoleIndices = default;
+			NativeArray<IndexSurfaceInfo> intersectionSurfaceInfo = default;
+			NativeBitArray destroyedEdges = default;
+			NativeList<IndexSurfaceInfo> allInfos = default;
+			NativeList<IndexSurfaceInfo> intersectionSurfaceInfos = default;
+			NativeList<IndexSurfaceInfo> basePolygonSurfaceInfos = default;
+			NativeList<float4> alltreeSpacePlanes = default;
+			NativeList<LoopSegment> allSegments = default;
+			NativeList<Edge> allCombinedEdges = default;
+			NativeList<UnsafeList<int>> holeIndices = default;
+			NativeList<UnsafeList<int>> surfaceLoopIndices = default;
+			NativeList<UnsafeList<Edge>> allEdges = default;
+			NativeList<UnsafeList<Edge>> intersectionLoops = default;
+			NativeList<UnsafeList<Edge>> basePolygonEdges = default;
+			HashedVertices hashedTreeSpaceVertices = default;
+			NativeArray<ushort> indexRemap = default;
+			NativeList<UnsafeList<Edge>> intersectionEdges = default;
+            try
+            { 
+			    var count = input.BeginForEachIndex(index);
+                if (count == 0)
+                {
+                    input.EndForEachIndex();
 
-                output.BeginForEachIndex(index);
-                output.Write(new IndexOrder());
-                output.Write(0);
-                output.Write(0);
-                output.Write(0);
-                output.EndForEachIndex();
-                return;
-            }
+                    output.BeginForEachIndex(index);
+                    output.Write(new IndexOrder());
+                    output.Write(0);
+                    output.Write(0);
+                    output.Write(0);
+                    output.EndForEachIndex();
+                    return;
+                }
 
-            var brushIndexOrder = input.Read<IndexOrder>();
-            var brushNodeOrder = brushIndexOrder.nodeOrder;
-            var surfaceCount = input.Read<int>();
+                var brushIndexOrder = input.Read<IndexOrder>();
+                var brushNodeOrder = brushIndexOrder.nodeOrder;
+                var surfaceCount = input.Read<int>();
 
-            var inputVertices = loopVerticesLookup[brushNodeOrder];
-            var vertexCount = inputVertices.Length;
+                var inputVertices = loopVerticesLookup[brushNodeOrder];
+                var vertexCount = inputVertices.Length;
 
-            NativeCollectionHelpers.EnsureCapacityAndClear(ref hashedTreeSpaceVertices, vertexCount);
-            NativeCollectionHelpers.EnsureMinimumSize(ref indexRemap, vertexCount);
+                hashedTreeSpaceVertices = new HashedVertices(vertexCount, Allocator.Temp);
+			    //NativeCollectionHelpers.EnsureCapacityAndClear(ref hashedTreeSpaceVertices, vertexCount);
+                try
+                { 
+                    NativeCollectionHelpers.EnsureMinimumSize(ref indexRemap, vertexCount);
             
 
-            hashedTreeSpaceVertices.Clear();
-            for (int v = 0; v < inputVertices.Length; v++)
-            {
-                var vertex = inputVertices[v];
-                indexRemap[v] = hashedTreeSpaceVertices.AddNoResize(vertex);
-            }
-            //Debug.Assert(hashedTreeSpaceVertices.Length == inputVertices.Length);
-
-            var basePolygonEdgesLength = input.Read<int>();
-            NativeCollectionHelpers.EnsureSizeAndClear(ref basePolygonSurfaceInfos, basePolygonEdgesLength);
-            NativeCollectionHelpers.EnsureSizeAndClear(ref basePolygonEdges, basePolygonEdgesLength);
-            int polygonIndex = 0;
-            for (int l = 0; l < basePolygonEdgesLength; l++)
-            {
-                var indexSurfaceInfo = input.Read<IndexSurfaceInfo>();
-                //if (l >= basePolygonSurfaceInfos.Length)
-                //    Debug.Log("F");
-                basePolygonSurfaceInfos[l] = indexSurfaceInfo;
-
-                var edgesLength     = input.Read<int>();
-                if (edgesLength == 0)
-                {
-                    //if (l >= basePolygonEdges.Length)
-                    //    Debug.Log("C");
-                    if (basePolygonEdges[l].IsCreated)
-                        basePolygonEdges[l].Clear();
-                    continue;
-                }
-                //if (l >= basePolygonEdges.Length)
-                //    Debug.Log($"D {l} {basePolygonEdges.Length} {basePolygonSurfaceInfos.Length} {basePolygonEdgesLength} {basePolygonEdges.Length}");
-                var edgesInner = new UnsafeList<Edge>(edgesLength, Allocator.Temp);
-                //Debug.Log("E");
-                //edgesInner.ResizeUninitialized(edgesLength);
-                for (int e = 0; e < edgesLength; e++)
-                {
-                    var edge = input.Read<Edge>();
-                    edge.index1 = indexRemap[edge.index1];
-                    edge.index2 = indexRemap[edge.index2];
-                    if (edge.index1 == edge.index2)
-                        continue;
-                    //Debug.Assert(edge.index1 >= 0 && edge.index1 < hashedTreeSpaceVertices.Length);
-                    //Debug.Assert(edge.index2 >= 0 && edge.index2 < hashedTreeSpaceVertices.Length);
-                    //if (edgesInner.Length + 1 >= edgesInner.Capacity)
-                    //    Debug.Log("E");
-                    edgesInner.AddNoResize(edge);
-                }
-                if (edgesInner.Length < 3)
-                    edgesInner.Clear();
-                basePolygonEdges[l] = edgesInner;
-            }
-            //basePolygonSurfaceInfos.ResizeUninitialized(polygonIndex);
-            //basePolygonEdges.ResizeExact(polygonIndex);
-
-            var intersectionEdgesLength = input.Read<int>();
-            NativeCollectionHelpers.EnsureSizeAndClear(ref intersectionSurfaceInfos, intersectionEdgesLength);
-            NativeCollectionHelpers.EnsureSizeAndClear(ref intersectionEdges, intersectionEdgesLength);
-            polygonIndex = 0;
-            for (int l = 0; l < intersectionEdgesLength; l++)
-            {
-                var indexSurfaceInfo = input.Read<IndexSurfaceInfo>();
-                var edgesLength = input.Read<int>();
-                var edgesInner  = new UnsafeList<Edge>(edgesLength, Allocator.Temp);
-                //edgesInner.ResizeUninitialized(edgesLength);
-                for (int e = 0; e < edgesLength; e++)
-                {
-                    var edge = input.Read<Edge>();
-                    edge.index1 = indexRemap[edge.index1];
-                    edge.index2 = indexRemap[edge.index2];
-                    if (edge.index1 == edge.index2)
-                        continue;
-                    //Debug.Assert(edge.index1 >= 0 && edge.index1 < hashedTreeSpaceVertices.Length);
-                    //Debug.Assert(edge.index2 >= 0 && edge.index2 < hashedTreeSpaceVertices.Length);
-                    edgesInner.AddNoResize(edge);
-                }
-                if (edgesInner.Length >= 3)
-                {
-                    intersectionSurfaceInfos[polygonIndex] = indexSurfaceInfo;
-                    intersectionEdges[polygonIndex] = edgesInner;
-                    polygonIndex++;
-                } else
-                {
-                    edgesInner.Clear();
-                    intersectionEdges[polygonIndex] = edgesInner;
-                }
-            }
-            intersectionSurfaceInfos.ResizeUninitialized(polygonIndex);
-            intersectionEdges.Resize(polygonIndex, NativeArrayOptions.ClearMemory);
-            input.EndForEachIndex();
-
-            //int brushNodeIndex = treeBrushNodeIndices[index];
-
-            if (surfaceCount == 0)
-            {
-                output.BeginForEachIndex(index);
-                output.Write(brushIndexOrder);
-                output.Write(0);
-                output.Write(0);
-                output.Write(0);
-                output.EndForEachIndex();
-                return;
-            }
-
-
-			BlobAssetReference<RoutingTable> routingTableRef = routingTableCache[brushNodeOrder];
-            if (routingTableRef == BlobAssetReference<RoutingTable>.Null)
-            {
-                //Debug.LogError("No routing table found");
-                output.BeginForEachIndex(index);
-                output.Write(brushIndexOrder);
-                output.Write(0);
-                output.Write(0);
-                output.Write(0);
-                output.EndForEachIndex();
-                return;
-            }
-
-            
-
-            ref var nodeIDToTableIndex      = ref routingTableRef.Value.nodeIDToTableIndex;
-            ref var nodeIDOffset            = ref routingTableRef.Value.nodeIDOffset;
-            ref var routingLookups          = ref routingTableRef.Value.routingLookups;
-            var routingLookupsLength        = routingLookups.Length;
-
-
-            int maxIndex = intersectionSurfaceInfos.Length + (surfaceCount * routingLookupsLength);
-            for (int i = 0; i < intersectionSurfaceInfos.Length; i++)
-            {
-                var surfaceInfo     = intersectionSurfaceInfos[i];
-                var brushNodeID1    = surfaceInfo.brushIndexOrder.compactNodeID;
-
-                // check if brush does not exist in routing table (will not have any effect)
-                var idWithOffset = brushNodeID1.value - nodeIDOffset;
-                if (idWithOffset < 0 || idWithOffset >= nodeIDToTableIndex.Length)
-                    continue;
-
-                var routingTableIndex = nodeIDToTableIndex[idWithOffset];
-                if (routingTableIndex == -1)
-                    continue;
-
-                var surfaceIndex = surfaceInfo.basePlaneIndex;
-                maxIndex = math.max(maxIndex, routingTableIndex + (surfaceIndex * routingLookupsLength));
-            }
-
-
-            int intersectionLoopCount = maxIndex + 1;
-            NativeCollectionHelpers.EnsureSizeAndClear(ref intersectionLoops, intersectionLoopCount);
-            NativeCollectionHelpers.EnsureMinimumSize(ref intersectionSurfaceInfo, intersectionLoopCount);
-
-            {
-                // TODO: Sort the brushSurfaceInfos/intersectionEdges based on nodeIndexToTableIndex[surfaceInfo.brushNodeID], 
-                //       have a sequential list of all data. 
-                //       Have segment list to determine which part of array belong to which brushNodeID
-                //       Don't need bottom part, can determine this in Job
-
-                for (int i = 0; i < intersectionSurfaceInfos.Length; i++)
-                {
-                    var surfaceInfo      = intersectionSurfaceInfos[i];
-                    var brushNodeID1     = surfaceInfo.brushIndexOrder.compactNodeID;
-
-                    // check if brush does not exist in routing table (will not have any effect)
-                    var idWithOffset = brushNodeID1.value - nodeIDOffset;
-                    if (idWithOffset < 0 || idWithOffset >= nodeIDToTableIndex.Length)
-                        continue;
-
-                    var routingTableIndex = nodeIDToTableIndex[idWithOffset];
-                    if (routingTableIndex == -1)
-                        continue;
-
-                    var surfaceIndex    = surfaceInfo.basePlaneIndex;
-                    int offset          = routingTableIndex + (surfaceIndex * routingLookupsLength);
-
-                    var srcEdges = intersectionEdges[i];
-                    var loops = new UnsafeList<Edge>(srcEdges.Length, Allocator.Temp);
-                    loops.AddRangeNoResize(srcEdges);
-                    intersectionSurfaceInfo[offset] = surfaceInfo;
-                    intersectionLoops[offset] = loops;
-                }
-            }
-
-
-            var maxLoops            = (routingLookupsLength + routingLookupsLength) * (surfaceCount + surfaceCount); // TODO: find a more reliable "max"
-
-            NativeCollectionHelpers.EnsureCapacityAndClear(ref holeIndices, maxLoops);
-            NativeCollectionHelpers.EnsureSizeAndClear(ref surfaceLoopIndices, surfaceCount);
-            NativeCollectionHelpers.EnsureCapacityAndClear(ref allInfos, maxLoops);
-            NativeCollectionHelpers.EnsureCapacityAndClear(ref allEdges, maxLoops);
-
-
-            ref var routingTable = ref routingTableRef.Value;
-            for (int surfaceIndex = 0; surfaceIndex < surfaceCount; surfaceIndex++)
-            {
-                if (!basePolygonEdges[surfaceIndex].IsCreated)
-                    continue;
-                var basePolygonSrc = basePolygonEdges[surfaceIndex];
-                if (basePolygonSrc.Length < 3)
-                    continue;
-
-                var info = basePolygonSurfaceInfos[surfaceIndex];
-                info.interiorCategory = 0; // TODO: make sure that it's always set to "0" so we don't need to do this
-
-                var maxAllocation       = 1 + (2 * (routingLookupsLength + allEdges.Length)); // TODO: find a more reliable "max"
-                var maxEdgeAllocation   = 1 + (hashedTreeSpaceVertices.Length * 2);
-
-                var loopIndices = new UnsafeList<int>(maxAllocation, Allocator.Temp);                
-                loopIndices.AddNoResize(allEdges.Length);                
-                holeIndices.Add(new UnsafeList<int>(maxAllocation, Allocator.Temp));
-                allInfos   .AddNoResize(info);
-                //Debug.Assert(holeIndices.IsAllocated(allInfos.Length - 1));
-
-                var basePolygonDst = new UnsafeList<Edge>(basePolygonSrc.Length + maxEdgeAllocation, Allocator.Temp);// TODO: find a more reliable "max"
-                basePolygonDst.AddRangeNoResize(basePolygonSrc);
-                allEdges.Add(basePolygonDst);
-
-                //Debug.Assert(allEdges.Length == allInfos.Length);
-                //Debug.Assert(allInfos.Length == holeIndices.Length);
-
-                for (int routingTableIndex = 0; routingTableIndex < routingLookupsLength; routingTableIndex++)
-                {
-                    int offset              = routingTableIndex + (surfaceIndex * routingLookupsLength);
-                    ref var routingLookup   = ref routingLookups[routingTableIndex];
-                    var intersectionLoop    = intersectionLoops[offset];
-                    var intersectionInfo    = intersectionSurfaceInfo[offset];
-                    for (int l = loopIndices.Length - 1; l >= 0; l--)
+                    hashedTreeSpaceVertices.Clear();
+                    for (int v = 0; v < inputVertices.Length; v++)
                     {
-                        var surfaceLoopIndex = loopIndices[l];
-                        var surfaceLoopEdges = allEdges[surfaceLoopIndex];
-                        if (surfaceLoopEdges.Length < 3)
-                            continue;
+                        var vertex = inputVertices[v];
+                        indexRemap[v] = hashedTreeSpaceVertices.AddNoResize(vertex);
+                    }
+                    //Debug.Assert(hashedTreeSpaceVertices.Length == inputVertices.Length);
 
-                        var surfaceLoopInfo = allInfos[surfaceLoopIndex];
-                        //Debug.Assert(holeIndices.IsAllocated(surfaceLoopIndex));
+                    var basePolygonEdgesLength = input.Read<int>();
+                    NativeCollectionHelpers.EnsureSizeAndClear(ref basePolygonSurfaceInfos, basePolygonEdgesLength);
+                    NativeCollectionHelpers.EnsureSizeAndClear(ref basePolygonEdges, basePolygonEdgesLength);
+                    int polygonIndex = 0;
+                    for (int l = 0; l < basePolygonEdgesLength; l++)
+                    {
+                        var indexSurfaceInfo = input.Read<IndexSurfaceInfo>();
+                        //if (l >= basePolygonSurfaceInfos.Length)
+                        //    Debug.Log("F");
+                        basePolygonSurfaceInfos[l] = indexSurfaceInfo;
 
-                        // Lookup categorization between original surface & other surface ...
-                        if (!routingLookup.TryGetRoute(ref routingTable, surfaceLoopInfo.interiorCategory, out CategoryRoutingRow routingRow))
-                        { 
-                            Debug.Assert(false, "Could not find route");
+                        var edgesLength     = input.Read<int>();
+                        if (edgesLength == 0)
+                        {
+                            //if (l >= basePolygonEdges.Length)
+                            //    Debug.Log("C");
+                            if (basePolygonEdges[l].IsCreated)
+                                basePolygonEdges[l].Clear();
                             continue;
                         }
-
-                        bool overlap = intersectionLoop.IsCreated && intersectionLoop.Length != 0 &&
-                                        BooleanEdgesUtility.AreLoopsOverlapping(in surfaceLoopEdges, in intersectionLoop);
-
-                        if (overlap)
+                        //if (l >= basePolygonEdges.Length)
+                        //    Debug.Log($"D {l} {basePolygonEdges.Length} {basePolygonSurfaceInfos.Length} {basePolygonEdgesLength} {basePolygonEdges.Length}");
+                        var edgesInner = new UnsafeList<Edge>(edgesLength, Allocator.Temp);
+                        //Debug.Log("E");
+                        //edgesInner.ResizeUninitialized(edgesLength);
+                        for (int e = 0; e < edgesLength; e++)
                         {
-                            // If we overlap don't bother with creating a new polygon & hole and just reuse existing polygon + replace category
-                            surfaceLoopInfo.interiorCategory = routingRow[(int)intersectionInfo.interiorCategory];
-                            allInfos[surfaceLoopIndex] = surfaceLoopInfo;
-                            continue;
+                            var edge = input.Read<Edge>();
+                            edge.index1 = indexRemap[edge.index1];
+                            edge.index2 = indexRemap[edge.index2];
+                            if (edge.index1 == edge.index2)
+                                continue;
+                            //Debug.Assert(edge.index1 >= 0 && edge.index1 < hashedTreeSpaceVertices.Length);
+                            //Debug.Assert(edge.index2 >= 0 && edge.index2 < hashedTreeSpaceVertices.Length);
+                            //if (edgesInner.Length + 1 >= edgesInner.Capacity)
+                            //    Debug.Log("E");
+                            edgesInner.AddNoResize(edge);
+                        }
+                        if (edgesInner.Length < 3)
+                            edgesInner.Clear();
+                        basePolygonEdges[l] = edgesInner;
+                    }
+                    //basePolygonSurfaceInfos.ResizeUninitialized(polygonIndex);
+                    //basePolygonEdges.ResizeExact(polygonIndex);
+
+                    var intersectionEdgesLength = input.Read<int>();
+                    NativeCollectionHelpers.EnsureSizeAndClear(ref intersectionSurfaceInfos, intersectionEdgesLength);
+                    NativeCollectionHelpers.EnsureSizeAndClear(ref intersectionEdges, intersectionEdgesLength);
+                    polygonIndex = 0;
+                    for (int l = 0; l < intersectionEdgesLength; l++)
+                    {
+                        var indexSurfaceInfo = input.Read<IndexSurfaceInfo>();
+                        var edgesLength = input.Read<int>();
+                        var edgesInner  = new UnsafeList<Edge>(edgesLength, Allocator.Temp);
+                        //edgesInner.ResizeUninitialized(edgesLength);
+                        for (int e = 0; e < edgesLength; e++)
+                        {
+                            var edge = input.Read<Edge>();
+                            edge.index1 = indexRemap[edge.index1];
+                            edge.index2 = indexRemap[edge.index2];
+                            if (edge.index1 == edge.index2)
+                                continue;
+                            //Debug.Assert(edge.index1 >= 0 && edge.index1 < hashedTreeSpaceVertices.Length);
+                            //Debug.Assert(edge.index2 >= 0 && edge.index2 < hashedTreeSpaceVertices.Length);
+                            edgesInner.AddNoResize(edge);
+                        }
+                        if (edgesInner.Length >= 3)
+                        {
+                            intersectionSurfaceInfos[polygonIndex] = indexSurfaceInfo;
+                            intersectionEdges[polygonIndex] = edgesInner;
+                            polygonIndex++;
                         } else
                         {
-                            surfaceLoopInfo.interiorCategory = routingRow.outside;
-                            allInfos[surfaceLoopIndex] = surfaceLoopInfo;
-                        }
-
-                        // Add all holes that share the same plane to the polygon
-                        if (intersectionLoop.IsCreated && intersectionLoop.Length != 0)
-                        {
-                            // Categorize between original surface & intersection
-                            var intersectionCategory = routingRow[intersectionInfo.interiorCategory];
-
-                            // If the intersection polygon would get the same category, we don't need to do a pointless intersection
-                            if (intersectionCategory == surfaceLoopInfo.interiorCategory)
-                                continue;
-
-                            IntersectLoops(in hashedTreeSpaceVertices, ref loopIndices, surfaceLoopIndex,
-                                           ref holeIndices, ref allInfos, ref allEdges,
-                                           in intersectionLoop, 
-                                           intersectionCategory, 
-                                           intersectionInfo);
-                            surfaceLoopIndices[surfaceIndex] = loopIndices;
+                            edgesInner.Clear();
+                            intersectionEdges[polygonIndex] = edgesInner;
                         }
                     }
+                    intersectionSurfaceInfos.ResizeUninitialized(polygonIndex);
+                    intersectionEdges.Resize(polygonIndex, NativeArrayOptions.ClearMemory);
+                    input.EndForEachIndex();
+
+                    //int brushNodeIndex = treeBrushNodeIndices[index];
+
+                    if (surfaceCount == 0)
+                    {
+                        output.BeginForEachIndex(index);
+                        output.Write(brushIndexOrder);
+                        output.Write(0);
+                        output.Write(0);
+                        output.Write(0);
+                        output.EndForEachIndex();
+                        return;
+                    }
+
+
+			        BlobAssetReference<RoutingTable> routingTableRef = routingTableCache[brushNodeOrder];
+                    if (routingTableRef == BlobAssetReference<RoutingTable>.Null)
+                    {
+                        //Debug.LogError("No routing table found");
+                        output.BeginForEachIndex(index);
+                        output.Write(brushIndexOrder);
+                        output.Write(0);
+                        output.Write(0);
+                        output.Write(0);
+                        output.EndForEachIndex();
+                        return;
+                    }
+
+            
+
+                    ref var nodeIDToTableIndex      = ref routingTableRef.Value.nodeIDToTableIndex;
+                    ref var nodeIDOffset            = ref routingTableRef.Value.nodeIDOffset;
+                    ref var routingLookups          = ref routingTableRef.Value.routingLookups;
+                    var routingLookupsLength        = routingLookups.Length;
+
+
+                    int maxIndex = intersectionSurfaceInfos.Length + (surfaceCount * routingLookupsLength);
+                    for (int i = 0; i < intersectionSurfaceInfos.Length; i++)
+                    {
+                        var surfaceInfo     = intersectionSurfaceInfos[i];
+                        var brushNodeID1    = surfaceInfo.brushIndexOrder.compactNodeID;
+
+                        // check if brush does not exist in routing table (will not have any effect)
+                        var idWithOffset = brushNodeID1.slotIndex.index - nodeIDOffset;
+                        if (idWithOffset < 0 || idWithOffset >= nodeIDToTableIndex.Length)
+                            continue;
+
+                        var routingTableIndex = nodeIDToTableIndex[idWithOffset];
+                        if (routingTableIndex == -1)
+                            continue;
+
+                        var surfaceIndex = surfaceInfo.basePlaneIndex;
+                        maxIndex = math.max(maxIndex, routingTableIndex + (surfaceIndex * routingLookupsLength));
+                    }
+
+
+                    int intersectionLoopCount = maxIndex + 1;
+                    NativeCollectionHelpers.EnsureSizeAndClear(ref intersectionLoops, intersectionLoopCount);
+                    NativeCollectionHelpers.EnsureMinimumSize(ref intersectionSurfaceInfo, intersectionLoopCount);
+
+                    {
+                        // TODO: Sort the brushSurfaceInfos/intersectionEdges based on nodeIndexToTableIndex[surfaceInfo.brushNodeID], 
+                        //       have a sequential list of all data. 
+                        //       Have segment list to determine which part of array belong to which brushNodeID
+                        //       Don't need bottom part, can determine this in Job
+
+                        for (int i = 0; i < intersectionSurfaceInfos.Length; i++)
+                        {
+                            var surfaceInfo      = intersectionSurfaceInfos[i];
+                            var brushNodeID1     = surfaceInfo.brushIndexOrder.compactNodeID;
+
+                            // check if brush does not exist in routing table (will not have any effect)
+                            var idWithOffset = brushNodeID1.slotIndex.index - nodeIDOffset;
+                            if (idWithOffset < 0 || idWithOffset >= nodeIDToTableIndex.Length)
+                                continue;
+
+                            var routingTableIndex = nodeIDToTableIndex[idWithOffset];
+                            if (routingTableIndex == -1)
+                                continue;
+
+                            var surfaceIndex    = surfaceInfo.basePlaneIndex;
+                            int offset          = routingTableIndex + (surfaceIndex * routingLookupsLength);
+
+                            var srcEdges = intersectionEdges[i];
+                            var loops = new UnsafeList<Edge>(srcEdges.Length, Allocator.Temp);
+                            loops.AddRangeNoResize(srcEdges);
+                            intersectionSurfaceInfo[offset] = surfaceInfo;
+                            intersectionLoops[offset] = loops;
+                        }
+                    }
+
+
+                    var maxLoops            = (routingLookupsLength + routingLookupsLength) * (surfaceCount + surfaceCount); // TODO: find a more reliable "max"
+
+                    NativeCollectionHelpers.EnsureCapacityAndClear(ref holeIndices, maxLoops);
+                    NativeCollectionHelpers.EnsureSizeAndClear(ref surfaceLoopIndices, surfaceCount);
+                    NativeCollectionHelpers.EnsureCapacityAndClear(ref allInfos, maxLoops);
+                    NativeCollectionHelpers.EnsureCapacityAndClear(ref allEdges, maxLoops);
+
+
+                    ref var routingTable = ref routingTableRef.Value;
+                    for (int surfaceIndex = 0; surfaceIndex < surfaceCount; surfaceIndex++)
+                    {
+                        if (!basePolygonEdges[surfaceIndex].IsCreated)
+                            continue;
+                        var basePolygonSrc = basePolygonEdges[surfaceIndex];
+                        if (basePolygonSrc.Length < 3)
+                            continue;
+
+                        var info = basePolygonSurfaceInfos[surfaceIndex];
+                        info.interiorCategory = 0; // TODO: make sure that it's always set to "0" so we don't need to do this
+
+                        var maxAllocation       = 1 + (2 * (routingLookupsLength + allEdges.Length)); // TODO: find a more reliable "max"
+                        var maxEdgeAllocation   = 1 + (hashedTreeSpaceVertices.Length * 2);
+
+                        var loopIndices = new UnsafeList<int>(maxAllocation, Allocator.Temp);                
+                        loopIndices.AddNoResize(allEdges.Length);                
+                        holeIndices.Add(new UnsafeList<int>(maxAllocation, Allocator.Temp));
+                        allInfos   .AddNoResize(info);
+                        //Debug.Assert(holeIndices.IsAllocated(allInfos.Length - 1));
+
+                        var basePolygonDst = new UnsafeList<Edge>(basePolygonSrc.Length + maxEdgeAllocation, Allocator.Temp);// TODO: find a more reliable "max"
+                        basePolygonDst.AddRangeNoResize(basePolygonSrc);
+                        allEdges.Add(basePolygonDst);
+
+                        //Debug.Assert(allEdges.Length == allInfos.Length);
+                        //Debug.Assert(allInfos.Length == holeIndices.Length);
+
+                        for (int routingTableIndex = 0; routingTableIndex < routingLookupsLength; routingTableIndex++)
+                        {
+                            int offset              = routingTableIndex + (surfaceIndex * routingLookupsLength);
+                            ref var routingLookup   = ref routingLookups[routingTableIndex];
+                            var intersectionLoop    = intersectionLoops[offset];
+                            var intersectionInfo    = intersectionSurfaceInfo[offset];
+                            for (int l = loopIndices.Length - 1; l >= 0; l--)
+                            {
+                                var surfaceLoopIndex = loopIndices[l];
+                                var surfaceLoopEdges = allEdges[surfaceLoopIndex];
+                                if (surfaceLoopEdges.Length < 3)
+                                    continue;
+
+                                var surfaceLoopInfo = allInfos[surfaceLoopIndex];
+                                //Debug.Assert(holeIndices.IsAllocated(surfaceLoopIndex));
+
+                                // Lookup categorization between original surface & other surface ...
+                                if (!routingLookup.TryGetRoute(ref routingTable, surfaceLoopInfo.interiorCategory, out CategoryRoutingRow routingRow))
+                                { 
+                                    Debug.Assert(false, "Could not find route");
+                                    continue;
+                                }
+
+                                bool overlap = intersectionLoop.IsCreated && intersectionLoop.Length != 0 &&
+                                                BooleanEdgesUtility.AreLoopsOverlapping(in surfaceLoopEdges, in intersectionLoop);
+
+                                if (overlap)
+                                {
+                                    // If we overlap don't bother with creating a new polygon & hole and just reuse existing polygon + replace category
+                                    surfaceLoopInfo.interiorCategory = routingRow[(int)intersectionInfo.interiorCategory];
+                                    allInfos[surfaceLoopIndex] = surfaceLoopInfo;
+                                    continue;
+                                } else
+                                {
+                                    surfaceLoopInfo.interiorCategory = routingRow.outside;
+                                    allInfos[surfaceLoopIndex] = surfaceLoopInfo;
+                                }
+
+                                // Add all holes that share the same plane to the polygon
+                                if (intersectionLoop.IsCreated && intersectionLoop.Length != 0)
+                                {
+                                    // Categorize between original surface & intersection
+                                    var intersectionCategory = routingRow[intersectionInfo.interiorCategory];
+
+                                    // If the intersection polygon would get the same category, we don't need to do a pointless intersection
+                                    if (intersectionCategory == surfaceLoopInfo.interiorCategory)
+                                        continue;
+
+                                    IntersectLoops(in hashedTreeSpaceVertices, ref loopIndices, surfaceLoopIndex,
+                                                   ref holeIndices, ref allInfos, ref allEdges,
+												   
+                                                   ref outEdges, ref intersectedHoleIndices,
+                                                   ref categories1, ref categories2,
+
+												   in intersectionLoop, 
+                                                   intersectionCategory, 
+                                                   intersectionInfo);
+                                    surfaceLoopIndices[surfaceIndex] = loopIndices;
+                                }
+                            }
+                        }
+                        CleanUp(in allInfos, ref allEdges, in hashedTreeSpaceVertices, ref loopIndices, ref holeIndices,
+							ref alltreeSpacePlanes, ref allSegments, ref allCombinedEdges, ref destroyedEdges);
+                        surfaceLoopIndices[surfaceIndex] = loopIndices;
+                    }
+
+                    output.BeginForEachIndex(index);
+                    output.Write(brushIndexOrder);
+                    output.Write(hashedTreeSpaceVertices.Length);
+                    for (int l = 0; l < hashedTreeSpaceVertices.Length; l++)
+                        output.Write(hashedTreeSpaceVertices[l]);
+
+                    output.Write(surfaceLoopIndices.Length);
+                    for (int o = 0; o < surfaceLoopIndices.Length; o++)
+                    {
+                        var inner = surfaceLoopIndices[o];
+                        if (!inner.IsCreated)
+                        {
+                            output.Write(0);
+                            continue;
+                        }
+                        output.Write(inner.Length);
+                        for (int i = 0; i < inner.Length; i++)
+                            output.Write(inner[i]);
+                    }
+
+                    output.Write(allEdges.Length);
+                    for (int l = 0; l < allEdges.Length; l++)
+                    {
+                        var surfaceInfo = allInfos[l];
+                        output.Write(new SurfaceInfo { basePlaneIndex = surfaceInfo.basePlaneIndex, interiorCategory = surfaceInfo.interiorCategory//, nodeIndex = surfaceInfo.brushIndexOrder.nodeIndex 
+                                        });
+                        var edges = allEdges[l];
+                        output.Write(edges.Length);
+                        for (int e = 0; e < edges.Length; e++) 
+                            output.Write(edges[e]);
+                    }
+                    output.EndForEachIndex();
                 }
-                CleanUp(in allInfos, ref allEdges, in hashedTreeSpaceVertices, ref loopIndices, ref holeIndices);
-                surfaceLoopIndices[surfaceIndex] = loopIndices;
-            }
-
-            output.BeginForEachIndex(index);
-            output.Write(brushIndexOrder);
-            output.Write(hashedTreeSpaceVertices.Length);
-            for (int l = 0; l < hashedTreeSpaceVertices.Length; l++)
-                output.Write(hashedTreeSpaceVertices[l]);
-
-            output.Write(surfaceLoopIndices.Length);
-            for (int o = 0; o < surfaceLoopIndices.Length; o++)
-            {
-                var inner = surfaceLoopIndices[o];
-                if (!inner.IsCreated)
+                finally
                 {
-                    output.Write(0);
-                    continue;
+                    hashedTreeSpaceVertices.Dispose();
                 }
-                output.Write(inner.Length);
-                for (int i = 0; i < inner.Length; i++)
-                    output.Write(inner[i]);
             }
-
-            output.Write(allEdges.Length);
-            for (int l = 0; l < allEdges.Length; l++)
-            {
-                var surfaceInfo = allInfos[l];
-                output.Write(new SurfaceInfo { basePlaneIndex = surfaceInfo.basePlaneIndex, interiorCategory = surfaceInfo.interiorCategory//, nodeIndex = surfaceInfo.brushIndexOrder.nodeIndex 
-                                });
-                var edges = allEdges[l];
-                output.Write(edges.Length);
-                for (int e = 0; e < edges.Length; e++)
-                    output.Write(edges[e]);
-            }
-            output.EndForEachIndex();
+            finally
+			{
+				if (categories1.IsCreated) categories1.Dispose();
+				if (categories2.IsCreated) categories2.Dispose();
+				if (outEdges.IsCreated) outEdges.Dispose();
+				if (intersectedHoleIndices.IsCreated) intersectedHoleIndices.Dispose();
+				if (intersectionSurfaceInfo.IsCreated) intersectionSurfaceInfo.Dispose();
+				if (destroyedEdges.IsCreated) destroyedEdges.Dispose();
+				if (allInfos.IsCreated) allInfos.Dispose();
+				if (intersectionSurfaceInfos.IsCreated) intersectionSurfaceInfos.Dispose();
+				if (basePolygonSurfaceInfos.IsCreated) basePolygonSurfaceInfos.Dispose();
+				if (alltreeSpacePlanes.IsCreated) alltreeSpacePlanes.Dispose();
+				if (allSegments.IsCreated) allSegments.Dispose();
+				if (allCombinedEdges.IsCreated) allCombinedEdges.Dispose();
+				if (hashedTreeSpaceVertices.IsCreated) hashedTreeSpaceVertices.Dispose();
+				if (indexRemap.IsCreated) indexRemap.Dispose();
+                if (holeIndices.IsCreated)
+				{
+					if (holeIndices.IsCreated)
+					{
+						for (int i = 0; i < holeIndices.Length; i++)
+						{
+							if (holeIndices[i].IsCreated)
+								holeIndices[i].Dispose();
+							holeIndices[i] = default;
+						}
+					}
+					holeIndices.Dispose();
+                }
+                if (surfaceLoopIndices.IsCreated)
+				{
+					if (surfaceLoopIndices.IsCreated)
+					{
+						for (int i = 0; i < surfaceLoopIndices.Length; i++)
+						{
+							if (surfaceLoopIndices[i].IsCreated)
+								surfaceLoopIndices[i].Dispose();
+							surfaceLoopIndices[i] = default;
+						}
+					}
+					surfaceLoopIndices.Dispose();
+                }
+                if (allEdges.IsCreated)
+				{ 
+					if (allEdges.IsCreated)
+					{
+						for (int i = 0; i < allEdges.Length; i++)
+						{
+							if (allEdges[i].IsCreated)
+								allEdges[i].Dispose();
+							allEdges[i] = default;
+						}
+					}
+					allEdges.Dispose();
+                }
+                if (intersectionLoops.IsCreated)
+				{
+					if (intersectionLoops.IsCreated)
+					{
+						for (int i = 0; i < intersectionLoops.Length; i++) 
+						{
+							if (intersectionLoops[i].IsCreated)
+								intersectionLoops[i].Dispose();
+							intersectionLoops[i] = default;
+						}
+					}
+					intersectionLoops.Dispose();
+                }
+                if (basePolygonEdges.IsCreated)
+				{
+					if (basePolygonEdges.IsCreated)
+					{
+						for (int i = 0; i < basePolygonEdges.Length; i++)
+						{
+							if (basePolygonEdges[i].IsCreated)
+								basePolygonEdges[i].Dispose();
+							basePolygonEdges[i] = default;
+						}
+					}
+					basePolygonEdges.Dispose();
+                }
+                if (intersectionEdges.IsCreated)
+				{
+					if (intersectionEdges.IsCreated)
+					{
+						for (int i = 0; i < intersectionEdges.Length; i++)
+						{
+							if (intersectionEdges[i].IsCreated)
+								intersectionEdges[i].Dispose();
+							intersectionEdges[i] = default;
+						}
+					}
+					intersectionEdges.Dispose();
+                }
+			}
         }
     }
 } 

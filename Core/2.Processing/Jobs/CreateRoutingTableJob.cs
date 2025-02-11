@@ -72,35 +72,52 @@ namespace Chisel.Core
             var maxNodes    = math.max(1, brushesTouchedByBrushValue.brushIntersections.Length);
             var maxRoutes   = maxNodes * kMaxRoutesPerNode;
 
-            NativeCollectionHelpers.EnsureMinimumSize(ref routingTable, maxRoutes);
-            NativeCollectionHelpers.EnsureMinimumSize(ref tempStackArray, maxRoutes);
-            NativeCollectionHelpers.EnsureMinimumSize(ref queuedEvents, 4096);
-            NativeCollectionHelpers.EnsureMinimumSize(ref routingSteps, maxRoutes);
-            NativeCollectionHelpers.EnsureMinimumSizeAndClear(ref combineUsedIndices, maxRoutes);
+
+            NativeArray<QueuedEvent> queuedEvents;
+            using var _queuedEvents = queuedEvents = new NativeArray<QueuedEvent>(4096, Allocator.Temp);
+			//NativeCollectionHelpers.EnsureMinimumSize(ref queuedEvents, 4096);
+			
+            NativeArray<CategoryStackNode> tempStackArray;
+			using var _tempStackArray = tempStackArray = new NativeArray<CategoryStackNode>(maxRoutes, Allocator.Temp);
+			//NativeCollectionHelpers.EnsureMinimumSize(ref tempStackArray, maxRoutes);
+			
+            NativeBitArray combineUsedIndices;
+			using var _combineUsedIndices = combineUsedIndices = new NativeBitArray(maxRoutes, Allocator.Temp);
+			//NativeCollectionHelpers.EnsureMinimumSizeAndClear(ref combineUsedIndices, maxRoutes);
 #if USE_OPTIMIZATIONS
-            NativeCollectionHelpers.EnsureMinimumSizeAndClear(ref combineIndexRemap, maxRoutes);
+			NativeArray<byte> combineIndexRemap;
+			using var _combineIndexRemap = combineIndexRemap = new NativeArray<byte>(maxRoutes, Allocator.Temp);
+			//NativeCollectionHelpers.EnsureMinimumSizeAndClear(ref combineIndexRemap, maxRoutes);
 #endif
+			NativeArray<int> routingSteps;
+			using var _routingSteps = routingSteps = new NativeArray<int>(maxRoutes, Allocator.Temp);
+			//NativeCollectionHelpers.EnsureMinimumSize(ref routingSteps, maxRoutes);
 
-            var categoryStackNodeCount = GetStackNodes(processedNodeID, ref brushesTouchedByBrushValue, 
-                                                       ref routingTable,
-                                                       ref compactTree.compactHierarchy,
-                                                       ref queuedEvents,
-                                                       ref tempStackArray,
-                                                       ref combineUsedIndices,
+			NativeArray<CategoryStackNode> routingTable;
+			using var _routingTable = routingTable = new NativeArray<CategoryStackNode>(maxRoutes, Allocator.Temp);
+			//NativeCollectionHelpers.EnsureMinimumSize(ref routingTable, maxRoutes);
+
+
+			var categoryStackNodeCount = GetStackNodes(processedNodeID, ref brushesTouchedByBrushValue,
+                                                        ref routingTable,
+                                                        ref compactTree.compactHierarchy,
+                                                        ref queuedEvents,
+                                                        ref tempStackArray,
+                                                        ref combineUsedIndices,
 #if USE_OPTIMIZATIONS
-                                                       ref combineIndexRemap,
+                                                        ref combineIndexRemap,
 #endif
-                                                       ref routingSteps);
+                                                        ref routingSteps);
 
-            var totalInputsSize         = 16 + (categoryStackNodeCount * UnsafeUtility.SizeOf<byte>());
-            var totalRoutingRowsSize    = 16 + (categoryStackNodeCount * UnsafeUtility.SizeOf<CategoryRoutingRow>());
-            var totalLookupsSize        = 16 + (categoryStackNodeCount * UnsafeUtility.SizeOf<RoutingLookup>());
-            var totalNodesSize          = 16 + (categoryStackNodeCount * UnsafeUtility.SizeOf<int>());
-            var totalSize               = totalInputsSize + totalRoutingRowsSize + totalLookupsSize + totalNodesSize;
+            var totalInputsSize = 16 + (categoryStackNodeCount * UnsafeUtility.SizeOf<byte>());
+            var totalRoutingRowsSize = 16 + (categoryStackNodeCount * UnsafeUtility.SizeOf<CategoryRoutingRow>());
+            var totalLookupsSize = 16 + (categoryStackNodeCount * UnsafeUtility.SizeOf<RoutingLookup>());
+            var totalNodesSize = 16 + (categoryStackNodeCount * UnsafeUtility.SizeOf<int>());
+            var totalSize = totalInputsSize + totalRoutingRowsSize + totalLookupsSize + totalNodesSize;
 
-            var builder = new BlobBuilder(Allocator.Temp, totalSize);
-            ref var root    = ref builder.ConstructRoot<RoutingTable>();
-            var routingRows = builder.Allocate(ref root.routingRows,    categoryStackNodeCount);
+			using var builder = new BlobBuilder(Allocator.Temp, totalSize);
+            ref var root = ref builder.ConstructRoot<RoutingTable>();
+            var routingRows = builder.Allocate(ref root.routingRows, categoryStackNodeCount);
 
             // TODO: clean up
             int nodeCounter = 1;
@@ -149,11 +166,10 @@ namespace Chisel.Core
                     nodeIDToTableIndex[i] = -1;
                 for (int i = 0; i < nodeCounter; i++)
                     nodeIDToTableIndex[routingTable[routingLookups[i].startIndex].NodeIDValue - minNodeID] = i;
-                        
-                var routingTableBlob = builder.CreateBlobAssetReference<RoutingTable>(Allocator.Persistent);
-                routingTableLookup[processedNodeOrder] = routingTableBlob;
+
+                var routingTableBlob = builder.CreateBlobAssetReference<RoutingTable>(Allocator.Persistent); // Confirmed to be disposed
+				routingTableLookup[processedNodeOrder] = routingTableBlob;
             }
-            builder.Dispose();
         }
 
 
@@ -245,13 +261,13 @@ namespace Chisel.Core
                         {
                             if (intersectionType == IntersectionType.AInsideB) 
                             { 
-                                output[outputLength] = new CategoryStackNode { NodeIDValue = currentNodeID.value, routingRow = CategoryRoutingRow.AllInside }; 
+                                output[outputLength] = new CategoryStackNode { NodeIDValue = currentNodeID.slotIndex.index, routingRow = CategoryRoutingRow.AllInside }; 
                                 outputLength++;
                                 break; 
                             }
                             if (intersectionType == IntersectionType.BInsideA) 
                             { 
-                                output[outputLength] = new CategoryStackNode { NodeIDValue = currentNodeID.value, routingRow = CategoryRoutingRow.AllOutside };
+                                output[outputLength] = new CategoryStackNode { NodeIDValue = currentNodeID.slotIndex.index, routingRow = CategoryRoutingRow.AllOutside };
                                 outputLength++;
                                 break; 
                             }
@@ -260,7 +276,7 @@ namespace Chisel.Core
                             if (processedNodeID == currentNode.CompactNodeID)
                             {
                                 haveGoneBeyondSelf = 1; // We're currently "ON" our brush
-                                output[outputLength] = new CategoryStackNode { NodeIDValue = currentNodeID.value, routingRow = CategoryRoutingRow.AllSelfAligned };
+                                output[outputLength] = new CategoryStackNode { NodeIDValue = currentNodeID.slotIndex.index, routingRow = CategoryRoutingRow.AllSelfAligned };
                                 outputLength++;
                                 break;
                             }  
@@ -269,7 +285,7 @@ namespace Chisel.Core
                                 haveGoneBeyondSelf = 2; // We're now definitely beyond our brush
 
                             // Otherwise return identity categories (input == output)
-                            output[outputLength] = new CategoryStackNode { NodeIDValue = currentNodeID.value, routingRow = CategoryRoutingRow.Identity };
+                            output[outputLength] = new CategoryStackNode { NodeIDValue = currentNodeID.slotIndex.index, routingRow = CategoryRoutingRow.Identity };
                             outputLength++;
                             break;
                         }
@@ -420,7 +436,7 @@ namespace Chisel.Core
 
             if (outputLength == 0)
             {
-                output[outputLength] = new CategoryStackNode { NodeIDValue = processedNodeID.value, routingRow = CategoryRoutingRow.AllOutside };
+                output[outputLength] = new CategoryStackNode { NodeIDValue = processedNodeID.slotIndex.index, routingRow = CategoryRoutingRow.AllOutside };
                 outputLength++;
             }
 #if SHOW_DEBUG_MESSAGES

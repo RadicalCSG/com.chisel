@@ -14,15 +14,9 @@ namespace Chisel.Core
 
     [BurstCompile(CompileSynchronously = true)]
     unsafe struct UpdateTransformationsJob: IJobParallelForDefer
-    {                
-        public void InitializeHierarchy(ref CompactHierarchy hierarchy)
-        {
-            compactHierarchyPtr = (CompactHierarchy*)UnsafeUtility.AddressOf(ref hierarchy);
-        }
-
+    {      
         // Read
-        [NativeDisableUnsafePtrRestriction]
-        [NoAlias, ReadOnly] public CompactHierarchy*                    compactHierarchyPtr;
+        [NoAlias, ReadOnly] public CompactHierarchy.ReadOnly            compactHierarchy;
         [NoAlias, ReadOnly] public NativeList<NodeOrderNodeID>          transformTreeBrushIndicesList;
 
         // Write
@@ -32,7 +26,6 @@ namespace Chisel.Core
         public void Execute(int index)
         {
             // TODO: optimize, only do this when necessary
-            ref var compactHierarchy = ref UnsafeUtility.AsRef<CompactHierarchy>(compactHierarchyPtr);
             var lookup = transformTreeBrushIndicesList[index];
             transformationCache[lookup.nodeOrder] = CompactHierarchyManager.GetNodeTransformation(in compactHierarchy, lookup.compactNodeID);
         }

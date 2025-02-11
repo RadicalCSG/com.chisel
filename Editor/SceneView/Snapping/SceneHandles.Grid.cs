@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using UnityEngine;
 using Chisel.Core;
+using UnityEngine.Pool;
 
 namespace Chisel.Editors
 {
@@ -43,164 +44,170 @@ namespace Chisel.Editors
         const float kMinSpacing = (1 / 8192.0f);
 
 
-        public static readonly Matrix4x4 XZPlane = new Matrix4x4(new Vector4(1, 0, 0, 0),
-                                                                 new Vector4(0, 1, 0, 0),
-                                                                 new Vector4(0, 0, 1, 0),
-                                                                 new Vector4(0, 0, 0, 1));
+        readonly static Matrix4x4 s_XZPlane = new(new Vector4(1, 0, 0, 0),
+                                                  new Vector4(0, 1, 0, 0),
+                                                  new Vector4(0, 0, 1, 0),
+                                                  new Vector4(0, 0, 0, 1));
 
-        public static readonly Matrix4x4 YZPlane = new Matrix4x4(new Vector4(0, 1, 0, 0),
-                                                                 new Vector4(1, 0, 0, 0),
-                                                                 new Vector4(0, 0, 1, 0),
-                                                                 new Vector4(0, 0, 0, 1));
+        readonly static Matrix4x4 s_YZPlane = new(new Vector4(0, 1, 0, 0),
+                                                  new Vector4(1, 0, 0, 0),
+                                                  new Vector4(0, 0, 1, 0),
+                                                  new Vector4(0, 0, 0, 1));
 
-        public static readonly Matrix4x4 XYPlane = new Matrix4x4(new Vector4(1, 0, 0, 0),
-                                                                 new Vector4(0, 0, 1, 0),
-                                                                 new Vector4(0, 1, 0, 0),
-                                                                 new Vector4(0, 0, 0, 1));
+        readonly static Matrix4x4 s_XYPlane = new(new Vector4(1, 0, 0, 0),
+                                                  new Vector4(0, 0, 1, 0),
+                                                  new Vector4(0, 1, 0, 0),
+                                                  new Vector4(0, 0, 0, 1));
+        public static Matrix4x4 XZPlane => s_XZPlane;
 
-        public Grid() { }
+        public static Matrix4x4 YZPlane => s_YZPlane;
+
+        public static Matrix4x4 XYPlane => s_XYPlane;
+
+		public Grid() { }
         public Grid(Matrix4x4 gridToWorldSpace, Vector3 spacing) { this.GridToWorldSpace = gridToWorldSpace; this.Spacing = spacing; }
-        public Grid(Matrix4x4 gridToWorldSpace) { this.GridToWorldSpace = gridToWorldSpace; this.Spacing = defaultGrid.Spacing; }
+        public Grid(Matrix4x4 gridToWorldSpace) { this.GridToWorldSpace = gridToWorldSpace; this.Spacing = DefaultGrid.Spacing; }
 
-        public static readonly Grid defaultGrid = new Grid();
+        readonly static Grid s_DefaultGrid = new();
+        public static Grid DefaultGrid => s_DefaultGrid;
 
-        static Grid currentGrid = null;
+		static Grid s_CurrentGrid = null;
         public static Grid CurrentGrid
         {
             get
             {
-                return currentGrid;
+                return s_CurrentGrid;
             }
             set
             {
-                if (value == currentGrid)
+                if (value == s_CurrentGrid)
                     return;
-                currentGrid = value;
+                s_CurrentGrid = value;
                 GridModified?.Invoke();
             }
-        }
+		}
+
+		public static Grid DebugGrid { get; set; }
 
 
-        public Grid GridYZ
+		public Grid GridYZ
         {
-            get { return new Grid(_gridToWorldSpace * YZPlane, new Vector3(_spacing.y, _spacing.x, _spacing.z)); }
+            get { return new Grid(gridToWorldSpace * YZPlane, new Vector3(spacing.y, spacing.x, spacing.z)); }
         }
 
         public Grid GridXY
         {
-            get { return new Grid(_gridToWorldSpace * XYPlane, new Vector3(_spacing.x, _spacing.z, _spacing.y)); }
+            get { return new Grid(gridToWorldSpace * XYPlane, new Vector3(spacing.x, spacing.z, spacing.y)); }
         }
 
 
 
         public static Grid HoverGrid { get; set; }
 
-        public static Grid debugGrid;
-
-        public static Grid ActiveGrid
+		public static Grid ActiveGrid
         {
             get
             {
-                if (currentGrid == null)
-                    return defaultGrid;
-                return currentGrid;
+                if (s_CurrentGrid == null)
+                    return DefaultGrid;
+                return s_CurrentGrid;
             }
         }
 
-        private static bool m_enabled = false;
+        private static bool s_Enabled = false;
         public static bool Enabled
         {
             get
             {
-                return m_enabled;
+                return s_Enabled;
             }
 
             set
             {
-                m_enabled = value;
+                s_Enabled = value;
             }
         }
 
         public bool Hide { get; internal set; }
 
-        Vector3 _spacing = Vector3.one;
+        Vector3 spacing = Vector3.one;
         public Vector3 Spacing
         {
             get
             {
-                return _spacing;
+                return spacing;
             }
             set
             {
                 var spacingX = UnityEngine.Mathf.Max(kMinSpacing, value.x);
                 var spacingY = UnityEngine.Mathf.Max(kMinSpacing, value.y);
                 var spacingZ = UnityEngine.Mathf.Max(kMinSpacing, value.z);
-                if (_spacing.x == spacingX && 
-                    _spacing.y == spacingY && 
-                    _spacing.z == spacingZ)
+                if (spacing.x == spacingX && 
+                    spacing.y == spacingY && 
+                    spacing.z == spacingZ)
                     return;
-                _spacing.x = spacingX;
-                _spacing.y = spacingY;
-                _spacing.z = spacingZ;
+                spacing.x = spacingX;
+                spacing.y = spacingY;
+                spacing.z = spacingZ;
                 if (this == ActiveGrid)
                     GridModified?.Invoke();
             }
         }
         public float SpacingX
         {
-            get { return _spacing.x; }
+            get { return spacing.x; }
             set
             {
                 var spacingX = UnityEngine.Mathf.Max(kMinSpacing, value); ;
-                if (_spacing.x == spacingX)
+                if (spacing.x == spacingX)
                     return;
-                _spacing.x = spacingX;
+                spacing.x = spacingX;
                 if (this == ActiveGrid)
                     GridModified?.Invoke();
             }
         }
         public float SpacingY
         {
-            get { return _spacing.y; }
+            get { return spacing.y; }
             set
             {
                 var spacingY = UnityEngine.Mathf.Max(kMinSpacing, value);
-                if (_spacing.y == spacingY)
+                if (spacing.y == spacingY)
                     return;
-                _spacing.y = spacingY;
+                spacing.y = spacingY;
                 if (this == ActiveGrid)
                     GridModified?.Invoke();
             }
         }
         public float SpacingZ
         {
-            get { return _spacing.z; }
+            get { return spacing.z; }
             set
             {
                 var spacingZ = UnityEngine.Mathf.Max(kMinSpacing, value);
-                if (_spacing.z == spacingZ)
+                if (spacing.z == spacingZ)
                     return;
-                _spacing.z = spacingZ;
+                spacing.z = spacingZ;
                 if (this == ActiveGrid)
                     GridModified?.Invoke();
             }
         }
 
-        Matrix4x4 _gridToWorldSpace = Matrix4x4.identity;
-        Matrix4x4 _worldToGridSpace = Matrix4x4.identity;
+        Matrix4x4 gridToWorldSpace = Matrix4x4.identity;
+        Matrix4x4 worldToGridSpace = Matrix4x4.identity;
 
         public Matrix4x4 GridToWorldSpace
         {
             get
             {
-                return _gridToWorldSpace;
+                return gridToWorldSpace;
             }
             set
             {
-                if (_gridToWorldSpace == value)
+                if (gridToWorldSpace == value)
                     return;
-                _gridToWorldSpace = value;
-                _worldToGridSpace = Matrix4x4.Inverse(_gridToWorldSpace);
+                gridToWorldSpace = value;
+                worldToGridSpace = Matrix4x4.Inverse(gridToWorldSpace);
                 if (this == ActiveGrid)
                     GridModified?.Invoke();
             }
@@ -210,14 +217,14 @@ namespace Chisel.Editors
         {
             get
             {
-                return _worldToGridSpace;
+                return worldToGridSpace;
             }
             set
             {
-                if (_worldToGridSpace == value)
+                if (worldToGridSpace == value)
                     return;
-                _worldToGridSpace = value;
-                _gridToWorldSpace = Matrix4x4.Inverse(_worldToGridSpace);
+                worldToGridSpace = value;
+                gridToWorldSpace = Matrix4x4.Inverse(worldToGridSpace);
                 if (this == ActiveGrid)
                     GridModified?.Invoke();
             }
@@ -227,7 +234,7 @@ namespace Chisel.Editors
         {
             get
             {
-                var center = (Vector3)_gridToWorldSpace.GetColumn(3);
+                var center = (Vector3)gridToWorldSpace.GetColumn(3);
                 return center;
             }
         }
@@ -236,7 +243,7 @@ namespace Chisel.Editors
         {
             get
             {
-                return (Vector3)_gridToWorldSpace.GetColumn(1);
+                return (Vector3)gridToWorldSpace.GetColumn(1);
             }
         }
 
@@ -244,7 +251,7 @@ namespace Chisel.Editors
         {
             get
             {
-                return (Vector3)_gridToWorldSpace.GetColumn(0);
+                return (Vector3)gridToWorldSpace.GetColumn(0);
             }
         }
 
@@ -252,7 +259,7 @@ namespace Chisel.Editors
         {
             get
             {
-                return (Vector3)_gridToWorldSpace.GetColumn(2);
+                return (Vector3)gridToWorldSpace.GetColumn(2);
             }
         }
 
@@ -338,13 +345,13 @@ namespace Chisel.Editors
             if (a_dot_x > a_dot_y)
             {
                 if (a_dot_x > a_dot_z)
-                    return (dot_x < 0 ? -1 : 1) * (Vector3)_gridToWorldSpace.GetColumn(0);
+                    return (dot_x < 0 ? -1 : 1) * (Vector3)gridToWorldSpace.GetColumn(0);
             } else
             if (a_dot_y > a_dot_z)
             {
-                return (dot_y < 0 ? -1 : 1) * (Vector3)_gridToWorldSpace.GetColumn(1);
+                return (dot_y < 0 ? -1 : 1) * (Vector3)gridToWorldSpace.GetColumn(1);
             }
-            return (dot_z < 0 ? -1 : 1) * (Vector3)_gridToWorldSpace.GetColumn(2);
+            return (dot_z < 0 ? -1 : 1) * (Vector3)gridToWorldSpace.GetColumn(2);
         }
 
         public Vector3 GetAxisVector(Axis axis)
@@ -352,9 +359,9 @@ namespace Chisel.Editors
             switch (axis)
             {
                 default:
-                case Axis.X: return (Vector3)_gridToWorldSpace.GetColumn(0);
-                case Axis.Y: return (Vector3)_gridToWorldSpace.GetColumn(1);
-                case Axis.Z: return (Vector3)_gridToWorldSpace.GetColumn(2);
+                case Axis.X: return (Vector3)gridToWorldSpace.GetColumn(0);
+                case Axis.Y: return (Vector3)gridToWorldSpace.GetColumn(1);
+                case Axis.Z: return (Vector3)gridToWorldSpace.GetColumn(2);
             }
         }
 
@@ -363,9 +370,9 @@ namespace Chisel.Editors
             switch (axis)
             {
                 default:
-                case Axis.X: return _spacing.x;
-                case Axis.Y: return _spacing.y;
-                case Axis.Z: return _spacing.z;
+                case Axis.X: return spacing.x;
+                case Axis.Y: return spacing.y;
+                case Axis.Z: return spacing.z;
             }
         }
 
@@ -377,7 +384,7 @@ namespace Chisel.Editors
 
         public Extents3D GetGridExtentsOfPointArray(Matrix4x4 localToWorldMatrix, Vector3[] points)
         {
-            var toMatrix = _worldToGridSpace * localToWorldMatrix;
+            var toMatrix = worldToGridSpace * localToWorldMatrix;
 
             var min = new Vector3(float.PositiveInfinity, float.PositiveInfinity, float.PositiveInfinity);
             var max = new Vector3(float.NegativeInfinity, float.NegativeInfinity, float.NegativeInfinity);
@@ -395,120 +402,127 @@ namespace Chisel.Editors
             return new Extents3D(min, max);
         }
         
-        static readonly List<Vector3>   s_CustomSnapPoints  = new List<Vector3>();
-        static readonly List<Vector3>   s_CustomDistances   = new List<Vector3>();
-
         public Vector3 SnapExtents3D(Extents3D extentsInGridSpace, Vector3 worldCurrentPosition, Vector3 worldStartPosition, Grid worldSlideGrid, out SnapResult3D snapResult, Axes enabledAxes = Axes.XYZ, bool ignoreStartPoint = false)
-        {
-            s_CustomSnapPoints.Clear();
-            // TODO: have a method that handles multiple dimensions at the same time
-            var haveCustomSnapping = Snapping.GetCustomSnappingPoints(worldStartPosition, worldCurrentPosition, worldSlideGrid, 0, s_CustomSnapPoints);
+		{
+			var customSnapPoints = ListPool<Vector3>.Get();
+			var customDistances = ListPool<Vector3>.Get();
+            try
+            { 
+			    customSnapPoints.Clear();
+                // TODO: have a method that handles multiple dimensions at the same time
+                var haveCustomSnapping = Snapping.GetCustomSnappingPoints(worldStartPosition, worldCurrentPosition, worldSlideGrid, 0, customSnapPoints);
             
-            var boundsActive    = Snapping.BoundsSnappingActive;
-            var pivotActive     = Snapping.PivotSnappingActive;
+                var boundsActive    = Snapping.BoundsSnappingActive;
+                var pivotActive     = Snapping.PivotSnappingActive;
 
-            snapResult = SnapResult3D.None;
-            if (!boundsActive && !pivotActive && !haveCustomSnapping)
-                return worldCurrentPosition;
+                snapResult = SnapResult3D.None;
+                if (!boundsActive && !pivotActive && !haveCustomSnapping)
+                    return worldCurrentPosition;
 
-            const float kMinPointSnap = 0.25f;
-            float minPointSnap = !(boundsActive || pivotActive) ? kMinPointSnap : float.PositiveInfinity;
+                const float kMinPointSnap = 0.25f;
+                float minPointSnap = !(boundsActive || pivotActive) ? kMinPointSnap : float.PositiveInfinity;
 
 
-            var offsetInWorldSpace		= worldCurrentPosition - worldStartPosition;
-            var offsetInGridSpace		= _worldToGridSpace.MultiplyVector(offsetInWorldSpace);
-            var pivotInGridSpace		= _worldToGridSpace.MultiplyVector(worldCurrentPosition - Center);
+                var offsetInWorldSpace		= worldCurrentPosition - worldStartPosition;
+                var offsetInGridSpace		= worldToGridSpace.MultiplyVector(offsetInWorldSpace);
+                var pivotInGridSpace		= worldToGridSpace.MultiplyVector(worldCurrentPosition - Center);
             
-            // Snap our extents in grid space
-            var movedExtentsInGridspace	= extentsInGridSpace + offsetInGridSpace;
+                // Snap our extents in grid space
+                var movedExtentsInGridspace	= extentsInGridSpace + offsetInGridSpace;
 
 
-            var snappedOffset       = Vector3.zero;
-            var absSnappedOffset    = new Vector3(float.PositiveInfinity, float.PositiveInfinity, float.PositiveInfinity);
+                var snappedOffset       = Vector3.zero;
+                var absSnappedOffset    = new Vector3(float.PositiveInfinity, float.PositiveInfinity, float.PositiveInfinity);
 
-            var enabledAxisLookup   = new[] { (enabledAxes & Axes.X) > 0, (enabledAxes & Axes.Y) > 0, (enabledAxes & Axes.Z) > 0 };
+                var enabledAxisLookup   = new[] { (enabledAxes & Axes.X) > 0, (enabledAxes & Axes.Y) > 0, (enabledAxes & Axes.Z) > 0 };
 
-            var quantized_pivot         = new Vector3(float.PositiveInfinity, float.PositiveInfinity, float.PositiveInfinity);
-            var quantized_min_extents   = new Vector3(float.PositiveInfinity, float.PositiveInfinity, float.PositiveInfinity);
-            var quantized_max_extents   = new Vector3(float.PositiveInfinity, float.PositiveInfinity, float.PositiveInfinity);
+                var quantized_pivot         = new Vector3(float.PositiveInfinity, float.PositiveInfinity, float.PositiveInfinity);
+                var quantized_min_extents   = new Vector3(float.PositiveInfinity, float.PositiveInfinity, float.PositiveInfinity);
+                var quantized_max_extents   = new Vector3(float.PositiveInfinity, float.PositiveInfinity, float.PositiveInfinity);
 
-            for (int i = 0; i < 3; i++)
-            {
-                if (!enabledAxisLookup[i])
-                    continue;
-
-                if (pivotActive)
+                for (int i = 0; i < 3; i++)
                 {
-                    (float abs_pivot_offset, float snappedPivot, float quantized_offset) = Snapping.SnapPoint(pivotInGridSpace[i], _spacing[i]);
-                    quantized_pivot[i] = quantized_offset;
-                    if (absSnappedOffset[i] > abs_pivot_offset) { absSnappedOffset[i] = abs_pivot_offset; snappedOffset[i] = snappedPivot; }
+                    if (!enabledAxisLookup[i])
+                        continue;
+
+                    if (pivotActive)
+                    {
+                        (float abs_pivot_offset, float snappedPivot, float quantized_offset) = Snapping.SnapPoint(pivotInGridSpace[i], spacing[i]);
+                        quantized_pivot[i] = quantized_offset;
+                        if (absSnappedOffset[i] > abs_pivot_offset) { absSnappedOffset[i] = abs_pivot_offset; snappedOffset[i] = snappedPivot; }
+                    }
+
+                    if (boundsActive)
+                    {
+                        (float abs_bounds_distance, float snappedBoundsOffset, float quantized_min, float quantized_max) = Snapping.SnapBounds(movedExtentsInGridspace[i], spacing[i]);
+                        quantized_min_extents[i] = quantized_min;
+                        quantized_max_extents[i] = quantized_max;
+
+                        if (absSnappedOffset[i] > abs_bounds_distance) { absSnappedOffset[i] = abs_bounds_distance; snappedOffset[i] = snappedBoundsOffset; }
+                    }
                 }
+
+                if (haveCustomSnapping)
+                {
+                    (Vector3 abs_distance, Vector3 snappedCustomOffset) = Snapping.SnapCustom(customSnapPoints, pivotInGridSpace, enabledAxes, minPointSnap, customDistances);
+                    if (absSnappedOffset.sqrMagnitude > abs_distance.sqrMagnitude) { absSnappedOffset = abs_distance; snappedOffset = snappedCustomOffset; }
+                }
+
+                // Snap against drag start position
+                if (!ignoreStartPoint)
+                {
+                    if (Mathf.Abs(snappedOffset.x) > Mathf.Abs(offsetInGridSpace.x)) { offsetInGridSpace.x = snappedOffset.x = 0; }
+                    if (Mathf.Abs(snappedOffset.y) > Mathf.Abs(offsetInGridSpace.y)) { offsetInGridSpace.y = snappedOffset.y = 0; }
+                    if (Mathf.Abs(snappedOffset.z) > Mathf.Abs(offsetInGridSpace.z)) { offsetInGridSpace.z = snappedOffset.z = 0; }
+                }
+
+                var quantizedOffset = new Vector3(SnappingUtility.Quantize(snappedOffset.x),
+                                                  SnappingUtility.Quantize(snappedOffset.y),
+                                                  SnappingUtility.Quantize(snappedOffset.z));
+
+                // Figure out what kind of snapping visualization to show, this needs to be done afterwards since 
+                // while we're snapping each type of snap can override the next one. 
+                // Yet at the same time it's possible to snap with multiple snap-types at the same time.
 
                 if (boundsActive)
                 {
-                    (float abs_bounds_distance, float snappedBoundsOffset, float quantized_min, float quantized_max) = Snapping.SnapBounds(movedExtentsInGridspace[i], _spacing[i]);
-                    quantized_min_extents[i] = quantized_min;
-                    quantized_max_extents[i] = quantized_max;
+                    if (quantized_min_extents.x == quantizedOffset.x) snapResult |= SnapResult3D.MinX;
+                    if (quantized_max_extents.x == quantizedOffset.x) snapResult |= SnapResult3D.MaxX;
 
-                    if (absSnappedOffset[i] > abs_bounds_distance) { absSnappedOffset[i] = abs_bounds_distance; snappedOffset[i] = snappedBoundsOffset; }
+                    if (quantized_min_extents.y == quantizedOffset.y) snapResult |= SnapResult3D.MinY;
+                    if (quantized_max_extents.y == quantizedOffset.y) snapResult |= SnapResult3D.MaxY;
+
+                    if (quantized_min_extents.z == quantizedOffset.z) snapResult |= SnapResult3D.MinZ;
+                    if (quantized_max_extents.z == quantizedOffset.z) snapResult |= SnapResult3D.MaxZ;
                 }
+
+                if (pivotActive)
+                {
+                    if (quantized_pivot.x == quantizedOffset.x) snapResult |= SnapResult3D.PivotX;
+                    if (quantized_pivot.y == quantizedOffset.y) snapResult |= SnapResult3D.PivotY;
+                    if (quantized_pivot.z == quantizedOffset.z) snapResult |= SnapResult3D.PivotZ;
+                }
+
+                if (haveCustomSnapping) 
+                    Snapping.SendCustomSnappedEvents(quantizedOffset, customDistances, 0);
+
+                if (absSnappedOffset.x == 0 &&
+                    absSnappedOffset.y == 0 &&
+                    absSnappedOffset.z == 0)
+                    return worldStartPosition;
+
+                var snappedOffsetInWorldSpace	= gridToWorldSpace.MultiplyVector(offsetInGridSpace - snappedOffset);
+                var snappedPositionInWorldSpace	= (worldStartPosition + snappedOffsetInWorldSpace);
+
+                //Debug.Log($"{(float3)snappedOffsetInWorldSpace} {(float3)snappedOffset} {(float3)snappedPositionInWorldSpace}");
+
+                return snappedPositionInWorldSpace;
             }
-
-            if (haveCustomSnapping)
-            {
-                (Vector3 abs_distance, Vector3 snappedCustomOffset) = Snapping.SnapCustom(s_CustomSnapPoints, pivotInGridSpace, enabledAxes, minPointSnap, s_CustomDistances);
-                if (absSnappedOffset.sqrMagnitude > abs_distance.sqrMagnitude) { absSnappedOffset = abs_distance; snappedOffset = snappedCustomOffset; }
-            }
-
-            // Snap against drag start position
-            if (!ignoreStartPoint)
-            {
-                if (Mathf.Abs(snappedOffset.x) > Mathf.Abs(offsetInGridSpace.x)) { offsetInGridSpace.x = snappedOffset.x = 0; }
-                if (Mathf.Abs(snappedOffset.y) > Mathf.Abs(offsetInGridSpace.y)) { offsetInGridSpace.y = snappedOffset.y = 0; }
-                if (Mathf.Abs(snappedOffset.z) > Mathf.Abs(offsetInGridSpace.z)) { offsetInGridSpace.z = snappedOffset.z = 0; }
-            }
-
-            var quantizedOffset = new Vector3(SnappingUtility.Quantize(snappedOffset.x),
-                                              SnappingUtility.Quantize(snappedOffset.y),
-                                              SnappingUtility.Quantize(snappedOffset.z));
-
-            // Figure out what kind of snapping visualization to show, this needs to be done afterwards since 
-            // while we're snapping each type of snap can override the next one. 
-            // Yet at the same time it's possible to snap with multiple snap-types at the same time.
-
-            if (boundsActive)
-            {
-                if (quantized_min_extents.x == quantizedOffset.x) snapResult |= SnapResult3D.MinX;
-                if (quantized_max_extents.x == quantizedOffset.x) snapResult |= SnapResult3D.MaxX;
-
-                if (quantized_min_extents.y == quantizedOffset.y) snapResult |= SnapResult3D.MinY;
-                if (quantized_max_extents.y == quantizedOffset.y) snapResult |= SnapResult3D.MaxY;
-
-                if (quantized_min_extents.z == quantizedOffset.z) snapResult |= SnapResult3D.MinZ;
-                if (quantized_max_extents.z == quantizedOffset.z) snapResult |= SnapResult3D.MaxZ;
-            }
-
-            if (pivotActive)
-            {
-                if (quantized_pivot.x == quantizedOffset.x) snapResult |= SnapResult3D.PivotX;
-                if (quantized_pivot.y == quantizedOffset.y) snapResult |= SnapResult3D.PivotY;
-                if (quantized_pivot.z == quantizedOffset.z) snapResult |= SnapResult3D.PivotZ;
-            }
-
-            if (haveCustomSnapping) 
-                Snapping.SendCustomSnappedEvents(quantizedOffset, s_CustomDistances, 0);
-
-            if (absSnappedOffset.x == 0 &&
-                absSnappedOffset.y == 0 &&
-                absSnappedOffset.z == 0)
-                return worldStartPosition;
-
-            var snappedOffsetInWorldSpace	= _gridToWorldSpace.MultiplyVector(offsetInGridSpace - snappedOffset);
-            var snappedPositionInWorldSpace	= (worldStartPosition + snappedOffsetInWorldSpace);
-
-            //Debug.Log($"{(float3)snappedOffsetInWorldSpace} {(float3)snappedOffset} {(float3)snappedPositionInWorldSpace}");
-
-            return snappedPositionInWorldSpace;
+            finally
+			{
+				ListPool<Vector3>.Release(customSnapPoints);
+				ListPool<Vector3>.Release(customDistances);
+			}
         }
     }
 }

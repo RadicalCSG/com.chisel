@@ -9,29 +9,36 @@ namespace Chisel.Components
     public abstract class ChiselBrushGeneratorComponent<DefinitionType, Generator> : ChiselNodeGeneratorComponent<DefinitionType>
         where Generator      : unmanaged, IBrushGenerator
         where DefinitionType : SerializedBrushGenerator<Generator>, new()
-    {
-        CSGTreeBrush GenerateTopNode(in CSGTree tree, CSGTreeNode node, int userID, CSGOperationType operation)
+	{
+		[RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+		static void ResetState()
+		{
+            s_JobPool.Dispose();
+			s_JobPool.AllocateOrClear();
+		}
+
+		readonly static GeneratorBrushJobPool<Generator> s_JobPool = new();
+
+		CSGTreeBrush GenerateTopNode(in CSGTree tree, CSGTreeNode node, int instanceID, CSGOperationType operation)
         {
             var brush = (CSGTreeBrush)node;
             if (!brush.Valid)
             {
                 if (node.Valid)
                     node.Destroy();
-                return tree.CreateBrush(userID: userID, operation: operation);
+                return tree.CreateBrush(instanceID: instanceID, operation: operation);
             }
             if (brush.Operation != operation)
                 brush.Operation = operation;
             return brush;
         }
-
-        static readonly GeneratorBrushJobPool<Generator> s_JobPool = new();
-        protected override bool EnsureTopNodeCreatedInternal(in CSGTree tree, ref CSGTreeNode node, int userID)
+        protected override bool EnsureTopNodeCreatedInternal(in CSGTree tree, ref CSGTreeNode node, int instanceID)
         {
             if (!OnValidateDefinition())
                 return false;
 
             var brush = (CSGTreeBrush)node;
-            node = GenerateTopNode(in tree, brush, userID, operation);
+            node = GenerateTopNode(in tree, brush, instanceID, operation);
             return true;
         }
 
@@ -65,28 +72,35 @@ namespace Chisel.Components
     public abstract class ChiselBranchGeneratorComponent<Generator, DefinitionType> : ChiselNodeGeneratorComponent<DefinitionType>
         where Generator      : unmanaged, IBranchGenerator
         where DefinitionType : SerializedBranchGenerator<Generator>, new()
-    {
-        CSGTreeBranch GenerateTopNode(in CSGTree tree, CSGTreeBranch branch, int userID, CSGOperationType operation)
+	{
+		[RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+		static void ResetState()
+		{
+			s_JobPool.Dispose();
+			s_JobPool.AllocateOrClear();
+		}
+
+		readonly static GeneratorBranchJobPool<Generator> s_JobPool = new();
+
+        CSGTreeBranch GenerateTopNode(in CSGTree tree, CSGTreeBranch branch, int instanceID, CSGOperationType operation)
         {
             if (!branch.Valid)
             {
                 if (branch.Valid)
                     branch.Destroy();
-                return tree.CreateBranch(userID: userID, operation: operation);
+                return tree.CreateBranch(instanceID: instanceID, operation: operation);
             }
             if (branch.Operation != operation)
                 branch.Operation = operation;
             return branch;
         }
-
-        static readonly GeneratorBranchJobPool<Generator> s_JobPool = new();
-        protected override bool EnsureTopNodeCreatedInternal(in CSGTree tree, ref CSGTreeNode node, int userID)
+        protected override bool EnsureTopNodeCreatedInternal(in CSGTree tree, ref CSGTreeNode node, int instanceID)
         {
 			if (!OnValidateDefinition())
 				return false;
 
 			var branch = (CSGTreeBranch)node;
-            node = GenerateTopNode(in tree, branch, userID, operation);
+            node = GenerateTopNode(in tree, branch, instanceID, operation);
             return true;
         }
 
@@ -178,7 +192,7 @@ namespace Chisel.Components
     }
 
     [DisallowMultipleComponent]
-    public abstract class ChiselGeneratorComponent : ChiselNode, IChiselHasOperation
+    public abstract class ChiselGeneratorComponent : ChiselNodeComponent, IChiselHasOperation
     {
         // This ensures names remain identical, or a compile error occurs.
         public const string kOperationFieldName = nameof(operation);
@@ -311,7 +325,7 @@ namespace Chisel.Components
                         break;
 
                     // If we find a ChiselNode we continue, unless it's a Composite set to passthrough
-                    if (transform.TryGetComponent<ChiselNode>(out var component))
+                    if (transform.TryGetComponent<ChiselNodeComponent>(out var component))
                     {
                         var composite = component as ChiselCompositeComponent;
                         if (composite == null || !composite.PassThrough)
@@ -375,7 +389,7 @@ namespace Chisel.Components
 				return;
             }
 
-            if (ChiselGeneratedComponentManager.IsDefaultModel(hierarchyItem.Model))
+            if (ChiselModelManager.Instance.IsDefaultModel(hierarchyItem.Model))
             {
                 messages.Warning(kGeneratorIsPartOfDefaultModel);
             }
@@ -430,7 +444,7 @@ namespace Chisel.Components
             prevMaterialHash = 0;
             prevDefinitionHash = 0;
 #if UNITY_EDITOR
-            ChiselGeneratedComponentManager.EnsureVisibilityInitialized(this); 
+			ChiselUnityVisibilityManager.EnsureVisibilityInitialized(this); 
 #endif
         }
 
@@ -447,7 +461,7 @@ namespace Chisel.Components
 
                 var treeRoot = model.Node;
                 var instanceID = GetInstanceID();
-                if (EnsureTopNodeCreatedInternal(in treeRoot, ref Node, userID: instanceID))
+                if (EnsureTopNodeCreatedInternal(in treeRoot, ref Node, instanceID: instanceID))
                     ClearHashes();
 
                 if (!Node.Valid)
@@ -536,7 +550,7 @@ namespace Chisel.Components
 
         protected abstract int GetDefinitionHash();
 
-        protected abstract bool EnsureTopNodeCreatedInternal(in CSGTree tree, ref CSGTreeNode node, int userID);
+        protected abstract bool EnsureTopNodeCreatedInternal(in CSGTree tree, ref CSGTreeNode node, int instanceID);
         protected abstract void UpdateGeneratorNodesInternal(in CSGTree tree, ref CSGTreeNode node);
 	}
 }

@@ -35,7 +35,7 @@ namespace Chisel.Core
         public UVMatrix GetSurfaceUV0(int descriptionIndex)
         {
             if (descriptionIndex < 0 || descriptionIndex >= surfaces.Length)
-                return UVMatrix.identity;
+                return UVMatrix.Identity;
             return surfaces[descriptionIndex].surfaceDetails.UV0; 
         }
 

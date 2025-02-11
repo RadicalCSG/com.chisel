@@ -3,8 +3,6 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEditor;
 using UnityEditor.Overlays;
-using Chisel.Core;
-using Snapping = Chisel.Editors.Snapping;
 
 namespace Chisel.Editors
 {
@@ -16,17 +14,17 @@ namespace Chisel.Editors
         
         // TODO: CLEAN THIS UP
         public const int kMinWidth = ((242 + 32) - ((32 + 2) * ChiselPlacementToolsSelectionWindow.kToolsWide)) + (ChiselPlacementToolsSelectionWindow.kButtonSize * ChiselPlacementToolsSelectionWindow.kToolsWide);
-        public static readonly GUILayoutOption kMinWidthLayout = GUILayout.MinWidth(kMinWidth);
+        public readonly static GUILayoutOption kMinWidthLayout = GUILayout.MinWidth(kMinWidth);
 
 
-        static readonly GUIContent kDoubleRotateSnap  = new GUIContent(string.Empty, "Double the rotation snap angle");
-        static readonly GUIContent kHalfRotateSnap    = new GUIContent(string.Empty, "Half the rotation snap angle");
+        readonly static GUIContent kDoubleRotateSnap  = new(string.Empty, "Double the rotation snap angle");
+        readonly static GUIContent kHalfRotateSnap    = new(string.Empty, "Half the rotation snap angle");
         
-        static readonly GUIContent kDoubleScaleSnap   = new GUIContent(string.Empty, "Double the scale snap percentage");
-        static readonly GUIContent kHalfScaleSnap     = new GUIContent(string.Empty, "Half the scale snap percentage");
+        readonly static GUIContent kDoubleScaleSnap   = new(string.Empty, "Double the scale snap percentage");
+        readonly static GUIContent kHalfScaleSnap     = new(string.Empty, "Half the scale snap percentage");
 
-        static readonly GUIContent kDoubleGridSize    = new GUIContent(string.Empty, "Double the grid size");
-        static readonly GUIContent kHalfGridSize      = new GUIContent(string.Empty, "Half the grid size");
+        readonly static GUIContent kDoubleGridSize    = new(string.Empty, "Double the grid size");
+        readonly static GUIContent kHalfGridSize      = new(string.Empty, "Half the grid size");
 
 
         const float kSmallButtonWidth = 30;
@@ -60,14 +58,16 @@ namespace Chisel.Editors
                 if (emptyCopies.TryGetValue(style, out var emptyCopy))
                     return emptyCopy;
 
-                emptyCopy = new GUIStyle(GUIStyle.none);
-                emptyCopy.border = style.border;
-                emptyCopy.margin = style.margin;
-                emptyCopy.padding = style.padding;
-                emptyCopy.alignment = style.alignment;
-                emptyCopy.clipping = style.clipping;
-                emptyCopy.contentOffset = style.contentOffset;
-                emptyCopy.clipping = style.clipping;
+				emptyCopy = new GUIStyle(GUIStyle.none)
+				{
+					border = style.border,
+					margin = style.margin,
+					padding = style.padding,
+					alignment = style.alignment,
+					clipping = style.clipping,
+					contentOffset = style.contentOffset
+				};
+				emptyCopy.clipping = style.clipping;
                 emptyCopy.fixedHeight = style.fixedHeight;
                 emptyCopy.fixedWidth = style.fixedWidth;
                 emptyCopy.font = style.font;
@@ -153,20 +153,21 @@ namespace Chisel.Editors
                 }
             }
         }
-        static Styles styles;
+        static Styles s_Styles;
 
-        internal static ReflectedProperty<object> s_RecycledEditor = typeof(EditorGUI).GetStaticProperty<object>("s_RecycledEditor");
+        // TODO: remove this? move this?
+        // {{
+        readonly static ReflectedProperty<object> kRecycledEditor = typeof(EditorGUI).GetStaticProperty<object>("s_RecycledEditor");
+        readonly static MethodInfo kDoFloatFieldMethodInfo = typeof(EditorGUI).GetStaticMethod("DoFloatField", 8);
 
-        static readonly MethodInfo DoFloatFieldMethodInfo = typeof(EditorGUI).GetStaticMethod("DoFloatField", 8);
-
-        static object[] s_FloatFieldArray = new object[]{
+		readonly static object[] s_FloatFieldArray = new object[]{
                 null, null, null, null, null, kFloatFieldFormatString, null, null
         };
         static float DoFloatField(Rect position, Rect dragHotZone, int id, float value, GUIStyle style, bool draggable)
         {
-            if (s_FloatFieldArray == null || s_RecycledEditor == null)
+            if (s_FloatFieldArray == null || kRecycledEditor == null)
                 return value;
-            s_FloatFieldArray[0] = s_RecycledEditor.Value;
+            s_FloatFieldArray[0] = kRecycledEditor.Value;
             s_FloatFieldArray[1] = position;
             s_FloatFieldArray[2] = dragHotZone;
             s_FloatFieldArray[3] = id;
@@ -174,16 +175,17 @@ namespace Chisel.Editors
             //s_FloatFieldArray[5] = kFloatFieldFormatString;
             s_FloatFieldArray[6] = style;
             s_FloatFieldArray[7] = draggable;
-            return (float)DoFloatFieldMethodInfo.Invoke(null, s_FloatFieldArray);
-        }
+            return (float)kDoFloatFieldMethodInfo.Invoke(null, s_FloatFieldArray);
+		}
+		// }}
 
-        
-        public static float FloatField(Rect position, int id, float value, GUIStyle style)
+
+		public static float FloatField(Rect position, int id, float value, GUIStyle style)
         {
             return FloatFieldInternal(position, id, value, style);
         }
 
-        private static readonly int s_FloatFieldHash = "EditorTextField".GetHashCode();
+        private readonly static int kFloatFieldHash = "EditorTextField".GetHashCode();
         const string kFloatFieldFormatString = "g7";
         internal static float FloatFieldInternal(Rect position, int id, float value, GUIStyle style)
         {
@@ -211,34 +213,34 @@ namespace Chisel.Editors
 
         static float PlusMinusFloatField(Rect position, float value, GUIStyle style, GUIContent plusContent, GUIContent minusContent, ModifyValue plus, ModifyValue minus)
         {
-            int id = GUIUtility.GetControlID(s_FloatFieldHash, FocusType.Keyboard, position);
-            var emptyStyle = styles.GetEmptyCopy(style);
+            int id = GUIUtility.GetControlID(kFloatFieldHash, FocusType.Keyboard, position);
+            var emptyStyle = s_Styles.GetEmptyCopy(style);
             if (Event.current.type == EventType.Repaint)
             {
                 style.Draw(position, GUIContent.none, id, false, position.Contains(Event.current.mousePosition));
             }
                                 
             var temp = position; 
-            temp.xMax -= styles.plus.fixedWidth * 2;
+            temp.xMax -= s_Styles.plus.fixedWidth * 2;
             value = FloatField(temp, id, value, emptyStyle);
             //EditorGUI.FloatField(temp, id, value, emptyStyle);
 
 			var buttonRect = position;
-            buttonRect.xMin = buttonRect.xMax -= styles.plus.fixedWidth + 2;
+            buttonRect.xMin = buttonRect.xMax -= s_Styles.plus.fixedWidth + 2;
             buttonRect.yMin += 2;
-            buttonRect.width = styles.plus.fixedWidth;
-            buttonRect.height = styles.plus.fixedHeight;
-            if (GUI.Button(buttonRect, plusContent, styles.plus))
+            buttonRect.width = s_Styles.plus.fixedWidth;
+            buttonRect.height = s_Styles.plus.fixedHeight;
+            if (GUI.Button(buttonRect, plusContent, s_Styles.plus))
                 value = plus();
-            buttonRect.xMin -= styles.minus.fixedWidth - 2;
-            if (GUI.Button(buttonRect, minusContent, styles.minus))
+            buttonRect.xMin -= s_Styles.minus.fixedWidth - 2;
+            if (GUI.Button(buttonRect, minusContent, s_Styles.minus))
                 value = minus();
             return value;
         }
 
         public static bool SmallToggleButton(Rect rect, bool value, GUIContent[] content)
         {
-            return GUI.Toggle(rect, value, value ? content[1] : content[0], styles.smallToggleStyle);
+            return GUI.Toggle(rect, value, value ? content[1] : content[0], s_Styles.smallToggleStyle);
         }
 
         public static bool ToggleButton(Rect rect, bool value, SnapSettings active, SnapSettings flag, GUIContent content, GUIStyle style)
@@ -247,7 +249,7 @@ namespace Chisel.Editors
             {
                 using (var disableScope = new EditorGUI.DisabledScope(true))
                 {
-                    GUI.Toggle(rect, !ChiselEditorResources.isProSkin, content, style);
+                    GUI.Toggle(rect, !ChiselEditorResources.IsProSkin, content, style);
                 }
             } else
                 value = GUI.Toggle(rect, value, content, style);
@@ -260,7 +262,7 @@ namespace Chisel.Editors
             {
                 using (var disableScope = new EditorGUI.DisabledScope(true))
                 {
-                    GUI.Toggle(rect, !ChiselEditorResources.isProSkin, content[0], style);
+                    GUI.Toggle(rect, !ChiselEditorResources.IsProSkin, content[0], style);
                 }
             } else
                 value = GUI.Toggle(rect, value, value ? content[1] : content[0], style);
@@ -271,8 +273,8 @@ namespace Chisel.Editors
         public override void OnGUI()
         {
             var groupRect = EditorGUILayout.GetControlRect(false, 0, kMinWidthLayout);
-            if (styles == null)
-                styles = new Styles();
+            if (s_Styles == null)
+                s_Styles = new Styles();
             EditorGUI.BeginChangeCheck();
             {
                 // TODO: implement all snapping types
@@ -284,13 +286,13 @@ namespace Chisel.Editors
                 EditorGUILayout.GetControlRect(false, 1);
                 
                 {
-                    var lineRect = EditorGUILayout.GetControlRect(false, styles.smallToggleStyle.fixedHeight);
+                    var lineRect = EditorGUILayout.GetControlRect(false, s_Styles.smallToggleStyle.fixedHeight);
                     lineRect.xMin++;
                     lineRect.xMax--;
                     {
                         var buttonRect = lineRect;
-                        buttonRect.width = kSmallButtonWidth + styles.smallToggleStyle.margin.horizontal;
-                        Snapping.TranslateSnappingEnabled = SmallToggleButton(buttonRect, Snapping.TranslateSnappingEnabled, styles.translateIcons);
+                        buttonRect.width = kSmallButtonWidth + s_Styles.smallToggleStyle.margin.horizontal;
+                        Snapping.TranslateSnappingEnabled = SmallToggleButton(buttonRect, Snapping.TranslateSnappingEnabled, s_Styles.translateIcons);
                         var floatRect = lineRect;
                         floatRect.x = buttonRect.xMax + 1;
                         floatRect.width -= buttonRect.width + 1;
@@ -299,7 +301,7 @@ namespace Chisel.Editors
                 }
 
                 {
-                    var lineRect = EditorGUILayout.GetControlRect(false, styles.smallToggleStyle.fixedHeight);
+                    var lineRect = EditorGUILayout.GetControlRect(false, s_Styles.smallToggleStyle.fixedHeight);
                     lineRect.xMin++;
                     lineRect.xMax--;
 
@@ -307,8 +309,8 @@ namespace Chisel.Editors
                     var buttonRect2 = lineRect;
                     var floatRect1 = lineRect;
                     var floatRect2 = lineRect;
-                    buttonRect1.width = kSmallButtonWidth + styles.smallToggleStyle.margin.horizontal;
-                    buttonRect2.width = kSmallButtonWidth + styles.smallToggleStyle.margin.horizontal;
+                    buttonRect1.width = kSmallButtonWidth + s_Styles.smallToggleStyle.margin.horizontal;
+                    buttonRect2.width = kSmallButtonWidth + s_Styles.smallToggleStyle.margin.horizontal;
 
                     var floatLeftover     = lineRect.width - (buttonRect1.width + buttonRect2.width) - 2;
                     var halfFloatLeftover = Mathf.CeilToInt(floatLeftover / 2);
@@ -320,11 +322,11 @@ namespace Chisel.Editors
                     floatRect2.x = buttonRect2.xMax;
 
                     {
-                        Snapping.RotateSnappingEnabled = SmallToggleButton(buttonRect1, Snapping.RotateSnappingEnabled, styles.rotateIcons);
+                        Snapping.RotateSnappingEnabled = SmallToggleButton(buttonRect1, Snapping.RotateSnappingEnabled, s_Styles.rotateIcons);
                         ChiselEditorSettings.RotateSnap = PlusMinusFloatField(floatRect1, ChiselEditorSettings.RotateSnap, kDoubleRotateSnap, kHalfRotateSnap, SnappingKeyboard.DoubleRotateSnapRet, SnappingKeyboard.HalfRotateSnapRet);
                     }
                     {
-                        Snapping.ScaleSnappingEnabled = SmallToggleButton(buttonRect2, Snapping.ScaleSnappingEnabled, styles.scaleIcons);
+                        Snapping.ScaleSnappingEnabled = SmallToggleButton(buttonRect2, Snapping.ScaleSnappingEnabled, s_Styles.scaleIcons);
                         ChiselEditorSettings.ScaleSnap = PlusMinusFloatField(floatRect2, ChiselEditorSettings.ScaleSnap, kDoubleScaleSnap, kHalfScaleSnap, SnappingKeyboard.DoubleScaleSnapRet, SnappingKeyboard.HalfScaleSnapRet);
                     }
                 }

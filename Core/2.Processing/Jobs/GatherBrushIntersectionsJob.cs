@@ -26,9 +26,9 @@ namespace Chisel.Core
         [NativeDisableContainerSafetyRestriction] NativeList<BrushPair> intersections;
 
 
-        struct ListComparer : System.Collections.Generic.IComparer<BrushPair>
+        struct BrusPairListComparer : System.Collections.Generic.IComparer<BrushPair>
         {
-            public int Compare(BrushPair x, BrushPair y)
+            public readonly int Compare(BrushPair x, BrushPair y)
             {
                 var orderX = x.brushNodeOrder0;
                 var orderY = y.brushNodeOrder0;
@@ -47,8 +47,9 @@ namespace Chisel.Core
         {
             var minCount = brushBrushIntersections.Length * 16;
 
-            NativeCollectionHelpers.EnsureCapacityAndClear(ref intersections, minCount);
-
+            NativeList<BrushPair> intersections;
+			using var _intersections = intersections = new NativeList<BrushPair> (minCount, Allocator.Temp);
+			//NativeCollectionHelpers.EnsureCapacityAndClear(ref intersections, minCount);
             for (int i = 0; i < brushBrushIntersections.Length; i++)
             {
                 if (!brushBrushIntersections[i].IsCreated)
@@ -75,7 +76,7 @@ namespace Chisel.Core
             if (brushIntersectionsWith.Capacity < intersections.Length)
                 brushIntersectionsWith.Capacity = intersections.Length;
 
-            intersections.Sort(new ListComparer());           
+            intersections.Sort(new BrusPairListComparer());           
 
             var currentPair = intersections[0];
             int previousOrder = currentPair.brushNodeOrder0;
@@ -84,7 +85,8 @@ namespace Chisel.Core
                 brushNodeOrder1 = currentPair.brushNodeOrder1,
                 type            = currentPair.type,
             });
-            int2 range = new int2(0, 1);
+
+            int2 range = new(0, 1);
             for (int i = 1; i < intersections.Length; i++)
             {
                 currentPair = intersections[i];

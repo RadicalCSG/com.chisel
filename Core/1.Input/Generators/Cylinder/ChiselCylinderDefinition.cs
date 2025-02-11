@@ -25,7 +25,7 @@ namespace Chisel.Core
     [Serializable]
     public struct ChiselCylinder : IBrushGenerator
     {
-        public readonly static ChiselCylinder DefaultValues = new ChiselCylinder
+        readonly static ChiselCylinder kDefaultSettings = new()
         {
             topDiameterX        = 1.0f,
             topDiameterZ        = 1.0f,
@@ -42,8 +42,9 @@ namespace Chisel.Core
             smoothingGroup      = 1,
             type                = CylinderShapeType.Cylinder
         };
+		public static ref readonly ChiselCylinder DefaultSettings => ref kDefaultSettings;
 
-        public CylinderShapeType type;
+		public CylinderShapeType type;
         public bool     isEllipsoid;
         public bool     fitToBounds;
         public int      sides;
@@ -218,8 +219,9 @@ namespace Chisel.Core
         #endregion
 
         #region Generate
-        public readonly BlobAssetReference<BrushMeshBlob> GenerateMesh(BlobAssetReference<InternalChiselSurfaceArray> surfaceDefinitionBlob, Allocator allocator)
-        {
+        public readonly BlobAssetReference<BrushMeshBlob> GenerateMesh(BlobAssetReference<InternalChiselSurfaceArray> surfaceDefinitionBlob, 
+                                                                       Allocator allocator = Allocator.Persistent)// Indirect
+		{
             var topDiameter     = new float2(topDiameterX, topDiameterZ);
             var bottomDiameter  = new float2(bottomDiameterX, bottomDiameterZ);
 
@@ -244,8 +246,8 @@ namespace Chisel.Core
                                                                 rotation, sides, fitToBounds, 
                                                                 in surfaceDefinitionBlob, 
                                                                 out var newBrushMesh, 
-                                                                allocator))
-                return default;
+                                                                allocator))// Indirect
+				return default;
             return newBrushMesh;
         }
         #endregion
@@ -258,10 +260,10 @@ namespace Chisel.Core
         public void UpdateSurfaces(ref ChiselSurfaceArray surfaceDefinition)
         {
             // Top plane
-            surfaceDefinition.surfaces[0].surfaceDetails.UV0 = UVMatrix.centered;
+            surfaceDefinition.surfaces[0].surfaceDetails.UV0 = UVMatrix.Centered;
 
             // Bottom plane
-            surfaceDefinition.surfaces[1].surfaceDetails.UV0 = UVMatrix.centered;
+            surfaceDefinition.surfaces[1].surfaceDetails.UV0 = UVMatrix.Centered;
 
             float radius = topDiameterX * 0.5f;
             float angle = (360.0f / sides);
@@ -270,7 +272,7 @@ namespace Chisel.Core
             // Side planes
             for (int i = 2; i < 2 + sides; i++)
             {
-                var uv0 = UVMatrix.identity;
+                var uv0 = UVMatrix.Identity;
                 uv0.U.w = ((i - 2) + 0.5f) * sideLength;
                 // TODO: align with bottom
                 //uv0.V.w = 0.5f;
@@ -299,7 +301,7 @@ namespace Chisel.Core
         #endregion
 
         #region Reset
-        public void Reset() { this = DefaultValues; }
+        public void Reset() { this = DefaultSettings; }
         #endregion
     }
 

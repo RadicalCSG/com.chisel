@@ -9,11 +9,11 @@ namespace Chisel.Editors
     [CustomPropertyDrawer(typeof(SurfaceDetailFlags))]
     public sealed class SurfaceFlagsPropertyDrawer : PropertyDrawer
     {
-        readonly static GUIContent	kTextureLockedContent = new GUIContent("Lock texture to object", "When set, the texture will stay\n" +
-																								  "in the same position relative to the\n" +
-																								  "object when moved in the world. When \n" +
-																								  "not set it'll stay in the same position\n" +
-                                                                                                  "relative to the world.");
+        readonly static GUIContent	kTextureLockedContent = new("Lock texture to object", "When set, the texture will stay\n" +
+																						  "in the same position relative to the\n" +
+																						  "object when moved in the world. When \n" +
+																						  "not set it'll stay in the same position\n" +
+                                                                                          "relative to the world.");
         
         public static float DefaultHeight
         {

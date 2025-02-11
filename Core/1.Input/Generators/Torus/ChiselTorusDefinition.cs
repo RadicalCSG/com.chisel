@@ -11,7 +11,7 @@ namespace Chisel.Core
     [Serializable]
     public struct ChiselTorus : IBranchGenerator
     {
-        public readonly static ChiselTorus DefaultValues = new ChiselTorus
+        readonly static ChiselTorus kDefaultSettings = new()
         {
             tubeWidth           = 0.5f,
             tubeHeight          = 0.5f,
@@ -23,11 +23,12 @@ namespace Chisel.Core
             verticalSegments    = 8,
             fitCircle           = true
         };
+		public static ref readonly ChiselTorus DefaultSettings => ref kDefaultSettings;
 
-        // TODO: add scale the tube in y-direction (use transform instead?)
-        // TODO: add start/total angle of tube
+		// TODO: add scale the tube in y-direction (use transform instead?)
+		// TODO: add start/total angle of tube
 
-        public float    outerDiameter;
+		public float    outerDiameter;
         public float    tubeWidth;
         public float    tubeHeight;
         public float    tubeRotation;
@@ -53,47 +54,42 @@ namespace Chisel.Core
             return horizontalSegments;
         }
 
-        public bool GenerateNodes(BlobAssetReference<InternalChiselSurfaceArray> surfaceDefinitionBlob, NativeList<GeneratedNode> nodes, Allocator allocator)
+        public readonly bool GenerateNodes(BlobAssetReference<InternalChiselSurfaceArray> surfaceDefinitionBlob, NativeList<GeneratedNode> nodes, Allocator allocator = Allocator.Persistent)// Indirect
         {
-            var generatedBrushMeshes = new NativeList<BlobAssetReference<BrushMeshBlob>>(nodes.Length, Allocator.Temp);
-            try
-            {
-                generatedBrushMeshes.Resize(nodes.Length, NativeArrayOptions.ClearMemory);
-                using var vertices = BrushMeshFactory.GenerateTorusVertices(outerDiameter,
-                                                                        tubeWidth,
-                                                                        tubeHeight,
-                                                                        tubeRotation,
-                                                                        startAngle,
-                                                                        totalAngle,
-                                                                        verticalSegments,
-                                                                        horizontalSegments,
-                                                                        fitCircle,
-                                                                        Allocator.Temp);
+            NativeList<BlobAssetReference<BrushMeshBlob>> generatedBrushMeshes;
+			using var _generatedBrushMeshes = generatedBrushMeshes = new NativeList<BlobAssetReference<BrushMeshBlob>>(nodes.Length, Allocator.Temp);
+            
+            generatedBrushMeshes.Resize(nodes.Length, NativeArrayOptions.ClearMemory);
+            using var vertices = BrushMeshFactory.GenerateTorusVertices(outerDiameter,
+                                                                    tubeWidth,
+                                                                    tubeHeight,
+                                                                    tubeRotation,
+                                                                    startAngle,
+                                                                    totalAngle,
+                                                                    verticalSegments,
+                                                                    horizontalSegments,
+                                                                    fitCircle,
+                                                                    Allocator.Temp);
 
-                if (!BrushMeshFactory.GenerateTorus(generatedBrushMeshes,
-                                                    in vertices,
-                                                    verticalSegments,
-                                                    horizontalSegments,
-                                                    in surfaceDefinitionBlob,
-                                                    allocator))
-                {
-                    for (int i = 0; i < generatedBrushMeshes.Length; i++)
-                    {
-                        if (generatedBrushMeshes[i].IsCreated)
-                            generatedBrushMeshes[i].Dispose();
-                        generatedBrushMeshes[i] = default;
-                    }
-                    return false;
-                }
-
+            if (!BrushMeshFactory.GenerateTorus(generatedBrushMeshes,
+                                                in vertices,
+                                                verticalSegments,
+                                                horizontalSegments,
+                                                in surfaceDefinitionBlob,
+                                                allocator))// Indirect
+			{
                 for (int i = 0; i < generatedBrushMeshes.Length; i++)
-                    nodes[i] = GeneratedNode.GenerateBrush(generatedBrushMeshes[i]);
-                return true;
+                {
+                    if (generatedBrushMeshes[i].IsCreated)
+                        generatedBrushMeshes[i].Dispose();
+                    generatedBrushMeshes[i] = default;
+                }
+                return false;
             }
-            finally
-            {
-                generatedBrushMeshes.Dispose();
-            }
+
+            for (int i = 0; i < generatedBrushMeshes.Length; i++)
+                nodes[i] = GeneratedNode.GenerateBrush(generatedBrushMeshes[i]); // Confirmed to dispose
+			return true;
         }
 
         public void Dispose() { }
@@ -126,7 +122,7 @@ namespace Chisel.Core
         #endregion
 
         #region Reset
-        public void Reset() { this = DefaultValues; }
+        public void Reset() { this = DefaultSettings; }
         #endregion
     }
 

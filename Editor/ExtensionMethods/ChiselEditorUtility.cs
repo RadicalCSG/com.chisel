@@ -8,7 +8,7 @@ namespace Chisel.Editors
 {
     internal static class ChiselEditorUtility
     {
-        public static readonly ReflectedProperty<float> ContextWidth = typeof(EditorGUIUtility).GetStaticProperty<float>("contextWidth");
+        public readonly static ReflectedProperty<float> ContextWidth = typeof(EditorGUIUtility).GetStaticProperty<float>("contextWidth");
 
         public delegate Texture2D GetHelpIconDelegate(MessageType type);
 
@@ -55,21 +55,13 @@ namespace Chisel.Editors
             return (GraphicsSettings.GetShaderMode(BuiltinShaderType.DeferredReflections) != BuiltinShaderMode.Disabled);
         }
 
-        static readonly int EnumFieldsHashCode = "EnumFields".GetHashCode();
+        readonly static int EnumFieldsHashCode = "EnumFields".GetHashCode();
         public static void EnumFlagsField(GUIContent label, SerializedProperty property, Type type, GUIStyle style, params GUILayoutOption[] options)
         {
-#if UNITY_2017_3_OR_ABOVE
-            var enumValue = (Enum)Enum.ToObject(type, property.intValue);
-            EditorGUI.BeginChangeCheck();
-            EditorGUILayout.EnumFlagsField
-            if (EditorGUI.EndChangeCheck())
-                property.intValue = (int)Enum.ToObject(type, result);
-#else
             var position = EditorGUILayout.GetControlRect();
             int controlID = EditorGUIUtility.GetControlID(EnumFieldsHashCode, FocusType.Keyboard, position);
             var propertyRect = EditorGUI.PrefixLabel(position, controlID, label);
             FunctioningMaskField.MaskField(propertyRect, type, property);
-#endif
         }
 
         internal static void Popup(Rect position, SerializedProperty property, GUIContent[] displayedOptions, GUIContent label)

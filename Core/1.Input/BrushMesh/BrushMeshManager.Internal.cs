@@ -44,7 +44,7 @@ namespace Chisel.Core
             dstPolygon.descriptionIndex = srcPolygon.descriptionIndex;
         }
 
-
+        /*
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static BlobAssetReference<InternalChiselSurfaceArray> BuildInternalSurfaceArrayBlob(InternalChiselSurface surface0,
                                                                                                    InternalChiselSurface surface1,
@@ -55,18 +55,16 @@ namespace Chisel.Core
         {
             var surfaceCount = 5;
 
-            using (var builder = new BlobBuilder(Allocator.Temp, surfaceCount * UnsafeUtility.SizeOf<InternalChiselSurface>()))
-            {
-                ref var root    = ref builder.ConstructRoot<InternalChiselSurfaceArray>();
-                var surfaces    = builder.Allocate(ref root.surfaces, surfaceCount);
-                surfaces[0] = surface0;
-                surfaces[1] = surface1;
-                surfaces[2] = surface2;
-                surfaces[3] = surface3;
-                surfaces[4] = surface4;
-                return builder.CreateBlobAssetReference<InternalChiselSurfaceArray>(allocator);
-            }
-        }
+			using var builder = new BlobBuilder(Allocator.Temp, surfaceCount * UnsafeUtility.SizeOf<InternalChiselSurface>());
+			ref var root = ref builder.ConstructRoot<InternalChiselSurfaceArray>();
+			var surfaces = builder.Allocate(ref root.surfaces, surfaceCount);
+			surfaces[0] = surface0;
+			surfaces[1] = surface1;
+			surfaces[2] = surface2;
+			surfaces[3] = surface3;
+			surfaces[4] = surface4;
+			return builder.CreateBlobAssetReference<InternalChiselSurfaceArray>(allocator);
+		}
         
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -80,30 +78,26 @@ namespace Chisel.Core
         {
             var surfaceCount = 6;
 
-            using (var builder = new BlobBuilder(Allocator.Temp, surfaceCount * UnsafeUtility.SizeOf<InternalChiselSurface>()))
-            {
-                ref var root    = ref builder.ConstructRoot<InternalChiselSurfaceArray>();
-                var surfaces    = builder.Allocate(ref root.surfaces, surfaceCount);
-                surfaces[0] = surface0;
-                surfaces[1] = surface1;
-                surfaces[2] = surface2;
-                surfaces[3] = surface3;
-                surfaces[4] = surface4;
-                surfaces[5] = surface5;
-                return builder.CreateBlobAssetReference<InternalChiselSurfaceArray>(allocator);
-            }
-        }
+			using var builder = new BlobBuilder(Allocator.Temp, surfaceCount * UnsafeUtility.SizeOf<InternalChiselSurface>());
+			ref var root = ref builder.ConstructRoot<InternalChiselSurfaceArray>();
+			var surfaces = builder.Allocate(ref root.surfaces, surfaceCount);
+			surfaces[0] = surface0;
+			surfaces[1] = surface1;
+			surfaces[2] = surface2;
+			surfaces[3] = surface3;
+			surfaces[4] = surface4;
+			surfaces[5] = surface5;
+			return builder.CreateBlobAssetReference<InternalChiselSurfaceArray>(allocator);
+		}*/
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static BlobAssetReference<InternalChiselSurfaceArray> BuildInternalSurfaceArrayBlob(int surfaceCount, Allocator allocator)
         {
-            using (var builder = new BlobBuilder(Allocator.Temp, surfaceCount * UnsafeUtility.SizeOf<InternalChiselSurface>()))
-            {
-                ref var root = ref builder.ConstructRoot<InternalChiselSurfaceArray>();
-                var surfaces = builder.Allocate(ref root.surfaces, surfaceCount);
-                return builder.CreateBlobAssetReference<InternalChiselSurfaceArray>(allocator);
-            }
-        }
+			using var builder = new BlobBuilder(Allocator.Temp, surfaceCount * UnsafeUtility.SizeOf<InternalChiselSurface>());
+			ref var root = ref builder.ConstructRoot<InternalChiselSurfaceArray>();
+			var surfaces = builder.Allocate(ref root.surfaces, surfaceCount);
+			return builder.CreateBlobAssetReference<InternalChiselSurfaceArray>(allocator);
+		}
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static BlobAssetReference<InternalChiselSurfaceArray> BuildInternalSurfaceArrayBlob(in ChiselSurfaceArray surfaceArray, Allocator allocator)
@@ -114,17 +108,16 @@ namespace Chisel.Core
                 return BlobAssetReference<InternalChiselSurfaceArray>.Null;
 
             var surfaceCount = surfaceArray.surfaces.Length;
-            using (var builder = new BlobBuilder(Allocator.Temp, surfaceCount * UnsafeUtility.SizeOf<InternalChiselSurface>()))
-            {
-                ref var root    = ref builder.ConstructRoot<InternalChiselSurfaceArray>();
-                var surfaces    = builder.Allocate(ref root.surfaces, surfaceCount);
-                for (int i = 0; i < surfaceCount; i++)
-                    surfaces[i] = InternalChiselSurface.Convert(surfaceArray.surfaces[i]);
-                return builder.CreateBlobAssetReference<InternalChiselSurfaceArray>(allocator);
-            }
-        }
+			using var builder = new BlobBuilder(Allocator.Temp, surfaceCount * UnsafeUtility.SizeOf<InternalChiselSurface>());
+			ref var root = ref builder.ConstructRoot<InternalChiselSurfaceArray>();
+			var surfaces = builder.Allocate(ref root.surfaces, surfaceCount);
+			for (int i = 0; i < surfaceCount; i++)
+				surfaces[i] = InternalChiselSurface.Convert(surfaceArray.surfaces[i]);
+			return builder.CreateBlobAssetReference<InternalChiselSurfaceArray>(allocator);
+		}
 
-        public static BlobAssetReference<BrushMeshBlob> ConvertToBrushMeshBlob(BrushMesh brushMesh, in ChiselSurfaceArray surfaceArray, Allocator allocator = Allocator.Persistent)
+        public static BlobAssetReference<BrushMeshBlob> ConvertToBrushMeshBlob(BrushMesh brushMesh, in ChiselSurfaceArray surfaceArray, 
+                                                                               Allocator allocator = Allocator.Persistent) // Indirect
         {
             if (brushMesh == null ||
                 brushMesh.vertices == null ||
@@ -133,10 +126,7 @@ namespace Chisel.Core
                 brushMesh.vertices.Length < BrushMesh.kMinimumVertices ||
                 brushMesh.polygons.Length < BrushMesh.kMinimumPolygons ||
                 brushMesh.halfEdges.Length < BrushMesh.kMinimumHalfEdges)
-            {
-				Debug.Log("(1)");
 				return BlobAssetReference<BrushMeshBlob>.Null;
-            }
 
             brushMesh.CalculatePlanes();
             brushMesh.UpdateHalfEdgePolygonIndices();
@@ -159,13 +149,13 @@ namespace Chisel.Core
             }
             var localBounds = new MinMaxAABB { Min = min, Max = max };
 
-            var builder = new BlobBuilder(Allocator.Temp, totalSize);
+            using var builder = new BlobBuilder(Allocator.Temp, totalSize);
             ref var root = ref builder.ConstructRoot<BrushMeshBlob>();
             root.localBounds = localBounds;
             
             var dstHalfEdges = builder.Allocate(ref root.halfEdges, brushMesh.halfEdges.Length);
-            var hashedVertices = new HashedVertices(//CSGConstants.kVertexEqualEpsilonDouble, 
-                                                    srcVertices.Length, Allocator.Temp);
+            HashedVertices hashedVertices;
+			using var _hashedVertices = hashedVertices = new HashedVertices(srcVertices.Length, Allocator.Temp);
             for (int e = 0; e < brushMesh.halfEdges.Length; e++)
             {
                 ref var srcHalfEdge = ref brushMesh.halfEdges[e];
@@ -176,9 +166,7 @@ namespace Chisel.Core
             var dstVertices = builder.Allocate(ref root.localVertices, hashedVertices.Length);
             for (int i = 0; i < dstVertices.Length; i++)
                 dstVertices[i] = hashedVertices[i];
-            hashedVertices.Dispose();
-            hashedVertices = default;
-
+            
             //builder.Construct(ref root.localPlanes, brushMesh.planes);
             root.localPlaneCount = brushMesh.planes.Length;
             var localPlanes = builder.Allocate(ref root.localPlanes, brushMesh.planes.Length + brushMesh.halfEdges.Length);
@@ -214,9 +202,7 @@ namespace Chisel.Core
                 Convert(in srcPolygon, in surfaceArray, ref dstPolygon);
             }
 
-            var result = builder.CreateBlobAssetReference<BrushMeshBlob>(allocator);
-            builder.Dispose();
-            return result;
+            return builder.CreateBlobAssetReference<BrushMeshBlob>(allocator);// Allocator.Persistent / Confirmed to be disposed
         }
 
         // TODO: store handles separately?
@@ -256,12 +242,15 @@ namespace Chisel.Core
         public unsafe static void ConvertBrushMeshesToBrushMeshInstances(List<CSGTreeBrush> rebuildTreeBrushes, List<BrushMesh> rebuildTreeBrushOutlines, List<ChiselSurfaceArray> surfaceArrays)
         {
             Profiler.BeginSample("ConvertBrushMeshesToBrushMeshInstances");
-            var brushMeshPointers   = new NativeList<BrushMeshPointers>(rebuildTreeBrushes.Count, defaultAllocator);
-            var brushMeshBlobs      = new NativeArray<BlobAssetReference<BrushMeshBlob>>(rebuildTreeBrushes.Count, defaultAllocator);
-            var nativeTreeBrushes   = rebuildTreeBrushes.ToNativeArray(defaultAllocator);
+            NativeList<BrushMeshPointers> brushMeshPointers;
+            NativeArray<BlobAssetReference<BrushMeshBlob>> brushMeshBlobs;
+            NativeArray<CSGTreeBrush> nativeTreeBrushes;
+
+			using var _brushMeshPointers = brushMeshPointers = new NativeList<BrushMeshPointers>(rebuildTreeBrushes.Count, defaultAllocator);
+			using var _brushMeshBlobs    = brushMeshBlobs    = new NativeArray<BlobAssetReference<BrushMeshBlob>>(rebuildTreeBrushes.Count, defaultAllocator);
+            using var _nativeTreeBrushes = nativeTreeBrushes = rebuildTreeBrushes.ToNativeArray(defaultAllocator);
             try
             {
-                const Allocator allocator = Allocator.Persistent;
                 var surfacesOffset = 0;
                 Profiler.BeginSample("brushMesh.Validate");
                 try
@@ -343,7 +332,8 @@ namespace Chisel.Core
                 finally { Profiler.EndSample(); }
 
                 Profiler.BeginSample("ConvertSurfaces");
-                var surfaces = new NativeList<InternalChiselSurface>(surfacesOffset, defaultAllocator);
+                NativeList<InternalChiselSurface> surfaces;
+				using var _surfaces = surfaces = new NativeList<InternalChiselSurface>(surfacesOffset, defaultAllocator);
                 surfaces.ResizeUninitialized(surfacesOffset);
                 for (int i = 0; i < brushMeshPointers.Length; i++)
                 {
@@ -372,13 +362,10 @@ namespace Chisel.Core
                     {
                         brushMeshPointers   = brushMeshPointers.AsArray(),
                         surfaces            = surfaces,
-                        brushMeshBlobs      = brushMeshBlobs,
-                        allocator           = allocator
+                        brushMeshBlobs      = brushMeshBlobs
                     };
                     var jobHandle = convertToBrushMeshBlobJob.Schedule(brushMeshPointers.Length, 16);
                     jobHandle.Complete();
-                    surfaces.Dispose();
-                    surfaces = default;
                     Profiler.EndSample();
 
                     // TODO: use ScheduleBrushRegistration
@@ -404,9 +391,6 @@ namespace Chisel.Core
             }
             finally
             {
-                nativeTreeBrushes.Dispose(); nativeTreeBrushes = default;
-                brushMeshPointers.Dispose(); brushMeshPointers = default;
-                brushMeshBlobs.Dispose(); brushMeshBlobs = default;
                 Profiler.EndSample(); 
             }
         }
@@ -418,8 +402,6 @@ namespace Chisel.Core
             [NoAlias, ReadOnly] public NativeList<InternalChiselSurface>               surfaces;
 
             [NoAlias, WriteOnly] public NativeArray<BlobAssetReference<BrushMeshBlob>> brushMeshBlobs;
-
-            public Allocator allocator;
 
             
             static float4 CalculatePlane([NoAlias, ReadOnly] BrushMeshBlob.Polygon polygon, [NoAlias, ReadOnly] in BlobBuilderArray<float3> vertices, [NoAlias, ReadOnly] in BlobBuilderArray<BrushMeshBlob.HalfEdge> halfEdges)
@@ -449,7 +431,7 @@ namespace Chisel.Core
             
             public void Execute(int index)
             {
-                var builder = new BlobBuilder(Allocator.Temp);
+                using var builder = new BlobBuilder(Allocator.Temp);
 
                 var brushMesh = brushMeshPointers[index];
                 var surfaceOffset = brushMesh.surfacesOffset;
@@ -457,7 +439,8 @@ namespace Chisel.Core
                 ref var root = ref builder.ConstructRoot<BrushMeshBlob>();
 
                 var dstHalfEdges    = builder.Allocate(ref root.halfEdges, brushMesh.halfEdgesLength);
-                var hashedVertices  = new HashedVertices(brushMesh.verticesLength, Allocator.Temp);
+                HashedVertices hashedVertices;
+				using var _hashedVertices = hashedVertices  = new HashedVertices(brushMesh.verticesLength, Allocator.Temp);
                 for (int e = 0; e < brushMesh.halfEdgesLength; e++)
                 { 
                     ref var srcHalfEdge = ref brushMesh.halfEdges[e];
@@ -487,8 +470,6 @@ namespace Chisel.Core
                     var localBounds = new MinMaxAABB { Min = float3.zero, Max = float3.zero };
                     root.localBounds = localBounds;
                 }
-                hashedVertices.Dispose();
-                hashedVertices = default;
 
                 var dstPolygons = builder.Allocate(ref root.polygons, brushMesh.polygonsLength);
                 for (int p = 0; p < brushMesh.polygonsLength; p++)
@@ -533,7 +514,7 @@ namespace Chisel.Core
                     localPlanes[o] = averagePlane;
                 }
 
-                var newBrushMeshBlob = builder.CreateBlobAssetReference<BrushMeshBlob>(allocator);
+                var newBrushMeshBlob = builder.CreateBlobAssetReference<BrushMeshBlob>(Allocator.Persistent);// Confirmed to be disposed
                 // TODO: use ScheduleBrushRegistration
                 //var instance = new BrushMeshInstance { brushMeshHash = BrushMeshManager.RegisterBrushMesh(brushMeshBlobCache, newBrushMeshBlob) };
                 brushMeshBlobs[index] = newBrushMeshBlob;
@@ -577,7 +558,7 @@ namespace Chisel.Core
             }
             return brushMesh;
         }
-
+        /*
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static BlobAssetReference<BrushMeshBlob> Copy(BlobAssetReference<BrushMeshBlob> srcBrushMeshBlob, Allocator allocator)
         {
@@ -590,7 +571,7 @@ namespace Chisel.Core
             var totalVertexSize         = 16 + (brushMesh.localVertices.Length  * UnsafeUtility.SizeOf<float3>());
             var totalSize               = totalPlaneSize + totalPolygonSize + totalPolygonIndicesSize + totalHalfEdgeSize + totalVertexSize;
 
-            var builder = new BlobBuilder(Allocator.Temp, totalSize);
+            using var builder = new BlobBuilder(Allocator.Temp, totalSize);
             ref var root = ref builder.ConstructRoot<BrushMeshBlob>();
             root.localBounds = brushMesh.localBounds;
             builder.Construct(ref root.localVertices,           ref brushMesh.localVertices);
@@ -601,10 +582,9 @@ namespace Chisel.Core
             root.localPlaneCount = brushMesh.localPlaneCount;
 
             var result = builder.CreateBlobAssetReference<BrushMeshBlob>(allocator);
-            builder.Dispose();
             return result;
         }
-
+        */
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal static bool		IsBrushMeshIDValid		(Int32 brushMeshHash)
@@ -685,19 +665,27 @@ namespace Chisel.Core
 				return 0;
             }
 
-            var brushMeshBlobRef = ConvertToBrushMeshBlob(brushMesh, in surfaceArray, Allocator.Persistent);
+            var brushMeshBlobRef = ConvertToBrushMeshBlob(brushMesh, in surfaceArray);
             var brushMeshHash = brushMeshBlobRef.Value.GetHashCode();
             if (oldBrushMeshHash != 0)
             {
-                if (oldBrushMeshHash == brushMeshHash) return oldBrushMeshHash;
+                if (oldBrushMeshHash == brushMeshHash)
+				{
+					brushMeshBlobRef.Dispose(); // TODO: Would be better if we could calculate the hash BEFORE we create a blob ..
+					return oldBrushMeshHash;
+                }
                 DecreaseRefCount(oldBrushMeshHash);
             }
 
             ref var brushMeshBlobs = ref ChiselMeshLookup.Value.brushMeshBlobCache;
-            if (!brushMeshBlobs.TryGetValue(brushMeshHash, out var refCountedBrushMeshBlob))
+            if (brushMeshBlobs.TryGetValue(brushMeshHash, out var refCountedBrushMeshBlob))
+			{
+                brushMeshBlobRef.Dispose(); // TODO: Would be better if we could calculate the hash BEFORE we create a blob ..
+				refCountedBrushMeshBlob.refCount++;
+			} else
+            { 
                 refCountedBrushMeshBlob = new RefCountedBrushMeshBlob { refCount = 1, brushMeshBlob = brushMeshBlobRef };
-            else
-                refCountedBrushMeshBlob.refCount++;
+            }
             brushMeshBlobs[brushMeshHash] = refCountedBrushMeshBlob;
             return brushMeshHash;
         }
@@ -724,7 +712,6 @@ namespace Chisel.Core
         {
             if (!brushMeshBlobRef.IsCreated)
             {
-                Debug.Log("(8)");
                 return 0;
             }
 
@@ -734,21 +721,28 @@ namespace Chisel.Core
             var vertexCount = brushMeshBlob.localVertices.Length;
             if (edgeCount < BrushMesh.kMinimumHalfEdges || polygonCount < BrushMesh.kMinimumPolygons || vertexCount < BrushMesh.kMinimumVertices)
 			{
-				Debug.Log("(9)");
 				return 0;
             }
 
             int brushMeshHash = BrushMeshBlob.CalculateHashCode(ref brushMeshBlob);
             if (oldBrushMeshHash != 0)
             {
-                if (oldBrushMeshHash == brushMeshHash) return oldBrushMeshHash;
+                if (oldBrushMeshHash == brushMeshHash)
+                {
+                    brushMeshBlobRef.Dispose();
+					return oldBrushMeshHash;
+                }
                 DecreaseRefCount(ref brushMeshBlobCache, oldBrushMeshHash);
             }
 
-            if (!brushMeshBlobCache.TryGetValue(brushMeshHash, out var refCountedBrushMeshBlob))
+            if (brushMeshBlobCache.TryGetValue(brushMeshHash, out var refCountedBrushMeshBlob))
+			{
+				brushMeshBlobRef.Dispose();
+				refCountedBrushMeshBlob.refCount++;
+			} else
+            {
                 refCountedBrushMeshBlob = new RefCountedBrushMeshBlob { refCount = 1, brushMeshBlob = brushMeshBlobRef };
-            else
-                refCountedBrushMeshBlob.refCount++;
+            }
             brushMeshBlobCache[brushMeshHash] = refCountedBrushMeshBlob;
             return brushMeshHash;
         }
@@ -799,7 +793,6 @@ namespace Chisel.Core
             {
                 if (brushMeshBlobRef == BlobAssetReference<BrushMeshBlob>.Null || !brushMeshBlobRef.IsCreated)
                 {
-                    Debug.Log("(10)");
                     return BrushMeshInstance.InvalidInstance.BrushMeshID;
                 }
 
@@ -810,7 +803,7 @@ namespace Chisel.Core
                 // TODO: do this at creation time, so we don't have to worry about disposing the memory of invalid brushes
                 if (edgeCount < BrushMesh.kMinimumHalfEdges || polygonCount < BrushMesh.kMinimumPolygons || vertexCount < BrushMesh.kMinimumVertices)
 				{
-					Debug.Log("(11)");
+					brushMeshBlobRef.Dispose();
 					return BrushMeshInstance.InvalidInstance.BrushMeshID;
                 }
 
@@ -818,10 +811,12 @@ namespace Chisel.Core
                 // FIXME: should be impossible b/c we already checked above!
                 int brushMeshHash = brushMeshBlob.GetHashCode(); 
 
-                if (!brushMeshBlobCache.TryGetValue(brushMeshHash, out var refCountedBrushMeshBlob))
-                    refCountedBrushMeshBlob = new RefCountedBrushMeshBlob { refCount = 1, brushMeshBlob = brushMeshBlobRef };
-                else
+                if (brushMeshBlobCache.TryGetValue(brushMeshHash, out var refCountedBrushMeshBlob))
+                {
+					brushMeshBlobRef.Dispose();
                     refCountedBrushMeshBlob.refCount++;
+				} else
+                    refCountedBrushMeshBlob = new RefCountedBrushMeshBlob { refCount = 1, brushMeshBlob = brushMeshBlobRef };
                 brushMeshBlobCache[brushMeshHash] = refCountedBrushMeshBlob;
 
                 return brushMeshHash;

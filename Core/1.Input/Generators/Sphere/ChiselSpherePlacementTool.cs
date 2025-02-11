@@ -5,12 +5,12 @@ namespace Chisel.Core
     [ChiselPlacementTool(name: ChiselSphereDefinition.kNodeTypeName, group: ChiselToolGroups.kBasePrimitives)]
     public sealed class ChiselSpherePlacementTool : ChiselBoundsPlacementTool<ChiselSphereDefinition>
     {
-        public int  horizontalSegments  = ChiselSphere.DefaultValues.horizontalSegments;
-        public int  verticalSegments    = ChiselSphere.DefaultValues.verticalSegments;
+        public int  horizontalSegments  = ChiselSphere.DefaultSettings.horizontalSegments;
+        public int  verticalSegments    = ChiselSphere.DefaultSettings.verticalSegments;
         
         [ToggleFlags]
         public PlacementFlags placement = PlacementFlags.SameLengthXZ | PlacementFlags.HeightEqualsXZ | PlacementFlags.GenerateFromCenterXZ |
-                                            (ChiselSphere.DefaultValues.generateFromCenter ? PlacementFlags.GenerateFromCenterY : (PlacementFlags)0);
+                                            (ChiselSphere.DefaultSettings.generateFromCenter ? PlacementFlags.GenerateFromCenterY : (PlacementFlags)0);
         public override PlacementFlags PlacementFlags => placement;
 
         public override void OnCreate(ref ChiselSphereDefinition definition) 

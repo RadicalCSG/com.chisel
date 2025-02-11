@@ -10,12 +10,14 @@ namespace Chisel.Core
     [Serializable]
     public struct ChiselBox : IBrushGenerator
     {
-        public readonly static ChiselBox DefaultValues = new()
+        readonly static ChiselBox kDefaultSettings = new()
         {
             bounds = new MinMaxAABB { Min = float3.zero, Max = new float3(1) }
         };
+		public static ref readonly ChiselBox DefaultSettings => ref kDefaultSettings;
 
-        public MinMaxAABB bounds;
+
+		public MinMaxAABB bounds;
 
 
         #region Properties
@@ -35,13 +37,14 @@ namespace Chisel.Core
         #endregion
 
         #region Generate
-        public BlobAssetReference<BrushMeshBlob> GenerateMesh(BlobAssetReference<InternalChiselSurfaceArray> surfaceDefinitionBlob, Allocator allocator)
-        {
+        public readonly BlobAssetReference<BrushMeshBlob> GenerateMesh(BlobAssetReference<InternalChiselSurfaceArray> surfaceDefinitionBlob, 
+                                                                       Allocator allocator = Allocator.Persistent)// Indirect
+		{
             if (!BrushMeshFactory.CreateBox(bounds.Min, bounds.Max,
                                             in surfaceDefinitionBlob,
                                             out var newBrushMesh,
-                                            allocator))
-                return default;
+                                            allocator))// Indirect
+				return default;
             return newBrushMesh;
         }
         #endregion
@@ -76,7 +79,7 @@ namespace Chisel.Core
         #endregion
 
         #region Reset
-        public void Reset() { this = DefaultValues; }
+        public void Reset() { this = DefaultSettings; }
         #endregion
     }
 
