@@ -90,43 +90,43 @@ namespace Chisel.Editors
 
     public static class ReflectionExtensions
     {
-        static Assembly[] assemblies;
-        static Type[] allTypes = null;
-        static Type[] allNonAbstractTypes = null;
-        static Dictionary<string, Type> typeLookups;
+        static Assembly[] s_Assemblies;
+        static Type[] s_AllTypes = null;
+        static Type[] s_AllNonAbstractTypes = null;
+        static Dictionary<string, Type> s_TypeLookups;
 
         [InitializeOnLoadMethod]
         public static void Initialize()
         {
-            if (assemblies != null &&
-                typeLookups != null &&
-                allNonAbstractTypes != null)
+            if (s_Assemblies != null &&
+                s_TypeLookups != null &&
+                s_AllNonAbstractTypes != null)
                 return;
 
-            assemblies = System.AppDomain.CurrentDomain.GetAssemblies();
+            s_Assemblies = System.AppDomain.CurrentDomain.GetAssemblies();
             {
                 var typeList = new List<Type>();
-                foreach (var assembly in assemblies)
+                foreach (var assembly in s_Assemblies)
                     typeList.AddRange(assembly.GetTypes());
-                allTypes = typeList.ToArray();
+                s_AllTypes = typeList.ToArray();
             }
 
             {
                 var nonAbstractTypesList = new List<Type>();
-                foreach (var type in allTypes)
+                foreach (var type in s_AllTypes)
                 {
                     if (type.IsAbstract ||
                         !type.IsClass)
                         continue;
                     nonAbstractTypesList.Add(type);
                 }
-                allNonAbstractTypes = nonAbstractTypesList.ToArray();
+                s_AllNonAbstractTypes = nonAbstractTypesList.ToArray();
             }
 
             {
-                typeLookups = new Dictionary<string, Type>();
-                foreach (var type in allTypes)
-                    typeLookups[type.FullName] = type;
+                s_TypeLookups = new Dictionary<string, Type>();
+                foreach (var type in s_AllTypes)
+                    s_TypeLookups[type.FullName] = type;
             }
         }
 
@@ -182,20 +182,20 @@ namespace Chisel.Editors
         public static Type GetTypeByName(string fullName)
         {
             Initialize();
-            if (typeLookups == null)
+            if (s_TypeLookups == null)
             {
                 Debug.LogError("Failed to initialize Reflection information");
                 return null;
             }
-            if (typeLookups.TryGetValue(fullName, out Type type))
+            if (s_TypeLookups.TryGetValue(fullName, out Type type))
                 return type;
 			Debug.LogError($"Could not find type for {fullName}");
 			return null;
         }
 
-        public static Type[] AllTypes { get { return allTypes; } }
+        public static Type[] AllTypes { get { return s_AllTypes; } }
 
-        public static Type[] AllNonAbstractClasses { get { return allNonAbstractTypes; } }
+        public static Type[] AllNonAbstractClasses { get { return s_AllNonAbstractTypes; } }
 
         #region Properties
 

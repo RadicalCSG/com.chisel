@@ -37,7 +37,7 @@ namespace Chisel.Editors
                     float.IsNaN(B.x) || float.IsNaN(B.y) || float.IsNaN(B.z))
                     return;
 
-                thickness *= LineMeshManager.pixelsPerPoint;
+                thickness *= LineMeshManager.s_PixelsPerPoint;
                 
                 int n = vertexCount;
 
@@ -56,7 +56,7 @@ namespace Chisel.Editors
                     float.IsNaN(B.x) || float.IsNaN(B.y) || float.IsNaN(B.z))
                     return dashOffset;
 
-                thickness *= LineMeshManager.pixelsPerPoint;
+                thickness *= LineMeshManager.s_PixelsPerPoint;
 
                 var dashLength	= (B - A).magnitude;
                 var dashOffset2 = dashOffset + dashLength; 
@@ -161,13 +161,13 @@ namespace Chisel.Editors
             }
         }
 
-        List<LineMesh> lineMeshes = new List<LineMesh>();
+		readonly List<LineMesh> lineMeshes = new List<LineMesh>();
         int currentLineMesh = 0;
-        static float pixelsPerPoint = 1.0f;
+        static float s_PixelsPerPoint = 1.0f;
         
         public LineMeshManager()
         {
-            pixelsPerPoint = UnityEditor.EditorGUIUtility.pixelsPerPoint;
+            s_PixelsPerPoint = UnityEditor.EditorGUIUtility.pixelsPerPoint;
             lineMeshes.Add(new LineMesh());
         }
 
@@ -196,7 +196,7 @@ namespace Chisel.Editors
         {
             if (Event.current.type != EventType.Repaint)
                 return;
-            thickness *= pixelsPerPoint;
+            thickness *= s_PixelsPerPoint;
             var corner1 = new Vector4(-thickness, dashSize, 0);
             var corner2 = new Vector4( thickness, dashSize, 0);
             var corner3 = new Vector4(-thickness, dashSize, 0);
@@ -267,7 +267,7 @@ namespace Chisel.Editors
         {
             if (Event.current.type != EventType.Repaint)
                 return;
-            thickness *= pixelsPerPoint;
+            thickness *= s_PixelsPerPoint;
             var corner1 = new Vector4(-thickness, dashSize, 0);
             var corner2 = new Vector4( thickness, dashSize, 0);
             var corner3 = new Vector4(-thickness, dashSize, 0);
@@ -338,7 +338,7 @@ namespace Chisel.Editors
         {
             if (Event.current.type != EventType.Repaint)
                 return;
-            thickness *= pixelsPerPoint;
+            thickness *= s_PixelsPerPoint;
             var corner1 = new Vector4(-thickness, dashSize, 0);
             var corner2 = new Vector4( thickness, dashSize, 0);
             var corner3 = new Vector4(-thickness, dashSize, 0);
@@ -420,7 +420,7 @@ namespace Chisel.Editors
         {
             if (Event.current.type != EventType.Repaint)
                 return;
-            thickness *= pixelsPerPoint;
+            thickness *= s_PixelsPerPoint;
             var corner1 = new Vector4(-thickness, dashSize, 0);
             var corner2 = new Vector4( thickness, dashSize, 0);
             var corner3 = new Vector4(-thickness, dashSize, 0);

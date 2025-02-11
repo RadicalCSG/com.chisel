@@ -16,9 +16,18 @@ namespace Chisel.Editors
     sealed class ChiselUVRotateTool : ChiselEditToolBase
     {
         const string kToolName = "UV Rotate";
-        public override string ToolName => kToolName;
+		public override string ToolName => kToolName;
 
-        public static bool IsActive() { return ToolManager.activeToolType == typeof(ChiselUVRotateTool); }
+
+		const float kMinRotateDiameter = 1.0f;
+
+        // TODO: see if we can get rid of these statics
+		static Vector3 s_FromWorldVector = default;
+		static bool s_HaveRotateStartAngle = false;
+		static float s_RotateAngle = 0;
+
+
+		public static bool IsActive() { return ToolManager.activeToolType == typeof(ChiselUVRotateTool); }
 
         #region Keyboard Shortcut
         const string kEditModeShotcutName = kToolName + " Mode";
@@ -43,8 +52,8 @@ namespace Chisel.Editors
 
         public override SnapSettings ToolUsedSnappingModes { get { return Chisel.Editors.SnapSettings.AllUV; } }
 
-        static readonly int kSurfaceEditModeHash		= "SurfaceRotateEditMode".GetHashCode();
-        static readonly int kSurfaceRotateHash			= "SurfaceRotate".GetHashCode();
+        readonly static int kSurfaceEditModeHash		= "SurfaceRotateEditMode".GetHashCode();
+        readonly static int kSurfaceRotateHash			= "SurfaceRotate".GetHashCode();
         
         public override void OnSceneGUI(SceneView sceneView, Rect dragArea)
         {
@@ -81,10 +90,10 @@ namespace Chisel.Editors
             // Get the rotation on that plane, around 'worldStartPosition'
             var worldspaceRotation = MathExtensions.RotateAroundAxis(center, normal, rotateAngle);
 
-            Undo.RecordObjects(ChiselUVToolCommon.selectedNodes, "Rotate UV coordinates");
-            for (int i = 0; i < ChiselUVToolCommon.selectedSurfaceReferences.Length; i++)
+            Undo.RecordObjects(ChiselUVToolCommon.s_SelectedNodes, "Rotate UV coordinates");
+            for (int i = 0; i < ChiselUVToolCommon.s_SelectedSurfaceReferences.Length; i++)
             {
-                var rotationInPlaneSpace = ChiselUVToolCommon.selectedSurfaceReferences[i].WorldSpaceToPlaneSpace(worldspaceRotation);
+                var rotationInPlaneSpace = ChiselUVToolCommon.s_SelectedSurfaceReferences[i].WorldSpaceToPlaneSpace(worldspaceRotation);
 
                 // TODO: Finish this. If we have multiple surfaces selected, we want other non-aligned surfaces to move/rotate in a nice way
                 //		 last thing we want is that these surfaces are rotated in such a way that the uvs are rotated into infinity.
@@ -93,15 +102,9 @@ namespace Chisel.Editors
                 var rotateToPlane = Quaternion.FromToRotation(rotationInPlaneSpace.GetColumn(2), Vector3.forward);
                 var fixedRotation = Matrix4x4.TRS(Vector3.zero, rotateToPlane, Vector3.one) * rotationInPlaneSpace;
 
-                ChiselUVToolCommon.selectedSurfaceReferences[i].PlaneSpaceTransformUV(fixedRotation, ChiselUVToolCommon.selectedUVMatrices[i]);
+                ChiselUVToolCommon.s_SelectedSurfaceReferences[i].PlaneSpaceTransformUV(fixedRotation, ChiselUVToolCommon.s_SelectedUVMatrices[i]);
             }
         }
-
-        static Vector3  fromWorldVector;
-        static bool		haveRotateStartAngle	= false;
-        static float	rotateAngle	            = 0;
-
-        const float		kMinRotateDiameter		= 1.0f;
 
         private static bool SurfaceRotateTool(SelectionType selectionType, Rect dragArea)
         {
@@ -112,9 +115,9 @@ namespace Chisel.Editors
             bool needRepaint = false;            
             if (!ChiselUVToolCommon.IsToolEnabled(id))
             {
-                needRepaint = haveRotateStartAngle;
-                haveRotateStartAngle = false;
-                ChiselUVToolCommon.pointHasSnapped = false;
+                needRepaint = s_HaveRotateStartAngle;
+                s_HaveRotateStartAngle = false;
+                ChiselUVToolCommon.s_PointHasSnapped = false;
             }
             
             switch (Event.current.GetTypeForControl(id))
@@ -122,26 +125,26 @@ namespace Chisel.Editors
                 // TODO: support rotating texture using keyboard?
                 case EventType.Repaint:
                 {
-                    if (haveRotateStartAngle)
+                    if (s_HaveRotateStartAngle)
                     {
-                        var toWorldVector   = ChiselUVToolCommon.worldDragDeltaVector;
+                        var toWorldVector   = ChiselUVToolCommon.s_WorldDragDeltaVector;
                         var magnitude       = toWorldVector.magnitude;
                         toWorldVector /= magnitude;
 
                         // TODO: need a nicer visualization here, show delta rotation, angles etc.
-                        Handles.DrawWireDisc(ChiselUVToolCommon.worldStartPosition, ChiselUVToolCommon.worldProjectionPlane.normal, magnitude);
-                        if (haveRotateStartAngle)
+                        Handles.DrawWireDisc(ChiselUVToolCommon.s_WorldStartPosition, ChiselUVToolCommon.s_WorldProjectionPlane.normal, magnitude);
+                        if (s_HaveRotateStartAngle)
                         {
-                            var snappedToWorldVector = Quaternion.AngleAxis(rotateAngle, ChiselUVToolCommon.worldDragPlane.normal) * fromWorldVector;
-                            Handles.DrawDottedLine(ChiselUVToolCommon.worldStartPosition, ChiselUVToolCommon.worldStartPosition + (fromWorldVector      * magnitude), 4.0f);
-                            Handles.DrawDottedLine(ChiselUVToolCommon.worldStartPosition, ChiselUVToolCommon.worldStartPosition + (snappedToWorldVector * magnitude), 4.0f);
+                            var snappedToWorldVector = Quaternion.AngleAxis(s_RotateAngle, ChiselUVToolCommon.s_WorldDragPlane.normal) * s_FromWorldVector;
+                            Handles.DrawDottedLine(ChiselUVToolCommon.s_WorldStartPosition, ChiselUVToolCommon.s_WorldStartPosition + (s_FromWorldVector      * magnitude), 4.0f);
+                            Handles.DrawDottedLine(ChiselUVToolCommon.s_WorldStartPosition, ChiselUVToolCommon.s_WorldStartPosition + (snappedToWorldVector * magnitude), 4.0f);
                         } else
-                            Handles.DrawDottedLine(ChiselUVToolCommon.worldStartPosition, ChiselUVToolCommon.worldStartPosition + (toWorldVector * magnitude), 4.0f);
+                            Handles.DrawDottedLine(ChiselUVToolCommon.s_WorldStartPosition, ChiselUVToolCommon.s_WorldStartPosition + (toWorldVector * magnitude), 4.0f);
                     }
                     if (ChiselUVToolCommon.IsToolEnabled(id))
                     {
-                        if (haveRotateStartAngle &&
-                            ChiselUVToolCommon.pointHasSnapped)
+                        if (s_HaveRotateStartAngle &&
+                            ChiselUVToolCommon.s_PointHasSnapped)
                         {
                             ChiselUVToolCommon.RenderIntersectionPoint();
                             ChiselUVToolCommon.RenderSnapEvent();
@@ -156,40 +159,40 @@ namespace Chisel.Editors
                     
                     if (ChiselUVToolCommon.StartToolDragging())
                     {
-                        haveRotateStartAngle = false;
-                        ChiselUVToolCommon.pointHasSnapped = false;
+                        s_HaveRotateStartAngle = false;
+                        ChiselUVToolCommon.s_PointHasSnapped = false;
                     }
 
-                    var toWorldVector = ChiselUVToolCommon.worldDragDeltaVector;
-                    if (!haveRotateStartAngle)
+                    var toWorldVector = ChiselUVToolCommon.s_WorldDragDeltaVector;
+                    if (!s_HaveRotateStartAngle)
                     {
-                        var handleSize		= HandleUtility.GetHandleSize(ChiselUVToolCommon.worldStartPosition);	
+                        var handleSize		= HandleUtility.GetHandleSize(ChiselUVToolCommon.s_WorldStartPosition);	
                         var minDiameterSqr	= handleSize * kMinRotateDiameter;
                         // Only start rotating when we've moved the cursor far away enough from the center of rotation
                         if (toWorldVector.sqrMagnitude > minDiameterSqr)
                         {
                             // Switch to rotation mode, we have a center and a start angle to compare with, 
                             // from now on, when we move the mouse we change the rotation angle relative to this first angle.
-                            haveRotateStartAngle = true;
-                            ChiselUVToolCommon.pointHasSnapped = false;
-                            fromWorldVector = toWorldVector.normalized;
-                            rotateAngle = 0;
+                            s_HaveRotateStartAngle = true;
+                            ChiselUVToolCommon.s_PointHasSnapped = false;
+                            s_FromWorldVector = toWorldVector.normalized;
+                            s_RotateAngle = 0;
 
                             // We override the snapping settings to only allow snapping against vertices & edges, 
                             // we do this only after we have our starting vector, so that when we rotate we're not constantly
                             // snapping against the grid when we really just want to be able to snap against the current rotation step.
                             // On the other hand, we do want to be able to snap against vertices ..
-                            ChiselUVToolCommon.toolSnapOverrides = SnapSettings.UVGeometryVertices | SnapSettings.UVGeometryEdges; 
+                            ChiselUVToolCommon.s_ToolSnapOverrides = SnapSettings.UVGeometryVertices | SnapSettings.UVGeometryEdges; 
                         }
                     } else
                     {
                         // Get the angle between 'from' and 'to' on the plane we're dragging over
-                        rotateAngle = MathExtensions.SignedAngle(fromWorldVector, toWorldVector.normalized, ChiselUVToolCommon.worldDragPlane.normal);
+                        s_RotateAngle = MathExtensions.SignedAngle(s_FromWorldVector, toWorldVector.normalized, ChiselUVToolCommon.s_WorldDragPlane.normal);
                         
                         // If we snapped against something, ignore angle snapping
-                        if (!ChiselUVToolCommon.pointHasSnapped) rotateAngle = ChiselUVToolCommon.SnapAngle(rotateAngle);
+                        if (!ChiselUVToolCommon.s_PointHasSnapped) s_RotateAngle = ChiselUVToolCommon.SnapAngle(s_RotateAngle);
 
-                        RotateSurfacesInWorldSpace(ChiselUVToolCommon.worldStartPosition, ChiselUVToolCommon.worldDragPlane.normal, -rotateAngle); // TODO: figure out why this is reversed
+                        RotateSurfacesInWorldSpace(ChiselUVToolCommon.s_WorldStartPosition, ChiselUVToolCommon.s_WorldDragPlane.normal, -s_RotateAngle); // TODO: figure out why this is reversed
                     }
                     break;
                 }

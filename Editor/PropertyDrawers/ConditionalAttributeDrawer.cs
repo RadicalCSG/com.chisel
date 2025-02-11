@@ -10,7 +10,7 @@ namespace Chisel.Editors
     [CustomPropertyDrawer(typeof(ConditionalHideAttribute))]
     public class ConditionalFieldAttributeDrawer : PropertyDrawer
 	{
-        static readonly Dictionary<int, string> s_PathLookup = new();
+        readonly static Dictionary<int, string> s_PathLookup = new();
         static SerializedProperty GetSiblingByName(SerializedProperty property, string name)
         {
             if (string.IsNullOrWhiteSpace(name) || property == null)
@@ -29,7 +29,7 @@ namespace Chisel.Editors
         public override bool CanCacheInspectorGUI(SerializedProperty property) { return false; }
 #endif
 
-        static readonly Dictionary<string, string> s_FoundParts = new();
+        readonly static Dictionary<string, string> s_FoundParts = new();
         bool TryGetName(SerializedProperty property, out string name)
         {
             name = null;

@@ -8,7 +8,7 @@ namespace Chisel.Core
     // (which cannot handle Materials since they're managed classes)
 	public struct InternalChiselSurface
     {
-        public static readonly InternalChiselSurface Default = new()
+        public readonly static InternalChiselSurface Default = new()
         {
 			details          = SurfaceDetails.Default,
 			parameters       = SurfaceDestinationParameters.Empty,
@@ -29,9 +29,9 @@ namespace Chisel.Core
                 details		     = surface.surfaceDetails,
                 parameters       = new SurfaceDestinationParameters
 				                   {
-										parameter1 = ChiselMaterialManager.GetID(surface.RenderMaterial),
-										parameter2 = ChiselMaterialManager.GetID(surface.PhysicsMaterial)
-				                   },
+										parameter1 = (surface.RenderMaterial == null) ? 0 : surface.RenderMaterial.GetInstanceID(),
+										parameter2 = (surface.PhysicsMaterial == null) ? 0 : surface.PhysicsMaterial.GetInstanceID()
+				},
 				destinationFlags = surface.DestinationFlags,
 				outputFlags	     = surface.OutputFlags,
             };

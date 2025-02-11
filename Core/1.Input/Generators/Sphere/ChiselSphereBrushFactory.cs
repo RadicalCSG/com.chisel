@@ -10,43 +10,41 @@ namespace Chisel.Core
         public static bool GenerateSphere(float3 diameterXYZ, float offsetY, float rotation, bool generateFromCenter, int horzSegments, int vertSegments,
                                           in BlobAssetReference<InternalChiselSurfaceArray> surfaceDefinitionBlob,
                                           out BlobAssetReference<BrushMeshBlob> brushMesh,
-                                          Allocator allocator)
-        {
+                                          Allocator allocator = Allocator.Persistent)// Indirect
+		{
             brushMesh = BlobAssetReference<BrushMeshBlob>.Null;
-            using (var builder = new BlobBuilder(Allocator.Temp))
-            {
-                ref var root = ref builder.ConstructRoot<BrushMeshBlob>();
-                ref var surfaceDefinition = ref surfaceDefinitionBlob.Value;
+			using var builder = new BlobBuilder(Allocator.Temp);
+			ref var root = ref builder.ConstructRoot<BrushMeshBlob>();
+			ref var surfaceDefinition = ref surfaceDefinitionBlob.Value;
 
-                var transform = float4x4.TRS(Vector3.zero, quaternion.AxisAngle(new Vector3(0, 1, 0), rotation), Vector3.one);
-                if (!CreateSphere(diameterXYZ, offsetY, generateFromCenter, horzSegments, vertSegments, 
-                                  ref surfaceDefinition, in builder, ref root,
-                                  out var localVertices, out var polygons, out var halfEdges))
-                    return false;
+			var transform = float4x4.TRS(Vector3.zero, quaternion.AxisAngle(new Vector3(0, 1, 0), rotation), Vector3.one);
+			if (!CreateSphere(diameterXYZ, offsetY, generateFromCenter, horzSegments, vertSegments,
+							  ref surfaceDefinition, in builder, ref root,
+							  out var localVertices, out var polygons, out var halfEdges))
+				return false;
 
-                // TODO: do something more intelligent with surface assignment, and put it inside CreateSphere
-                for (int i = 0; i < polygons.Length; i++)
-                {
-                    var surfaceID = i < surfaceDefinition.surfaces.Length ? i : 0;
-                    polygons[i].descriptionIndex = surfaceID;
-                    polygons[i].surface = surfaceDefinition.surfaces[surfaceID];
-                }
+			// TODO: do something more intelligent with surface assignment, and put it inside CreateSphere
+			for (int i = 0; i < polygons.Length; i++)
+			{
+				var surfaceID = i < surfaceDefinition.surfaces.Length ? i : 0;
+				polygons[i].descriptionIndex = surfaceID;
+				polygons[i].surface = surfaceDefinition.surfaces[surfaceID];
+			}
 
-                // TODO: eventually remove when it's more battle tested
-                if (!Validate(in localVertices, in halfEdges, in polygons, logErrors: true))
-                    return false;
+			// TODO: eventually remove when it's more battle tested
+			if (!Validate(in localVertices, in halfEdges, in polygons, logErrors: true))
+				return false;
 
-                var localPlanes = builder.Allocate(ref root.localPlanes, polygons.Length);
-                root.localPlaneCount = polygons.Length;
-                // TODO: calculate corner planes
-                var halfEdgePolygonIndices = builder.Allocate(ref root.halfEdgePolygonIndices, halfEdges.Length);
-                CalculatePlanes(ref localPlanes, in polygons, in halfEdges, in localVertices);
-                UpdateHalfEdgePolygonIndices(ref halfEdgePolygonIndices, in polygons);
-                root.localBounds = CalculateBounds(in localVertices);
-                brushMesh = builder.CreateBlobAssetReference<BrushMeshBlob>(allocator);
-                return true;
-            }
-        }
+			var localPlanes = builder.Allocate(ref root.localPlanes, polygons.Length);
+			root.localPlaneCount = polygons.Length;
+			// TODO: calculate corner planes
+			var halfEdgePolygonIndices = builder.Allocate(ref root.halfEdgePolygonIndices, halfEdges.Length);
+			CalculatePlanes(ref localPlanes, in polygons, in halfEdges, in localVertices);
+			UpdateHalfEdgePolygonIndices(ref halfEdgePolygonIndices, in polygons);
+			root.localBounds = CalculateBounds(in localVertices);
+			brushMesh = builder.CreateBlobAssetReference<BrushMeshBlob>(allocator); // Allocator.Persistent / Confirmed to dispose
+			return true;
+		}
         
         public static bool CreateSphere(float3 diameterXYZ, float offsetY, bool generateFromCenter, int horzSegments, int vertSegments, 
                                         ref InternalChiselSurfaceArray surfaceDefinition,

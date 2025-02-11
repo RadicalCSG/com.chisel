@@ -15,17 +15,17 @@ namespace Chisel.Editors
         where SingletonInstanceType : SingletonManager<DataType,SingletonInstanceType>
     {
         #region Instance
-        static SingletonManager<DataType, SingletonInstanceType> _instance;
+        static SingletonManager<DataType, SingletonInstanceType> s_Instance;
         public static SingletonInstanceType Instance
         {
             get
             {
-                if (_instance)
-                    return _instance as SingletonInstanceType;
+                if (s_Instance)
+                    return s_Instance as SingletonInstanceType;
                 
-                _instance = ScriptableObject.CreateInstance<SingletonInstanceType>();
-                _instance.hideFlags = HideFlags.HideAndDontSave;
-                return _instance as SingletonInstanceType;  
+                s_Instance = ScriptableObject.CreateInstance<SingletonInstanceType>();
+                s_Instance.hideFlags = HideFlags.HideAndDontSave;
+                return s_Instance as SingletonInstanceType;  
             }
         }
         #endregion
@@ -39,23 +39,23 @@ namespace Chisel.Editors
         void ISerializationCallbackReceiver.OnAfterDeserialize()
         {
             // This helps survive domain reloads
-            if (_instance == null) _instance = this;
-            var instance = _instance ? _instance : this;
+            if (s_Instance == null) s_Instance = this;
+            var instance = s_Instance ? s_Instance : this;
             instance.data.OnAfterDeserialize();
         }
 
         void ISerializationCallbackReceiver.OnBeforeSerialize()
         {
             // This helps survive domain reloads
-            if (_instance == null) _instance = this;
-            var instance = _instance ? _instance : this;
+            if (s_Instance == null) s_Instance = this;
+            var instance = s_Instance ? s_Instance : this;
             instance.data.OnBeforeSerialize();
         }
 
         void OnEnable()
         {
             // This helps survive domain reloads
-            if (_instance == null) _instance = this;
+            if (s_Instance == null) s_Instance = this;
             Initialize();
         }
 
@@ -64,7 +64,7 @@ namespace Chisel.Editors
         void OnDestroy()
         {
             // This helps survive domain reloads
-            if (_instance == this) _instance = null;
+            if (s_Instance == this) s_Instance = null;
             Shutdown();
         }
 

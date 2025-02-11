@@ -23,8 +23,9 @@ namespace Chisel.Core
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void Dispose()
-        {
-            if (twoBits.IsCreated)
+		{
+			// Confirmed to be called
+			if (twoBits.IsCreated)
                 twoBits.Dispose();
             twoBits = default;
         }

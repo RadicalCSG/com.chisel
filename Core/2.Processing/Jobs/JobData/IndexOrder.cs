@@ -5,7 +5,7 @@ namespace Chisel.Core
     struct IndexOrder : IEquatable<IndexOrder>
     {
         public CompactNodeID compactNodeID;
-        public int nodeOrder;
+		public int nodeOrder;
 
         public readonly bool Equals(IndexOrder other)
         {

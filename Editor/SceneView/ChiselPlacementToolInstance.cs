@@ -52,7 +52,7 @@ namespace Chisel.Editors
         protected Type                                          generatorType   = typeof(Generator);
         protected ChiselNodeGeneratorComponent<DefinitionType>  generatedComponent;
 
-        static readonly string[] excludeProperties = new[] { "m_Script" };
+        readonly static string[] kExcludeProperties = new[] { "m_Script" };
 
         // Sadly the DrawPropertiesExcluding method is protected, so we need to use reflection to be able to render the
         // placementToolDefinition properties, without a "PlacementToolDefinition" foldout, and a "script" property.
@@ -74,7 +74,7 @@ namespace Chisel.Editors
                     {
                         EditorGUIUtility.labelWidth = 115;
                         // This renders our placementToolDefinition like in the inspector, but excludes the properties named in excludeProperties
-                        DrawPropertiesExcluding(serializedObject, excludeProperties);
+                        DrawPropertiesExcluding(serializedObject, kExcludeProperties);
                     } catch (Exception ex) 
                     { 
                         Debug.LogException(ex); }
@@ -157,8 +157,8 @@ namespace Chisel.Editors
             EditorGUIUtility.ExitGUI();
         }
 
-        public void             OnSceneSettingsGUI(SceneView sceneView) { OnSceneSettingsGUI(); }
-        public virtual void     OnSceneSettingsGUI() {}
+        public void OnSceneSettingsGUI(SceneView sceneView) { OnSceneSettingsGUI(); }
+        public virtual void OnSceneSettingsGUI() {}
 
         public abstract void OnSceneGUI(SceneView sceneView, Rect dragArea);
 
@@ -202,7 +202,7 @@ namespace Chisel.Editors
             }
 
             var prevColor = Handles.color;
-            Handles.color = SceneHandles.handleColor;
+            Handles.color = SceneHandles.HandleColor;
             OnSceneGUI(sceneView, dragArea);
             Handles.color = prevColor;
         }

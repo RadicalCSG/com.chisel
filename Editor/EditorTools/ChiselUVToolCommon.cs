@@ -6,6 +6,7 @@ using Chisel.Components;
 using UnityEditor;
 using UnityEngine;
 using System.Buffers;
+using UnityEngine.Pool;
 
 namespace Chisel.Editors
 {
@@ -39,22 +40,22 @@ namespace Chisel.Editors
     sealed class ChiselUVToolCommon : ScriptableObject
     {
         #region Instance
-        static ChiselUVToolCommon _instance;
+        static ChiselUVToolCommon s_Instance;
         public static ChiselUVToolCommon Instance
         {
             get
             {
-                if (_instance)
-                    return _instance;
+                if (s_Instance)
+                    return s_Instance;
 
-                _instance = ScriptableObject.CreateInstance<ChiselUVToolCommon>();
-                _instance.hideFlags = HideFlags.HideAndDontSave;
-                return _instance;
+                s_Instance = ScriptableObject.CreateInstance<ChiselUVToolCommon>();
+                s_Instance.hideFlags = HideFlags.HideAndDontSave;
+                return s_Instance;
             }
         }
         #endregion
 
-        static readonly int kSurfaceDragSelectionHash = "SurfaceDragSelection".GetHashCode();
+        readonly static int kSurfaceDragSelectionHash = "SurfaceDragSelection".GetHashCode();
 
         internal static bool InEditCameraMode	{ get { return (Tools.viewTool == ViewTool.Pan || Tools.viewTool == ViewTool.None); } }
         internal static bool ToolIsDragging		{ get; set; }
@@ -63,8 +64,8 @@ namespace Chisel.Editors
 
         public void OnActivate()
         {
-            ChiselSurfaceSelectionManager.selectionChanged -= UpdateSurfaceSelection;
-            ChiselSurfaceSelectionManager.selectionChanged += UpdateSurfaceSelection;
+            ChiselSurfaceSelectionManager.SelectionChanged -= UpdateSurfaceSelection;
+            ChiselSurfaceSelectionManager.SelectionChanged += UpdateSurfaceSelection;
 
             Reset();
             UpdateSurfaceSelection();
@@ -73,7 +74,7 @@ namespace Chisel.Editors
 
         public void OnDeactivate()
         {
-            ChiselSurfaceSelectionManager.selectionChanged -= UpdateSurfaceSelection;
+            ChiselSurfaceSelectionManager.SelectionChanged -= UpdateSurfaceSelection;
             Reset();
             DestroyOldSurfaces();
             ChiselSurfaceOverlay.Hide();
@@ -144,12 +145,12 @@ namespace Chisel.Editors
         [SerializeField] UnityEngine.Object[]    undoableObjects = Array.Empty<UnityEngine.Object>();
         [SerializeField] ChiselSelectedSurface[] surfaces        = Array.Empty<ChiselSelectedSurface>();
 
-		static readonly int kSliderHash = (nameof(ChiselUVToolCommon) + "Slider").GetHashCode();
+		readonly static int kSliderHash = (nameof(ChiselUVToolCommon) + "Slider").GetHashCode();
 
 		const float kSpacing = 2;
 
-		class Styles { public readonly GUIStyle background = new GUIStyle("CurveEditorBackground"); };
-		static Styles styles;
+		class Styles { public readonly GUIStyle background = new("CurveEditorBackground"); };
+		static Styles s_Styles;
 
 		public static float DefaultMaterialSurfaceDestinationFlagsHeight
 		{
@@ -267,10 +268,10 @@ namespace Chisel.Editors
 			}
 		}
 
-        static readonly GUIContent kAddMaterialMetadataContent = new ("Add Chisel metadata to Material");
+        readonly static GUIContent kAddMaterialMetadataContent = new ("Add Chisel metadata to Material");
 
 
-        static readonly List<UnityEngine.Object> allChiselSurfaces = new();
+        readonly static List<UnityEngine.Object> s_AllChiselSurfaces = new();
 
 		// TODO: move methods like this in a separate file
 		public static void ShowMaterialProp(Rect position, SerializedProperty chiselMaterialProp)
@@ -316,11 +317,11 @@ namespace Chisel.Editors
                     }
 				} else
                 { 
-				    allChiselSurfaces.Clear();
-                    GetAllUnityObjects(metadataProp, allChiselSurfaces);
-                    if (allChiselSurfaces.Count > 0)
+				    s_AllChiselSurfaces.Clear();
+                    GetAllUnityObjects(metadataProp, s_AllChiselSurfaces);
+                    if (s_AllChiselSurfaces.Count > 0)
 				    {
-					    var serializedObject = new SerializedObject(allChiselSurfaces.ToArray());
+					    var serializedObject = new SerializedObject(s_AllChiselSurfaces.ToArray());
                         serializedObject.UpdateIfRequiredOrScript();
                         surfaceDestinationFlagsProp = serializedObject.FindProperty(ChiselSurfaceMetadata.kDestinationFlagsFieldName);
                         physicsMaterialProp = serializedObject.FindProperty(ChiselSurfaceMetadata.kPhysicsMaterialFieldName);
@@ -375,12 +376,12 @@ namespace Chisel.Editors
 			if (showMaterial)
 			{
 				var materialPreviewRect = new Rect(position.x, position.y, previewSize, previewSize);
-				styles ??= new Styles();
-				OnPreviewGUI(materialPreviewRect, styles.background, renderMaterialProp.objectReferenceValue as Material);
+				s_Styles ??= new Styles();
+				OnPreviewGUI(materialPreviewRect, s_Styles.background, renderMaterialProp.objectReferenceValue as Material);
 			}
 		}
 
-		static Vector2 previewDir = new(-120, 20);
+		static Vector2 s_PreviewDir = new(-120, 20);
 
 		public static Vector2 Drag2D(Vector2 scrollPosition, Rect position)
 		{
@@ -422,14 +423,14 @@ namespace Chisel.Editors
 
 		public static bool OnPreviewGUI(Rect region, GUIStyle background, Material material)
 		{
-			var newPreviewDir = Drag2D(previewDir, region);
-			if (newPreviewDir != previewDir)
+			var newPreviewDir = Drag2D(s_PreviewDir, region);
+			if (newPreviewDir != s_PreviewDir)
 			{
-				previewDir = newPreviewDir;
+				s_PreviewDir = newPreviewDir;
 				PreviewTextureManager.Clear();
 			}
 
-			var texture = PreviewTextureManager.GetPreviewTexture(region, previewDir, material);
+			var texture = PreviewTextureManager.GetPreviewTexture(region, s_PreviewDir, material);
 			if (!texture)
 			{
 				if (Event.current.type == EventType.Repaint)
@@ -491,11 +492,11 @@ namespace Chisel.Editors
         
         #region Snapping
 
-        internal static SnapSettings toolSnapOverrides = SnapSettings.All;
+        internal static SnapSettings s_ToolSnapOverrides = SnapSettings.All;
+        internal static SnapSettings CurrentSnapSettings { get { return Snapping.SnapSettings & s_ToolSnapOverrides; } }
 
-        internal static SnapSettings CurrentSnapSettings { get { return Snapping.SnapSettings & toolSnapOverrides; } }
-        internal static bool pointHasSnapped     = false;
-        internal static bool forceVertexSnapping = false;
+        internal static bool s_PointHasSnapped     = false;
+        internal static bool s_ForceVertexSnapping = false;
 
         const float kMinSnapDistance    = 0.5f;
         const float kDistanceEpsilon    = 0.0006f;
@@ -525,7 +526,7 @@ namespace Chisel.Editors
 
             var worldPlaneValue = worldPlane.Value;
 
-            var grid				= Chisel.Editors.Grid.defaultGrid;
+            var grid				= Chisel.Editors.Grid.DefaultGrid;
             var gridSnappedPoint	= Snapping.SnapPoint(intersectionPoint, grid);
 
             var xAxis       = grid.Right;
@@ -691,7 +692,7 @@ namespace Chisel.Editors
 
             Debug.Assert(surfaceReference.surfaceIndex >= 0 && surfaceReference.surfaceIndex < brushMesh.polygons.Length);
 
-            var grid            = Chisel.Editors.Grid.defaultGrid;
+            var grid            = Chisel.Editors.Grid.DefaultGrid;
             var xAxis           = grid.Right;
             var yAxis           = grid.Up;
             var zAxis           = grid.Forward;
@@ -858,8 +859,8 @@ namespace Chisel.Editors
                     continue;
                 if (GetCurrentWorldClick(selectedSurface.WorldPlane.Value, mousePosition, out Vector3 currentWorldIntersection))
                 {
-                    currentWorldIntersection = SnapIntersection(currentWorldIntersection, selectedSurface, out pointHasSnapped, ref snapState);
-                    if (pointHasSnapped)
+                    currentWorldIntersection = SnapIntersection(currentWorldIntersection, selectedSurface, out s_PointHasSnapped, ref snapState);
+                    if (s_PointHasSnapped)
                     {
                         var dist = (originalIntersectionPoint - currentWorldIntersection).sqrMagnitude;
                         if (dist < bestDist)
@@ -889,7 +890,7 @@ namespace Chisel.Editors
             var snappedPoint		= intersectionPoint;
             var handleSize          = HandleUtility.GetHandleSize(intersectionPoint);
             // When holding V we force to ONLY and ALWAYS snap against vertices
-            var snapSettings        = forceVertexSnapping ? SnapSettings.UVGeometryVertices : CurrentSnapSettings;
+            var snapSettings        = s_ForceVertexSnapping ? SnapSettings.UVGeometryVertices : CurrentSnapSettings;
 
             // snap to edges of surface that are closest to the intersection point
             SnapSurfaceEdges(snapSettings, surfaceReference, intersectionPoint, 1.25f, ref snappedPoint, ref bestDist, ref snapState);
@@ -905,7 +906,7 @@ namespace Chisel.Editors
 
 
             var gridSnappingenabled = (CurrentSnapSettings & SnapSettings.UVGeometryGrid) != SnapSettings.None;
-            var minSnapDistance     = (forceVertexSnapping || gridSnappingenabled) ? float.PositiveInfinity : (handleSize * kMinSnapDistance);
+            var minSnapDistance     = (s_ForceVertexSnapping || gridSnappingenabled) ? float.PositiveInfinity : (handleSize * kMinSnapDistance);
 
             if (bestDist < minSnapDistance)
             {
@@ -955,14 +956,14 @@ namespace Chisel.Editors
         static void EnableTool(int id)
         {
             EditorGUIUtility.SetWantsMouseJumping(1);   // enable allowing the user to move the mouse over the bounds of the screen
-            jumpedMousePosition = Event.current.mousePosition;  // remember the current mouse position so we can update it using Event.current.delta, 
+            s_JumpedMousePosition = Event.current.mousePosition;  // remember the current mouse position so we can update it using Event.current.delta, 
                                                                 // since mousePosition won't make sense any more when mouse jumping
             GUIUtility.hotControl = GUIUtility.keyboardControl = id; // set our tool as the active control
             Event.current.Use(); // make sure no-one else can use our event
 
 
-            toolSnapOverrides = SnapSettings.All;
-            pointHasSnapped = false;
+            s_ToolSnapOverrides = SnapSettings.All;
+            s_PointHasSnapped = false;
         }
 
         static void DisableTool()
@@ -972,8 +973,8 @@ namespace Chisel.Editors
             Event.current.Use(); // make sure no-one else can use our event
 
 
-            toolSnapOverrides = SnapSettings.All;
-            pointHasSnapped = false;
+            s_ToolSnapOverrides = SnapSettings.All;
+            s_PointHasSnapped = false;
         }
 
         static void CancelToolInProgress()
@@ -1023,7 +1024,7 @@ namespace Chisel.Editors
                     {
                         if (evt.keyCode == KeyCode.V)
                         {
-                            forceVertexSnapping = true;
+                            s_ForceVertexSnapping = true;
                             evt.Use();
                             break;
                         }
@@ -1052,9 +1053,9 @@ namespace Chisel.Editors
                             }
                         }
                     }
-                    if (forceVertexSnapping && evt.keyCode == KeyCode.V)
+                    if (s_ForceVertexSnapping && evt.keyCode == KeyCode.V)
                     {
-                        forceVertexSnapping = false;
+                        s_ForceVertexSnapping = false;
                         if (!EditorGUIUtility.editingTextField)
                             evt.Use();
                         break;
@@ -1075,7 +1076,7 @@ namespace Chisel.Editors
                         return false;
 
                     // We can only use a tool when we're hovering over a surfaces
-                    if (hoverSurfaces == null || hoverSurfaces.Count == 0)
+                    if (s_HoverSurfaces == null || s_HoverSurfaces.Count == 0)
                         return false;
 
                     if (!CanEnableTool(id))
@@ -1098,7 +1099,7 @@ namespace Chisel.Editors
                     {
                         // If we haven't dragged the tool yet, check if the surface underneath 
                         // the mouse is selected or not, if it isn't: select it exclusively
-                        if (!ChiselSurfaceSelectionManager.IsAnySelected(hoverSurfaces))
+                        if (!ChiselSurfaceSelectionManager.IsAnySelected(s_HoverSurfaces))
                             ClickSelection(dragArea, selectionType);
                     }
 
@@ -1137,22 +1138,22 @@ namespace Chisel.Editors
             return true;
         }
 
-        static SurfaceReference     startSurfaceReference;
-        static Vector2              jumpedMousePosition;
+        static SurfaceReference     s_StartSurfaceReference;
+        static Vector2              s_JumpedMousePosition;
 
-        internal static Plane       worldDragPlane;
-        internal static Plane       worldProjectionPlane;
-        internal static Vector3		worldStartPosition;
-        internal static Vector3		worldIntersection;
-        internal static Vector3     worldDragDeltaVector;
+        internal static Plane       s_WorldDragPlane;
+        internal static Plane       s_WorldProjectionPlane;
+        internal static Vector3		s_WorldStartPosition;
+        internal static Vector3		s_WorldIntersection;
+        internal static Vector3     s_WorldDragDeltaVector;
         
-        internal static ChiselNode[]	            selectedNodes;
-        internal static UVMatrix[]			        selectedUVMatrices;
-        internal static SurfaceReference[]	        selectedSurfaceReferences;
+        internal static ChiselNodeComponent[]	s_SelectedNodes;
+        internal static UVMatrix[]			    s_SelectedUVMatrices;
+        internal static SurfaceReference[]	    s_SelectedSurfaceReferences;
 
         internal static bool StartToolDragging()
         {
-            jumpedMousePosition += Event.current.delta;
+            s_JumpedMousePosition += Event.current.delta;
             Event.current.Use();
             if (ToolIsDragging)
             {
@@ -1164,25 +1165,25 @@ namespace Chisel.Editors
             ToolIsDragging = true;
 
             // Find the intersecting surfaces
-            startSurfaceReference           = hoverSurfaceReference;
+            s_StartSurfaceReference           = s_HoverSurfaceReference;
 
-            selectedSurfaceReferences	    = ChiselSurfaceSelectionManager.Selection.ToArray();
+            s_SelectedSurfaceReferences	    = ChiselSurfaceSelectionManager.Selection.ToArray();
 
             // We need all the nodes for all the surfaces we're moving, so that we can record them for an undo
-            selectedNodes                   = ChiselSurfaceSelectionManager.SelectedNodes.ToArray();
+            s_SelectedNodes                   = ChiselSurfaceSelectionManager.SelectedNodes.ToArray();
 
             // We copy all the original surface uvMatrices, so we always apply rotations and transformations relatively to the original
             // This makes it easier to recover from edge cases and makes it more accurate, floating point wise.
-            selectedUVMatrices	 = new UVMatrix[selectedSurfaceReferences.Length];
-            for (int i = 0; i < selectedSurfaceReferences.Length; i++)
+            s_SelectedUVMatrices	 = new UVMatrix[s_SelectedSurfaceReferences.Length];
+            for (int i = 0; i < s_SelectedSurfaceReferences.Length; i++)
             {
-                selectedUVMatrices[i] = selectedSurfaceReferences[i].UV0;
+                s_SelectedUVMatrices[i] = s_SelectedSurfaceReferences[i].UV0;
             }
             
             // Find the intersection point/plane in model space
-            worldStartPosition	 = hoverIntersection.Value.worldPlaneIntersection;
-            worldProjectionPlane = hoverIntersection.Value.worldPlane;
-            worldIntersection    = worldStartPosition;
+            s_WorldStartPosition	 = s_HoverIntersection.Value.worldPlaneIntersection;
+            s_WorldProjectionPlane = s_HoverIntersection.Value.worldPlane;
+            s_WorldIntersection    = s_WorldStartPosition;
 
             // TODO: we want to be able to determine delta movement over a plane. Ideally it would match the position of the cursor perfectly.
             //		 unfortunately when moving the cursor towards the horizon of the plane, relative to the camera, the delta movement 
@@ -1190,7 +1191,7 @@ namespace Chisel.Editors
             //		 a less perfect way that would still allow the user to move or rotate things in a reasonable way.
 
             // more accurate for small movements
-            worldDragPlane		= worldProjectionPlane;
+            s_WorldDragPlane		= s_WorldProjectionPlane;
 
 			// TODO: (unfinished) prevents drag-plane from intersecting near plane (makes movement slow down to a singularity when further away from click position)
 			//worldDragPlane	= new Plane(Camera.current.transform.forward, worldStartPosition); 
@@ -1202,13 +1203,13 @@ namespace Chisel.Editors
 
         private static Vector3 GetCurrentWorldClick(Vector2 mousePosition)
         {
-            if (GetCurrentWorldClick(worldDragPlane, mousePosition, out Vector3 currentWorldIntersection))
+            if (GetCurrentWorldClick(s_WorldDragPlane, mousePosition, out Vector3 currentWorldIntersection))
             {
                 snapState.SnapCause = SnapSettings.None;
-                currentWorldIntersection = SnapIntersection(currentWorldIntersection, startSurfaceReference, out pointHasSnapped, ref snapState);
+                currentWorldIntersection = SnapIntersection(currentWorldIntersection, s_StartSurfaceReference, out s_PointHasSnapped, ref snapState);
                 return currentWorldIntersection;
             }
-            return worldStartPosition;
+            return s_WorldStartPosition;
         }
 
         private static bool GetCurrentWorldClick(Plane plane, Vector2 mousePosition, out Vector3 currentWorldIntersection)
@@ -1223,10 +1224,10 @@ namespace Chisel.Editors
 
         static void UpdateDragVector()
         {
-            worldIntersection = GetCurrentWorldClick(jumpedMousePosition);
-            var worldSpaceMovement = worldIntersection - worldStartPosition;
+            s_WorldIntersection = GetCurrentWorldClick(s_JumpedMousePosition);
+            var worldSpaceMovement = s_WorldIntersection - s_WorldStartPosition;
 
-            MathExtensions.CalculateTangents(worldDragPlane.normal, out var tangent, out var binormal);
+            MathExtensions.CalculateTangents(s_WorldDragPlane.normal, out var tangent, out var binormal);
 
             var deltaVector = tangent  * Vector3.Dot(tangent,  worldSpaceMovement) +
                               binormal * Vector3.Dot(binormal, worldSpaceMovement);
@@ -1235,7 +1236,7 @@ namespace Chisel.Editors
             if (Snapping.AxisLockY) deltaVector.y = 0;
             if (Snapping.AxisLockZ) deltaVector.z = 0;
 
-            worldDragDeltaVector = deltaVector;
+            s_WorldDragDeltaVector = deltaVector;
         }
         #endregion        
         
@@ -1243,7 +1244,7 @@ namespace Chisel.Editors
         #region Selection
         static bool ClickSelection(Rect dragArea, SelectionType selectionType)
         {
-            return ChiselSurfaceSelectionManager.UpdateSelection(selectionType, hoverSurfaces);
+            return ChiselSurfaceSelectionManager.UpdateSelection(selectionType, s_HoverSurfaces);
         }
         
         internal static bool SurfaceSelection(Rect dragArea, SelectionType selectionType)
@@ -1281,7 +1282,7 @@ namespace Chisel.Editors
                     if (selectionType == SelectionType.Replace)
                         break;
 
-                    if (hoverSurfaces != null && hoverSurfaces.Count > 0)
+                    if (s_HoverSurfaces != null && s_HoverSurfaces.Count > 0)
                         HandleUtility.AddControl(id, 3.0f);
                     break;
                 }
@@ -1320,7 +1321,7 @@ namespace Chisel.Editors
                     GUIUtility.keyboardControl = 0;
                     evt.Use();
 
-                    if (ChiselSurfaceSelectionManager.UpdateSelection(selectionType, hoverSurfaces))
+                    if (ChiselSurfaceSelectionManager.UpdateSelection(selectionType, s_HoverSurfaces))
                         repaint = true;
 
                     if (UpdateHoverSurfaces(evt.mousePosition, dragArea, selectionType, true))
@@ -1334,23 +1335,23 @@ namespace Chisel.Editors
 
         static void ResetSelection()
         {
-            hoverIntersection = null;
-            hoverSurfaceReference = null;
-            selectedSurfaceReferences = null;
-            selectedNodes = null;
-            selectedUVMatrices = null;
+            s_HoverIntersection = null;
+            s_HoverSurfaceReference = null;
+            s_SelectedSurfaceReferences = null;
+            s_SelectedNodes = null;
+            s_SelectedUVMatrices = null;
         }
         #endregion
 
         #region Hover Surfaces
-        static ChiselIntersection? hoverIntersection;
-        static SurfaceReference hoverSurfaceReference;
+        static ChiselIntersection? s_HoverIntersection;
+        static SurfaceReference s_HoverSurfaceReference;
 
-        static readonly HashSet<SurfaceReference> hoverSurfaces = new HashSet<SurfaceReference>();
+        readonly static HashSet<SurfaceReference> s_HoverSurfaces = new();
 
         internal static void RenderIntersectionPoint()
         {
-            RenderIntersectionPoint(ChiselUVToolCommon.worldIntersection);
+            RenderIntersectionPoint(ChiselUVToolCommon.s_WorldIntersection);
         }
 
         static void RenderIntersectionPoint(Vector3 position)
@@ -1414,29 +1415,29 @@ namespace Chisel.Editors
             if (ToolIsDragging)
                 return;
 
-            if (!hoverIntersection.HasValue)
+            if (!s_HoverIntersection.HasValue)
                 return;
 
-            var position = hoverIntersection.Value.worldPlaneIntersection;
+            var position = s_HoverIntersection.Value.worldPlaneIntersection;
             RenderIntersectionPoint(position);
             RenderSnapEvent();
         }
 
-        static readonly List<SurfaceReference> s_TempSurfaces = new List<SurfaceReference>();
 
         static bool UpdateHoverSurfaces(Vector2 mousePosition, Rect dragArea, SelectionType selectionType, bool clearHovering)
         {
-            try
+			var tempSurfaces = ListPool<SurfaceReference>.Get();
+			try
             {
-                hoverIntersection = null;
-                hoverSurfaceReference = null;
+                s_HoverIntersection = null;
+                s_HoverSurfaceReference = null;
 
                 bool modified = false;
                 if (clearHovering || !InEditCameraMode)
                 {
-                    if (hoverSurfaces.Count != 0)
+                    if (s_HoverSurfaces.Count != 0)
                     {
-                        hoverSurfaces.Clear();
+                        s_HoverSurfaces.Clear();
                         modified = true;
                     }
                 }
@@ -1447,13 +1448,10 @@ namespace Chisel.Editors
                 if (!InEditCameraMode)
                     return modified;
 
-                ChiselIntersection intersection;
-                SurfaceReference surfaceReference;
-                s_TempSurfaces.Clear();
-                if (!ChiselClickSelectionManager.FindSurfaceReferences(mousePosition, false, s_TempSurfaces, out intersection, out surfaceReference))
+				if (!ChiselClickSelectionManager.FindSurfaceReferences(mousePosition, false, tempSurfaces, out ChiselIntersection intersection, out SurfaceReference surfaceReference))
                 {
-                    modified = (hoverSurfaces != null) || modified;
-                    hoverIntersection = null;
+                    modified = (s_HoverSurfaces != null) || modified;
+                    s_HoverIntersection = null;
                     return modified;
                 }
 
@@ -1462,48 +1460,49 @@ namespace Chisel.Editors
                 if (!float.IsInfinity(intersection.brushIntersection.surfaceIntersection.distance))
                 {
                     snapState.SnapCause = SnapSettings.None;
-                    if (!isSurfaceSelected && forceVertexSnapping)
+                    if (!isSurfaceSelected && s_ForceVertexSnapping)
                     {
                         if (SelectedSnapIntersection(mousePosition, intersection.worldPlaneIntersection, out surfaceReference, out Vector3 worldIntersectionPoint, ref snapState))
                         {
                             isSurfaceSelected = true;
                             intersection.worldPlane             = surfaceReference.WorldPlane.Value;
                             intersection.worldPlaneIntersection = worldIntersectionPoint;
-                            s_TempSurfaces.Clear();
-                            s_TempSurfaces.Add(surfaceReference);
+                            tempSurfaces.Clear();
+                            tempSurfaces.Add(surfaceReference);
                         }
                     } else
-                        intersection.worldPlaneIntersection = SnapIntersection(intersection.worldPlaneIntersection, surfaceReference, out pointHasSnapped, ref snapState);
+                        intersection.worldPlaneIntersection = SnapIntersection(intersection.worldPlaneIntersection, surfaceReference, out s_PointHasSnapped, ref snapState);
                 }
 
-                if (isSurfaceSelected || !forceVertexSnapping)
+                if (isSurfaceSelected || !s_ForceVertexSnapping)
                 {
-                    hoverIntersection = intersection;
-                    hoverSurfaceReference = surfaceReference;
+                    s_HoverIntersection = intersection;
+                    s_HoverSurfaceReference = surfaceReference;
 
-                    if (s_TempSurfaces.Count == hoverSurfaces.Count)
-                        modified = !hoverSurfaces.ContainsAll(s_TempSurfaces) || modified;
+                    if (tempSurfaces.Count == s_HoverSurfaces.Count)
+                        modified = !s_HoverSurfaces.ContainsAll(tempSurfaces) || modified;
                     else
                         modified = true;
 
-                    if (s_TempSurfaces.Count > 0)
-                        hoverSurfaces.AddRange(s_TempSurfaces);
+                    if (tempSurfaces.Count > 0)
+                        s_HoverSurfaces.AddRange(tempSurfaces);
                 } else
                 {
                     modified = true;
-                    hoverIntersection = null;
-                    hoverSurfaceReference = null;
+                    s_HoverIntersection = null;
+                    s_HoverSurfaceReference = null;
                 }
 
                 return modified;
             }
             finally
-            {
-                if (forceVertexSnapping)
+			{
+				if (s_ForceVertexSnapping)
                     ChiselSurfaceSelectionManager.SetHovering(selectionType, null);
                 else
-                    ChiselSurfaceSelectionManager.SetHovering(selectionType, hoverSurfaces);
-            }
+                    ChiselSurfaceSelectionManager.SetHovering(selectionType, s_HoverSurfaces);
+				ListPool<SurfaceReference>.Release(tempSurfaces);
+			}
         }
         #endregion
     }

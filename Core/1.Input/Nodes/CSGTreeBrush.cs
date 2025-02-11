@@ -5,6 +5,7 @@ using System.Runtime.CompilerServices;
 using Unity.Mathematics;
 using Unity.Collections;
 using UnityEngine;
+using Unity.Entities;
 
 namespace Chisel.Core
 {
@@ -24,16 +25,16 @@ namespace Chisel.Core
     {
         #region Create
         /// <summary>Generates a brush and returns a <see cref="Chisel.Core.CSGTreeBrush"/> struct that contains a reference to it.</summary>
-        /// <param name="userID">A unique id to help identify this particular brush. For instance, this could be an InstanceID to a [UnityEngine.Object](https://docs.unity3d.com/ScriptReference/Object.html)</param>
+        /// <param name="instanceID">A unique id to help identify this particular brush. For instance, this could be an InstanceID to a [UnityEngine.Object](https://docs.unity3d.com/ScriptReference/Object.html)</param>
         /// <param name="localTransformation">The transformation of the brush relative to the tree root</param>
         /// <param name="brushMesh">A <see cref="Chisel.Core.BrushMeshInstance"/>, which is a reference to a <see cref="Chisel.Core.BrushMesh"/>.</param>
         /// <param name="operation">The <see cref="Chisel.Core.CSGOperationType"/> that needs to be performed with this <see cref="Chisel.Core.CSGTreeBrush"/>.</param>
         /// <param name="flags"><see cref="Chisel.Core.CSGTreeBrush"/> specific flags</param>
         /// <returns>A new <see cref="Chisel.Core.CSGTreeBrush"/>. May be an invalid node if it failed to create it.</returns>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static CSGTreeBrush Create(Int32 userID, float4x4 localTransformation, BrushMeshInstance brushMesh = default(BrushMeshInstance), CSGOperationType operation = CSGOperationType.Additive)
+        public static CSGTreeBrush Create(Int32 instanceID, float4x4 localTransformation, BrushMeshInstance brushMesh = default(BrushMeshInstance), CSGOperationType operation = CSGOperationType.Additive)
         {
-            var brushNodeID = CompactHierarchyManager.CreateBrush(brushMesh, localTransformation, operation, userID);
+            var brushNodeID = CompactHierarchyManager.CreateBrush(brushMesh, localTransformation, operation, instanceID);
             Debug.Assert(CompactHierarchyManager.IsValidNodeID(brushNodeID));
             CompactHierarchyManager.SetDirty(brushNodeID);
             return CSGTreeBrush.Find(brushNodeID);
@@ -44,20 +45,20 @@ namespace Chisel.Core
         /// <param name="operation">The <see cref="Chisel.Core.CSGOperationType"/> that needs to be performed with this <see cref="Chisel.Core.CSGTreeBrush"/>.</param>
         /// <param name="flags"><see cref="Chisel.Core.CSGTreeBrush"/> specific flags</param>
         /// <returns>A new <see cref="Chisel.Core.CSGTreeBrush"/>. May be an invalid node if it failed to create it.</returns>
-        public static CSGTreeBrush Create(Matrix4x4 localTransformation, Int32 userID = 0, BrushMeshInstance brushMesh = default(BrushMeshInstance), CSGOperationType operation = CSGOperationType.Additive)
+        public static CSGTreeBrush Create(Matrix4x4 localTransformation, Int32 instanceID = 0, BrushMeshInstance brushMesh = default(BrushMeshInstance), CSGOperationType operation = CSGOperationType.Additive)
         {
-            return Create(userID, localTransformation, brushMesh, operation);
+            return Create(instanceID, localTransformation, brushMesh, operation);
         }
 
         /// <summary>Generates a brush and returns a <see cref="Chisel.Core.CSGTreeBrush"/> struct that contains a reference to it.</summary>
-        /// <param name="userID">A unique id to help identify this particular brush. For instance, this could be an InstanceID to a [UnityEngine.Object](https://docs.unity3d.com/ScriptReference/Object.html)</param>
+        /// <param name="instanceID">A unique id to help identify this particular brush. For instance, this could be an InstanceID to a [UnityEngine.Object](https://docs.unity3d.com/ScriptReference/Object.html)</param>
         /// <param name="brushMesh">A <see cref="Chisel.Core.BrushMeshInstance"/>, which is a reference to a <see cref="Chisel.Core.BrushMesh"/>.</param>
         /// <param name="operation">The <see cref="Chisel.Core.CSGOperationType"/> that needs to be performed with this <see cref="Chisel.Core.CSGTreeBrush"/>.</param>
         /// <param name="flags"><see cref="Chisel.Core.CSGTreeBrush"/> specific flags</param>
         /// <returns>A new <see cref="Chisel.Core.CSGTreeBrush"/>. May be an invalid node if it failed to create it.</returns>
-        public static CSGTreeBrush Create(Int32 userID = 0, BrushMeshInstance brushMesh = default(BrushMeshInstance), CSGOperationType operation = CSGOperationType.Additive)
+        public static CSGTreeBrush Create(Int32 instanceID = 0, BrushMeshInstance brushMesh = default(BrushMeshInstance), CSGOperationType operation = CSGOperationType.Additive)
         {
-            return Create(userID, float4x4.identity, brushMesh, operation);
+            return Create(instanceID, float4x4.identity, brushMesh, operation);
         }
         #endregion
 
@@ -71,7 +72,6 @@ namespace Chisel.Core
             var compactNodeID = CompactHierarchyManager.GetCompactNodeID(nodeID);
             if (compactNodeID == CompactNodeID.Invalid)
                 return CSGTreeBrush.Invalid;
-            //var compactHierarchyID = CompactHierarchyManager.GetHierarchyID(nodeID);
             return Encapsulate(nodeID);
         }
 
@@ -84,7 +84,6 @@ namespace Chisel.Core
             var nodeID = hierarchy.GetNodeID(compactNodeID);
             if (nodeID == NodeID.Invalid)
                 return CSGTreeBrush.Invalid;
-            //var compactHierarchyID = hierarchy.HierarchyID;
             return Encapsulate(nodeID);
         }
 
@@ -97,7 +96,6 @@ namespace Chisel.Core
             var nodeID = hierarchy.GetNodeIDNoErrors(compactNodeID);
             if (nodeID == NodeID.Invalid)
                 return CSGTreeBrush.Invalid;
-            //var compactHierarchyID = hierarchy.HierarchyID;
             return Encapsulate(nodeID);
         }
 
@@ -117,8 +115,8 @@ namespace Chisel.Core
         /// <remarks><note>NodeIDs are eventually recycled, so be careful holding on to Nodes that have been destroyed.</note></remarks>
         public NodeID           NodeID			{ get { return nodeID; } }
 
-        /// <value>Gets the <see cref="Chisel.Core.CSGTreeBrush.UserID"/> set to the <see cref="Chisel.Core.CSGTreeBrush"/> at creation time.</value>
-        public Int32			UserID			{ get { return CompactHierarchyManager.GetUserIDOfNode(nodeID); } }
+        /// <value>Gets the <see cref="Chisel.Core.CSGTreeBrush.InstanceID"/> set to the <see cref="Chisel.Core.CSGTreeBrush"/> at creation time.</value>
+        public Int32			InstanceID			{ get { return CompactHierarchyManager.GetNodeInstanceID(nodeID); } }
 
         /// <value>Returns the dirty flag of the <see cref="Chisel.Core.CSGTreeBrush"/>. When the it's dirty, then it means (some of) its generated meshes have been modified.</value>
         public bool				Dirty			{ get { return CompactHierarchyManager.IsNodeDirty(nodeID); } }
@@ -158,7 +156,13 @@ namespace Chisel.Core
             get { return new BrushMeshInstance { brushMeshHash = CompactHierarchyManager.GetBrushMeshID(nodeID) }; } 
         }
         
-        public ref BrushOutline     Outline         { get { return ref CompactHierarchyManager.GetBrushOutline(this.nodeID); } }
+        public readonly BlobAssetReference<NativeWireframeBlob> Outline 
+        { 
+            get 
+            { 
+                return CompactHierarchyManager.GetOutline(this.nodeID); 
+            } 
+        }
         #endregion
 
         #region TreeBrush specific
@@ -212,11 +216,12 @@ namespace Chisel.Core
         #endregion
 
         /// <value>An invalid node</value>
-        public static readonly CSGTreeBrush Invalid = new CSGTreeBrush { nodeID = NodeID.Invalid };
+        readonly static CSGTreeBrush kInvalid = new() { nodeID = NodeID.Invalid };
+		public static ref readonly CSGTreeBrush Invalid => ref kInvalid;
 
-        // Temporary workaround until we can switch to hashes
-        internal bool IsAnyStatusFlagSet()                  { return Hierarchy.IsAnyStatusFlagSet(CompactNodeID); }
-        internal bool IsStatusFlagSet(NodeStatusFlags flag) { return Hierarchy.IsStatusFlagSet(CompactNodeID, flag); }
+		// Temporary workaround until we can switch to hashes
+		internal readonly bool IsAnyStatusFlagSet()                  { return ReadOnlyHierarchy.IsAnyStatusFlagSet(CompactNodeID); }
+		internal readonly bool IsStatusFlagSet(NodeStatusFlags flag) { return ReadOnlyHierarchy.IsStatusFlagSet(CompactNodeID, flag); }
         internal void SetStatusFlag(NodeStatusFlags flag)   { Hierarchy.SetStatusFlag(CompactNodeID, flag); }
         internal void ClearStatusFlag(NodeStatusFlags flag) { Hierarchy.ClearStatusFlag(CompactNodeID, flag); }
         internal void ClearAllStatusFlags()                 { Hierarchy.ClearAllStatusFlags(CompactNodeID); }
@@ -225,8 +230,8 @@ namespace Chisel.Core
         [SerializeField] internal NodeID nodeID;
 
 
-        internal CompactNodeID      CompactNodeID       { get { return CompactHierarchyManager.GetCompactNodeID(nodeID); } }
-        internal CompactHierarchyID CompactHierarchyID  { get { return CompactNodeID.hierarchyID; } }
+        internal readonly CompactNodeID      CompactNodeID       { get { return CompactHierarchyManager.GetCompactNodeID(nodeID); } }
+        internal readonly CompactHierarchyID CompactHierarchyID  { get { return CompactNodeID.hierarchyID; } }
         ref CompactHierarchy Hierarchy
         {
             get
@@ -236,8 +241,18 @@ namespace Chisel.Core
                     throw new InvalidOperationException($"Invalid NodeID");
                 return ref CompactHierarchyManager.GetHierarchy(hierarchyID);
             }
-        }
+		}
+		readonly ref CompactHierarchy ReadOnlyHierarchy
+		{
+			get
+			{
+				var hierarchyID = CompactHierarchyID;
+				if (hierarchyID == CompactHierarchyID.Invalid)
+					throw new InvalidOperationException($"Invalid NodeID");
+				return ref CompactHierarchyManager.GetHierarchy(hierarchyID);
+			}
+		}
 
-        public override string ToString() => $"{((CSGTreeNode)this).Type} ({nodeID})";
+		public override string ToString() => $"{((CSGTreeNode)this).Type} ({nodeID})";
     }
 }

@@ -9,9 +9,9 @@ namespace Chisel.Editors
 	[CustomPropertyDrawer(typeof(ChiselMaterial))]
 	public sealed class ChiselMaterialPropertyDrawer : PropertyDrawer
 	{
-		static readonly int kBrushMaterialEditorHashCode = (nameof(ChiselMaterialPropertyDrawer) + "Material").GetHashCode();
+		readonly static int kBrushMaterialEditorHashCode = (nameof(ChiselMaterialPropertyDrawer) + "Material").GetHashCode();
 		
-		static readonly GUIContent kRenderMaterialContents = new("Material");
+		readonly static GUIContent kRenderMaterialContents = new("Material");
 
 #if !UNITY_2023_1_OR_NEWER
         public override bool CanCacheInspectorGUI(SerializedProperty property) { return true; }

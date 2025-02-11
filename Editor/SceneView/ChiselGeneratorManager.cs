@@ -17,16 +17,15 @@ namespace Chisel.Editors
 
     public class ChiselGeneratorManager : SingletonManager<ChiselEditModeData, ChiselGeneratorManager>
     {
-        internal static ChiselPlacementToolInstance[] generatorModes;
-        internal static Dictionary<Type, Type> generatorComponentLookup;
+        internal static ChiselPlacementToolInstance[] s_GeneratorModes;
 
         [InitializeOnLoadMethod]
         static void InitializeEditModes()
         {
             ReflectionExtensions.Initialize();
 
-            // First, for every generator definition we find the component type
-            generatorComponentLookup = new Dictionary<Type, Type>();
+			// First, for every generator definition we find the component type
+		    var generatorComponentLookup = new Dictionary<Type, Type>();
             foreach (var type in ReflectionExtensions.AllNonAbstractClasses)
             {
                 if (!ReflectionExtensions.HasBaseClass<ChiselGeneratorComponent>(type))
@@ -129,7 +128,7 @@ namespace Chisel.Editors
                     return difference;
                 return x.ToolName.CompareTo(y.ToolName);
             }); 
-            generatorModes = generatorModeList.ToArray();
+            s_GeneratorModes = generatorModeList.ToArray();
         }
 
 
@@ -141,8 +140,8 @@ namespace Chisel.Editors
         {
             get
             {
-                if (generatorModes == null ||
-                    generatorModes.Length == 0)
+                if (s_GeneratorModes == null ||
+                    s_GeneratorModes.Length == 0)
                     InitializeEditModes();
                 var currentTool = Instance.data.currentGenerator;
                 if (currentTool == null)
@@ -151,8 +150,8 @@ namespace Chisel.Editors
             }
             set
             {
-                if (generatorModes == null ||
-                    generatorModes.Length == 0)
+                if (s_GeneratorModes == null ||
+                    s_GeneratorModes.Length == 0)
                     InitializeEditModes();
                 if (Instance.data.currentGenerator == value)
                     return;
@@ -192,35 +191,35 @@ namespace Chisel.Editors
         {
             get
             {
-                if (generatorModes == null ||
-                    generatorModes.Length == 0)
+                if (s_GeneratorModes == null ||
+                    s_GeneratorModes.Length == 0)
                     InitializeEditModes();
                 var currentGenerator = Instance.data.currentGenerator;
-                for (int j = 0; j < generatorModes.Length; j++)
+                for (int j = 0; j < s_GeneratorModes.Length; j++)
                 {
-                    if (generatorModes[j] == currentGenerator)
+                    if (s_GeneratorModes[j] == currentGenerator)
                         return (j + 1);
                 }
                 return 0;
             }
             set
             {
-                if (generatorModes == null ||
-                    generatorModes.Length == 0)
+                if (s_GeneratorModes == null ||
+                    s_GeneratorModes.Length == 0)
                     InitializeEditModes();
                 if (value > 0)
                 {
                     var index = (value - 1);
-                    if (index >= generatorModes.Length)
+                    if (index >= s_GeneratorModes.Length)
                     {
                         GeneratorMode = null;
                         return;
                     }
-                    GeneratorMode = generatorModes[index];
+                    GeneratorMode = s_GeneratorModes[index];
                     return;
                 }
 
-                GeneratorMode = generatorModes?[0];
+                GeneratorMode = s_GeneratorModes?[0];
             }
         }
 
@@ -231,7 +230,7 @@ namespace Chisel.Editors
                 if (value == null)
                     return;
 
-                foreach (var generatorMode in generatorModes)
+                foreach (var generatorMode in s_GeneratorModes)
                 {
                     if (generatorMode.GetType() != value)
                         continue;

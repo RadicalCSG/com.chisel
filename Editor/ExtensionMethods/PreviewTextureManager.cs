@@ -31,7 +31,7 @@ namespace Chisel.Editors
         }
 
         class Styles { public readonly GUIStyle background = new GUIStyle("CurveEditorBackground"); };
-        static Styles styles;
+        static Styles s_Styles;
 
         class PreviewRequest
         {
@@ -41,8 +41,8 @@ namespace Chisel.Editors
         }
 
         // TODO: should lookup using PreviewRequest like structure so size could be taken into account
-        static readonly Dictionary<Material, Texture2D>  s_MaterialTextures   = new Dictionary<Material, Texture2D>();
-        static readonly List<PreviewRequest>             s_Requests           = new List<PreviewRequest>();
+        readonly static Dictionary<Material, Texture2D>  s_MaterialTextures   = new Dictionary<Material, Texture2D>();
+        readonly static List<PreviewRequest>             s_Requests           = new List<PreviewRequest>();
 
 
         static Mesh sphereMesh;
@@ -55,8 +55,7 @@ namespace Chisel.Editors
 
         static Texture GetPreviewTexture(PreviewRenderUtility previewUtility, Vector2 previewDir, Rect region, Material material)
         {
-            if (styles == null)
-                styles = new Styles();
+            s_Styles ??= new Styles();
 
             var mesh        = GetPreviewSphere();
             var camera      = previewUtility.camera;

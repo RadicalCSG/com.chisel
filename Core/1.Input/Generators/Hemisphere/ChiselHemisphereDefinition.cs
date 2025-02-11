@@ -9,32 +9,34 @@ namespace Chisel.Core
     [Serializable]
     public struct ChiselHemisphere : IBrushGenerator
     {
-        public readonly static ChiselHemisphere DefaultValues = new ChiselHemisphere
-        {
+        readonly static ChiselHemisphere kDefaultSettings = new()
+		{
             diameterXYZ		    = new float3(1.0f, 0.5f, 1.0f),
             rotation			= 0.0f,
             horizontalSegments	= 8,
             verticalSegments	= 8
         };
+		public static ref readonly ChiselHemisphere DefaultSettings => ref kDefaultSettings;
 
 
-        [DistanceValue] public float3   diameterXYZ;
+		[DistanceValue] public float3   diameterXYZ;
         public float                    rotation; // TODO: useless?
         public int                      horizontalSegments;
         public int                      verticalSegments;
 
 
         #region Generate
-        public BlobAssetReference<BrushMeshBlob> GenerateMesh(BlobAssetReference<InternalChiselSurfaceArray> surfaceDefinitionBlob, Allocator allocator)
-        {
+        public readonly BlobAssetReference<BrushMeshBlob> GenerateMesh(BlobAssetReference<InternalChiselSurfaceArray> surfaceDefinitionBlob, 
+                                                                       Allocator allocator = Allocator.Persistent)// Indirect
+		{
             if (!BrushMeshFactory.GenerateHemisphere(diameterXYZ,
                                                      rotation, // TODO: useless?
                                                      horizontalSegments,
                                                      verticalSegments,
                                                      in surfaceDefinitionBlob,
                                                      out var newBrushMesh,
-                                                     allocator))
-                return default;
+                                                     allocator))// Indirect
+				return default;
             return newBrushMesh;
         }
         #endregion
@@ -65,7 +67,7 @@ namespace Chisel.Core
         #endregion
 
         #region Reset
-        public void Reset() { this = DefaultValues; }
+        public void Reset() { this = DefaultSettings; }
         #endregion
     }
 

@@ -9,9 +9,9 @@ namespace Chisel.Editors
 
     internal class FunctioningMaskField : UnityEditor.PopupWindowContent
     {
-        static readonly GUIContent      noneContent			= new GUIContent("None");
-        static readonly GUIContent      allContent			= new GUIContent("All");
-        static readonly GUIContent      mixedContent        = new GUIContent("Mixed ...");
+        readonly static GUIContent kNoneContent  = new("None");
+        readonly static GUIContent kAllContent   = new("All");
+        readonly static GUIContent kMixedContent = new("Mixed ...");
 
         private class EnumValues
         {
@@ -49,15 +49,15 @@ namespace Chisel.Editors
                 lines = flagValues.Length + (foundNone ? 0 : 1) + (foundAll ? 0 : 1);
             }
 
-            static readonly Dictionary<Type, EnumValues> TypeEnumValues = new Dictionary<Type, EnumValues>();
+            readonly static Dictionary<Type, EnumValues> s_TypeEnumValues = new Dictionary<Type, EnumValues>();
 
             public static EnumValues GetValuesForType(Type type)
             {
                 EnumValues values;
-                if (!TypeEnumValues.TryGetValue(type, out values))
+                if (!s_TypeEnumValues.TryGetValue(type, out values))
                 {
                     values = new EnumValues(type);
-                    TypeEnumValues[type] = values;
+                    s_TypeEnumValues[type] = values;
                 }
                 return values;
             }
@@ -135,7 +135,7 @@ namespace Chisel.Editors
 
             if (showExtraOptions)
             {
-                GUIContent content = noneContent;
+                GUIContent content = kNoneContent;
                 for (int i = 0; i < flags.flagContents.Length; i++)
                 {
                     var flag = flags.flagValues[i];
@@ -171,7 +171,7 @@ namespace Chisel.Editors
                 if (!foundAll)
                 {
                     EditorGUI.BeginChangeCheck();
-                    GUI.Toggle(drawPos, currentValue == flags.allFlags, allContent, menuStyle);
+                    GUI.Toggle(drawPos, currentValue == flags.allFlags, kAllContent, menuStyle);
                     if (EditorGUI.EndChangeCheck())
                     {
                         currentValue = flags.allFlags;
@@ -226,7 +226,7 @@ namespace Chisel.Editors
                             return values.flagContents[i];
                         }
                     }
-                    return noneContent;
+                    return kNoneContent;
                 } else
                 if (value == values.allFlags)
                 {
@@ -238,11 +238,11 @@ namespace Chisel.Editors
                             return values.flagContents[i];
                         }
                     }
-                    return allContent;
+                    return kAllContent;
                 }
             }
 
-            var content = mixedContent;
+            var content = kMixedContent;
             int count = 0;
             for (int i = 0; i < values.flagContents.Length; i++)
             {
@@ -283,7 +283,7 @@ namespace Chisel.Editors
         
         public static void MaskField(Rect position, Type type, int value, Action<int> action, bool showExtraOptions = true, GUIStyle style = null)
         {
-            GUIContent label = mixedContent;
+            GUIContent label = kMixedContent;
             if (!EditorGUI.showMixedValue)
                 label = FindContent(type, showExtraOptions, value);
 

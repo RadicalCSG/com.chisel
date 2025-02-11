@@ -5,10 +5,10 @@ namespace Chisel.Editors
 {
     public static class SnappingUtility
     {
-        public static readonly Vector3 UnitXVector3 = new Vector3(1, 0, 0);
-        public static readonly Vector3 UnitYVector3 = new Vector3(0, 1, 0);
-        public static readonly Vector3 UnitZVector3 = new Vector3(0, 0, 1);
-        private const float	MinimumSnapDistance = 0.00001f;
+        readonly static Vector3 kUnitXVector3 = new(1, 0, 0);
+        readonly static Vector3 kUnitYVector3 = new(0, 1, 0);
+        readonly static Vector3 kUnitZVector3 = new(0, 0, 1);
+        const float	kMinimumSnapDistance = 0.00001f;
 
 
         public static float WorldPointToDistance(Vector3 currentPosition, Vector3 direction)
@@ -58,7 +58,7 @@ namespace Chisel.Editors
 
         public static float SnapValue(float currentPosition, float snapping)
         {
-            if (Mathf.Abs(snapping) < MinimumSnapDistance)
+            if (Mathf.Abs(snapping) < kMinimumSnapDistance)
                 return currentPosition;
             return Mathf.Round(currentPosition / snapping) * snapping;
         }
@@ -118,49 +118,6 @@ namespace Chisel.Editors
             return SnapPoint3D(currentPosition, snapping, axisX, axisY, axisZ, origin, enabledAxes) - currentPosition;
         }
 
-        /*
-        static readonly Vector4		unitX		= new Vector4(1,0,0,0);
-        static readonly Vector4		unitY		= new Vector4(0,1,0,0);
-        static readonly Vector4		unitZ		= new Vector4(0,0,1,0);
-        static readonly Vector4		unitW		= new Vector4(0,0,0,1);
-        static readonly Matrix4x4	swizzleYZ	= new Matrix4x4(unitX, unitZ, unitY, unitW);
-        
-        /*
-        public static Vector3 SnapDistanceExtents3D(Extents3D currentExtents, Vector3 offsetPos, Vector3 snappingSteps, Vector3 axisX, Vector3 axisY, Vector3 axisZ, Vector3 origin, Axes enabledAxes = Axes.XYZ)
-        {
-            var fromMatrix		= Matrix4x4.TRS(Grid.Center, Grid.Rotation, Vector3.one) * swizzleYZ; // <--- IS IN X/Z SPACE!!!!
-            var toMatrix		= Matrix4x4.Inverse(fromMatrix);
-            
-            var offsetDistance	= toMatrix.MultiplyPoint(offsetPos);
-            var movedExtents	= currentExtents  // <--- IS IN X/Y SPACE!!!!
-                                    + offsetDistance;
-            
-            movedExtents.min.x = SnapValue(movedExtents.min.x, snappingSteps.x) - movedExtents.min.x;
-            movedExtents.min.y = SnapValue(movedExtents.min.y, snappingSteps.y) - movedExtents.min.y;
-            movedExtents.min.z = SnapValue(movedExtents.min.z, snappingSteps.z) - movedExtents.min.z;
-
-            movedExtents.max.x = SnapValue(movedExtents.max.x, snappingSteps.x) - movedExtents.max.x;
-            movedExtents.max.y = SnapValue(movedExtents.max.y, snappingSteps.y) - movedExtents.max.y;
-            movedExtents.max.z = SnapValue(movedExtents.max.z, snappingSteps.z) - movedExtents.max.z;
-            
-
-            if ((enabledAxes & Axes.X) > 0) offsetDistance.x += (Mathf.Abs(movedExtents.min.x) < Mathf.Abs(movedExtents.max.x)) ? movedExtents.min.x : movedExtents.max.x;
-            if ((enabledAxes & Axes.Y) > 0) offsetDistance.y += (Mathf.Abs(movedExtents.min.y) < Mathf.Abs(movedExtents.max.y)) ? movedExtents.min.y : movedExtents.max.y;
-            if ((enabledAxes & Axes.Z) > 0) offsetDistance.z += (Mathf.Abs(movedExtents.min.z) < Mathf.Abs(movedExtents.max.z)) ? movedExtents.min.z : movedExtents.max.z;
-             
-            var snappedDistance = fromMatrix.MultiplyPoint(offsetDistance);
-            return snappedDistance;
-        }
-        
-        /*
-        public static Extents3D SnapExtents3D(Extents3D currentExtents, Vector3 snapping, Vector3 axisX, Vector3 axisY, Vector3 axisZ, Vector3 origin, Axes enabledAxes = Axes.XYZ)
-        {
-            return currentExtents + SnapDistanceExtents3D(currentExtents, snapping, axisX, axisY, axisZ, origin, enabledAxes);
-        }
-        */
-
-
-
 
         public static float SnapDistancePointRay(Vector3 currentPosition, float snapping, Vector3 direction, Vector3 origin)
         {
@@ -207,11 +164,11 @@ namespace Chisel.Editors
         public static Vector3 PerformAxisLocking(Vector3 startPosition, Vector3 currentPosition)
         {
             var locking		= Snapping.AxisLocking;
-            var deltaAxisX	= Vector3.Dot(UnitXVector3, locking[0] ? startPosition : currentPosition);
-            var deltaAxisY	= Vector3.Dot(UnitYVector3, locking[1] ? startPosition : currentPosition);
-            var deltaAxisZ	= Vector3.Dot(UnitZVector3, locking[2] ? startPosition : currentPosition);
+            var deltaAxisX	= Vector3.Dot(kUnitXVector3, locking[0] ? startPosition : currentPosition);
+            var deltaAxisY	= Vector3.Dot(kUnitYVector3, locking[1] ? startPosition : currentPosition);
+            var deltaAxisZ	= Vector3.Dot(kUnitZVector3, locking[2] ? startPosition : currentPosition);
             
-            return ((UnitXVector3 * deltaAxisX) + (UnitYVector3 * deltaAxisY) + (UnitZVector3 * deltaAxisZ));
+            return ((kUnitXVector3 * deltaAxisX) + (kUnitYVector3 * deltaAxisY) + (kUnitZVector3 * deltaAxisZ));
         }
 
         
@@ -219,11 +176,11 @@ namespace Chisel.Editors
         {
             var locking		= Snapping.AxisLocking;
             
-            var deltaAxisX	= Vector3.Dot(UnitXVector3, ((axis == Axis.X) && locking[0]) ? startPosition : currentPosition);
-            var deltaAxisY	= Vector3.Dot(UnitYVector3, ((axis == Axis.Y) && locking[1]) ? startPosition : currentPosition);
-            var deltaAxisZ	= Vector3.Dot(UnitZVector3, ((axis == Axis.Z) && locking[2]) ? startPosition : currentPosition);
+            var deltaAxisX	= Vector3.Dot(kUnitXVector3, ((axis == Axis.X) && locking[0]) ? startPosition : currentPosition);
+            var deltaAxisY	= Vector3.Dot(kUnitYVector3, ((axis == Axis.Y) && locking[1]) ? startPosition : currentPosition);
+            var deltaAxisZ	= Vector3.Dot(kUnitZVector3, ((axis == Axis.Z) && locking[2]) ? startPosition : currentPosition);
             
-            return ((UnitXVector3 * deltaAxisX) + (UnitYVector3 * deltaAxisY) + (UnitZVector3 * deltaAxisZ));
+            return ((kUnitXVector3 * deltaAxisX) + (kUnitYVector3 * deltaAxisY) + (kUnitZVector3 * deltaAxisZ));
         }
     }
 }

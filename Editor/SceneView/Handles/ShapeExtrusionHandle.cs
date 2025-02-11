@@ -18,11 +18,11 @@ namespace Chisel.Editors
 
     public static class ShapeExtrusionHandle
     {
-        static Matrix4x4		s_Transformation = Matrix4x4.identity;
-        static ChiselModelComponent		s_ModelBeneathCursor;
-        static List<Vector3>	s_Points = new();
-        static Curve2D          s_Curve2D = null;
-        static bool             s_ExtrusionMode = false;
+        static Matrix4x4		    s_Transformation = Matrix4x4.identity;
+        static ChiselModelComponent	s_ModelBeneathCursor;
+        static List<Vector3>	    s_Points = new();
+        static Curve2D              s_Curve2D = null;
+        static bool                 s_ExtrusionMode = false;
         
         // TODO: somehow get rid of this
         public static void Reset()

@@ -41,9 +41,9 @@ namespace Chisel.Editors
             }
         };
 
-        static Styles styles;
+        static Styles s_Styles;
 
-        static readonly int kToggleHashCode = $"{nameof(ChiselCompositeGUI)}.Toggle".GetHashCode();
+        readonly static int kToggleHashCode = $"{nameof(ChiselCompositeGUI)}.Toggle".GetHashCode();
         static bool Toggle(ref Rect toggleRect, bool selected, GUIContent[] content, GUIStyle style)
         {
             var selectedContent = selected ? content[1] : content[0];
@@ -56,7 +56,7 @@ namespace Chisel.Editors
             return EditorGUI.EndChangeCheck() && result;
         }
 
-        static readonly int kToggleLabelHashCode = $"{nameof(ChiselCompositeGUI)}.ToggleLabel".GetHashCode();
+        readonly static int kToggleLabelHashCode = $"{nameof(ChiselCompositeGUI)}.ToggleLabel".GetHashCode();
         static bool ToggleLabel(ref Rect toggleRect, bool selected, GUIContent[] content, GUIStyle style)
         {
             var selectedContent = selected ? content[1] : content[0];
@@ -65,17 +65,17 @@ namespace Chisel.Editors
             var toggleID = EditorGUIUtility.GetControlID(kToggleLabelHashCode, FocusType.Keyboard, toggleRect);
             var result = GUI.Toggle(toggleRect, toggleID, selected, GUIContent.none, style);
             if (Event.current.type == EventType.Repaint)
-                styles.leftButtonLabel.Draw(toggleRect, selectedContent, false, selected, false, false);
+                s_Styles.leftButtonLabel.Draw(toggleRect, selectedContent, false, selected, false, false);
             toggleRect.x += toggleRect.width;
 
             return EditorGUI.EndChangeCheck() && result;
         }
 
-        static readonly int kOperationHashCode = $"{nameof(ChiselCompositeGUI)}.Operation".GetHashCode();
+        readonly static int kOperationHashCode = $"{nameof(ChiselCompositeGUI)}.Operation".GetHashCode();
         public static void ChooseGeneratorOperation(ref CSGOperationType? operation)
         {
-            if (styles == null)
-                styles = new Styles();
+            if (s_Styles == null)
+                s_Styles = new Styles();
 
             const float kBottomPadding = 3;
             var rect = EditorGUILayout.GetControlRect(hasLabel: true, height: EditorGUIUtility.singleLineHeight + kBottomPadding);
@@ -123,8 +123,8 @@ namespace Chisel.Editors
 
         public static CSGOperationType? ShowOperationChoicesInternal(Rect rect, CSGOperationType? operation, bool showAuto = true)
         {
-            if (styles == null)
-                styles = new Styles();
+            if (s_Styles == null)
+                s_Styles = new Styles();
 
             var additiveIcon        = ChiselDefaultGeneratorDetails.GetIconContent(CSGOperationType.Additive,     "Boolean Operation");
             var subtractiveIcon     = ChiselDefaultGeneratorDetails.GetIconContent(CSGOperationType.Subtractive,  "Boolean Operation");
@@ -140,20 +140,20 @@ namespace Chisel.Editors
                 {
                     toggleRect.width = kAutomaticToggleWidth;
                     var autoIcon = ChiselEditorResources.GetIconContent(kAutoIconName, $"Automatic boolean operation");
-                    if (ToggleLabel(ref toggleRect, !operation.HasValue, autoIcon, styles.leftButton))
+                    if (ToggleLabel(ref toggleRect, !operation.HasValue, autoIcon, s_Styles.leftButton))
                         return null;
                     toggleRect.width = kOperationToggleWidth;
                 } else
                     toggleRect.width = kOperationToggleWidth + kLeftStylePadding;
 
                 var operationType = !operation.HasValue ? ((CSGOperationType)255) : (operation.Value);
-                if (Toggle(ref toggleRect, (operationType == CSGOperationType.Additive), additiveIcon, showAuto ? styles.midButton : styles.leftButton))
+                if (Toggle(ref toggleRect, (operationType == CSGOperationType.Additive), additiveIcon, showAuto ? s_Styles.midButton : s_Styles.leftButton))
                     return CSGOperationType.Additive;
                 if (!showAuto)
                     toggleRect.width -= kLeftStylePadding;
-                if (Toggle(ref toggleRect, (operationType == CSGOperationType.Subtractive), subtractiveIcon, styles.midButton))
+                if (Toggle(ref toggleRect, (operationType == CSGOperationType.Subtractive), subtractiveIcon, s_Styles.midButton))
                     return CSGOperationType.Subtractive;
-                if (Toggle(ref toggleRect, (operationType == CSGOperationType.Intersecting), intersectingIcon, styles.rightButton))
+                if (Toggle(ref toggleRect, (operationType == CSGOperationType.Intersecting), intersectingIcon, s_Styles.rightButton))
                     return CSGOperationType.Intersecting;
                 return operationType;
             }

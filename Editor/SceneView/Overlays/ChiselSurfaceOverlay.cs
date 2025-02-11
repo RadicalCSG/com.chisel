@@ -11,13 +11,13 @@ namespace Chisel.Editors
         
         // TODO: CLEAN THIS UP
         public const int kMinWidth = ((252 + 32) - ((32 + 2) * ChiselPlacementToolsSelectionWindow.kToolsWide)) + (ChiselPlacementToolsSelectionWindow.kButtonSize * ChiselPlacementToolsSelectionWindow.kToolsWide);
-        public static readonly GUILayoutOption kMinWidthLayout = GUILayout.MinWidth(kMinWidth);
+        public readonly static GUILayoutOption kMinWidthLayout = GUILayout.MinWidth(kMinWidth);
 
-        static bool show = false;
-        public bool visible { get { return show && Tools.current == Tool.Custom; } }
+        static bool s_Visible = false;
+        public bool visible { get { return s_Visible && Tools.current == Tool.Custom; } }
 
-        public static void Show() { show = true; }
-        public static void Hide() { show = false; }
+        public static void Show() { s_Visible = true; }
+        public static void Hide() { s_Visible = false; }
 
         public override void OnGUI()
         {

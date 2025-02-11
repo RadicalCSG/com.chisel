@@ -14,14 +14,14 @@ namespace Chisel.Editors
             const float kEpsilon = 0.000001F;
             
             var camera					= Camera.current;
-            var cameraLocalPos			= SceneHandles.inverseMatrix.MultiplyPoint(camera.transform.position);
-            var cameraLocalForward		= SceneHandles.inverseMatrix.MultiplyVector(camera.transform.forward);
+            var cameraLocalPos			= SceneHandles.InverseMatrix.MultiplyPoint(camera.transform.position);
+            var cameraLocalForward		= SceneHandles.InverseMatrix.MultiplyVector(camera.transform.forward);
             var isCameraInsideSphere	= (cameraLocalPos - position).magnitude < radius;
             var isCameraOrthographic	= camera.orthographic;
 
             var isStatic		= (!Tools.hidden && EditorApplication.isPlaying && GameObjectExtensions.ContainsStatic(Selection.gameObjects));
-            var prevDisabled	= SceneHandles.disabled;
-            var prevColor		= SceneHandles.color;
+            var prevDisabled	= SceneHandles.Disabled;
+            var prevColor		= SceneHandles.Color;
             
             var forward = rotation * Vector3.forward;
             var up		= rotation * Vector3.up;
@@ -81,26 +81,26 @@ namespace Chisel.Editors
                 negativeZBackfaced = (cosV < -0.0001f);
             }
                         
-            float positiveXSize = UnityEditor.HandleUtility.GetHandleSize(positiveXHandle) * 0.05f * (positiveXBackfaced ? backfaceSizeMultiplier : 1);
-            float negativeXSize = UnityEditor.HandleUtility.GetHandleSize(negativeXHandle) * 0.05f * (negativeXBackfaced ? backfaceSizeMultiplier : 1);
-            float positiveYSize = UnityEditor.HandleUtility.GetHandleSize(positiveYHandle) * 0.05f * (positiveYBackfaced ? backfaceSizeMultiplier : 1);
-            float negativeYSize = UnityEditor.HandleUtility.GetHandleSize(negativeYHandle) * 0.05f * (negativeYBackfaced ? backfaceSizeMultiplier : 1);
-            float positiveZSize = UnityEditor.HandleUtility.GetHandleSize(positiveZHandle) * 0.05f * (positiveZBackfaced ? backfaceSizeMultiplier : 1);
-            float negativeZSize = UnityEditor.HandleUtility.GetHandleSize(negativeZHandle) * 0.05f * (negativeZBackfaced ? backfaceSizeMultiplier : 1);
+            float positiveXSize = UnityEditor.HandleUtility.GetHandleSize(positiveXHandle) * 0.05f * (positiveXBackfaced ? BackfaceSizeMultiplier : 1);
+            float negativeXSize = UnityEditor.HandleUtility.GetHandleSize(negativeXHandle) * 0.05f * (negativeXBackfaced ? BackfaceSizeMultiplier : 1);
+            float positiveYSize = UnityEditor.HandleUtility.GetHandleSize(positiveYHandle) * 0.05f * (positiveYBackfaced ? BackfaceSizeMultiplier : 1);
+            float negativeYSize = UnityEditor.HandleUtility.GetHandleSize(negativeYHandle) * 0.05f * (negativeYBackfaced ? BackfaceSizeMultiplier : 1);
+            float positiveZSize = UnityEditor.HandleUtility.GetHandleSize(positiveZHandle) * 0.05f * (positiveZBackfaced ? BackfaceSizeMultiplier : 1);
+            float negativeZSize = UnityEditor.HandleUtility.GetHandleSize(negativeZHandle) * 0.05f * (negativeZBackfaced ? BackfaceSizeMultiplier : 1);
             
             
 
             var isDisabled		=  isStatic || prevDisabled || Snapping.AxisLocking[0];
             var color			= SceneHandles.StateColor(prevColor, isDisabled, false);
-            var backfacedColor	= SceneHandles.MultiplyTransparency(color, SceneHandles.backfaceAlphaMultiplier);
+            var backfacedColor	= SceneHandles.MultiplyTransparency(color, SceneHandles.BackfaceAlphaMultiplier);
 
             GUI.changed = false;
-            SceneHandles.color = positiveXBackfaced ? backfacedColor : color;
+            SceneHandles.Color = positiveXBackfaced ? backfacedColor : color;
             positiveXHandle = Slider2DHandle(positiveXHandle, Vector3.zero, forward, up, right, positiveXSize, OutlinedDotHandleCap);			
             if (GUI.changed) { radius = Vector3.Dot(positiveXHandle - position, positiveXDir); guiHasChanged = true; }
             
             GUI.changed = false;
-            SceneHandles.color = negativeXBackfaced ? backfacedColor : color;
+            SceneHandles.Color = negativeXBackfaced ? backfacedColor : color;
             negativeXHandle = Slider2DHandle(negativeXHandle, Vector3.zero, forward, up, right, negativeXSize, OutlinedDotHandleCap);			
             if (GUI.changed) { radius = Vector3.Dot(negativeXHandle - position, negativeXDir); guiHasChanged = true; }
 
@@ -108,15 +108,15 @@ namespace Chisel.Editors
 
             isDisabled		=  isStatic || prevDisabled || Snapping.AxisLocking[1];
             color			= SceneHandles.StateColor(prevColor, isDisabled, false);
-            backfacedColor	= SceneHandles.MultiplyTransparency(color, SceneHandles.backfaceAlphaMultiplier);
+            backfacedColor	= SceneHandles.MultiplyTransparency(color, SceneHandles.BackfaceAlphaMultiplier);
 
             GUI.changed = false;
-            SceneHandles.color = positiveYBackfaced ? backfacedColor : color;
+            SceneHandles.Color = positiveYBackfaced ? backfacedColor : color;
             positiveYHandle = Slider2DHandle(positiveYHandle, Vector3.zero, forward, up, right, positiveYSize, OutlinedDotHandleCap);			
             if (GUI.changed) { radius = Vector3.Dot(positiveYHandle - position, positiveYDir); guiHasChanged = true; }
             
             GUI.changed = false;
-            SceneHandles.color = negativeYBackfaced ? backfacedColor : color;
+            SceneHandles.Color = negativeYBackfaced ? backfacedColor : color;
             negativeYHandle = Slider2DHandle(negativeYHandle, Vector3.zero, forward, up, right, negativeYSize, OutlinedDotHandleCap);			
             if (GUI.changed) { radius = Vector3.Dot(negativeYHandle - position, negativeYDir); guiHasChanged = true; }
             
@@ -124,15 +124,15 @@ namespace Chisel.Editors
             
             isDisabled		=  isStatic || prevDisabled || Snapping.AxisLocking[2];
             color			= SceneHandles.StateColor(prevColor, isDisabled, false);
-            backfacedColor	= SceneHandles.MultiplyTransparency(color, SceneHandles.backfaceAlphaMultiplier);
+            backfacedColor	= SceneHandles.MultiplyTransparency(color, SceneHandles.BackfaceAlphaMultiplier);
 
             GUI.changed = false;
-            SceneHandles.color = positiveZBackfaced ? backfacedColor : color;
+            SceneHandles.Color = positiveZBackfaced ? backfacedColor : color;
             positiveZHandle = Slider2DHandle(positiveZHandle, Vector3.zero, up, forward, right, positiveZSize, OutlinedDotHandleCap);			
             if (GUI.changed) { radius = Vector3.Dot(positiveZHandle - position, positiveZDir); guiHasChanged = true; }
             
             GUI.changed = false;
-            SceneHandles.color = negativeZBackfaced ? backfacedColor : color;
+            SceneHandles.Color = negativeZBackfaced ? backfacedColor : color;
             negativeZHandle = Slider2DHandle(negativeZHandle, Vector3.zero, up, forward, right, negativeZSize, OutlinedDotHandleCap);			
             if (GUI.changed) { radius = Vector3.Dot(negativeZHandle - position, negativeZDir); guiHasChanged = true; }
 
@@ -146,7 +146,7 @@ namespace Chisel.Editors
             {
                 isDisabled		= isStatic || prevDisabled || (Snapping.AxisLocking[0] && Snapping.AxisLocking[1]);
                 color			= SceneHandles.StateColor(prevColor, isDisabled, false);
-                backfacedColor	= SceneHandles.MultiplyTransparency(color, SceneHandles.backfaceAlphaMultiplier);
+                backfacedColor	= SceneHandles.MultiplyTransparency(color, SceneHandles.BackfaceAlphaMultiplier);
                 var discOrientations = new Vector3[]
                 {
                     rotation * Vector3.right,
@@ -169,9 +169,9 @@ namespace Chisel.Editors
                         // we may have view dir locked to one axis
                         if (discTangent.sqrMagnitude > kEpsilon)
                         {
-                            SceneHandles.color = color;
+                            SceneHandles.Color = color;
                             SceneHandles.DrawWireArc(position, discOrientation, discTangent, 180, radius);
-                            SceneHandles.color = backfacedColor;
+                            SceneHandles.Color = backfacedColor;
                             SceneHandles.DrawWireArc(position, discOrientation, discTangent, -180, radius);
                         }
                     }
@@ -179,7 +179,7 @@ namespace Chisel.Editors
                 { 
                     // Since the geometry is transformed by Handles.matrix during rendering, we transform the camera position
                     // by the inverse matrix so that the two-shaded wireframe will have the proper orientation.
-                    var invMatrix				= SceneHandles.inverseMatrix;
+                    var invMatrix				= SceneHandles.InverseMatrix;
 
                     var cameraCenter			= cameraTransform.position;
                     var cameraToCenter			= position - invMatrix.MultiplyPoint(cameraCenter); // vector from camera to center
@@ -194,7 +194,7 @@ namespace Chisel.Editors
 
                         var horizonRadius = Mathf.Sqrt(sqrRadius - sqrOffset);
                         var horizonCenter = position - sqrRadius * cameraToCenter / sqrDistCameraToCenter;
-                        SceneHandles.color = color;
+                        SceneHandles.Color = color;
                         SceneHandles.DrawWireDisc(horizonCenter, cameraToCenter, horizonRadius);
 
                         var planeNormal = cameraToCenter.normalized;
@@ -214,19 +214,19 @@ namespace Chisel.Editors
                                 var vectorToPointOnHorizon	= Quaternion.AngleAxis(angleToHorizon, discOrientation) * discTangent;
                                 var horizonArcLength		= (90 - angleToHorizon) * 2.0f;
                             
-                                SceneHandles.color = color;
+                                SceneHandles.Color = color;
                                 SceneHandles.DrawWireArc(position, discOrientation, vectorToPointOnHorizon, horizonArcLength, radius);
-                                SceneHandles.color = backfacedColor;
+                                SceneHandles.Color = backfacedColor;
                                 SceneHandles.DrawWireArc(position, discOrientation, vectorToPointOnHorizon, horizonArcLength - 360, radius);
                             } else
                             {
-                                SceneHandles.color = backfacedColor;
+                                SceneHandles.Color = backfacedColor;
                                 SceneHandles.DrawWireDisc(position, discOrientation, radius);
                             }
                         }
                     } else
                     {
-                        SceneHandles.color = backfacedColor;
+                        SceneHandles.Color = backfacedColor;
                         for (int i = 0; i < 3; i++)
                         {
                             var discOrientation = discOrientations[i];
@@ -236,8 +236,8 @@ namespace Chisel.Editors
                 }
             }
 
-            SceneHandles.disabled = prevDisabled;
-            SceneHandles.color = prevColor;
+            SceneHandles.Disabled = prevDisabled;
+            SceneHandles.Color = prevColor;
 
             return radius;
         }

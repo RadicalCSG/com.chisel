@@ -10,7 +10,7 @@ namespace Chisel.Editors
     [CustomPropertyDrawer(typeof(ToggleFlagsAttribute))]
     public sealed class ToggleFlagsPropertyDrawer : PropertyDrawer
     {
-        static readonly int kToggleFlagsHashCode = nameof(ToggleFlagsPropertyDrawer).GetHashCode();
+        readonly static int kToggleFlagsHashCode = nameof(ToggleFlagsPropertyDrawer).GetHashCode();
 
         public override float GetPropertyHeight(SerializedProperty property, GUIContent label)
         {
@@ -49,8 +49,6 @@ namespace Chisel.Editors
             public Dictionary<Type, ToggleIcons[]>  toggleIconLookup    = new Dictionary<Type, ToggleIcons[]>();
         }
 
-        static readonly Dictionary<Type, ObjectTypeLookup> s_ObjectTypeLookup = new();
-        
         class Styles
         {
             public const int kButtonSize = 32 + (kButtonPadding * 2);
@@ -94,10 +92,13 @@ namespace Chisel.Editors
                 };
             }
         }
-        static Styles stylesInstance;
-        static Styles styles => stylesInstance ?? (stylesInstance = new Styles());
+        static Styles s_StylesInstance;
+        static Styles styles => s_StylesInstance ??= new Styles();
 
-        static ToggleIcons[] GetIconsForProperty(SerializedProperty property)
+		
+        readonly static Dictionary<Type, ObjectTypeLookup> s_ObjectTypeLookup = new();
+
+		static ToggleIcons[] GetIconsForProperty(SerializedProperty property)
         {
             var serializedObjectType = property.serializedObject.targetObject.GetType();
             if (!s_ObjectTypeLookup.TryGetValue(serializedObjectType, out var lookup))
@@ -148,7 +149,7 @@ namespace Chisel.Editors
             return toggleItems.ToArray();
         }
 
-        static readonly int kToggleButtonHashCode = $"{nameof(ToggleFlagsPropertyDrawer)}.ToggleButton".GetHashCode();
+        readonly static int kToggleButtonHashCode = $"{nameof(ToggleFlagsPropertyDrawer)}.ToggleButton".GetHashCode();
         public static int ToggleButton(Rect position, int current, int flag, GUIContent[] iconsOn, GUIContent[] iconsOff, GUIStyle style)
         {
             if (iconsOn == null)

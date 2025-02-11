@@ -214,7 +214,7 @@ namespace Chisel.Editors
             return result;
         }
         
-        static ChiselNode ConvertTreeNodeToBrushes(GameObject parent, in ChiselSurfaceArray surfaceDefinition, CSGTreeNode node, Vector3 pivotOffset)
+        static ChiselNodeComponent ConvertTreeNodeToBrushes(GameObject parent, in ChiselSurfaceArray surfaceDefinition, CSGTreeNode node, Vector3 pivotOffset)
         {
             if (node.Type == CSGNodeType.Brush)
             {
@@ -260,7 +260,7 @@ namespace Chisel.Editors
             return true;
         }
 
-        static ChiselNode ConvertChildTreeNodesToGameObjects(Transform parent, in ChiselSurfaceArray surfaceDefinition, CSGTreeNode node)
+        static ChiselNodeComponent ConvertChildTreeNodesToGameObjects(Transform parent, in ChiselSurfaceArray surfaceDefinition, CSGTreeNode node)
         {
             if (node.Type == CSGNodeType.Brush)
             {

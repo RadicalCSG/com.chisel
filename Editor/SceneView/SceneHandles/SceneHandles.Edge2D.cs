@@ -6,7 +6,7 @@ namespace Chisel.Editors
 {
     public sealed partial class SceneHandles
     {
-        internal static int s_Edge2DHash = "Edge1DHash".GetHashCode();
+		internal readonly static int kEdge2DHash = "Edge1DHash".GetHashCode();
 
         public static bool InCameraOrbitMode
         {
@@ -50,7 +50,7 @@ namespace Chisel.Editors
             SetArrowCursor(SceneHandleUtility.GetCursorForEdge(from, to));
         }
 
-        static readonly Vector3[] linePoints = new Vector3[2];
+        readonly static Vector3[] s_LinePoints = new Vector3[2];
         public static void DrawEdgeHandle(int id, Vector3 from, Vector3 to, bool setCursor, bool renderEdge = true, bool setControl = true, MouseCursor? cursor = null)
         {
             var evt = Event.current;
@@ -79,12 +79,12 @@ namespace Chisel.Editors
 
                     if (renderEdge)
                     {
-                        linePoints[0] = from;
-                        linePoints[1] = to;
+                        s_LinePoints[0] = from;
+                        s_LinePoints[1] = to;
                         if (EditorGUIUtility.keyboardControl == id)
-                            SceneHandles.DrawAAPolyLine(3.5f, linePoints);
+                            SceneHandles.DrawAAPolyLine(3.5f, s_LinePoints);
                         else
-                            SceneHandles.DrawAAPolyLine(2.5f, linePoints);
+                            SceneHandles.DrawAAPolyLine(2.5f, s_LinePoints);
                     }
                     break;
                 }

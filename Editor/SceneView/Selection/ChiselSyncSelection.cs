@@ -9,29 +9,25 @@ namespace Chisel.Editors
 {
     public class ChiselSyncSelection : ScriptableObject, ISerializationCallbackReceiver
     {
-        static ChiselSyncSelection _instance;
+        static ChiselSyncSelection s_Instance;
         public static ChiselSyncSelection Instance
         {
             get
             {
-                if (_instance)
-                    return _instance;
+                if (s_Instance)
+                    return s_Instance;
 
-#if UNITY_2023_1_OR_NEWER
 				var foundInstances = UnityEngine.Object.FindObjectsByType<ChiselSyncSelection>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
-#else
-                var foundInstances = UnityEngine.Object.FindObjectsOfType<ChiselSyncSelection>();
-#endif
                 if (foundInstances == null ||
                     foundInstances.Length == 0)
                 {
-                    _instance = ScriptableObject.CreateInstance<ChiselSyncSelection>();					
-                    _instance.hideFlags = HideFlags.HideAndDontSave;
-                    return _instance;
+                    s_Instance = ScriptableObject.CreateInstance<ChiselSyncSelection>();					
+                    s_Instance.hideFlags = HideFlags.HideAndDontSave;
+                    return s_Instance;
                 }
                                
-                _instance = foundInstances[0];
-                return _instance;
+                s_Instance = foundInstances[0];
+                return s_Instance;
             }
         }
 
@@ -60,7 +56,7 @@ namespace Chisel.Editors
         public static void ClearBrushVariants(CSGTreeBrush brush)
         {
             Undo.RecordObject(ChiselSyncSelection.Instance, "ClearBrushVariants variant");
-            var node = ChiselNodeHierarchyManager.FindChiselNodeByTreeNode(brush);
+            var node = Resources.InstanceIDToObject(brush.InstanceID) as ChiselNodeComponent;
             if (node) node.hierarchyItem.SetBoundsDirty();
             var modified = false;
             if (modified)
@@ -70,7 +66,7 @@ namespace Chisel.Editors
         public static void DeselectBrushVariant(CSGTreeBrush brush)
         {
             Undo.RecordObject(ChiselSyncSelection.Instance, "Deselected brush variant");
-            var node = ChiselNodeHierarchyManager.FindChiselNodeByTreeNode(brush);
+            var node = Resources.InstanceIDToObject(brush.InstanceID) as ChiselNodeComponent;
             if (node) node.hierarchyItem.SetBoundsDirty();
             var selectedBrushesLookup = Instance.selectedBrushesLookup;
             var modified = selectedBrushesLookup.Remove(brush);
@@ -81,7 +77,7 @@ namespace Chisel.Editors
         public static void SelectBrushVariant(CSGTreeBrush brush, bool uniqueSelection = false)
         {
             Undo.RecordObject(ChiselSyncSelection.Instance, "Selected brush variant");
-            var node = ChiselNodeHierarchyManager.FindChiselNodeByTreeNode(brush);
+            var node = Resources.InstanceIDToObject(brush.InstanceID) as ChiselNodeComponent;
             if (node) node.hierarchyItem.SetBoundsDirty();
             var selectedBrushesLookup = Instance.selectedBrushesLookup;
             var modified = false;/*

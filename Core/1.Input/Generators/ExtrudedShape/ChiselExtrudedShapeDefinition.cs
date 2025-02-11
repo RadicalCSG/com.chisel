@@ -10,19 +10,20 @@ namespace Chisel.Core
     [Serializable]
     public struct ChiselExtrudedShape : IBranchGenerator
     {
-        public readonly static ChiselExtrudedShape DefaultValues = new ChiselExtrudedShape
+        readonly static ChiselExtrudedShape kDefaultSettings = new()
         {
             curveSegments = 8
         };
+		public static ref readonly ChiselExtrudedShape DefaultSettings => ref kDefaultSettings;
 
-        public int curveSegments;
+		public int curveSegments;
 
         [UnityEngine.HideInInspector, NonSerialized] public BlobAssetReference<ChiselPathBlob>     pathBlob;
         [UnityEngine.HideInInspector, NonSerialized] public BlobAssetReference<ChiselCurve2DBlob>  curveBlob;
 
         [UnityEngine.HideInInspector, NonSerialized] internal UnsafeList<SegmentVertex>            polygonVerticesList;
         [UnityEngine.HideInInspector, NonSerialized] internal UnsafeList<int>                      polygonVerticesSegments;
-
+         
         #region Generate
         public int PrepareAndCountRequiredBrushMeshes()
         {
@@ -30,50 +31,46 @@ namespace Chisel.Core
                 return 0; 
 
             ref var curve = ref curveBlob.Value;
-            if (!curve.ConvexPartition(curveSegments, out polygonVerticesList, out polygonVerticesSegments, Allocator.Persistent))
+            if (!curve.ConvexPartition(curveSegments, out polygonVerticesList, out polygonVerticesSegments))
                 return 0;
 
             return polygonVerticesSegments.Length;
         }
 
-        public bool GenerateNodes(BlobAssetReference<InternalChiselSurfaceArray> surfaceDefinitionBlob, NativeList<GeneratedNode> nodes, Allocator allocator)
-        {
-            // TODO: maybe just not bother with pathblob and just convert to path-matrices directly?
-            using (var pathMatrices = pathBlob.Value.GetUnsafeMatrices(Allocator.Temp))
-            {
-                var generatedBrushMeshes = new NativeList<BlobAssetReference<BrushMeshBlob>>(nodes.Length, Allocator.Temp);
-                try
-                {
-                    generatedBrushMeshes.Resize(nodes.Length, NativeArrayOptions.ClearMemory);
-                    if (!BrushMeshFactory.GenerateExtrudedShape(generatedBrushMeshes,
-                                                                in polygonVerticesList,
-                                                                in polygonVerticesSegments,
-                                                                in pathMatrices,
-                                                                in surfaceDefinitionBlob,
-                                                                allocator))
-                    {
-                        for (int i = 0; i < generatedBrushMeshes.Length; i++)
-                        {
-                            if (generatedBrushMeshes[i].IsCreated)
-                                generatedBrushMeshes[i].Dispose();
-                            generatedBrushMeshes[i] = default;
-                        }
-                        return false;
-                    }
-                    for (int i = 0; i < generatedBrushMeshes.Length; i++)
-                        nodes[i] = GeneratedNode.GenerateBrush(generatedBrushMeshes[i]);
-                    return true;
-                }
-                finally
-                {
-                    generatedBrushMeshes.Dispose();
-                }
-            }
-        }
+        public bool GenerateNodes(BlobAssetReference<InternalChiselSurfaceArray> surfaceDefinitionBlob, 
+                                  NativeList<GeneratedNode> nodes, Allocator allocator = Allocator.Persistent)// Indirect
+		{
+			NativeList<BlobAssetReference<BrushMeshBlob>> generatedBrushMeshes;
+			using var _generatedBrushMeshes = generatedBrushMeshes = new NativeList<BlobAssetReference<BrushMeshBlob>>(nodes.Length, Allocator.Temp);
+			generatedBrushMeshes.Resize(nodes.Length, NativeArrayOptions.ClearMemory);
+
+			// TODO: maybe just not bother with pathblob and just convert to path-matrices directly?
+			using var pathMatrices = pathBlob.Value.GetUnsafeMatrices(Allocator.Temp);
+
+			if (!BrushMeshFactory.GenerateExtrudedShape(generatedBrushMeshes,
+														in polygonVerticesList,
+														in polygonVerticesSegments,
+														in pathMatrices,
+														in surfaceDefinitionBlob,
+														allocator))// Indirect
+			{
+				for (int i = 0; i < generatedBrushMeshes.Length; i++)
+				{
+					if (generatedBrushMeshes[i].IsCreated)
+						generatedBrushMeshes[i].Dispose();
+					generatedBrushMeshes[i] = default;
+				}
+				return false;
+			}
+			for (int i = 0; i < generatedBrushMeshes.Length; i++)
+				nodes[i] = GeneratedNode.GenerateBrush(generatedBrushMeshes[i]); // Confirmed to dispose
+			return true;
+		}
 
         public void Dispose()
-        {
-            if (pathBlob.IsCreated) pathBlob.Dispose();
+		{
+			// Confirmed to be called
+			if (pathBlob.IsCreated) pathBlob.Dispose();
             if (curveBlob.IsCreated) curveBlob.Dispose();
             if (polygonVerticesList.IsCreated) polygonVerticesList.Dispose();
             if (polygonVerticesSegments.IsCreated) polygonVerticesSegments.Dispose();
@@ -100,7 +97,7 @@ namespace Chisel.Core
         #endregion
 
         #region Reset
-        public void Reset() { this = DefaultValues; }
+        public void Reset() { this = DefaultSettings; }
         #endregion
     }
 
@@ -109,7 +106,7 @@ namespace Chisel.Core
     {
         public const string kNodeTypeName = "Extruded Shape";
 
-        public static readonly Curve2D  kDefaultShape           = new Curve2D(new[]{ new CurveControlPoint2D(-1,-1), new CurveControlPoint2D( 1,-1), new CurveControlPoint2D( 1, 1), new CurveControlPoint2D(-1, 1) });
+        public readonly static Curve2D  kDefaultShape           = new Curve2D(new[]{ new CurveControlPoint2D(-1,-1), new CurveControlPoint2D( 1,-1), new CurveControlPoint2D( 1, 1), new CurveControlPoint2D(-1, 1) });
 
         public Curve2D                  shape;
         public ChiselPath               path;

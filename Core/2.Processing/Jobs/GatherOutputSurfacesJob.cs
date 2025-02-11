@@ -33,7 +33,7 @@ namespace Chisel.Core
             }
         }
 
-        static readonly ListComparer listComparer = new ListComparer();
+		readonly static ListComparer listComparer = new ListComparer();
 
 
         public void Execute()

@@ -1,18 +1,11 @@
 using System;
-using Unity.Burst;
 using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
-using Unity.Jobs;
 using Unity.Mathematics;
-using Debug = UnityEngine.Debug;
-using Vector3 = UnityEngine.Vector3;
-using Quaternion = UnityEngine.Quaternion;
 using ReadOnlyAttribute = Unity.Collections.ReadOnlyAttribute;
 using WriteOnlyAttribute = Unity.Collections.WriteOnlyAttribute;
-using Unity.Entities;
-using andywiecko.BurstTriangulator;
 using System.Runtime.CompilerServices;
-using System.ComponentModel;
+using UnityEditor;
 
 namespace Chisel.Core
 {
@@ -96,8 +89,10 @@ namespace Chisel.Core
 			if (lookup.Capacity < vertices.Length) lookup.Capacity = vertices.Length;
 			if (positions2D.Capacity < vertices.Length) positions2D.Capacity = vertices.Length;
 			if (edgeIndices.Capacity < edges.Length * 2) edgeIndices.Capacity = edges.Length * 2;
+						
+			UnsafeList<int> usedIndices;			
+			using var _usedIndices = usedIndices = new UnsafeList<int>(vertices.Length, Allocator.Temp);
 
-			var usedIndices = new UnsafeList<int>(vertices.Length, Allocator.Temp);
 			usedIndices.Resize(vertices.Length, NativeArrayOptions.ClearMemory);
 			lookup.Resize(vertices.Length, NativeArrayOptions.ClearMemory);
 			edgeIndices.Resize(edges.Length * 2, NativeArrayOptions.UninitializedMemory);
@@ -124,11 +119,11 @@ namespace Chisel.Core
 				edgeIndices[i + 0] = index1;
 				edgeIndices[i + 1] = index2;
 			}
-            usedIndices.Dispose();
 		}
 
 		public void Dispose()
         {
+			// Confirmed to be called
 		    lookup.Dispose();
 		    positions2D.Dispose();
 		    edgeIndices.Dispose();
@@ -140,6 +135,7 @@ namespace Chisel.Core
     {
 		public NativeArray<int>			indexRemap;
 		public NativeList<float3>		surfaceColliderVertices;
+		public NativeList<SelectVertex> surfaceSelectVertices;
 		public NativeList<RenderVertex> surfaceRenderVertices;
 
 
@@ -147,10 +143,11 @@ namespace Chisel.Core
 		{
 			indexRemap.ClearValues();
 			surfaceColliderVertices.Clear();
+			surfaceSelectVertices.Clear();
 			surfaceRenderVertices.Clear();
 		}
 
-		public void RegisterVertices(NativeList<int> triangles, int startIndex, [ReadOnly] UnsafeList<float3> sourceVertices, float3 normal, CategoryIndex categoryIndex)
+		public void RegisterVertices(NativeList<int> triangles, int startIndex, [ReadOnly] UnsafeList<float3> sourceVertices, float3 normal, int instanceID, CategoryIndex categoryIndex)
 		{
 			var surfaceNormal = normal;
 			if (categoryIndex == CategoryIndex.ValidReverseAligned || categoryIndex == CategoryIndex.ReverseAligned)
@@ -169,6 +166,11 @@ namespace Chisel.Core
 						position = position,
 						normal = surfaceNormal
 					});
+					surfaceSelectVertices.Add(new SelectVertex
+					{
+						position = position,
+						instanceID = HandleUtility.EncodeSelectionId(instanceID)
+					});
 					indexRemap[vertexIndexSrc] = vertexIndexDst + 1;
 				} else
 					vertexIndexDst--;
@@ -177,10 +179,12 @@ namespace Chisel.Core
 		}
 
 		public void Dispose()
-        {
-		    indexRemap.Dispose();
-			surfaceColliderVertices.Dispose();
-			surfaceRenderVertices.Dispose();
+		{
+			// Confirmed to be called
+			if (indexRemap.IsCreated) indexRemap.Dispose(); indexRemap = default;
+			if (surfaceColliderVertices.IsCreated) surfaceColliderVertices.Dispose(); surfaceColliderVertices = default;
+			if (surfaceSelectVertices.IsCreated) surfaceSelectVertices.Dispose(); surfaceSelectVertices = default;
+			if (surfaceRenderVertices.IsCreated) surfaceRenderVertices.Dispose(); surfaceRenderVertices = default;
 		}
     }
 
@@ -199,8 +203,10 @@ namespace Chisel.Core
 
 		public static void ComputeTangents([ReadOnly] NativeList<int> indices, NativeList<RenderVertex> vertices)
 		{
-            var triTangents     = new NativeArray<double3>(vertices.Length, Allocator.Temp);
-            var triBinormals    = new NativeArray<double3>(vertices.Length, Allocator.Temp);
+			NativeArray<double3> triTangents;
+			using var _triTangents = triTangents = new NativeArray<double3>(vertices.Length, Allocator.Temp);
+			NativeArray<double3> triBinormals;
+			using var _triBinormals = triBinormals = new NativeArray<double3>(vertices.Length, Allocator.Temp);
 
             for (int i = 0; i < indices.Length; i += 3)
             {
@@ -309,9 +315,6 @@ namespace Chisel.Core
                 vertex.tangent = tangent;
                 vertices[v] = vertex;
             }
-
-			triTangents.Dispose();
-			triBinormals.Dispose();
 		}
 	}
 }

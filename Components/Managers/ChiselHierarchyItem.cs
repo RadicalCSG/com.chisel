@@ -1,4 +1,6 @@
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
+
 using UnityEngine;
 using UnityEngine.SceneManagement;
 
@@ -7,8 +9,8 @@ namespace Chisel.Components
 
     public sealed class ChiselSceneHierarchy
     {
-        public Scene                                Scene;
-        public ChiselModelComponent                          DefaultModel;
+        public Scene                Scene;
+        public ChiselModelComponent DefaultModel;
 
         public ChiselModelComponent GetOrCreateDefaultModel(out bool created)
         {
@@ -19,37 +21,38 @@ namespace Chisel.Components
                 if (Scene.IsValid() &&
                     Scene.isLoaded)
                 {
-                    DefaultModel = ChiselGeneratedComponentManager.CreateDefaultModel(this);
+                    DefaultModel = ChiselModelManager.Instance.CreateDefaultModel(this);
                     created = true;
                 }
             }
             return DefaultModel;
         }
 
-        public readonly List<ChiselHierarchyItem>   RootItems	    = new List<ChiselHierarchyItem>();
+        public readonly List<ChiselHierarchyItem> RootItems = new();
     }
 
     public sealed class ChiselHierarchyItem
     {
-        public static readonly Bounds EmptyBounds = new Bounds();
+        readonly static Bounds kEmptyBounds = new();
+		public static ref readonly Bounds EmptyBounds => ref kEmptyBounds;
 
-        public ChiselHierarchyItem(ChiselNode node) { Component = node; }
+		public ChiselHierarchyItem(ChiselNodeComponent node) { Component = node; }
 
-        public ChiselHierarchyItem                  Parent;
-        internal int                                siblingIndicesUntilNode;
-        public readonly List<int>                   SiblingIndices      = new List<int>();
-        public readonly List<ChiselHierarchyItem>   Children            = new List<ChiselHierarchyItem>();
+        public ChiselHierarchyItem                Parent;
+        internal int                              siblingIndicesUntilNode;
+        public readonly List<int>                 SiblingIndices      = new();
+        public readonly List<ChiselHierarchyItem> Children            = new();
 
         public ChiselSceneHierarchy sceneHierarchy;
-        public ChiselNode           parentComponent;
+        public ChiselNodeComponent  parentComponent;
         public Scene                Scene;
         
         Transform m_Transform;
-        public Transform            Transform       => (Component == null) ? null : (m_Transform != null) ? m_Transform : (m_Transform = Component.transform);
+        public Transform            Transform => (Component == null) ? null : (m_Transform != null) ? m_Transform : (m_Transform = Component.transform);
         GameObject m_GameObject;
-        public GameObject           GameObject      => (Component == null) ? null : (m_GameObject != null) ? m_GameObject : (m_GameObject = Component.gameObject);
+        public GameObject           GameObject => (Component == null) ? null : (m_GameObject != null) ? m_GameObject : (m_GameObject = Component.gameObject);
         
-        public readonly ChiselNode  Component;
+        public readonly ChiselNodeComponent  Component;
 
         // TODO: should cache this instead
         public ChiselModelComponent Model
@@ -77,16 +80,16 @@ namespace Chisel.Components
             }
         }
 
-        private Bounds				SelfBounds			    = EmptyBounds;
-        private Bounds              SelfWithChildrenBounds  = EmptyBounds;
-        private bool				BoundsDirty			    = true;
-        private bool                ChildBoundsDirty	    = true;
+        private Bounds	 SelfBounds			    = EmptyBounds;
+        private Bounds   SelfWithChildrenBounds = EmptyBounds;
+        private bool	 BoundsDirty			= true;
+        private bool     ChildBoundsDirty	    = true;
 
-        public bool                 Registered			    = false;
-        public bool                 IsOpen				    = true;
+        public bool      Registered			    = false;
+        public bool      IsOpen				    = true;
 
-        public Matrix4x4            LocalToWorldMatrix      = Matrix4x4.identity;
-        public Matrix4x4            WorldToLocalMatrix      = Matrix4x4.identity;
+        public Matrix4x4 LocalToWorldMatrix     = Matrix4x4.identity;
+        public Matrix4x4 WorldToLocalMatrix     = Matrix4x4.identity;
 
         public bool UpdateSiblingIndices(bool ignoreWhenParentIsChiselNode)
         {
@@ -120,7 +123,7 @@ namespace Chisel.Components
         }
 
         // TODO: Move bounds handling code to separate class, keep this clean
-        public void					UpdateBounds()
+        public void	UpdateBounds()
         {
             if (BoundsDirty)
             {
@@ -160,7 +163,7 @@ namespace Chisel.Components
             return gridBounds;
         }
 
-        public void		EncapsulateBounds(ref Bounds outBounds)
+        public void	EncapsulateBounds(ref Bounds outBounds)
         {
             UpdateBounds();
             if (SelfWithChildrenBounds.size.sqrMagnitude != 0)
@@ -174,11 +177,11 @@ namespace Chisel.Components
                     SelfWithChildrenBounds = new Bounds(center, Vector3.zero);
                 }
                 if (outBounds.size.sqrMagnitude == 0) outBounds = SelfWithChildrenBounds;
-                else								  outBounds.Encapsulate(SelfWithChildrenBounds);
+                else outBounds.Encapsulate(SelfWithChildrenBounds);
             }
         }
         
-        public void		EncapsulateBounds(ref Bounds outBounds, Matrix4x4 transformation)
+        public void	EncapsulateBounds(ref Bounds outBounds, Matrix4x4 transformation)
         {
             var gridBounds = CalculateBounds(transformation);
             if (gridBounds.size.sqrMagnitude != 0)
@@ -191,28 +194,26 @@ namespace Chisel.Components
                     gridBounds = new Bounds(center, Vector3.zero);
                 }
                 if (outBounds.size.sqrMagnitude == 0) outBounds = gridBounds;
-                else								  outBounds.Encapsulate(gridBounds);
+                else outBounds.Encapsulate(gridBounds);
             }
         }
 
-        public void		SetChildBoundsDirty()
+        public void	SetChildBoundsDirty()
         {
             if (ChildBoundsDirty)
                 return;
 
             ChildBoundsDirty = true;
-            if (Parent != null)
-                Parent.SetChildBoundsDirty();
+			Parent?.SetChildBoundsDirty();
         }
 
-        public void		SetBoundsDirty()
+        public void	SetBoundsDirty()
         {
             if (BoundsDirty)
                 return;
 
             BoundsDirty = true;
-            if (Parent != null)
-                Parent.SetChildBoundsDirty();
+            Parent?.SetChildBoundsDirty();
         }
     }
 

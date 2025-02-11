@@ -53,16 +53,11 @@ namespace Chisel.Core
             if (list == null) 
                 throw new ArgumentNullException(nameof(list));
 
-            bool success = true;
-            var childNodes = new NativeArray<CSGTreeNode>(list.Count, Allocator.Temp);
+            NativeArray<CSGTreeNode> childNodes;
+			using var _childNodes = childNodes = new NativeArray<CSGTreeNode>(list.Count, Allocator.Temp);
             for (int i = 0; i < list.Count; i++)
                 childNodes[i] = list[i];
-
-            using (childNodes)
-            {
-                success = CompactHierarchyManager.SetChildNodes(treeNode.nodeID, childNodes);
-            }
-            return success;
+            return CompactHierarchyManager.SetChildNodes(treeNode.nodeID, childNodes);
         }
 
         /// <summary>Sets all the children of this <see cref="Chisel.Core.CSGTreeBranch"/> to the give array of <see cref="Chisel.Core.CSGTreeNode"/>s at the specified index.</summary>
@@ -102,11 +97,9 @@ namespace Chisel.Core
             if (array == null) throw new ArgumentNullException(nameof(array));
             var length = array.Length;
             if (length == 0) return true;
-            using (var nativeArray = array.ToNativeArray(Allocator.Temp))
-            {
-                return tree.InsertRange(index, array);
-            }
-        }
+			using var nativeArray = array.ToNativeArray(Allocator.Temp);
+			return tree.InsertRange(index, array);
+		}
 
 
         /// <summary>Inserts the <see cref="Chisel.Core.CSGTreeNode"/>s of an array into the <see cref="Chisel.Core.CSGTreeBranch"/> at the specified index.</summary>
@@ -120,11 +113,9 @@ namespace Chisel.Core
             var length = array.Length;
             if (length == 0) return true;
 
-            using (var nativeArray = array.ToNativeArray(Allocator.Temp))
-            {
-                return branch.InsertRange(index, nativeArray);
-            }
-        }
+			using var nativeArray = array.ToNativeArray(Allocator.Temp);
+			return branch.InsertRange(index, nativeArray);
+		}
 
 
         /// <summary>Adds the <see cref="Chisel.Core.CSGTreeNode"/>s of the specified array to the end of the <see cref="Chisel.Core.CSGTree"/>.</summary>

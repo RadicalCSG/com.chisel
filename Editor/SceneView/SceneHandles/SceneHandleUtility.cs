@@ -1,14 +1,13 @@
 ﻿using UnityEditor;
 using UnityEngine;
 using Chisel.Core;
+using System.Buffers;
 
 namespace Chisel.Editors
 {
     public sealed partial class SceneHandleUtility
     {
-        private static readonly Vector3[] Points = {Vector3.zero, Vector3.zero, Vector3.zero, Vector3.zero, Vector3.zero};
-
-        public static int focusControl
+        public static int FocusControl
         {
             get
             {
@@ -31,19 +30,22 @@ namespace Chisel.Editors
         {
             var sideways = rotation * new Vector3 (size.x, 0, 0);
             var up		 = rotation * new Vector3 (0, size.y, 0);
-            Points[0] = UnityEditor.HandleUtility.WorldToGUIPoint (position + sideways + up);
-            Points[1] = UnityEditor.HandleUtility.WorldToGUIPoint (position + sideways - up);
-            Points[2] = UnityEditor.HandleUtility.WorldToGUIPoint (position - sideways - up);
-            Points[3] = UnityEditor.HandleUtility.WorldToGUIPoint (position - sideways + up);
-            Points[4] = Points[0];
+
+            var points = ArrayPool<Vector3>.Shared.Rent(5);
+
+            points[0] = UnityEditor.HandleUtility.WorldToGUIPoint (position + sideways + up);
+            points[1] = UnityEditor.HandleUtility.WorldToGUIPoint (position + sideways - up);
+            points[2] = UnityEditor.HandleUtility.WorldToGUIPoint (position - sideways - up);
+            points[3] = UnityEditor.HandleUtility.WorldToGUIPoint (position - sideways + up);
+            points[4] = points[0];
 
             var pos = Event.current.mousePosition;
             var oddNodes = false;
             for (int i = 0, j = 4; i < 5; i++)
             {
-                if ((Points[i].y > pos.y) != (Points[j].y>pos.y))
+                if ((points[i].y > pos.y) != (points[j].y>pos.y))
                 {
-                    if (pos.x < (Points[j].x-Points[i].x) * (pos.y-Points[i].y) / (Points[j].y-Points[i].y) + Points[i].x)
+                    if (pos.x < (points[j].x-points[i].x) * (pos.y-points[i].y) / (points[j].y-points[i].y) + points[i].x)
                     {
                         oddNodes = !oddNodes;
                     }
@@ -58,16 +60,19 @@ namespace Chisel.Editors
             var closestDist = -1f;
             for (int i = 0, j = 1; i < 4; i++)
             {
-                var dist = UnityEditor.HandleUtility.DistancePointToLineSegment(pos, Points[i], Points[j++]);
+                var dist = UnityEditor.HandleUtility.DistancePointToLineSegment(pos, points[i], points[j++]);
                 if (dist < closestDist || 
                     closestDist < 0)
                     closestDist = dist;
-            }
-            return closestDist;
+			}
+			ArrayPool<Vector3>.Shared.Return(points);
+
+
+			return closestDist;
         }
 
         
-        private static readonly MouseCursor[] SegmentCursors = new MouseCursor[]
+        private readonly static MouseCursor[] SegmentCursors = new MouseCursor[]
         {
             MouseCursor.ResizeVertical,			// |
             MouseCursor.ResizeUpLeft,			// \
@@ -107,8 +112,8 @@ namespace Chisel.Editors
             if ((from - to).sqrMagnitude < 0.001f)
                 return MouseCursor.MoveArrow;
                     
-            var worldCenterPoint1 = SceneHandles.matrix.MultiplyPoint(from);
-            var worldCenterPoint2 = SceneHandles.matrix.MultiplyPoint(to);
+            var worldCenterPoint1 = SceneHandles.Matrix.MultiplyPoint(from);
+            var worldCenterPoint2 = SceneHandles.Matrix.MultiplyPoint(to);
             var guiPoint1   = camera.WorldToScreenPoint(worldCenterPoint1);
             var guiPoint2   = camera.WorldToScreenPoint(worldCenterPoint2);
             var delta       = (guiPoint2 - guiPoint1).normalized;
@@ -122,10 +127,10 @@ namespace Chisel.Editors
             if (!camera)
                 return MouseCursor.Arrow;
 
-            var matrix = SceneHandles.matrix;
-            SceneHandles.matrix = Matrix4x4.identity;
+            var matrix = SceneHandles.Matrix;
+            SceneHandles.Matrix = Matrix4x4.identity;
             var mouseRay = UnityEditor.HandleUtility.GUIPointToWorldRay(Event.current.mousePosition);
-            SceneHandles.matrix = matrix;
+            SceneHandles.Matrix = matrix;
             mouseRay.origin = matrix.MultiplyPoint(mouseRay.origin);
             mouseRay.direction = matrix.MultiplyVector(mouseRay.direction);
             var plane = new Plane(center, up);
@@ -137,8 +142,8 @@ namespace Chisel.Editors
             if (deltaCenter.sqrMagnitude > float.Epsilon) // Note: do not invert logic, this is still false when NaN
             {
                 var tangent = Vector3.Cross(deltaCenter, up);
-                var worldCenterPoint1 = SceneHandles.matrix.MultiplyPoint(center);
-                var worldCenterPoint2 = SceneHandles.matrix.MultiplyPoint(center + (tangent * 10));
+                var worldCenterPoint1 = SceneHandles.Matrix.MultiplyPoint(center);
+                var worldCenterPoint2 = SceneHandles.Matrix.MultiplyPoint(center + (tangent * 10));
                 var guiPoint1 = (Vector2)camera.WorldToScreenPoint(worldCenterPoint1);
                 var guiPoint2 = (Vector2)camera.WorldToScreenPoint(worldCenterPoint2);
                 var delta = (guiPoint2 - guiPoint1).normalized;
@@ -154,8 +159,8 @@ namespace Chisel.Editors
             if (!camera)
                 return MouseCursor.Arrow;
                     
-            var worldCenterPoint1 = SceneHandles.matrix.MultiplyPoint(position);
-            var worldCenterPoint2 = SceneHandles.matrix.MultiplyPoint(position + (direction * 10));
+            var worldCenterPoint1 = SceneHandles.Matrix.MultiplyPoint(position);
+            var worldCenterPoint2 = SceneHandles.Matrix.MultiplyPoint(position + (direction * 10));
             var guiPoint1   = camera.WorldToScreenPoint(worldCenterPoint1);
             var guiPoint2   = camera.WorldToScreenPoint(worldCenterPoint2);
             var delta       = (guiPoint2 - guiPoint1).normalized;
@@ -163,20 +168,20 @@ namespace Chisel.Editors
             return GetCursorForDirection(delta);
         }
 
-        static GUIStyle selectionRect;
-        static GUIStyle m_SelectionRect => (selectionRect != null ? selectionRect : selectionRect = "SelectionRect");
+        static GUIStyle s_SelectionRect;
+        static GUIStyle SelectionRect => s_SelectionRect ??= "SelectionRect";
 
         public static void DrawSelectionRectangle(Rect rect)
         {
-            var origMatrix = SceneHandles.matrix;
-            SceneHandles.matrix = Matrix4x4.identity;
+            var origMatrix = SceneHandles.Matrix;
+            SceneHandles.Matrix = Matrix4x4.identity;
             if (rect.width >= 0 || rect.height >= 0)
             {
                 SceneHandles.BeginGUI();
-                m_SelectionRect.Draw(rect, GUIContent.none, false, false, false, false);
+                SelectionRect.Draw(rect, GUIContent.none, false, false, false, false);
                 SceneHandles.EndGUI();
             }
-            SceneHandles.matrix = origMatrix;
+            SceneHandles.Matrix = origMatrix;
         }
 
         // Returns the parameter for the projection of the /point/ on the given line

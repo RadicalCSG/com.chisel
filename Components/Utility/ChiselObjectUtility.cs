@@ -6,17 +6,17 @@ namespace Chisel.Components
 {
     public struct GameObjectState
     {
-        public int				                layer;
+        public int layer;
 #if UNITY_EDITOR
-        public UnityEditor.StaticEditorFlags	staticFlags;
+        public UnityEditor.StaticEditorFlags staticFlags;
 #endif
         public static GameObjectState Create(GameObject modelGameObject)
         {
             return new GameObjectState
             {
-                layer           = modelGameObject.layer,
+                layer = modelGameObject.layer,
 #if UNITY_EDITOR
-                staticFlags     = UnityEditor.GameObjectUtility.GetStaticEditorFlags(modelGameObject)
+                staticFlags = UnityEditor.GameObjectUtility.GetStaticEditorFlags(modelGameObject)
 #endif
             };
         }
@@ -114,9 +114,8 @@ namespace Chisel.Components
 
         public static void ResetTransform(Transform transform)
         {
-            var prevLocalPosition   = transform.localPosition;
-            var prevLocalRotation   = transform.localRotation;
-            var prevLocalScale      = transform.localScale;
+            transform.GetLocalPositionAndRotation(out var prevLocalPosition, out var prevLocalRotation);
+			var prevLocalScale      = transform.localScale;
                 
             if (prevLocalPosition.x != 0 ||
                 prevLocalPosition.y != 0 ||

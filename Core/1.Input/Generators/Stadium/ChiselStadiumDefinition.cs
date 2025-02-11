@@ -10,8 +10,8 @@ namespace Chisel.Core
     [Serializable]
     public struct ChiselStadium : IBrushGenerator
     {
-        public readonly static ChiselStadium DefaultValues = new ChiselStadium
-        {
+        readonly static ChiselStadium kDefaultSettings = new()
+		{
             width			= 1.0f,
             height			= 1.0f,
             length			= 1.0f,
@@ -22,8 +22,9 @@ namespace Chisel.Core
             topSides		= 4,
             bottomSides		= 4
         };
+		public static ref readonly ChiselStadium DefaultSettings => ref kDefaultSettings;
 
-        public float                width;        
+		public float                width;        
         public float                height;
         public float                length;
         public float                topLength;
@@ -49,15 +50,15 @@ namespace Chisel.Core
         #endregion
 
         #region Generate
-        public BlobAssetReference<BrushMeshBlob> GenerateMesh(BlobAssetReference<InternalChiselSurfaceArray> surfaceDefinitionBlob, Allocator allocator)
-        {
+        public readonly BlobAssetReference<BrushMeshBlob> GenerateMesh(BlobAssetReference<InternalChiselSurfaceArray> surfaceDefinitionBlob, Allocator allocator = Allocator.Persistent)// Indirect
+		{
             if (!BrushMeshFactory.GenerateStadium(width, height, length,
                                                   topLength, topSides,
                                                   bottomLength, bottomSides,
                                                   in surfaceDefinitionBlob,
                                                   out var newBrushMesh,
-                                                  allocator))
-                return default;
+                                                  allocator))// Indirect
+				return default;
             return newBrushMesh;
         }
         #endregion
@@ -97,7 +98,7 @@ namespace Chisel.Core
         #endregion
         
         #region Reset
-        public void Reset() { this = DefaultValues; }
+        public void Reset() { this = DefaultSettings; }
         #endregion
     }
 

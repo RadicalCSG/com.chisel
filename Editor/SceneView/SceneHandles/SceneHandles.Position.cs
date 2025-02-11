@@ -19,13 +19,13 @@ namespace Chisel.Editors
 
     public sealed partial class SceneHandles
     {
-        internal static int s_xAxisMoveHandleHash	= "xAxisFreeMoveHandleHash".GetHashCode();
-        internal static int s_yAxisMoveHandleHash	= "yAxisFreeMoveHandleHash".GetHashCode();
-        internal static int s_zAxisMoveHandleHash	= "zAxisFreeMoveHandleHash".GetHashCode();
-        internal static int s_xzAxisMoveHandleHash	= "xzAxesFreeMoveHandleHash".GetHashCode();
-        internal static int s_xyAxisMoveHandleHash	= "xyAxesFreeMoveHandleHash".GetHashCode();
-        internal static int s_yzAxisMoveHandleHash	= "yzAxesFreeMoveHandleHash".GetHashCode();
-        internal static int s_centerMoveHandleHash  = "centerFreeMoveHandleHash".GetHashCode();
+		internal readonly static int kAxisXMoveHandleHash	= "xAxisFreeMoveHandleHash".GetHashCode();
+		internal readonly static int kAxisYMoveHandleHash	= "yAxisFreeMoveHandleHash".GetHashCode();
+		internal readonly static int kAxisZMoveHandleHash	= "zAxisFreeMoveHandleHash".GetHashCode();
+		internal readonly static int kAxisXZMoveHandleHash	= "xzAxesFreeMoveHandleHash".GetHashCode();
+		internal readonly static int kAxisXYMoveHandleHash	= "xyAxesFreeMoveHandleHash".GetHashCode();
+		internal readonly static int kAxisYZMoveHandleHash	= "yzAxesFreeMoveHandleHash".GetHashCode();
+        internal readonly static int kCenterMoveHandleHash  = "centerFreeMoveHandleHash".GetHashCode();
 
         public struct PositionHandleIDs
         {
@@ -78,13 +78,13 @@ namespace Chisel.Editors
 
         public static void Initialize(ref PositionHandleIDs handleIDs)
         {
-            GUI.SetNextControlName("xAxis");   handleIDs.xAxisId   = GUIUtility.GetControlID (s_xAxisMoveHandleHash, FocusType.Passive);
-            GUI.SetNextControlName("yAxis");   handleIDs.yAxisId   = GUIUtility.GetControlID (s_yAxisMoveHandleHash, FocusType.Passive);
-            GUI.SetNextControlName("zAxis");   handleIDs.zAxisId   = GUIUtility.GetControlID (s_zAxisMoveHandleHash, FocusType.Passive);
-            GUI.SetNextControlName("xzPlane"); handleIDs.xzPlaneId = GUIUtility.GetControlID (s_xzAxisMoveHandleHash, FocusType.Passive);
-            GUI.SetNextControlName("xyPlane"); handleIDs.xyPlaneId = GUIUtility.GetControlID (s_xyAxisMoveHandleHash, FocusType.Passive);
-            GUI.SetNextControlName("yzPlane"); handleIDs.yzPlaneId = GUIUtility.GetControlID (s_yzAxisMoveHandleHash, FocusType.Passive);
-            GUI.SetNextControlName("center");  handleIDs.centerId  = GUIUtility.GetControlID (s_centerMoveHandleHash, FocusType.Passive);
+            GUI.SetNextControlName("xAxis");   handleIDs.xAxisId   = GUIUtility.GetControlID (kAxisXMoveHandleHash, FocusType.Passive);
+            GUI.SetNextControlName("yAxis");   handleIDs.yAxisId   = GUIUtility.GetControlID (kAxisYMoveHandleHash, FocusType.Passive);
+            GUI.SetNextControlName("zAxis");   handleIDs.zAxisId   = GUIUtility.GetControlID (kAxisZMoveHandleHash, FocusType.Passive);
+            GUI.SetNextControlName("xzPlane"); handleIDs.xzPlaneId = GUIUtility.GetControlID (kAxisXZMoveHandleHash, FocusType.Passive);
+            GUI.SetNextControlName("xyPlane"); handleIDs.xyPlaneId = GUIUtility.GetControlID (kAxisXYMoveHandleHash, FocusType.Passive);
+            GUI.SetNextControlName("yzPlane"); handleIDs.yzPlaneId = GUIUtility.GetControlID (kAxisYZMoveHandleHash, FocusType.Passive);
+            GUI.SetNextControlName("center");  handleIDs.centerId  = GUIUtility.GetControlID (kCenterMoveHandleHash, FocusType.Passive);
 
             handleIDs.xAxisState    = ControlState.None;
             handleIDs.yAxisState    = ControlState.None;
@@ -111,7 +111,7 @@ namespace Chisel.Editors
             var centerIsHot         = (handleIDs.centerState & ControlState.Hot) == ControlState.Hot;
             var isAnyHot	        = (handleIDs.combinedState & ControlState.Hot) == ControlState.Hot;
             
-            var focusControl = SceneHandleUtility.focusControl;            
+            var focusControl = SceneHandleUtility.FocusControl;            
             if (handleIDs.xAxisId   == focusControl) handleIDs.xAxisState   |= ControlState.Focused;
             if (handleIDs.yAxisId   == focusControl) handleIDs.yAxisState   |= ControlState.Focused;
             if (handleIDs.zAxisId   == focusControl) handleIDs.zAxisState   |= ControlState.Focused;
@@ -142,7 +142,7 @@ namespace Chisel.Editors
             if (activeAxes == Axes.YZ) handleIDs.yzPlaneState |= ControlState.Active;
             
             var isStatic		= (!Tools.hidden && EditorApplication.isPlaying && GameObjectExtensions.ContainsStatic(Selection.gameObjects));
-            var isDisabled	    = SceneHandles.disabled;
+            var isDisabled	    = SceneHandles.Disabled;
 
             var xAxisDisabled	= isStatic || isDisabled || xAxisLocked   || (isAnyHot && !xAxisIndirectlyHot);
             var yAxisDisabled	= isStatic || isDisabled || yAxisLocked   || (isAnyHot && !yAxisIndirectlyHot);
@@ -177,7 +177,7 @@ namespace Chisel.Editors
             var yzPlaneId = handleIDs.yzPlaneId;
             var centerId  = handleIDs.centerId;
  
-            var originalColor	= SceneHandles.color;
+            var originalColor	= SceneHandles.Color;
             
             var handleSize		= UnityEditor.HandleUtility.GetHandleSize(position);
             UnityEditor.HandleUtility.AddControl(centerId, UnityEditor.HandleUtility.DistanceToCircle(position, handleSize * 0.055f));
@@ -252,55 +252,55 @@ namespace Chisel.Editors
             var xyPlaneSelected	= (handleIDs.xyPlaneState & (ControlState.Focused | ControlState.Active)) != ControlState.None;
             var yzPlaneSelected	= (handleIDs.yzPlaneState & (ControlState.Focused | ControlState.Active)) != ControlState.None;
 
-            var xAxisColor		= SceneHandles.StateColor(SceneHandles.xAxisColor, xAxisDisabled,   xAxisSelected);
-            var yAxisColor		= SceneHandles.StateColor(SceneHandles.yAxisColor, yAxisDisabled,   yAxisSelected);
-            var zAxisColor		= SceneHandles.StateColor(SceneHandles.zAxisColor, zAxisDisabled,   zAxisSelected);
-            var xzPlaneColor	= SceneHandles.StateColor(SceneHandles.yAxisColor, xzPlaneDisabled, xzPlaneSelected);
-            var xyPlaneColor	= SceneHandles.StateColor(SceneHandles.zAxisColor, xyPlaneDisabled, xyPlaneSelected);
-            var yzPlaneColor	= SceneHandles.StateColor(SceneHandles.xAxisColor, yzPlaneDisabled, yzPlaneSelected);
+            var xAxisColor		= SceneHandles.StateColor(SceneHandles.XAxisColor, xAxisDisabled,   xAxisSelected);
+            var yAxisColor		= SceneHandles.StateColor(SceneHandles.YAxisColor, yAxisDisabled,   yAxisSelected);
+            var zAxisColor		= SceneHandles.StateColor(SceneHandles.ZAxisColor, zAxisDisabled,   zAxisSelected);
+            var xzPlaneColor	= SceneHandles.StateColor(SceneHandles.YAxisColor, xzPlaneDisabled, xzPlaneSelected);
+            var xyPlaneColor	= SceneHandles.StateColor(SceneHandles.ZAxisColor, xyPlaneDisabled, xyPlaneSelected);
+            var yzPlaneColor	= SceneHandles.StateColor(SceneHandles.XAxisColor, yzPlaneDisabled, yzPlaneSelected);
 
 
-            var prevDisabled = SceneHandles.disabled;
+            var prevDisabled = SceneHandles.Disabled;
 
             if (!xAxisLocked)
             {
-                SceneHandles.disabled = xAxisDisabled;
-                SceneHandles.color = xAxisColor;
+                SceneHandles.Disabled = xAxisDisabled;
+                SceneHandles.Color = xAxisColor;
                 points = Slider1DHandle(xAxisId, Axis.X, points, position, rotation * Vector3.right, Snapping.MoveSnappingSteps.x, handleSize, ArrowHandleCap, selectLockingAxisOnClick: true);
             }
 
             if (!yAxisLocked)
             {
-                SceneHandles.disabled = yAxisDisabled;
-                SceneHandles.color = yAxisColor;
+                SceneHandles.Disabled = yAxisDisabled;
+                SceneHandles.Color = yAxisColor;
                 points = Slider1DHandle(yAxisId, Axis.Y, points, position, rotation * Vector3.up, Snapping.MoveSnappingSteps.y, handleSize, ArrowHandleCap, selectLockingAxisOnClick: true);
             }
 
             if (!zAxisLocked)
             {
-                SceneHandles.disabled = zAxisDisabled;
-                SceneHandles.color = zAxisColor;
+                SceneHandles.Disabled = zAxisDisabled;
+                SceneHandles.Color = zAxisColor;
                 points = Slider1DHandle(zAxisId, Axis.Z, points, position, rotation * Vector3.forward, Snapping.MoveSnappingSteps.z, handleSize, ArrowHandleCap, selectLockingAxisOnClick: true);
             }
 
             if (!xzPlaneLocked)
             {
-                SceneHandles.disabled = xzPlaneDisabled;
-                SceneHandles.color = xzPlaneColor;
+                SceneHandles.Disabled = xzPlaneDisabled;
+                SceneHandles.Color = xzPlaneColor;
                 points = PlanarHandle(xzPlaneId, PlaneAxes.XZ, points, position, rotation, handleSize * 0.3f, selectLockingAxisOnClick: true);
             }
 
             if (!xyPlaneLocked)
             {
-                SceneHandles.disabled = xyPlaneDisabled;
-                SceneHandles.color = xyPlaneColor;
+                SceneHandles.Disabled = xyPlaneDisabled;
+                SceneHandles.Color = xyPlaneColor;
                 points = PlanarHandle(xyPlaneId, PlaneAxes.XY, points, position, rotation, handleSize * 0.3f, selectLockingAxisOnClick: true);
             }
 
             if (!yzPlaneLocked)
             {
-                SceneHandles.disabled = yzPlaneDisabled;
-                SceneHandles.color = yzPlaneColor;
+                SceneHandles.Disabled = yzPlaneDisabled;
+                SceneHandles.Color = yzPlaneColor;
                 points = PlanarHandle(yzPlaneId, PlaneAxes.YZ, points, position, rotation, handleSize * 0.3f, selectLockingAxisOnClick: true);
             }
 
@@ -312,7 +312,7 @@ namespace Chisel.Editors
                     case EventType.Repaint:
                     {
                         var focused = (handleIDs.centerState & ControlState.Focused) == ControlState.Focused;
-                        SceneHandles.color = SceneHandles.StateColor(SceneHandles.centerColor, false, focused);
+                        SceneHandles.Color = SceneHandles.StateColor(SceneHandles.CenterColor, false, focused);
                         SceneHandles.RenderBorderedCircle(position, handleSize * 0.05f);
                         break;
                     }
@@ -320,14 +320,14 @@ namespace Chisel.Editors
             }
 
 
-            SceneHandles.disabled = prevDisabled;
-            SceneHandles.color = originalColor;
+            SceneHandles.Disabled = prevDisabled;
+            SceneHandles.Color = originalColor;
 
             return points;
         }
 
 
-        static readonly Vector3[] s_PositionHandleArray = new Vector3[1];
+        readonly static Vector3[] s_PositionHandleArray = new Vector3[1];
         public static Vector3 PositionHandle(Vector3 position, Quaternion rotation, Axes enabledAxes = Axes.XYZ)
         {
             s_PositionHandleArray[0] = position;

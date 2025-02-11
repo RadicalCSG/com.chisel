@@ -120,7 +120,7 @@ namespace Chisel.Core
 	public struct SurfaceDestinationParameters
     {
         public const int ParameterCount = 2;
-        public static readonly SurfaceDestinationFlags[] kSurfaceDestinationParameterFlagMask = new[]
+        public readonly static SurfaceDestinationFlags[] kSurfaceDestinationParameterFlagMask = new[]
         {
             SurfaceDestinationFlags.Renderable,
             SurfaceDestinationFlags.Collidable
@@ -128,7 +128,7 @@ namespace Chisel.Core
         public const int kRenderableLayer = 0;
         public const int kColliderLayer = 1;
 
-        public static readonly SurfaceDestinationParameters Empty = new() { parameters = int2.zero };
+        public readonly static SurfaceDestinationParameters Empty = new() { parameters = int2.zero };
 
 
 		/// <value>First layer-parameter.</value>

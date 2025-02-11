@@ -16,23 +16,20 @@ namespace Chisel.Core
     struct StoreToCacheJob : IJob
     {
         // Read
-        [NoAlias, ReadOnly] public NativeList<IndexOrder>   allTreeBrushIndexOrders;
-        [NoAlias, ReadOnly] public NativeList<MinMaxAABB>   brushTreeSpaceBoundCache;
+        [NoAlias, ReadOnly] public NativeList<IndexOrder> allTreeBrushIndexOrders;
+        [NoAlias, ReadOnly] public NativeList<MinMaxAABB> brushTreeSpaceBoundCache;
         [NoAlias, ReadOnly] public NativeList<BlobAssetReference<ChiselBrushRenderBuffer>> brushRenderBufferCache;
 
-        // Read, Write
-        [NoAlias] public NativeParallelHashMap<CompactNodeID, MinMaxAABB> brushTreeSpaceBoundLookup;
+        // Read / Write
         [NoAlias] public NativeParallelHashMap<CompactNodeID, BlobAssetReference<ChiselBrushRenderBuffer>> brushRenderBufferLookup;
 
         public void Execute()
         {
-            brushTreeSpaceBoundLookup.Clear();
             brushRenderBufferLookup.Clear();
             for (int i = 0; i < allTreeBrushIndexOrders.Length; i++)
             {
                 var nodeID = allTreeBrushIndexOrders[i].compactNodeID;
-                brushTreeSpaceBoundLookup[nodeID] = brushTreeSpaceBoundCache[i];
-                brushRenderBufferLookup[nodeID] = brushRenderBufferCache[i];
+				brushRenderBufferLookup[nodeID] = brushRenderBufferCache[i];
             }
         }
     }

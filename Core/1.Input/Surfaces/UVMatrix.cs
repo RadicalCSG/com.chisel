@@ -73,10 +73,12 @@ namespace Chisel.Core
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static implicit operator UVMatrix(float4x4 input) { return new UVMatrix(input); }
 
-        public static readonly UVMatrix identity = new(new float4(1,0,0,0.0f), new float4(0,1,0,0.0f));
-        public static readonly UVMatrix centered = new(new float4(1,0,0,0.5f), new float4(0,1,0,0.5f));
+        readonly static UVMatrix kIdentity = new(new float4(1,0,0,0.0f), new float4(0,1,0,0.0f));
+        readonly static UVMatrix kCentered = new(new float4(1,0,0,0.5f), new float4(0,1,0,0.5f));
+		public static ref readonly UVMatrix Identity => ref kIdentity;
+		public static ref readonly UVMatrix Centered => ref kCentered;
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+		[MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static UVMatrix TRS(Vector2 translation, Vector3 normal, float rotation, float2 scale)
 		{
             var orientation     = Quaternion.LookRotation(normal, Vector3.forward);

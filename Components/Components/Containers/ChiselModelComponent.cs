@@ -1,5 +1,5 @@
 using System;
-using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 
 using Chisel.Core;
 
@@ -12,22 +12,22 @@ namespace Chisel.Components
     [Serializable]
     public sealed class SerializableUnwrapParam
     {
-        public const string kAngleErrorName         = nameof(angleError);
-        public const string kAreaErrorName          = nameof(areaError);
-        public const string kHardAngleName          = nameof(hardAngle);
-        public const string kPackMarginPixelsName   = nameof(packMarginPixels);
+        public const string kAngleErrorName       = nameof(angleError);
+        public const string kAreaErrorName        = nameof(areaError);
+        public const string kHardAngleName        = nameof(hardAngle);
+        public const string kPackMarginPixelsName = nameof(packMarginPixels);
 
-        public const float minAngleError	= 0.001f;
-        public const float maxAngleError    = 1.000f;
+        public const float minAngleError = 0.001f;
+        public const float maxAngleError = 1.000f;
 
-        public const float minAreaError		= 0.001f;
-        public const float maxAreaError		= 1.000f;
+        public const float minAreaError  = 0.001f;
+        public const float maxAreaError  = 1.000f;
 
-        public const float minHardAngle     = 1;
-        public const float maxHardAngle     = 179;
+        public const float minHardAngle  = 1;
+        public const float maxHardAngle  = 179;
 
-        public const float minPackMargin	= 1;
-        public const float maxPackMargin	= 256;
+        public const float minPackMargin = 1;
+        public const float maxPackMargin = 256;
 
         [Range(minAngleError, maxAngleError)] public float angleError;
         [Range(minAreaError,  maxAreaError )] public float areaError;
@@ -63,14 +63,15 @@ namespace Chisel.Components
     [Serializable]
     public sealed class ChiselGeneratedRenderSettings
     {
-        public const string kMotionVectorGenerationModeName     = nameof(motionVectorGenerationMode);
-        public const string kAllowOcclusionWhenDynamicName      = nameof(allowOcclusionWhenDynamic);
-        public const string kRenderingLayerMaskName             = nameof(renderingLayerMask);
-        public const string kReflectionProbeUsageName           = nameof(reflectionProbeUsage);
-        public const string kLightProbeUsageName                = nameof(lightProbeUsage);
-        public const string kLightProbeVolumeOverrideName       = nameof(lightProbeProxyVolumeOverride);
-        public const string kProbeAnchorName                    = nameof(probeAnchor);
-        public const string kReceiveGIName                      = nameof(receiveGI);
+        public const string kUVGenerationSettingsName       = nameof(uvGenerationSettings);
+        public const string kMotionVectorGenerationModeName = nameof(motionVectorGenerationMode);
+        public const string kAllowOcclusionWhenDynamicName  = nameof(allowOcclusionWhenDynamic);
+        public const string kRenderingLayerMaskName         = nameof(renderingLayerMask);
+        public const string kReflectionProbeUsageName       = nameof(reflectionProbeUsage);
+        public const string kLightProbeUsageName            = nameof(lightProbeUsage);
+        public const string kLightProbeVolumeOverrideName   = nameof(lightProbeProxyVolumeOverride);
+        public const string kProbeAnchorName                = nameof(probeAnchor);
+        public const string kReceiveGIName                  = nameof(receiveGI);
         
 #if UNITY_EDITOR
         public const string kLightmapParametersName             = nameof(lightmapParameters);
@@ -83,18 +84,6 @@ namespace Chisel.Components
         public const string kMinimumChartSizeName               = nameof(minimumChartSize);
         public const string kStitchLightmapSeamsName            = nameof(stitchLightmapSeams);
 #endif
-
-
-        // TODO: store lightmap information in settings so it can't get lost?
-        //renderComponents.meshRenderer.lightmapIndex
-        //renderComponents.meshRenderer.lightmapScaleOffset
-        //renderComponents.meshRenderer.lightmapTilingOffset
-        //renderComponents.meshRenderer.lightProbeUsage
-        //renderComponents.meshRenderer.realtimeLightmapIndex
-        //renderComponents.meshRenderer.realtimeLightmapScaleOffset
-        //renderComponents.meshRenderer.lightProbeProxyVolumeOverride
-        //renderComponents.meshRenderer.probeAnchor
-
 
         public GameObject                       lightProbeProxyVolumeOverride;
         public Transform                        probeAnchor;
@@ -136,9 +125,11 @@ namespace Chisel.Components
 
         public bool								stitchLightmapSeams				= false;
         public float							scaleInLightmap                 = 1.0f;
+
+		public SerializableUnwrapParam          uvGenerationSettings;
 #endif
 
-        public void Reset()
+		public void Reset()
         {
             lightProbeProxyVolumeOverride   = null;
             probeAnchor                     = null;
@@ -158,6 +149,16 @@ namespace Chisel.Components
             autoUVMaxAngle					= 89;
             minimumChartSize				= 4;
             stitchLightmapSeams				= false;
+            
+            if (uvGenerationSettings == null)
+            {
+                uvGenerationSettings = new SerializableUnwrapParam();
+				UnityEditor.UnwrapParam.SetDefaults(out var defaults);
+				uvGenerationSettings.angleError = defaults.angleError;
+                uvGenerationSettings.areaError = defaults.areaError;
+                uvGenerationSettings.hardAngle = defaults.hardAngle;
+                uvGenerationSettings.packMarginPixels = defaults.packMargin * 256;
+            }
 #endif
         }
     }
@@ -165,119 +166,53 @@ namespace Chisel.Components
 
     [ExecuteInEditMode, HelpURL(kDocumentationBaseURL + kNodeTypeName + kDocumentationExtension)]
     [DisallowMultipleComponent, AddComponentMenu("Chisel/" + kNodeTypeName)]
-    public sealed class ChiselModelComponent : ChiselNode
+    public sealed class ChiselModelComponent : ChiselNodeComponent
     {
-        public const string kRenderSettingsName             = nameof(renderSettings);
-        public const string kColliderSettingsName           = nameof(colliderSettings);
-        public const string kUVGenerationSettingsName       = nameof(uvGenerationSettings);
-        public const string kCreateRenderComponentsName     = nameof(CreateRenderComponents);
-        public const string kCreateColliderComponentsName   = nameof(CreateColliderComponents);
-        public const string kAutoRebuildUVsName             = nameof(AutoRebuildUVs);
-        public const string kVertexChannelMaskName          = nameof(VertexChannelMask);
+        public const string kRenderSettingsName           = nameof(renderSettings);
+        public const string kColliderSettingsName         = nameof(colliderSettings);
+        public const string kCreateRenderComponentsName   = nameof(CreateRenderComponents);
+        public const string kCreateColliderComponentsName = nameof(CreateColliderComponents);
+        public const string kAutoRebuildUVsName           = nameof(AutoRebuildUVs);
+        public const string kVertexChannelMaskName        = nameof(VertexChannelMask);
 
 
         public const string kNodeTypeName = "Model";
         public override string ChiselNodeTypeName { get { return kNodeTypeName; } }
 
+        
+        public ChiselGeneratedRenderSettings RenderSettings { get { return renderSettings; } }
+        public ChiselGeneratedColliderSettings ColliderSettings { get { return colliderSettings; } }        
+        public override CSGTreeNode TopTreeNode { get { return Node; } protected set { Node = (CSGTree)value; } }
+		public override bool IsContainer { get { return IsActive; } }
+		public bool IsInitialized  { get; private set; } = false;
+		public bool IsDefaultModel { get; internal set; } = false;
 
-        public ChiselGeneratedColliderSettings  ColliderSettings        { get { return colliderSettings; } }
-        public ChiselGeneratedRenderSettings    RenderSettings          { get { return renderSettings; } }
-        public SerializableUnwrapParam          UVGenerationSettings    { get { return uvGenerationSettings; } internal set { uvGenerationSettings = value; } }
-        public bool                 IsInitialized               { get { return initialized; } }
-        public override bool        IsContainer           { get { return IsActive; } }
+
+		[HideInInspector] public ChiselGeneratedObjects generated;
+		[HideInInspector] public CSGTree Node;
+
+        public ChiselGeneratedColliderSettings colliderSettings;
+        public ChiselGeneratedRenderSettings renderSettings;
+
 
         // TODO: put all bools in flags (makes it harder to work with in the ModelEditor though)
-        public bool                 CreateRenderComponents      = true;
-        public bool                 CreateColliderComponents    = true;
-        public bool                 AutoRebuildUVs              = true;
-        public VertexChannelFlags   VertexChannelMask           = VertexChannelFlags.All;
+		public bool               CreateRenderComponents   = true;
+        public bool               CreateColliderComponents = true;
+        public bool               AutoRebuildUVs           = true;
+        public VertexChannelFlags VertexChannelMask        = VertexChannelFlags.All;
 
-        public ChiselGeneratedColliderSettings    colliderSettings;
-        public ChiselGeneratedRenderSettings      renderSettings;
-        public SerializableUnwrapParam            uvGenerationSettings;
-
-        public bool IsDefaultModel { get; internal set; } = false;
-
-        [HideInInspector] public CSGTree                Node;
-        public override CSGTreeNode TopTreeNode { get { return Node; } protected set { Node = (CSGTree)value; } }
-
-        [HideInInspector] bool                          initialized = false;
-
-        [HideInInspector] public ChiselGeneratedObjects generated;
-
-
-		public override void OnInitialize()
-        {
-            base.OnInitialize();
-            if (generated != null &&
-                !generated.generatedDataContainer)
-                generated.Destroy();
-
-            if (generated == null)
-                generated = ChiselGeneratedObjects.Create(gameObject);
-
-            if (colliderSettings == null)
-            {
-                colliderSettings = new ChiselGeneratedColliderSettings();
-                colliderSettings.Reset();
-            }
-
-            if (renderSettings == null)
-            {
-                renderSettings = new ChiselGeneratedRenderSettings();
-                renderSettings.Reset();
-            }
-
-#if UNITY_EDITOR
-            if (uvGenerationSettings == null)
-            {
-                uvGenerationSettings = new SerializableUnwrapParam();
-                UnityEditor.UnwrapParam defaults;
-                UnityEditor.UnwrapParam.SetDefaults(out defaults);
-                uvGenerationSettings.angleError = defaults.angleError;
-                uvGenerationSettings.areaError = defaults.areaError;
-                uvGenerationSettings.hardAngle = defaults.hardAngle;
-                uvGenerationSettings.packMarginPixels = defaults.packMargin * 256;
-            }
-#else
-            if (generated != null && generated.meshRenderers != null)
-            {
-                foreach(var renderable in generated.renderables)
-                {                    
-                    renderable.meshRenderer.forceRenderingOff = true;
-                    renderable.meshRenderer.enabled = renderable.sharedMesh.vertexCount == 0;
-                }
-            }
-#endif
-
-            // Legacy solution
-            if (!IsDefaultModel &&
-                name == ChiselGeneratedComponentManager.kGeneratedDefaultModelName)
-                IsDefaultModel = true;
-
-            initialized = true;
-        }
-
+        
         public ChiselModelComponent() : base() { }
 
 
-        internal override CSGTreeNode RebuildTreeNodes()
-        {
-            if (Node.Valid)
-                Debug.LogWarning($"{nameof(ChiselModelComponent)} already has a treeNode, but trying to create a new one?", this);
-            var userID = GetInstanceID();
-            Node = CSGTree.Create(userID: userID);
-            return Node;
-        }
-
-        // TODO: improve warning messages
-        const string kModelHasNoChildrenMessage = kNodeTypeName + " has no children and will not have an effect";
-        const string kFailedToGenerateNodeMessage = "Failed to generate internal representation of " + kNodeTypeName + "\nThe model might not have any (active) brushes inside it.";
-		const string kChildNodesWithProblems = kNodeTypeName + " has children with errors";
-
-		// Will show a warning icon in hierarchy when generator has a problem (do not make this method slow, it is called a lot!)
+        // Will show a warning icon in hierarchy when generator has a problem (do not make this method slow, it is called a lot!)
 		public override void GetMessages(IChiselMessageHandler messages)
         {
+            // TODO: improve warning messages
+            const string kModelHasNoChildrenMessage   = kNodeTypeName + " has no children and will not have an effect";
+            const string kFailedToGenerateNodeMessage = "Failed to generate internal representation of " + kNodeTypeName + "\nThe model might not have any (active) brushes inside it.";
+		    //const string kChildNodesWithProblems    = kNodeTypeName + " has children with errors";
+
             if (!Node.Valid)
                 messages.Warning(kFailedToGenerateNodeMessage);
 
@@ -287,7 +222,7 @@ namespace Chisel.Components
                 messages.Warning(kModelHasNoChildrenMessage);
             } else
 			{
-                if (transform.GetComponentInChildren<ChiselNode>() == null)
+                if (transform.GetComponentInChildren<ChiselNodeComponent>() == null)
 				{
 					messages.Warning(kModelHasNoChildrenMessage);
 				}
@@ -309,120 +244,66 @@ namespace Chisel.Components
             base.OnCleanup();
         }
 
-#if UNITY_EDITOR
-        MaterialPropertyBlock materialPropertyBlock;
-        // TODO: move to ChiselGeneratedComponentManager
-        static void RenderChiselRenderPartialObjects(ChiselRenderObjects[] renderables, MaterialPropertyBlock materialPropertyBlock, Matrix4x4 matrix, int layer, Camera camera)
+        internal override CSGTreeNode RebuildTreeNodes()
         {
-            foreach (var renderable in renderables)
-            {
-                if (renderable == null)
-                    continue;
-
-                var mesh = (Mesh)renderable.partialMesh;
-                if (mesh == null || mesh.vertexCount == 0)
-                    continue;
-
-                var meshRenderer = renderable.meshRenderer;
-                if (!meshRenderer) 
-                    continue;
-
-                if (renderable.debugVisualizationRenderer)
-                {
-                    if (!renderable.visible)
-                        continue;
-                } else
-                {
-                    if (!meshRenderer.enabled || !meshRenderer.forceRenderingOff)
-                        continue;
-                }
-
-                meshRenderer.GetPropertyBlock(materialPropertyBlock);
-
-                var shadowCasting           = (ShadowCastingMode)meshRenderer.shadowCastingMode;
-                var shadowReceiving         = (bool)meshRenderer.receiveShadows;
-                var probeAnchor             = (Transform)meshRenderer.probeAnchor;
-                var lightProbeUsage         = (LightProbeUsage)meshRenderer.lightProbeUsage;
-                var lightProbeProxyVolume   = meshRenderer.lightProbeProxyVolumeOverride == null ? null : meshRenderer.lightProbeProxyVolumeOverride.GetComponent<LightProbeProxyVolume>();
-                
-                for (int submeshIndex = 0; submeshIndex < mesh.subMeshCount; submeshIndex++)
-                {
-                    Graphics.DrawMesh(mesh, matrix, renderable.renderMaterials[submeshIndex], layer, camera, submeshIndex, materialPropertyBlock, shadowCasting, shadowReceiving, probeAnchor, lightProbeUsage, lightProbeProxyVolume);
-                }
-            }
-        }
+            if (Node.Valid)
+                Debug.LogWarning($"{nameof(ChiselModelComponent)} already has a treeNode, but trying to create a new one?", this);
+            var instanceID = GetInstanceID();
+            Node = CSGTree.Create(instanceID: instanceID);
+            return Node;
+        }		
         
-        // TODO: move to ChiselGeneratedComponentManager
-        static void RenderChiselRenderObjects(ChiselRenderObjects[] renderables, MaterialPropertyBlock materialPropertyBlock, Matrix4x4 matrix, int layer, Camera camera)
+        public override void OnInitialize()
         {
-            foreach (var renderable in renderables)
+            base.OnInitialize();
+
+			if (colliderSettings == null)
+			{
+				colliderSettings = new ChiselGeneratedColliderSettings();
+				colliderSettings.Reset();
+			}
+
+			if (renderSettings == null)
+			{
+				renderSettings = new ChiselGeneratedRenderSettings();
+				renderSettings.Reset();
+			}
+
+			if (generated != null &&
+                !generated.generatedDataContainer)
+                generated.Destroy();
+
+            generated ??= ChiselGeneratedObjects.Create(gameObject);
+
+            // TODO: move out of here
+#if !UNITY_EDITOR
+            if (generated != null && generated.meshRenderers != null)
             {
-                if (renderable == null)
-                    continue;
-
-                var mesh = (Mesh)renderable.sharedMesh;
-                if (mesh == null || mesh.vertexCount == 0)
-                    continue;
-
-                var meshRenderer = renderable.meshRenderer;
-                if (!meshRenderer) 
-                    continue;
-
-                if (renderable.debugVisualizationRenderer)
-                {
-                    if (!renderable.visible)
-                        continue;
-                } else
-                {
-                    if (!meshRenderer.enabled || !meshRenderer.forceRenderingOff)
-                        continue;
-                }
-
-                meshRenderer.GetPropertyBlock(materialPropertyBlock);
-
-                var shadowCasting           = (ShadowCastingMode)meshRenderer.shadowCastingMode;
-                var shadowReceiving         = (bool)meshRenderer.receiveShadows;
-                var probeAnchor             = (Transform)meshRenderer.probeAnchor;
-                var lightProbeUsage         = (LightProbeUsage)meshRenderer.lightProbeUsage;
-                var lightProbeProxyVolume   = meshRenderer.lightProbeProxyVolumeOverride == null ? null : meshRenderer.lightProbeProxyVolumeOverride.GetComponent<LightProbeProxyVolume>();
-
-				for (int submeshIndex = 0; submeshIndex < mesh.subMeshCount; submeshIndex++)
-                {
-					Graphics.DrawMesh(mesh, matrix, renderable.renderMaterials[submeshIndex], layer, camera, submeshIndex, materialPropertyBlock, shadowCasting, shadowReceiving, probeAnchor, lightProbeUsage, lightProbeProxyVolume);
+                foreach(var renderable in generated.renderables)
+                {                    
+                    renderable.meshRenderer.forceRenderingOff = true;
+                    renderable.meshRenderer.enabled = renderable.sharedMesh.vertexCount == 0;
                 }
             }
+#endif
+
+            // Legacy solution
+            if (!IsDefaultModel &&
+                name == ChiselModelManager.kGeneratedDefaultModelName)
+                IsDefaultModel = true;
+
+			IsInitialized = true;
         }
 
-        // TODO: move to ChiselGeneratedComponentManager
-        public void OnRenderModel(Camera camera, DrawModeFlags drawModeFlags)
-        {
-            // When we toggle visibility on brushes in the editor hierarchy, we want to render a different mesh
-            // but still have the same lightmap, and keep lightmap support.
-            // We do this by setting forceRenderingOff to true on all MeshRenderers.
-            // This makes them behave like before, except that they don't render. This means they are still 
-            // part of things such as lightmap generation. At the same time we use Graphics.DrawMesh to
-            // render the sub-mesh with the exact same settings as the MeshRenderer.
-            if (materialPropertyBlock == null)
-                materialPropertyBlock = new MaterialPropertyBlock();
+#if UNITY_EDITOR
+        // TODO: remove from here, shouldn't be public
+		public MaterialPropertyBlock materialPropertyBlock;
 
-            var layer   = gameObject.layer; 
-            var matrix  = transform.localToWorldMatrix;
-            if (VisibilityState != VisibilityState.Mixed)
-            {
-                if ((drawModeFlags & ~DrawModeFlags.HideRenderables) != DrawModeFlags.None)
-                    RenderChiselRenderObjects(generated.debugVisualizationRenderables, materialPropertyBlock, matrix, layer, camera);
-                return;
-            }
-
-            if ((drawModeFlags & DrawModeFlags.HideRenderables) == DrawModeFlags.None)
-                RenderChiselRenderPartialObjects(generated.renderables, materialPropertyBlock, matrix, layer, camera);
-
-            if ((drawModeFlags & ~DrawModeFlags.HideRenderables) != DrawModeFlags.None)
-                RenderChiselRenderPartialObjects(generated.debugVisualizationRenderables, materialPropertyBlock, matrix, layer, camera);
+        public VisibilityState VisibilityState
+		{
+			[MethodImpl(MethodImplOptions.AggressiveInlining)]
+			get { return generated.visibilityState; } 
         }
-
-        public VisibilityState VisibilityState { get { return generated.visibilityState; } }
-
 #endif
     }
 }

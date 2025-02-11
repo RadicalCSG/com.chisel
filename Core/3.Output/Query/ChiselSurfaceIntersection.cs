@@ -16,11 +16,13 @@ namespace Chisel.Core
 
         public float	distance;
 
-        public readonly static ChiselSurfaceIntersection None = new ChiselSurfaceIntersection()
+        readonly static ChiselSurfaceIntersection kNone = new()
         {
-            treePlane               = new Plane(Vector3.zero, 0),
-            treePlaneIntersection   = Vector3.zero,
-            distance                = float.PositiveInfinity
+            treePlane               = default,
+            treePlaneIntersection   = default,
+            distance                = float.NaN
         };
-    };
+        public static ref readonly ChiselSurfaceIntersection None => ref kNone;
+
+	};
 }

@@ -20,10 +20,11 @@ namespace Chisel.Editors
         public float min;
         public float max;
         
-        public readonly static Extents1D empty = new Extents1D(0, 0);
-        
-        public float size	{ get { return max - min; } }
-        public float center { get { return (max + min) * 0.5f; } }
+        readonly static Extents1D empty = new(0, 0);
+        public static Extents1D Empty => empty;
+
+		public readonly float Size	 { get { return max - min; } }
+        public readonly float Center { get { return (max + min) * 0.5f; } }
 
         public static Extents1D operator +(Extents1D extents, float offset) { return new Extents1D(extents.min + offset, extents.max + offset); }
         public static Extents1D operator -(Extents1D extents, float offset) { return new Extents1D(extents.min - offset, extents.max - offset); }
@@ -48,9 +49,6 @@ namespace Chisel.Editors
         public static Extents1D GetExtentsOfPointArray(Vector3[] points, Vector3 direction) { return GetExtentsOfPointArray(points, direction, Vector3.zero); }
 
 
-        public override string ToString()
-        {
-            return string.Format("(Min: {0}, Max: {1})", min, max);
-        }
+        public override readonly string ToString() { return $"(Min: {min}, Max: {max})"; }
     }
 }

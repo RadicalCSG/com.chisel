@@ -1,5 +1,9 @@
-﻿using Unity.Collections;
+﻿using System;
+
+using Unity.Collections;
 using Unity.Mathematics;
+
+using UnityEngine;
 
 namespace Chisel.Core
 {
@@ -20,7 +24,7 @@ namespace Chisel.Core
 	/// <seealso cref="Chisel.Core.CSGTree" /><seealso cref="Chisel.Core.CSGTree.GetGeneratedMesh" />
 	/// <seealso cref="Chisel.Core.GeneratedMeshDescription"/><seealso cref="Chisel.Core.SurfaceDetails"/>
 	/// <seealso href="https://docs.unity3d.com/ScriptReference/Mesh.html">UnityEngine.Mesh</seealso>
-	public struct GeneratedMeshContents// : IDisposable
+	public struct GeneratedMeshContents : IDisposable
     {
         /// <value>Number of indices in mesh.</value>
         public int           		    indexCount      { get { return indices.IsCreated ? indices.Length : 0; } }
@@ -28,7 +32,7 @@ namespace Chisel.Core
         /// <value>Number of vertices in mesh.</value>
         public int           		    vertexCount     { get { return positions.IsCreated ? positions.Length : 0; } }
 
-        public NativeList<GeneratedSubMesh> subMeshes;
+        public NativeList<GeneratedSubMesh> subMeshes; 
 
         /// <value>Triplet indices to the vertices that make up the triangles in this mesh.</value>
         public NativeList<int> 		    indices;
@@ -59,8 +63,8 @@ namespace Chisel.Core
 		public NativeList<float2>       uv0;
 
         public void Dispose()
-        {
-            if (subMeshes   .IsCreated) subMeshes.Dispose();
+		{
+			if (subMeshes   .IsCreated) subMeshes.Dispose();
             if (indices     .IsCreated) indices.Dispose();
             if (brushIndices.IsCreated) brushIndices.Dispose();
             if (positions   .IsCreated) positions.Dispose();

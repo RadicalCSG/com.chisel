@@ -13,11 +13,11 @@ namespace Chisel.Editors
     [Serializable]
     public class ChiselSurfaceSelection : ISingletonData
     {
-        public HashSet<SurfaceReference> selectedSurfaces	= new HashSet<SurfaceReference>();
+        public HashSet<SurfaceReference> selectedSurfaces = new();
         public SurfaceReference[] selectedSurfacesArray;
         
         [NonSerialized]
-        public HashSet<SurfaceReference> hoverSurfaces	= new HashSet<SurfaceReference>();
+        public HashSet<SurfaceReference> hoverSurfaces = new();
         
         public void OnAfterDeserialize()
         {
@@ -68,8 +68,8 @@ namespace Chisel.Editors
     
     public class ChiselSurfaceSelectionManager : SingletonManager<ChiselSurfaceSelection, ChiselSurfaceSelectionManager>
     {
-        public static Action selectionChanged;
-        public static Action hoverChanged;
+        public static Action SelectionChanged;
+        public static Action HoverChanged;
 
         protected override void Initialize() 
         {
@@ -97,12 +97,12 @@ namespace Chisel.Editors
             get { return Data.hoverSurfaces; }
         }
 
-        public static HashSet<ChiselNode> SelectedNodes 
+        public static HashSet<ChiselNodeComponent> SelectedNodes 
         {
             get
             {
                 var selectedSurfaces    = Data.selectedSurfaces;
-                var uniqueNodes			= new HashSet<ChiselNode>();
+                var uniqueNodes			= new HashSet<ChiselNodeComponent>();
 
                 foreach (var selectedSurface in selectedSurfaces)
                 {
@@ -151,8 +151,8 @@ namespace Chisel.Editors
         {
             if (!HoverInternal(surfaces))
                 return false;
-            if (hoverChanged != null)
-                hoverChanged.Invoke();
+            if (HoverChanged != null)
+                HoverChanged.Invoke();
             return true;
         }
 
@@ -160,8 +160,8 @@ namespace Chisel.Editors
         {
             if (!UnhoverInternal(surfaces))
                 return false;
-            if (hoverChanged != null)
-                hoverChanged.Invoke();
+            if (HoverChanged != null)
+                HoverChanged.Invoke();
             return true;
         }
 
@@ -169,8 +169,8 @@ namespace Chisel.Editors
         {
             if (!UnhoverAllInternal())
                 return false;
-            if (hoverChanged != null)
-                hoverChanged.Invoke();
+            if (HoverChanged != null)
+                HoverChanged.Invoke();
             return true;
         }
 
@@ -208,27 +208,24 @@ namespace Chisel.Editors
         {
             if (!SelectInternal(surfaces))
                 return false;
-            if (selectionChanged != null)
-                selectionChanged.Invoke();
-            return true;
+			SelectionChanged?.Invoke();
+			return true;
         }
 
         public static bool Deselect(HashSet<SurfaceReference> surfaces)
         {
             if (!DeselectInternal(surfaces))
                 return false;
-            if (selectionChanged != null)
-                selectionChanged.Invoke();
-            return true;
+			SelectionChanged?.Invoke();
+			return true;
         }
 
         public static bool DeselectAll()
         {
             if (!DeselectAllInternal())
                 return false;
-            if (selectionChanged != null)
-                selectionChanged.Invoke();
-            return true;
+			SelectionChanged?.Invoke();
+			return true;
         }
 
 
@@ -263,7 +260,7 @@ namespace Chisel.Editors
         
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        static bool GetAllSurfaces(ChiselNode chiselNode, CSGTreeNode node, CSGTreeBrush? findBrush, List<SurfaceReference> surfaces)
+        static bool GetAllSurfaces(ChiselNodeComponent chiselNode, CSGTreeNode node, CSGTreeBrush? findBrush, List<SurfaceReference> surfaces)
         {
             switch (node.Type)
             {
@@ -274,7 +271,7 @@ namespace Chisel.Editors
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        static bool GetAllSurfaces(ChiselNode chiselNode, CSGTreeBranch branch, CSGTreeBrush? findBrush, List<SurfaceReference> surfaces)
+        static bool GetAllSurfaces(ChiselNodeComponent chiselNode, CSGTreeBranch branch, CSGTreeBrush? findBrush, List<SurfaceReference> surfaces)
         {
             if (!branch.Valid)
                 return false;
@@ -289,7 +286,7 @@ namespace Chisel.Editors
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        static bool GetAllSurfaces(ChiselNode chiselNode, CSGTreeBrush brush, CSGTreeBrush? findBrush, List<SurfaceReference> surfaces)
+        static bool GetAllSurfaces(ChiselNodeComponent chiselNode, CSGTreeBrush brush, CSGTreeBrush? findBrush, List<SurfaceReference> surfaces)
         {
             if (!brush.Valid)
                 return false;
@@ -313,7 +310,7 @@ namespace Chisel.Editors
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static bool GetAllSurfaceReferences(ChiselNode chiselNode, CSGTreeBrush brush, List<SurfaceReference> surfaces)
+        public static bool GetAllSurfaceReferences(ChiselNodeComponent chiselNode, CSGTreeBrush brush, List<SurfaceReference> surfaces)
         {
             if (!chiselNode || !chiselNode.TopTreeNode.Valid)
                 return false;
@@ -325,7 +322,7 @@ namespace Chisel.Editors
 
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static bool GetAllSurfaceReferences(ChiselNode chiselNode, List<SurfaceReference> surfaces)
+        public static bool GetAllSurfaceReferences(ChiselNodeComponent chiselNode, List<SurfaceReference> surfaces)
         {
             if (!chiselNode || !chiselNode.TopTreeNode.Valid)
                 return false;
@@ -336,7 +333,7 @@ namespace Chisel.Editors
             return surfaces.Count > 0;
         }
 
-        static readonly List<SurfaceReference> s_TempSurfaces = new List<SurfaceReference>();
+        readonly static List<SurfaceReference> s_TempSurfaces = new List<SurfaceReference>();
 
         static void OnSelectionChanged()
         {
@@ -360,7 +357,7 @@ namespace Chisel.Editors
                 if (usedGameObjects.Contains(gameObject))
                     continue;
 
-                var chiselNode = gameObject.GetComponent<ChiselNode>();
+                var chiselNode = gameObject.GetComponent<ChiselNodeComponent>();
                 if (chiselNode == null || !(chiselNode is ChiselGeneratorComponent))
                     continue;
 
@@ -401,7 +398,7 @@ namespace Chisel.Editors
             if (SelectedGameObjects.Count == 0)
             {
                 // To prevent the EditorTool from exiting the moment we deselect all surfaces, we leave one object 'selected'
-                var selected = UnityEditor.Selection.GetFiltered<ChiselNode>(SelectionMode.Deep | SelectionMode.Editable);
+                var selected = UnityEditor.Selection.GetFiltered<ChiselNodeComponent>(SelectionMode.Deep | SelectionMode.Editable);
                 if (selected.Length > 0)
                 {
                     UnityEditor.Selection.activeObject = selected[0];
@@ -410,8 +407,8 @@ namespace Chisel.Editors
                 UnityEditor.Selection.objects = SelectedGameObjects.ToArray();
 
             UnityEditor.Selection.selectionChanged += OnSelectionChanged;
-            if (modified && selectionChanged != null)
-                selectionChanged.Invoke();
+            if (modified && SelectionChanged != null)
+                SelectionChanged.Invoke();
             return modified;
         }
 
@@ -442,8 +439,8 @@ namespace Chisel.Editors
             } else
                 modified = UnhoverAllInternal();
 
-            if (modified && hoverChanged != null)
-                hoverChanged.Invoke();
+            if (modified && HoverChanged != null)
+                HoverChanged.Invoke();
             return modified;
         }
     }

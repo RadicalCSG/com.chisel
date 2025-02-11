@@ -27,8 +27,8 @@ namespace Chisel.Editors
         public static float RadiusHandle(Quaternion rotation, Vector3 position, float radius, bool renderDisc = true)
         {
             var isStatic		= (!Tools.hidden && EditorApplication.isPlaying && GameObjectExtensions.ContainsStatic(Selection.gameObjects));
-            var prevDisabled	= SceneHandles.disabled;
-            var prevColor		= SceneHandles.color;
+            var prevDisabled	= SceneHandles.Disabled;
+            var prevColor		= SceneHandles.Color;
 
             var forward = rotation * Vector3.forward;
             var up		= rotation * Vector3.up;
@@ -43,13 +43,13 @@ namespace Chisel.Editors
             GUI.changed = false;
             
             var isDisabled =  isStatic || prevDisabled || Snapping.AxisLocking[1];
-            SceneHandles.color = SceneHandles.StateColor(prevColor, isDisabled, false);
+            SceneHandles.Color = SceneHandles.StateColor(prevColor, isDisabled, false);
 
             radius = SizeSlider(position,     up, forward, up, right, radius);
             radius = SizeSlider(position,    -up, forward, up, right, radius);
             
             isDisabled =  isStatic || prevDisabled || Snapping.AxisLocking[0];
-            SceneHandles.color = SceneHandles.StateColor(prevColor, isDisabled, false);
+            SceneHandles.Color = SceneHandles.StateColor(prevColor, isDisabled, false);
 
             radius = SizeSlider(position,  right, forward, up, right, radius);
             radius = SizeSlider(position, -right, forward, up, right, radius);
@@ -59,23 +59,23 @@ namespace Chisel.Editors
             GUI.changed |= temp;
             
             isDisabled =  isStatic || prevDisabled || (Snapping.AxisLocking[0] && Snapping.AxisLocking[1]);
-            SceneHandles.color = SceneHandles.StateColor(prevColor, isDisabled, false);
+            SceneHandles.Color = SceneHandles.StateColor(prevColor, isDisabled, false);
 
             // Draw gizmo
             if (radius > 0 && renderDisc)
                 SceneHandles.DrawWireDisc(position, forward, radius);
 
             
-            SceneHandles.disabled = prevDisabled;
-            SceneHandles.color = prevColor;
+            SceneHandles.Disabled = prevDisabled;
+            SceneHandles.Color = prevColor;
             return radius;
         }
 
         public static Vector3 RadiusHandle(Vector3 center, Vector3 up, Vector3 radius)
         {
             var isStatic		= (!Tools.hidden && EditorApplication.isPlaying && GameObjectExtensions.ContainsStatic(Selection.gameObjects));
-            var prevDisabled	= SceneHandles.disabled;
-            var prevColor		= SceneHandles.color;
+            var prevDisabled	= SceneHandles.Disabled;
+            var prevColor		= SceneHandles.Color;
             var prevChanged		= GUI.changed;
 
 
@@ -98,7 +98,7 @@ namespace Chisel.Editors
 
             
             var isDisabled =  isStatic || prevDisabled;
-            SceneHandles.color = SceneHandles.StateColor(prevColor, isDisabled, false);
+            SceneHandles.Color = SceneHandles.StateColor(prevColor, isDisabled, false);
 
 
             GUI.changed = false;
@@ -126,7 +126,7 @@ namespace Chisel.Editors
             GUI.changed |= prevChanged;
             
             isDisabled =  isStatic || prevDisabled || (Snapping.AxisLocking[0] && Snapping.AxisLocking[1]);
-            SceneHandles.color = SceneHandles.StateColor(prevColor, isDisabled, false);
+            SceneHandles.Color = SceneHandles.StateColor(prevColor, isDisabled, false);
 
             
             float radiusMagnitude = delta1.magnitude;
@@ -134,17 +134,17 @@ namespace Chisel.Editors
                 SceneHandles.DrawWireDisc(center, up, radiusMagnitude);
             
             
-            SceneHandles.disabled = prevDisabled;
-            SceneHandles.color = prevColor;
+            SceneHandles.Disabled = prevDisabled;
+            SceneHandles.Color = prevColor;
             return radius;
         }
 
         public static void RadiusHandle(Vector3 center, Vector3 up, ref Vector3 radius1, ref Vector3 radius2)
         {
             var isStatic		= (!Tools.hidden && EditorApplication.isPlaying && GameObjectExtensions.ContainsStatic(Selection.gameObjects));
-            var prevColor		= SceneHandles.color;
-            var prevMatrix		= SceneHandles.matrix;
-            var prevDisabled	= SceneHandles.disabled;
+            var prevColor		= SceneHandles.Color;
+            var prevMatrix		= SceneHandles.Matrix;
+            var prevDisabled	= SceneHandles.Disabled;
             var prevChanged		= GUI.changed;
 
 
@@ -167,7 +167,7 @@ namespace Chisel.Editors
 
             
             var isDisabled =  isStatic || prevDisabled;
-            SceneHandles.color = SceneHandles.StateColor(prevColor, isDisabled, false);
+            SceneHandles.Color = SceneHandles.StateColor(prevColor, isDisabled, false);
 
 
             GUI.changed = false;
@@ -215,7 +215,7 @@ namespace Chisel.Editors
             GUI.changed |= prevChanged;
             
             isDisabled =  isStatic || prevDisabled || (Snapping.AxisLocking[0] && Snapping.AxisLocking[1]);
-            SceneHandles.color = SceneHandles.StateColor(prevColor, isDisabled, false);
+            SceneHandles.Color = SceneHandles.StateColor(prevColor, isDisabled, false);
 
             
             float radiusMagnitude1 = delta1.magnitude;
@@ -240,14 +240,14 @@ namespace Chisel.Editors
 
                 var newMatrix	= prevMatrix * ellipsis;
 
-                SceneHandles.matrix = newMatrix;
+                SceneHandles.Matrix = newMatrix;
                 SceneHandles.DrawWireDisc(center, up, 1.0f);
             }
             
             
-            SceneHandles.disabled = prevDisabled;
-            SceneHandles.matrix = prevMatrix;
-            SceneHandles.color = prevColor;
+            SceneHandles.Disabled = prevDisabled;
+            SceneHandles.Matrix = prevMatrix;
+            SceneHandles.Color = prevColor;
         }
     }
 }

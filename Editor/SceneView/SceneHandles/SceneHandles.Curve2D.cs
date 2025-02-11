@@ -25,22 +25,22 @@ namespace Chisel.Editors
     {
         const int kCurveEdges = 16;
         const float kMinimumEdgeDistance = 6.0f;
-        internal static int s_Curve2DDHash = "Curve2DHash".GetHashCode();
+        internal readonly static int kCurve2DDHash = "Curve2DHash".GetHashCode();
 
         public static Curve2D Curve2DHandle(Quaternion rotation, Vector3 position, Vector3 scale, Curve2D curve, int defaultControlID = 0) { Curve2DSelection curveSelection = null; return Curve2DHandle(rotation, position, scale, curve, ref curveSelection, defaultControlID); }
         public static Curve2D Curve2DHandle(Quaternion rotation, Vector3 position, Vector3 scale, Curve2D curve, ref Curve2DSelection curveSelection, int defaultControlID = 0)
         {
-            var id = GUIUtility.GetControlID(s_Curve2DDHash, FocusType.Keyboard);
+            var id = GUIUtility.GetControlID(kCurve2DDHash, FocusType.Keyboard);
             return Curve2DHandle(id, rotation, position, scale, curve, ref curveSelection, defaultControlID);
         }
         
         public static Curve2D Curve2DHandle(int id, Quaternion rotation, Vector3 position, Vector3 scale, Curve2D curve, int defaultControlID = 0) { Curve2DSelection curveSelection = null; return Curve2DHandle(id, rotation, position, scale, curve, ref curveSelection, defaultControlID); }
         public static Curve2D Curve2DHandle(int id, Matrix4x4 orientation, Curve2D curve, ref Curve2DSelection curveSelection, int defaultControlID = 0)
         {
-            var originalMatrix = SceneHandles.matrix;
-            SceneHandles.matrix = originalMatrix * orientation;
+            var originalMatrix = SceneHandles.Matrix;
+            SceneHandles.Matrix = originalMatrix * orientation;
             var result = Curve2DHandleLogic.Do(id, curve, ref curveSelection, defaultControlID);
-            SceneHandles.matrix = originalMatrix;
+            SceneHandles.Matrix = originalMatrix;
             return result;
         }
 
@@ -54,14 +54,14 @@ namespace Chisel.Editors
         public static Curve2D Curve2DHandle(Matrix4x4 transformation, Curve2D curve, int defaultControlID = 0) { Curve2DSelection curveSelection = null; return Curve2DHandle(transformation, curve, ref curveSelection, defaultControlID); }
         public static Curve2D Curve2DHandle(Matrix4x4 transformation, Curve2D curve, ref Curve2DSelection curveSelection, int defaultControlID = 0)
         {
-            var id = GUIUtility.GetControlID(s_Curve2DDHash, FocusType.Keyboard);
+            var id = GUIUtility.GetControlID(kCurve2DDHash, FocusType.Keyboard);
             return Curve2DHandle(id, transformation, curve, ref curveSelection, defaultControlID);
         }
         
         public static Curve2D Curve2DHandle(Curve2D curve, int defaultControlID = 0) { Curve2DSelection curveSelection = null; return Curve2DHandle(Matrix4x4.identity, curve, ref curveSelection, defaultControlID); }
         public static Curve2D Curve2DHandle(Curve2D curve, ref Curve2DSelection curveSelection, int defaultControlID = 0)
         {
-            var id = GUIUtility.GetControlID(s_Curve2DDHash, FocusType.Keyboard);
+            var id = GUIUtility.GetControlID(kCurve2DDHash, FocusType.Keyboard);
             return Curve2DHandle(id, Matrix4x4.identity, curve, ref curveSelection, defaultControlID);
         }
 
@@ -289,7 +289,7 @@ namespace Chisel.Editors
 
             internal static void PaintConstraintHandles(Curve2D curve, bool haveFocus, int hoverOverPointID, int hoverOverTangentID)
             {
-                var color = SceneHandles.color;
+                var color = SceneHandles.Color;
                 var controlPoints = curve.controlPoints;
                 for (int i = 0; i < controlPoints.Length; i++)
                 {
@@ -307,10 +307,10 @@ namespace Chisel.Editors
                             var tangent1			= point - prevTangent;
                             var tangentSize1		= UnityEditor.HandleUtility.GetHandleSize(tangent1) * kCurveTangentSize;
                             var showTangentFocus	= haveFocus && (hoverOverTangentID == ((i * 2) + 1));
-                            SceneHandles.color = SceneHandles.StateColor(color, false, false, (showPointFocus || showTangentFocus));
+                            SceneHandles.Color = SceneHandles.StateColor(color, false, false, (showPointFocus || showTangentFocus));
                             SceneHandles.DrawDottedLine(point, tangent1, 4.0f);
 
-                            SceneHandles.color = SceneHandles.StateColor(color, false, showTangentFocus, false);
+                            SceneHandles.Color = SceneHandles.StateColor(color, false, showTangentFocus, false);
                             if (prevConstraint == ControlPointConstraint.Broken) SceneHandles.RenderBordererdTriangle(tangent1, tangentSize1);
                             else SceneHandles.RenderBordererdDiamond(tangent1, tangentSize1);
                         }
@@ -323,10 +323,10 @@ namespace Chisel.Editors
                             var tangent2			= point - nextTangent;
                             var tangentSize2		= UnityEditor.HandleUtility.GetHandleSize(tangent2) * kCurveTangentSize;
                             var showTangentFocus	= haveFocus && (hoverOverTangentID == ((i * 2) + 0));
-                            SceneHandles.color = SceneHandles.StateColor(color, false, (showPointFocus || showTangentFocus));
+                            SceneHandles.Color = SceneHandles.StateColor(color, false, (showPointFocus || showTangentFocus));
                             SceneHandles.DrawDottedLine(point, tangent2, 4.0f);
                             
-                            SceneHandles.color = SceneHandles.StateColor(color, false, showTangentFocus, false);
+                            SceneHandles.Color = SceneHandles.StateColor(color, false, showTangentFocus, false);
                             if (nextConstraint == ControlPointConstraint.Broken) SceneHandles.RenderBordererdTriangle(tangent2, tangentSize2);
                             else SceneHandles.RenderBordererdDiamond(tangent2, tangentSize2);
                         }
@@ -392,7 +392,7 @@ namespace Chisel.Editors
 
             internal static void PaintCurveHandles(Curve2D curve, Curve2DSelection curveSelection, bool haveFocus, int hoverOverPointID, int hoverOverTangentID)
             {
-                var color = SceneHandles.color;
+                var color = SceneHandles.Color;
                 var controlPoints = curve.controlPoints;
                 for (int i = 0; i < controlPoints.Length; i++)
                 {
@@ -430,7 +430,7 @@ namespace Chisel.Editors
             
             internal static void PaintCurveOutline(Curve2D curve, bool haveFocus, int hoverOverPointID, int hoverOverTangentID, int hoverOverEdgeID)
             {
-                var color = SceneHandles.color;
+                var color = SceneHandles.Color;
                 var controlPoints = curve.controlPoints;
 
                 var outlineColor = Color.black;
@@ -474,41 +474,41 @@ namespace Chisel.Editors
 
                     if (renderHighlighted)
                     {
-                        SceneHandles.color = SceneHandles.StateColor(outlineColor);
+                        SceneHandles.Color = SceneHandles.StateColor(outlineColor);
                         SceneHandles.DrawAAPolyLine(5.0f, length, points);
-                        SceneHandles.color = SceneHandles.StateColor(color, isSelected: true);
+                        SceneHandles.Color = SceneHandles.StateColor(color, isSelected: true);
                         SceneHandles.DrawAAPolyLine(4.0f, length, points);
                         continue;
                     }
 
-                    SceneHandles.color = SceneHandles.StateColor(outlineColor);
+                    SceneHandles.Color = SceneHandles.StateColor(outlineColor);
                     SceneHandles.DrawAAPolyLine(3.0f, length, points);
-                    SceneHandles.color = SceneHandles.StateColor(color, isSelected: false);
+                    SceneHandles.Color = SceneHandles.StateColor(color, isSelected: false);
                     SceneHandles.DrawAAPolyLine(2.0f, length, points);
                 }
             }
 
             public static void PaintCurve(Curve2D curve, int id, Curve2DSelection curveSelection, int hoverOverPointID, int hoverOverTangentID, int hoverOverEdgeID)
             {
-                var originalDisabled    = SceneHandles.disabled;
-                var originalColor       = SceneHandles.color;
+                var originalDisabled    = SceneHandles.Disabled;
+                var originalColor       = SceneHandles.Color;
 
                 var isStatic            = (!Tools.hidden && EditorApplication.isPlaying && GameObjectExtensions.ContainsStatic(Selection.gameObjects));
-                SceneHandles.disabled = isStatic || originalDisabled || (Snapping.AxisLocking[0] && Snapping.AxisLocking[1]);
+                SceneHandles.Disabled = isStatic || originalDisabled || (Snapping.AxisLocking[0] && Snapping.AxisLocking[1]);
                 
                 var hotControl			= GUIUtility.hotControl;
                 var haveFocus           = ((hotControl == 0) && (id == UnityEditor.HandleUtility.nearestControl)) || (id == hotControl);
 
                 PaintCurveOutline(curve, haveFocus, hoverOverPointID, hoverOverTangentID, hoverOverEdgeID);
-                if (!SceneHandles.disabled)
+                if (!SceneHandles.Disabled)
                 {
                     PaintConstraintHandles(curve, haveFocus, hoverOverPointID, hoverOverTangentID);
                     PaintCurveHandles(curve, curveSelection, haveFocus, hoverOverPointID, hoverOverTangentID);
                 }
 
-                SceneHandles.disabled = originalDisabled;
+                SceneHandles.Disabled = originalDisabled;
 
-                SceneHandles.color = originalColor;
+                SceneHandles.Color = originalColor;
             }
 
             public static void LayoutCurve(Curve2D curve, int id, out int closestPoint, out int closestTangent, out int closestEdge, out Vector3 pointOnEdge)
@@ -703,7 +703,7 @@ namespace Chisel.Editors
 
                         if (GUIUtility.hotControl == id)
                         {
-                            var selectedColor = SceneHandles.StateColor(SceneHandles.MultiplyTransparency(SceneHandles.selectedColor, 0.5f));
+                            var selectedColor = SceneHandles.StateColor(SceneHandles.MultiplyTransparency(SceneHandles.SelectedColor, 0.5f));
                             using (new SceneHandles.DrawingScope(selectedColor))
                                 HandleRendering.RenderSnapping3D(state.s_Snapping2D.WorldSlideGrid, state.s_Snapping2D.WorldSnappedExtents, state.s_Snapping2D.GridSnappedPosition, state.s_Snapping2D.SnapResult, true);
                         }
@@ -712,7 +712,7 @@ namespace Chisel.Editors
                     case EventType.MouseMove:
                     {
                         state.s_PointHasMoved = false;
-                        var haveFocus = id == SceneHandleUtility.focusControl;
+                        var haveFocus = id == SceneHandleUtility.FocusControl;
                         if (!haveFocus)
                         {
                             state.s_ClosestPoint	 = -1;
@@ -741,7 +741,7 @@ namespace Chisel.Editors
                     }
                     case EventType.MouseDown:
                     {
-                        if (SceneHandles.disabled)
+                        if (SceneHandles.Disabled)
                             break;
 
                         if (state.s_HoverOverPoint == -1 && state.s_HoverOverTangent == -1 && state.s_HoverOverEdge == -1)
@@ -834,7 +834,7 @@ namespace Chisel.Editors
                                 
                             state.s_CurrentMousePosition = evt.mousePosition;
                             
-                            var localToWorldMatrix	= SceneHandles.matrix;
+                            var localToWorldMatrix	= SceneHandles.Matrix;
                             var forward             = localToWorldMatrix.MultiplyVector(Vector3.forward);
                             var activeGrid			= Grid.ActiveGrid;
 
@@ -870,7 +870,7 @@ namespace Chisel.Editors
                         if (!state.s_Snapping2D.DragTo(state.s_CurrentMousePosition))
                             break;
                         
-                        var worldToLocalMatrix	= SceneHandles.inverseMatrix;
+                        var worldToLocalMatrix	= SceneHandles.InverseMatrix;
                         var localSnappedDelta	= worldToLocalMatrix.MultiplyVector(state.s_Snapping2D.WorldSnappedDelta);
                         var localQuantizedDelta	= SnappingUtility.Quantize(state.s_LocalStartPosition + localSnappedDelta) - state.s_LocalStartPosition;
 

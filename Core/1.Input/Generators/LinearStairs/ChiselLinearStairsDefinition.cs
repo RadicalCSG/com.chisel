@@ -32,8 +32,8 @@ namespace Chisel.Core
     public struct ChiselLinearStairs : IBranchGenerator
     {
         // TODO: set defaults using attributes?
-        public readonly static ChiselLinearStairs DefaultValues = new ChiselLinearStairs
-        {
+        readonly static ChiselLinearStairs kDefaultSettings = new()
+		{
             stepHeight		= 0.20f,
             stepDepth		= 0.20f,
             treadHeight	    = 0.02f,
@@ -54,10 +54,11 @@ namespace Chisel.Core
             sideWidth		= 0.125f,
             sideHeight		= 0.5f
         };
+		public static ref readonly ChiselLinearStairs DefaultSettings => ref kDefaultSettings;
 
-        // TODO: add all spiral stairs improvements to linear stairs
+		// TODO: add all spiral stairs improvements to linear stairs
 
-        public MinMaxAABB bounds;
+		public MinMaxAABB bounds;
 
         [DistanceValue] public float	stepHeight;
         [DistanceValue] public float	stepDepth;
@@ -143,46 +144,43 @@ namespace Chisel.Core
             return description.subMeshCount;
         }
 
-        public bool GenerateNodes(BlobAssetReference<InternalChiselSurfaceArray> surfaceDefinitionBlob, NativeList<GeneratedNode> nodes, Allocator allocator)
-        {
-            var generatedBrushMeshes = new NativeList<BlobAssetReference<BrushMeshBlob>>(nodes.Length, Allocator.Temp);
-            try
-            {
-                generatedBrushMeshes.Resize(nodes.Length, NativeArrayOptions.ClearMemory);
-                var description = new BrushMeshFactory.LineairStairsData(bounds,
-                                                                        stepHeight, stepDepth,
-                                                                        treadHeight,
-                                                                        nosingDepth, nosingWidth,
-                                                                        plateauHeight,
-                                                                        riserType, riserDepth,
-                                                                        leftSide, rightSide,
-                                                                        sideWidth, sideHeight, sideDepth);
-                const int subMeshOffset = 0;
-                if (!BrushMeshFactory.GenerateLinearStairsSubMeshes(generatedBrushMeshes,
-                                                                    subMeshOffset,
-                                                                    in description,
-                                                                    in surfaceDefinitionBlob,
-                                                                    allocator))
-                {
-                    for (int i = 0; i < generatedBrushMeshes.Length; i++)
-                    {
-                        if (generatedBrushMeshes[i].IsCreated)
-                            generatedBrushMeshes[i].Dispose();
-                        generatedBrushMeshes[i] = default;
-                    }
-                    return false;
-                }
+        public readonly bool GenerateNodes(BlobAssetReference<InternalChiselSurfaceArray> surfaceDefinitionBlob, 
+                                           NativeList<GeneratedNode> nodes, Allocator allocator = Allocator.Persistent)// Indirect
+		{
+            NativeList<BlobAssetReference<BrushMeshBlob>> generatedBrushMeshes;
+			using var _generatedBrushMeshes = generatedBrushMeshes = new NativeList<BlobAssetReference<BrushMeshBlob>>(nodes.Length, Allocator.Temp);
+
+            generatedBrushMeshes.Resize(nodes.Length, NativeArrayOptions.ClearMemory);
+            var description = new BrushMeshFactory.LineairStairsData(bounds,
+                                                                    stepHeight, stepDepth,
+                                                                    treadHeight,
+                                                                    nosingDepth, nosingWidth,
+                                                                    plateauHeight,
+                                                                    riserType, riserDepth,
+                                                                    leftSide, rightSide,
+                                                                    sideWidth, sideHeight, sideDepth);
+            const int subMeshOffset = 0;
+            if (!BrushMeshFactory.GenerateLinearStairsSubMeshes(generatedBrushMeshes,
+                                                                subMeshOffset,
+                                                                in description,
+                                                                in surfaceDefinitionBlob,
+                                                                allocator))// Indirect
+			{
                 for (int i = 0; i < generatedBrushMeshes.Length; i++)
-                    nodes[i] = GeneratedNode.GenerateBrush(generatedBrushMeshes[i]);
+                {
+                    if (generatedBrushMeshes[i].IsCreated)
+                        generatedBrushMeshes[i].Dispose();
+                    generatedBrushMeshes[i] = default;
+                }
+                return false;
             }
-            finally
-            {
-                generatedBrushMeshes.Dispose();
-            }
+            for (int i = 0; i < generatedBrushMeshes.Length; i++)
+                nodes[i] = GeneratedNode.GenerateBrush(generatedBrushMeshes[i]);
+            
             return true;
         }
 
-        public void Dispose() {}
+        public readonly void Dispose() {}
         #endregion
 
         #region Surfaces
@@ -266,7 +264,7 @@ namespace Chisel.Core
         #endregion
 
         #region Reset
-        public void Reset() { this = DefaultValues; }
+        public void Reset() { this = DefaultSettings; }
         #endregion
     }
 

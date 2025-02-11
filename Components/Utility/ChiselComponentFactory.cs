@@ -8,8 +8,8 @@ namespace Chisel.Components
 {
     // TODO: rename
     public sealed class ChiselComponentFactory
-    {
-        public static T AddComponent<T>(GameObject gameObject) where T : ChiselNode
+	{
+		public static T AddComponent<T>(GameObject gameObject) where T : ChiselNodeComponent
         {
             // TODO: ensure we're creating this in the active scene
             // TODO: handle scene being locked by version control
@@ -36,14 +36,14 @@ namespace Chisel.Components
             }
         }
 
-        public static void SetTransform<T>(T component, Transform parent, Matrix4x4 trsMatrix) where T : ChiselNode
+        public static void SetTransform<T>(T component, Transform parent, Matrix4x4 trsMatrix) where T : ChiselNodeComponent
         {
             if (!component)
                 return;
             SetTransform(component.transform, parent, trsMatrix);
         }
 
-        public static void SetTransform<T>(T component, Matrix4x4 trsMatrix) where T : ChiselNode
+        public static void SetTransform<T>(T component, Matrix4x4 trsMatrix) where T : ChiselNodeComponent
         {
             if (!component)
                 return;
@@ -71,9 +71,10 @@ namespace Chisel.Components
                 transform.SetLocal(trsMatrix);
         }
 
-        static Dictionary<string, string> cleanedupTypenames = new();
+        // TODO: put in its own class
+		readonly static Dictionary<string, string> s_CleanedupTypenames = new();
 
-        public static T Create<T>(string name, Transform parent, Matrix4x4 trsMatrix) where T : ChiselNode
+        public static T Create<T>(string name, Transform parent, Matrix4x4 trsMatrix) where T : ChiselNodeComponent
         {
             // TODO: ensure we're creating this in the active scene
             // TODO: handle scene being locked by version control
@@ -81,14 +82,14 @@ namespace Chisel.Components
             if (string.IsNullOrEmpty(name))
 			{
 				string orgTypename = typeof(T).Name;
-                if (!cleanedupTypenames.TryGetValue(orgTypename, out var typename))
+                if (!s_CleanedupTypenames.TryGetValue(orgTypename, out var typename))
                 {
                     typename = orgTypename;
                     if (typename.StartsWith("Chisel"))
                         typename = typename.Substring("Chisel".Length);
                     if (typename.EndsWith("Component"))
                         typename = typename.Substring(0, typename.Length - "Component".Length);
-                    cleanedupTypenames[orgTypename] = typename;
+                    s_CleanedupTypenames[orgTypename] = typename;
                 }
 #if UNITY_EDITOR
 				name = UnityEditor.GameObjectUtility.GetUniqueNameForSibling(parent, typename);
@@ -178,22 +179,22 @@ namespace Chisel.Components
             }
         }
          
-        public static T Create<T>(string name, Transform parent, Vector3 position, Quaternion rotation, Vector3 scale) where T : ChiselNode
+        public static T Create<T>(string name, Transform parent, Vector3 position, Quaternion rotation, Vector3 scale) where T : ChiselNodeComponent
         {
             return Create<T>(name, parent, Matrix4x4.TRS(position, rotation, scale));
         }
 
-        public static T Create<T>(string name, ChiselModelComponent model) where T : ChiselNode { return Create<T>(name, model ? model.transform : null, Vector3.zero, Quaternion.identity, Vector3.one); }
-        public static T Create<T>(string name, Transform parent = null) where T : ChiselNode { return Create<T>(name, parent, Vector3.zero, Quaternion.identity, Vector3.one); }
-        public static T Create<T>(Transform parent, Vector3 position, Quaternion rotation, Vector3 scale) where T : ChiselNode { return Create<T>(null, parent, position, rotation, scale); }
-        public static T Create<T>(Transform parent, Matrix4x4 trsMatrix) where T : ChiselNode { return Create<T>(null, parent, trsMatrix); }
-        public static T Create<T>(Transform parent = null) where T : ChiselNode { return Create<T>(null, parent, Vector3.zero, Quaternion.identity, Vector3.one); }
-        public static T Create<T>(Vector3 position, Quaternion rotation, Vector3 scale) where T : ChiselNode { return Create<T>(null, (Transform)null, position, rotation, scale); }
-        public static T Create<T>(Matrix4x4 trsMatrix) where T : ChiselNode { return Create<T>(null, (Transform)null, trsMatrix); }
-        public static T Create<T>(ChiselModelComponent model, Vector3 position, Quaternion rotation, Vector3 scale) where T : ChiselNode { return Create<T>(null, model ? model.transform : null, position, rotation, scale); }
-        public static T Create<T>(ChiselModelComponent model, Matrix4x4 trsMatrix) where T : ChiselNode { return Create<T>(null, model ? model.transform : null, trsMatrix); }
-        public static T Create<T>(ChiselModelComponent model) where T : ChiselNode { return Create<T>(null, model ? model.transform : null, Vector3.zero, Quaternion.identity, Vector3.one); }
-        public static T Create<T>(string name, ChiselModelComponent model, Matrix4x4 trsMatrix) where T : ChiselNode { return Create<T>(name, model ? model.transform : null, trsMatrix); }
-        public static T Create<T>(string name, ChiselModelComponent model, Vector3 position, Quaternion rotation, Vector3 scale) where T : ChiselNode { return Create<T>(name, model ? model.transform : null, position, rotation, scale); }
+        public static T Create<T>(string name, ChiselModelComponent model) where T : ChiselNodeComponent { return Create<T>(name, model ? model.transform : null, Vector3.zero, Quaternion.identity, Vector3.one); }
+        public static T Create<T>(string name, Transform parent = null) where T : ChiselNodeComponent { return Create<T>(name, parent, Vector3.zero, Quaternion.identity, Vector3.one); }
+        public static T Create<T>(Transform parent, Vector3 position, Quaternion rotation, Vector3 scale) where T : ChiselNodeComponent { return Create<T>(null, parent, position, rotation, scale); }
+        public static T Create<T>(Transform parent, Matrix4x4 trsMatrix) where T : ChiselNodeComponent { return Create<T>(null, parent, trsMatrix); }
+        public static T Create<T>(Transform parent = null) where T : ChiselNodeComponent { return Create<T>(null, parent, Vector3.zero, Quaternion.identity, Vector3.one); }
+        public static T Create<T>(Vector3 position, Quaternion rotation, Vector3 scale) where T : ChiselNodeComponent { return Create<T>(null, (Transform)null, position, rotation, scale); }
+        public static T Create<T>(Matrix4x4 trsMatrix) where T : ChiselNodeComponent { return Create<T>(null, (Transform)null, trsMatrix); }
+        public static T Create<T>(ChiselModelComponent model, Vector3 position, Quaternion rotation, Vector3 scale) where T : ChiselNodeComponent { return Create<T>(null, model ? model.transform : null, position, rotation, scale); }
+        public static T Create<T>(ChiselModelComponent model, Matrix4x4 trsMatrix) where T : ChiselNodeComponent { return Create<T>(null, model ? model.transform : null, trsMatrix); }
+        public static T Create<T>(ChiselModelComponent model) where T : ChiselNodeComponent { return Create<T>(null, model ? model.transform : null, Vector3.zero, Quaternion.identity, Vector3.one); }
+        public static T Create<T>(string name, ChiselModelComponent model, Matrix4x4 trsMatrix) where T : ChiselNodeComponent { return Create<T>(name, model ? model.transform : null, trsMatrix); }
+        public static T Create<T>(string name, ChiselModelComponent model, Vector3 position, Quaternion rotation, Vector3 scale) where T : ChiselNodeComponent { return Create<T>(name, model ? model.transform : null, position, rotation, scale); }
     }
 }

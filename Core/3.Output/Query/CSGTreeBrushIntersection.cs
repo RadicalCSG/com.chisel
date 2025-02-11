@@ -16,12 +16,14 @@ namespace Chisel.Core
         
         public ChiselSurfaceIntersection surfaceIntersection;
 
-        public readonly static CSGTreeBrushIntersection None = new CSGTreeBrushIntersection()
+        readonly static CSGTreeBrushIntersection kNone = new()
         {
             tree				= (CSGTree)CSGTreeNode.Invalid,
             brush				= (CSGTreeBrush)CSGTreeNode.Invalid,
             surfaceIndex		= -1,
             surfaceIntersection	= ChiselSurfaceIntersection.None
         };
-    };
+        public static ref readonly CSGTreeBrushIntersection None => ref kNone;
+
+	};
 }
