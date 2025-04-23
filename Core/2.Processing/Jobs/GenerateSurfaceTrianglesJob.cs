@@ -5,10 +5,7 @@ using Unity.Collections.LowLevel.Unsafe;
 using Unity.Jobs;
 using Unity.Mathematics;
 using Debug = UnityEngine.Debug;
-using Vector3 = UnityEngine.Vector3;
-using Quaternion = UnityEngine.Quaternion;
 using ReadOnlyAttribute = Unity.Collections.ReadOnlyAttribute;
-using WriteOnlyAttribute = Unity.Collections.WriteOnlyAttribute;
 using Unity.Entities;
 using andywiecko.BurstTriangulator.LowLevel.Unsafe;
 using andywiecko.BurstTriangulator;
@@ -210,8 +207,6 @@ namespace Chisel.Core
                     
                     var roVerts = vertex2DRemapper.AsReadOnly();
                     
-                    // TODO - check for self-intersections and split them
-
                     // Pre-check: need enough points and edges
                     if (roVerts.positions2D.Length < 3 || roVerts.edgeIndices.Length < 3)
                         continue;
@@ -316,12 +311,6 @@ namespace Chisel.Core
             if (brushRenderBufferCache[brushNodeOrder].IsCreated)
                 brushRenderBufferCache[brushNodeOrder].Dispose();
             brushRenderBufferCache[brushNodeOrder] = asset;
-        }
-        
-        [BurstDiscard]
-        static void LogException(Exception ex)
-        {
-            Debug.LogError($"Triangulator exception: {ex}");
         }
     }
 }
