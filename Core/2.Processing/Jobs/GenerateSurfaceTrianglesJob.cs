@@ -201,9 +201,13 @@ namespace Chisel.Core
                     
                     if (vertex2DRemapper.CheckForSelfIntersections())
                     {
-                        Debug.LogError($"Self-intersection detected in loop {loopIdx} of surface {surf}");
-                        // TODO - handle self-intersections
+                        Debug.LogWarning($"Self-intersection detected in surface {surf}, loop index {loopIdx}.");
                         vertex2DRemapper.RemoveSelfIntersectingEdges();
+                    }
+
+                    if (vertex2DRemapper.CheckForSelfIntersections())
+                    {
+                        Debug.LogWarning($"Self-intersection still detected in surface {surf}, loop index {loopIdx}.");
                     }
                     
                     var roVerts = vertex2DRemapper.AsReadOnly();
