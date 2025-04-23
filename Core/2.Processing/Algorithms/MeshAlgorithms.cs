@@ -233,6 +233,63 @@ namespace Chisel.Core
 
 			return false; // No intersections found
 		}
+		
+		public void RemoveSelfIntersectingEdges()
+		{
+			int edgeCount = edgeIndices.Length / 2;
+			if (edgeCount < 2)
+				return;
+
+			// Track which edges to drop
+			var removeFlags = new NativeArray<bool>(edgeCount, Allocator.Temp);
+			for (int i = 0; i < edgeCount; i++)
+				removeFlags[i] = false;
+
+			// Mark any pair of non‐adjacent edges that intersect
+			for (int i = 0; i < edgeCount; ++i)
+			{
+				int p1i = edgeIndices[i * 2 + 0];
+				int q1i = edgeIndices[i * 2 + 1];
+				double2 p1 = positions2D[p1i];
+				double2 q1 = positions2D[q1i];
+
+				for (int j = i + 1; j < edgeCount; ++j)
+				{
+					int p2i = edgeIndices[j * 2 + 0];
+					int q2i = edgeIndices[j * 2 + 1];
+
+					// skip adjacent edges
+					if (p1i == p2i || p1i == q2i || q1i == p2i || q1i == q2i)
+						continue;
+
+					double2 p2 = positions2D[p2i];
+					double2 q2 = positions2D[q2i];
+
+					if (SegmentsIntersect(p1, q1, p2, q2))
+					{
+						removeFlags[i] = true;
+						removeFlags[j] = true;
+					}
+				}
+			}
+
+			// Rebuild edgeIndices skipping any marked edges
+			var cleaned = new NativeList<int>(edgeIndices.Capacity, Allocator.Temp);
+			for (int i = 0; i < edgeCount; i++)
+			{
+				if (!removeFlags[i])
+				{
+					cleaned.Add(edgeIndices[i * 2 + 0]);
+					cleaned.Add(edgeIndices[i * 2 + 1]);
+				}
+			}
+
+			// Swap back
+			removeFlags.Dispose();
+			edgeIndices.Clear();
+			edgeIndices.AddRange(cleaned);
+			cleaned.Dispose();
+		}
 
 		public void Dispose()
         {

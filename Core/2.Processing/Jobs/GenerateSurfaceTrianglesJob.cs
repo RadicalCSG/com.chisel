@@ -199,10 +199,11 @@ namespace Chisel.Core
                     // Convert 3D -> 2D
                     vertex2DRemapper.ConvertToPlaneSpace(*brushVertices.m_Vertices, edges, map3DTo2D);
                     
-                    if (!vertex2DRemapper.CheckForSelfIntersections())
+                    if (vertex2DRemapper.CheckForSelfIntersections())
                     {
                         Debug.LogError($"Self-intersection detected in loop {loopIdx} of surface {surf}");
                         // TODO - handle self-intersections
+                        vertex2DRemapper.RemoveSelfIntersectingEdges();
                     }
                     
                     var roVerts = vertex2DRemapper.AsReadOnly();
