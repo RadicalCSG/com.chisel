@@ -86,6 +86,12 @@ namespace Chisel.Core
 			};
         }
 
+        public void Clear()
+        {
+	        lookup.Clear();
+	        positions2D.Clear();
+			edgeIndices.Clear();
+        }
 
 		public void ConvertToPlaneSpace(UnsafeList<float3> vertices, UnsafeList<Edge> edges, Map3DTo2D map3DTo2D)
 		{
@@ -125,6 +131,107 @@ namespace Chisel.Core
 				edgeIndices[i + 1] = index2;
 			}
             usedIndices.Dispose();
+		}
+
+		// Helper function to check if point q lies on segment pr (assuming p, q, r are collinear)
+		[MethodImpl(MethodImplOptions.AggressiveInlining)]
+		private static bool OnSegment(double2 p, double2 q, double2 r)
+		{
+			return (q.x <= math.max(p.x, r.x) && q.x >= math.min(p.x, r.x) &&
+			        q.y <= math.max(p.y, r.y) && q.y >= math.min(p.y, r.y));
+		}
+
+		// Helper function to find orientation of ordered triplet (p, q, r)
+		// Returns:
+		// 0 --> p, q and r are collinear
+		// 1 --> Clockwise
+		// 2 --> Counterclockwise
+		[MethodImpl(MethodImplOptions.AggressiveInlining)]
+		private static int Orientation(double2 p, double2 q, double2 r)
+		{
+			// Using double for precision in cross-product calculation
+			double val = (q.y - p.y) * (r.x - q.x) -
+			             (q.x - p.x) * (r.y - q.y);
+
+			if (math.abs(val) < 1e-12) return 0; // Collinear (use a small epsilon for float comparison)
+			return (val > 0) ? 1 : 2; // Clockwise or Counterclockwise
+		}
+		
+		// Helper function to check if line segment 'p1q1' and 'p2q2' intersect.
+		private static bool SegmentsIntersect(double2 p1, double2 q1, double2 p2, double2 q2)
+		{
+			// Find the four orientations needed for general and special cases
+			int o1 = Orientation(p1, q1, p2);
+			int o2 = Orientation(p1, q1, q2);
+			int o3 = Orientation(p2, q2, p1);
+			int o4 = Orientation(p2, q2, q1);
+
+			// General case: Orientations are different
+			if (o1 != o2 && o3 != o4)
+				return true;
+
+			// Special Cases (Collinear points)
+			// p1, q1 and p2 are collinear and p2 lies on segment p1q1
+			if (o1 == 0 && OnSegment(p1, p2, q1)) return true;
+
+			// p1, q1 and q2 are collinear and q2 lies on segment p1q1
+			if (o2 == 0 && OnSegment(p1, q2, q1)) return true;
+
+			// p2, q2 and p1 are collinear and p1 lies on segment p2q2
+			if (o3 == 0 && OnSegment(p2, p1, q2)) return true;
+
+			// p2, q2 and q1 are collinear and q1 lies on segment p2q2
+			if (o4 == 0 && OnSegment(p2, q1, q2)) return true;
+
+			// Doesn't fall into any intersecting case
+			return false;
+		}
+
+		/// <summary>
+		/// Checks if any non-adjacent edges in the 2D polygon representation intersect.
+		/// Assumes ConvertToPlaneSpace has been called.
+		/// </summary>
+		/// <returns>True if self-intersections are found, false otherwise.</returns>
+		public bool CheckForSelfIntersections()
+		{
+			var n_edges = edgeIndices.Length / 2;
+			if (n_edges < 2) // Need at least 2 edges to intersect
+				return false;
+
+			// Iterate through all pairs of edges
+			for (int i = 0; i < n_edges; ++i)
+			{
+				int idx_p1 = edgeIndices[i * 2 + 0];
+				int idx_q1 = edgeIndices[i * 2 + 1];
+				double2 p1 = positions2D[idx_p1];
+				double2 q1 = positions2D[idx_q1];
+
+				// Compare with subsequent edges to avoid redundant checks
+				for (int j = i + 1; j < n_edges; ++j)
+				{
+					int idx_p2 = edgeIndices[j * 2 + 0];
+					int idx_q2 = edgeIndices[j * 2 + 1];
+
+					// Skip check if edges share a vertex (they are adjacent)
+					if (idx_p1 == idx_p2 || idx_p1 == idx_q2 || idx_q1 == idx_p2 || idx_q1 == idx_q2)
+					{
+						continue;
+					}
+
+					double2 p2 = positions2D[idx_p2];
+					double2 q2 = positions2D[idx_q2];
+
+					// Check if the segments intersect
+					if (SegmentsIntersect(p1, q1, p2, q2))
+					{
+						// For debugging:
+						// Debug.LogWarning($"Self-intersection detected between edge {i} ({idx_p1}-{idx_q1}) and edge {j} ({idx_p2}-{idx_q2})");
+						return true; // Found an intersection
+					}
+				}
+			}
+
+			return false; // No intersections found
 		}
 
 		public void Dispose()
