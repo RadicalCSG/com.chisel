@@ -130,7 +130,27 @@ namespace Chisel.Core
 				edgeIndices[i + 0] = index1;
 				edgeIndices[i + 1] = index2;
 			}
+			
             usedIndices.Dispose();
+		}
+		
+		public void RemoveDuplicates()
+		{
+			var cleaned = new NativeList<int>(positions2D.Length, Allocator.Temp);
+			var used = new NativeArray<bool>(positions2D.Length, Allocator.Temp);
+			for (int i = 0; i < positions2D.Length; i++)
+			{
+				if (!used[i])
+				{
+					cleaned.Add(lookup[i]);
+					used[i] = true;
+				}
+			}
+
+			lookup.Clear();
+			lookup.AddRange(cleaned);
+			cleaned.Dispose();
+			used.Dispose();
 		}
 
 		// Helper function to check if point q lies on segment pr (assuming p, q, r are collinear)

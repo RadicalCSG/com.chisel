@@ -198,6 +198,7 @@ namespace Chisel.Core
 
                     // Convert 3D -> 2D
                     vertex2DRemapper.ConvertToPlaneSpace(*brushVertices.m_Vertices, edges, map3DTo2D);
+                    vertex2DRemapper.RemoveDuplicates();
                     
                     if (vertex2DRemapper.CheckForSelfIntersections())
                     {
@@ -215,7 +216,11 @@ namespace Chisel.Core
                     // Pre-check: need enough points and edges
                     if (roVerts.positions2D.Length < 3 || roVerts.edgeIndices.Length < 3)
                         continue;
-
+                    
+                    // Check for degenerate edges
+                    if (IsDegenerate(roVerts.positions2D))
+                        continue;
+                    
                     // Triangulate with exception guard
                     output.Triangles.Clear();
                     triangulator.Triangulate(
@@ -316,6 +321,26 @@ namespace Chisel.Core
             if (brushRenderBufferCache[brushNodeOrder].IsCreated)
                 brushRenderBufferCache[brushNodeOrder].Dispose();
             brushRenderBufferCache[brushNodeOrder] = asset;
+        }
+        
+        static bool IsDegenerate(NativeArray<double2> verts)
+        {
+            if (verts.Length < 3)
+                return true;
+
+            double2 min = verts[0];
+            double2 max = verts[0];
+
+            for (int i = 1; i < verts.Length; i++)
+            {
+                var v = verts[i];
+                min = math.min(min, v);
+                max = math.max(max, v);
+            }
+
+            // A zero-area axis-aligned box means every point sits on a line
+            return math.abs(max.x - min.x) <= double.Epsilon ||
+                   math.abs(max.y - min.y) <= double.Epsilon;
         }
     }
 }
