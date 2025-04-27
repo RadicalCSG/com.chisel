@@ -270,10 +270,12 @@ namespace Chisel.Core
                         intersectedHoleIndices[intersectedHoleIndicesLength] = allEdges.Length;
                         intersectedHoleIndicesLength++;
                         holeIndices.Add(new UnsafeList<int>(1, Allocator.Temp));
-                        //if (allInfos.Capacity < allInfos.Length + 1)
-                        //    allInfos.Capacity = allInfos.Length + 16;
-                        //allInfos.AddNoResize(holeInfo);
-                        allInfos.Add(holeInfo);
+                        
+                        if (allInfos.Capacity < allInfos.Length + 1)
+                            // e.g. double the capacity (or add a fixed extra)
+                            allInfos.Capacity = math.max(allInfos.Capacity * 2, allInfos.Length + 1);
+                        allInfos.AddNoResize(holeInfo);
+                        
                         var newHoleEdges = new UnsafeList<Edge>(holeEdges.Length, Allocator.Temp);
                         newHoleEdges.AddRangeNoResize(holeEdges);
                         allEdges.Add(newHoleEdges);
@@ -290,10 +292,12 @@ namespace Chisel.Core
                 currentHoleIndices.Add(allEdges.Length);
                 holeIndices[surfaceLoopIndex] = currentHoleIndices;
                 holeIndices.Add(new UnsafeList<int>(1, Allocator.Temp));
-                //if (allInfos.Capacity < allInfos.Length + 1)
-                //    allInfos.Capacity = allInfos.Length + 16; 
-                //allInfos.AddNoResize(intersectionInfo);
-                allInfos.Add(intersectionInfo);
+                
+                if (allInfos.Capacity < allInfos.Length + 1)
+                    // e.g. double the capacity (or add a fixed extra)
+                    allInfos.Capacity = math.max(allInfos.Capacity * 2, allInfos.Length + 1);
+                allInfos.AddNoResize(intersectionInfo);
+                
                 var newOutEdges = new UnsafeList<Edge>(outEdgesLength, Allocator.Temp);
                 newOutEdges.AddRangeNoResize(outEdges, outEdgesLength);
                 allEdges.Add(newOutEdges);
@@ -309,10 +313,12 @@ namespace Chisel.Core
                 var newHoleIndices = new UnsafeList<int>(intersectedHoleIndicesLength, Allocator.Temp);
                 newHoleIndices.AddRangeNoResize(intersectedHoleIndices, intersectedHoleIndicesLength);
                 holeIndices.Add(newHoleIndices);
-                //if (allInfos.Capacity < allInfos.Length + 1)
-                //    allInfos.Capacity = allInfos.Length + 16; 
-                //allInfos.AddNoResize(intersectionInfo);
+                
+                if (allInfos.Capacity < allInfos.Length + 1)
+                    // e.g. double the capacity (or add a fixed extra)
+                    allInfos.Capacity = math.max(allInfos.Capacity * 2, allInfos.Length + 1);
                 allInfos.Add(intersectionInfo);
+                
                 newOutEdges = new UnsafeList<Edge>(outEdgesLength, Allocator.Temp);
                 newOutEdges.AddRangeNoResize(outEdges, outEdgesLength);
                 allEdges.Add(newOutEdges);
@@ -326,10 +332,12 @@ namespace Chisel.Core
                 currentHoleIndices.Add(allEdges.Length);
                 holeIndices[surfaceLoopIndex] = currentHoleIndices;
                 holeIndices.Add(new UnsafeList<int>(1, Allocator.Temp));
-                //if (allInfos.Capacity < allInfos.Length + 1)
-                //    allInfos.Capacity = allInfos.Length + 16;
-                //allInfos.AddNoResize(intersectionInfo);
-                allInfos.Add(intersectionInfo);
+                
+                if (allInfos.Capacity < allInfos.Length + 1)
+                    // e.g. double the capacity (or add a fixed extra)
+                    allInfos.Capacity = math.max(allInfos.Capacity * 2, allInfos.Length + 1);
+                allInfos.AddNoResize(intersectionInfo);
+                
                 var newOutEdges = new UnsafeList<Edge>(outEdgesLength, Allocator.Temp);
                 newOutEdges.AddRangeNoResize(outEdges, outEdgesLength);
                 allEdges.Add(newOutEdges);
@@ -343,9 +351,12 @@ namespace Chisel.Core
                 //loopIndices.AddNoResize(allEdges.Length);
                 loopIndices.Add(allEdges.Length);
                 holeIndices.Add(new UnsafeList<int>(1, Allocator.Temp));
+                
                 if (allInfos.Capacity < allInfos.Length + 1)
-                    allInfos.Capacity = allInfos.Length + 16;
+                    // e.g. double the capacity (or add a fixed extra)
+                    allInfos.Capacity = math.max(allInfos.Capacity * 2, allInfos.Length + 1);
                 allInfos.AddNoResize(intersectionInfo);
+
                 newOutEdges = new UnsafeList<Edge>(outEdgesLength, Allocator.Temp);
                 newOutEdges.AddRangeNoResize(outEdges, outEdgesLength);
                 allEdges.Add(newOutEdges);
@@ -906,7 +917,8 @@ namespace Chisel.Core
             }
 
 
-            var maxLoops            = (routingLookupsLength + routingLookupsLength) * (surfaceCount + surfaceCount); // TODO: find a more reliable "max"
+            var maxLoops = routingLookupsLength * (surfaceCount + surfaceCount) * 4; 
+            // TODO: find a more reliable "max"
 
             NativeCollectionHelpers.EnsureCapacityAndClear(ref holeIndices, maxLoops);
             NativeCollectionHelpers.EnsureSizeAndClear(ref surfaceLoopIndices, surfaceCount);
