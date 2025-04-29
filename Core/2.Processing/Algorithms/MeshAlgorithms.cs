@@ -307,7 +307,7 @@ namespace Chisel.Core
 			// Swap back
 			removeFlags.Dispose();
 			edgeIndices.Clear();
-			edgeIndices.AddRange(cleaned);
+			edgeIndices.AddRange(cleaned.AsArray());
 			cleaned.Dispose();
 		}
 
