@@ -202,13 +202,10 @@ namespace Chisel.Core
                     
                     if (vertex2DRemapper.CheckForSelfIntersections())
                     {
+#if UNITY_EDITOR && DEBUG
                         Debug.LogWarning($"Self-intersection detected in surface {surf}, loop index {loopIdx}.");
+#endif
                         vertex2DRemapper.RemoveSelfIntersectingEdges();
-                    }
-
-                    if (vertex2DRemapper.CheckForSelfIntersections())
-                    {
-                        Debug.LogWarning($"Self-intersection still detected in surface {surf}, loop index {loopIdx}.");
                     }
                     
                     var roVerts = vertex2DRemapper.AsReadOnly();
@@ -233,7 +230,7 @@ namespace Chisel.Core
                         settings,
                         Allocator.Temp);
                         
-#if UNITY_EDITOR
+#if UNITY_EDITOR && DEBUG
                     // Inside the loop after calling Triangulate:
                     if (output.Status.Value != Status.OK)
                     {
@@ -242,10 +239,10 @@ namespace Chisel.Core
                     }
                     else if (output.Triangles.Length == 0)
                     {
-                        Debug.LogWarning($"Triangulator returned zero triangles for surface {surf}, loop index {loopIdx}.");
+                        Debug.LogError($"Triangulator returned zero triangles for surface {surf}, loop index {loopIdx}.");
                     }
 #endif
-
+                    
                     if (output.Status.Value != Status.OK || output.Triangles.Length == 0)
                         continue;
 
