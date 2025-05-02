@@ -11,8 +11,8 @@ using andywiecko.BurstTriangulator.LowLevel.Unsafe;
 using andywiecko.BurstTriangulator;
 
 namespace Chisel.Core
-{
-    // [BurstCompile(CompileSynchronously = true)]
+{ 
+    //[BurstCompile(CompileSynchronously = true)] // FIXME: If enabled, it causes more missing triangles in the mesh
     struct GenerateSurfaceTrianglesJob : IJobParallelForDefer
     {
         // Read
