@@ -148,7 +148,7 @@ namespace Chisel.Core
 			}
 
 			lookup.Clear();
-			lookup.AddRange(cleaned);
+			lookup.AddRange(cleaned.ToArray(Allocator.Temp));
 			cleaned.Dispose();
 			used.Dispose();
 		}
