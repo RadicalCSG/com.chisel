@@ -29,13 +29,48 @@ namespace Chisel.Components
         public const float minPackMargin = 1;
         public const float maxPackMargin = 256;
 
-        [Range(minAngleError, maxAngleError)] public float angleError;
-        [Range(minAreaError,  maxAreaError )] public float areaError;
-        [Range(minHardAngle,  maxHardAngle )] public float hardAngle;
-        [Range(minPackMargin, maxPackMargin)] public float packMarginPixels;
-    }
+		[Range(minAngleError, maxAngleError)] public float angleError;
+		[Range(minAreaError,  maxAreaError )] public float areaError;
+		[Range(minHardAngle,  maxHardAngle )] public float hardAngle;
+		[Range(minPackMargin, maxPackMargin)] public float packMarginPixels;
 
-    [Serializable]
+#if UNITY_EDITOR
+        public static float GetDefaultAngleError()
+		{
+			UnityEditor.UnwrapParam.SetDefaults(out var defaults);
+			return defaults.angleError;
+		}
+
+		public static float GetDefaultAreaError()
+		{
+			UnityEditor.UnwrapParam.SetDefaults(out var defaults);
+			return defaults.areaError;
+		}
+
+		public static float GetDefaultHardAngle()
+		{
+			UnityEditor.UnwrapParam.SetDefaults(out var defaults);
+			return defaults.hardAngle;
+		}
+
+		public static float GetDefaultPackMarginPixels()
+		{
+			UnityEditor.UnwrapParam.SetDefaults(out var defaults);
+			return defaults.packMargin * 256;
+		}
+
+		public void Reset()
+		{
+			UnityEditor.UnwrapParam.SetDefaults(out var defaults);
+			angleError = defaults.angleError;
+			areaError = defaults.areaError;
+			hardAngle = defaults.hardAngle;
+			packMarginPixels = defaults.packMargin * 256;
+		}
+#endif
+	}
+
+	[Serializable]
     public sealed class ChiselGeneratedColliderSettings
     {
         public const string kIsTriggerName      = nameof(isTrigger);
