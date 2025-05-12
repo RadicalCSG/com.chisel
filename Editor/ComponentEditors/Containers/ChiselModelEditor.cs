@@ -169,30 +169,33 @@ namespace Chisel.Editors
         bool showChartingSettings;
         bool showUnwrapParams;
 
-		UnityEngine.Object[] childNodes;
+        UnityEngine.Object[] childNodes;
 
-		readonly static ChiselComponentInspectorMessageHandler s_Messages = new();
-		//private Vector2 modelMessagesScrollPosition = Vector2.zero;
-		Vector2 childMessagesScrollPosition = Vector2.zero;
+        readonly static ChiselComponentInspectorMessageHandler s_Messages = new();
+        //private Vector2 modelMessagesScrollPosition = Vector2.zero;
+        Vector2 childMessagesScrollPosition = Vector2.zero;
 
 
-		delegate float GetCachedMeshSurfaceAreaDelegate(MeshRenderer meshRenderer);
+        delegate float GetCachedMeshSurfaceAreaDelegate(MeshRenderer meshRenderer);
         delegate bool HasClampedResolutionDelegate(Renderer renderer);
         delegate bool HasUVOverlapsDelegate(Renderer renderer);
         delegate bool HasInstancingDelegate(Shader s);
 
-		delegate void LightmapParametersGUIDelegate(SerializedProperty prop, GUIContent content);
-		readonly static LightmapParametersGUIDelegate kLightmapParametersGUI = ReflectionExtensions.CreateDelegate<LightmapParametersGUIDelegate>("UnityEditor.RendererLightingSettings", "LightmapParametersGUI");
-		readonly static HasClampedResolutionDelegate kHasClampedResolution = typeof(Lightmapping).CreateDelegate<HasClampedResolutionDelegate>("HasClampedResolution");
+        delegate void LightmapParametersGUIDelegate(SerializedProperty prop, GUIContent content);
+        readonly static LightmapParametersGUIDelegate kLightmapParametersGUI = ReflectionExtensions.CreateDelegate<LightmapParametersGUIDelegate>("UnityEditor.RendererLightingSettings", "LightmapParametersGUI");
+        readonly static HasClampedResolutionDelegate kHasClampedResolution = typeof(Lightmapping).CreateDelegate<HasClampedResolutionDelegate>("HasClampedResolution");
 		readonly static HasUVOverlapsDelegate kHasUVOverlaps = typeof(Lightmapping).CreateDelegate<HasUVOverlapsDelegate>("HasUVOverlaps");
 
 		readonly static GetCachedMeshSurfaceAreaDelegate kGetCachedMeshSurfaceArea    = ReflectionExtensions.CreateDelegate<GetCachedMeshSurfaceAreaDelegate>("UnityEditor.InternalMeshUtil", "GetCachedMeshSurfaceArea");
 		readonly static HasInstancingDelegate            kHasInstancing               = typeof(ShaderUtil).CreateDelegate<HasInstancingDelegate>("HasInstancing");
 
-		readonly static ReflectedInstanceProperty<int> HasMultipleDifferentValuesBitwise = typeof(SerializedProperty).GetProperty<int>("hasMultipleDifferentValuesBitwise");
+        readonly static ReflectedInstanceProperty<int> HasMultipleDifferentValuesBitwise = typeof(SerializedProperty).GetProperty<int>("hasMultipleDifferentValuesBitwise");
 
-		internal void OnEnable()
+        internal void OnEnable()
         {
+            EditorApplication.contextualPropertyMenu -= OnPropertyContextMenu;
+            EditorApplication.contextualPropertyMenu += OnPropertyContextMenu;
+
             if (s_ReflectionProbeUsageOptionsContents == null)
                 s_ReflectionProbeUsageOptionsContents = (Enum.GetNames(typeof(ReflectionProbeUsage)).Select(x => ObjectNames.NicifyVariableName(x)).ToArray()).Select(x => new GUIContent(x)).ToArray();
 
@@ -208,7 +211,7 @@ namespace Chisel.Editors
             if (!target)
             {
                 childNodes = new UnityEngine.Object[] { };
-				return;
+                return;
             }
 
             vertexChannelMaskProp        = serializedObject.FindProperty($"{ChiselModelComponent.kVertexChannelMaskName}");
@@ -247,7 +250,7 @@ namespace Chisel.Editors
             gameObjectsSerializedObject = new SerializedObject(serializedObject.targetObjects.Select(t => ((Component)t).gameObject).ToArray());
             staticEditorFlagsProp = gameObjectsSerializedObject.FindProperty("m_StaticEditorFlags");
 
-			for (int t = 0; t < targets.Length; t++)
+            for (int t = 0; t < targets.Length; t++)
             {
                 var modelTarget = targets[t] as ChiselModelComponent;
                 if (!modelTarget)
@@ -256,10 +259,10 @@ namespace Chisel.Editors
                 if (!modelTarget.IsInitialized)
                     modelTarget.OnInitialize();
 
-			}
+            }
 
 
-			var uniqueChildNodes = HashSetPool<UnityEngine.Object>.Get();
+            var uniqueChildNodes = HashSetPool<UnityEngine.Object>.Get();
             try
             {
                 if (targets.Length == 1)
@@ -278,7 +281,95 @@ namespace Chisel.Editors
             }
             finally
             {
-				HashSetPool<UnityEngine.Object>.Release(uniqueChildNodes);
+                HashSetPool<UnityEngine.Object>.Release(uniqueChildNodes);
+            }
+        }
+
+        private void OnDestroy()
+        {
+            EditorApplication.contextualPropertyMenu -= OnPropertyContextMenu;
+        }
+
+        void ClearLightmapData()
+        {
+            foreach (var obj in targets)
+            {
+                var modelComponent = target as ChiselModelComponent;
+				if (!modelComponent)
+                    continue;
+
+                GameObjectState state = GameObjectState.Create(modelComponent.gameObject);
+
+				foreach (var renderable in modelComponent.generated.renderables)
+                {
+                    if (renderable == null || !renderable.IsValid())
+                        continue;
+					ChiselUnityUVGenerationManager.ClearLightmapData(state, renderable);
+				}
+			}
+        }
+
+		void OnPropertyContextMenu(GenericMenu menu, SerializedProperty property)
+		{
+            if (property.propertyPath == angleErrorProp.propertyPath)
+			{
+				var propertyCopy = property.Copy();
+				menu.AddItem(new GUIContent("Reset"), false, () =>
+				{
+					float val = SerializableUnwrapParam.GetDefaultAngleError();
+					propertyCopy.floatValue = val;
+					propertyCopy.serializedObject.ApplyModifiedProperties();
+					if (autoRebuildUVsProp.boolValue)
+					{
+						ChiselUnityUVGenerationManager.ForceUpdateDelayedUVGeneration();
+						ClearLightmapData();
+					}
+				});
+			} else
+            if (property.propertyPath == areaErrorProp.propertyPath)
+			{
+				var propertyCopy = property.Copy();
+				menu.AddItem(new GUIContent("Reset"), false, () =>
+                {
+                    float val = SerializableUnwrapParam.GetDefaultAreaError();
+					propertyCopy.floatValue = val;
+					propertyCopy.serializedObject.ApplyModifiedProperties();
+					if (autoRebuildUVsProp.boolValue)
+					{
+						ChiselUnityUVGenerationManager.ForceUpdateDelayedUVGeneration();
+						ClearLightmapData();
+					}
+				});
+            } else
+			if (property.propertyPath == hardAngleProp.propertyPath)
+			{
+				var propertyCopy = property.Copy();
+				menu.AddItem(new GUIContent("Reset"), false, () =>
+                {
+                    float val = SerializableUnwrapParam.GetDefaultHardAngle();
+					propertyCopy.floatValue = val;
+					propertyCopy.serializedObject.ApplyModifiedProperties();
+					if (autoRebuildUVsProp.boolValue)
+					{
+						ChiselUnityUVGenerationManager.ForceUpdateDelayedUVGeneration();
+						ClearLightmapData();
+					}
+				});
+			} else
+			if (property.propertyPath == packMarginPixelsProp.propertyPath)
+			{
+				var propertyCopy = property.Copy();
+				menu.AddItem(new GUIContent("Reset"), false, () =>
+                {
+                    float val = SerializableUnwrapParam.GetDefaultPackMarginPixels();
+					propertyCopy.floatValue = val;
+					propertyCopy.serializedObject.ApplyModifiedProperties();
+					if (autoRebuildUVsProp.boolValue)
+					{
+						ChiselUnityUVGenerationManager.ForceUpdateDelayedUVGeneration();
+						ClearLightmapData();
+					}
+				});
 			}
 		}
 
@@ -959,24 +1050,26 @@ namespace Chisel.Editors
             EditorGUILayout.EndFoldoutHeaderGroup();
 
             if (haveLightmaps)
-            {
-                showUnwrapParams = EditorGUILayout.BeginFoldoutHeaderGroup(showUnwrapParams, kUnwrapParamsContents);
+			{
+				showUnwrapParams = EditorGUILayout.BeginFoldoutHeaderGroup(showUnwrapParams, kUnwrapParamsContents);
                 if (showUnwrapParams)
                 {
                     EditorGUI.indentLevel++;
                     EditorGUI.BeginChangeCheck();
                     EditorGUILayout.PropertyField(autoRebuildUVsProp, kAutoRebuildUVsContents);
-                    if (EditorGUI.EndChangeCheck())
-                    {
-                        if (autoRebuildUVsProp.boolValue)
-							ChiselUnityUVGenerationManager.ForceUpdateDelayedUVGeneration();
-                    }
-
                     EditorGUILayout.PropertyField(angleErrorProp);
                     EditorGUILayout.PropertyField(areaErrorProp);
                     EditorGUILayout.PropertyField(hardAngleProp);
                     EditorGUILayout.PropertyField(packMarginPixelsProp);
-                    EditorGUI.indentLevel--;
+					if (EditorGUI.EndChangeCheck())
+					{
+                        if (autoRebuildUVsProp.boolValue)
+                        {
+                            ChiselUnityUVGenerationManager.ForceUpdateDelayedUVGeneration();
+							ClearLightmapData();
+						}
+					}
+					EditorGUI.indentLevel--;
                 }
                 EditorGUILayout.EndFoldoutHeaderGroup();
 
