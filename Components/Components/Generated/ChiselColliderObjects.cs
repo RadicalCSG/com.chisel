@@ -22,7 +22,7 @@ namespace Chisel.Components
         public MeshCollider     meshCollider;
         public PhysicsMaterial  physicsMaterial;
 
-        public ulong            geometryHashValue;
+        public uint             geometryHashValue;
 
         private ChiselColliderObjects() { }
         public static ChiselColliderObjects Create(GameObject container, int surfaceParameter)

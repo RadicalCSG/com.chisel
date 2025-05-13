@@ -4,6 +4,10 @@ using UnityEngine;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using System.Runtime.CompilerServices;
+using System.Collections.Generic;
+using System;
+using Unity.Collections;
+using System.Linq;
 
 namespace Chisel.Components
 {
@@ -20,8 +24,6 @@ namespace Chisel.Components
 
         public static bool NeedUVGeneration(ChiselModelComponent model)
         {
-            s_HaveUVsToUpdate = false;
-
             if (!model)
                 return false;
 
@@ -66,8 +68,8 @@ namespace Chisel.Components
 
                     if (force || 
                         (currentTime - renderable.uvLightmapUpdateTime) > kGenerateUVDelayTime)
-                    {
-                        renderable.uvLightmapUpdateTime = 0;
+					{
+						renderable.uvLightmapUpdateTime = 0;
                         GenerateLightmapUVsForInstance(model, renderable, force);
                     } else
                         s_HaveUVsToUpdate = true;
@@ -75,16 +77,17 @@ namespace Chisel.Components
             }
         }
 
-        public static void ClearLightmapData(GameObjectState state, ChiselRenderObjects renderable)
+        public static bool ClearLightmapData(GameObjectState state, ChiselRenderObjects renderable)
         {
             var lightmapStatic = (state.staticFlags & StaticEditorFlags.ContributeGI) == StaticEditorFlags.ContributeGI;
-            if (lightmapStatic)
-            {
-                renderable.meshRenderer.realtimeLightmapIndex = -1;
-                renderable.meshRenderer.lightmapIndex = -1;
-                renderable.uvLightmapUpdateTime = Time.realtimeSinceStartup;
-                s_HaveUVsToUpdate = true;
-            }
+            if (!lightmapStatic)
+                return false;
+			
+			renderable.meshRenderer.realtimeLightmapIndex = -1;
+            renderable.meshRenderer.lightmapIndex = -1;
+            renderable.uvLightmapUpdateTime = Time.realtimeSinceStartup;
+            s_HaveUVsToUpdate = true;
+            return true;
         }
 
 		// FIXME: Hacky way to store that a mesh has lightmap UV created
@@ -139,8 +142,8 @@ namespace Chisel.Components
 
         private static void GenerateLightmapUVsForInstance(ChiselModelComponent model, ChiselRenderObjects renderable, bool force = false)
         {
-            // Avoid light mapping multiple times, when the same mesh is used on multiple MeshRenderers
-            if (!force && HasLightmapUVs(renderable.sharedMesh))
+			// Avoid light mapping multiple times, when the same mesh is used on multiple MeshRenderers
+			if (!force && HasLightmapUVs(renderable.sharedMesh))
                 return;
 
             if (renderable == null ||
@@ -161,44 +164,26 @@ namespace Chisel.Components
             if (oldVertices.Length == 0)
                 return;
 
-            // TODO: can we avoid creating a temporary Mesh? if not; make sure ChiselSharedUnityMeshManager is handled correctly
+			var lightmapGenerationTime = EditorApplication.timeSinceStartup;
 
-            var oldUV			= sharedMesh.uv;
-            var oldNormals		= sharedMesh.normals;
-            var oldTangents		= sharedMesh.tangents;
-            var oldTriangles	= sharedMesh.triangles;
+            bool success = Unwrapping.GenerateSecondaryUVSet(sharedMesh, param);
 
-            var tempMesh = new Mesh
-            {
-                vertices	= oldVertices,
-                normals		= oldNormals,
-                uv			= oldUV,
-                tangents	= oldTangents,
-                triangles	= oldTriangles
-            };
-            
-            var lightmapGenerationTime = EditorApplication.timeSinceStartup;
-            Unwrapping.GenerateSecondaryUVSet(tempMesh, param);
-            lightmapGenerationTime = EditorApplication.timeSinceStartup - lightmapGenerationTime; 
+			lightmapGenerationTime = EditorApplication.timeSinceStartup - lightmapGenerationTime; 
             
             // TODO: make a nicer text here
             Debug.Log("Generating lightmap UVs (by Unity) for the mesh '" + sharedMesh.name + "' of the Model named \"" + model.name +"\"\n"+
-                      "\tUV generation in " + (lightmapGenerationTime* 1000) + " ms\n", model);
+                      "\tUV generation in " + (lightmapGenerationTime* 1000) + " ms\n", renderable.container);
+            if (!success)
+                Debug.LogError("Lightmap generation, internal unity functionality, failed for the mesh '" + sharedMesh.name + "' of the Model named \"" + model.name + "\"", renderable.container);
 
-            // Modify the original mesh, since it is shared
-            sharedMesh.Clear(keepVertexLayout: true);
-            sharedMesh.vertices  = tempMesh.vertices;
-            sharedMesh.normals   = tempMesh.normals;
-            sharedMesh.tangents  = tempMesh.tangents;
-            sharedMesh.uv        = tempMesh.uv;
-            sharedMesh.uv2       = tempMesh.uv2;	    // static lightmaps
-            sharedMesh.uv3       = tempMesh.uv3;        // real-time lightmaps
-            sharedMesh.triangles = tempMesh.triangles;
-            SetHasLightmapUVs(sharedMesh, true);
+            SetHasLightmapUVs(sharedMesh, success);
 
-            renderable.meshFilter.sharedMesh = null;
-            renderable.meshFilter.sharedMesh = sharedMesh;
-            EditorSceneManager.MarkSceneDirty(model.gameObject.scene);
+            if (success)
+            {
+                renderable.meshFilter.sharedMesh = null;
+                renderable.meshFilter.sharedMesh = sharedMesh;
+                EditorSceneManager.MarkSceneDirty(model.gameObject.scene);
+            }
         }
     }
 }

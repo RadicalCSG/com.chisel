@@ -6,6 +6,7 @@ using UnityEngine.Rendering;
 using UnityEngine.Profiling;
 using UnityEngine.Pool;
 using System.Runtime.CompilerServices;
+using Unity.Mathematics;
 
 namespace Chisel.Components
 {
@@ -16,7 +17,7 @@ namespace Chisel.Components
         public Material             materialOverride;
         public bool                 meshIsModified;
         public ChiselModelComponent model;
-    }
+	}
     
 
 	public struct SelectionOffset
@@ -58,8 +59,8 @@ namespace Chisel.Components
 
 		public ManagedSubMeshTriangleLookup triangleBrushes = new();
         
-        public ulong            geometryHashValue;
-        public ulong            surfaceHashValue;
+        public uint             geometryHashValue;
+        public uint             surfaceHashValue;
 
         public bool             debugVisualizationRenderer;
         [NonSerialized] public float uvLightmapUpdateTime;
@@ -106,12 +107,14 @@ namespace Chisel.Components
 				selectionMesh = new Mesh
 				{
 					name = meshFilter.gameObject.name,
-					hideFlags = HideFlags.DontSave
+					hideFlags = HideFlags.DontSave 
 				};
 				selectionMeshHashcode = ~HashCode.Combine(triangleBrushes?.hashCode ?? 0, 0, sharedMesh.GetHashCode());
 				// TODO: do this on level load instead?
 				ChiselUnityVisibilityManager.UpdateVisibility(true);
 			}
+            if (string.IsNullOrEmpty(sharedMesh.name))
+				sharedMesh.name = meshFilter.gameObject.name;
 #endif
 		}
 
@@ -206,25 +209,33 @@ namespace Chisel.Components
 		void UpdateSettings(ChiselModelComponent model, GameObjectState state, bool meshIsModified)
         {
 #if UNITY_EDITOR
-            Profiler.BeginSample("CheckIfFullMeshNeedsToBeHidden");
+			Profiler.BeginSample("CheckIfFullMeshNeedsToBeHidden");
             // If we need to render partial meshes (where some brushes are hidden) then we shouldn't show the full mesh
             CheckIfFullMeshNeedsToBeHidden(model, this);
             Profiler.EndSample();
-            if (meshIsModified)
+
+			var lightmapStatic = (state.staticFlags & UnityEditor.StaticEditorFlags.ContributeGI) == UnityEditor.StaticEditorFlags.ContributeGI;
+			if (meshIsModified && lightmapStatic)
             {
                 // Setting the sharedMesh to ensure the meshFilter knows it needs to be updated
                 Profiler.BeginSample("OverrideMesh");
                 meshFilter.sharedMesh = meshFilter.sharedMesh;
                 Profiler.EndSample();
+
                 Profiler.BeginSample("SetDirty");
                 UnityEditor.EditorUtility.SetDirty(meshFilter);
                 UnityEditor.EditorUtility.SetDirty(model);
                 Profiler.EndSample();
+
                 Profiler.BeginSample("SetHasLightmapUVs");
 				ChiselUnityUVGenerationManager.SetHasLightmapUVs(sharedMesh, false);
                 Profiler.EndSample();
+
                 Profiler.BeginSample("ClearLightmapData");
-				ChiselUnityUVGenerationManager.ClearLightmapData(state, this);
+				if (ChiselUnityUVGenerationManager.ClearLightmapData(state, this))
+                {
+					//Debug.Log($"ClearLightmapData for {container.name}", container);
+				}
                 Profiler.EndSample();
             }
 #endif 
@@ -280,6 +291,7 @@ namespace Chisel.Components
             Profiler.EndSample();
         }
 
+#if false // not used?
         public void Clear(ChiselModelComponent model, GameObjectState gameObjectState)
         {
             bool meshIsModified = false;
@@ -313,10 +325,12 @@ namespace Chisel.Components
                     meshRenderer.enabled = expectedEnabled;
                 Profiler.EndSample();
             }
+
             Profiler.BeginSample("UpdateSettings");
             UpdateSettings(model, gameObjectState, meshIsModified);
             Profiler.EndSample();
         }
+#endif
         
         public static void SetTriangleBrushes(List<ChiselMeshUpdate> meshUpdates, List<ChiselRenderObjectUpdate> objectUpdates, ref VertexBufferContents vertexBufferContents)
         {
@@ -394,8 +408,34 @@ namespace Chisel.Components
                     objectUpdate.meshIsModified = true;
                     objectUpdates[u] = objectUpdate;
                 }
+                
+                var startIndex = vertexBufferContents.subMeshSections[contentsIndex].startIndex;
+                var endIndex   = vertexBufferContents.subMeshSections[contentsIndex].endIndex;
 
-                var gameObjectState = gameObjectStates[objectUpdate.model];
+				var meshDescription = vertexBufferContents.meshDescriptions[startIndex];
+                var geometryHashValue = meshDescription.geometryHashValue;
+				var surfaceHashValue  = meshDescription.surfaceHashValue;
+				for (int m = startIndex + 1; m < endIndex; m++)
+                {
+                    meshDescription = vertexBufferContents.meshDescriptions[m];
+					geometryHashValue = math.hash(new uint2(geometryHashValue, meshDescription.geometryHashValue));
+					surfaceHashValue = math.hash(new uint2(surfaceHashValue, meshDescription.surfaceHashValue));
+				}
+
+				// TODO: why is geometryHashValue not stable
+				objectUpdate.meshIsModified = (instance.geometryHashValue != geometryHashValue) ||
+					                          (instance.surfaceHashValue != surfaceHashValue);
+                if (objectUpdate.meshIsModified)
+				{
+					//Debug.Log($"instance startIndex {startIndex} endIndex {endIndex} instance {instance.container.name}");
+					//Debug.Log($"instance.geometryHashValue {instance.geometryHashValue} => geometryHashValue {geometryHashValue}");
+					//Debug.Log($"instance.surfaceHashValue {instance.surfaceHashValue} => surfaceHashValue {surfaceHashValue}");
+				}
+                instance.geometryHashValue = geometryHashValue;
+				instance.surfaceHashValue = surfaceHashValue;
+
+                  
+				var gameObjectState = gameObjectStates[objectUpdate.model];
                 var expectedEnabled = !instance.debugVisualizationRenderer &&
 					vertexBufferContents.subMeshTriangleLookups[contentsIndex].IsCreated && 
 					vertexBufferContents.subMeshTriangleLookups[contentsIndex].Value.perTriangleNodeIDLookup.Length > 0;
@@ -403,7 +443,7 @@ namespace Chisel.Components
                     instance.meshRenderer.enabled = expectedEnabled;
 
                 instance.UpdateSettings(objectUpdate.model, gameObjectState, objectUpdate.meshIsModified);
-            }
+			}
             Profiler.EndSample();
         }
 

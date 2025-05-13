@@ -447,10 +447,10 @@ namespace Chisel.Components
                     foundMeshes.Add(instance.sharedMesh);
                     renderObjectUpdates.Add(new ChiselRenderObjectUpdate
                     {
-                        meshIndex = debugVisualizationMeshUpdate.meshIndex,
-                        materialOverride = ChiselProjectSettings.DebugVisualizationMaterials[debugVisualizationMeshUpdate.objectIndex],
-                        instance = instance,
-                        model = model
+                        meshIndex         = debugVisualizationMeshUpdate.meshIndex,
+						materialOverride  = ChiselProjectSettings.DebugVisualizationMaterials[debugVisualizationMeshUpdate.objectIndex],
+                        instance          = instance,
+                        model             = model
                     });
                 }
                 Profiler.EndSample();
@@ -461,15 +461,16 @@ namespace Chisel.Components
                 {
                     var renderMeshUpdate = meshUpdates.meshUpdatesRenderables[i];
                     usedRenderMeshes.Add(renderMeshUpdate.objectIndex);
-                    var instance = renderables[renderMeshUpdate.objectIndex];
+                    
+					var instance = renderables[renderMeshUpdate.objectIndex];
                     foundMeshes.Add(instance.sharedMesh);
                     renderObjectUpdates.Add(new ChiselRenderObjectUpdate
                     {
-                        meshIndex = renderMeshUpdate.meshIndex,
-                        materialOverride = null,
-                        instance = instance,
-                        model = model
-                    });
+                        meshIndex         = renderMeshUpdate.meshIndex,
+						materialOverride  = null,
+                        instance          = instance,
+                        model             = model
+					});
                 }
                 Profiler.EndSample();
 
@@ -555,7 +556,10 @@ namespace Chisel.Components
                             if (!sharedMesh || foundMeshes.Contains(sharedMesh))
                                 continue;
 
-                            foundMeshes.Add(sharedMesh);
+                            instance.geometryHashValue = 0;
+							instance.surfaceHashValue = 0;
+
+							foundMeshes.Add(sharedMesh);
                             meshUpdates.meshDataArray[meshDataArrayOffset].SetIndexBufferParams(0, IndexFormat.UInt32);
                             meshUpdates.meshDataArray[meshDataArrayOffset].SetVertexBufferParams(0, VertexBufferContents.RenderDescriptors);
                             meshDataArrayOffset++;
