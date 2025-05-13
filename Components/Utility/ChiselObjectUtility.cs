@@ -253,17 +253,18 @@ namespace Chisel.Components
             if (transform .hideFlags != kTransformHideFlags ) transform .hideFlags = kTransformHideFlags;
 
 #if UNITY_EDITOR
-            StaticEditorFlags desiredStaticFlags;
-            if (debugVisualizationRenderer)
+            StaticEditorFlags currentStaticFlags = UnityEditor.GameObjectUtility.GetStaticEditorFlags(gameObject);
+			StaticEditorFlags desiredStaticFlags;
+			if (debugVisualizationRenderer)
             {
                 desiredStaticFlags = (StaticEditorFlags)0;
-            } else
+			} else
             {
-                desiredStaticFlags = UnityEditor.GameObjectUtility.GetStaticEditorFlags(gameObject);
+				desiredStaticFlags = state.staticFlags;
             }
             if (!isRenderable && desiredStaticFlags != (StaticEditorFlags)0)
-                desiredStaticFlags |= StaticEditorFlags.OccluderStatic;
-            if (desiredStaticFlags != state.staticFlags)
+				desiredStaticFlags |= StaticEditorFlags.OccluderStatic;
+            if (currentStaticFlags != desiredStaticFlags)
                 UnityEditor.GameObjectUtility.SetStaticEditorFlags(gameObject, desiredStaticFlags);
 #endif
         }

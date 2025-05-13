@@ -304,7 +304,10 @@ namespace Chisel.Editors
                 {
                     if (renderable == null || !renderable.IsValid())
                         continue;
-					ChiselUnityUVGenerationManager.ClearLightmapData(state, renderable);
+                    if (ChiselUnityUVGenerationManager.ClearLightmapData(state, renderable))
+                    {
+                        //Debug.Log($"ClearLightmapData for {renderable.container.name}", renderable.container);
+                    }
 				}
 			}
         }

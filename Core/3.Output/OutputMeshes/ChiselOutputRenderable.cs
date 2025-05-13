@@ -19,6 +19,8 @@ namespace Chisel.Core
 
 	internal struct ChiselOutputRenderable : IChiselOutputMeshCopier
 	{
+#if false
+        [GenerateTestsForBurstCompatibility]
 		public readonly int GetOutputMeshCount([ReadOnly] NativeArray<MeshQuery> meshQueries,
 									           [ReadOnly] NativeArray<int>       parameterCounts)
 		{
@@ -36,7 +38,9 @@ namespace Chisel.Core
 			}
 			return meshAllocations;
 		}
+#endif
 
+        [GenerateTestsForBurstCompatibility]
 		public void CopyMesh([NoAlias, ReadOnly] NativeArray<VertexAttributeDescriptor> descriptors,
 					         [NoAlias, ReadOnly] SubMeshSection subMeshSection, 
 					         [NoAlias, ReadOnly] SubMeshSource subMeshSource,
@@ -107,7 +111,7 @@ namespace Chisel.Core
                         continue;
 
                     for (int i = 0; i < sourceIndexCount; i++)
-                        indices[i + indexOffset] = (int)(sourceIndices[i] + indexVertexOffset);
+                        indices[i + indexOffset] = (int)(sourceIndices[i] + indexVertexOffset) + currentBaseVertex;
                     indexOffset += sourceIndexCount;
 
                     vertices.CopyFrom(currentBaseVertex + indexVertexOffset, ref sourceVertices, 0, sourceVertexCount);
@@ -120,14 +124,14 @@ namespace Chisel.Core
                 
                 meshData.SetSubMesh(subMeshIndex, new SubMeshDescriptor
                 {
-                    baseVertex  = currentBaseVertex,
-                    firstVertex = 0,
-                    vertexCount = vertexCount,
+                    baseVertex  = 0,//currentBaseVertex,
                     indexStart  = currentBaseIndex,
                     indexCount  = indexCount,
-                    bounds      = aabb.ToBounds(),
-                    topology    = UnityEngine.MeshTopology.Triangles,
-                }, MeshUpdateFlags.DontRecalculateBounds | MeshUpdateFlags.DontValidateIndices);
+					//firstVertex = 0,
+					//vertexCount = vertexCount,
+					//bounds      = aabb.ToBounds(),
+					topology    = UnityEngine.MeshTopology.Triangles,
+                }, MeshUpdateFlags.Default);//.DontRecalculateBounds | MeshUpdateFlags.DontValidateIndices);
 
                 currentBaseVertex += vertexCount;
                 currentBaseIndex += indexCount;
@@ -138,6 +142,8 @@ namespace Chisel.Core
 
 	internal struct ChiselOutputCollidable : IChiselOutputMeshCopier
 	{
+#if false
+        [GenerateTestsForBurstCompatibility]
 		public readonly int GetOutputMeshCount([ReadOnly] NativeArray<MeshQuery> meshQueries,
 									           [ReadOnly] NativeArray<int>       parameterCounts)
 		{
@@ -155,7 +161,9 @@ namespace Chisel.Core
 			}
 			return meshAllocations;
 		}
-        
+#endif
+
+        [GenerateTestsForBurstCompatibility]
 		public void CopyMesh([NoAlias, ReadOnly] NativeArray<VertexAttributeDescriptor> descriptors,
 					         [NoAlias, ReadOnly] SubMeshSection subMeshSection, 
 					         [NoAlias, ReadOnly] SubMeshSource subMeshSource,
@@ -234,19 +242,21 @@ namespace Chisel.Core
             meshData.SetSubMesh(0, new SubMeshDescriptor
             {
                 baseVertex  = 0,
-                firstVertex = 0,
-                vertexCount = vertexCount,
                 indexStart  = 0,
                 indexCount  = indexCount,
-                bounds      = aabb.ToBounds(),
+				//firstVertex = 0,
+				//vertexCount = vertexCount,
+				//bounds      = aabb.ToBounds(),
                 topology    = UnityEngine.MeshTopology.Triangles,
-            }, MeshUpdateFlags.DontRecalculateBounds | MeshUpdateFlags.DontValidateIndices);
+            }, MeshUpdateFlags.Default);//.DontRecalculateBounds | MeshUpdateFlags.DontValidateIndices);
         }
 	}
 
 
 	internal struct ChiselOutputDebugVisualizer : IChiselOutputMeshCopier
 	{
+#if false
+        [GenerateTestsForBurstCompatibility]
 		public readonly int GetOutputMeshCount([ReadOnly] NativeArray<MeshQuery> meshQueries,
 									  [ReadOnly] NativeArray<int>		parameterCounts)
 		{
@@ -261,7 +271,9 @@ namespace Chisel.Core
 			}
 			return meshAllocations;
 		}
-        
+#endif
+
+        [GenerateTestsForBurstCompatibility]
 		public void CopyMesh([NoAlias, ReadOnly] NativeArray<VertexAttributeDescriptor> descriptors,
 					         [NoAlias, ReadOnly] SubMeshSection subMeshSection, 
 					         [NoAlias, ReadOnly] SubMeshSource subMeshSource,
@@ -332,7 +344,7 @@ namespace Chisel.Core
                         continue;
 
                     for (int i = 0; i < sourceIndexCount; i++)
-                        indices[i + indexOffset] = (int)(sourceIndices[i] + indexVertexOffset);
+                        indices[i + indexOffset] = (int)(sourceIndices[i] + indexVertexOffset) + currentBaseVertex;
                     indexOffset += sourceIndexCount;
 
                     vertices.CopyFrom(currentBaseVertex + indexVertexOffset, ref sourceVertices, 0, sourceVertexCount);
@@ -345,14 +357,14 @@ namespace Chisel.Core
                 
                 meshData.SetSubMesh(subMeshIndex, new SubMeshDescriptor
                 {
-                    baseVertex  = currentBaseVertex,
-                    firstVertex = 0,
-                    vertexCount = vertexCount,
+                    baseVertex  = 0,//currentBaseVertex,
                     indexStart  = currentBaseIndex,
                     indexCount  = indexCount,
-                    bounds      = aabb.ToBounds(),
+					//firstVertex = 0,
+					//vertexCount = vertexCount,
+					//bounds      = aabb.ToBounds(),
                     topology    = UnityEngine.MeshTopology.Triangles,
-                }, MeshUpdateFlags.DontRecalculateBounds | MeshUpdateFlags.DontValidateIndices);
+                }, MeshUpdateFlags.Default);//.DontRecalculateBounds | MeshUpdateFlags.DontValidateIndices);
 
                 currentBaseVertex += vertexCount;
                 currentBaseIndex += indexCount;
@@ -366,6 +378,7 @@ namespace Chisel.Core
     //          for EACH renderable, debug-visualizer AND collider mesh that we create ..
 	internal struct ChiselOutputSelectionMesh : IChiselOutputMeshCopier
 	{
+#if false
 		public readonly int GetOutputMeshCount([ReadOnly] NativeArray<MeshQuery> meshQueries,
 									           [ReadOnly] NativeArray<int>       parameterCounts)
 		{
@@ -383,6 +396,7 @@ namespace Chisel.Core
 			}
 			return meshAllocations;
 		}
+#endif
 
 		public void CopyMesh([NoAlias, ReadOnly] NativeArray<VertexAttributeDescriptor> descriptors,
 					         [NoAlias, ReadOnly] SubMeshSection subMeshSection, 
@@ -454,7 +468,7 @@ namespace Chisel.Core
                         continue;
 
                     for (int i = 0; i < sourceIndexCount; i++)
-                        indices[i + indexOffset] = (int)(sourceIndices[i] + indexVertexOffset);
+                        indices[i + indexOffset] = (int)(sourceIndices[i] + indexVertexOffset) + currentBaseVertex;
                     indexOffset += sourceIndexCount;
 
                     vertices.CopyFrom(currentBaseVertex + indexVertexOffset, ref sourceVertices, 0, sourceVertexCount);
@@ -467,14 +481,14 @@ namespace Chisel.Core
                 
                 meshData.SetSubMesh(subMeshIndex, new SubMeshDescriptor
                 {
-                    baseVertex  = currentBaseVertex,
-                    firstVertex = 0,
-                    vertexCount = vertexCount,
+                    baseVertex  = 0,//currentBaseVertex,
                     indexStart  = currentBaseIndex,
                     indexCount  = indexCount,
-                    bounds      = aabb.ToBounds(),
+					//firstVertex = 0,
+					//vertexCount = vertexCount,
+					//bounds      = aabb.ToBounds(),
                     topology    = UnityEngine.MeshTopology.Triangles,
-                }, MeshUpdateFlags.DontRecalculateBounds | MeshUpdateFlags.DontValidateIndices);
+                }, MeshUpdateFlags.Default);//.DontRecalculateBounds | MeshUpdateFlags.DontValidateIndices);
 
                 currentBaseVertex += vertexCount;
                 currentBaseIndex += indexCount;

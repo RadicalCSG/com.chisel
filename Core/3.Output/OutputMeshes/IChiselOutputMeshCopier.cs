@@ -16,8 +16,10 @@ namespace Chisel.Core
 	{
 		// Returns the desired Mesh.MeshData's we need, 0 if we don't need any.
 		// meshOffset is the index into the array of Mesh.MeshData's
+#if false
 		int GetOutputMeshCount([ReadOnly] NativeArray<MeshQuery> meshQueries,
 							   [ReadOnly] NativeArray<int>		 parameterCounts);
+#endif
 
 		void CopyMesh([NoAlias, ReadOnly] NativeArray<VertexAttributeDescriptor> descriptors,
 					  [NoAlias, ReadOnly] SubMeshSection vertexBufferInit,

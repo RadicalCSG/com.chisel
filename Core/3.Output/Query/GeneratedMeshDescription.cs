@@ -43,10 +43,10 @@ namespace Chisel.Core
         public Int32		subMeshQueryIndex;
 
         /// <value>Value that can be used to detect changes in vertex positions / indices.</value>
-        public UInt64		geometryHashValue;
+        public UInt32		geometryHashValue;
 
         /// <value>Value that can be used to detect changes in normal, tangent or uv.</value>
-        public UInt64		surfaceHashValue;
+        public UInt32		surfaceHashValue;
 
         /// <value>Number of vertices of this generated mesh.</value><remarks>This can be used to pre-allocate arrays.</remarks>
         public Int32		vertexCount;
@@ -56,9 +56,9 @@ namespace Chisel.Core
 
         #region Comparison
         [EditorBrowsable(EditorBrowsableState.Never)]
-        public override bool Equals(object obj)
+        public override readonly bool Equals(object obj)
         {
-            if (!(obj is GeneratedMeshDescription))
+            if (obj is not GeneratedMeshDescription)
             {
                 return false;
             }
@@ -75,7 +75,7 @@ namespace Chisel.Core
         }
 
         [EditorBrowsable(EditorBrowsableState.Never)]
-        public override int GetHashCode()
+        public override readonly int GetHashCode()
         {
             var hashCode = -190551774;
             hashCode = hashCode * -1521134295;
