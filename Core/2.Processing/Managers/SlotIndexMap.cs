@@ -408,8 +408,10 @@ namespace Chisel.Core
             // Copy the original indices to beyond the end of the list
             // Make space for these indices, hopefully the index list already has the capacity for 
             // this and no allocation needs to be made
-            indexToSlot.Resize(tempOffset + swapRange, NativeArrayOptions.UninitializedMemory);
-            indexToSlot.MemMove(tempOffset, sectionIndex + swapIndex, swapRange);
+            indexToSlot.Resize(tempOffset + swapRange, 
+                NativeArrayOptions.ClearMemory);
+			    //NativeArrayOptions.UninitializedMemory);
+			indexToSlot.MemMove(tempOffset, sectionIndex + swapIndex, swapRange);
             
             // aaaaaabbbbcc .... bbbb
             // aaaaaaccbbcc .... bbbb
@@ -433,9 +435,11 @@ namespace Chisel.Core
 
             // Resize indices list to remove the temporary data, this is basically just 
             //   indexToSlotIndex.length = tempOffset
-            indexToSlot.Resize(tempOffset, NativeArrayOptions.UninitializedMemory);
+            indexToSlot.Resize(tempOffset, 
+                NativeArrayOptions.ClearMemory);
+			    //NativeArrayOptions.UninitializedMemory);
 
-            for (int index = sectionIndex + swapIndex, lastIndex = sectionIndex + sectionLength; index < lastIndex; index++)
+			for (int index = sectionIndex + swapIndex, lastIndex = sectionIndex + sectionLength; index < lastIndex; index++)
             {
                 var idInternal = indexToSlot[index] - 1;
 

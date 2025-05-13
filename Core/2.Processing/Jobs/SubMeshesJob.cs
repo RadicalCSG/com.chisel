@@ -173,8 +173,8 @@ namespace Chisel.Core
                         surfaceParameter  = surfaces[s].surfaceParameter, // <-- 2. store array per surfaceParameter => no sort
                         vertexCount       = surfaces[s].vertexCount,
                         indexCount        = surfaces[s].indexCount,
-                        surfaceHashValue  = surfaces[s].surfaceHash,
-                        geometryHashValue = surfaces[s].geometryHash,
+                        surfaceHashValue  = surfaces[s].surfaceHashValue,
+                        geometryHashValue = surfaces[s].geometryHashValue,
                         brushRenderBuffer = brushRenderBuffer, // <-- 3. Get rid of this somehow => memcpy
                     });
                 }
@@ -252,7 +252,7 @@ namespace Chisel.Core
 
                 currentSubMesh.indexCount += surfaceIndexCount;
                 currentSubMesh.vertexCount += surfaceVertexCount;
-                currentSubMesh.surfaceHashValue  = math.hash(new uint2(currentSubMesh.surfaceHashValue, subMeshSurface.surfaceHashValue));
+                currentSubMesh.surfaceHashValue  = math.hash(new uint2(currentSubMesh.surfaceHashValue,  subMeshSurface.surfaceHashValue));
                 currentSubMesh.geometryHashValue = math.hash(new uint2(currentSubMesh.geometryHashValue, subMeshSurface.geometryHashValue));
                 currentSubMesh.surfacesCount++;
             }
