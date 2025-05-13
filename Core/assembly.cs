@@ -29,6 +29,7 @@ using System.Runtime.CompilerServices;
 [assembly: Unity.Jobs.RegisterGenericJobType(typeof(Chisel.Core.DisposeListChildrenBlobAssetReferenceJob<Chisel.Core.ChiselBrushRenderBuffer>))]
 [assembly: Unity.Jobs.RegisterGenericJobType(typeof(Chisel.Core.DisposeListChildrenBlobAssetReferenceJob<Chisel.Core.SubMeshTriangleLookup>))]
 
+[assembly: Unity.Jobs.RegisterGenericJobType(typeof(Chisel.Core.DisposeListChildrenJob<Chisel.Core.CompactHierarchy>))]
 
 [assembly: InternalsVisibleTo("com.chisel.unity.editor", AllInternalsVisible = true)]
 [assembly: InternalsVisibleTo("com.chisel.unity.components", AllInternalsVisible = true)]
