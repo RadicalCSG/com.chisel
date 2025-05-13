@@ -313,8 +313,9 @@ namespace Chisel.Core
         }
     }
 
-	[BurstCompile(CompileSynchronously = true)]
-    public struct DisposeListChildrenJob<T> : IJob
+	// TODO: make CompactHierarchyManager.Dispose()/CompactHierarchyManager.FreeHierarchyID work inside jobs
+	//[BurstCompile(CompileSynchronously = true)]
+	public struct DisposeListChildrenJob<T> : IJob
         where T : unmanaged, IDisposable
     {
         // Read / Write
