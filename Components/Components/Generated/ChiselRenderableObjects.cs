@@ -252,21 +252,20 @@ namespace Chisel.Components
             if (renderSettings.serializedObjectFieldsDirty)
             {
                 renderSettings.serializedObjectFieldsDirty = false;
-                // These SerializedObject settings can *only* be modified in the inspector, 
-                //      so we should only be calling this on creation / 
-                //      when something in inspector changed.
+				// These SerializedObject settings can *only* be modified in the inspector, 
+				//      so we should only be calling this on creation / 
+				//      when something in inspector changed.
 
-                // Warning: calling new UnityEditor.SerializedObject with an empty array crashes Unity
-                using (var serializedObject = new UnityEditor.SerializedObject(meshRenderers))
-                {
-                    serializedObject.SetPropertyValue("m_ImportantGI",                      renderSettings.ImportantGI);
-                    serializedObject.SetPropertyValue("m_PreserveUVs",                      renderSettings.OptimizeUVs);
-                    serializedObject.SetPropertyValue("m_IgnoreNormalsForChartDetection",   renderSettings.IgnoreNormalsForChartDetection);
-                    serializedObject.SetPropertyValue("m_AutoUVMaxDistance",                renderSettings.AutoUVMaxDistance);
-                    serializedObject.SetPropertyValue("m_AutoUVMaxAngle",                   renderSettings.AutoUVMaxAngle);
-                    serializedObject.SetPropertyValue("m_MinimumChartSize",                 renderSettings.MinimumChartSize);
-                }
-            }
+				// Warning: calling new UnityEditor.SerializedObject with an empty array crashes Unity
+				using var serializedObject = new UnityEditor.SerializedObject(meshRenderers);
+
+				serializedObject.SetPropertyValue("m_ImportantGI",                    renderSettings.ImportantGI);
+				serializedObject.SetPropertyValue("m_PreserveUVs",                    renderSettings.OptimizeUVs);
+				serializedObject.SetPropertyValue("m_IgnoreNormalsForChartDetection", renderSettings.IgnoreNormalsForChartDetection);
+				serializedObject.SetPropertyValue("m_AutoUVMaxDistance",              renderSettings.AutoUVMaxDistance);
+				serializedObject.SetPropertyValue("m_AutoUVMaxAngle",                 renderSettings.AutoUVMaxAngle);
+				serializedObject.SetPropertyValue("m_MinimumChartSize",               renderSettings.MinimumChartSize);
+			}
             Profiler.EndSample();
 #endif
 
@@ -576,7 +575,7 @@ namespace Chisel.Components
 
 
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
-		void RenderMesh(Mesh mesh, MaterialPropertyBlock materialPropertyBlock, Matrix4x4 matrix, int layer, Camera camera)
+		void RenderMesh(Mesh mesh, MaterialPropertyBlock materialPropertyBlock, Matrix4x4 matrix, int layer, Camera camera, bool enableLightmaps)
 		{
 			enabled = false;
             if (!IsValidMesh(mesh))
@@ -587,22 +586,53 @@ namespace Chisel.Components
 			enabled = true;
 			meshRenderer.GetPropertyBlock(materialPropertyBlock);
 
-			var shadowCasting         = meshRenderer.shadowCastingMode;
-			var shadowReceiving       = meshRenderer.receiveShadows;
-			var probeAnchor           = meshRenderer.probeAnchor;
-			var lightProbeUsage       = meshRenderer.lightProbeUsage;
-			var lightProbeProxyVolume = meshRenderer.lightProbeProxyVolumeOverride == null ? null : meshRenderer.lightProbeProxyVolumeOverride.GetComponent<LightProbeProxyVolume>();
+            var renderParams = new RenderParams
+			{
+                camera                   = camera,
+                instanceID               = 0,
+                layer                    = layer,
+                lightProbeProxyVolume    = meshRenderer.lightProbeProxyVolumeOverride == null ? null : meshRenderer.lightProbeProxyVolumeOverride.GetComponent<LightProbeProxyVolume>(),
+                lightProbeUsage          = meshRenderer.lightProbeUsage,
+                matProps                 = materialPropertyBlock,
+                motionVectorMode         = meshRenderer.motionVectorGenerationMode,
+                overrideSceneCullingMask = false,
+                receiveShadows           = meshRenderer.receiveShadows,
+                reflectionProbeUsage     = meshRenderer.reflectionProbeUsage,
+                rendererPriority         = meshRenderer.rendererPriority,
+                renderingLayerMask       = meshRenderer.renderingLayerMask,
+                sceneCullingMask         = 0,
+                shadowCastingMode        = meshRenderer.shadowCastingMode,
+                worldBounds              = meshRenderer.bounds
+			};
+
+            if (enableLightmaps)
+            { 
+                var lightmapScaleOffset = meshRenderer.lightmapScaleOffset;
+                var lightmapIndex = meshRenderer.lightmapIndex;
+                if (lightmapIndex != -1)
+                {
+                    var lightmapData = LightmapSettings.lightmaps[lightmapIndex];
+                    materialPropertyBlock.SetTexture("unity_Lightmap", lightmapData.lightmapColor);
+                    materialPropertyBlock.SetVector("unity_LightmapST", lightmapScaleOffset);
+                } else
+				    enableLightmaps = false;
+                  
+                // TODO: support all lightmaps functionality
+			}
 
 			// TODO: use commandbuffers instead?
 			for (int submeshIndex = 0; submeshIndex < mesh.subMeshCount; submeshIndex++)
-			{
-				Graphics.DrawMesh(mesh, matrix, renderMaterials[submeshIndex], layer, camera, submeshIndex, materialPropertyBlock, shadowCasting, shadowReceiving, probeAnchor, lightProbeUsage, lightProbeProxyVolume);
-			}
+            {
+                renderParams.material = renderMaterials[submeshIndex];
+                if (enableLightmaps) renderParams.material.EnableKeyword("LIGHTMAP_ON");
+                else renderParams.material.DisableKeyword("LIGHTMAP_ON");
+                Graphics.RenderMesh(in renderParams, mesh, submeshIndex, matrix);
+            }
 		}
 
 
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
-		internal static void RenderChiselRenderPartialObjects(ChiselRenderObjects[] renderables, MaterialPropertyBlock materialPropertyBlock, Matrix4x4 matrix, int layer, Camera camera)
+		internal static void RenderChiselRenderPartialObjects(ChiselRenderObjects[] renderables, MaterialPropertyBlock materialPropertyBlock, Matrix4x4 matrix, int layer, Camera camera, bool hasLightmaps)
 		{
 			// TODO: use commandbuffers instead?
 			foreach (var renderable in renderables)
@@ -611,13 +641,13 @@ namespace Chisel.Components
 					continue;
 				if (!renderable.IsEnabled())
 					continue;
-				renderable.RenderMesh(renderable.partialMesh, materialPropertyBlock, matrix, layer, camera);
+				renderable.RenderMesh(renderable.partialMesh, materialPropertyBlock, matrix, layer, camera, hasLightmaps);
 			}
 		}
 
 
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
-		internal static void RenderChiselRenderObjects(ChiselRenderObjects[] renderables, MaterialPropertyBlock materialPropertyBlock, Matrix4x4 matrix, int layer, Camera camera)
+		internal static void RenderChiselRenderObjects(ChiselRenderObjects[] renderables, MaterialPropertyBlock materialPropertyBlock, Matrix4x4 matrix, int layer, Camera camera, bool hasLightmaps)
 		{
 			// TODO: use commandbuffers instead?
 			foreach (var renderable in renderables)
@@ -626,7 +656,7 @@ namespace Chisel.Components
                     continue;
 				if (!renderable.IsEnabled())
 					continue;
-				renderable.RenderMesh(renderable.sharedMesh, materialPropertyBlock, matrix, layer, camera);
+				renderable.RenderMesh(renderable.sharedMesh, materialPropertyBlock, matrix, layer, camera, hasLightmaps);
 			}
 		}
         
@@ -748,7 +778,10 @@ namespace Chisel.Components
 			var layer = model.gameObject.layer;
 			var matrix = model.transform.localToWorldMatrix;
 
-			if (drawModeFlags == DrawModeFlags.ShowPickingModel)
+            var staticFlags = UnityEditor.GameObjectUtility.GetStaticEditorFlags(model.gameObject);
+			var lightmapStatic = (staticFlags & UnityEditor.StaticEditorFlags.ContributeGI) == UnityEditor.StaticEditorFlags.ContributeGI;
+
+            if (drawModeFlags == DrawModeFlags.ShowPickingModel)
 			{
 				List<SelectionOffset> selectionOffsets = new();
 				RenderPickingModels(NeedToRenderForPicking, 0, selectionOffsets);
@@ -758,19 +791,19 @@ namespace Chisel.Components
 			if (model.VisibilityState != VisibilityState.Mixed)
 			{
 				if ((drawModeFlags & DrawModeFlags.HideRenderables) == DrawModeFlags.None)
-					RenderChiselRenderObjects(model.generated.renderables, model.materialPropertyBlock, matrix, layer, camera);
+					RenderChiselRenderObjects(model.generated.renderables, model.materialPropertyBlock, matrix, layer, camera, lightmapStatic);
 
 				if ((drawModeFlags & ~DrawModeFlags.HideRenderables) != DrawModeFlags.None)
-					RenderChiselRenderObjects(model.generated.debugVisualizationRenderables, model.materialPropertyBlock, matrix, layer, camera);
+					RenderChiselRenderObjects(model.generated.debugVisualizationRenderables, model.materialPropertyBlock, matrix, layer, camera, false);
 				return;
 			}
 
 			if ((drawModeFlags & DrawModeFlags.HideRenderables) == DrawModeFlags.None)
-				RenderChiselRenderPartialObjects(model.generated.renderables, model.materialPropertyBlock, matrix, layer, camera);
+				RenderChiselRenderPartialObjects(model.generated.renderables, model.materialPropertyBlock, matrix, layer, camera, lightmapStatic);
 
 			if ((drawModeFlags & ~DrawModeFlags.HideRenderables) != DrawModeFlags.None)
-				RenderChiselRenderPartialObjects(model.generated.debugVisualizationRenderables, model.materialPropertyBlock, matrix, layer, camera);
+				RenderChiselRenderPartialObjects(model.generated.debugVisualizationRenderables, model.materialPropertyBlock, matrix, layer, camera, false);
 		}
 #endif
-	}
+        }
 }
