@@ -176,8 +176,10 @@ namespace Chisel.Core
                     //    intersectionSurfaceInfos.Clear();
 
                     var writeVertices = new UnsafeList<float3>(hashedTreeSpaceVertices.Length, allocator);
-                    writeVertices.Resize(hashedTreeSpaceVertices.Length, NativeArrayOptions.UninitializedMemory);
-                    for (int l = 0; l < hashedTreeSpaceVertices.Length; l++)
+                    writeVertices.Resize(hashedTreeSpaceVertices.Length,
+						NativeArrayOptions.ClearMemory);
+					    //NativeArrayOptions.UninitializedMemory);
+					for (int l = 0; l < hashedTreeSpaceVertices.Length; l++)
                         writeVertices[l] = hashedTreeSpaceVertices[l];
                     loopVerticesLookup[brushIndexOrder.nodeOrder] = writeVertices;
 
@@ -413,8 +415,10 @@ namespace Chisel.Core
                         }
 
                         var writeVertices = new UnsafeList<float3>(hashedTreeSpaceVertices.Length, allocator);
-                        writeVertices.Resize(hashedTreeSpaceVertices.Length, NativeArrayOptions.UninitializedMemory);
-                        for (int l = 0; l < hashedTreeSpaceVertices.Length; l++)
+                        writeVertices.Resize(hashedTreeSpaceVertices.Length,
+							NativeArrayOptions.ClearMemory);
+						    //NativeArrayOptions.UninitializedMemory);
+						for (int l = 0; l < hashedTreeSpaceVertices.Length; l++)
                             writeVertices[l] = hashedTreeSpaceVertices[l];
                         loopVerticesLookup[brushIndexOrder.nodeOrder] = writeVertices;
 

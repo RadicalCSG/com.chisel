@@ -221,12 +221,16 @@ namespace Chisel.Core
 				polygonVerticesArray = new UnsafeList<SegmentVertex>(3, allocator);//Allocator.Persistent
 				polygonVerticesSegments = new UnsafeList<int>(1, allocator);//Allocator.Persistent
 
-				polygonVerticesArray.Resize(3, NativeArrayOptions.UninitializedMemory);
+				polygonVerticesArray.Resize(3, 
+                    NativeArrayOptions.ClearMemory);
+				    //NativeArrayOptions.UninitializedMemory);
 				polygonVerticesArray[0] = shapeVertices[0];
 				polygonVerticesArray[1] = shapeVertices[1];
 				polygonVerticesArray[2] = shapeVertices[2];
 
-				polygonVerticesSegments.Resize(1, NativeArrayOptions.UninitializedMemory);
+				polygonVerticesSegments.Resize(1, 
+                    NativeArrayOptions.ClearMemory);
+				    //NativeArrayOptions.UninitializedMemory);
 				polygonVerticesSegments[0] = polygonVerticesArray.Length;
 			}
 			else

@@ -318,7 +318,9 @@ namespace Chisel.Core
             var compactNodeID = new CompactNodeID(hierarchyID: HierarchyID, slotIndex: slotIndex);
             if (index >= compactNodes.Length)
             {
-                compactNodes .Resize(index + 1, NativeArrayOptions.UninitializedMemory);
+                compactNodes .Resize(index + 1,
+				    NativeArrayOptions.ClearMemory); 
+                    //NativeArrayOptions.UninitializedMemory);
             }
             compactNodes[index] = new CompactChildNode
             {
@@ -798,7 +800,9 @@ namespace Chisel.Core
 
             var prevLength = compactNodes.Length;
             // Resize compactNodes to have space for the nodes we're detaching (compactNodes will probably have capacity for this already)
-            compactNodes.Resize(prevLength + range, NativeArrayOptions.UninitializedMemory);
+            compactNodes.Resize(prevLength + range,
+				NativeArrayOptions.ClearMemory); 
+                //NativeArrayOptions.UninitializedMemory);
             
             // Copy the original nodes to behind all our other nodes
             compactNodes.MemMove(prevLength, nodeIndex, range);
@@ -809,9 +813,11 @@ namespace Chisel.Core
             
             // Copy original nodes to behind the new parent child list
             compactNodes.MemMove(lastNodeIndex, prevLength, range);
-            
+
             // Set the compactNodes length to its original size
-            compactNodes.Resize(prevLength, NativeArrayOptions.UninitializedMemory);
+            compactNodes.Resize(prevLength,
+                NativeArrayOptions.ClearMemory);
+                //NativeArrayOptions.UninitializedMemory);
             
             slotIndexMap.SwapIndexRangeToBack(parentChildOffset, parentChildCount, siblingIndex, range);
 

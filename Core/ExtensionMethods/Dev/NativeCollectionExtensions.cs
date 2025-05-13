@@ -1112,7 +1112,8 @@ namespace Chisel
 			CollectionChecks.CheckWriteAndThrow(dst);
 			CollectionChecks.CheckReadAndThrow(src);
 			CollectionChecks.CheckRangeInRange(srcIndex, length, src.Length);
-			dst.Resize(length, NativeArrayOptions.UninitializedMemory);
+			dst.Resize(length, NativeArrayOptions.ClearMemory);
+				//NativeArrayOptions.UninitializedMemory);
 			if (length <= 0) return;
 			unsafe { fixed (T* srcPtr = &src[0]) { UnsafeUtility.MemCpy((T*)dst.GetUnsafePtr(), srcPtr + srcIndex, length * sizeof(T)); } }
 		}
@@ -1123,7 +1124,8 @@ namespace Chisel
 			CollectionChecks.CheckWriteAndThrow(dst);
 			CollectionChecks.CheckReadAndThrow(src);
 			CollectionChecks.CheckRangeInRange(srcIndex, length, src.Length);
-			dst.Resize(length, NativeArrayOptions.UninitializedMemory);
+			dst.Resize(length, NativeArrayOptions.ClearMemory);
+				//NativeArrayOptions.UninitializedMemory);
 			if (length <= 0) return;
 			unsafe { UnsafeUtility.MemCpy((T*)dst.GetUnsafePtr(), (T*)src.GetUnsafeReadOnlyPtr() + srcIndex, length * sizeof(T)); }
 		}
@@ -1134,7 +1136,8 @@ namespace Chisel
 			CollectionChecks.CheckWriteAndThrow(dst);
 			CollectionChecks.CheckReadAndThrow(src);
 			CollectionChecks.CheckRangeInRange(srcIndex, length, src.Length);
-			dst.Resize(length, NativeArrayOptions.UninitializedMemory);
+			dst.Resize(length, NativeArrayOptions.ClearMemory);
+				//NativeArrayOptions.UninitializedMemory);
 			if (length <= 0) return;
 			unsafe { UnsafeUtility.MemCpy((T*)dst.GetUnsafePtr(), (T*)src.GetUnsafeReadOnlyPtr() + srcIndex, length * sizeof(T)); }
 		}
@@ -1145,7 +1148,8 @@ namespace Chisel
 			CollectionChecks.CheckWriteAndThrow(dst);
 			CollectionChecks.CheckReadAndThrow(src);
 			CollectionChecks.CheckRangeInRange(srcIndex, length, src.Length);
-			dst.Resize(length, NativeArrayOptions.UninitializedMemory);
+			dst.Resize(length, NativeArrayOptions.ClearMemory);
+				//NativeArrayOptions.UninitializedMemory);
 			if (length <= 0) return;
 			unsafe { UnsafeUtility.MemCpy((T*)dst.GetUnsafePtr(), (T*)src.GetUnsafeReadOnlyPtr() + srcIndex, length * sizeof(T)); }
 		}
@@ -1156,7 +1160,8 @@ namespace Chisel
 			CollectionChecks.CheckWriteAndThrow(dst);
 			CollectionChecks.CheckReadAndThrow(src);
 			CollectionChecks.CheckRangeInRange(srcIndex, length, src.Length);
-			dst.Resize(length, NativeArrayOptions.UninitializedMemory);
+			dst.Resize(length, NativeArrayOptions.ClearMemory);
+				//NativeArrayOptions.UninitializedMemory);
 			if (length <= 0) return;
 			unsafe { UnsafeUtility.MemCpy((T*)dst.GetUnsafePtr(), (T*)src.GetUnsafeReadOnlyPtr() + srcIndex, length * sizeof(T)); }
 		}
@@ -1167,7 +1172,8 @@ namespace Chisel
 			CollectionChecks.CheckWriteAndThrow(dst);
 			CollectionChecks.CheckReadAndThrow(src);
 			CollectionChecks.CheckRangeInRange(srcIndex, length, src.Length);
-			dst.Resize(length, NativeArrayOptions.UninitializedMemory);
+			dst.Resize(length, NativeArrayOptions.ClearMemory);
+				//NativeArrayOptions.UninitializedMemory);
 			if (length <= 0) return;
 			unsafe { UnsafeUtility.MemCpy((T*)dst.GetUnsafePtr(), (T*)src.Ptr + srcIndex, length * sizeof(T)); }
 		}
@@ -1178,7 +1184,8 @@ namespace Chisel
 			CollectionChecks.CheckWriteAndThrow(dst);
 			CollectionChecks.CheckReadAndThrow(ref src);
 			CollectionChecks.CheckRangeInRange(srcIndex, length, src.Length);
-			dst.Resize(length, NativeArrayOptions.UninitializedMemory);
+			dst.Resize(length, NativeArrayOptions.ClearMemory);
+				//NativeArrayOptions.UninitializedMemory);
 			if (length <= 0) return;
 			unsafe { UnsafeUtility.MemCpy((T*)dst.GetUnsafePtr(), (T*)src.GetUnsafePtr() + srcIndex, length * sizeof(T)); }
 		}
@@ -1192,7 +1199,8 @@ namespace Chisel
 			CollectionChecks.CheckWriteAndThrow(dst);
 			CollectionChecks.CheckReadAndThrow(src);
 			CollectionChecks.CheckRangeInRange(srcIndex, length, src.Length);
-			dst.Resize(length, NativeArrayOptions.UninitializedMemory);
+			dst.Resize(length, NativeArrayOptions.ClearMemory);
+				//NativeArrayOptions.UninitializedMemory);
 			if (length <= 0) return;
 			unsafe { fixed (T* srcPtr = &src[0]) { UnsafeUtility.MemCpy(dst.Ptr, srcPtr + srcIndex, length * sizeof(T)); } }
 		}
@@ -1203,7 +1211,8 @@ namespace Chisel
 			CollectionChecks.CheckWriteAndThrow(dst);
 			CollectionChecks.CheckReadAndThrow(src);
 			CollectionChecks.CheckRangeInRange(srcIndex, length, src.Length);
-			dst.Resize(length, NativeArrayOptions.UninitializedMemory);
+			dst.Resize(length, NativeArrayOptions.ClearMemory);
+				//NativeArrayOptions.UninitializedMemory);
 			if (length <= 0) return;
 			unsafe { UnsafeUtility.MemCpy(dst.Ptr, (T*)src.GetUnsafeReadOnlyPtr() + srcIndex, length * sizeof(T)); }
 		}
@@ -1214,7 +1223,8 @@ namespace Chisel
 			CollectionChecks.CheckWriteAndThrow(dst);
 			CollectionChecks.CheckReadAndThrow(src);
 			CollectionChecks.CheckRangeInRange(srcIndex, length, src.Length);
-			dst.Resize(length, NativeArrayOptions.UninitializedMemory);
+			dst.Resize(length, NativeArrayOptions.ClearMemory);
+				//NativeArrayOptions.UninitializedMemory);
 			if (length <= 0) return;
 			unsafe { UnsafeUtility.MemCpy(dst.Ptr, (T*)src.GetUnsafeReadOnlyPtr() + srcIndex, length * sizeof(T)); }
 		}
@@ -1225,7 +1235,8 @@ namespace Chisel
 			CollectionChecks.CheckWriteAndThrow(dst);
 			CollectionChecks.CheckReadAndThrow(src);
 			CollectionChecks.CheckRangeInRange(srcIndex, length, src.Length);
-			dst.Resize(length, NativeArrayOptions.UninitializedMemory);
+			dst.Resize(length, NativeArrayOptions.ClearMemory);
+				//NativeArrayOptions.UninitializedMemory);
 			if (length <= 0) return;
 			unsafe { UnsafeUtility.MemCpy(dst.Ptr, (T*)src.GetUnsafeReadOnlyPtr() + srcIndex, length * sizeof(T)); }
 		}
@@ -1236,7 +1247,8 @@ namespace Chisel
 			CollectionChecks.CheckWriteAndThrow(dst);
 			CollectionChecks.CheckReadAndThrow(src);
 			CollectionChecks.CheckRangeInRange(srcIndex, length, src.Length);
-			dst.Resize(length, NativeArrayOptions.UninitializedMemory);
+			dst.Resize(length, NativeArrayOptions.ClearMemory);
+				//NativeArrayOptions.UninitializedMemory);
 			if (length <= 0) return;
 			unsafe { UnsafeUtility.MemCpy(dst.Ptr, (T*)src.GetUnsafeReadOnlyPtr() + srcIndex, length * sizeof(T)); }
 		}
@@ -1247,7 +1259,8 @@ namespace Chisel
 			CollectionChecks.CheckWriteAndThrow(dst);
 			CollectionChecks.CheckReadAndThrow(src);
 			CollectionChecks.CheckRangeInRange(srcIndex, length, src.Length);
-			dst.Resize(length, NativeArrayOptions.UninitializedMemory);
+			dst.Resize(length, NativeArrayOptions.ClearMemory);
+				//NativeArrayOptions.UninitializedMemory);
 			if (length <= 0) return;
 			unsafe { UnsafeUtility.MemCpy(dst.Ptr, (T*)src.Ptr + srcIndex, length * sizeof(T)); }
 		}
@@ -1258,7 +1271,8 @@ namespace Chisel
 			CollectionChecks.CheckWriteAndThrow(dst);
 			CollectionChecks.CheckReadAndThrow(ref src);
 			CollectionChecks.CheckRangeInRange(srcIndex, length, src.Length);
-			dst.Resize(length, NativeArrayOptions.UninitializedMemory);
+			dst.Resize(length, NativeArrayOptions.ClearMemory);
+				//NativeArrayOptions.UninitializedMemory);
 			if (length <= 0) return;
 			unsafe { UnsafeUtility.MemCpy(dst.Ptr, (T*)src.GetUnsafePtr() + srcIndex, length * sizeof(T)); }
 		}

@@ -329,19 +329,19 @@ namespace Chisel.Core
 						queryList.Clear();
 						for (int s = 0; s < surfaceBuffers.Length; s++)
 						{
-							ref var rb = ref surfaceBuffers[s];
-							var destinationFlags = rb.destinationFlags;
+							ref var buffer = ref surfaceBuffers[s];
+							var destinationFlags = buffer.destinationFlags;
 							if ((destinationFlags & layerQueryMask) != layerQuery)
 								continue;
 
 							queryList.AddNoResize(new ChiselQuerySurface
 							{
-								surfaceIndex = rb.surfaceIndex,
-								surfaceParameter = surfaceParameterIndex < 0 ? 0 : rb.destinationParameters.parameters[surfaceParameterIndex],
-								vertexCount = rb.vertexCount,
-								indexCount = rb.indexCount,
-								surfaceHash = rb.surfaceHash,
-								geometryHash = rb.geometryHash
+								surfaceIndex      = buffer.surfaceIndex,
+								surfaceParameter  = surfaceParameterIndex < 0 ? 0 : buffer.destinationParameters.parameters[surfaceParameterIndex],
+								vertexCount       = buffer.vertexCount,
+								indexCount        = buffer.indexCount,
+								surfaceHashValue  = buffer.surfaceHashValue,
+								geometryHashValue = buffer.geometryHashValue
 							});
 						}
 						queryList.Sort(kCompareSortByBasePlaneIndex);

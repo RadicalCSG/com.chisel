@@ -101,7 +101,9 @@ namespace Chisel.Core
 
 			usedIndices.Resize(vertices.Length, NativeArrayOptions.ClearMemory);
 			lookup.Resize(vertices.Length, NativeArrayOptions.ClearMemory);
-			edgeIndices.Resize(edges.Length * 2, NativeArrayOptions.UninitializedMemory);
+			edgeIndices.Resize(edges.Length * 2,
+				NativeArrayOptions.ClearMemory);
+				//NativeArrayOptions.UninitializedMemory);
 			for (int i = 0, j = 0; j < edges.Length; i += 2, j++)
 			{
 				var index1 = edges[j].index1;
