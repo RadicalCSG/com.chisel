@@ -242,7 +242,9 @@ namespace Chisel.Editors
                 if (System.IO.Directory.Exists(packagePath))
                 {
                     var localPath = ToLocalPath(packagePath);
-                    if (foundPaths.Add(localPath)) paths.Add(localPath);
+                    if ((localPath.StartsWith("Assets/") || localPath.StartsWith("Packages/")) &&
+                        foundPaths.Add(localPath))
+                        paths.Add(localPath);
                 }
             }
             return paths.ToArray();
