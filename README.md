@@ -29,12 +29,12 @@ Features (incomplete)
 * Draw 2D shapes (possible to turn straight lines into curves) on existing CSG surfaces and extrude them
 * Precise snapping to surfaces, edges, vertices and grid lines
 * Rotatable & movable grid
+* Subtractive Workflow **(NEW)**
 
 Planned Features (incomplete, and in random order):
 * [Debug Visualizations](https://github.com/RadicalCSG/Chisel.Prototype/issues/118) to see shadow only surfaces, collider surfaces etc.  (partially implemented)
 * [Double sided surfaces](https://github.com/RadicalCSG/Chisel.Prototype/issues/226)
 * [Extrusion from existing surface](https://github.com/RadicalCSG/Chisel.Prototype/issues/19)
-* [Subtractive Workflow](https://github.com/RadicalCSG/Chisel.Prototype/issues/14)
 * [Clip Tool](https://github.com/RadicalCSG/Chisel.Prototype/issues/15)
 * [Normal smoothing](https://github.com/RadicalCSG/Chisel.Prototype/issues/184)
 * [Node Based Generators](https://github.com/RadicalCSG/Chisel.Prototype/issues/94) for easy procedural content generation
