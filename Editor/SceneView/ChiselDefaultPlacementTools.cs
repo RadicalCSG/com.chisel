@@ -44,9 +44,9 @@ namespace Chisel.Editors
             {
                 case ShapeExtrusionState.Modified:
                 case ShapeExtrusionState.Create:
+                {
                     ChiselModelComponent model = generatedComponent ?
                         generatedComponent.GetComponentInParent<ChiselModelComponent>() : null;
-                {
                     if (!generatedComponent)
                     {
                         if (height != 0)
