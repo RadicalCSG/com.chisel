@@ -44,6 +44,8 @@ namespace Chisel.Editors
             {
                 case ShapeExtrusionState.Modified:
                 case ShapeExtrusionState.Create:
+                    ChiselModelComponent model = generatedComponent ?
+                        generatedComponent.GetComponentInParent<ChiselModelComponent>() : null;
                 {
                     if (!generatedComponent)
                     {
@@ -52,7 +54,7 @@ namespace Chisel.Editors
                             var center2D = shape.Center;
                             var center3D = new Vector3(center2D.x, 0, center2D.y);
                             Transform parentTransform = null;
-                            var model = ChiselModelManager.Instance.GetActiveModelOrCreate(modelBeneathCursor);
+                            model = ChiselModelManager.Instance.GetActiveModelOrCreate(modelBeneathCursor);
                             if (model != null) parentTransform = model.transform;
                             generatedComponent = ChiselComponentFactory.Create(generatorType, ToolName, parentTransform,
                                                                                   transformation * Matrix4x4.TRS(center3D, Quaternion.identity, Vector3.one))
@@ -68,6 +70,8 @@ namespace Chisel.Editors
                         }
                     } else
                     {
+                        if (!model)
+                            model = generatedComponent.GetComponentInParent<ChiselModelComponent>();
                         var defaultOperation = (model != null && model.SubtractiveEditing) ? CSGOperationType.Subtractive : CSGOperationType.Additive;
                         generatedComponent.Operation = forceOperation ??
                                                   ((height < 0 && modelBeneathCursor) ?
@@ -137,6 +141,8 @@ namespace Chisel.Editors
             {
                 case GeneratorModeState.Update:
                 {
+                    ChiselModelComponent model = generatedComponent ?
+                        generatedComponent.GetComponentInParent<ChiselModelComponent>() : null;
                     if (!generatedComponent)
                     {
                         var size = bounds.size;
@@ -146,7 +152,7 @@ namespace Chisel.Editors
                         {
                             // Create the generator GameObject
                             Transform parentTransform = null;
-                            var model = ChiselModelManager.Instance.GetActiveModelOrCreate(modelBeneathCursor);
+                            model = ChiselModelManager.Instance.GetActiveModelOrCreate(modelBeneathCursor);
                             if (model != null) parentTransform = model.transform;
                             generatedComponent  = ChiselComponentFactory.Create(generatorType, ToolName, parentTransform, transformation) 
                                                 as ChiselNodeGeneratorComponent<DefinitionType>;
@@ -184,6 +190,8 @@ namespace Chisel.Editors
                             generatedComponent.Operation = forceOperation ?? defaultOperation;
                         } else
                         {
+                            if (!model)
+                                model = generatedComponent.GetComponentInParent<ChiselModelComponent>();
                             var defaultOperation = (model != null && model.SubtractiveEditing) ? CSGOperationType.Subtractive : CSGOperationType.Additive;
                             generatedComponent.Operation = forceOperation ??
                                                     ((height < 0 && modelBeneathCursor) ?
