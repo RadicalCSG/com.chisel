@@ -62,8 +62,7 @@ namespace Chisel.Editors
                             shape.Center = Vector2.zero;
                             generatedComponent.definition.Reset();
                             generatedComponent.SurfaceDefinition?.Reset();
-                            var defaultOperation = (model != null && model.SubtractiveEditing) ? CSGOperationType.Subtractive : CSGOperationType.Additive;
-                            generatedComponent.Operation = forceOperation ?? defaultOperation;
+                            generatedComponent.Operation = forceOperation ?? CSGOperationType.Additive;
                             PlacementToolDefinition.OnCreate(ref generatedComponent.definition, shape);
                             PlacementToolDefinition.OnUpdate(ref generatedComponent.definition, height);
                             generatedComponent.ResetTreeNodes();
@@ -72,11 +71,10 @@ namespace Chisel.Editors
                     {
                         if (!model)
                             model = generatedComponent.GetComponentInParent<ChiselModelComponent>();
-                        var defaultOperation = (model != null && model.SubtractiveEditing) ? CSGOperationType.Subtractive : CSGOperationType.Additive;
                         generatedComponent.Operation = forceOperation ??
                                                   ((height < 0 && modelBeneathCursor) ?
                                                     CSGOperationType.Subtractive :
-                                                    defaultOperation);
+                                                    CSGOperationType.Additive);
                         PlacementToolDefinition.OnUpdate(ref generatedComponent.definition, height);
                         generatedComponent.OnValidate();
                         generatedComponent.ClearHashes(); // TODO: remove need for this
@@ -161,8 +159,7 @@ namespace Chisel.Editors
 
                             generatedComponent.definition.Reset();
                             generatedComponent.surfaceArray?.Reset();
-                            var defaultOperation = (model != null && model.SubtractiveEditing) ? CSGOperationType.Subtractive : CSGOperationType.Additive;
-                            generatedComponent.Operation = forceOperation ?? defaultOperation;
+                            generatedComponent.Operation = forceOperation ?? CSGOperationType.Additive;
                             PlacementToolDefinition.OnCreate(ref generatedComponent.definition);
                             PlacementToolDefinition.OnUpdate(ref generatedComponent.definition, bounds);
                             generatedComponent.OnValidate();
@@ -186,17 +183,15 @@ namespace Chisel.Editors
                         ChiselComponentFactory.SetTransform(generatedComponent, transformation);
                         if ((generatoreModeFlags & PlacementFlags.AlwaysFaceUp) == PlacementFlags.AlwaysFaceCameraXZ)
                         {
-                            var defaultOperation = (model != null && model.SubtractiveEditing) ? CSGOperationType.Subtractive : CSGOperationType.Additive;
-                            generatedComponent.Operation = forceOperation ?? defaultOperation;
+                            generatedComponent.Operation = forceOperation ?? CSGOperationType.Additive;
                         } else
                         {
                             if (!model)
                                 model = generatedComponent.GetComponentInParent<ChiselModelComponent>();
-                            var defaultOperation = (model != null && model.SubtractiveEditing) ? CSGOperationType.Subtractive : CSGOperationType.Additive;
                             generatedComponent.Operation = forceOperation ??
                                                     ((height < 0 && modelBeneathCursor) ?
                                                     CSGOperationType.Subtractive :
-                                                    defaultOperation);
+                                                    CSGOperationType.Additive);
                         }
                         PlacementToolDefinition.OnUpdate(ref generatedComponent.definition, bounds);
                         generatedComponent.OnValidate();

@@ -607,6 +607,12 @@ namespace Chisel.Components
                 meshUpdates.meshDataArray = default;
                 Profiler.EndSample();
 
+                if (model.SubtractiveEditing)
+                {
+                    for (int i = 0; i < foundMeshes.Count; i++)
+                        ChiselMeshUtility.FlipNormals(foundMeshes[i]);
+                }
+
                 // TODO: user meshDataArray data to determine if colliders are visible or not, then we can move this before the Apply
                 Profiler.BeginSample("UpdateColliders");
                 ChiselColliderObjects.UpdateProperties(model, this.colliders);

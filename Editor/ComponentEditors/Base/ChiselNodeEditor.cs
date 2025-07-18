@@ -326,11 +326,6 @@ namespace Chisel.Editors
                     Undo.RegisterCreatedObjectUndo(modelGameObject, "Create " + modelGameObject.name);
                     MoveTargetsUnderModel(new[] { component }, model);
                 }
-                if (model.SubtractiveEditing && component is IChiselHasOperation hasOperation)
-                {
-                    Undo.RecordObject(component, "Set Operation");
-                    hasOperation.Operation = CSGOperationType.Subtractive;
-                }
             } else
                 model = component as ChiselModelComponent;
 
