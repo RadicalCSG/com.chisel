@@ -287,8 +287,16 @@ namespace Chisel.Components
                 Debug.LogWarning($"{nameof(ChiselModelComponent)} already has a treeNode, but trying to create a new one?", this);
             var instanceID = GetInstanceID();
             Node = CSGTree.Create(instanceID: instanceID);
+            Node.Operation = SubtractiveEditing ? CSGOperationType.Subtractive : CSGOperationType.Additive;
             return Node;
-        }		
+        }
+
+        protected override void OnValidateState()
+        {
+            if (Node.Valid)
+                Node.Operation = SubtractiveEditing ? CSGOperationType.Subtractive : CSGOperationType.Additive;
+            base.OnValidateState();
+        }
         
         public override void OnInitialize()
         {
