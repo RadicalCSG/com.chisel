@@ -209,6 +209,7 @@ namespace Chisel.Components
         public const string kCreateColliderComponentsName = nameof(CreateColliderComponents);
         public const string kAutoRebuildUVsName           = nameof(AutoRebuildUVs);
         public const string kVertexChannelMaskName        = nameof(VertexChannelMask);
+        public const string kSubtractiveEditingName       = nameof(SubtractiveEditing);
 
 
         public const string kNodeTypeName = "Model";
@@ -235,6 +236,7 @@ namespace Chisel.Components
         public bool               CreateColliderComponents = true;
         public bool               AutoRebuildUVs           = true;
         public VertexChannelFlags VertexChannelMask        = VertexChannelFlags.All;
+        public bool               SubtractiveEditing      = false;
 
         
         public ChiselModelComponent() : base() { }

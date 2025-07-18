@@ -60,17 +60,19 @@ namespace Chisel.Editors
                             shape.Center = Vector2.zero;
                             generatedComponent.definition.Reset();
                             generatedComponent.SurfaceDefinition?.Reset();
-                            generatedComponent.Operation = forceOperation ?? CSGOperationType.Additive;
+                            var defaultOperation = (model != null && model.SubtractiveEditing) ? CSGOperationType.Subtractive : CSGOperationType.Additive;
+                            generatedComponent.Operation = forceOperation ?? defaultOperation;
                             PlacementToolDefinition.OnCreate(ref generatedComponent.definition, shape);
                             PlacementToolDefinition.OnUpdate(ref generatedComponent.definition, height);
                             generatedComponent.ResetTreeNodes();
                         }
                     } else
                     {
+                        var defaultOperation = (model != null && model.SubtractiveEditing) ? CSGOperationType.Subtractive : CSGOperationType.Additive;
                         generatedComponent.Operation = forceOperation ??
                                                   ((height < 0 && modelBeneathCursor) ?
                                                     CSGOperationType.Subtractive :
-                                                    CSGOperationType.Additive);
+                                                    defaultOperation);
                         PlacementToolDefinition.OnUpdate(ref generatedComponent.definition, height);
                         generatedComponent.OnValidate();
                         generatedComponent.ClearHashes(); // TODO: remove need for this
@@ -153,7 +155,8 @@ namespace Chisel.Editors
 
                             generatedComponent.definition.Reset();
                             generatedComponent.surfaceArray?.Reset();
-                            generatedComponent.Operation = forceOperation ?? CSGOperationType.Additive;
+                            var defaultOperation = (model != null && model.SubtractiveEditing) ? CSGOperationType.Subtractive : CSGOperationType.Additive;
+                            generatedComponent.Operation = forceOperation ?? defaultOperation;
                             PlacementToolDefinition.OnCreate(ref generatedComponent.definition);
                             PlacementToolDefinition.OnUpdate(ref generatedComponent.definition, bounds);
                             generatedComponent.OnValidate();
@@ -176,12 +179,17 @@ namespace Chisel.Editors
                         // Update the generator GameObject
                         ChiselComponentFactory.SetTransform(generatedComponent, transformation);
                         if ((generatoreModeFlags & PlacementFlags.AlwaysFaceUp) == PlacementFlags.AlwaysFaceCameraXZ)
-                            generatedComponent.Operation = forceOperation ?? CSGOperationType.Additive;
-                        else
+                        {
+                            var defaultOperation = (model != null && model.SubtractiveEditing) ? CSGOperationType.Subtractive : CSGOperationType.Additive;
+                            generatedComponent.Operation = forceOperation ?? defaultOperation;
+                        } else
+                        {
+                            var defaultOperation = (model != null && model.SubtractiveEditing) ? CSGOperationType.Subtractive : CSGOperationType.Additive;
                             generatedComponent.Operation = forceOperation ??
                                                     ((height < 0 && modelBeneathCursor) ?
                                                     CSGOperationType.Subtractive :
-                                                    CSGOperationType.Additive);
+                                                    defaultOperation);
+                        }
                         PlacementToolDefinition.OnUpdate(ref generatedComponent.definition, bounds);
                         generatedComponent.OnValidate();
 
