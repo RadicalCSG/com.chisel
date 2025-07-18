@@ -51,6 +51,7 @@ namespace Chisel.Editors
         readonly static GUIContent kColliderSettingsContent                = new("Collider");
         readonly static GUIContent kCreateRenderComponentsContents         = new("Renderable");
         readonly static GUIContent kCreateColliderComponentsContents       = new("Collidable");
+        readonly static GUIContent kSubtractiveEditingContents            = new("Subtractive Editing", "New brushes are created as subtractive when enabled");
         readonly static GUIContent kUnwrapParamsContents                   = new("UV Generation");
 
         readonly static GUIContent kForceBuildUVsContents                  = new("Build", "Manually build lightmap UVs for generated meshes. This operation can be slow for more complicated meshes");
@@ -128,6 +129,7 @@ namespace Chisel.Editors
         SerializedProperty vertexChannelMaskProp;
         SerializedProperty createRenderComponentsProp;
         SerializedProperty createColliderComponentsProp;
+        SerializedProperty subtractiveEditingProp;
         SerializedProperty autoRebuildUVsProp;
         SerializedProperty angleErrorProp;
         SerializedProperty areaErrorProp;
@@ -217,6 +219,7 @@ namespace Chisel.Editors
             vertexChannelMaskProp        = serializedObject.FindProperty($"{ChiselModelComponent.kVertexChannelMaskName}");
             createRenderComponentsProp   = serializedObject.FindProperty($"{ChiselModelComponent.kCreateRenderComponentsName}");
             createColliderComponentsProp = serializedObject.FindProperty($"{ChiselModelComponent.kCreateColliderComponentsName}");
+            subtractiveEditingProp       = serializedObject.FindProperty($"{ChiselModelComponent.kSubtractiveEditingName}");
             autoRebuildUVsProp           = serializedObject.FindProperty($"{ChiselModelComponent.kAutoRebuildUVsName}");
             angleErrorProp               = serializedObject.FindProperty($"{ChiselModelComponent.kRenderSettingsName}.{ChiselGeneratedRenderSettings.kUVGenerationSettingsName}.{SerializableUnwrapParam.kAngleErrorName}");
             areaErrorProp                = serializedObject.FindProperty($"{ChiselModelComponent.kRenderSettingsName}.{ChiselGeneratedRenderSettings.kUVGenerationSettingsName}.{SerializableUnwrapParam.kAreaErrorName}");
@@ -1206,6 +1209,7 @@ namespace Chisel.Editors
                         EditorGUI.indentLevel++;
                         EditorGUILayout.PropertyField(createColliderComponentsProp, kCreateColliderComponentsContents);
                         EditorGUILayout.PropertyField(createRenderComponentsProp, kCreateRenderComponentsContents);
+                        EditorGUILayout.PropertyField(subtractiveEditingProp, kSubtractiveEditingContents);
 
                         EditorGUI.BeginDisabledGroup(!createRenderComponentsProp.boolValue);
                         {

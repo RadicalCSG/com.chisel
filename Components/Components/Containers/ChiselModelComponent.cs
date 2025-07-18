@@ -209,6 +209,7 @@ namespace Chisel.Components
         public const string kCreateColliderComponentsName = nameof(CreateColliderComponents);
         public const string kAutoRebuildUVsName           = nameof(AutoRebuildUVs);
         public const string kVertexChannelMaskName        = nameof(VertexChannelMask);
+        public const string kSubtractiveEditingName       = nameof(SubtractiveEditing);
 
 
         public const string kNodeTypeName = "Model";
@@ -235,6 +236,8 @@ namespace Chisel.Components
         public bool               CreateColliderComponents = true;
         public bool               AutoRebuildUVs           = true;
         public VertexChannelFlags VertexChannelMask        = VertexChannelFlags.All;
+        public bool               SubtractiveEditing      = false;
+        [NonSerialized]          bool prevSubtractiveEditing;
 
         
         public ChiselModelComponent() : base() { }
@@ -286,7 +289,18 @@ namespace Chisel.Components
             var instanceID = GetInstanceID();
             Node = CSGTree.Create(instanceID: instanceID);
             return Node;
-        }		
+        }
+
+        protected override void OnValidateState()
+        {
+            base.OnValidateState();
+
+            if (prevSubtractiveEditing != SubtractiveEditing && generated != null)
+            {
+                FlipGeneratedMeshes();
+                prevSubtractiveEditing = SubtractiveEditing;
+            }
+        }
         
         public override void OnInitialize()
         {
@@ -327,7 +341,35 @@ namespace Chisel.Components
                 name == ChiselModelManager.kGeneratedDefaultModelName)
                 IsDefaultModel = true;
 
-			IsInitialized = true;
+            prevSubtractiveEditing = SubtractiveEditing;
+            IsInitialized = true;
+        }
+
+        void FlipGeneratedMeshes()
+        {
+            if (generated == null)
+                return;
+
+            if (generated.renderables != null)
+            {
+                foreach (var renderable in generated.renderables)
+                    if (renderable != null && renderable.sharedMesh)
+                        ChiselMeshUtility.FlipNormals(renderable.sharedMesh);
+            }
+
+            if (generated.debugVisualizationRenderables != null)
+            {
+                foreach (var renderable in generated.debugVisualizationRenderables)
+                    if (renderable != null && renderable.sharedMesh)
+                        ChiselMeshUtility.FlipNormals(renderable.sharedMesh);
+            }
+
+            if (generated.colliders != null)
+            {
+                foreach (var collider in generated.colliders)
+                    if (collider != null && collider.sharedMesh)
+                        ChiselMeshUtility.FlipNormals(collider.sharedMesh);
+            }
         }
 
 #if UNITY_EDITOR
