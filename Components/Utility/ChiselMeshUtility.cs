@@ -30,7 +30,7 @@ namespace Chisel.Components
         {
             if (!mesh)
                 return;
-            mesh.RecalculateNormals(angle);
+            NormalSolver.RecalculateNormals(mesh, angle);
         }
     }
 }
