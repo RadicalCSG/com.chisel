@@ -25,5 +25,12 @@ namespace Chisel.Components
                 mesh.SetTriangles(indices, s);
             }
         }
+
+        public static void SmoothNormals(Mesh mesh, float angle)
+        {
+            if (!mesh)
+                return;
+            mesh.RecalculateNormals(angle);
+        }
     }
 }

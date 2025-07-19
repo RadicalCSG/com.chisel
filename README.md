@@ -36,7 +36,7 @@ Planned Features (incomplete, and in random order):
 * [Double sided surfaces](https://github.com/RadicalCSG/Chisel.Prototype/issues/226)
 * [Extrusion from existing surface](https://github.com/RadicalCSG/Chisel.Prototype/issues/19)
 * [Clip Tool](https://github.com/RadicalCSG/Chisel.Prototype/issues/15)
-* [Normal smoothing](https://github.com/RadicalCSG/Chisel.Prototype/issues/184)
+* Normal smoothing **(NEW)**
 * [Node Based Generators](https://github.com/RadicalCSG/Chisel.Prototype/issues/94) for easy procedural content generation
 * [2D shape editor](https://github.com/RadicalCSG/Chisel.Prototype/issues/260)
 * [Hotspot mapping](https://github.com/RadicalCSG/Chisel.Prototype/issues/173)
