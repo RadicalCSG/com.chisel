@@ -613,6 +613,12 @@ namespace Chisel.Components
                         ChiselMeshUtility.FlipNormals(foundMeshes[i]);
                 }
 
+                if (model.SmoothNormals)
+                {
+                    for (int i = 0; i < foundMeshes.Count; i++)
+                        ChiselMeshUtility.SmoothNormals(foundMeshes[i], model.SmoothingAngle);
+                }
+
                 // TODO: user meshDataArray data to determine if colliders are visible or not, then we can move this before the Apply
                 Profiler.BeginSample("UpdateColliders");
                 ChiselColliderObjects.UpdateProperties(model, this.colliders);

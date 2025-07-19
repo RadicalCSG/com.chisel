@@ -30,13 +30,13 @@ Features (incomplete)
 * Precise snapping to surfaces, edges, vertices and grid lines
 * Rotatable & movable grid
 * Subtractive Workflow **(NEW)**
+* Normal smoothing **(NEW)**
 
 Planned Features (incomplete, and in random order):
 * [Debug Visualizations](https://github.com/RadicalCSG/Chisel.Prototype/issues/118) to see shadow only surfaces, collider surfaces etc.  (partially implemented)
 * [Double sided surfaces](https://github.com/RadicalCSG/Chisel.Prototype/issues/226)
 * [Extrusion from existing surface](https://github.com/RadicalCSG/Chisel.Prototype/issues/19)
 * [Clip Tool](https://github.com/RadicalCSG/Chisel.Prototype/issues/15)
-* [Normal smoothing](https://github.com/RadicalCSG/Chisel.Prototype/issues/184)
 * [Node Based Generators](https://github.com/RadicalCSG/Chisel.Prototype/issues/94) for easy procedural content generation
 * [2D shape editor](https://github.com/RadicalCSG/Chisel.Prototype/issues/260)
 * [Hotspot mapping](https://github.com/RadicalCSG/Chisel.Prototype/issues/173)
