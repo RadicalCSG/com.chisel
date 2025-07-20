@@ -212,6 +212,7 @@ namespace Chisel.Components
         public const string kSubtractiveEditingName       = nameof(SubtractiveEditing);
         public const string kSmoothNormalsName            = nameof(SmoothNormals);
         public const string kSmoothingAngleName           = nameof(SmoothingAngle);
+        public const string kDebugLogBrushesName          = nameof(DebugLogBrushes);
 
 
         public const string kNodeTypeName = "Model";
@@ -245,6 +246,12 @@ namespace Chisel.Components
         [NonSerialized]          bool prevSubtractiveEditing;
         [NonSerialized]          bool prevSmoothNormals;
         [NonSerialized]          float prevSmoothingAngle;
+
+        #region Debug
+        // When enabled all brush geometry will be printed out to the console
+        // at the start of the CSG job update
+        public bool DebugLogBrushes = false;
+        #endregion
 
         
         public ChiselModelComponent() : base() { }
