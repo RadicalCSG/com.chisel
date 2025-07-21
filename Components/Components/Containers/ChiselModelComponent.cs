@@ -213,6 +213,7 @@ namespace Chisel.Components
         public const string kSmoothNormalsName            = nameof(SmoothNormals);
         public const string kSmoothingAngleName           = nameof(SmoothingAngle);
         public const string kDebugLogBrushesName          = nameof(DebugLogBrushes);
+        public const string kDebugLogOutputName           = nameof(DebugLogOutput);
 
 
         public const string kNodeTypeName = "Model";
@@ -251,6 +252,8 @@ namespace Chisel.Components
         // When enabled all brush geometry will be printed out to the console
         // at the start of the CSG job update
         public bool DebugLogBrushes = false;
+        // When enabled the generated output mesh data will be printed out after rebuilding
+        public bool DebugLogOutput = false;
         #endregion
 
         

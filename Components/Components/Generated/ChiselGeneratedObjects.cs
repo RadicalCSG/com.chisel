@@ -5,6 +5,7 @@ using UnityEngine.Rendering;
 using UnityEngine.Profiling;
 using Unity.Jobs;
 using UnityEngine.Pool;
+using System.Text;
 
 namespace Chisel.Components
 {        
@@ -671,6 +672,24 @@ namespace Chisel.Components
                 colliderDebugVisualization.sharedMesh.CombineMeshes(colliderMeshes);
                 colliderDebugVisualization.renderMaterials = new Material[] { ChiselProjectSettings.CollisionSurfacesMaterial };
                 // }}
+
+                if (model.DebugLogOutput)
+                {
+                    var sb = new System.Text.StringBuilder();
+                    sb.AppendLine("Output Mesh Debug Info:");
+                    for (int m = 0; m < foundMeshes.Count; m++)
+                    {
+                        var mesh = foundMeshes[m];
+                        sb.AppendLine($"Mesh {m} vertices:");
+                        var verts = mesh.vertices;
+                        for (int v = 0; v < verts.Length; v++)
+                            sb.AppendLine($"  v{v}: {verts[v]}");
+                        var tris = mesh.triangles;
+                        for (int t = 0; t < tris.Length; t += 3)
+                            sb.AppendLine($"  t{t / 3}: {tris[t]}, {tris[t + 1]}, {tris[t + 2]}");
+                    }
+                    UnityEngine.Debug.Log(sb.ToString());
+                }
 
                 var foundMeshCount = foundMeshes.Count;
                 foundMeshes.Clear();
