@@ -45,6 +45,8 @@ namespace Chisel.Editors
                 case ShapeExtrusionState.Modified:
                 case ShapeExtrusionState.Create:
                 {
+                    ChiselModelComponent model = generatedComponent ?
+                        generatedComponent.GetComponentInParent<ChiselModelComponent>() : null;
                     if (!generatedComponent)
                     {
                         if (height != 0)
@@ -52,7 +54,7 @@ namespace Chisel.Editors
                             var center2D = shape.Center;
                             var center3D = new Vector3(center2D.x, 0, center2D.y);
                             Transform parentTransform = null;
-                            var model = ChiselModelManager.Instance.GetActiveModelOrCreate(modelBeneathCursor);
+                            model = ChiselModelManager.Instance.GetActiveModelOrCreate(modelBeneathCursor);
                             if (model != null) parentTransform = model.transform;
                             generatedComponent = ChiselComponentFactory.Create(generatorType, ToolName, parentTransform,
                                                                                   transformation * Matrix4x4.TRS(center3D, Quaternion.identity, Vector3.one))
@@ -67,6 +69,8 @@ namespace Chisel.Editors
                         }
                     } else
                     {
+                        if (!model)
+                            model = generatedComponent.GetComponentInParent<ChiselModelComponent>();
                         generatedComponent.Operation = forceOperation ??
                                                   ((height < 0 && modelBeneathCursor) ?
                                                     CSGOperationType.Subtractive :
@@ -135,6 +139,8 @@ namespace Chisel.Editors
             {
                 case GeneratorModeState.Update:
                 {
+                    ChiselModelComponent model = generatedComponent ?
+                        generatedComponent.GetComponentInParent<ChiselModelComponent>() : null;
                     if (!generatedComponent)
                     {
                         var size = bounds.size;
@@ -144,7 +150,7 @@ namespace Chisel.Editors
                         {
                             // Create the generator GameObject
                             Transform parentTransform = null;
-                            var model = ChiselModelManager.Instance.GetActiveModelOrCreate(modelBeneathCursor);
+                            model = ChiselModelManager.Instance.GetActiveModelOrCreate(modelBeneathCursor);
                             if (model != null) parentTransform = model.transform;
                             generatedComponent  = ChiselComponentFactory.Create(generatorType, ToolName, parentTransform, transformation) 
                                                 as ChiselNodeGeneratorComponent<DefinitionType>;
@@ -176,12 +182,17 @@ namespace Chisel.Editors
                         // Update the generator GameObject
                         ChiselComponentFactory.SetTransform(generatedComponent, transformation);
                         if ((generatoreModeFlags & PlacementFlags.AlwaysFaceUp) == PlacementFlags.AlwaysFaceCameraXZ)
+                        {
                             generatedComponent.Operation = forceOperation ?? CSGOperationType.Additive;
-                        else
+                        } else
+                        {
+                            if (!model)
+                                model = generatedComponent.GetComponentInParent<ChiselModelComponent>();
                             generatedComponent.Operation = forceOperation ??
                                                     ((height < 0 && modelBeneathCursor) ?
                                                     CSGOperationType.Subtractive :
                                                     CSGOperationType.Additive);
+                        }
                         PlacementToolDefinition.OnUpdate(ref generatedComponent.definition, bounds);
                         generatedComponent.OnValidate();
 

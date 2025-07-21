@@ -242,7 +242,11 @@ namespace Chisel.Editors
                 if (System.IO.Directory.Exists(packagePath))
                 {
                     var localPath = ToLocalPath(packagePath);
-                    if (foundPaths.Add(localPath)) paths.Add(localPath);
+                    if (localPath == null)
+                        continue;
+                    if ((localPath.StartsWith("Assets/") || localPath.StartsWith("Packages/")) &&
+                        foundPaths.Add(localPath))
+                        paths.Add(localPath);
                 }
             }
             return paths.ToArray();
@@ -260,21 +264,30 @@ namespace Chisel.Editors
             if (assetsPathIndex != -1)
             {
                 path = path.Substring(assetsPathIndex + 1);
-            } else
+            }
+            else
             {
                 var packagePathIndex = path.IndexOf(@"/Packages/");
                 if (packagePathIndex != -1)
                 {
                     path = path.Substring(packagePathIndex + 1);
-				}
-				var packageCacheIndex = path.IndexOf(@"/PackageCache/");
-				if (packageCacheIndex != -1)
-				{
-					path = "Packages/" + path.Substring(packageCacheIndex + @"/PackageCache/".Length);
-				}
-			}
+                }
+                else
+                {
+                    var packageCacheIndex = path.IndexOf(@"/PackageCache/");
+                    if (packageCacheIndex != -1)
+                    {
+                        path = "Packages/" +
+                               path.Substring(packageCacheIndex + @"/PackageCache/".Length);
+                    }
+                    else
+                    {
+                        return null; // outside project
+                    }
+                }
+            }
             if (!path.EndsWith("/"))
-                path = path + "/";
+                path += "/";
             return path;
         }
         #endregion

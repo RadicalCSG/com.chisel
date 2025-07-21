@@ -49,8 +49,14 @@ namespace Chisel.Editors
         readonly static GUIContent kAdditionalSettingsContent              = new("Additional Settings");
         readonly static GUIContent kGenerationSettingsContent              = new("Geometry Output");
         readonly static GUIContent kColliderSettingsContent                = new("Collider");
+        readonly static GUIContent kDebugContent                           = new("Debug");
         readonly static GUIContent kCreateRenderComponentsContents         = new("Renderable");
         readonly static GUIContent kCreateColliderComponentsContents       = new("Collidable");
+        readonly static GUIContent kSubtractiveEditingContents            = new("Subtractive Editing", "New brushes are created as subtractive when enabled");
+        readonly static GUIContent kSmoothNormalsContents                 = new("Smooth Normals");
+        readonly static GUIContent kSmoothingAngleContents                = new("Smoothing Angle");
+        readonly static GUIContent kDebugLogBrushesContents              = new("Debug Log Brushes");
+        readonly static GUIContent kDebugLogOutputContents               = new("Debug Log Output");
         readonly static GUIContent kUnwrapParamsContents                   = new("UV Generation");
 
         readonly static GUIContent kForceBuildUVsContents                  = new("Build", "Manually build lightmap UVs for generated meshes. This operation can be slow for more complicated meshes");
@@ -123,11 +129,17 @@ namespace Chisel.Editors
         const string kDisplayLightmapKey            = "ChiselModelEditor.ShowLightmapSettings";
         const string kDisplayChartingKey            = "ChiselModelEditor.ShowChartingSettings";
         const string kDisplayUnwrapParamsKey        = "ChiselModelEditor.ShowUnwrapParams";
+        const string kDisplayDebugKey               = "ChiselModelEditor.ShowDebugSettings";
 
 
         SerializedProperty vertexChannelMaskProp;
         SerializedProperty createRenderComponentsProp;
         SerializedProperty createColliderComponentsProp;
+        SerializedProperty subtractiveEditingProp;
+        SerializedProperty smoothNormalsProp;
+        SerializedProperty smoothingAngleProp;
+        SerializedProperty debugLogBrushesProp;
+        SerializedProperty debugLogOutputProp;
         SerializedProperty autoRebuildUVsProp;
         SerializedProperty angleErrorProp;
         SerializedProperty areaErrorProp;
@@ -168,6 +180,7 @@ namespace Chisel.Editors
         bool showLightmapSettings;
         bool showChartingSettings;
         bool showUnwrapParams;
+        bool showDebug;
 
         UnityEngine.Object[] childNodes;
 
@@ -207,6 +220,7 @@ namespace Chisel.Editors
             showLightmapSettings    = SessionState.GetBool(kDisplayLightmapKey, true);
             showChartingSettings    = SessionState.GetBool(kDisplayChartingKey, true);
             showUnwrapParams        = SessionState.GetBool(kDisplayUnwrapParamsKey, true);
+            showDebug               = SessionState.GetBool(kDisplayDebugKey, false);
 
             if (!target)
             {
@@ -215,9 +229,14 @@ namespace Chisel.Editors
             }
 
             vertexChannelMaskProp        = serializedObject.FindProperty($"{ChiselModelComponent.kVertexChannelMaskName}");
-            createRenderComponentsProp   = serializedObject.FindProperty($"{ChiselModelComponent.kCreateRenderComponentsName}");
-            createColliderComponentsProp = serializedObject.FindProperty($"{ChiselModelComponent.kCreateColliderComponentsName}");
-            autoRebuildUVsProp           = serializedObject.FindProperty($"{ChiselModelComponent.kAutoRebuildUVsName}");
+           createRenderComponentsProp   = serializedObject.FindProperty($"{ChiselModelComponent.kCreateRenderComponentsName}");
+           createColliderComponentsProp = serializedObject.FindProperty($"{ChiselModelComponent.kCreateColliderComponentsName}");
+           subtractiveEditingProp       = serializedObject.FindProperty($"{ChiselModelComponent.kSubtractiveEditingName}");
+            smoothNormalsProp           = serializedObject.FindProperty($"{ChiselModelComponent.kSmoothNormalsName}");
+            smoothingAngleProp          = serializedObject.FindProperty($"{ChiselModelComponent.kSmoothingAngleName}");
+            debugLogBrushesProp         = serializedObject.FindProperty($"{ChiselModelComponent.kDebugLogBrushesName}");
+            debugLogOutputProp          = serializedObject.FindProperty($"{ChiselModelComponent.kDebugLogOutputName}");
+           autoRebuildUVsProp           = serializedObject.FindProperty($"{ChiselModelComponent.kAutoRebuildUVsName}");
             angleErrorProp               = serializedObject.FindProperty($"{ChiselModelComponent.kRenderSettingsName}.{ChiselGeneratedRenderSettings.kUVGenerationSettingsName}.{SerializableUnwrapParam.kAngleErrorName}");
             areaErrorProp                = serializedObject.FindProperty($"{ChiselModelComponent.kRenderSettingsName}.{ChiselGeneratedRenderSettings.kUVGenerationSettingsName}.{SerializableUnwrapParam.kAreaErrorName}");
             hardAngleProp                = serializedObject.FindProperty($"{ChiselModelComponent.kRenderSettingsName}.{ChiselGeneratedRenderSettings.kUVGenerationSettingsName}.{SerializableUnwrapParam.kHardAngleName}");
@@ -1184,6 +1203,7 @@ namespace Chisel.Editors
             
                 var oldShowGenerationSettings   = showGenerationSettings;
                 var oldShowColliderSettings     = showColliderSettings;
+                var oldShowDebug                = showDebug;
 
                 if (gameObjectsSerializedObject != null) gameObjectsSerializedObject.Update();
                 if (serializedObject != null) serializedObject.Update();
@@ -1206,6 +1226,10 @@ namespace Chisel.Editors
                         EditorGUI.indentLevel++;
                         EditorGUILayout.PropertyField(createColliderComponentsProp, kCreateColliderComponentsContents);
                         EditorGUILayout.PropertyField(createRenderComponentsProp, kCreateRenderComponentsContents);
+                        EditorGUILayout.PropertyField(subtractiveEditingProp, kSubtractiveEditingContents);
+                        EditorGUILayout.PropertyField(smoothNormalsProp, kSmoothNormalsContents);
+                        if (smoothNormalsProp.boolValue)
+                            EditorGUILayout.PropertyField(smoothingAngleProp, kSmoothingAngleContents);
 
                         EditorGUI.BeginDisabledGroup(!createRenderComponentsProp.boolValue);
                         {
@@ -1239,6 +1263,16 @@ namespace Chisel.Editors
                         }
                         EditorGUILayout.EndFoldoutHeaderGroup();
                     }
+
+                    showDebug = EditorGUILayout.BeginFoldoutHeaderGroup(showDebug, kDebugContent);
+                    if (showDebug)
+                    {
+                        EditorGUI.indentLevel++;
+                        EditorGUILayout.PropertyField(debugLogBrushesProp, kDebugLogBrushesContents);
+                        EditorGUILayout.PropertyField(debugLogOutputProp, kDebugLogOutputContents);
+                        EditorGUI.indentLevel--;
+                    }
+                    EditorGUILayout.EndFoldoutHeaderGroup();
                 }
                 if (EditorGUI.EndChangeCheck())
                 {
@@ -1251,6 +1285,7 @@ namespace Chisel.Editors
             
                 if (showGenerationSettings  != oldShowGenerationSettings) SessionState.SetBool(kDisplayGenerationSettingsKey, showGenerationSettings);
                 if (showColliderSettings    != oldShowColliderSettings  ) SessionState.SetBool(kDisplayColliderSettingsKey, showColliderSettings);
+                if (showDebug               != oldShowDebug           ) SessionState.SetBool(kDisplayDebugKey, showDebug);
             }
             finally
             { 

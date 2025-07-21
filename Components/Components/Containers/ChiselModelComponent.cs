@@ -209,6 +209,11 @@ namespace Chisel.Components
         public const string kCreateColliderComponentsName = nameof(CreateColliderComponents);
         public const string kAutoRebuildUVsName           = nameof(AutoRebuildUVs);
         public const string kVertexChannelMaskName        = nameof(VertexChannelMask);
+        public const string kSubtractiveEditingName       = nameof(SubtractiveEditing);
+        public const string kSmoothNormalsName            = nameof(SmoothNormals);
+        public const string kSmoothingAngleName           = nameof(SmoothingAngle);
+        public const string kDebugLogBrushesName          = nameof(DebugLogBrushes);
+        public const string kDebugLogOutputName           = nameof(DebugLogOutput);
 
 
         public const string kNodeTypeName = "Model";
@@ -235,6 +240,21 @@ namespace Chisel.Components
         public bool               CreateColliderComponents = true;
         public bool               AutoRebuildUVs           = true;
         public VertexChannelFlags VertexChannelMask        = VertexChannelFlags.All;
+        public bool               SubtractiveEditing      = false;
+        public bool               SmoothNormals           = false;
+        [Range(0, 180)]
+        public float              SmoothingAngle          = 45.0f;
+        [NonSerialized]          bool prevSubtractiveEditing;
+        [NonSerialized]          bool prevSmoothNormals;
+        [NonSerialized]          float prevSmoothingAngle;
+
+        #region Debug
+        // When enabled all brush geometry will be printed out to the console
+        // at the start of the CSG job update
+        public bool DebugLogBrushes = false;
+        // When enabled the generated output mesh data will be printed out after rebuilding
+        public bool DebugLogOutput = false;
+        #endregion
 
         
         public ChiselModelComponent() : base() { }
@@ -286,7 +306,25 @@ namespace Chisel.Components
             var instanceID = GetInstanceID();
             Node = CSGTree.Create(instanceID: instanceID);
             return Node;
-        }		
+        }
+
+        protected override void OnValidateState()
+        {
+            base.OnValidateState();
+
+            if (prevSubtractiveEditing != SubtractiveEditing && generated != null)
+            {
+                FlipGeneratedMeshes();
+                prevSubtractiveEditing = SubtractiveEditing;
+            }
+
+            if ((prevSmoothNormals != SmoothNormals || !Mathf.Approximately(prevSmoothingAngle, SmoothingAngle)) && generated != null)
+            {
+                SmoothGeneratedMeshes();
+                prevSmoothNormals   = SmoothNormals;
+                prevSmoothingAngle = SmoothingAngle;
+            }
+        }
         
         public override void OnInitialize()
         {
@@ -327,7 +365,66 @@ namespace Chisel.Components
                 name == ChiselModelManager.kGeneratedDefaultModelName)
                 IsDefaultModel = true;
 
-			IsInitialized = true;
+            prevSubtractiveEditing = SubtractiveEditing;
+            prevSmoothNormals   = SmoothNormals;
+            prevSmoothingAngle = SmoothingAngle;
+            IsInitialized = true;
+        }
+
+        void FlipGeneratedMeshes()
+        {
+            if (generated == null)
+                return;
+
+            if (generated.renderables != null)
+            {
+                foreach (var renderable in generated.renderables)
+                    if (renderable != null && renderable.sharedMesh)
+                        ChiselMeshUtility.FlipNormals(renderable.sharedMesh);
+            }
+
+            if (generated.debugVisualizationRenderables != null)
+            {
+                foreach (var renderable in generated.debugVisualizationRenderables)
+                    if (renderable != null && renderable.sharedMesh)
+                        ChiselMeshUtility.FlipNormals(renderable.sharedMesh);
+            }
+
+            if (generated.colliders != null)
+            {
+                foreach (var collider in generated.colliders)
+                    if (collider != null && collider.sharedMesh)
+                        ChiselMeshUtility.FlipNormals(collider.sharedMesh);
+            }
+        }
+
+        void SmoothGeneratedMeshes()
+        {
+            if (generated == null)
+                return;
+
+            float angle = SmoothNormals ? SmoothingAngle : 0.0f;
+
+            if (generated.renderables != null)
+            {
+                foreach (var renderable in generated.renderables)
+                    if (renderable != null && renderable.sharedMesh)
+                        ChiselMeshUtility.SmoothNormals(renderable.sharedMesh, angle);
+            }
+
+            if (generated.debugVisualizationRenderables != null)
+            {
+                foreach (var renderable in generated.debugVisualizationRenderables)
+                    if (renderable != null && renderable.sharedMesh)
+                        ChiselMeshUtility.SmoothNormals(renderable.sharedMesh, angle);
+            }
+
+            if (generated.colliders != null)
+            {
+                foreach (var collider in generated.colliders)
+                    if (collider != null && collider.sharedMesh)
+                        ChiselMeshUtility.SmoothNormals(collider.sharedMesh, angle);
+            }
         }
 
 #if UNITY_EDITOR
