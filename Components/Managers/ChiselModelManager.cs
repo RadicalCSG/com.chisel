@@ -209,7 +209,6 @@ namespace Chisel.Components
 			if(model.AutoRebuildUVs)
 			{
 				ForceUpdateDelayedUVGeneration();
-				DelayedUVGeneration(force: true);
 			}
 		}
 
