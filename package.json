@@ -1,7 +1,7 @@
 {
   "name": "com.chisel",
   "displayName": "Chisel 3D Level Editor",
-  "version": "0.3.1-preview",
+  "version": "0.3.2-preview",
   "unity": "6000.0",
   "description": "A boolean (CSG) based 3d level editor for Unity",
   "license": "MIT",
