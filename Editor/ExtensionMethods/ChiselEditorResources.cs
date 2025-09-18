@@ -3,6 +3,8 @@ using System.Buffers;
 using UnityEngine;
 using UnityEditor;
 using Chisel.Core;
+using System.IO;
+using System;
 
 namespace Chisel.Editors
 {
@@ -13,14 +15,15 @@ namespace Chisel.Editors
         internal const string kActiveIconID     = " On";
         internal const string kDarkIconID       = "d_";
 
-        internal static string[] s_ResourcePaths;
+        internal static string[] s_ResourceFilePaths;
+		internal static string[] s_ResourceUnityPaths;
 
-        static ChiselEditorResources()
+		static ChiselEditorResources()
         {
             s_EditorPixelsPerPoint = EditorGUIUtility.pixelsPerPoint;
 			s_IsProSkin = EditorGUIUtility.isProSkin;
 
-            s_ResourcePaths = GetResourcePaths();
+            FindResourcePaths(); 
         }
 
         // Should be safe since when these parameters change, Unity will do a domain reload, 
@@ -34,12 +37,14 @@ namespace Chisel.Editors
         static Texture2D LoadImageFromResourcePaths(string name)
         {
             name += kImageExtension;
-            for (int i = 0; i < s_ResourcePaths.Length; i++)
+
+            var currentPath = Environment.CurrentDirectory; 
+			for (int i = 0; i < s_ResourceUnityPaths.Length; i++)
             {
-                var path = s_ResourcePaths[i] + name;
-                if (!System.IO.File.Exists(path))
+                if (!System.IO.File.Exists(s_ResourceFilePaths[i] + name))
                     continue;
-                var image = AssetDatabase.LoadAssetAtPath<Texture2D>(path);
+				var path = s_ResourceUnityPaths[i] + name; 
+				var image = AssetDatabase.LoadAssetAtPath<Texture2D>(path);
                 if (image)
                     return image;
             }
@@ -209,45 +214,58 @@ namespace Chisel.Editors
         const string kEditorResourcesPath   = @"Editor Resources";
         const string kImageExtension        = @".png";
 
-		static string[] GetSearchPaths()
+		static (string, string)[] GetSearchPaths()
         {
-            var assembly = System.Reflection.Assembly.GetExecutingAssembly();
+            var assembly = System.Reflection.Assembly.GetExecutingAssembly(); 
 			var packageInfo = UnityEditor.PackageManager.PackageInfo.FindForAssembly(assembly);
 			if (packageInfo != null)
 			{
-		        return new string[]
-                {
-					System.IO.Path.Combine(packageInfo.assetPath, kEditorResourcesPath),
-			        @"Assets/" + kEditorResourcesPath
-		        };
+				return new (string,string)[]
+                       {
+					        (
+								FixSlashes(System.IO.Path.Combine(packageInfo.assetPath, kEditorResourcesPath)),
+								FixSlashes(System.IO.Path.GetFullPath(System.IO.Path.Combine(packageInfo.resolvedPath, kEditorResourcesPath)))
+                            ),
+							(
+								FixSlashes(System.IO.Path.Combine(@"Assets/", kEditorResourcesPath)),
+								FixSlashes(System.IO.Path.Combine(Application.dataPath, kEditorResourcesPath))
+                            )
+					   };
 			} else
 			{
-				return new string[]
-				{
-					@"Assets/" + kEditorResourcesPath
-				};
+				return new (string, string)[]
+					   {
+							(
+								System.IO.Path.Combine(packageInfo.assetPath, kEditorResourcesPath),
+								System.IO.Path.Combine(@"Assets/", kEditorResourcesPath)
+                            )
+					   };
 			}
 		}
 
-        readonly static string[] searchPaths = GetSearchPaths();
+        readonly static (string, string)[] searchPaths = GetSearchPaths();
 
-        static string[] GetResourcePaths()
+        static void FindResourcePaths()
         {
-            var paths = new List<string>();
-            var foundPaths = new HashSet<string>();
+            var unityPaths = new List<string>();
+            var filePaths = new List<string>();
+            var foundPaths = new HashSet<string>(); 
 
-            for (int i = 0; i < searchPaths.Length; i++)
+            foreach((string localPath, string filePath) in searchPaths) 
             {
-                var packagePath = System.IO.Path.GetFullPath(searchPaths[i]);
-                if (System.IO.Directory.Exists(packagePath))
-                {
-                    var localPath = ToLocalPath(packagePath);
-                    if (foundPaths.Add(localPath)) paths.Add(localPath);
+                if (System.IO.Directory.Exists(filePath))
+				{
+                    if (foundPaths.Add(localPath))
+                    {
+                        unityPaths.Add(localPath + "/");
+                        filePaths.Add(filePath + "/");
+                    }
                 }
             }
-            return paths.ToArray();
-        }
-
+            s_ResourceUnityPaths = unityPaths.ToArray();
+			s_ResourceFilePaths = filePaths.ToArray();
+		}
+         
         static string FixSlashes(string path)
         {
             return path.Replace('\\', '/');
