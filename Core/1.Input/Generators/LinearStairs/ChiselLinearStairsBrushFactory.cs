@@ -108,9 +108,9 @@ namespace Chisel.Core
                         NativeArray<float3> vertices;
 						using var _vertices = vertices = new NativeArray<float3>(4, Allocator.Temp);
                         vertices[0] = new float3(min.x, min.y, min.z); // 0
-                        vertices[0] = new float3(min.x, min.y, max.z); // 1
-                        vertices[0] = new float3(min.x, max.y, max.z); // 2
-                        vertices[0] = new float3(min.x, max.y, min.z); // 3
+                        vertices[1] = new float3(min.x, min.y, max.z); // 1
+                        vertices[2] = new float3(min.x, max.y, max.z); // 2
+                        vertices[3] = new float3(min.x, max.y, min.z); // 3
                         var extrusion = new float3(max.x - min.x, 0, 0);
 
                         NativeArray<int> indices;
