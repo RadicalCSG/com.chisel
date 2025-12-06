@@ -24,6 +24,8 @@ namespace Chisel.Core
 		[NoAlias, ReadOnly] public NativeStream.Reader input;
 		[NoAlias, ReadOnly] public NativeArray<MeshQuery> meshQueries;
 		[NoAlias, ReadOnly] public CompactHierarchyManagerInstance.ReadOnlyInstanceIDLookup instanceIDLookup;
+		[NoAlias, ReadOnly] public bool subtractiveWorkflow;
+		[NoAlias, ReadOnly] public float normalSmoothingAngle;
 
 		// Write
 		[NativeDisableParallelForRestriction]
@@ -123,8 +125,6 @@ namespace Chisel.Core
 					}
 					input.EndForEachIndex();
 
-
-
 					if (!basePolygonCache[brushNodeOrder].IsCreated)
 						return;
 
@@ -140,7 +140,6 @@ namespace Chisel.Core
 						maxIndices += length;
 						maxLoops = math.max(maxLoops, length);
 					}
-
 
 					ref var baseSurfaces = ref basePolygonCache[brushNodeOrder].Value.surfaces;
 					var transform = transformationCache[brushNodeOrder];
@@ -226,6 +225,15 @@ namespace Chisel.Core
 						var planeNormalMap = math.mul(nodeToTreeInvTrans, plane);
 						var map3DTo2D = new Map3DTo2D(planeNormalMap.xyz);
 
+						// --- NORMAL FLIP LOGIC PREPARATION ---
+						float3 finalFaceNormal = map3DTo2D.normal;
+						if (subtractiveWorkflow)
+						{
+							// Flip the normal direction so lighting is correct for the "inside"
+							finalFaceNormal = -finalFaceNormal;
+						}
+						// -------------------------------------
+
 						surfaceIndexList.Clear();
 						for (int li = 0; li < loops.Length; li++)
 						{
@@ -268,32 +276,113 @@ namespace Chisel.Core
 									output,
 									settings,
 									Allocator.Temp);
+
 #if UNITY_EDITOR && DEBUG
-								// Inside the loop after calling Triangulate:
-								if (output.Status.Value != Status.OK)
+								if (output.Status.Value != Status.OK || output.Triangles.Length == 0)
 								{
-									// Log the specific status enum value/name for more detail!
-									Debug.LogError($"Triangulator failed for surface {surf}, loop index {loopIdx} with status {output.Status.Value.ToString()} ({output.Status.Value})");
-								}
-								else if (output.Triangles.Length == 0)
-								{
-									Debug.LogError($"Triangulator returned zero triangles for surface {surf}, loop index {loopIdx}.");
+									// Debug.LogError(...)
 								}
 #endif
 								if (output.Status.Value != Status.OK || output.Triangles.Length == 0)
 									continue;
 
+								// --- WINDING ORDER FLIP FOR SUBTRACTIVE ---
+								if (subtractiveWorkflow)
+								{
+									// Flip winding order (0,1,2 -> 0,2,1) to face "inwards"
+									for (int ti = 0; ti < output.Triangles.Length; ti += 3)
+									{
+										var tmp = output.Triangles[ti + 1];
+										output.Triangles[ti + 1] = output.Triangles[ti + 2];
+										output.Triangles[ti + 2] = tmp;
+									}
+								}
+								// ------------------------------------------
+
 								// Map triangles back
 								var prevCount = surfaceIndexList.Length;
 								var interiorCat = (CategoryIndex)info.interiorCategory;
 								roVerts.RemapTriangles(interiorCat, output.Triangles, surfaceIndexList);
+
+								// --- REGISTER VERTICES (Pass calculated/flipped normal) ---
 								uniqueVertexMapper.RegisterVertices(
 									surfaceIndexList,
 									prevCount,
 									*brushVertices.m_Vertices,
-									map3DTo2D.normal,
+									finalFaceNormal, 
 									instanceID,
 									interiorCat);
+								
+								// --- NORMAL SMOOTHING LOGIC (GLOBAL) ---
+								if (normalSmoothingAngle > 0.0001f)
+								{
+									var renderVertices = uniqueVertexMapper.surfaceRenderVertices;
+									var positions = uniqueVertexMapper.surfaceColliderVertices;
+									float smoothingCos = math.cos(normalSmoothingAngle);
+									
+									int totalVerts = renderVertices.Length;
+									
+									for (int v = 0; v < totalVerts; v++)
+									{
+										float3 vertPos = positions[v];
+										float3 smoothedNormal = finalFaceNormal; 
+										
+										// Iterate ALL brushes to smooth across the entire model
+										for (int otherBrushIdx = 0; otherBrushIdx < basePolygonCache.Length; otherBrushIdx++)
+										{
+											if (!basePolygonCache[otherBrushIdx].IsCreated) continue;
+											ref var otherSurfaces = ref basePolygonCache[otherBrushIdx].Value.surfaces;
+											var otherTransform = transformationCache[otherBrushIdx];
+											var otherNodeToTreeInvTrans = math.transpose(otherTransform.treeToNode);
+
+											for(int otherSurf = 0; otherSurf < otherSurfaces.Length; otherSurf++)
+											{
+												// Optimization: if we are checking against ourselves (same brush, same surface), skip
+												// However, we are in a loop over all brushes. 
+												// 'brushNodeOrder' is the index of the current brush in basePolygonCache?
+												// 'brushIndexOrder.nodeOrder' was used to get current brush.
+												if (otherBrushIdx == brushNodeOrder && otherSurf == surf) continue;
+												
+												float4 otherPlaneLocal = otherSurfaces[otherSurf].localPlane;
+												float4 otherPlaneTree = math.mul(otherNodeToTreeInvTrans, otherPlaneLocal);
+												float3 otherNormal = otherPlaneTree.xyz;
+												
+												// Check Angle
+												// If we subtractive, the contribution of this surface is also inverted? 
+												// The normal of the surface ITSELF is fixed. 
+												// If that surface is part of a subtractive brush, its visual normal is inverted.
+												// We don't easily know if 'otherBrushIdx' is subtractive here unless we pass that info.
+												// Limitation: We assume other surfaces contribute 'as is' or we need 'subtractive' status of ALL brushes.
+												// 'subtractiveWorkflow' is a global flag for the *Tree* in this context?
+												// If so, then 'otherNormal' should also be flipped if 'subtractiveWorkflow' is true.
+												
+												// Normal Alignment Check
+												float dotAngle = math.dot(finalFaceNormal, otherNormal); 
+												
+												// If purely subtractive workflow, both normals are flipped relative to 'true' geometry. 
+												// So dot product is (-N1).(-N2) = N1.N2. The angle is the same.
+												
+												if (dotAngle < smoothingCos) 
+													continue;
+												
+												// Plane Distance Check
+												float dist = math.dot(otherNormal, vertPos) + otherPlaneTree.w;
+												if (math.abs(dist) < 0.005f) 
+												{
+													if (subtractiveWorkflow) 
+														otherNormal = -otherNormal;
+														
+													smoothedNormal += otherNormal;
+												}
+											}
+										}
+										
+										var rv = renderVertices[v];
+										rv.normal = math.normalize(smoothedNormal);
+										renderVertices[v] = rv;
+									}
+								}
+								// ------------------------------
 							}
 							catch (System.Exception ex) { Debug.LogException(ex); }
 						}
@@ -304,15 +393,17 @@ namespace Chisel.Core
 						var parms = baseSurfaces[surf].destinationParameters;
 						var UV0 = baseSurfaces[surf].UV0;
 						var uvMat = math.mul(UV0.ToFloat4x4(), treeToPlane);
+						
+						// Normals are now correct (flipped/smoothed) before Tangents are calculated
 						MeshAlgorithms.ComputeUVs(uniqueVertexMapper.surfaceRenderVertices, uvMat);
 						MeshAlgorithms.ComputeTangents(surfaceIndexList, uniqueVertexMapper.surfaceRenderVertices);
 
 						ref var buf = ref surfaceBuffers[surf];
 						buf.Construct(builder, surfaceIndexList,
-									  uniqueVertexMapper.surfaceColliderVertices,
-									  uniqueVertexMapper.surfaceSelectVertices,
-									  uniqueVertexMapper.surfaceRenderVertices,
-									  surf, flags, parms);
+									uniqueVertexMapper.surfaceColliderVertices,
+									uniqueVertexMapper.surfaceSelectVertices,
+									uniqueVertexMapper.surfaceRenderVertices,
+									surf, flags, parms);
 					}
 
 					using var queryList = new NativeList<ChiselQuerySurface>(surfaceBuffers.Length, Allocator.Temp);

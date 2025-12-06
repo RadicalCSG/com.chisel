@@ -1620,10 +1620,9 @@ namespace Chisel.Core
                         transformationCache       = chiselLookupValues.transformationCache,
                         input                     = dataStream2.AsReader(),
                         meshQueries               = Temporaries.meshQueries,
-						instanceIDLookup          = CompactHierarchyManager.GetReadOnlyInstanceIDLookup(),
-                        // TODO turn these on later
-                        // subtractiveWorkflow       = subtractiveWorkflow,
-                        // normalSmoothingAngle      = normalSmoothingAngle,
+						instanceIDLookup          = GetReadOnlyInstanceIDLookup(),
+                        subtractiveWorkflow       = subtractiveWorkflow,
+                        normalSmoothingAngle      = normalSmoothingAngle,
 
 						// Write
 						brushRenderBufferCache    = chiselLookupValues.brushRenderBufferCache
