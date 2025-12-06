@@ -280,7 +280,7 @@ namespace Chisel.Core
                 if (ModelSettingsStore.TryGet(tree.InstanceID, out var modelSettings))
                 {
                     subtractiveWorkflow = modelSettings.SubtractiveWorkflow;
-                    normalSmoothingAngle = math.clamp(modelSettings.NormalSmoothingAngle, 0.0f, 180.0f);
+                    normalSmoothingAngle = modelSettings.NormalSmoothing ? math.clamp(modelSettings.NormalSmoothingAngle, 0.0f, 180.0f) : 0.0f;
                 }
 
                 ref var compactHierarchy = ref CompactHierarchyManager.GetHierarchy(this.treeCompactNodeID);

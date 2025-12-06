@@ -353,32 +353,24 @@ namespace Chisel.Core
 												float4 otherPlaneTree = math.mul(otherNodeToTreeInvTrans, otherPlaneLocal);
 												float3 otherNormal = otherPlaneTree.xyz;
 												
-												// Check Angle
-												// If we subtractive, the contribution of this surface is also inverted? 
-												// The normal of the surface ITSELF is fixed. 
-												// If that surface is part of a subtractive brush, its visual normal is inverted.
-												// We don't easily know if 'otherBrushIdx' is subtractive here unless we pass that info.
-												// Limitation: We assume other surfaces contribute 'as is' or we need 'subtractive' status of ALL brushes.
-												// 'subtractiveWorkflow' is a global flag for the *Tree* in this context?
-												// If so, then 'otherNormal' should also be flipped if 'subtractiveWorkflow' is true.
-												
+												// If subtractive workflow, we must flip the neighbor normal effectively 
+												// to compare "Inwards vs Inwards" rather than "Inwards vs Outwards"
+												float3 comparisonNormal = subtractiveWorkflow ? -otherNormal : otherNormal;
+
 												// Normal Alignment Check
-												float dotAngle = math.dot(finalFaceNormal, otherNormal); 
-												
-												// If purely subtractive workflow, both normals are flipped relative to 'true' geometry. 
-												// So dot product is (-N1).(-N2) = N1.N2. The angle is the same.
+												// This now compares the correctly oriented normals
+												float dotAngle = math.dot(finalFaceNormal, comparisonNormal); 
 												
 												if (dotAngle < smoothingCos) 
 													continue;
 												
 												// Plane Distance Check
+												// distance = dot(N_raw, P) + D_raw. 
+												// We use the raw plane normal and D from the cache for geometric distance.
 												float dist = math.dot(otherNormal, vertPos) + otherPlaneTree.w;
 												if (math.abs(dist) < 0.005f) 
 												{
-													if (subtractiveWorkflow) 
-														otherNormal = -otherNormal;
-														
-													smoothedNormal += otherNormal;
+													smoothedNormal += comparisonNormal;
 												}
 											}
 										}
