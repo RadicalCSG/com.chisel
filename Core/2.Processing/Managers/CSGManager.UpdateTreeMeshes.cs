@@ -5,9 +5,47 @@ using Unity.Collections.LowLevel.Unsafe;
 using Unity.Profiling;
 using Unity.Entities;
 using System.Buffers;
+using System.Collections.Generic;
 
 namespace Chisel.Core
 {
+    public struct ModelSettings
+    {
+        public bool SubtractiveWorkflow;
+        public bool NormalSmoothing;
+        public float NormalSmoothingAngle;
+    }
+
+    public static class ModelSettingsStore
+    {
+        static readonly Dictionary<int, ModelSettings> s_Settings = new();
+        static readonly object s_Lock = new();
+
+        public static void Set(int instanceID, ModelSettings settings)
+        {
+            lock (s_Lock)
+            {
+                s_Settings[instanceID] = settings;
+            }
+        }
+
+        public static bool TryGet(int instanceID, out ModelSettings settings)
+        {
+            lock (s_Lock)
+            {
+                return s_Settings.TryGetValue(instanceID, out settings);
+            }
+        }
+
+        public static void Remove(int instanceID)
+        {
+            lock (s_Lock)
+            {
+                s_Settings.Remove(instanceID);
+            }
+        }
+    }
+
 	static partial class CompactHierarchyManager
 	{
 		const bool runInParallelDefault = true;
@@ -58,6 +96,8 @@ namespace Chisel.Core
             public int           brushCount;
             public int           maxNodeOrder;
             public int           updateCount;
+            public bool          subtractiveWorkflow;
+            public float         normalSmoothingAngle;
 
             public JobHandle     dependencies;
 
@@ -234,6 +274,14 @@ namespace Chisel.Core
                 // Reset everything
                 JobHandles = default;
                 Temporaries = default;
+                subtractiveWorkflow = false;
+                normalSmoothingAngle = -1f; // -1 means no smoothing
+
+                if (ModelSettingsStore.TryGet(tree.InstanceID, out var modelSettings))
+                {
+                    subtractiveWorkflow = modelSettings.SubtractiveWorkflow;
+                    normalSmoothingAngle = math.clamp(modelSettings.NormalSmoothingAngle, 0.0f, 180.0f);
+                }
 
                 ref var compactHierarchy = ref CompactHierarchyManager.GetHierarchy(this.treeCompactNodeID);
 
@@ -1573,6 +1621,9 @@ namespace Chisel.Core
                         input                     = dataStream2.AsReader(),
                         meshQueries               = Temporaries.meshQueries,
 						instanceIDLookup          = CompactHierarchyManager.GetReadOnlyInstanceIDLookup(),
+                        // TODO turn these on later
+                        // subtractiveWorkflow       = subtractiveWorkflow,
+                        // normalSmoothingAngle      = normalSmoothingAngle,
 
 						// Write
 						brushRenderBufferCache    = chiselLookupValues.brushRenderBufferCache

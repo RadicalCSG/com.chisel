@@ -134,8 +134,16 @@ namespace Chisel.Core
 			this.vertexCount = colliderVertices.Length;
 			this.indexCount = indices.Length;
 
-			// TODO: properly compute hash again, AND USE IT
-			this.surfaceHashValue = 0;// math.hash(new uint3(normalHash, tangentHash, uv0Hash));
+			uint surfaceHash = 0;
+			for (int i = 0; i < renderVertices.Length; i++)
+			{
+				var renderVertex = renderVertices[i];
+				surfaceHash = math.hash(new uint2(surfaceHash, math.hash(renderVertex.normal)));
+				surfaceHash = math.hash(new uint2(surfaceHash, math.hash(renderVertex.tangent)));
+				surfaceHash = math.hash(new uint2(surfaceHash, math.hash(renderVertex.uv0)));
+			}
+
+			this.surfaceHashValue = surfaceHash;
 			this.geometryHashValue = geometryHashValue;
 
 			this.aabb = colliderVertices.GetMinMax();
