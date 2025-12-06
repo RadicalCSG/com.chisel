@@ -278,9 +278,15 @@ namespace Chisel.Core
 									Allocator.Temp);
 
 #if UNITY_EDITOR && DEBUG
-								if (output.Status.Value != Status.OK || output.Triangles.Length == 0)
+								// Inside the loop after calling Triangulate:
+								if (output.Status.Value != Status.OK)
 								{
-									// Debug.LogError(...)
+									// Log the specific status enum value/name for more detail!
+									Debug.LogError($"Triangulator failed for surface {surf}, loop index {loopIdx} with status {output.Status.Value.ToString()} ({output.Status.Value})");
+								}
+								else if (output.Triangles.Length == 0)
+								{
+									Debug.LogError($"Triangulator returned zero triangles for surface {surf}, loop index {loopIdx}.");
 								}
 #endif
 								if (output.Status.Value != Status.OK || output.Triangles.Length == 0)
@@ -318,7 +324,7 @@ namespace Chisel.Core
 								{
 									var renderVertices = uniqueVertexMapper.surfaceRenderVertices;
 									var positions = uniqueVertexMapper.surfaceColliderVertices;
-									float smoothingCos = math.cos(normalSmoothingAngle);
+									float smoothingCos = math.cos(math.radians(normalSmoothingAngle));
 									
 									int totalVerts = renderVertices.Length;
 									
