@@ -5,7 +5,6 @@ using Unity.Jobs;
 using Unity.Mathematics;
 using Debug = UnityEngine.Debug;
 using ReadOnlyAttribute = Unity.Collections.ReadOnlyAttribute;
-using WriteOnlyAttribute = Unity.Collections.WriteOnlyAttribute;
 using Unity.Entities;
 using andywiecko.BurstTriangulator.LowLevel.Unsafe;
 using andywiecko.BurstTriangulator;
@@ -225,14 +224,13 @@ namespace Chisel.Core
 						var planeNormalMap = math.mul(nodeToTreeInvTrans, plane);
 						var map3DTo2D = new Map3DTo2D(planeNormalMap.xyz);
 
-						// --- NORMAL FLIP LOGIC PREPARATION ---
+						// Normal flip logic preparation
 						float3 finalFaceNormal = map3DTo2D.normal;
 						if (subtractiveWorkflow)
 						{
 							// Flip the normal direction so lighting is correct for the "inside"
 							finalFaceNormal = -finalFaceNormal;
 						}
-						// -------------------------------------
 
 						surfaceIndexList.Clear();
 						for (int li = 0; li < loops.Length; li++)
@@ -292,25 +290,23 @@ namespace Chisel.Core
 								if (output.Status.Value != Status.OK || output.Triangles.Length == 0)
 									continue;
 
-								// --- WINDING ORDER FLIP FOR SUBTRACTIVE ---
+								// Winding order flip for subtractive
 								if (subtractiveWorkflow)
 								{
-									// Flip winding order (0,1,2 -> 0,2,1) to face "inwards"
+									// Flip winding order (0,1,2 -> 0,2,1) to face inwards
 									for (int ti = 0; ti < output.Triangles.Length; ti += 3)
 									{
-										var tmp = output.Triangles[ti + 1];
-										output.Triangles[ti + 1] = output.Triangles[ti + 2];
-										output.Triangles[ti + 2] = tmp;
+										(output.Triangles[ti + 1], output.Triangles[ti + 2]) = 
+											(output.Triangles[ti + 2], output.Triangles[ti + 1]);
 									}
 								}
-								// ------------------------------------------
 
 								// Map triangles back
 								var prevCount = surfaceIndexList.Length;
 								var interiorCat = (CategoryIndex)info.interiorCategory;
 								roVerts.RemapTriangles(interiorCat, output.Triangles, surfaceIndexList);
 
-								// --- REGISTER VERTICES (Pass calculated/flipped normal) ---
+								// Register vertices (Pass calculated/flipped normal)
 								uniqueVertexMapper.RegisterVertices(
 									surfaceIndexList,
 									prevCount,
@@ -319,7 +315,7 @@ namespace Chisel.Core
 									instanceID,
 									interiorCat);
 								
-								// --- NORMAL SMOOTHING LOGIC (GLOBAL) ---
+								// Normal smoothing logic (across the entire object)
 								if (normalSmoothingAngle > 0.0001f)
 								{
 									var renderVertices = uniqueVertexMapper.surfaceRenderVertices;
@@ -380,7 +376,6 @@ namespace Chisel.Core
 										renderVertices[v] = rv;
 									}
 								}
-								// ------------------------------
 							}
 							catch (System.Exception ex) { Debug.LogException(ex); }
 						}
