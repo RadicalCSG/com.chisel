@@ -1,4 +1,6 @@
 using System;
+using System.Collections;
+using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 
 using Chisel.Core;
@@ -107,6 +109,9 @@ namespace Chisel.Components
         public const string kLightProbeVolumeOverrideName   = nameof(lightProbeProxyVolumeOverride);
         public const string kProbeAnchorName                = nameof(probeAnchor);
         public const string kReceiveGIName                  = nameof(receiveGI);
+        public const string kSubtractiveWorkflowName        = nameof(subtractiveWorkflow);
+        public const string kNormalSmoothingName            = nameof(normalSmoothing);
+        public const string kNormalSmoothingAngleName       = nameof(normalSmoothingAngle);
         
 #if UNITY_EDITOR
         public const string kLightmapParametersName             = nameof(lightmapParameters);
@@ -128,6 +133,9 @@ namespace Chisel.Components
         public bool                             allowOcclusionWhenDynamic       = true;
         public uint                             renderingLayerMask              = ~(uint)0;
         public ReceiveGI						receiveGI						= ReceiveGI.LightProbes;
+        public bool                             subtractiveWorkflow             = false;
+        public bool                             normalSmoothing                 = false;
+        [Range(0, 180)] public float            normalSmoothingAngle            = 45.0f;
 
 #if UNITY_EDITOR
         // SerializedObject access Only
@@ -174,6 +182,9 @@ namespace Chisel.Components
             allowOcclusionWhenDynamic		= true;
             renderingLayerMask              = ~(uint)0;
             receiveGI                       = ReceiveGI.LightProbes;
+            subtractiveWorkflow             = false;
+            normalSmoothing                 = false;
+            normalSmoothingAngle            = 45.0f;
 #if UNITY_EDITOR
     		lightmapParameters				= new UnityEditor.LightmapParameters();
             importantGI						= false;
@@ -231,7 +242,7 @@ namespace Chisel.Components
 
 
         // TODO: put all bools in flags (makes it harder to work with in the ModelEditor though)
-		public bool               CreateRenderComponents   = true;
+        public bool               CreateRenderComponents   = true;
         public bool               CreateColliderComponents = true;
         public bool               AutoRebuildUVs           = true;
         public VertexChannelFlags VertexChannelMask        = VertexChannelFlags.All;
@@ -241,7 +252,7 @@ namespace Chisel.Components
 
 
         // Will show a warning icon in hierarchy when generator has a problem (do not make this method slow, it is called a lot!)
-		public override void GetMessages(IChiselMessageHandler messages)
+        public override void GetMessages(IChiselMessageHandler messages)
         {
             // TODO: improve warning messages
             const string kModelHasNoChildrenMessage   = kNodeTypeName + " has no children and will not have an effect";
@@ -271,6 +282,7 @@ namespace Chisel.Components
 
         protected override void OnCleanup()
         {
+            ModelSettingsStore.Remove(GetInstanceID());
             if (generated != null)
             {
                 if (!this && generated.generatedDataContainer)
@@ -303,6 +315,7 @@ namespace Chisel.Components
 				renderSettings = new ChiselGeneratedRenderSettings();
 				renderSettings.Reset();
 			}
+            UpdateModelSettingsLookup();
 
 			if (generated != null &&
                 !generated.generatedDataContainer)
@@ -328,6 +341,64 @@ namespace Chisel.Components
                 IsDefaultModel = true;
 
 			IsInitialized = true;
+        }
+
+        void MarkAllBrushesDirty()
+        {
+            if (!Node.Valid)
+                return;
+
+            var stack = new Stack<CSGTreeNode>();
+            stack.Push(Node);
+            while (stack.Count > 0)
+            {
+                var current = stack.Pop();
+                if (!current.Valid)
+                    continue;
+
+                switch (current.Type)
+                {
+                    case CSGNodeType.Brush:
+                        ((CSGTreeBrush)current).SetDirty();
+                        break;
+                    case CSGNodeType.Branch:
+                    case CSGNodeType.Tree:
+                        for (int i = 0; i < current.Count; i++)
+                            stack.Push(current[i]);
+                        break;
+                }
+            }
+        }
+
+        internal void UpdateModelSettingsLookup()
+        {
+            if (renderSettings == null)
+            {
+                renderSettings = new ChiselGeneratedRenderSettings();
+                renderSettings.Reset();
+            }
+
+            ModelSettingsStore.Set(GetInstanceID(), new ModelSettings
+            {
+                SubtractiveWorkflow = renderSettings.subtractiveWorkflow,
+                NormalSmoothing = renderSettings.normalSmoothing,
+                NormalSmoothingAngle = renderSettings.normalSmoothingAngle
+            });
+            SetDirty();
+            MarkAllBrushesDirty();
+            if (ChiselModelManager.Instance != null)
+                ChiselModelManager.Instance.UpdateModels();
+        }
+
+        protected override void OnValidateState()
+        {
+            base.OnValidateState();
+            UpdateModelSettingsLookup();
+        }
+
+        public void SyncModelSettingsStore()
+        {
+            UpdateModelSettingsLookup();
         }
 
 #if UNITY_EDITOR
