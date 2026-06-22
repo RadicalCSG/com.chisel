@@ -333,7 +333,8 @@ namespace Chisel.Core
             };
             if (nodeInformation.brushMeshHash != 0 &&
                 nodeInformation.brushMeshHash != Int32.MaxValue)
-                brushMeshToBrush.Add(nodeInformation.brushMeshHash, compactNodeID);
+                brushMeshToBrush.TryAdd(nodeInformation.brushMeshHash, compactNodeID);
+
             Debug.Assert(IsValidCompactNodeID(compactNodeID), "newly created ID is invalid");
             Debug.Assert(GetChildRef(compactNodeID).instanceID == nodeInformation.instanceID, "newly created ID is invalid");
             return compactNodeID;
@@ -359,7 +360,8 @@ namespace Chisel.Core
             BrushMeshManager.RegisterBrushMeshHash(ref brushMeshBlobCache, newBrushMeshHash, prevBrushMeshHash);
             if (newBrushMeshHash != 0 && 
                 newBrushMeshHash != Int32.MaxValue)
-                brushMeshToBrush.Add(newBrushMeshHash, compactNodeID);
+                brushMeshToBrush.TryAdd(newBrushMeshHash, compactNodeID);
+
 
             if (compactNode.nodeInformation.brushMeshHash != newBrushMeshHash)
                 compactNode.nodeInformation.brushMeshHash = newBrushMeshHash;
