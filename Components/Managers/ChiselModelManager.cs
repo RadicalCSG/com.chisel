@@ -433,6 +433,11 @@ namespace Chisel.Components
 			}
 
 			UpdateModelFlags(model);
+
+			if(model.AutoRebuildUVs)
+			{
+				ForceUpdateDelayedUVGeneration();
+			}
 		}
 
 		public bool IsDefaultModel(UnityEngine.Object obj)
