@@ -13,6 +13,8 @@ namespace Chisel.Core
         public float2           min, max;       // its bounds in pixels
         public HotspotTileFlags flags;
         public float            pixelsPerUnit;
+        // Width of its border in pixels, 0 for none
+        public float            border;
 
         public readonly float2 Corner(int index)
         {
@@ -286,22 +288,7 @@ namespace Chisel.Core
         public static float4x4 Mapping(in HotspotTileData tile, in HotspotLayoutData layout, in HotspotShape shape, in HotspotChoice choice, float3 normal)
         {
             Frame(normal, out var right, out var up);
-            float2 f0, f1, f2, t0, t1, t2;
-            if (shape.cornerCount == 3 && tile.cornerCount == 3)
-            {
-                f0 = shape.c0; f1 = shape.c1; f2 = shape.c2;
-                var corner = choice.corner;
-                t0 = tile.Corner(corner);
-                t1 = tile.Corner(choice.mirrored ? (corner + 2) % 3 : (corner + 1) % 3);
-                t2 = tile.Corner(choice.mirrored ? (corner + 1) % 3 : (corner + 2) % 3);
-            } else
-            {
-                // bottom left, bottom right, top left of the surface's bounds
-                f0 = shape.min; f1 = new float2(shape.max.x, shape.min.y); f2 = new float2(shape.min.x, shape.max.y);
-                var lo = tile.min; var hi = tile.max;
-                if (!choice.rotated) { t0 = lo; t1 = new float2(hi.x, lo.y); t2 = new float2(lo.x, hi.y); }
-                else                 { t0 = new float2(hi.x, lo.y); t1 = hi; t2 = lo; }
-            }
+            Corners(tile, shape, choice, out _, out var f0, out var f1, out var f2, out var t0, out var t1, out var t2);
             // into uv
             t0 /= layout.textureSize; t1 /= layout.textureSize; t2 /= layout.textureSize;
             var map    = math.mul(new float2x2(t1 - t0, t2 - t0), math.inverse(new float2x2(f1 - f0, f2 - f0)));
@@ -309,6 +296,30 @@ namespace Chisel.Core
             var rowU   = new float4(right * map.c0.x + up * map.c1.x, offset.x);
             var rowV   = new float4(right * map.c0.y + up * map.c1.y, offset.y);
             return math.transpose(new float4x4(rowU, rowV, float4.zero, float4.zero));
+        }
+
+        // Three corners of the surface in its frame and the tile corners (pixels) they go to: a triangle's corners, or
+        // the bottom left, bottom right and top left of the surface's bounds. count is 3 or 4 (a rectangle, whose
+        // fourth corner is f1 + f2 - f0).
+        public static void Corners(in HotspotTileData tile, in HotspotShape shape, in HotspotChoice choice, out int count,
+                                   out float2 f0, out float2 f1, out float2 f2, out float2 t0, out float2 t1, out float2 t2)
+        {
+            if (shape.cornerCount == 3 && tile.cornerCount == 3)
+            {
+                count = 3;
+                f0 = shape.c0; f1 = shape.c1; f2 = shape.c2;
+                var corner = choice.corner;
+                t0 = tile.Corner(corner);
+                t1 = tile.Corner(choice.mirrored ? (corner + 2) % 3 : (corner + 1) % 3);
+                t2 = tile.Corner(choice.mirrored ? (corner + 1) % 3 : (corner + 2) % 3);
+            } else
+            {
+                count = 4;
+                f0 = shape.min; f1 = new float2(shape.max.x, shape.min.y); f2 = new float2(shape.min.x, shape.max.y);
+                var lo = tile.min; var hi = tile.max;
+                if (!choice.rotated) { t0 = lo; t1 = new float2(hi.x, lo.y); t2 = new float2(lo.x, hi.y); }
+                else                 { t0 = new float2(hi.x, lo.y); t1 = hi; t2 = lo; }
+            }
         }
 
         // A layout's tiles as matching sees them
@@ -326,6 +337,7 @@ namespace Chisel.Core
                     continue;
                 var t = new HotspotTileData { id = tile.id, cornerCount = tile.points.Length, flags = tile.flags,
                                               pixelsPerUnit = tile.pixelsPerUnit > 0 ? tile.pixelsPerUnit : layout.pixelsPerUnit,
+                                              border = math.max(0, tile.border),
                                               min = new float2(float.PositiveInfinity), max = new float2(float.NegativeInfinity) };
                 var count = tile.points.Length;
                 var area  = 0.0f;
