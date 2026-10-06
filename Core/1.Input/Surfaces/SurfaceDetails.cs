@@ -31,6 +31,16 @@ namespace Chisel.Core
 		Default = None
     }
 
+	// How hotspot mapping treats a surface whose material has a hotspot layout
+	[Serializable, StructLayout(LayoutKind.Sequential)]
+	public struct HotspotSurface
+	{
+		// The id of the tile kept on this surface; 0 lets matching choose
+		public int  pinnedTile;
+		// Tells identical tiles apart for this surface
+		public uint seed;
+	}
+
 	/// <summary>
     /// Describes part of a surface that is specific for each surface individually, 
     /// such as how the texture coordinates and normals are calculated, and if a surface is, 
@@ -61,6 +71,8 @@ namespace Chisel.Core
 		/// <value>2x4 matrix to calculate UV0 coordinates from vertex positions.</value>
 		/// <remarks><note>This is only used when uv0 channels are set to be generated using the <see cref="Chisel.Core.VertexChannelFlags"/>.</note></remarks>
 		public UVMatrix             UV0;
+
+		public HotspotSurface       hotspot;
 
         // .. more UVMatrices can be added when more UV channels are supported
 

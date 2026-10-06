@@ -45,6 +45,8 @@ namespace Chisel.Core
             // Whether the tree's output was last built by the exact CSG (TreeUpdate.kExactCSG). An update by the other
             // algorithm rebuilds every brush of the tree, so the two never mix in one tree's output.
             public bool                                                         builtExact;
+            // What the hotspot layouts were at the last update (ChiselHotspotStore.Gather)
+            public uint                                                         hotspotHash;
 
 			internal void Initialize()
             {

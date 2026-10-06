@@ -81,6 +81,7 @@ namespace Chisel.Core
 		// left exactly as authored and only what the pipeline acts on is corrected.
 		public SurfaceDestinationFlags DestinationFlags { get { var metadata = chiselMaterial.ResolveSurfaceMetadata(); return ((metadata != null) ? metadata.destinationFlags : SurfaceDestinationFlags.Default).Normalize(); } }
 		public SurfaceOutputFlags      OutputFlags      { get { var metadata = chiselMaterial.ResolveSurfaceMetadata(); return (metadata != null) ? metadata.outputFlags : SurfaceOutputFlags.Default; } }
+		public ChiselHotspotLayout     HotspotLayout    { get { var metadata = chiselMaterial.ResolveSurfaceMetadata(); return (metadata != null) ? metadata.hotspotLayout : null; } }
 
 		public void SetMaterial(Material material)
 		{

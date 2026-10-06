@@ -294,7 +294,10 @@ namespace Chisel.Core
                     outputFlags           = polygon.surface.outputFlags,
                     UV0                   = polygon.surface.details.UV0,
                     localPlane            = localPlane,
-                    descriptionIndex      = polygon.descriptionIndex
+                    descriptionIndex      = polygon.descriptionIndex,
+                    hotspotLayout         = polygon.surface.hotspotLayout,
+                    hotspotPinned         = polygon.surface.details.hotspot.pinnedTile,
+                    hotspotSeed           = polygon.surface.details.hotspot.seed
                 };
             }
             var basePolygonsBlob = builder.CreateBlobAssetReference<BasePolygonsBlob>(Allocator.Persistent); // Confirmed to be disposed

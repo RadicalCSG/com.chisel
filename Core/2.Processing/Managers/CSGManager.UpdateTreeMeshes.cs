@@ -306,6 +306,10 @@ namespace Chisel.Core
                 public NativeArray<DecalVolume>             decalVolumes;
                 public NativeArray<ChiselDecalTarget>       decalTargets;
                 public NativeArray<MinMaxAABB>              changedDecalBounds;
+
+                // Hotspot layouts (ChiselHotspotStore), as they are this update
+                public NativeArray<HotspotTileData>         hotspotTiles;
+                public NativeArray<HotspotLayoutData>       hotspotLayouts;
             } 
             internal TemporariesStruct Temporaries;
             #endregion
@@ -582,6 +586,18 @@ namespace Chisel.Core
                 Temporaries.decalTargets                    = new NativeArray<ChiselDecalTarget>(chiselLookupValues.decalVolumeTargets.AsArray(), defaultAllocator);
                 Temporaries.changedDecalBounds              = new NativeArray<MinMaxAABB>(chiselLookupValues.changedDecalBounds.AsArray(), defaultAllocator);
                 chiselLookupValues.changedDecalBounds.Clear();
+
+                // The hotspot layouts; when one changed every surface is mapped again
+                {
+                    using var hotspotTiles   = new NativeList<HotspotTileData>(Allocator.Temp);
+                    using var hotspotLayouts = new NativeList<HotspotLayoutData>(Allocator.Temp);
+                    var hotspotHash = ChiselHotspotStore.Gather(hotspotTiles, hotspotLayouts);
+                    if (hotspotHash != chiselLookupValues.hotspotHash)
+                        this.rebuildAllBrushes = true;
+                    chiselLookupValues.hotspotHash = hotspotHash;
+                    Temporaries.hotspotTiles   = new NativeArray<HotspotTileData>(hotspotTiles.AsArray(), defaultAllocator);
+                    Temporaries.hotspotLayouts = new NativeArray<HotspotLayoutData>(hotspotLayouts.AsArray(), defaultAllocator);
+                }
 
                 Temporaries.subMeshDescriptions             = new NativeList<SubMeshDescriptions>(defaultAllocator);
 
@@ -2309,6 +2325,8 @@ namespace Chisel.Core
                         normalSmoothingAngle      = normalSmoothingAngle,
                         decalVolumes              = Temporaries.decalVolumes,
                         decalTargets              = Temporaries.decalTargets,
+                        hotspotTiles              = Temporaries.hotspotTiles,
+                        hotspotLayouts            = Temporaries.hotspotLayouts,
 
 						// Write
 						brushRenderBufferCache    = chiselLookupValues.brushRenderBufferCache
@@ -2849,6 +2867,8 @@ namespace Chisel.Core
                 lastJobHandle.AddDependency(Temporaries.decalVolumes                 .SafeDispose(JobHandles[JobHandleType.decalVolumesJobHandle].readWriteBarrier));
                 lastJobHandle.AddDependency(Temporaries.changedDecalBounds           .SafeDispose(JobHandles[JobHandleType.decalVolumesJobHandle].readWriteBarrier));
                 lastJobHandle.AddDependency(Temporaries.decalTargets                 .SafeDispose(JobHandles[JobHandleType.decalVolumesJobHandle].readWriteBarrier));
+                lastJobHandle.AddDependency(Temporaries.hotspotTiles                 .SafeDispose(JobHandles[JobHandleType.decalVolumesJobHandle].readWriteBarrier));
+                lastJobHandle.AddDependency(Temporaries.hotspotLayouts               .SafeDispose(JobHandles[JobHandleType.decalVolumesJobHandle].readWriteBarrier));
                 
                 
                 // Note: cannot use "IsCreated" on this job, for some reason it won't be scheduled and then complain that it's leaking? Bug in IsCreated?

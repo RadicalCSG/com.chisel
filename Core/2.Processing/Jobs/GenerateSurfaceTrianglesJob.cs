@@ -41,6 +41,9 @@ namespace Chisel.Core
 		[NoAlias, ReadOnly] public NativeArray<DecalVolume> decalVolumes;
 		// The surfaces decals are limited to (DecalVolume.targetStart/targetCount)
 		[NoAlias, ReadOnly] public NativeArray<ChiselDecalTarget> decalTargets;
+		// Hotspot layouts (ChiselHotspotStore.Gather): every layout's tiles, and where a layout's are (by id - 1)
+		[NoAlias, ReadOnly] public NativeArray<HotspotTileData>   hotspotTiles;
+		[NoAlias, ReadOnly] public NativeArray<HotspotLayoutData> hotspotLayouts;
 
 		// Write
 		[NativeDisableParallelForRestriction]
@@ -831,6 +834,17 @@ namespace Chisel.Core
 			var parms = baseSurfaces[surf].destinationParameters;
 			var UV0 = baseSurfaces[surf].UV0;
 			var uvMat = math.mul(UV0.ToFloat4x4(), treeToPlane);
+			// A surface whose material has a hotspot layout takes its uvs from the tile that fits what it draws
+			var hotspot = baseSurfaces[surf].hotspotLayout;
+			if (hotspot > 0 && hotspot <= hotspotLayouts.Length && hotspotLayouts[hotspot - 1].tileCount > 0)
+			{
+				var layout = hotspotLayouts[hotspot - 1];
+				var shape  = HotspotMatcher.ShapeOf(uniqueVertexMapper.surfaceColliderVertices.AsArray(), finalFaceNormal);
+				var seed   = math.hash(new uint2(baseSurfaces[surf].hotspotSeed, (uint)baseSurfaces[surf].descriptionIndex));
+				var choice = HotspotMatcher.Choose(hotspotTiles, layout, shape, seed, baseSurfaces[surf].hotspotPinned);
+				if (choice.tile >= 0)
+					uvMat = HotspotMatcher.Mapping(hotspotTiles[choice.tile], layout, shape, choice, finalFaceNormal);
+			}
 			
 			MeshAlgorithms.ComputeUVs(uniqueVertexMapper.surfaceRenderVertices, uvMat);
 			MeshAlgorithms.ComputeTangents(uniqueVertexMapper.surfaceRenderVertices, finalFaceNormal, uvMat);

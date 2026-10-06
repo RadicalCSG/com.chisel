@@ -42,6 +42,8 @@ namespace Chisel.Core
 		public SurfaceDestinationFlags destinationFlags = SurfaceDestinationFlags.Default;
 		public SurfaceOutputFlags	   outputFlags		= SurfaceOutputFlags.Default;
 		public PhysicsMaterial         physicsMaterial;
+		// Surfaces with this material take their uvs from a tile of this layout
+		public ChiselHotspotLayout     hotspotLayout;
 
 
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -50,7 +52,8 @@ namespace Chisel.Core
 			unchecked
 			{
 				uint physicsMaterialHashcode = (physicsMaterial != null) ? (uint)physicsMaterial.GetHashCode() : 0u;
-				var hash = math.hash(new uint3((uint)destinationFlags, (uint)outputFlags, physicsMaterialHashcode));
+				uint hotspotLayoutHashcode   = (hotspotLayout != null) ? (uint)hotspotLayout.GetHashCode() : 0u;
+				var hash = math.hash(new uint4((uint)destinationFlags, (uint)outputFlags, physicsMaterialHashcode, hotspotLayoutHashcode));
 				return (int)hash;
 			}
 		}
