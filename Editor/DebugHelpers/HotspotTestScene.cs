@@ -44,6 +44,7 @@ namespace Chisel.Editors
             Generators();
             MixedMaterials();
             ScaledTransforms();
+            Triangles();
 
             ChiselNodeHierarchyManager.Update();
             ChiselModelManager.Instance.UpdateModels();
@@ -249,6 +250,46 @@ namespace Chisel.Editors
         {
             var s = Station("09 mixed materials (first 3 surfaces default material)");
             Box(s, "default 3 cube 2", new Vector3(1, 0, 0), new Vector3(2, 2, 2));
+        }
+
+        // A brush given as planes (outward normal n, n.p + w = 0), in its own space
+        static ChiselBrushComponent Planes(Transform parent, string name, Vector3 position, params float4[] planes)
+        {
+            var brush = Add<ChiselBrushComponent>(parent, name, position);
+            brush.definition.SetPlanes(planes);
+            brush.OnValidate();
+            return brush;
+        }
+
+        static float4 Plane(float3 normal, float3 point)
+        {
+            normal = math.normalize(normal);
+            return new float4(normal, -math.dot(normal, point));
+        }
+
+        // A prism of depth 0.5 whose front (facing -z) is the triangle a, b, c in the xy plane, counter-clockwise
+        static ChiselBrushComponent Prism(Transform parent, string name, Vector3 position, float2 a, float2 b, float2 c)
+        {
+            float4 Side(float2 from, float2 to) => Plane(new float3(to.y - from.y, from.x - to.x, 0), new float3(from, 0));
+            return Planes(parent, name, position,
+                          new float4(0, 0, -1, 0), new float4(0, 0, 1, -0.5f), Side(a, b), Side(b, c), Side(c, a));
+        }
+
+        // Triangular faces for triangular tiles: right triangles at 1:1, 2:1 and 1:2, mirrored, isosceles, and one the CSG cuts
+        static void Triangles()
+        {
+            var s = Station("11 triangles (right, mirrored, isosceles, cut by the CSG)");
+            Prism(s, "right triangle 2:1 (2x1)",          new Vector3(0, 0, 0),  new float2(0, 0), new float2(2, 0), new float2(2, 1));
+            Prism(s, "right triangle 1:1 (1x1)",          new Vector3(3, 0, 0),  new float2(0, 0), new float2(1, 0), new float2(1, 1));
+            Prism(s, "right triangle 1:2 (1x2)",          new Vector3(5, 0, 0),  new float2(0, 0), new float2(1, 0), new float2(1, 2));
+            Prism(s, "right triangle 4x2 (larger)",       new Vector3(7, 0, 0),  new float2(0, 0), new float2(4, 0), new float2(4, 2));
+            Prism(s, "mirrored right triangle 2:1",       new Vector3(12, 0, 0), new float2(0, 0), new float2(2, 0), new float2(0, 1));
+            Prism(s, "isosceles 2x2 (apex up)",           new Vector3(15, 0, 0), new float2(0, 0), new float2(2, 0), new float2(1, 2));
+            Prism(s, "isosceles 2x1 (wide)",              new Vector3(18, 0, 0), new float2(0, 0), new float2(2, 0), new float2(1, 1));
+            Prism(s, "upside down isosceles 2x2",         new Vector3(21, 0, 0), new float2(0, 2), new float2(1, 0), new float2(2, 2));
+            float x = 24;
+            Wall(s, "wall cut diagonally by the CSG (triangle left)", ref x, 3, 3, 0);
+            Subtract(Box(s, "diagonal cutter", new Vector3(24 + 1.5f, 1.5f, 0), new Vector3(5, 3, 1), new Vector3(0, 0, 45)));
         }
 
         // World size follows the transform: scaled brushes take tiles by their scaled size
