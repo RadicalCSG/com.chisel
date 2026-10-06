@@ -15,7 +15,17 @@ namespace Chisel.Core
 		public const string kSurfaceMetadataFieldName = nameof(surfaceMetadata);
 
 		public Material				 material;
+
 		public ChiselSurfaceMetadata surfaceMetadata;
+
+		/// <summary>Looks the metadata up from the material. <see cref="MetadataLookup"/> is itself
+		/// the cache, so this cannot go stale and does not need invalidating.</summary>
+		public readonly ChiselSurfaceMetadata ResolveSurfaceMetadata()
+		{
+			if (material == null)
+				return null;
+			return material.GetMetadataOfType<ChiselSurfaceMetadata>();
+		}
 
 		public static ChiselMaterial Create(Material material)
 		{
@@ -64,9 +74,13 @@ namespace Chisel.Core
 		public bool HasMaterial { get { return chiselMaterial.material != null; } }
 
 		public Material				   RenderMaterial   { get { return (chiselMaterial.material != null) ? chiselMaterial.material : ChiselProjectSettings.DefaultMaterial; } set { SetMaterial(value); } }
-		public PhysicsMaterial		   PhysicsMaterial  { get { return (chiselMaterial.surfaceMetadata != null) ? chiselMaterial.surfaceMetadata.physicsMaterial : ChiselProjectSettings.DefaultPhysicsMaterial; } }
-		public SurfaceDestinationFlags DestinationFlags { get { return (chiselMaterial.surfaceMetadata != null) ? chiselMaterial.surfaceMetadata.destinationFlags : SurfaceDestinationFlags.Default; } }
-		public SurfaceOutputFlags      OutputFlags      { get { return (chiselMaterial.surfaceMetadata != null) ? chiselMaterial.surfaceMetadata.outputFlags : SurfaceOutputFlags.Default; } }
+		// These resolve the metadata rather than reading ChiselMaterial.surfaceMetadata: that field
+		// is only refreshed when a surface is selected, and these feed the CSG pipeline.
+		public PhysicsMaterial		   PhysicsMaterial  { get { var metadata = chiselMaterial.ResolveSurfaceMetadata(); return (metadata != null) ? metadata.physicsMaterial : ChiselProjectSettings.DefaultPhysicsMaterial; } }
+		// Normalized on the way out rather than on the way in, so that what the metadata stores is
+		// left exactly as authored and only what the pipeline acts on is corrected.
+		public SurfaceDestinationFlags DestinationFlags { get { var metadata = chiselMaterial.ResolveSurfaceMetadata(); return ((metadata != null) ? metadata.destinationFlags : SurfaceDestinationFlags.Default).Normalize(); } }
+		public SurfaceOutputFlags      OutputFlags      { get { var metadata = chiselMaterial.ResolveSurfaceMetadata(); return (metadata != null) ? metadata.outputFlags : SurfaceOutputFlags.Default; } }
 
 		public void SetMaterial(Material material)
 		{
@@ -94,7 +108,10 @@ namespace Chisel.Core
             unchecked
             {
 				uint materialHashcode = (chiselMaterial.material != null) ? (uint)chiselMaterial.material.GetHashCode() : 0u;
-				uint surfaceMetadataHashcode = (chiselMaterial.surfaceMetadata != null) ? (uint)chiselMaterial.surfaceMetadata.GetHashCode() : 0;
+				// Resolved, not the serialized cache: this hash is what decides whether a surface
+				// needs rebuilding, so hashing a stale value would keep the stale result too.
+				var surfaceMetadata = chiselMaterial.ResolveSurfaceMetadata();
+				uint surfaceMetadataHashcode = (surfaceMetadata != null) ? (uint)surfaceMetadata.GetHashCode() : 0;
 
 				uint hash = surfaceDetails.Hash();				
                 hash = math.hash(new uint3(hash, materialHashcode, surfaceMetadataHashcode));

@@ -78,8 +78,10 @@ namespace Chisel
 		[Conditional("ENABLE_UNITY_COLLECTIONS_CHECKS")]
 		internal static void CheckWriteAndThrow<T>(NativeArray<T> array) where T : unmanaged
 		{
+#if UNITY_EDITOR
 			AtomicSafetyHandle.CheckWriteAndThrow(NativeArrayUnsafeUtility.GetAtomicSafetyHandle(array));
 			CheckValidCollection(array);
+#endif
 		}
 
 		[Conditional("ENABLE_UNITY_COLLECTIONS_CHECKS")]
@@ -91,14 +93,18 @@ namespace Chisel
 		[Conditional("ENABLE_UNITY_COLLECTIONS_CHECKS")]
 		internal static void CheckWriteAndThrow<T>(NativeSlice<T> slice) where T : unmanaged
 		{
+#if UNITY_EDITOR
 			AtomicSafetyHandle.CheckWriteAndThrow(NativeSliceUnsafeUtility.GetAtomicSafetyHandle(slice));
+#endif
 		}
 
 		[Conditional("ENABLE_UNITY_COLLECTIONS_CHECKS")]
 		internal static void CheckWriteAndThrow<T>(NativeList<T> list) where T : unmanaged
 		{
+#if UNITY_EDITOR
 			AtomicSafetyHandle.CheckWriteAndThrow(NativeListUnsafeUtility.GetAtomicSafetyHandle(ref list));
 			CheckValidCollection(list);
+#endif
 		}
 
 		[Conditional("ENABLE_UNITY_COLLECTIONS_CHECKS")]
@@ -147,7 +153,9 @@ namespace Chisel
 		[Conditional("ENABLE_UNITY_COLLECTIONS_CHECKS")]
 		internal static void CheckReadAndThrow<T>(NativeArray<T> array) where T : unmanaged
 		{
+#if UNITY_EDITOR
 			AtomicSafetyHandle.CheckReadAndThrow(NativeArrayUnsafeUtility.GetAtomicSafetyHandle(array));
+#endif
 		}
 
 		[Conditional("ENABLE_UNITY_COLLECTIONS_CHECKS")]
@@ -166,13 +174,17 @@ namespace Chisel
 		[Conditional("ENABLE_UNITY_COLLECTIONS_CHECKS")]
 		internal static void CheckReadAndThrow<T>(NativeList<T> list) where T : unmanaged
 		{
+#if UNITY_EDITOR
 			AtomicSafetyHandle.CheckReadAndThrow(NativeListUnsafeUtility.GetAtomicSafetyHandle(ref list));
+#endif
 		}
 
 		[Conditional("ENABLE_UNITY_COLLECTIONS_CHECKS")]
 		internal static void CheckReadAndThrow<T>(NativeSlice<T> slice) where T : unmanaged
 		{
+#if UNITY_EDITOR
 			AtomicSafetyHandle.CheckReadAndThrow(NativeSliceUnsafeUtility.GetAtomicSafetyHandle(slice));
+#endif
 		}
 
 		[Conditional("ENABLE_UNITY_COLLECTIONS_CHECKS")]
@@ -221,10 +233,12 @@ namespace Chisel
 		[Conditional("ENABLE_UNITY_COLLECTIONS_CHECKS")]
 		internal static void CheckValidCollection<T>(in NativeArray<T> array) where T : unmanaged
 		{
+#if UNITY_EDITOR
 			if (!array.IsCreated)
 				throw new NullReferenceException("Using an uninitialized NativeArray");
 			var safetyHandle = NativeArrayUnsafeUtility.GetAtomicSafetyHandle(array);
 			AtomicSafetyHandle.ValidateNonDefaultHandle(safetyHandle);
+#endif
 		}
 
 		[Conditional("ENABLE_UNITY_COLLECTIONS_CHECKS")]
@@ -237,17 +251,21 @@ namespace Chisel
 		[Conditional("ENABLE_UNITY_COLLECTIONS_CHECKS")]
 		internal static void CheckValidCollection<T>(NativeList<T> list) where T : unmanaged
 		{
+#if UNITY_EDITOR
 			if (!list.IsCreated)
 				throw new NullReferenceException("Using an uninitialized NativeList");
 			var safetyHandle = NativeListUnsafeUtility.GetAtomicSafetyHandle(ref list);
 			AtomicSafetyHandle.ValidateNonDefaultHandle(safetyHandle);
+#endif
 		}
 
 		[Conditional("ENABLE_UNITY_COLLECTIONS_CHECKS")]
 		internal static void CheckValidCollection<T>(in NativeSlice<T> slice) where T : unmanaged
 		{
+#if UNITY_EDITOR
 			var safetyHandle = NativeSliceUnsafeUtility.GetAtomicSafetyHandle(slice);
 			AtomicSafetyHandle.ValidateNonDefaultHandle(safetyHandle);
+#endif
 		}
 
 		[Conditional("ENABLE_UNITY_COLLECTIONS_CHECKS")]

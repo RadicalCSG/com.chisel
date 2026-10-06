@@ -11,13 +11,14 @@ namespace Chisel.Editors
 		{
 			public readonly static GUIContent kMaterialSection = EditorGUIUtility.TrTextContent("Materials");
 
-			public readonly static GUIContent kDefaultMaterialsSection = EditorGUIUtility.TrTextContent("Default");
+			public readonly static GUIContent kDefaultMaterialsSection	= EditorGUIUtility.TrTextContent("Default");
 
-			public readonly static GUIContent kDefaultFloorMaterial  = EditorGUIUtility.TrTextContent("Floor");
-			public readonly static GUIContent kDefaultStepMaterial   = EditorGUIUtility.TrTextContent("Step");
-			public readonly static GUIContent kDefaultTreadMaterial  = EditorGUIUtility.TrTextContent("Tread");
-			public readonly static GUIContent kDefaultWallMaterial   = EditorGUIUtility.TrTextContent("Wall");
-			public readonly static GUIContent kDefaultPhysicMaterial = EditorGUIUtility.TrTextContent("Physics");
+			public readonly static GUIContent kDefaultFloorMaterial		= EditorGUIUtility.TrTextContent("Floor");
+			public readonly static GUIContent kDefaultStepMaterial		= EditorGUIUtility.TrTextContent("Step");
+			public readonly static GUIContent kDefaultTreadMaterial		= EditorGUIUtility.TrTextContent("Tread");
+			public readonly static GUIContent kDefaultWallMaterial		= EditorGUIUtility.TrTextContent("Wall");
+			public readonly static GUIContent kDefaultPhysicMaterial	= EditorGUIUtility.TrTextContent("Physics");
+			public readonly static GUIContent kForceShadowOnlyMaterial	= EditorGUIUtility.TrTextContent("Force Shadow-Only");
 
 
 			public readonly static GUIContent kVisualizationSurfaceMaterialsSection = EditorGUIUtility.TrTextContent("Surface Visualization");
@@ -35,6 +36,7 @@ namespace Chisel.Editors
 		SerializedProperty m_DefaultTreadMaterialProp;
 		SerializedProperty m_DefaultWallMaterialProp;
 		SerializedProperty m_DefaultPhysicMaterialProp;
+		SerializedProperty m_DefaultForceShadowOnlyMaterialProp;
 
 		SerializedProperty m_HiddenSurfacesMaterialProp;
 		SerializedProperty m_ShadowCastingSurfacesMaterialProp;
@@ -58,6 +60,8 @@ namespace Chisel.Editors
 			m_DefaultTreadMaterialProp  = materialsProp.FindPropertyRelative(ChiselPipelineMaterialsSet.kDefaultTreadMaterialName);
 			m_DefaultWallMaterialProp   = materialsProp.FindPropertyRelative(ChiselPipelineMaterialsSet.kDefaultWallMaterialName);
 			m_DefaultPhysicMaterialProp = materialsProp.FindPropertyRelative(ChiselPipelineMaterialsSet.kDefaultPhysicMaterialName);
+			m_DefaultForceShadowOnlyMaterialProp = materialsProp.FindPropertyRelative(ChiselPipelineMaterialsSet.kDefaultForceShadowOnlyMaterialName);
+			
 
 			m_HiddenSurfacesMaterialProp          = materialsProp.FindPropertyRelative(ChiselPipelineMaterialsSet.kUserHiddenSurfacesMaterialName);
 			m_DiscardedSurfacesMaterialProp       = materialsProp.FindPropertyRelative(ChiselPipelineMaterialsSet.kDiscardedSurfacesMaterialName);
@@ -86,6 +90,7 @@ namespace Chisel.Editors
 					EditorGUILayout.PropertyField(m_DefaultTreadMaterialProp, SettingsContent.kDefaultTreadMaterial);
 					EditorGUILayout.PropertyField(m_DefaultWallMaterialProp, SettingsContent.kDefaultWallMaterial);
 					EditorGUILayout.PropertyField(m_DefaultPhysicMaterialProp, SettingsContent.kDefaultPhysicMaterial);
+					EditorGUILayout.PropertyField(m_DefaultForceShadowOnlyMaterialProp, SettingsContent.kForceShadowOnlyMaterial);	
 				}
 				EditorGUILayout.Space();
 

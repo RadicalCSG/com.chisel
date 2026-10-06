@@ -63,11 +63,14 @@ namespace Chisel.Core
                    Matrix4x4.TRS(-center, Quaternion.identity, Vector3.one);
         }
 
+        public const float kTangentAxisBias = 0.01f;
+
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public static float3 ClosestTangentAxis(float3 vector)
         {
             var abs = math.abs(vector);
-            if (abs.z > abs.x && abs.z > abs.y)
+            if (abs.z > abs.x + kTangentAxisBias &&
+                abs.z > abs.y + kTangentAxisBias)
                 return new float3(1, 0, 0);
             return new float3(0, 0, 1);
         }
@@ -476,7 +479,7 @@ namespace Chisel.Core
 		// Finds the minimum 3D distance from a point to a line segment
 
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
-		public static bool IsPointOnLineSegment(float3 point, float3 lineVertexA, float3 lineVertexB, float vertexEpsilon, float edgeEpsilon)
+		public static bool IsPointOnLineSegment(float3 point, float3 lineVertexA, float3 lineVertexB, float sqrVertexEpsilon, float sqrEdgeEpsilon)
 		{
 			var b = (point.x - lineVertexA.x) * (lineVertexB.x - lineVertexA.x) +
 					(point.y - lineVertexA.y) * (lineVertexB.y - lineVertexA.y) +
@@ -507,9 +510,9 @@ namespace Chisel.Core
 
 				var f = dx * dx + dy * dy + dz * dz;
 				if (e < f)
-					return e < vertexEpsilon;
+					return e < sqrVertexEpsilon;
 				else
-					return f < vertexEpsilon;
+					return f < sqrVertexEpsilon;
 			}
 
 			// Closest point to line is on the segment
@@ -519,11 +522,12 @@ namespace Chisel.Core
 			var a = math.sqrt(d1 * d1 + d2 * d2 + d3 * d3);
 			var csqrt = math.sqrt(c);
 			a /= csqrt;
-			return (a * a) < edgeEpsilon;
+			return (a * a) < sqrEdgeEpsilon;
 		}
 
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
-		public static bool IsPointOnLineSegmentButNotOnVertex(float3 point, float3 lineVertexA, float3 lineVertexB, float edgeEpsilon)
+		// sqrEdgeEpsilon is a SQUARED distance (pass kSqrEdgeDistanceEpsilon, not kEdgeIntersectionEpsilon).
+		public static bool IsPointOnLineSegmentButNotOnVertex(float3 point, float3 lineVertexA, float3 lineVertexB, float sqrEdgeEpsilon)
 		{
 			var b = (point.x - lineVertexA.x) * (lineVertexB.x - lineVertexA.x) +
 					(point.y - lineVertexA.y) * (lineVertexB.y - lineVertexA.y) +
@@ -552,7 +556,7 @@ namespace Chisel.Core
 			var a = math.sqrt(d1 * d1 + d2 * d2 + d3 * d3);
 			var csqrt = math.sqrt(c);
 			a /= csqrt;
-			return (a * a) < edgeEpsilon;
+			return (a * a) < sqrEdgeEpsilon;
 		}
 
 

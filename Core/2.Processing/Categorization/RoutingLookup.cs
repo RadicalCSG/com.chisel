@@ -11,7 +11,7 @@ namespace Chisel.Core
         public int endIndex;
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public readonly bool TryGetRoute([NoAlias, ReadOnly] ref RoutingTable table, byte inputIndex, out CategoryRoutingRow routingRow)
+        public readonly bool TryGetRoute([NoAlias, ReadOnly] ref RoutingTable table, ushort inputIndex, out CategoryRoutingRow routingRow)
         {
             var tableIndex = startIndex + (int)inputIndex;
             if (tableIndex < startIndex || tableIndex >= endIndex)

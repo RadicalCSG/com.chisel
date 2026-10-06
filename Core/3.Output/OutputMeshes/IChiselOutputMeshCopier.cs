@@ -10,6 +10,8 @@ namespace Chisel.Core
     {
 		[NoAlias, ReadOnly] public NativeList<SubMeshDescriptions>         subMeshDescriptions;
 		[NoAlias, ReadOnly] public NativeArray<UnsafeList<SubMeshSurface>> subMeshSurfaces;
+		// How the meshes' lightmap coordinates are laid out: the model's (LightmapUVLayout)
+		public LightmapUVSettings                                   lightmapUVSettings;
     }
 
 	internal interface IChiselOutputMeshCopier

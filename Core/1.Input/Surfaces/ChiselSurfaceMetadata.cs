@@ -17,9 +17,16 @@ namespace Chisel.Core
 		// {{
 		DoubleSided		  = (int)((uint)1 << 1),
 		EnvironmentSkybox = (int)((uint)1 << 2), // <-- TODO: replace material with environment skybox, so we can define it in one place
-		NoLightmap		  = (int)((uint)1 << 3), // <-- TODO: should be part of SurfaceDestinationFlags?
 		Transparent		  = (int)((uint)1 << 4), // <-- TODO: as in, brush that has a transparent side will not remove it's contents? is this the best way to handle this?
 		// }}
+
+		/// <summary>The surface gets no lightmap texels: it is never lit by a lightmap, as an unlit surface isn't</summary>
+		NoLightmap		  = (int)((uint)1 << 3),
+		/// <summary>
+		/// The surface gets one lightmap texel: its own lighting doesn't show, as on a surface that gives off light, but a bake
+		/// takes the light it gives off from its texels
+		/// </summary>
+		SingleLightmapTexel = (int)((uint)1 << 5),
 
 		Default = None
 	};
@@ -34,7 +41,7 @@ namespace Chisel.Core
 
 		public SurfaceDestinationFlags destinationFlags = SurfaceDestinationFlags.Default;
 		public SurfaceOutputFlags	   outputFlags		= SurfaceOutputFlags.Default;
-		public PhysicsMaterial          physicsMaterial;
+		public PhysicsMaterial         physicsMaterial;
 
 
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]

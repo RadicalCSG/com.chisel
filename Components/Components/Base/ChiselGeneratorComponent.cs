@@ -10,41 +10,29 @@ namespace Chisel.Components
         where Generator      : unmanaged, IBrushGenerator
         where DefinitionType : SerializedBrushGenerator<Generator>, new()
 	{
-		[RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
-		static void ResetState()
-		{
-            s_JobPool.Dispose();
-			s_JobPool.AllocateOrClear();
-		}
-
 		readonly static GeneratorBrushJobPool<Generator> s_JobPool = new();
 
-		CSGTreeBrush GenerateTopNode(in CSGTree tree, CSGTreeNode node, int instanceID, CSGOperationType operation)
+		CSGTreeBrush GenerateTopNode(in CSGTree tree, CSGTreeNode node, UnityEngine.EntityId entityId, CSGOperationType operation)
         {
             var brush = (CSGTreeBrush)node;
             if (!brush.Valid)
             {
                 if (node.Valid)
                     node.Destroy();
-                return tree.CreateBrush(instanceID: instanceID, operation: operation);
+                return tree.CreateBrush(entityId: entityId, operation: operation);
             }
             if (brush.Operation != operation)
                 brush.Operation = operation;
             return brush;
         }
-        protected override bool EnsureTopNodeCreatedInternal(in CSGTree tree, ref CSGTreeNode node, int instanceID)
+        protected override bool EnsureTopNodeCreatedInternal(in CSGTree tree, ref CSGTreeNode node, UnityEngine.EntityId entityId)
         {
             if (!OnValidateDefinition())
                 return false;
 
             var brush = (CSGTreeBrush)node;
-            node = GenerateTopNode(in tree, brush, instanceID, operation);
+            node = GenerateTopNode(in tree, brush, entityId, operation);
             return true;
-        }
-
-        protected override int GetDefinitionHash()
-        {
-            return definition.GetHashCode();
         }
 
 
@@ -73,40 +61,28 @@ namespace Chisel.Components
         where Generator      : unmanaged, IBranchGenerator
         where DefinitionType : SerializedBranchGenerator<Generator>, new()
 	{
-		[RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
-		static void ResetState()
-		{
-			s_JobPool.Dispose();
-			s_JobPool.AllocateOrClear();
-		}
-
 		readonly static GeneratorBranchJobPool<Generator> s_JobPool = new();
 
-        CSGTreeBranch GenerateTopNode(in CSGTree tree, CSGTreeBranch branch, int instanceID, CSGOperationType operation)
+        CSGTreeBranch GenerateTopNode(in CSGTree tree, CSGTreeBranch branch, UnityEngine.EntityId entityId, CSGOperationType operation)
         {
             if (!branch.Valid)
             {
                 if (branch.Valid)
                     branch.Destroy();
-                return tree.CreateBranch(instanceID: instanceID, operation: operation);
+                return tree.CreateBranch(entityId: entityId, operation: operation);
             }
             if (branch.Operation != operation)
                 branch.Operation = operation;
             return branch;
         }
-        protected override bool EnsureTopNodeCreatedInternal(in CSGTree tree, ref CSGTreeNode node, int instanceID)
+        protected override bool EnsureTopNodeCreatedInternal(in CSGTree tree, ref CSGTreeNode node, UnityEngine.EntityId entityId)
         {
 			if (!OnValidateDefinition())
 				return false;
 
 			var branch = (CSGTreeBranch)node;
-            node = GenerateTopNode(in tree, branch, instanceID, operation);
+            node = GenerateTopNode(in tree, branch, entityId, operation);
             return true;
-        }
-
-        protected override int GetDefinitionHash()
-        {
-            return definition.GetHashCode();
         }
 
         const Allocator defaultAllocator = Allocator.TempJob;
@@ -121,7 +97,7 @@ namespace Chisel.Components
                 return;
 
             var settings = definition.GetBranchGenerator();
-            s_JobPool.ScheduleUpdate(branch, settings, surfaceDefinitionBlob);
+            s_JobPool.ScheduleUpdate(branch, settings, surfaceDefinitionBlob, contents);
         }
     }
 
@@ -134,6 +110,8 @@ namespace Chisel.Components
 
         public ChiselSurfaceArray surfaceArray;
         public override ChiselSurfaceArray SurfaceDefinition { get { return surfaceArray; } }
+
+        public override UnityEngine.Hash128 GetDefinitionInputHash() { return definition.GetInputHash(); }
 
         public override ChiselSurface GetSurface(int descriptionIndex) { return surfaceArray.GetSurface(descriptionIndex); }
         public override SurfaceDetails GetSurfaceDetails(int descriptionIndex) { return surfaceArray.GetSurfaceDetails(descriptionIndex); }
@@ -196,12 +174,16 @@ namespace Chisel.Components
     {
         // This ensures names remain identical, or a compile error occurs.
         public const string kOperationFieldName = nameof(operation);
+        public const string kContentsFieldName  = nameof(contents);
 
         [HideInInspector] CSGTreeNode Node = default;
 
         public abstract ChiselSurfaceArray SurfaceDefinition { get; }
 
         [SerializeField, HideInInspector] protected CSGOperationType    operation;		    // NOTE: do not rename, name is directly used in editors
+        // What every brush this generates is made of: an index into ChiselContentsList.Instance, 0 is Solid.
+        // Scenes saved before contents existed load as Solid.
+        [SerializeField, HideInInspector] protected int                 contents;		    // NOTE: do not rename, name is directly used in editors
         [SerializeField] protected Vector3                              pivotOffset         = Vector3.zero;
 
         public override CSGTreeNode TopTreeNode 
@@ -247,6 +229,35 @@ namespace Chisel.Components
                 //	so we can rebuild/update sub-trees and regenerate meshes
                 ChiselNodeHierarchyManager.NotifyContentsModified(this);
             }
+        }
+
+        public int Contents
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            get
+            {
+                return contents;
+            }
+            set
+            {
+                if (value == contents)
+                    return;
+                contents = value;
+
+                if (ValidNodes)
+                    ApplyContents();
+
+                ChiselNodeHierarchyManager.NotifyContentsModified(this);
+            }
+        }
+
+        // A brush takes the index directly. A generator that makes several brushes hands it to every brush it
+        // generates, which it does whenever it regenerates them.
+        void ApplyContents()
+        {
+            var brush = (CSGTreeBrush)Node;
+            if (brush.Valid && brush.Contents != contents)
+                brush.Contents = contents;
         }
 
         public Vector3 PivotOffset
@@ -436,13 +447,15 @@ namespace Chisel.Components
         }
 
         [HideInInspector] int prevMaterialHash;
-        [HideInInspector] int prevDefinitionHash;
+        [HideInInspector] UnityEngine.Hash128 prevDefinitionHash;
+        [HideInInspector] int prevContents = -1;
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void ClearHashes()
         {
             prevMaterialHash = 0;
-            prevDefinitionHash = 0;
+            prevDefinitionHash = default;
+            prevContents = -1;
 #if UNITY_EDITOR
 			ChiselUnityVisibilityManager.EnsureVisibilityInitialized(this); 
 #endif
@@ -460,8 +473,8 @@ namespace Chisel.Components
                 }
 
                 var treeRoot = model.Node;
-                var instanceID = GetInstanceID();
-                if (EnsureTopNodeCreatedInternal(in treeRoot, ref Node, instanceID: instanceID))
+                var entityId = GetEntityId();
+                if (EnsureTopNodeCreatedInternal(in treeRoot, ref Node, entityId: entityId))
                     ClearHashes();
 
                 if (!Node.Valid)
@@ -495,9 +508,9 @@ namespace Chisel.Components
         void UpdateMeshesWhenModified()
         {
             var currMaterialHash    = SurfaceDefinition?.GetHashCode() ?? 0;
-            var currDefinitionHash  = GetDefinitionHash();
+            var currDefinitionHash  = GetDefinitionInputHash();
             if (prevMaterialHash != currMaterialHash || prevDefinitionHash != currDefinitionHash ||
-                Node.Operation != operation)
+                Node.Operation != operation || prevContents != contents)
             {
                 prevMaterialHash    = currMaterialHash;
                 prevDefinitionHash  = currDefinitionHash;
@@ -507,6 +520,13 @@ namespace Chisel.Components
                     Node.Operation = operation;
                     // Let the hierarchy manager know that the contents of this node has been modified
                     //	so we can rebuild/update sub-trees and regenerate meshes
+                    ChiselNodeHierarchyManager.NotifyContentsModified(this);
+                }
+
+                if (prevContents != contents)
+                {
+                    prevContents = contents;
+                    ApplyContents();
                     ChiselNodeHierarchyManager.NotifyContentsModified(this);
                 }
 
@@ -548,9 +568,15 @@ namespace Chisel.Components
             SetDirty();
         }
 
-        protected abstract int GetDefinitionHash();
+        /// <summary>
+        /// A hash of what this generator's definition makes its nodes from (see
+        /// <see cref="IChiselNodeGenerator.GetInputHash"/>). It decides whether the brush meshes have to be made
+        /// again, and it is what <see cref="ChiselStagedInputHashes"/> asks for as well, so both answer the same
+        /// question the same way.
+        /// </summary>
+        public abstract UnityEngine.Hash128 GetDefinitionInputHash();
 
-        protected abstract bool EnsureTopNodeCreatedInternal(in CSGTree tree, ref CSGTreeNode node, int instanceID);
+        protected abstract bool EnsureTopNodeCreatedInternal(in CSGTree tree, ref CSGTreeNode node, UnityEngine.EntityId entityId);
         protected abstract void UpdateGeneratorNodesInternal(in CSGTree tree, ref CSGTreeNode node);
 	}
 }

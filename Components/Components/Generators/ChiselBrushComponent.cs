@@ -5,6 +5,7 @@ namespace Chisel.Components
 {
     [ExecuteInEditMode, HelpURL(kDocumentationBaseURL + kNodeTypeName + kDocumentationExtension)]
     [DisallowMultipleComponent, AddComponentMenu("Chisel/" + kNodeTypeName)]
+    [Icon(kIconBasePath + "boxOutline" + kIconExtension)]
     public sealed class ChiselBrushComponent : ChiselNodeGeneratorComponent<ChiselBrushDefinition>
     {
         public const string kNodeTypeName = ChiselBrushDefinition.kNodeTypeName;
@@ -18,34 +19,29 @@ namespace Chisel.Components
         }
         #endregion
 
-        CSGTreeBrush GenerateTopNode(in CSGTree tree, CSGTreeNode node, int instanceID, CSGOperationType operation)
+        CSGTreeBrush GenerateTopNode(in CSGTree tree, CSGTreeNode node, UnityEngine.EntityId entityId, CSGOperationType operation)
         {
             var brush = (CSGTreeBrush)node;
             if (!brush.Valid)
             {
                 if (node.Valid)
                     node.Destroy();
-                return tree.CreateBrush(instanceID: instanceID, operation: operation);
+                return tree.CreateBrush(entityId: entityId, operation: operation);
             }
             if (brush.Operation != operation)
                 brush.Operation = operation;
             return brush;
         }
 
-        protected override bool EnsureTopNodeCreatedInternal(in CSGTree tree, ref CSGTreeNode node, int instanceID)
+        protected override bool EnsureTopNodeCreatedInternal(in CSGTree tree, ref CSGTreeNode node, UnityEngine.EntityId entityId)
         {
 			if (!OnValidateDefinition())
 				return false;
 
 			var brush = (CSGTreeBrush)node;
             if (!brush.Valid)
-                node = GenerateTopNode(in tree, brush, instanceID, operation);
+                node = GenerateTopNode(in tree, brush, entityId, operation);
             return true;
-        }
-
-        protected override int GetDefinitionHash()
-        {
-            return definition.BrushOutline?.GetHashCode() ?? 0;
         }
 
         protected override void UpdateGeneratorNodesInternal(in CSGTree tree, ref CSGTreeNode node)

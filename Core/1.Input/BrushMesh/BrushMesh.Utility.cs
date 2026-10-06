@@ -440,6 +440,26 @@ namespace Chisel.Core
             return true;
         }
 
+        static void GetSides(List<Polygon> polygons, List<HalfEdge> halfEdges, List<VertexSide> vertexDistances,
+                             out bool anyKept, out bool anyRemoved)
+        {
+            anyKept    = false;
+            anyRemoved = false;
+            for (int p = 0; p < polygons.Count; p++)
+            {
+                var firstEdge = polygons[p].firstEdge;
+                var lastEdge  = firstEdge + polygons[p].edgeCount;
+                for (int e = firstEdge; e < lastEdge; e++)
+                {
+                    var halfspace = vertexDistances[halfEdges[e].vertexIndex].Halfspace;
+                    if (halfspace > 0) anyKept    = true; else
+                    if (halfspace < 0) anyRemoved = true;
+                }
+                if (anyKept && anyRemoved)
+                    return;
+            }
+        }
+
         static bool IsPolygonCompletelyPlaneAligned(in Polygon polygon,  List<HalfEdge> halfEdges, List<VertexSide> vertexDistances)
         {
             var firstEdge   = polygon.firstEdge;
@@ -1575,6 +1595,9 @@ namespace Chisel.Core
                         vertexDistances.Add(new VertexSide { Distance = distance, Halfspace = halfspace });
                     }
 
+                    // Splitting below only adds vertices on the plane, so these hold for the whole cut
+                    GetSides(polygons, halfEdges, vertexDistances, out var anyKept, out var anyRemoved);
+
                     bool foundAligned = false;
                     for (var p = polygons.Count - 1; p >= 0; p--)
                     {
@@ -1587,7 +1610,19 @@ namespace Chisel.Core
                         }
                     }
                     if (foundAligned)
+                    {
+                        // A face lies on the plane. With the rest of the brush behind it, the plane is that
+                        // face's own; facing the other way, the plane keeps nothing but the face itself.
+                        if (!anyKept)
+                        {
+                            polygons.Clear();
+                            halfEdges.Clear();
+                            halfEdgePolygonIndices.Clear();
+                            vertices.Clear();
+                            return false;
+                        }
                         continue;
+                    }
 
                     // We split all the polygons by the cutting plane (which creates new polygons at the end, so we start at the end going backwards)
                     for (var p = polygons.Count - 1; p >= 0; p--)
@@ -1626,9 +1661,10 @@ namespace Chisel.Core
                         intersectedEdges.Add(currEdgeIndex);
                     }
 
+                    // The plane misses the brush, or only touches it at a vertex: the whole brush is on one side
                     if (intersectedEdges.Count == 0)
                     {
-                        if (vertexDistances[0].Halfspace < 0)
+                        if (!anyKept)
                         {
                             polygons.Clear();
                             halfEdges.Clear();
@@ -1700,6 +1736,20 @@ namespace Chisel.Core
                     }
 
                     var newEdgeCount = intersectedEdges.Count;
+
+                    if (newEdgeCount < 3 && !(anyKept && anyRemoved))
+                    {
+                        if (!anyKept)
+                        {
+                            polygons.Clear();
+                            halfEdges.Clear();
+                            halfEdgePolygonIndices.Clear();
+                            vertices.Clear();
+                            return false;
+                        }
+                        continue;
+                    }
+
                     if (newEdgeCount > 0)
                     {
                         var polygonStart1 = halfEdges.Count;

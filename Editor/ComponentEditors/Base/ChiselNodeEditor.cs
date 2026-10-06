@@ -181,7 +181,13 @@ namespace Chisel.Editors
         where T : ChiselNodeComponent
     {
         public virtual Bounds OnGetFrameBounds() { return CalculateBounds(targets); }
-        public virtual bool HasFrameBounds() { if (!target) return false; return true; }
+
+        public virtual bool HasFrameBounds()
+        {
+            if (!target)
+                return false;
+            return CalculateBounds(targets).size.sqrMagnitude != 0;
+        }
 
         public static Bounds CalculateBounds(UnityEngine.Object[] targets)
         {
@@ -855,7 +861,8 @@ namespace Chisel.Editors
         protected abstract void OnScene(IChiselHandles handles, T generator);
 
         SerializedProperty operationProp;
-        void Reset() { operationProp = null; ResetInspector(); }
+        SerializedProperty contentsProp;
+        void Reset() { operationProp = null; contentsProp = null; ResetInspector(); }
         
         protected virtual void OnUndoRedoPerformed()
         {
@@ -900,6 +907,7 @@ namespace Chisel.Editors
 
             Profiler.BeginSample("FindProperty");
             operationProp = serializedObject.FindProperty(ChiselGeneratorComponent.kOperationFieldName);
+            contentsProp  = serializedObject.FindProperty(ChiselGeneratorComponent.kContentsFieldName);
             Profiler.EndSample();
             Profiler.EndSample();
 
@@ -1009,6 +1017,7 @@ namespace Chisel.Editors
                 EditorGUI.BeginChangeCheck();
                 {
                     ShowInspectorHeader(operationProp);
+                    ChiselContentsGUI.ShowContentsField(contentsProp);
                     OnInspector();
                 }
                 if (EditorGUI.EndChangeCheck())

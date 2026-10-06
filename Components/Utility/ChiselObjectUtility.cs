@@ -20,6 +20,19 @@ namespace Chisel.Components
 #endif
             };
         }
+
+        /// <summary>
+        /// Whether this describes the same model GameObject state as <paramref name="other"/>, so that the generated
+        /// objects made from it do not have to be configured again.
+        /// </summary>
+        public readonly bool SameAs(GameObjectState other)
+        {
+            return layer == other.layer
+#if UNITY_EDITOR
+                && staticFlags == other.staticFlags
+#endif
+                ;
+        }
     }
 
     //TODO: Move this somewhere else
@@ -243,7 +256,7 @@ namespace Chisel.Components
         const HideFlags kTransformHideFlags         = HideFlags.NotEditable;// | HideFlags.HideInInspector;
         const HideFlags kComponentHideFlags         = HideFlags.HideInHierarchy | HideFlags.NotEditable; // Avoids MeshCollider showing wireframe
 
-        internal static void UpdateContainerFlags(GameObject gameObject, GameObjectState state, bool debugVisualizationRenderer = false, bool isRenderable = false)
+        internal static void UpdateContainerFlags(GameObject gameObject, GameObjectState state, bool debugVisualizationRenderer = false, bool isRenderable = false, bool contributesGI = false)
         {
             var transform = gameObject.transform;
             var desiredGameObjectFlags  = debugVisualizationRenderer ? kEditorGameObjectHideFlags : kGameObjectHideFlags;
@@ -262,8 +275,12 @@ namespace Chisel.Components
             {
 				desiredStaticFlags = state.staticFlags;
             }
-            if (!isRenderable && desiredStaticFlags != (StaticEditorFlags)0)
-				desiredStaticFlags |= StaticEditorFlags.OccluderStatic;
+            if (!isRenderable)
+				desiredStaticFlags &= ~(StaticEditorFlags.OccluderStatic | StaticEditorFlags.OccludeeStatic);
+            // Only a renderer whose surfaces take part in the baked lighting goes into a bake (they are the
+            // ones without SurfaceDestinationFlags.ExcludedFromGlobalIllumination), and only when the model does.
+            if (!contributesGI)
+				desiredStaticFlags &= ~StaticEditorFlags.ContributeGI;
             if (currentStaticFlags != desiredStaticFlags)
                 UnityEditor.GameObjectUtility.SetStaticEditorFlags(gameObject, desiredStaticFlags);
 #endif

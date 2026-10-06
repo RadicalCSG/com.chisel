@@ -2,6 +2,7 @@ using System;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using Unity.Burst;
+using Unity.Collections.LowLevel.Unsafe;
 using Unity.Entities;
 using Unity.Mathematics;
 using ReadOnlyAttribute = Unity.Collections.ReadOnlyAttribute;
@@ -66,5 +67,24 @@ namespace Chisel.Core
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public override int GetHashCode() { return CalculateHashCode(ref this); }
+
+        public static unsafe bool SameContent([NoAlias, ReadOnly] ref BrushMeshBlob a, [NoAlias, ReadOnly] ref BrushMeshBlob b)
+        {
+            return a.localPlaneCount == b.localPlaneCount &&
+                   SameBits(ref a.localVertices, ref b.localVertices) &&
+                   SameBits(ref a.halfEdges, ref b.halfEdges) &&
+                   SameBits(ref a.halfEdgePolygonIndices, ref b.halfEdgePolygonIndices) &&
+                   SameBits(ref a.polygons, ref b.polygons) &&
+                   SameBits(ref a.localPlanes, ref b.localPlanes);
+        }
+
+        static unsafe bool SameBits<T>(ref BlobArray<T> a, ref BlobArray<T> b) where T : unmanaged
+        {
+            if (a.Length != b.Length)
+                return false;
+            if (a.Length == 0)
+                return true;
+            return UnsafeUtility.MemCmp(a.GetUnsafePtr(), b.GetUnsafePtr(), (long)a.Length * UnsafeUtility.SizeOf<T>()) == 0;
+        }
     }
 }

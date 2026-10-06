@@ -30,11 +30,10 @@ namespace Chisel.Core
         public static JobHandle ScheduleConstruct<U>(bool runInParallel, out NativeStream dataStream, NativeList<U> forEachCountFromList, ReadJobHandles readDependencies, WriteJobHandles writeDependencies, Allocator allocator)
             where U : unmanaged
         {
-            var dependencies = JobHandleExtensions.CombineDependencies(readDependencies.Handles, writeDependencies.Handles);
+            var dependencies = JobExtensions.ResolveDependencies(ref readDependencies, ref writeDependencies);
             JobExtensions.CheckDependencies(runInParallel, dependencies);
             var currentJobHandle = ScheduleConstruct(runInParallel, out dataStream, forEachCountFromList, allocator, dependencies);
-            writeDependencies.AddDependency(currentJobHandle);
-            readDependencies.AddDependency(currentJobHandle);
+            JobExtensions.RegisterNode(ref readDependencies, ref writeDependencies, currentJobHandle);
             return currentJobHandle;
         }
 
@@ -69,11 +68,10 @@ namespace Chisel.Core
             where T : unmanaged
             where U : unmanaged
         {
-            var dependencies = JobHandleExtensions.CombineDependencies(readDependencies.Handles, writeDependencies.Handles);
+            var dependencies = JobExtensions.ResolveDependencies(ref readDependencies, ref writeDependencies);
             JobExtensions.CheckDependencies(runInParallel, dependencies);
             var currentJobHandle = ScheduleEnsureCapacity(runInParallel, ref list, forEachCountFromList, allocator, dependencies);
-            writeDependencies.AddDependency(currentJobHandle);
-            readDependencies.AddDependency(currentJobHandle);
+            JobExtensions.RegisterNode(ref readDependencies, ref writeDependencies, currentJobHandle);
             return currentJobHandle;
         }
 
@@ -105,11 +103,10 @@ namespace Chisel.Core
         public static JobHandle ScheduleEnsureCapacity<T>(bool runInParallel, [NoAlias, ReadOnly] ref NativeList<T> list, [NoAlias, WriteOnly] NativeReference<int> capacity, ReadJobHandles readDependencies, WriteJobHandles writeDependencies, Allocator allocator)
             where T : unmanaged
         {
-            var dependencies = JobHandleExtensions.CombineDependencies(readDependencies.Handles, writeDependencies.Handles);
+            var dependencies = JobExtensions.ResolveDependencies(ref readDependencies, ref writeDependencies);
             JobExtensions.CheckDependencies(runInParallel, dependencies);
             var currentJobHandle = ScheduleEnsureCapacity(runInParallel, ref list, capacity, allocator, dependencies);
-            writeDependencies.AddDependency(currentJobHandle);
-            readDependencies.AddDependency(currentJobHandle);
+            JobExtensions.RegisterNode(ref readDependencies, ref writeDependencies, currentJobHandle);
             return currentJobHandle;
         }
 

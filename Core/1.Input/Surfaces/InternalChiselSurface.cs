@@ -29,8 +29,8 @@ namespace Chisel.Core
                 details		     = surface.surfaceDetails,
                 parameters       = new SurfaceDestinationParameters
 				                   {
-										parameter1 = (surface.RenderMaterial == null) ? 0 : surface.RenderMaterial.GetInstanceID(),
-										parameter2 = (surface.PhysicsMaterial == null) ? 0 : surface.PhysicsMaterial.GetInstanceID()
+										parameter1 = (surface.RenderMaterial == null) ? 0UL : UnityEngine.EntityId.ToULong(surface.RenderMaterial.GetEntityId()),
+										parameter2 = (surface.PhysicsMaterial == null) ? 0UL : UnityEngine.EntityId.ToULong(surface.PhysicsMaterial.GetEntityId())
 				},
 				destinationFlags = surface.DestinationFlags,
 				outputFlags	     = surface.OutputFlags,

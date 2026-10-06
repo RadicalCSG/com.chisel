@@ -16,6 +16,7 @@ namespace Chisel.Core
     {
         // Read
         public CompactNodeID treeCompactNodeID;
+        public int           contentsCount;
         [NoAlias, ReadOnly] public NativeList<CompactNodeID> brushes;
         [NoAlias, ReadOnly] public NativeList<CompactNodeID> nodes;
         [NoAlias, ReadOnly] public CompactHierarchy.ReadOnly compactHierarchy;
@@ -26,7 +27,7 @@ namespace Chisel.Core
 
         public void Execute()
         {
-            compactTreeRef.Value = CompactTreeBuilder.Create(compactHierarchy, nodes.AsArray(), brushes.AsArray(), treeCompactNodeID);
+            compactTreeRef.Value = CompactTreeBuilder.Create(compactHierarchy, nodes.AsArray(), brushes.AsArray(), treeCompactNodeID, contentsCount);
         }
     }
 }

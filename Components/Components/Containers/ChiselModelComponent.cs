@@ -58,7 +58,7 @@ namespace Chisel.Components
 		public static float GetDefaultPackMarginPixels()
 		{
 			UnityEditor.UnwrapParam.SetDefaults(out var defaults);
-			return defaults.packMargin * 256;
+			return LightmapUVSettings.kDefaultPaddingTexels;
 		}
 
 		public void Reset()
@@ -67,7 +67,7 @@ namespace Chisel.Components
 			angleError = defaults.angleError;
 			areaError = defaults.areaError;
 			hardAngle = defaults.hardAngle;
-			packMarginPixels = defaults.packMargin * 256;
+			packMarginPixels = LightmapUVSettings.kDefaultPaddingTexels;
 		}
 #endif
 	}
@@ -99,8 +99,7 @@ namespace Chisel.Components
 
     [Serializable]
     public sealed class ChiselGeneratedRenderSettings
-    {
-        public const string kUVGenerationSettingsName       = nameof(uvGenerationSettings);
+	{
         public const string kMotionVectorGenerationModeName = nameof(motionVectorGenerationMode);
         public const string kAllowOcclusionWhenDynamicName  = nameof(allowOcclusionWhenDynamic);
         public const string kRenderingLayerMaskName         = nameof(renderingLayerMask);
@@ -112,8 +111,11 @@ namespace Chisel.Components
         public const string kSubtractiveWorkflowName        = nameof(subtractiveWorkflow);
         public const string kNormalSmoothingName            = nameof(normalSmoothing);
         public const string kNormalSmoothingAngleName       = nameof(normalSmoothingAngle);
+        public const string kCastShadowsName                = nameof(castShadows);
+        public const string kReceiveShadowsName             = nameof(receiveShadows);
         
 #if UNITY_EDITOR
+		public const string kUVGenerationSettingsName           = nameof(uvGenerationSettings);
         public const string kLightmapParametersName             = nameof(lightmapParameters);
         public const string kImportantGIName                    = nameof(importantGI);
         public const string kOptimizeUVsName                    = nameof(optimizeUVs);
@@ -133,9 +135,23 @@ namespace Chisel.Components
         public bool                             allowOcclusionWhenDynamic       = true;
         public uint                             renderingLayerMask              = ~(uint)0;
         public ReceiveGI						receiveGI						= ReceiveGI.LightProbes;
+        /// <summary>
+        /// Whether the model casts shadows at all, as a MeshRenderer's Cast Shadows. A surface also needs its
+        /// material's destination flags to cast them.
+        /// </summary>
+        public bool                             castShadows                     = true;
+        /// <summary>Whether the model receives shadows at all, as a MeshRenderer's Receive Shadows (see castShadows)</summary>
+        public bool                             receiveShadows                  = true;
         public bool                             subtractiveWorkflow             = false;
         public bool                             normalSmoothing                 = false;
         [Range(0, 180)] public float            normalSmoothingAngle            = 45.0f;
+        /// <summary>
+        /// The lightmap texels a unit of the model got when its lightmap coordinates were last laid out: the lighting's lightmap
+        /// resolution times scaleInLightmap. Kept up to date in the editor, so a build lays them out the same way; 0 for the default.
+        /// </summary>
+        [HideInInspector] public float          lightmapTexelsPerUnit           = 0.0f;
+        /// <summary>The texels between lightmap charts they were laid out with (uvGenerationSettings.packMarginPixels in the editor)</summary>
+        [HideInInspector] public float          lightmapPaddingTexels           = 0.0f;
 
 #if UNITY_EDITOR
         // SerializedObject access Only
@@ -182,6 +198,8 @@ namespace Chisel.Components
             allowOcclusionWhenDynamic		= true;
             renderingLayerMask              = ~(uint)0;
             receiveGI                       = ReceiveGI.LightProbes;
+            castShadows                     = true;
+            receiveShadows                  = true;
             subtractiveWorkflow             = false;
             normalSmoothing                 = false;
             normalSmoothingAngle            = 45.0f;
@@ -203,7 +221,7 @@ namespace Chisel.Components
 				uvGenerationSettings.angleError = defaults.angleError;
                 uvGenerationSettings.areaError = defaults.areaError;
                 uvGenerationSettings.hardAngle = defaults.hardAngle;
-                uvGenerationSettings.packMarginPixels = defaults.packMargin * 256;
+                uvGenerationSettings.packMarginPixels = LightmapUVSettings.kDefaultPaddingTexels;
             }
 #endif
         }
@@ -212,13 +230,13 @@ namespace Chisel.Components
 
     [ExecuteInEditMode, HelpURL(kDocumentationBaseURL + kNodeTypeName + kDocumentationExtension)]
     [DisallowMultipleComponent, AddComponentMenu("Chisel/" + kNodeTypeName)]
+    [Icon(kIconBasePath + "csg_model" + kIconExtension)]
     public sealed class ChiselModelComponent : ChiselNodeComponent
     {
         public const string kRenderSettingsName           = nameof(renderSettings);
         public const string kColliderSettingsName         = nameof(colliderSettings);
         public const string kCreateRenderComponentsName   = nameof(CreateRenderComponents);
         public const string kCreateColliderComponentsName = nameof(CreateColliderComponents);
-        public const string kAutoRebuildUVsName           = nameof(AutoRebuildUVs);
         public const string kVertexChannelMaskName        = nameof(VertexChannelMask);
 
 
@@ -244,7 +262,6 @@ namespace Chisel.Components
         // TODO: put all bools in flags (makes it harder to work with in the ModelEditor though)
         public bool               CreateRenderComponents   = true;
         public bool               CreateColliderComponents = true;
-        public bool               AutoRebuildUVs           = true;
         public VertexChannelFlags VertexChannelMask        = VertexChannelFlags.All;
 
         
@@ -282,7 +299,7 @@ namespace Chisel.Components
 
         protected override void OnCleanup()
         {
-            ModelSettingsStore.Remove(GetInstanceID());
+            ModelSettingsStore.Remove(UnityEngine.EntityId.ToULong(GetEntityId()));
             if (generated != null)
             {
                 if (!this && generated.generatedDataContainer)
@@ -295,8 +312,9 @@ namespace Chisel.Components
         {
             if (Node.Valid)
                 Debug.LogWarning($"{nameof(ChiselModelComponent)} already has a treeNode, but trying to create a new one?", this);
-            var instanceID = GetInstanceID();
-            Node = CSGTree.Create(instanceID: instanceID);
+            var entityId = GetEntityId();
+            Node = CSGTree.Create(entityId: entityId);
+            ChiselModelManager.Instance.OnTreeCreated(this);
             return Node;
         }		
         
@@ -378,11 +396,18 @@ namespace Chisel.Components
                 renderSettings.Reset();
             }
 
-            ModelSettingsStore.Set(GetInstanceID(), new ModelSettings
+#if UNITY_EDITOR
+            // The texels its lightmap coordinates are laid out for (ChiselLightmapUVManager)
+            renderSettings.lightmapTexelsPerUnit = ChiselLightmapUVManager.LightmapResolution() * renderSettings.scaleInLightmap;
+            renderSettings.lightmapPaddingTexels = (renderSettings.uvGenerationSettings != null) ? renderSettings.uvGenerationSettings.packMarginPixels : LightmapUVSettings.kDefaultPaddingTexels;
+#endif
+            ModelSettingsStore.Set(UnityEngine.EntityId.ToULong(GetEntityId()), new ModelSettings
             {
                 SubtractiveWorkflow = renderSettings.subtractiveWorkflow,
                 NormalSmoothing = renderSettings.normalSmoothing,
-                NormalSmoothingAngle = renderSettings.normalSmoothingAngle
+                NormalSmoothingAngle = renderSettings.normalSmoothingAngle,
+                LightmapTexelsPerUnit = renderSettings.lightmapTexelsPerUnit,
+                LightmapPaddingTexels = renderSettings.lightmapPaddingTexels
             });
             SetDirty();
             MarkAllBrushesDirty();
@@ -403,7 +428,7 @@ namespace Chisel.Components
 
 #if UNITY_EDITOR
         // TODO: remove from here, shouldn't be public
-		public MaterialPropertyBlock materialPropertyBlock;
+		[System.NonSerialized] public MaterialPropertyBlock materialPropertyBlock;
 
         public VisibilityState VisibilityState
 		{

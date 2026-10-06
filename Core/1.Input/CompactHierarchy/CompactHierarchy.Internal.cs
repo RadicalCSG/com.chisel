@@ -83,6 +83,9 @@ namespace Chisel.Core
             internal CSGOperationType GetOperation(CompactNodeID compactNodeID) { return hierarchies[hierarchyIndex].GetOperation(compactNodeID); }
 
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            internal int GetContents(CompactNodeID compactNodeID) { return hierarchies[hierarchyIndex].GetContents(compactNodeID); }
+
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
             internal CSGNodeType GetTypeOfNode(CompactNodeID compactNodeID) { return hierarchies[hierarchyIndex].GetTypeOfNode(compactNodeID); }
 		}
 
@@ -104,7 +107,7 @@ namespace Chisel.Core
 
         internal readonly bool CheckConsistency( ref SlotIndexMap hierarchyIDLookup, NativeList<CompactHierarchy> hierarchies, ref SlotIndexMap nodeIDLookup, NativeList<CompactNodeID> nodes, bool ignoreBrushMeshHashes = false)
         {
-#if false
+#if false // NOTE: should only be enabled when debugging
             if (HierarchyID == default)
             {
                 return true;
@@ -134,9 +137,9 @@ namespace Chisel.Core
                             compactNodes[i].childCount != 0 ||
                             compactNodes[i].childOffset != 0 ||
                             (!ignoreBrushMeshHashes && compactNodes[i].nodeInformation.brushMeshHash != 0) ||
-                            compactNodes[i].nodeInformation.instanceID != 0)
+                            compactNodes[i].nodeInformation.entityID != 0)
                         {
-                            Debug.LogError($"{compactNodes[i].nodeID} != default ||\n{compactNodes[i].parentID} != default ||\n{compactNodes[i].childCount} != 0 ||\n{compactNodes[i].childOffset} != 0 ||\n{compactNodes[i].nodeInformation.brushMeshHash != 0} ||\n{compactNodes[i].nodeInformation.instanceID} != 0");
+                            Debug.LogError($"{compactNodes[i].nodeID} != default ||\n{compactNodes[i].parentID} != default ||\n{compactNodes[i].childCount} != 0 ||\n{compactNodes[i].childOffset} != 0 ||\n{compactNodes[i].nodeInformation.brushMeshHash != 0} ||\n{compactNodes[i].nodeInformation.entityID} != 0");
                             return false;
                         }
                         continue;
@@ -161,8 +164,13 @@ namespace Chisel.Core
                         return false;
                     }
 
-                    ref var hierarchy = ref CompactHierarchyManager.GetHierarchy(ref hierarchyIDLookup, hierarchies, compactNodes[i].compactNodeID.hierarchyID);
-                    var foundNodeID = hierarchy.GetNodeID(compactNodes[i].compactNodeID);
+                    if (!hierarchyIDLookup.IsValidSlotIndex(compactNodes[i].compactNodeID.hierarchyID.slotIndex, out var hierarchyIndex) ||
+                        hierarchyIndex < 0 || hierarchyIndex >= hierarchies.Length)
+                    {
+                        Debug.LogError($"invalid hierarchy for compactNodes[{i}].compactNodeID");
+                        return false;
+                    }
+                    var foundNodeID = hierarchies[hierarchyIndex].GetNodeID(compactNodes[i].compactNodeID);
                     if (foundNodeID != compactNodes[i].nodeID)
                     {
                         Debug.LogError($"{foundNodeID} != compactNodes[{i}].nodeID");
@@ -219,26 +227,26 @@ namespace Chisel.Core
 
                 for (int index = 0; index < slotIndexMap.IndexCount; index++)
                 {
-                    if (!slotIndexMap.IsValidIndex(index, out var value, out var generation))
+                    if (!slotIndexMap.IsValidIndex(index, out var slotIndex))
                     {
                         if (compactNodes[index].compactNodeID != default)
                         {
-                            Debug.LogError($"!slotIndexMap.IsValidIndex({index}, out var {value}, out var {generation}) && compactNodes[{index}].compactNodeID != default");
+                            Debug.LogError($"!slotIndexMap.IsValidIndex({index}, out var {slotIndex.index}, out var {slotIndex.generation}) && compactNodes[{index}].compactNodeID != default");
                             return false;
                         }
                         continue;
                     }
 
-                    if (compactNodes[index].compactNodeID.value != value ||
-                        compactNodes[index].compactNodeID.generation != generation)
+                    if (compactNodes[index].compactNodeID.slotIndex.index != slotIndex.index ||
+                        compactNodes[index].compactNodeID.slotIndex.generation != slotIndex.generation)
                     {
-                        Debug.LogError($"compactNodes[{index}].compactNodeID.value ({compactNodes[index].compactNodeID.value}) != {value} || compactNodes[{index}].compactNodeID.generation != {generation}  ({compactNodes[index].compactNodeID.generation})");
+                        Debug.LogError($"compactNodes[{index}].compactNodeID.slotIndex.index ({compactNodes[index].compactNodeID.slotIndex.index}) != {slotIndex.index} || compactNodes[{index}].compactNodeID.slotIndex.generation != {slotIndex.generation}  ({compactNodes[index].compactNodeID.slotIndex.generation})");
                         return false;
                     }
 
-                    if (!slotIndexMap.IsValidID(value, generation, out var foundIndex))
+                    if (!slotIndexMap.IsValidSlotIndex(slotIndex, out var foundIndex))
                     {
-                        Debug.LogError($"!slotIndexMap.IsValidID({value}, {generation}, out var {foundIndex})");
+                        Debug.LogError($"!slotIndexMap.IsValidSlotIndex({slotIndex.index}, {slotIndex.generation}, out var {foundIndex})");
                         return false;
                     }
 
@@ -252,9 +260,9 @@ namespace Chisel.Core
                 for (int i = 0; i < brushMeshValues.Length; i++)
                 {
                     var compactNodeID = brushMeshValues[i];
-                    if (!slotIndexMap.IsValidID(compactNodeID.value, compactNodeID.generation, out var foundIndex))
+                    if (!slotIndexMap.IsValidSlotIndex(compactNodeID.slotIndex, out var foundIndex))
                     {
-                        Debug.LogError($"!slotIndexMap.IsValidID({compactNodeID.value}, {compactNodeID.generation}, out var {foundIndex})");
+                        Debug.LogError($"!slotIndexMap.IsValidSlotIndex({compactNodeID.slotIndex.index}, {compactNodeID.slotIndex.generation}, out var {foundIndex})");
                         return false;
                     }
                 }
@@ -336,7 +344,7 @@ namespace Chisel.Core
                 brushMeshToBrush.TryAdd(nodeInformation.brushMeshHash, compactNodeID);
 
             Debug.Assert(IsValidCompactNodeID(compactNodeID), "newly created ID is invalid");
-            Debug.Assert(GetChildRef(compactNodeID).instanceID == nodeInformation.instanceID, "newly created ID is invalid");
+            Debug.Assert(GetChildRef(compactNodeID).entityID == nodeInformation.entityID, "newly created ID is invalid");
             return compactNodeID;
         }
 
@@ -1344,6 +1352,63 @@ namespace Chisel.Core
             return result;
         }
 
+        internal void SetBrushesDirty(CompactNodeID compactNodeID)
+        {
+            if (!IsValidCompactNodeID(compactNodeID))
+                return;
+
+            var anyBrush = false;
+            using var stack = new NativeList<CompactNodeID>(16, Allocator.Temp);
+            stack.Add(compactNodeID);
+            while (stack.Length > 0)
+            {
+                var current = stack[stack.Length - 1];
+                stack.RemoveAt(stack.Length - 1);
+                switch (GetTypeOfNode(current))
+                {
+                    case CSGNodeType.Brush:
+                    {
+                        SetStatusFlag(current, NodeStatusFlags.HierarchyModified);
+                        anyBrush = true;
+                        break;
+                    }
+                    case CSGNodeType.Branch:
+                    case CSGNodeType.Tree:
+                    {
+                        for (int i = 0, count = ChildCount(current); i < count; i++)
+                            stack.Add(GetChildCompactNodeIDAtInternal(current, i));
+                        break;
+                    }
+                }
+            }
+            if (anyBrush)
+                SetTreeDirty();
+        }
+
+        internal void SetBrushesBeforeDirty(CompactNodeID compactNodeID)
+        {
+            if (!IsValidCompactNodeID(compactNodeID))
+                return;
+
+            var parentID = ParentOf(compactNodeID);
+            if (parentID == CompactNodeID.Invalid)
+                return;
+
+            var siblingIndex = SiblingIndexOf(parentID, compactNodeID);
+            for (int i = 0; i < siblingIndex; i++)
+                SetBrushesDirty(GetChildCompactNodeIDAtInternal(parentID, i));
+        }
+
+        // Call this where an intersecting node is now: after it has been attached, and before it is moved or
+        // removed, since afterwards the siblings it had are no longer known.
+        internal void SetBrushesBeforeIntersectingNodeDirty(CompactNodeID compactNodeID)
+        {
+            if (!IsValidCompactNodeID(compactNodeID) ||
+                GetOperation(compactNodeID) != CSGOperationType.Intersecting)
+                return;
+            SetBrushesBeforeDirty(compactNodeID);
+        }
+
         // This method might be removed/renamed in the future
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal bool SetDirty(CompactNodeID compactNodeID)
@@ -1415,12 +1480,12 @@ namespace Chisel.Core
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal readonly int GetNodeInstanceID(CompactNodeID compactNodeID)
+        internal readonly ulong GetNodeEntityID(CompactNodeID compactNodeID)
         {
             if (!IsValidCompactNodeID(compactNodeID))
                 return 0;
 
-            return GetChildRef(compactNodeID).instanceID;
+            return GetChildRef(compactNodeID).entityID;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -1429,6 +1494,33 @@ namespace Chisel.Core
             if (!IsValidCompactNodeID(compactNodeID))
                 return CSGOperationType.Invalid;                        
             return GetChildRef(compactNodeID).operation;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal readonly int GetContents(CompactNodeID compactNodeID)
+        {
+            if (!IsValidCompactNodeID(compactNodeID))
+                return ChiselContentsList.kSolidIndex;
+            return GetChildRef(compactNodeID).contents;
+        }
+
+        [return: MarshalAs(UnmanagedType.U1)]
+        internal bool SetContents(CompactNodeID compactNodeID, int contents)
+        {
+            if (!IsValidCompactNodeID(compactNodeID))
+                throw new ArgumentException($"The {nameof(CompactNodeID)} {nameof(compactNodeID)} ({compactNodeID}) is invalid", nameof(compactNodeID));
+
+            if (GetTypeOfNode(compactNodeID) != CSGNodeType.Brush)
+                return false;
+
+            ref var nodeRef = ref UnsafeGetChildRefAtInternal(compactNodeID);
+            if (nodeRef.contents == contents)
+                return false;
+
+            nodeRef.contents = contents;
+            nodeRef.flags |= NodeStatusFlags.HierarchyModified;
+            SetTreeDirty();
+            return true;
         }
 
 
@@ -1458,7 +1550,7 @@ namespace Chisel.Core
         }
 
         [return: MarshalAs(UnmanagedType.U1)]
-        internal bool SetState(CompactNodeID compactNodeID, [NoAlias, ReadOnly] NativeParallelHashMap<int, RefCountedBrushMeshBlob> brushMeshBlobCache, Int32 brushMeshHash, CSGOperationType operation, float4x4 transformation)
+        internal bool SetState(CompactNodeID compactNodeID, [NoAlias, ReadOnly] NativeParallelHashMap<int, RefCountedBrushMeshBlob> brushMeshBlobCache, Int32 brushMeshHash, CSGOperationType operation, int contents, float4x4 transformation)
         {
             if (!IsValidCompactNodeID(compactNodeID))
                 throw new ArgumentException($"The {nameof(CompactNodeID)} {nameof(compactNodeID)} ({compactNodeID}) is invalid", nameof(compactNodeID));
@@ -1469,13 +1561,23 @@ namespace Chisel.Core
             if (nodeRef.operation != operation)
             {
                 modifiedFlags |= NodeStatusFlags.NeedAllTouchingUpdated;
+                var intersectingChanged = nodeRef.operation == CSGOperationType.Intersecting ||
+                                          operation         == CSGOperationType.Intersecting;
                 nodeRef.operation = operation;
+                if (intersectingChanged)
+                    SetBrushesBeforeDirty(compactNodeID);
             }
 
-            if (math.any(nodeRef.transformation.c0 = transformation.c0) ||
-                math.any(nodeRef.transformation.c1 = transformation.c1) ||
-                math.any(nodeRef.transformation.c2 = transformation.c2) ||
-                math.any(nodeRef.transformation.c3 = transformation.c3))
+            if (nodeRef.contents != contents)
+            {
+                modifiedFlags |= NodeStatusFlags.HierarchyModified;
+                nodeRef.contents = contents;
+            }
+
+            if (math.any(nodeRef.transformation.c0 != transformation.c0) ||
+                math.any(nodeRef.transformation.c1 != transformation.c1) ||
+                math.any(nodeRef.transformation.c2 != transformation.c2) ||
+                math.any(nodeRef.transformation.c3 != transformation.c3))
             {
                 modifiedFlags |= NodeStatusFlags.NeedAllTouchingUpdated | NodeStatusFlags.TransformationModified;
                 nodeRef.transformation = transformation;
@@ -1512,19 +1614,19 @@ namespace Chisel.Core
 
         [return: MarshalAs(UnmanagedType.U1)]
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal readonly bool SetBrushMeshID(CompactNodeID compactNodeID, Int32 brushMeshID)
-        {
-            if (!IsValidCompactNodeID(compactNodeID))
-                throw new ArgumentException($"The {nameof(CompactNodeID)} {nameof(compactNodeID)} ({compactNodeID}) is invalid", nameof(compactNodeID));
+		internal readonly bool SetBrushMeshID(CompactNodeID compactNodeID, Int32 brushMeshID)
+		{
+			if (!IsValidCompactNodeID(compactNodeID))
+				throw new ArgumentException($"The {nameof(CompactNodeID)} {nameof(compactNodeID)} ({compactNodeID}) is invalid", nameof(compactNodeID));
 
-            ref var nodeRef = ref GetChildRef(compactNodeID);
-            if (nodeRef.brushMeshHash != brushMeshID)
-            {
-                nodeRef.brushMeshHash = brushMeshID;
-                nodeRef.flags |= NodeStatusFlags.ShapeModified | NodeStatusFlags.NeedAllTouchingUpdated;
-            }
-            return true;
-        }
+			ref var nodeRef = ref GetChildRef(compactNodeID);
+			if (nodeRef.brushMeshHash == brushMeshID)
+				return false;
+
+			nodeRef.brushMeshHash = brushMeshID;
+			nodeRef.flags |= NodeStatusFlags.ShapeModified | NodeStatusFlags.NeedAllTouchingUpdated;
+			return true;
+		}
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal readonly MinMaxAABB GetBrushBounds(CompactNodeID compactNodeID)

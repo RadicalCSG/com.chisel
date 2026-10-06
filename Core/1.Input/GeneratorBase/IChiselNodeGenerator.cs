@@ -10,6 +10,13 @@ namespace Chisel.Core
         void Reset();
         bool Validate();
         void UpdateSurfaces(ref ChiselSurfaceArray surfaceArray);
+        /// <summary>
+        /// A hash of the values this definition generates its nodes from, the same in every session for the same
+        /// values. It is the input of the stage that makes brush meshes, so it hashes what was authored rather than
+        /// anything generated from it (see Documentation~/Design/StagedInputHashes.md).
+        /// </summary>
+        UnityEngine.Hash128 GetInputHash();
+
         void OnEdit(IChiselHandles handles);
 		void GetMessages(IChiselMessageHandler messages);
     }
@@ -24,6 +31,7 @@ namespace Chisel.Core
 		void GetMessages(IChiselMessageHandler messages);
     }
 
+    [System.Serializable]
     public abstract class SerializedBrushGenerator<BrushGenerator> : IChiselNodeGenerator
         where BrushGenerator : unmanaged, IBrushGenerator
     {
@@ -48,6 +56,13 @@ namespace Chisel.Core
         public virtual void GetMessages(IChiselMessageHandler messages)
         {
             settings.GetMessages(messages);
+        }
+
+        public virtual UnityEngine.Hash128 GetInputHash()
+        {
+            var hash = new UnityEngine.Hash128();
+            hash.Append(ref settings);
+            return hash;
         }
 
         public abstract void OnEdit(IChiselHandles handles);
@@ -109,6 +124,7 @@ namespace Chisel.Core
         void GetWarningMessages(IChiselMessageHandler messages);
     }
 
+    [System.Serializable]
     public abstract class SerializedBranchGenerator<BranchGenerator> : IChiselNodeGenerator
         where BranchGenerator : unmanaged, IBranchGenerator
     {
@@ -129,6 +145,13 @@ namespace Chisel.Core
         public virtual void GetMessages(IChiselMessageHandler messages)
         {
             settings.GetWarningMessages(messages);
+        }
+
+        public virtual UnityEngine.Hash128 GetInputHash()
+        {
+            var hash = new UnityEngine.Hash128();
+            hash.Append(ref settings);
+            return hash;
         }
 
         public abstract void OnEdit(IChiselHandles handles);

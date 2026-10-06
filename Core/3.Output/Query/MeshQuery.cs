@@ -144,31 +144,50 @@ namespace Chisel.Core
             new(
                 parameterIndex: SurfaceParameterIndex.RenderMaterial,
                 query:          SurfaceDestinationFlags.RenderShadowReceiveAndCasting,
-                mask:           SurfaceDestinationFlags.RenderShadowReceiveAndCasting,
+                mask:           SurfaceDestinationFlagsExtensions.kRendererFlags,
+                vertexChannels: VertexChannelFlags.All
+            ),
+            new(
+                parameterIndex: SurfaceParameterIndex.RenderMaterial,
+                query:          SurfaceDestinationFlags.RenderShadowReceiveAndCasting | SurfaceDestinationFlags.ExcludedFromGlobalIllumination,
+                mask:           SurfaceDestinationFlagsExtensions.kRendererFlags,
                 vertexChannels: VertexChannelFlags.All
             ),
             new(
                 parameterIndex: SurfaceParameterIndex.RenderMaterial,
                 query:          SurfaceDestinationFlags.RenderShadowsCasting,
-                mask:           SurfaceDestinationFlags.RenderShadowReceiveAndCasting,
+                mask:           SurfaceDestinationFlagsExtensions.kRendererFlags,
                 vertexChannels: VertexChannelFlags.All
             ),
             new(
                 parameterIndex: SurfaceParameterIndex.RenderMaterial,
-                query:          SurfaceDestinationFlags.RenderShadowsReceiving,
-                mask:           SurfaceDestinationFlags.RenderShadowReceiveAndCasting,
+                query:          SurfaceDestinationFlags.RenderShadowsCasting | SurfaceDestinationFlags.ExcludedFromGlobalIllumination,
+                mask:           SurfaceDestinationFlagsExtensions.kRendererFlags,
+                vertexChannels: VertexChannelFlags.All
+            ),
+            // Casts no shadows, so it is out of the bake and there is no query for it in one
+            new(
+                parameterIndex: SurfaceParameterIndex.RenderMaterial,
+                query:          SurfaceDestinationFlags.RenderShadowsReceiving | SurfaceDestinationFlags.ExcludedFromGlobalIllumination,
+                mask:           SurfaceDestinationFlagsExtensions.kRendererFlags,
                 vertexChannels: VertexChannelFlags.All
             ),
             new(
                 parameterIndex: SurfaceParameterIndex.RenderMaterial,
-                query:          SurfaceDestinationFlags.Renderable,
-                mask:           SurfaceDestinationFlags.RenderShadowReceiveAndCasting,
+                query:          SurfaceDestinationFlags.Renderable | SurfaceDestinationFlags.ExcludedFromGlobalIllumination,
+                mask:           SurfaceDestinationFlagsExtensions.kRendererFlags,
                 vertexChannels: VertexChannelFlags.All
             ),
             new(
-                parameterIndex: SurfaceParameterIndex.None,
+                parameterIndex: SurfaceParameterIndex.RenderMaterial,
                 query:          SurfaceDestinationFlags.ShadowCasting,
-                mask:           SurfaceDestinationFlags.RenderShadowReceiveAndCasting,
+                mask:           SurfaceDestinationFlagsExtensions.kRendererFlags,
+                vertexChannels: VertexChannelFlags.All
+            ),
+            new(
+                parameterIndex: SurfaceParameterIndex.RenderMaterial,
+                query:          SurfaceDestinationFlags.ShadowCasting | SurfaceDestinationFlags.ExcludedFromGlobalIllumination,
+                mask:           SurfaceDestinationFlagsExtensions.kRendererFlags,
                 vertexChannels: VertexChannelFlags.All
             ),
 
@@ -185,6 +204,7 @@ namespace Chisel.Core
 			new(query: SurfaceDestinationFlags.RenderShadowsCasting,     mask: SurfaceDestinationFlags.RenderShadowsCasting),
 			new(query: SurfaceDestinationFlags.ShadowCasting,           mask: SurfaceDestinationFlags.RenderShadowsCasting),
 			new(query: SurfaceDestinationFlags.RenderShadowsReceiving,  mask: SurfaceDestinationFlags.RenderShadowsReceiving),
+			new(query: SurfaceDestinationFlags.Collidable,               mask: SurfaceDestinationFlags.Collidable),             // collider surfaces
 			new(query: SurfaceDestinationFlags.Discarded,                mask: SurfaceDestinationFlags.Discarded)               // removed by CSG algorithm
         };
 		public static ref readonly MeshQuery[] DefaultQueries => ref kDefaultQueries;

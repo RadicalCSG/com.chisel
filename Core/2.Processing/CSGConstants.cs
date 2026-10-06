@@ -4,8 +4,6 @@ namespace Chisel.Core
 {
     static partial class CSGConstants
     {
-        // TODO: do this properly
-        
         const double        kPlaneDAlignEpsilonDouble       = 0.0006;
         const double        kNormalDotAlignEpsilonDouble    = 0.9999;
 

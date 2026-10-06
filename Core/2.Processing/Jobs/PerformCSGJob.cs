@@ -18,10 +18,16 @@ namespace Chisel.Core
         // 'Required' for scheduling with index count
         [NoAlias, ReadOnly] public NativeList<IndexOrder>                                allUpdateBrushIndexOrders;        
 
+        // Gate the vertex re-weld on plane incidence (WeldIncidenceFilter); set from CSGManager's kUseIncidenceWeld.
+        [NoAlias, ReadOnly] public bool useIncidenceWeld;
+        // Canonical vertices (see CanonicalVertices): from Everywhere on, only the same vertex is merged here.
+        [NoAlias, ReadOnly] public CanonicalVertexStage canonicalVertexStage;
         [NoAlias, ReadOnly] public NativeList<BlobAssetReference<RoutingTable>>          routingTableCache;
         [NoAlias, ReadOnly] public NativeList<BlobAssetReference<BrushTreeSpacePlanes>>  brushTreeSpacePlaneCache;
         [NoAlias, ReadOnly] public NativeList<BlobAssetReference<BrushesTouchedByBrush>> brushesTouchedByBrushCache;
         [NoAlias, ReadOnly] public NativeArray<UnsafeList<float3>>                       loopVerticesLookup;
+        // Each brush's contents and whether it carves, for the contents rules
+        [NoAlias, ReadOnly] public NativeReference<BlobAssetReference<CompactTree>>      compactTreeRef;
 
         [NoAlias, ReadOnly] public NativeStream.Reader      input;
         
@@ -109,6 +115,92 @@ namespace Chisel.Core
             return -1;
         }
 
+        // Both endpoints of `edge` appear somewhere on `loop`.
+        static bool BoundedByLoop(Edge edge, [NoAlias] in UnsafeList<Edge> loop)
+        {
+            bool first = false, second = false;
+            for (int e = 0; e < loop.Length; e++)
+            {
+                var index1 = loop[e].index1;
+                var index2 = loop[e].index2;
+                if (index1 == edge.index1 || index2 == edge.index1) first = true;
+                if (index1 == edge.index2 || index2 == edge.index2) second = true;
+                if (first && second)
+                    return true;
+            }
+            return false;
+        }
+
+        static UnsafeList<Edge> BuildCutLoop([NoAlias] in NativeArray<Edge> outEdges, int outEdgesLength)
+        {
+            var edges = new UnsafeList<Edge>(outEdgesLength, Allocator.Temp);
+            edges.AddRangeNoResize(outEdges, outEdgesLength);
+
+            if (edges.Length >= 3)
+                LoopEdgeSplitter.RemoveAntiparallelEdgePairs(ref edges);
+            if (kRemoveSimpleChords && edges.Length >= 3)
+                LoopEdgeSplitter.RemoveSimpleChords(ref edges);
+            if (kCloseOpenChains && edges.Length >= 2)
+                LoopEdgeSplitter.CloseSingleOpenChain(ref edges);
+
+            if (edges.Length >= 3)
+                LoopEdgeSplitter.RewindClosedLoop(ref edges);
+            return edges;
+        }
+
+        const float kSameRegionEpsilon = CSGConstants.kVertexEqualEpsilon * 2;
+
+        const float kCanonicalSameRegionEpsilon = CSGConstants.kFatPlaneWidthEpsilon;
+
+        static bool LoopsOutlineSameRegion([NoAlias] in UnsafeList<Edge> loopA, [NoAlias] in UnsafeList<Edge> loopB,
+                                           [NoAlias] in HashedVertices vertices, float epsilon)
+        {
+            if (loopA.Length < 3 || loopB.Length < 3)
+                return false;
+            return AllCornersOnBoundary(in loopA, in loopB, in vertices, epsilon)
+                && AllCornersOnBoundary(in loopB, in loopA, in vertices, epsilon);
+        }
+
+        static bool AllCornersOnBoundary([NoAlias] in UnsafeList<Edge> loopA, [NoAlias] in UnsafeList<Edge> loopB,
+                                         [NoAlias] in HashedVertices vertices, float epsilon)
+        {
+            for (int a = 0; a < loopA.Length; a++)
+            {
+                if (!PointOnLoopBoundary(vertices[loopA[a].index1], in loopB, in vertices, epsilon) ||
+                    !PointOnLoopBoundary(vertices[loopA[a].index2], in loopB, in vertices, epsilon))
+                    return false;
+            }
+            return true;
+        }
+
+        static bool PointOnLoopBoundary(float3 position, [NoAlias] in UnsafeList<Edge> loop,
+                                        [NoAlias] in HashedVertices vertices, float epsilon)
+        {
+            var sqrEpsilon = epsilon * epsilon;
+            for (int e = 0; e < loop.Length; e++)
+            {
+                var from = vertices[loop[e].index1];
+                if (math.distancesq(from, position) <= sqrEpsilon)
+                    return true;
+                var to = vertices[loop[e].index2];
+                if (math.distancesq(to, position) <= sqrEpsilon)
+                    return true;
+
+                // strictly between the endpoints: the other loop samples this stretch of boundary
+                // with a vertex that this one does not have
+                var delta    = to - from;
+                var lengthSq = math.lengthsq(delta);
+                if (lengthSq <= 1e-12f)
+                    continue;
+                var t = math.dot(position - from, delta) / lengthSq;
+                if (t <= 0 || t >= 1)
+                    continue;
+                if (math.distancesq(from + delta * t, position) <= sqrEpsilon)
+                    return true;
+            }
+            return false;
+        }
+
         void IntersectLoops([NoAlias] in HashedVertices                 hashedTreeSpaceVertices,
 
                             [NoAlias] ref UnsafeList<int>               loopIndices, 
@@ -125,7 +217,7 @@ namespace Chisel.Core
 
 
 							[NoAlias] in UnsafeList<Edge>               intersectionLoop, 
-                            byte                                        intersectionCategory,
+                            ushort                                      intersectionCategory,
                             IndexSurfaceInfo                            intersectionInfo)
         {
             if (intersectionLoop.Length == 0)
@@ -192,7 +284,16 @@ namespace Chisel.Core
                 currentInfo.interiorCategory = intersectionCategory;
                 allInfos[surfaceLoopIndex] = currentInfo;
                 //Debug.Assert(holeIndices.IsAllocated(surfaceLoopIndex));
-                return; 
+                return;
+            }
+
+            var sameRegionEpsilon = canonicalVertexStage >= CanonicalVertexStage.Everywhere ? kCanonicalSameRegionEpsilon
+                                                                                             : kSameRegionEpsilon;
+            if (LoopsOutlineSameRegion(in intersectionLoop, in currentLoopEdges, in hashedTreeSpaceVertices, sameRegionEpsilon))
+            {
+                currentInfo.interiorCategory = intersectionCategory;
+                allInfos[surfaceLoopIndex] = currentInfo;
+                return;
             }
 
             NativeCollectionHelpers.EnsureMinimumSize(ref outEdges, maxLength);
@@ -226,11 +327,15 @@ namespace Chisel.Core
                 for (int e = 0; e < currentLoopEdges.Length; e++)
                 {
                     var category = categories2[e];
-                    if (category != EdgeCategory.Outside)
-                    {
-                        outEdges[outEdgesLength] = currentLoopEdges[e];
-                        outEdgesLength++;
-                    }
+                    if (category == EdgeCategory.Outside)
+                        continue;
+
+                    if (category == EdgeCategory.Inside &&
+                        !BoundedByLoop(currentLoopEdges[e], in intersectionLoop))
+                        continue;
+
+                    outEdges[outEdgesLength] = currentLoopEdges[e];
+                    outEdgesLength++;
                 }
                 //OperationResult.Cut;
             }
@@ -238,8 +343,8 @@ namespace Chisel.Core
             if (outEdgesLength < 3)
                 return;
 
-            // FIXME: when brush_intersection and categorized_loop are grazing each other, 
-            //          technically we cut it but we shouldn't be creating it as a separate polygon + hole (bug7)
+            if (EnclosesNoArea(in outEdges, outEdgesLength, in hashedTreeSpaceVertices))
+                return;
 
             // the output of cutting operations are both holes for the original polygon (categorized_loop)
             // and new polygons on the surface of the brush that need to be categorized
@@ -302,8 +407,7 @@ namespace Chisel.Core
                 //    allInfos.Capacity = allInfos.Length + 16; 
                 //allInfos.AddNoResize(intersectionInfo);
                 allInfos.Add(intersectionInfo);
-                var newOutEdges = new UnsafeList<Edge>(outEdgesLength, Allocator.Temp);
-                newOutEdges.AddRangeNoResize(outEdges, outEdgesLength);
+                var newOutEdges = BuildCutLoop(in outEdges, outEdgesLength);
                 allEdges.Add(newOutEdges);
                 //Debug.Assert(allEdges.Length == allInfos.Length);
                 //Debug.Assert(allInfos.Length == holeIndices.Length);
@@ -321,8 +425,7 @@ namespace Chisel.Core
                 //    allInfos.Capacity = allInfos.Length + 16; 
                 //allInfos.AddNoResize(intersectionInfo);
                 allInfos.Add(intersectionInfo);
-                newOutEdges = new UnsafeList<Edge>(outEdgesLength, Allocator.Temp);
-                newOutEdges.AddRangeNoResize(outEdges, outEdgesLength);
+                newOutEdges = BuildCutLoop(in outEdges, outEdgesLength);
                 allEdges.Add(newOutEdges);
                 //Debug.Assert(allEdges.Length == allInfos.Length);
                 //Debug.Assert(allInfos.Length == holeIndices.Length);
@@ -338,8 +441,7 @@ namespace Chisel.Core
                 //    allInfos.Capacity = allInfos.Length + 16;
                 //allInfos.AddNoResize(intersectionInfo);
                 allInfos.Add(intersectionInfo);
-                var newOutEdges = new UnsafeList<Edge>(outEdgesLength, Allocator.Temp);
-                newOutEdges.AddRangeNoResize(outEdges, outEdgesLength);
+                var newOutEdges = BuildCutLoop(in outEdges, outEdgesLength);
                 allEdges.Add(newOutEdges);
                 //Debug.Assert(allEdges.Length == allInfos.Length);
                 //Debug.Assert(allInfos.Length == holeIndices.Length);
@@ -354,13 +456,43 @@ namespace Chisel.Core
                 if (allInfos.Capacity < allInfos.Length + 1)
                     allInfos.Capacity = allInfos.Length + 16;
                 allInfos.AddNoResize(intersectionInfo);
-                newOutEdges = new UnsafeList<Edge>(outEdgesLength, Allocator.Temp);
-                newOutEdges.AddRangeNoResize(outEdges, outEdgesLength);
+                newOutEdges = BuildCutLoop(in outEdges, outEdgesLength);
                 allEdges.Add(newOutEdges);
                 //Debug.Assert(allEdges.Length == allInfos.Length);
                 //Debug.Assert(allInfos.Length == holeIndices.Length);
                 //Debug.Assert(holeIndices.IsAllocated(allInfos.Length - 1));
             }
+        }
+
+        static bool EnclosesNoArea([NoAlias] in NativeArray<Edge> edges, int edgesLength, [NoAlias] in HashedVertices vertices)
+        {
+            var from = (double3)vertices[edges[0].index1];
+            for (int sweep = 0; sweep < 2; sweep++)
+            {
+                var furthest = from;
+                var best     = -1.0;
+                for (int e = 0; e < edgesLength * 2; e++)
+                {
+                    var vertex   = (double3)vertices[(e & 1) == 0 ? edges[e >> 1].index1 : edges[e >> 1].index2];
+                    var distance = math.distancesq(from, vertex);
+                    if (distance > best) { best = distance; furthest = vertex; }
+                }
+                if (sweep == 0) { from = furthest; continue; }
+
+                var direction = furthest - from;
+                var lengthSq  = math.lengthsq(direction);
+                var band      = (double)CSGConstants.kFatPlaneWidthEpsilon;
+                if (lengthSq <= band * band)
+                    return true;
+                for (int e = 0; e < edgesLength * 2; e++)
+                {
+                    var offset = (double3)vertices[(e & 1) == 0 ? edges[e >> 1].index1 : edges[e >> 1].index2] - from;
+                    // |offset x direction| / |direction| is the distance from the line
+                    if (math.lengthsq(math.cross(offset, direction)) > band * band * lengthSq)
+                        return false;
+                }
+            }
+            return true;
         }
 
         internal static float3 CalculatePlaneNormal(in UnsafeList<Edge> edges, in HashedVertices hashedVertices)
@@ -374,16 +506,234 @@ namespace Chisel.Core
                 var edge = edges[n];
                 var prevVertex = vertices[(int)edge.index1];
                 var currVertex = vertices[(int)edge.index2];
-                normal.x = normal.x + ((prevVertex.y - currVertex.y) * (prevVertex.z + currVertex.z));
-                normal.y = normal.y + ((prevVertex.z - currVertex.z) * (prevVertex.x + currVertex.x));
-                normal.z = normal.z + ((prevVertex.x - currVertex.x) * (prevVertex.y + currVertex.y));
+                normal += CSGMath.NewellTerm(prevVertex, currVertex);
             }
             normal = math.normalizesafe(normal);
 
             return normal;
         }
 
-        void CleanUp(in NativeList<IndexSurfaceInfo> allInfos, ref NativeList<UnsafeList<Edge>> allEdges, in HashedVertices brushVertices, ref UnsafeList<int> loopIndices, ref NativeList<UnsafeList<int>> holeIndices,
+        static readonly bool kDebugDumpNonSimpleLoops = false;
+
+        // Investigation trace (CSGTrace): discarded under Burst, so it only runs when a test turns Burst off.
+        [BurstDiscard]
+        static void TraceInputs(int brushNodeOrder, [NoAlias] in HashedVertices vertices,
+                                [NoAlias] in NativeList<UnsafeList<Edge>> basePolygonEdges,
+                                [NoAlias] in NativeList<IndexSurfaceInfo> intersectionSurfaceInfos,
+                                [NoAlias] in NativeList<UnsafeList<Edge>> intersectionEdges)
+        {
+            if (CSGTrace.Sink == null)
+                return;
+            CSGTrace.Vertices(brushNodeOrder, in vertices);
+            for (int l = 0; l < basePolygonEdges.Length; l++)
+                CSGTrace.Loop('B', brushNodeOrder, l, -1, 0, brushNodeOrder, basePolygonEdges[l]);
+            for (int i = 0; i < intersectionSurfaceInfos.Length; i++)
+            {
+                var info = intersectionSurfaceInfos[i];
+                CSGTrace.Loop('I', brushNodeOrder, info.basePlaneIndex, -1, info.interiorCategory, info.brushIndexOrder.nodeOrder, intersectionEdges[i]);
+            }
+        }
+
+        [BurstDiscard]
+        static void TraceRoute(int brushNodeOrder, int surfaceIndex, int step, int loopIndex, int inCategory, int intersectionCategory,
+                               int otherBrush, int intersectionLength, bool overlap, int outCategory, int cutCategory)
+        {
+            CSGTrace.Route(brushNodeOrder, surfaceIndex, step, loopIndex, inCategory, intersectionCategory, otherBrush,
+                           intersectionLength, overlap, outCategory, cutCategory);
+        }
+
+        [BurstDiscard]
+        static void TraceLoops(char stage, int brushNodeOrder, int surfaceIndex, [NoAlias] in UnsafeList<int> loopIndices,
+                               [NoAlias] in NativeList<UnsafeList<int>> holeIndices, [NoAlias] in NativeList<IndexSurfaceInfo> allInfos,
+                               [NoAlias] in NativeList<UnsafeList<Edge>> allEdges)
+        {
+            CSGTrace.Loops(stage, brushNodeOrder, surfaceIndex, in loopIndices, in holeIndices, in allInfos, in allEdges);
+        }
+
+        // Set false to disable the conservative single-chord removal on the merged loop.
+        const bool kRemoveSimpleChords = true;
+
+        // Re-close a merged loop that is a single open path missing exactly one edge. See
+        // LoopEdgeSplitter.CloseSingleOpenChain; only fires on one clean connected open chain.
+        const bool kCloseOpenChains = true;
+
+        static readonly bool kLogDestroyedEdges = false;
+
+        static readonly bool kLogStrictCrossing = false;
+
+		[BurstDiscard]
+		static void LogStrictCrossing(int brushNodeOrder, int surfaceIndex, int loopIndex, int i1, int i2, EdgeCategory midpointVerdict, char kind)
+		{
+#if UNITY_EDITOR
+			var msg = new FixedString128Bytes();
+            msg.Append('X'); msg.Append('I'); msg.Append('N'); msg.Append('G'); msg.Append(' ');
+            msg.Append(brushNodeOrder); msg.Append('/'); msg.Append(surfaceIndex); msg.Append('/'); msg.Append(loopIndex);
+            msg.Append(' '); msg.Append('k'); msg.Append(kind);
+            msg.Append(' '); msg.Append('m'); msg.Append(midpointVerdict == EdgeCategory.Inside ? 'I' : 'O');
+            msg.Append(':'); msg.Append(' '); msg.Append(i1); msg.Append('-'); msg.Append(i2);
+            Debug.Log(msg);
+#endif
+        }
+
+        static readonly bool kKeepReverseAlignedBaseEdges = false;
+
+		[BurstDiscard]
+		static void LogDestroyedEdge(int brushNodeOrder, int surfaceIndex, int loopIndex, int i1, int i2, EdgeCategory category, char kind)
+		{
+#if UNITY_EDITOR
+			var msg = new FixedString128Bytes();
+            msg.Append('D'); msg.Append('E'); msg.Append('D'); msg.Append('G'); msg.Append('E'); msg.Append(' ');
+            msg.Append(brushNodeOrder); msg.Append('/'); msg.Append(surfaceIndex); msg.Append('/'); msg.Append(loopIndex);
+            msg.Append(' '); msg.Append('k'); msg.Append(kind);
+            msg.Append(' '); msg.Append('c');
+            switch (category)
+            {
+                case EdgeCategory.Inside:         msg.Append('I'); break;
+                case EdgeCategory.Aligned:        msg.Append('A'); break;
+                case EdgeCategory.ReverseAligned: msg.Append('R'); break;
+                case EdgeCategory.Outside:        msg.Append('O'); break;
+                default:                          msg.Append('?'); break;
+            }
+            msg.Append(':'); msg.Append(' '); msg.Append(i1); msg.Append('-'); msg.Append(i2);
+            Debug.Log(msg);
+#endif
+        }
+
+        const bool kKeepEdgesRestingOnTheOtherLoopsBoundary = true;
+
+        // Diagnostic: a loop that EXITS CleanUp still containing antiparallel (A->B & B->A) pairs - i.e.
+        // CleanUp's RemoveAntiparallelEdgePairs did NOT clean it.
+        static readonly bool kLogCleanupAnti = false;
+
+		[BurstDiscard]
+		static void LogCleanupAnti(in NativeList<IndexSurfaceInfo> allInfos, int baseloopIndex, int pairCount)
+		{
+#if UNITY_EDITOR
+			var brushNodeOrder = allInfos[baseloopIndex].brushIndexOrder.nodeOrder;
+			var surfaceIndex   = allInfos[baseloopIndex].basePlaneIndex;
+			var loopIndex      = baseloopIndex;
+			var msg = new FixedString128Bytes();
+            msg.Append('C'); msg.Append('A'); msg.Append('N'); msg.Append('T'); msg.Append(' ');
+            msg.Append(brushNodeOrder); msg.Append('/'); msg.Append(surfaceIndex); msg.Append('/'); msg.Append(loopIndex);
+            msg.Append(' '); msg.Append('p'); msg.Append(pairCount);
+            Debug.Log(msg);
+#endif
+		}
+
+		[BurstDiscard]
+		static void LogCleanupAntiOut(int brushNodeOrder, int surfaceIndex, int loopIndex, int pairCount)
+		{
+#if UNITY_EDITOR
+			var msg = new FixedString128Bytes();
+            msg.Append('C'); msg.Append('A'); msg.Append('N'); msg.Append('T'); msg.Append('O'); msg.Append(' ');
+            msg.Append(brushNodeOrder); msg.Append('/'); msg.Append(surfaceIndex); msg.Append('/'); msg.Append(loopIndex);
+            msg.Append(' '); msg.Append('p'); msg.Append(pairCount);
+            Debug.Log(msg);
+#endif
+        }
+
+        static readonly bool kLogHoleFlip = false;
+
+		[BurstDiscard]
+		static void LogHoleFlip(in NativeList<IndexSurfaceInfo> allInfos, int baseloopIndex,
+								float3 holeNormal, float3 baseLoopNormal,
+								in UnsafeList<Edge> holeEdges, in UnsafeList<Edge> baseLoopEdges)
+		{
+#if UNITY_EDITOR
+			int coincidentWithBase = 0;
+			for (int hn = 0; hn < holeEdges.Length; hn++)
+				for (int bn = 0; bn < baseLoopEdges.Length; bn++)
+					if ((holeEdges[hn].index1 == baseLoopEdges[bn].index1 && holeEdges[hn].index2 == baseLoopEdges[bn].index2) ||
+						(holeEdges[hn].index1 == baseLoopEdges[bn].index2 && holeEdges[hn].index2 == baseLoopEdges[bn].index1))
+					{ coincidentWithBase++; break; }
+
+			var brushNodeOrder = allInfos[baseloopIndex].brushIndexOrder.nodeOrder;
+			var surfaceIndex   = allInfos[baseloopIndex].basePlaneIndex;
+			var dot            = (float)math.dot(holeNormal, baseLoopNormal);
+			var holeNormalLen  = math.length(holeNormal);
+			var holeLen        = holeEdges.Length;
+
+			var msg = new FixedString128Bytes();
+            msg.Append('H'); msg.Append('F'); msg.Append('L'); msg.Append('P'); msg.Append(' ');
+            msg.Append(brushNodeOrder); msg.Append('/'); msg.Append(surfaceIndex);
+            // dot and normal-length scaled x1000 and logged as ints (FixedString float formatting is fiddly)
+            msg.Append(' '); msg.Append('d'); msg.Append((int)(dot * 1000));
+            msg.Append(' '); msg.Append('n'); msg.Append((int)(holeNormalLen * 1000));
+            msg.Append(' '); msg.Append('h'); msg.Append(holeLen);
+            msg.Append(' '); msg.Append('c'); msg.Append(coincidentWithBase);
+            Debug.Log(msg);
+#endif
+        }
+
+		[BurstDiscard]
+		static void LogCleanupDup(int brushNodeOrder, int surfaceIndex, int loopIndex, int dupCount)
+		{
+#if UNITY_EDITOR
+			var msg = new FixedString128Bytes();
+            msg.Append('C'); msg.Append('D'); msg.Append('U'); msg.Append('P'); msg.Append(' ');
+            msg.Append(brushNodeOrder); msg.Append('/'); msg.Append(surfaceIndex); msg.Append('/'); msg.Append(loopIndex);
+            msg.Append(' '); msg.Append('d'); msg.Append(dupCount);
+            Debug.Log(msg);
+#endif
+		}
+
+		[BurstDiscard]
+		static void LogLoopDefect(char stage, int brushNodeOrder, int surfaceIndex, int loopIndex, in UnsafeList<Edge> edges, in HashedVertices vertices)
+        {
+#if UNITY_EDITOR
+            var defect = LoopValidation.Classify(in edges, vertices.Length, out int badVertex);
+            if (defect == LoopDefect.None || defect == LoopDefect.Empty)
+                return;
+            var msg = new FixedString512Bytes();
+            msg.Append('N'); msg.Append('S'); msg.Append('L'); msg.Append(stage); msg.Append(' ');
+            msg.Append(brushNodeOrder); msg.Append('/'); msg.Append(surfaceIndex); msg.Append('/'); msg.Append(loopIndex);
+            msg.Append(' ');
+            switch (defect)
+            {
+                case LoopDefect.DegenerateEdge: msg.Append('D'); msg.Append('E'); msg.Append('G'); break;
+                case LoopDefect.OpenChain:      msg.Append('O'); msg.Append('P'); msg.Append('N'); break;
+                case LoopDefect.Pinch:          msg.Append('P'); msg.Append('I'); msg.Append('N'); break;
+            }
+            msg.Append('@'); msg.Append(badVertex); msg.Append(':');
+            for (int e = 0; e < edges.Length && msg.Length < 470; e++)
+            {
+                msg.Append(' ');
+                msg.Append(edges[e].index1);
+                msg.Append('-');
+                msg.Append(edges[e].index2);
+            }
+            Debug.Log(msg);
+#endif
+		}
+
+        static int AddBoundingPlanes([NoAlias] ref NativeList<float4> planes, [NoAlias] ref BlobArray<float4> brushPlanes,
+                                     float3 loopNormal, [NoAlias] in UnsafeList<Edge> loop, [NoAlias] in HashedVertices vertices)
+        {
+            int added = 0;
+            for (int p = 0; p < brushPlanes.Length; p++)
+            {
+                var plane = brushPlanes[p];
+                if (ContainsLoop(plane, loopNormal, in loop, in vertices))
+                    continue;
+                planes.AddNoResize(plane);
+                added++;
+            }
+            return added;
+        }
+
+        static bool ContainsLoop(float4 plane, float3 loopNormal, [NoAlias] in UnsafeList<Edge> loop, [NoAlias] in HashedVertices vertices)
+        {
+            if (math.abs(math.dot(plane.xyz, loopNormal)) < CSGConstants.kNormalDotAlignEpsilon)
+                return false;
+            for (int e = 0; e < loop.Length; e++)
+            {
+                if (math.abs(CSGMath.SignedDistance(plane, vertices[loop[e].index1])) > CSGConstants.kFatPlaneWidthEpsilon)
+                    return false;
+            }
+            return true;
+        }
+
+		void CleanUp(in NativeList<IndexSurfaceInfo> allInfos, ref NativeList<UnsafeList<Edge>> allEdges, in HashedVertices brushVertices, ref UnsafeList<int> loopIndices, ref NativeList<UnsafeList<int>> holeIndices,
 			        [NoAlias] ref NativeList<float4> alltreeSpacePlanes, [NoAlias] ref NativeList<LoopSegment> allSegments, [NoAlias] ref NativeList<Edge> allCombinedEdges, [NoAlias] ref NativeBitArray destroyedEdges)
         {
             for (int l = loopIndices.Length - 1; l >= 0; l--)
@@ -392,25 +742,9 @@ namespace Chisel.Core
                 var baseLoopEdges   = allEdges[baseloopIndex];
 
 
-                // Remove degenerate edges that loop back on itself
-                TryNext:
+                // Remove degenerate edges that loop back on itself (zero-area slits/spikes).
                 if (baseLoopEdges.Length >= 3)
-                {
-                    for (int a = 0; a < baseLoopEdges.Length; a++)
-                    {
-                        for (int b = a + 1; b < baseLoopEdges.Length; b++)
-                        {
-                            if (baseLoopEdges[a].index1 == baseLoopEdges[b].index2 &&
-                                baseLoopEdges[a].index2 == baseLoopEdges[b].index1)
-                            {
-                                //Debug.Log($"loop [{a},{b}] ({baseLoopEdges[a].index1}, {baseLoopEdges[a].index2}) ({baseLoopEdges[b].index1}, {baseLoopEdges[b].index2})");
-                                baseLoopEdges.RemoveAtSwapBack(b);
-                                baseLoopEdges.RemoveAtSwapBack(a);
-                                goto TryNext;
-                            }
-                        }
-                    }
-                }
+                    LoopEdgeSplitter.RemoveAntiparallelEdgePairs(ref baseLoopEdges);
 
                 if (baseLoopEdges.Length < 3)
                 {
@@ -522,6 +856,10 @@ namespace Chisel.Core
 
                         // TODO: figure out why sometimes polygons are flipped around, and try to fix this at the source
                         var holeNormal  = CalculatePlaneNormal(in holeEdges, in brushVertices);
+                        if (kLogHoleFlip)
+                        {
+                            LogHoleFlip(in allInfos, baseloopIndex, holeNormal, baseLoopNormal, in holeEdges, in baseLoopEdges);
+                        }
                         if (math.dot(holeNormal, baseLoopNormal) > 0)
                         {
                             for (int n = 0; n < holeEdges.Length; n++)
@@ -538,8 +876,9 @@ namespace Chisel.Core
 
                         int brushNodeOrder = allInfos[holeIndex].brushIndexOrder.nodeOrder;
                         ref var treeSpacePlanes = ref brushTreeSpacePlaneCache[brushNodeOrder].Value.treeSpacePlanes;
-                        
-                        var planesLength    = treeSpacePlanes.Length;
+
+                        // TODO: ideally we'd only use the planes that intersect our edges
+                        var planesLength    = AddBoundingPlanes(ref alltreeSpacePlanes, ref treeSpacePlanes, baseLoopNormal, in baseLoopEdges, in brushVertices);
                         var edgesLength     = holeEdges.Length;
 
                         allSegments.AddNoResize(new LoopSegment
@@ -552,9 +891,6 @@ namespace Chisel.Core
 
                         allCombinedEdges.AddRangeNoResize(holeEdges);
 
-                        // TODO: ideally we'd only use the planes that intersect our edges
-                        alltreeSpacePlanes.AddRangeNoResize(ref treeSpacePlanes, planesLength);
-
                         edgeOffset += edgesLength;
                         planeOffset += planesLength;
                     }
@@ -563,7 +899,8 @@ namespace Chisel.Core
                         int brushNodeOrder = allInfos[baseloopIndex].brushIndexOrder.nodeOrder;
                         ref var treeSpacePlanes = ref brushTreeSpacePlaneCache[brushNodeOrder].Value.treeSpacePlanes;
 
-                        var planesLength    = treeSpacePlanes.Length;
+                        // TODO: ideally we'd only use the planes that intersect our edges
+                        var planesLength    = AddBoundingPlanes(ref alltreeSpacePlanes, ref treeSpacePlanes, baseLoopNormal, in baseLoopEdges, in brushVertices);
                         var edgesLength     = baseLoopEdges.Length;
 
                         allSegments.AddNoResize(new LoopSegment
@@ -576,16 +913,19 @@ namespace Chisel.Core
 
                         allCombinedEdges.AddRangeNoResize(baseLoopEdges);
 
-                        // TODO: ideally we'd only use the planes that intersect our edges
-                        alltreeSpacePlanes.AddRangeNoResize(ref treeSpacePlanes, planesLength);
-
                         edgeOffset += edgesLength;
                         planeOffset += planesLength;
                     }
 
                     NativeCollectionHelpers.EnsureMinimumSizeAndClear(ref destroyedEdges, edgeOffset);
-                    
+
                     var allCombinedEdgesArray = allCombinedEdges.AsArray();
+
+                    // For the destroyedEdges instrumentation (DEDGE logs): brush/surface of this loop,
+                    // so each deletion can be correlated with the NSLE dump of the same brush/surface/loop.
+                    var dbgInfo  = allInfos[baseloopIndex];
+                    var dbgBrush = dbgInfo.brushIndexOrder.nodeOrder;
+                    int dbgSurf  = dbgInfo.basePlaneIndex;
 
                     {
                         {
@@ -601,17 +941,40 @@ namespace Chisel.Core
                                 for (int e = 0; e < segment1.edgeLength; e++)
                                 {
                                     var category = BooleanEdgesUtility.CategorizeEdge(allCombinedEdgesArray[segment1.edgeOffset + e], in alltreeSpacePlanes, in allCombinedEdgesArray, segment2, in brushVertices);
-                                    if (category == EdgeCategory.Outside || category == EdgeCategory.Aligned)
+                                    if (kLogStrictCrossing && (category == EdgeCategory.Inside || category == EdgeCategory.Outside) &&
+                                        BooleanEdgesUtility.EdgeStrictlyCrossesSegmentPlanes(allCombinedEdgesArray[segment1.edgeOffset + e], in alltreeSpacePlanes, segment2, in brushVertices))
+                                    {
+                                        var se = allCombinedEdgesArray[segment1.edgeOffset + e];
+                                        LogStrictCrossing(dbgBrush, dbgSurf, baseloopIndex, se.index1, se.index2, category, 'B');
+                                    }
+                                    if (category == EdgeCategory.Outside || category == EdgeCategory.Aligned ||
+                                        (kKeepReverseAlignedBaseEdges && category == EdgeCategory.ReverseAligned))
                                         continue;
                                     destroyedEdges.Set(segment1.edgeOffset + e, true);
+                                    if (kLogDestroyedEdges)
+                                    {
+                                        var de = allCombinedEdgesArray[segment1.edgeOffset + e];
+                                        LogDestroyedEdge(dbgBrush, dbgSurf, baseloopIndex, de.index1, de.index2, category, 'B');
+                                    }
                                 }
 
                                 for (int e = 0; e < segment2.edgeLength; e++)
                                 {
                                     var category = BooleanEdgesUtility.CategorizeEdge(allCombinedEdgesArray[segment2.edgeOffset + e], in alltreeSpacePlanes, in allCombinedEdgesArray, segment1, in brushVertices);
+                                    if (kLogStrictCrossing && (category == EdgeCategory.Inside || category == EdgeCategory.Outside) &&
+                                        BooleanEdgesUtility.EdgeStrictlyCrossesSegmentPlanes(allCombinedEdgesArray[segment2.edgeOffset + e], in alltreeSpacePlanes, segment1, in brushVertices))
+                                    {
+                                        var se = allCombinedEdgesArray[segment2.edgeOffset + e];
+                                        LogStrictCrossing(dbgBrush, dbgSurf, baseloopIndex, se.index1, se.index2, category, 'h');
+                                    }
                                     if (category == EdgeCategory.Inside)
                                         continue;
                                     destroyedEdges.Set(segment2.edgeOffset + e, true);
+                                    if (kLogDestroyedEdges)
+                                    {
+                                        var de = allCombinedEdgesArray[segment2.edgeOffset + e];
+                                        LogDestroyedEdge(dbgBrush, dbgSurf, baseloopIndex, de.index1, de.index2, category, 'h');
+                                    }
                                 }
                             }
                         }
@@ -634,7 +997,17 @@ namespace Chisel.Core
                                         if (category == EdgeCategory.Outside ||
                                             category == EdgeCategory.Aligned)
                                             continue;
+                                        // Inside only by a fat-band touch: this hole's edge rests on the
+                                        // other hole's boundary, which its loop need not run along
+                                        if (kKeepEdgesRestingOnTheOtherLoopsBoundary && category == EdgeCategory.Inside &&
+                                            BooleanEdgesUtility.EdgeRestsOnSegmentPlanes(allCombinedEdgesArray[segment1.edgeOffset + e], in alltreeSpacePlanes, segment2, in brushVertices))
+                                            continue;
                                         destroyedEdges.Set(segment1.edgeOffset + e, true);
+                                        if (kLogDestroyedEdges)
+                                        {
+                                            var de = allCombinedEdgesArray[segment1.edgeOffset + e];
+                                            LogDestroyedEdge(dbgBrush, dbgSurf, baseloopIndex, de.index1, de.index2, category, 'p');
+                                        }
                                     }
 
                                     for (int e = 0; e < segment2.edgeLength; e++)
@@ -642,7 +1015,17 @@ namespace Chisel.Core
                                         var category = BooleanEdgesUtility.CategorizeEdge(allCombinedEdgesArray[segment2.edgeOffset + e], in alltreeSpacePlanes, in allCombinedEdgesArray, segment1, in brushVertices);
                                         if (category == EdgeCategory.Outside)
                                             continue;
+                                        // Inside only by a fat-band touch: this hole's edge rests on the
+                                        // other hole's boundary, which its loop need not run along
+                                        if (kKeepEdgesRestingOnTheOtherLoopsBoundary && category == EdgeCategory.Inside &&
+                                            BooleanEdgesUtility.EdgeRestsOnSegmentPlanes(allCombinedEdgesArray[segment2.edgeOffset + e], in alltreeSpacePlanes, segment1, in brushVertices))
+                                            continue;
                                         destroyedEdges.Set(segment2.edgeOffset + e, true);
+                                        if (kLogDestroyedEdges)
+                                        {
+                                            var de = allCombinedEdgesArray[segment2.edgeOffset + e];
+                                            LogDestroyedEdge(dbgBrush, dbgSurf, baseloopIndex, de.index1, de.index2, category, 'q');
+                                        }
                                     }
                                 }
                             }
@@ -690,6 +1073,17 @@ namespace Chisel.Core
                     AddEdgesNoResize(ref baseLoopEdges, in holeEdges);
                 }
 
+                if (baseLoopEdges.Length >= 3)
+                    LoopEdgeSplitter.RemoveAntiparallelEdgePairs(ref baseLoopEdges);
+
+                if (kRemoveSimpleChords && baseLoopEdges.Length >= 3)
+                    LoopEdgeSplitter.RemoveSimpleChords(ref baseLoopEdges);
+
+                // Re-close a loop that ended up a single open path missing exactly one edge.
+                // Exact and unambiguous; refuses anything that isn't one clean open chain.
+                if (kCloseOpenChains && baseLoopEdges.Length >= 2)
+                    LoopEdgeSplitter.CloseSingleOpenChain(ref baseLoopEdges);
+
                 allEdges[baseloopIndex] = baseLoopEdges;
                 holeIndicesList.Clear();
                 holeIndices[baseloopIndex] = holeIndicesList;
@@ -704,6 +1098,17 @@ namespace Chisel.Core
                 {
                     loopIndices.RemoveAtSwapBack(l);
                     continue;
+                }
+                if (kLogCleanupAnti)
+                {
+                    int anti = 0;
+                    for (int a = 0; a < baseLoopEdges.Length; a++)
+                        for (int b = a + 1; b < baseLoopEdges.Length; b++)
+                            if (baseLoopEdges[a].index1 == baseLoopEdges[b].index2 &&
+                                baseLoopEdges[a].index2 == baseLoopEdges[b].index1)
+                                anti++;
+                    if (anti > 0)
+                        LogCleanupAnti(in allInfos, baseloopIndex, anti);
                 }
             }
         }
@@ -750,6 +1155,14 @@ namespace Chisel.Core
                 var brushNodeOrder = brushIndexOrder.nodeOrder;
                 var surfaceCount = input.Read<int>();
 
+                // This list is already welded upstream; re-welding it may only merge what the brush's own faces allow.
+                var weldFilter = WeldIncidenceFilter.Disabled;
+                if (canonicalVertexStage >= CanonicalVertexStage.Everywhere)
+                    weldFilter = WeldIncidenceFilter.SameVertexOnly;   // canonical vertices: only the same vertex is merged
+                else
+                if (useIncidenceWeld && brushTreeSpacePlaneCache[brushNodeOrder].IsCreated)
+                    weldFilter = WeldIncidenceFilter.Create(ref brushTreeSpacePlaneCache[brushNodeOrder].Value.treeSpacePlanes, surfaceCount);
+
                 var inputVertices = loopVerticesLookup[brushNodeOrder];
                 var vertexCount = inputVertices.Length;
 
@@ -764,7 +1177,7 @@ namespace Chisel.Core
                     for (int v = 0; v < inputVertices.Length; v++)
                     {
                         var vertex = inputVertices[v];
-                        indexRemap[v] = hashedTreeSpaceVertices.AddNoResize(vertex);
+                        indexRemap[v] = hashedTreeSpaceVertices.AddNoResize(vertex, in weldFilter);
                     }
                     //Debug.Assert(hashedTreeSpaceVertices.Length == inputVertices.Length);
 
@@ -809,6 +1222,8 @@ namespace Chisel.Core
                         if (edgesInner.Length < 3)
                             edgesInner.Clear();
                         basePolygonEdges[l] = edgesInner;
+                        if (kDebugDumpNonSimpleLoops)
+                            LogLoopDefect('I', brushNodeOrder, l, -1, in edgesInner, in hashedTreeSpaceVertices);
                     }
                     //basePolygonSurfaceInfos.ResizeUninitialized(polygonIndex);
                     //basePolygonEdges.ResizeExact(polygonIndex);
@@ -839,6 +1254,8 @@ namespace Chisel.Core
                             intersectionSurfaceInfos[polygonIndex] = indexSurfaceInfo;
                             intersectionEdges[polygonIndex] = edgesInner;
                             polygonIndex++;
+                            if (kDebugDumpNonSimpleLoops)
+                                LogLoopDefect('I', brushNodeOrder, indexSurfaceInfo.basePlaneIndex, -1, in edgesInner, in hashedTreeSpaceVertices);
                         } else
                         {
                             edgesInner.Clear();
@@ -848,6 +1265,7 @@ namespace Chisel.Core
                     intersectionSurfaceInfos.ResizeUninitialized(polygonIndex);
                     intersectionEdges.Resize(polygonIndex, NativeArrayOptions.ClearMemory);
                     input.EndForEachIndex();
+                    TraceInputs(brushNodeOrder, in hashedTreeSpaceVertices, in basePolygonEdges, in intersectionSurfaceInfos, in intersectionEdges);
 
                     //int brushNodeIndex = treeBrushNodeIndices[index];
 
@@ -904,6 +1322,11 @@ namespace Chisel.Core
                     }
 
 
+                    // Brush contents (Documentation~/Design/BrushContents.md): a piece of this brush's surface inside, or
+                    // against, a brush of another type carries the category the contents rules give it into routing
+                    ref var compactTree       = ref compactTreeRef.Value.Value;
+                    var processedContents     = compactTree.GetBrushContents(brushIndexOrder.compactNodeID);
+
                     int intersectionLoopCount = maxIndex + 1;
                     NativeCollectionHelpers.EnsureSizeAndClear(ref intersectionLoops, intersectionLoopCount);
                     NativeCollectionHelpers.EnsureMinimumSize(ref intersectionSurfaceInfo, intersectionLoopCount);
@@ -934,6 +1357,11 @@ namespace Chisel.Core
                             var srcEdges = intersectionEdges[i];
                             var loops = new UnsafeList<Edge>(srcEdges.Length, Allocator.Temp);
                             loops.AddRangeNoResize(srcEdges);
+                            var otherContents = compactTree.GetBrushContents(brushNodeID1);
+                            surfaceInfo.interiorCategory = (byte)ContentsRules.Rewrite((CategoryIndex)surfaceInfo.interiorCategory,
+                                                                                       processedContents.Contents, processedContents.Carving, otherContents.Contents, otherContents.Carving, otherContents.Intersecting,
+                                                                                       // Brushes are numbered depth first, the order their operations apply in
+                                                                                       bIsLater: surfaceInfo.brushIndexOrder.nodeOrder > brushIndexOrder.nodeOrder);
                             intersectionSurfaceInfo[offset] = surfaceInfo;
                             intersectionLoops[offset] = loops;
                         }
@@ -999,13 +1427,19 @@ namespace Chisel.Core
                                     continue;
                                 }
 
-                                bool overlap = intersectionLoop.IsCreated && intersectionLoop.Length != 0 &&
+                                var intersectionLength = intersectionLoop.IsCreated ? intersectionLoop.Length : 0;
+                                bool overlap = intersectionLength != 0 &&
                                                 BooleanEdgesUtility.AreLoopsOverlapping(in surfaceLoopEdges, in intersectionLoop);
 
+                                var inCategory = surfaceLoopInfo.interiorCategory;
                                 if (overlap)
                                 {
                                     // If we overlap don't bother with creating a new polygon & hole and just reuse existing polygon + replace category
-                                    surfaceLoopInfo.interiorCategory = routingRow[(int)intersectionInfo.interiorCategory];
+                                    var overlapCategory = routingRow[(int)intersectionInfo.interiorCategory];
+                                    TraceRoute(brushNodeOrder, surfaceIndex, routingTableIndex, surfaceLoopIndex, inCategory,
+                                               intersectionInfo.interiorCategory, intersectionInfo.brushIndexOrder.nodeOrder, intersectionLength,
+                                               true, overlapCategory, -1);
+                                    surfaceLoopInfo.interiorCategory = overlapCategory;
                                     allInfos[surfaceLoopIndex] = surfaceLoopInfo;
                                     continue;
                                 } else
@@ -1015,10 +1449,13 @@ namespace Chisel.Core
                                 }
 
                                 // Add all holes that share the same plane to the polygon
-                                if (intersectionLoop.IsCreated && intersectionLoop.Length != 0)
+                                if (intersectionLength != 0)
                                 {
                                     // Categorize between original surface & intersection
                                     var intersectionCategory = routingRow[intersectionInfo.interiorCategory];
+                                    TraceRoute(brushNodeOrder, surfaceIndex, routingTableIndex, surfaceLoopIndex, inCategory,
+                                               intersectionInfo.interiorCategory, intersectionInfo.brushIndexOrder.nodeOrder, intersectionLength,
+                                               false, surfaceLoopInfo.interiorCategory, intersectionCategory);
 
                                     // If the intersection polygon would get the same category, we don't need to do a pointless intersection
                                     if (intersectionCategory == surfaceLoopInfo.interiorCategory)
@@ -1037,8 +1474,26 @@ namespace Chisel.Core
                                 }
                             }
                         }
+                        if (kDebugDumpNonSimpleLoops)
+                        {
+                            for (int li = 0; li < loopIndices.Length; li++)
+                            {
+                                var ci = loopIndices[li];
+                                var ce = allEdges[ci];
+                                LogLoopDefect('C', brushIndexOrder.nodeOrder, surfaceIndex, ci, in ce, in hashedTreeSpaceVertices);
+                                var chs = holeIndices[ci];
+                                for (int hi = 0; hi < chs.Length; hi++)
+                                {
+                                    var hidx = chs[hi];
+                                    var he = allEdges[hidx];
+                                    LogLoopDefect('C', brushIndexOrder.nodeOrder, surfaceIndex, hidx, in he, in hashedTreeSpaceVertices);
+                                }
+                            }
+                        }
+                        TraceLoops('C', brushNodeOrder, surfaceIndex, in loopIndices, in holeIndices, in allInfos, in allEdges);
                         CleanUp(in allInfos, ref allEdges, in hashedTreeSpaceVertices, ref loopIndices, ref holeIndices,
 							ref alltreeSpacePlanes, ref allSegments, ref allCombinedEdges, ref destroyedEdges);
+                        TraceLoops('E', brushNodeOrder, surfaceIndex, in loopIndices, in holeIndices, in allInfos, in allEdges);
                         surfaceLoopIndices[surfaceIndex] = loopIndices;
                     }
 
@@ -1062,17 +1517,60 @@ namespace Chisel.Core
                             output.Write(inner[i]);
                     }
 
+                    var dbgReferenced = new NativeBitArray(math.max(1, allEdges.Length), Allocator.Temp);
+                    if (kDebugDumpNonSimpleLoops)
+                    {
+                        for (int o = 0; o < surfaceLoopIndices.Length; o++)
+                        {
+                            var inner = surfaceLoopIndices[o];
+                            if (!inner.IsCreated)
+                                continue;
+                            for (int i = 0; i < inner.Length; i++)
+                            {
+                                var idx = inner[i];
+                                if (idx >= 0 && idx < allEdges.Length)
+                                    dbgReferenced.Set(idx, true);
+                            }
+                        }
+                    }
+
                     output.Write(allEdges.Length);
                     for (int l = 0; l < allEdges.Length; l++)
                     {
                         var surfaceInfo = allInfos[l];
-                        output.Write(new SurfaceInfo { basePlaneIndex = surfaceInfo.basePlaneIndex, interiorCategory = surfaceInfo.interiorCategory//, nodeIndex = surfaceInfo.brushIndexOrder.nodeIndex 
+                        output.Write(new SurfaceInfo { basePlaneIndex = surfaceInfo.basePlaneIndex, interiorCategory = surfaceInfo.interiorCategory//, nodeIndex = surfaceInfo.brushIndexOrder.nodeIndex
                                         });
                         var edges = allEdges[l];
+                        if (kDebugDumpNonSimpleLoops && dbgReferenced.IsSet(l))
+                            LogLoopDefect('E', brushIndexOrder.nodeOrder, surfaceInfo.basePlaneIndex, l, in edges, in hashedTreeSpaceVertices);
+                        if (kLogCleanupAnti && edges.Length >= 3)
+                        {
+                            int oanti = 0;
+                            for (int a = 0; a < edges.Length; a++)
+                                for (int b = a + 1; b < edges.Length; b++)
+                                    if (edges[a].index1 == edges[b].index2 && edges[a].index2 == edges[b].index1)
+                                        oanti++;
+                            if (oanti > 0)
+                                LogCleanupAntiOut(brushIndexOrder.nodeOrder, surfaceInfo.basePlaneIndex, l, oanti);
+                            int dup = 0;
+                            for (int a = 0; a < edges.Length; a++)
+                            {
+                                int ia = edges[a].index1;
+                                for (int b = a + 1; b < edges.Length; b++)
+                                {
+                                    int ib = edges[b].index1;
+                                    if (ia != ib && math.distancesq(hashedTreeSpaceVertices[ia], hashedTreeSpaceVertices[ib]) < CSGConstants.kSqrVertexEqualEpsilon)
+                                    { dup++; break; }
+                                }
+                            }
+                            if (dup > 0)
+                                LogCleanupDup(brushIndexOrder.nodeOrder, surfaceInfo.basePlaneIndex, l, dup);
+                        }
                         output.Write(edges.Length);
-                        for (int e = 0; e < edges.Length; e++) 
+                        for (int e = 0; e < edges.Length; e++)
                             output.Write(edges[e]);
                     }
+                    dbgReferenced.Dispose();
                     output.EndForEachIndex();
                 }
                 finally

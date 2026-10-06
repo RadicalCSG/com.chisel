@@ -16,7 +16,7 @@ namespace Chisel.Core
     // TODO: store this PER TREE
     struct ChiselLayerParameters
     {
-        public UnsafeParallelHashMap<int, ChiselLayerParameterIndex> uniqueParameters;
+        public UnsafeParallelHashMap<ulong, ChiselLayerParameterIndex> uniqueParameters;
         public int uniqueParameterCount;
 
 
@@ -28,7 +28,7 @@ namespace Chisel.Core
             }
         }
 
-        internal void UnregisterParameter(int parameter)
+        internal void UnregisterParameter(ulong parameter)
         {
             if (parameter == 0)
                 return;
@@ -42,7 +42,7 @@ namespace Chisel.Core
             // TODO: have some way to remove parameters (swap with last index? would need to swap things outside of this class as well somehow)
         }
 
-        internal bool RegisterParameter(int parameter)
+        internal bool RegisterParameter(ulong parameter)
         {
             if (parameter == 0)
                 return false;
@@ -69,7 +69,7 @@ namespace Chisel.Core
 
         internal void Initialize()
         {
-            uniqueParameters = new UnsafeParallelHashMap<int, ChiselLayerParameterIndex>(1000, Allocator.Persistent); // Confirmed to get disposed
+            uniqueParameters = new UnsafeParallelHashMap<ulong, ChiselLayerParameterIndex>(1000, Allocator.Persistent); // Confirmed to get disposed
 			uniqueParameterCount = 0;
         }
 

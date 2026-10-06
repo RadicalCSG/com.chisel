@@ -47,6 +47,8 @@ namespace Chisel.Core
         [NoAlias] public NativeList<BlobAssetReference<BrushTreeSpacePlanes>>       brushTreeSpacePlaneCache;
         [NoAlias] public NativeList<MinMaxAABB>                                     brushTreeSpaceBoundCache;
         [NoAlias] public NativeList<BlobAssetReference<BrushesTouchedByBrush>>      brushesTouchedByBrushCache;
+        [NoAlias] public NativeList<UnsafeList<float3>>                             loopVerticesCache;
+        [NoAlias] public NativeList<BlobAssetReference<ExactBrush>>                 exactBrushCache;
 
         // Write
         [NoAlias, WriteOnly] public NativeParallelHashSet<IndexOrder>   brushesThatNeedIndirectUpdateHashMap;
@@ -186,6 +188,10 @@ namespace Chisel.Core
 						brushTreeSpacePlaneCache.Resize(maxCount, NativeArrayOptions.ClearMemory);
 					if (brushesTouchedByBrushCache.Length < maxCount)
 						brushesTouchedByBrushCache.Resize(maxCount, NativeArrayOptions.ClearMemory);
+					if (loopVerticesCache.Length < maxCount)
+						loopVerticesCache.Resize(maxCount, NativeArrayOptions.ClearMemory);
+					if (exactBrushCache.Length < maxCount)
+						exactBrushCache.Resize(maxCount, NativeArrayOptions.ClearMemory);
 
 					for (int n = 0; n < previousBrushIDValuesLength; n++)
 					{
@@ -207,6 +213,8 @@ namespace Chisel.Core
 							{ var tmp = brushTreeSpaceBoundCache[source]; brushTreeSpaceBoundCache[source] = default; }
 							{ var tmp = brushTreeSpacePlaneCache[source]; brushTreeSpacePlaneCache[source] = default; if (tmp.IsCreated) tmp.Dispose(); }
 							{ var tmp = brushesTouchedByBrushCache[source]; brushesTouchedByBrushCache[source] = default; if (tmp.IsCreated) tmp.Dispose(); }
+							{ var tmp = loopVerticesCache[source]; loopVerticesCache[source] = default; if (tmp.IsCreated) tmp.Dispose(); }
+							{ var tmp = exactBrushCache[source]; exactBrushCache[source] = default; if (tmp.IsCreated) tmp.Dispose(); }
 							continue;
 						}
 
@@ -218,6 +226,8 @@ namespace Chisel.Core
 						(brushTreeSpaceBoundCache[source], brushTreeSpaceBoundCache[destination]) = (brushTreeSpaceBoundCache[destination], brushTreeSpaceBoundCache[source]);
 						(brushTreeSpacePlaneCache[source], brushTreeSpacePlaneCache[destination]) = (brushTreeSpacePlaneCache[destination], brushTreeSpacePlaneCache[source]);
 						(brushesTouchedByBrushCache[source], brushesTouchedByBrushCache[destination]) = (brushesTouchedByBrushCache[destination], brushesTouchedByBrushCache[source]);
+						(loopVerticesCache[source], loopVerticesCache[destination]) = (loopVerticesCache[destination], loopVerticesCache[source]);
+						(exactBrushCache[source], exactBrushCache[destination]) = (exactBrushCache[destination], exactBrushCache[source]);
 					}
 				}
             }

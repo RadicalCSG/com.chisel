@@ -24,7 +24,7 @@ namespace Chisel.Components
                     continue;
 
                 var transformation  = modelMatrix * (Matrix4x4)brush.NodeToTreeSpaceMatrix;
-                var childBounds     = brush.Bounds;
+                var childBounds     = brush.GetBounds(transformation);
                 var size            = childBounds.Max - childBounds.Min;
                 var magnitude       = math.lengthsq(size);
                 if (float.IsInfinity(magnitude) ||

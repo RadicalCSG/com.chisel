@@ -13,10 +13,12 @@ namespace Chisel.Core
         }
 
 
-        public static BlobAssetReference<CompactTree> Create(CompactHierarchy.ReadOnly  compactHierarchy, 
-                                                             NativeArray<CompactNodeID> nodes, 
-                                                             NativeArray<CompactNodeID> brushes, 
+        // contentsCount is the number of entries in the contents list: a brush whose index is past its end builds as Solid
+        public static BlobAssetReference<CompactTree> Create(CompactHierarchy.ReadOnly  compactHierarchy,
+                                                             NativeArray<CompactNodeID> nodes,
+                                                             NativeArray<CompactNodeID> brushes,
                                                              CompactNodeID              treeCompactNodeID,
+                                                             int                        contentsCount,
 															 Allocator					allocator = Allocator.Persistent)// Indirect
 		{
             if (brushes.Length == 0)
@@ -62,6 +64,10 @@ namespace Chisel.Core
 			NativeArray<int> brushIDValueToOrder;
 			using var _brushIDValueToOrder = brushIDValueToOrder = new NativeArray<int>(desiredBrushIDValueToBottomUpLength, Allocator.Temp);
 
+			// Cleared memory reads as Solid and not carving
+			NativeArray<BrushContentsInfo> brushIDValueToContents;
+			using var _brushIDValueToContents = brushIDValueToContents = new NativeArray<BrushContentsInfo>(desiredBrushIDValueToBottomUpLength, Allocator.Temp);
+
 			using var brushAncestorLegend = new NativeList<BrushAncestorLegend>(brushes.Length, Allocator.Temp);
 			using var brushAncestorsIDValues = new NativeList<int>(brushes.Length, Allocator.Temp);
 
@@ -74,17 +80,24 @@ namespace Chisel.Core
 
 				var parentStart = brushAncestorsIDValues.Length;
 
+				var operation    = compactHierarchy.GetOperation(brushCompactNodeID);
+				var carving      = IsCarving(operation);
+				var intersecting = operation == CSGOperationType.Intersecting;
 				var parentCompactNodeID = compactHierarchy.ParentOf(brushCompactNodeID);
 				while (compactHierarchy.IsValidCompactNodeID(parentCompactNodeID) && parentCompactNodeID != treeCompactNodeID)
 				{
 					var parentCompactNodeIDValue = parentCompactNodeID.slotIndex.index;
 					brushAncestorsIDValues.Add(parentCompactNodeIDValue);
+					var parentOperation = compactHierarchy.GetOperation(parentCompactNodeID);
+					carving      = carving || IsCarving(parentOperation);
+					intersecting = intersecting || parentOperation == CSGOperationType.Intersecting;
 					parentCompactNodeID = compactHierarchy.ParentOf(parentCompactNodeID);
 				}
 
 				var brushCompactNodeIDValue = brushCompactNodeID.slotIndex.index;
 				brushIDValueToAncestorLegend[brushCompactNodeIDValue - minBrushIDValue] = brushAncestorLegend.Length;
 				brushIDValueToOrder[brushCompactNodeIDValue - minBrushIDValue] = b;
+				brushIDValueToContents[brushCompactNodeIDValue - minBrushIDValue] = new BrushContentsInfo(ContentsRules.Resolve(compactHierarchy.GetContents(brushCompactNodeID), contentsCount), carving, intersecting);
 				brushAncestorLegend.Add(new BrushAncestorLegend()
 				{
 					ancestorEndIDValue = brushAncestorsIDValues.Length,
@@ -179,8 +192,16 @@ namespace Chisel.Core
 				root.minNodeIDValue = minNodeIDValue;
 				root.maxNodeIDValue = maxNodeIDValue;
 				builder.Construct(ref root.brushIDValueToAncestorLegend, brushIDValueToAncestorLegend, desiredBrushIDValueToBottomUpLength);
+				builder.Construct(ref root.brushIDValueToContents, brushIDValueToContents, desiredBrushIDValueToBottomUpLength);
 				return builder.CreateBlobAssetReference<CompactTree>(allocator); // Allocator.Persistent / Confirmed to be disposed
 			}
+		}
+
+		// A carving brush removes what came before it whatever its contents, so contents never let it be looked through
+		static bool IsCarving(CSGOperationType operation)
+		{
+			return operation == CSGOperationType.Subtractive ||
+				   operation == CSGOperationType.Intersecting;
 		}
 
     }

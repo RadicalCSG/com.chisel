@@ -159,7 +159,7 @@ namespace Chisel.Editors
             s_Window.autoRepaintOnSceneChange = true;
         }
 
-        static int GetVisibleItems(Dictionary<int, ChiselSceneHierarchy> sceneHierarchies)
+        static int GetVisibleItems(Dictionary<UnityEngine.SceneManagement.SceneHandle, ChiselSceneHierarchy> sceneHierarchies)
         {
             if (sceneHierarchies == null || sceneHierarchies.Count == 0)
                 return 0;
@@ -208,7 +208,7 @@ namespace Chisel.Editors
             goto ContinueOnNextStackItem;
         }
 
-        static void AddFoldOuts(ref Rect itemRect, ref Rect visibleArea, HashSet<Transform> selectedTransforms, Dictionary<int, ChiselSceneHierarchy> sceneHierarchies)
+        static void AddFoldOuts(ref Rect itemRect, ref Rect visibleArea, HashSet<Transform> selectedTransforms, Dictionary<UnityEngine.SceneManagement.SceneHandle, ChiselSceneHierarchy> sceneHierarchies)
         {
             if (sceneHierarchies == null || sceneHierarchies.Count == 0)
                 return;
@@ -322,12 +322,12 @@ namespace Chisel.Editors
         static string NameForTreeNode(ChiselHierarchyItem node)
         {
             var treeNode = node.Component.TopTreeNode;
-            var instanceID = node.Component.GetInstanceID();
+            var entityID = UnityEngine.EntityId.ToULong(node.Component.GetEntityId());
             var obj = node.Transform;
             var siblingIndices = StringForSiblingIndices(node, (node.Parent == null) ? 0 : node.Parent.SiblingIndices.Count);
             if (!obj)
-                return $"[{siblingIndices}] <unknown> [{treeNode}:{instanceID}]";
-            return $"[{siblingIndices}] {obj.name} [{treeNode}:{instanceID}]";
+                return $"[{siblingIndices}] <unknown> [{treeNode}:{entityID}]";
+            return $"[{siblingIndices}] {obj.name} [{treeNode}:{entityID}]";
         }
 
         void OnGUI()

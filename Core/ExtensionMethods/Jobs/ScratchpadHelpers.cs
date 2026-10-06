@@ -34,6 +34,38 @@ namespace Chisel.Core
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void GrowToFit<T>(ref NativeArray<T> array, int requiredLength, bool keepContents, Allocator allocator = Allocator.Temp)
+            where T : unmanaged
+        {
+            var oldLength = array.IsCreated ? array.Length : 0;
+            if (oldLength >= requiredLength)
+                return;
+            var newLength = (int)Math.Min(Math.Max((long)requiredLength, (long)oldLength * 2), int.MaxValue);
+            var grown     = new NativeArray<T>(newLength, allocator, NativeArrayOptions.ClearMemory);
+            if (keepContents && oldLength > 0)
+                NativeArray<T>.Copy(array, 0, grown, 0, oldLength);
+            if (array.IsCreated)
+                array.Dispose();
+            array = grown;
+        }
+
+        /// <summary>
+        /// The <see cref="NativeBitArray"/> counterpart of <see cref="GrowToFit{T}"/>. A bit array grows IN PLACE -
+        /// Resize reallocates behind the same handle and copies the bits already there - so, unlike the NativeArray
+        /// version, copies of the handle stay valid and a `using` on it is still correct. New bits read as clear.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void GrowToFit(ref NativeBitArray array, int requiredLength)
+        {
+            var oldLength = array.Length;
+            if (oldLength >= requiredLength)
+                return;
+            // UnsafeBitArray caps its capacity at int.MaxValue - 63 (it rounds up to whole 64 bit words)
+            var newLength = (int)Math.Min(Math.Max((long)requiredLength, (long)oldLength * 2), int.MaxValue - 63);
+            array.Resize(newLength, NativeArrayOptions.ClearMemory);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void EnsureSizeAndClear<T>(ref NativeList<UnsafeList<T>> list, int exactSize, Allocator allocator = Allocator.Temp)
             where T : unmanaged
         {

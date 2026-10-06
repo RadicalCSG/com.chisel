@@ -14,6 +14,12 @@ Shader "Hidden/Chisel/Brush-Picking"
             Name "ScenePickingPass"
             Tags { "LightMode" = "Picking" }
 
+            // Standard back-face culling, stated explicitly. Verified in-editor: the picking pass's
+            // front-face convention matches the mesh winding, and the winding matches the render
+            // normals (Cull Front culled exactly the true front faces). Back faces must not be
+            // pickable - a brush the camera stands just inside/behind would otherwise win the pick.
+            Cull Back
+
             CGPROGRAM
                 #pragma vertex vert
                 #pragma fragment frag
@@ -59,12 +65,18 @@ Shader "Hidden/Chisel/Brush-Picking"
 
 	            int DecodeSelectionId(float4 selectionId)
 	            {
-                    int a = int(saturate(selectionId.x) * 255);
-                    int b = int(saturate(selectionId.y) * 255);
-                    int c = int(saturate(selectionId.z) * 255);
-                    int d = int(saturate(selectionId.w) * 255);
-		            return (a      ) + 
-                           (b <<  8) + 
+                    // MUST round, not truncate. The id arrives as byte/255 in a float channel, and that
+                    // round-trip is not exact: 1/255*255 evaluates to 0.99999997, which int() truncates
+                    // to 0. Every byte that lands just below its integer decodes one too low, so the
+                    // pick resolves to a NEIGHBOURING selection id - a different brush, which is why
+                    // clicking selected the wrong object (and only sometimes, since ids whose
+                    // round-trip lands exactly still decoded correctly).
+                    int a = int(saturate(selectionId.x) * 255.0 + 0.5);
+                    int b = int(saturate(selectionId.y) * 255.0 + 0.5);
+                    int c = int(saturate(selectionId.z) * 255.0 + 0.5);
+                    int d = int(saturate(selectionId.w) * 255.0 + 0.5);
+		            return (a      ) +
+                           (b <<  8) +
                            (c << 16) +
                            (d << 24);
 	            }
@@ -76,12 +88,11 @@ Shader "Hidden/Chisel/Brush-Picking"
                     UNITY_TRANSFER_INSTANCE_ID(input, output);
                     
                     output.positionCS = UnityObjectToClipPos(input.vertex);
-                    
                     output._SelectionID =
                         EncodeSelectionId(DecodeSelectionId(input._SelectionID) + _Offset);
-                        
+
                     return output;
-                } 
+                }
 
                 float4 frag(VertexOutput input) : SV_Target
                 {

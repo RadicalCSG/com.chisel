@@ -36,6 +36,8 @@ namespace Chisel.Core
         /// <summary>Find the polygons that: are part of a collider</summary>
         Collidable					= (int)((uint)1 <<  3),
 
+        ExcludedFromGlobalIllumination	= (int)((uint)1 <<  4),
+
         /// <summary>Find the polygons that: are visible and cast shadows.</summary>
         RenderShadowsCasting		= Renderable | ShadowCasting,
 
@@ -47,14 +49,12 @@ namespace Chisel.Core
         /// </summary>
         RenderShadowReceiveAndCasting	= Renderable | ShadowCasting | ShadowReceiving,
 
-		// TODO: add flag for lightmapped/unlightmapped surfaces
-
         /// <summary>
         /// Find the polygons that: are visible, cast shadows and receive shadows. and generate colliders
         /// </summary>
         Default         			= RenderShadowReceiveAndCasting | Collidable,
 
-		
+
 		/// <summary>
 		/// Find the polygons that: are visible, double sided, cast shadows and receive shadows. and generate colliders
 		/// </summary>
@@ -63,6 +63,32 @@ namespace Chisel.Core
         /// <summary>Find polygons that have been removed by the CSG process, this can be used for debugging.</summary>
         Discarded					= (int)((uint)1 << 23)
     };
+
+	public static class SurfaceDestinationFlagsExtensions
+	{
+		public static SurfaceDestinationFlags Normalize(this SurfaceDestinationFlags flags)
+		{
+			if ((flags & SurfaceDestinationFlags.Renderable) != SurfaceDestinationFlags.Renderable)
+				flags &= ~SurfaceDestinationFlags.ShadowReceiving;
+			if ((flags & SurfaceDestinationFlags.ShadowCasting) != SurfaceDestinationFlags.ShadowCasting)
+				flags |= SurfaceDestinationFlags.ExcludedFromGlobalIllumination;
+			return flags;
+		}
+
+		/// <summary>The flags that decide which of a model's generated renderers draws a surface</summary>
+		public const SurfaceDestinationFlags kRendererFlags = SurfaceDestinationFlags.RenderShadowReceiveAndCasting | SurfaceDestinationFlags.ExcludedFromGlobalIllumination;
+
+		/// <summary>
+		/// The index of the generated renderer that draws the surfaces a renderable <see cref="Chisel.Core.MeshQuery"/> finds:
+		/// its <see cref="SurfaceDestinationFlags.Renderable"/>, <see cref="SurfaceDestinationFlags.ShadowCasting"/> and
+		/// <see cref="SurfaceDestinationFlags.ShadowReceiving"/> bits, plus 8 when it is kept out of the baked lighting.
+		/// </summary>
+		public static int RendererIndex(this SurfaceDestinationFlags query)
+		{
+			return (int)(query & SurfaceDestinationFlags.RenderShadowReceiveAndCasting) |
+				   (((query & SurfaceDestinationFlags.ExcludedFromGlobalIllumination) != SurfaceDestinationFlags.None) ? 8 : 0);
+		}
+	}
 
 	/// <summary>Index into one of the parameters of <seealso cref="SurfaceDestinationParameters"/></summary>
 	/// <remarks>Used to generate a mesh, by querying for a specific surface layer parameter index.
@@ -116,6 +142,19 @@ namespace Chisel.Core
 	/// <seealso cref="Chisel.Core.MeshQuery"/>
 	/// <seealso cref="Chisel.Core.SurfaceDestinationFlags"/>
 	/// <seealso cref="Chisel.Core.SurfaceParameterIndex"/>
+	/// <summary>Holds the 64-bit layer-parameter values (e.g. <see cref="UnityEngine.EntityId"/>s as ulong) for a surface.</summary>
+	[Serializable, StructLayout(LayoutKind.Sequential)]
+	public struct SurfaceParameterValues
+	{
+		public ulong value0;
+		public ulong value1;
+		public ulong this[int index]
+		{
+			readonly get { return index == 0 ? value0 : value1; }
+			set { if (index == 0) value0 = value; else value1 = value; }
+		}
+	}
+
 	[Serializable, StructLayout(LayoutKind.Sequential)]
 	public struct SurfaceDestinationParameters
     {
@@ -128,36 +167,36 @@ namespace Chisel.Core
         public const int kRenderableLayer = 0;
         public const int kColliderLayer = 1;
 
-        public readonly static SurfaceDestinationParameters Empty = new() { parameters = int2.zero };
+        public readonly static SurfaceDestinationParameters Empty = new() { parameters = default };
 
 
 		/// <value>First layer-parameter.</value>
-		/// <remarks>Could be, for instance, an instanceID to a [Material](https://docs.unity3d.com/ScriptReference/Material.html), which can then be found using [EditorUtility.InstanceIDToObject](https://docs.unity3d.com/ScriptReference/EditorUtility.InstanceIDToObject.html)
+		/// <remarks>Could be, for instance, an entityID to a [Material](https://docs.unity3d.com/ScriptReference/Material.html), which can then be found using [EditorUtility.InstanceIDToObject](https://docs.unity3d.com/ScriptReference/EditorUtility.InstanceIDToObject.html)
 		/// A value of 0 means that it's not set.
 		/// <code>
-		///	mySurfaceLayer.<paramref name="parameter1"/> = myMaterial.GetInstanceID();
+		///	mySurfaceLayer.<paramref name="parameter1"/> = UnityEngine.EntityId.ToULong(myMaterial.GetEntityId());
 		///	... generate your mesh ...
-		///	Material myMaterial = EditorUtility.InstanceIDToObject(myGeneratedMeshContents.surfaceParameter);
+		///	Material myMaterial = Resources.EntityIdToObject(UnityEngine.EntityId.FromULong(myGeneratedMeshContents.surfaceParameter)) as Material;
 		/// </code>
 		/// </remarks>
 		/// <seealso cref="Chisel.Core.SurfaceParameterIndex.Parameter1"/>.
-		public Int32			parameter1 { get { return parameters[kRenderableLayer]; } set { parameters[kRenderableLayer] = value; } }
+		public ulong			parameter1 { get { return parameters[kRenderableLayer]; } set { parameters[kRenderableLayer] = value; } }
 
 		/// <value>Second layer-parameter.</value>
-		/// <remarks>Could be, for instance, an instanceID to a [PhysicMaterial](https://docs.unity3d.com/ScriptReference/PhysicMaterial.html), which can then be found using [EditorUtility.InstanceIDToObject](https://docs.unity3d.com/ScriptReference/EditorUtility.InstanceIDToObject.html)
+		/// <remarks>Could be, for instance, an entityID to a [PhysicMaterial](https://docs.unity3d.com/ScriptReference/PhysicMaterial.html), which can then be found using [EditorUtility.InstanceIDToObject](https://docs.unity3d.com/ScriptReference/EditorUtility.InstanceIDToObject.html)
 		/// A value of 0 means that it's not set.
 		/// <code>
-		///	mySurfaceLayer.<paramref name="parameter2"/> = myPhysicMaterial.GetInstanceID();
+		///	mySurfaceLayer.<paramref name="parameter2"/> = UnityEngine.EntityId.ToULong(myPhysicMaterial.GetEntityId());
 		///	... generate your mesh ...
-		///	PhysicMaterial myMaterial = EditorUtility.InstanceIDToObject(myGeneratedMeshContents.surfaceParameter);
+		///	PhysicMaterial myMaterial = Resources.EntityIdToObject(UnityEngine.EntityId.FromULong(myGeneratedMeshContents.surfaceParameter)) as PhysicsMaterial;
 		/// </code>
 		/// </remarks>
 		/// <seealso cref="Chisel.Core.SurfaceParameterIndex.Parameter2"/>.
-		public Int32			parameter2 { get { return parameters[kColliderLayer]; } set { parameters[kColliderLayer] = value; } }
+		public ulong			parameter2 { get { return parameters[kColliderLayer]; } set { parameters[kColliderLayer] = value; } }
 
 		// TODO: add parameter for collider layers
 
         // .. this could be extended in the future, when necessary
-        public int2             parameters;
+        public SurfaceParameterValues parameters;
     }
 }

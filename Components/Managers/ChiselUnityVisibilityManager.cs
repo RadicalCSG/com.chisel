@@ -24,7 +24,6 @@ namespace Chisel.Components
 			s_BrushVisibilityLookup.Dispose();
 			s_BrushVisibilityLookup = new();
 		}
-#endif
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
 		static void ResetState()
@@ -47,30 +46,46 @@ namespace Chisel.Components
 		{
 			return s_BrushVisibilityLookup.IsBrushVisible(brushID);
 		}
+#endif
 
 		public static void SetDirty()
 		{
+#if UNITY_EDITOR
 			s_UpdateVisibilityFlag = true;
+#endif
 		}
 
-		
+
 		public static void UpdateVisibility(bool force = false)
-        {
-            if (!s_UpdateVisibilityFlag && !force)
+		{
+#if UNITY_EDITOR
+			if (!s_UpdateVisibilityFlag && !force)
                 return;
 
             s_UpdateVisibilityFlag = false;
             s_BrushVisibilityLookup.UpdateVisibility(ChiselModelManager.Instance.Models);
+            FullUpdateCount++;
+#endif
+		}
+
+#if UNITY_EDITOR
+		// How many times the visibility of every brush has been looked up, which asks SceneVisibilityManager about each
+		// of them. For tests: opening a scene is worth one of these, not one per renderable.
+		internal static int FullUpdateCount { get; private set; }
+
+		public static void UpdateVisibility(ChiselGeneratorComponent node)
+		{
+			s_BrushVisibilityLookup.UpdateNodeVisibility(node);
 		}
 
 		public static void EnsureVisibilityInitialized(ChiselGeneratorComponent node)
 		{
 			if (s_BrushVisibilityLookup.HasVisibilityInitialized(node))
 				return;
-			UpdateVisibility(node);
+			s_BrushVisibilityLookup.UpdateNodeVisibility(node);
 		}
 
-        public static DrawModeFlags UpdateDebugVisualizationState(DrawModeFlags drawModeFlags, bool ignoreBrushVisibility = true)
+		public static DrawModeFlags UpdateDebugVisualizationState(DrawModeFlags drawModeFlags, bool ignoreBrushVisibility = true)
         {
             foreach (var model in ChiselModelManager.Instance.Models)
             {
@@ -83,7 +98,7 @@ namespace Chisel.Components
             return drawModeFlags;
         }
 
-        public static void ResetCameraDrawMode(Camera camera)
+		public static void ResetCameraDrawMode(Camera camera)
         {
             s_CameraDrawMode.Remove(camera);
         }
@@ -118,6 +133,7 @@ namespace Chisel.Components
         public static void Update()
         {
             UpdateDebugVisualizationState(DrawModeFlags.Default, ignoreBrushVisibility: true);
-        }
-    }
+		}
+#endif
+	}
 }

@@ -42,6 +42,8 @@ namespace Chisel.Components
                 return (this != null) && !invalid;
             }
         }
+        public bool HasGeometry => sharedMesh != null && sharedMesh.vertexCount > 0;
+
         public SurfaceDestinationFlags  query;
         public GameObject       container;
         public Mesh             sharedMesh;
@@ -49,6 +51,10 @@ namespace Chisel.Components
 #if UNITY_EDITOR
         public Mesh             partialMesh;
         public int              selectionMeshHashcode = ~0;
+        [System.NonSerialized] public bool selectionMeshDirty = true;
+        [System.NonSerialized] public bool partialMeshDirty = true;
+        [System.NonSerialized] int  partialMeshVisibilityVersion = -1;
+        [System.NonSerialized] bool partialMeshShown;
         public Mesh             selectionMesh;
         [NonSerialized, HideInInspector]
         public bool             visible;
@@ -58,12 +64,19 @@ namespace Chisel.Components
         public Material[]       renderMaterials;
 
 		public ManagedSubMeshTriangleLookup triangleBrushes = new();
+
+		[SerializeField] internal ChiselGeneratorComponent[] selectionOwners        = Array.Empty<ChiselGeneratorComponent>();
+		[SerializeField] internal int[]                      selectionOwnerIndices  = Array.Empty<int>();
+		[SerializeField] internal int[]                      selectionBrushIndices  = Array.Empty<int>();
+		[SerializeField] internal int[]                      selectionSurfaces      = Array.Empty<int>();
+		[SerializeField] internal int[]                      selectionEntityIndices = Array.Empty<int>();
+		[SerializeField] internal UnityEngine.Object[]       selectionEntities      = Array.Empty<UnityEngine.Object>();
+		[NonSerialized] int selectionOwnersHash;
         
         public uint             geometryHashValue;
         public uint             surfaceHashValue;
 
         public bool             debugVisualizationRenderer;
-        [NonSerialized] public float uvLightmapUpdateTime;
 
         internal ChiselRenderObjects() { }
         public static ChiselRenderObjects Create(string name, Transform parent, GameObjectState state, SurfaceDestinationFlags query, bool debugVisualizationRenderer = false)
@@ -72,11 +85,15 @@ namespace Chisel.Components
             var meshFilter      = renderContainer.AddComponent<MeshFilter>();
             var meshRenderer    = renderContainer.AddComponent<MeshRenderer>();
             meshRenderer.enabled = false;
+            meshRenderer.staticShadowCaster = true; // TODO: this should depend on the model being occluder static, 
+                                                    // we have the information here but we also need to update it when the model's static flags change
 
-            var renderObjects = new ChiselRenderObjects
+			var renderObjects = new ChiselRenderObjects
             {
                 invalid             = false,     
-                visible             = !debugVisualizationRenderer,       
+#if UNITY_EDITOR
+                visible             = !debugVisualizationRenderer,
+#endif
                 query               = query,
                 container           = renderContainer,
                 meshFilter          = meshFilter,
@@ -90,6 +107,10 @@ namespace Chisel.Components
         }
 
 
+#if UNITY_EDITOR
+        const HideFlags kUnsavedMeshFlags = HideFlags.DontSaveInEditor | HideFlags.DontSaveInBuild;
+#endif
+
         void EnsureMeshesAllocated()
         {
             if (sharedMesh == null) sharedMesh = new Mesh { name = meshFilter.gameObject.name };
@@ -99,19 +120,21 @@ namespace Chisel.Components
 				partialMesh = new Mesh
 				{
 					name = meshFilter.gameObject.name,
-					hideFlags = HideFlags.DontSave
+					hideFlags = kUnsavedMeshFlags
 				};
+				partialMeshDirty = true;
 			}
 			if (selectionMesh == null)
 			{
 				selectionMesh = new Mesh
 				{
 					name = meshFilter.gameObject.name,
-					hideFlags = HideFlags.DontSave 
+					hideFlags = kUnsavedMeshFlags
 				};
-				selectionMeshHashcode = ~HashCode.Combine(triangleBrushes?.hashCode ?? 0, 0, sharedMesh.GetHashCode());
-				// TODO: do this on level load instead?
-				ChiselUnityVisibilityManager.UpdateVisibility(true);
+				// Deliberately the inverse of the real key (see RenderScenePickingPass) so a freshly
+				// allocated selection mesh never matches and is always generated once.
+				selectionMeshHashcode = ~HashCode.Combine(triangleBrushes?.hashCode ?? 0, 0, sharedMesh.GetHashCode(),
+														  geometryHashValue, surfaceHashValue);
 			}
             if (string.IsNullOrEmpty(sharedMesh.name))
 				sharedMesh.name = meshFilter.gameObject.name;
@@ -174,15 +197,14 @@ namespace Chisel.Components
                 meshRenderer.receiveShadows	= ((query & SurfaceDestinationFlags.ShadowReceiving) == SurfaceDestinationFlags.ShadowReceiving);
                 switch (query & (SurfaceDestinationFlags.Renderable | SurfaceDestinationFlags.ShadowCasting))
                 {
-                    case SurfaceDestinationFlags.None:				meshRenderer.enabled = false; break;
-                    case SurfaceDestinationFlags.Renderable:		meshRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;			break;
-                    case SurfaceDestinationFlags.ShadowCasting:		meshRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.ShadowsOnly;   break;
+                    case SurfaceDestinationFlags.None:				    meshRenderer.enabled = false; break;
+                    case SurfaceDestinationFlags.Renderable:		    meshRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;			break;
+                    case SurfaceDestinationFlags.ShadowCasting:		    meshRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.On;			break;
                     case SurfaceDestinationFlags.RenderShadowsCasting:	meshRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.On;			break;
                 }
 
 #if UNITY_EDITOR
                 UnityEditor.EditorUtility.SetSelectedRenderState(meshRenderer, UnityEditor.EditorSelectedRenderState.Hidden);
-				ChiselUnityUVGenerationManager.SetHasLightmapUVs(sharedMesh, false);
 #endif
             } else
             {
@@ -197,6 +219,37 @@ namespace Chisel.Components
             }
         }
 
+        /// <summary>
+        /// Puts the model's shadow settings on top of what this renderer's query allows. Without shadows, a renderer that
+        /// draws and casts only draws, and one that only casts draws nothing. The shadow-only renderer casts with shadows
+        /// On, because URP casts no shadows from ShadowsOnly (see <see cref="Initialize"/>).
+        /// </summary>
+        internal void ApplyShadowSettings(ChiselGeneratedRenderSettings renderSettings)
+        {
+            if (debugVisualizationRenderer || !meshRenderer)
+                return;
+
+            var flags = query & SurfaceDestinationFlags.RenderShadowsCasting;
+            if (renderSettings != null && !renderSettings.castShadows)
+                flags &= ~SurfaceDestinationFlags.ShadowCasting;
+            var shadowCastingMode = flags switch
+            {
+                SurfaceDestinationFlags.RenderShadowsCasting => ShadowCastingMode.On,
+                SurfaceDestinationFlags.ShadowCasting        => ShadowCastingMode.On,
+                _                                            => ShadowCastingMode.Off,
+            };
+            if (meshRenderer.shadowCastingMode != shadowCastingMode)
+                meshRenderer.shadowCastingMode = shadowCastingMode;
+
+            var receiveShadows = (renderSettings == null || renderSettings.receiveShadows) &&
+                                 (query & SurfaceDestinationFlags.ShadowReceiving) == SurfaceDestinationFlags.ShadowReceiving;
+            if (meshRenderer.receiveShadows != receiveShadows)
+                meshRenderer.receiveShadows = receiveShadows;
+
+            if (flags == SurfaceDestinationFlags.None && meshRenderer.enabled)
+                meshRenderer.enabled = false;
+        }
+
 #if UNITY_EDITOR
 		public static void CheckIfFullMeshNeedsToBeHidden(ChiselModelComponent model, ChiselRenderObjects renderable)
 		{
@@ -208,14 +261,15 @@ namespace Chisel.Components
 
 		void UpdateSettings(ChiselModelComponent model, GameObjectState state, bool meshIsModified)
         {
+            ApplyShadowSettings(model.RenderSettings);
 #if UNITY_EDITOR
 			Profiler.BeginSample("CheckIfFullMeshNeedsToBeHidden");
             // If we need to render partial meshes (where some brushes are hidden) then we shouldn't show the full mesh
             CheckIfFullMeshNeedsToBeHidden(model, this);
             Profiler.EndSample();
 
-			var lightmapStatic = (state.staticFlags & UnityEditor.StaticEditorFlags.ContributeGI) == UnityEditor.StaticEditorFlags.ContributeGI;
-			if (meshIsModified && lightmapStatic)
+			// A lightmapped model's lightmap no longer fits a changed mesh; a model lit by light probes has none
+			if (meshIsModified && ChiselLightmapUVManager.IsLightmapped(model, state.staticFlags))
             {
                 // Setting the sharedMesh to ensure the meshFilter knows it needs to be updated
                 Profiler.BeginSample("OverrideMesh");
@@ -227,12 +281,8 @@ namespace Chisel.Components
                 UnityEditor.EditorUtility.SetDirty(model);
                 Profiler.EndSample();
 
-                Profiler.BeginSample("SetHasLightmapUVs");
-				ChiselUnityUVGenerationManager.SetHasLightmapUVs(sharedMesh, false);
-                Profiler.EndSample();
-
                 Profiler.BeginSample("ClearLightmapData");
-				if (ChiselUnityUVGenerationManager.ClearLightmapData(state, this))
+				if (ChiselLightmapUVManager.ClearLightmapData(model, state, this))
                 {
 					//Debug.Log($"ClearLightmapData for {container.name}", container);
 				}
@@ -270,10 +320,13 @@ namespace Chisel.Components
 #endif
 
             Profiler.BeginSample("meshRenderers");
+            var forceShadowOnlyMaterial = ChiselProjectSettings.ForceShadowOnlySurfacesMaterial;
             for (int i = 0; i < meshRenderers.Length; i++)
             {
                 var meshRenderer = meshRenderers[i];
-                var isRenderable = meshRenderer.shadowCastingMode != ShadowCastingMode.ShadowsOnly;
+                // The shadow-only renderer draws with ForceShadowOnly, and with shadows On (see Initialize)
+                var isRenderable = meshRenderer.shadowCastingMode != ShadowCastingMode.ShadowsOnly &&
+                                   (!forceShadowOnlyMaterial || meshRenderer.sharedMaterial != forceShadowOnlyMaterial);
                 meshRenderer.lightProbeProxyVolumeOverride	= !isRenderable ? null : renderSettings.lightProbeProxyVolumeOverride;
                 meshRenderer.probeAnchor					= !isRenderable ? null : renderSettings.probeAnchor;
                 meshRenderer.motionVectorGenerationMode		= !isRenderable ? MotionVectorGenerationMode.ForceNoMotion : renderSettings.motionVectorGenerationMode;
@@ -341,9 +394,188 @@ namespace Chisel.Components
                 var instance     = objectUpdate.instance;
                 var subMeshTriangleLookups = vertexBufferContents.subMeshTriangleLookups[meshUpdate.contentsIndex];
                 if (subMeshTriangleLookups.IsCreated)
+                {
                     subMeshTriangleLookups.Value.CopyTo(instance.triangleBrushes);
+                    instance.StoreSelectionOwners();
+                }
+#if UNITY_EDITOR
+                instance.selectionMeshDirty = true;
+                instance.partialMeshDirty = true;
+#endif
             }
             Profiler.EndSample();
+        }
+
+        // Only when the selection ids changed: an edit that doesn't add, remove or rebuild a brush keeps them
+        void StoreSelectionOwners()
+        {
+            var descriptions = triangleBrushes.selectionIndexDescriptions;
+            if (selectionOwnersHash == triangleBrushes.hashCode &&
+                selectionOwnerIndices.Length == descriptions.Length)
+                return;
+            selectionOwnersHash = triangleBrushes.hashCode;
+
+            var count         = descriptions.Length;
+            var ownerIndices  = new int[count];
+            var brushIndices  = new int[count];
+            var surfaces      = new int[count];
+            var owners        = new List<ChiselGeneratorComponent>();
+            var indexOfOwner  = new Dictionary<ChiselGeneratorComponent, int>();
+            var entityIndices = new List<int>();
+            var entities      = new List<UnityEngine.Object>();
+            var brushOrders   = new Dictionary<ChiselGeneratorComponent, List<CompactNodeID>>();
+            for (int s = 0; s < count; s++)
+            {
+                var description = descriptions[s];
+                var brushEntity = BrushEntityID(description.brushNodeID);
+                var owner       = Resources.EntityIdToObject(UnityEngine.EntityId.FromULong(brushEntity)) as ChiselGeneratorComponent;
+                if (owner == null)
+                {
+                    ownerIndices[s] = -1;
+                    brushIndices[s] = -1;
+                } else
+                {
+                    if (!indexOfOwner.TryGetValue(owner, out var ownerIndex))
+                    {
+                        ownerIndex = owners.Count;
+                        owners.Add(owner);
+                        indexOfOwner.Add(owner, ownerIndex);
+                    }
+                    ownerIndices[s] = ownerIndex;
+                    brushIndices[s] = BrushesOf(owner, brushOrders).IndexOf(description.brushNodeID);
+                }
+                surfaces[s] = description.surfaceIndex;
+                if (description.entityID != brushEntity)
+                {
+                    entityIndices.Add(s);
+                    entities.Add(Resources.EntityIdToObject(UnityEngine.EntityId.FromULong(description.entityID)));
+                }
+            }
+            selectionOwners        = owners.ToArray();
+            selectionOwnerIndices  = ownerIndices;
+            selectionBrushIndices  = brushIndices;
+            selectionSurfaces      = surfaces;
+            selectionEntityIndices = entityIndices.ToArray();
+            selectionEntities      = entities.ToArray();
+        }
+
+        // The brushes a generator makes, in the order RestoreSelection finds them in again
+        static List<CompactNodeID> BrushesOf(ChiselGeneratorComponent generator, Dictionary<ChiselGeneratorComponent, List<CompactNodeID>> brushOrders)
+        {
+            if (brushOrders.TryGetValue(generator, out var brushes))
+                return brushes;
+            brushes = new List<CompactNodeID>();
+            var nodes = new Stack<CSGTreeNode>();
+            nodes.Push(generator.TopTreeNode);
+            while (nodes.Count > 0)
+            {
+                var node = nodes.Pop();
+                if (!node.Valid)
+                    continue;
+                if (node.Type == CSGNodeType.Brush)
+                {
+                    brushes.Add(CompactHierarchyManager.GetCompactNodeID(node));
+                    continue;
+                }
+                for (int i = node.Count - 1; i >= 0; i--)
+                    nodes.Push(node[i]);
+            }
+            brushOrders.Add(generator, brushes);
+            return brushes;
+        }
+
+        static ulong BrushEntityID(CompactNodeID brushNodeID)
+        {
+            if (brushNodeID == CompactNodeID.Invalid)
+                return 0;
+            ref var hierarchy = ref CompactHierarchyManager.GetHierarchy(brushNodeID);
+            if (!hierarchy.IsValidCompactNodeID(brushNodeID))
+                return 0;
+            return hierarchy.GetChildRef(brushNodeID).entityID;
+        }
+
+        public SelectionDescription DescriptionForPicking(ChiselModelComponent model, int index)
+        {
+            var descriptions = GetSelectionIndexDescriptionArray();
+            if (index < 0 || index >= descriptions.Length)
+                return default;
+            if (descriptions[index].brushNodeID != CompactNodeID.Invalid)
+                return descriptions[index];
+
+            ChiselModelManager.BuildTheNodesOfNow(model);
+            RestoreSelection();
+
+            descriptions = GetSelectionIndexDescriptionArray();
+            return (index < descriptions.Length) ? descriptions[index] : default;
+        }
+
+        // What RestoreSelection and the CSG leave behind for picking: runtime data, so players have it too
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public SelectionDescription[] GetSelectionIndexDescriptionArray()
+        {
+            return triangleBrushes.selectionIndexDescriptions;
+        }
+
+        internal void RestoreSelection()
+        {
+            if (invalid || !sharedMesh)
+                return;
+
+            var count        = Math.Min(Math.Min(selectionOwnerIndices.Length, selectionBrushIndices.Length), selectionSurfaces.Length);
+            var descriptions = new SelectionDescription[count];
+            var brushOrders  = new Dictionary<ChiselGeneratorComponent, List<CompactNodeID>>();
+            for (int s = 0; s < count; s++)
+            {
+                var ownerIndex  = selectionOwnerIndices[s];
+                var owner       = (ownerIndex >= 0 && ownerIndex < selectionOwners.Length) ? selectionOwners[ownerIndex] : null;
+                var brushIndex  = selectionBrushIndices[s];
+                var brushNodeID = CompactNodeID.Invalid;
+                if (owner && brushIndex >= 0)
+                {
+                    var brushes = BrushesOf(owner, brushOrders);
+                    if (brushIndex < brushes.Count)
+                        brushNodeID = brushes[brushIndex];
+                }
+                descriptions[s] = new SelectionDescription
+                {
+                    entityID     = owner ? UnityEngine.EntityId.ToULong(owner.GetEntityId()) : 0,
+                    surfaceIndex = selectionSurfaces[s],
+                    brushNodeID  = brushNodeID
+                };
+            }
+
+            // The ids that select something else than their brush's generator: a decal
+            for (int e = 0; e < Math.Min(selectionEntityIndices.Length, selectionEntities.Length); e++)
+            {
+                var s      = selectionEntityIndices[e];
+                var entity = selectionEntities[e];
+                if (s < 0 || s >= descriptions.Length || !entity)
+                    continue;
+                descriptions[s].entityID = UnityEngine.EntityId.ToULong(entity.GetEntityId());
+            }
+
+            // The per-triangle arrays only ever grow, so they can be longer than the mesh has triangles
+            var selectionIDs  = triangleBrushes.perTriangleSelectionIDLookup;
+            var triangleCount = 0;
+            for (int subMesh = 0; subMesh < sharedMesh.subMeshCount; subMesh++)
+                triangleCount += (int)sharedMesh.GetIndexCount(subMesh) / 3;
+            triangleCount = Math.Min(triangleCount, selectionIDs.Length);
+
+            var brushNodeIDs = new CompactNodeID[triangleCount];
+            for (int n = 0; n < triangleCount; n++)
+            {
+                var selectionID = selectionIDs[n];
+                brushNodeIDs[n] = (selectionID >= 0 && selectionID < descriptions.Length) ? descriptions[selectionID].brushNodeID : CompactNodeID.Invalid;
+            }
+
+            triangleBrushes.selectionIndexDescriptions = descriptions;
+            triangleBrushes.perTriangleNodeIDLookup    = brushNodeIDs;
+            triangleBrushes.validTriangleCount         = triangleCount;
+            selectionOwnersHash = triangleBrushes.hashCode;
+#if UNITY_EDITOR
+            selectionMeshDirty  = true;
+            partialMeshDirty    = true;
+#endif
         }
 
         public static void UpdateMaterials(List<ChiselMeshUpdate> meshUpdates, List<ChiselRenderObjectUpdate> objectUpdates, ref VertexBufferContents vertexBufferContents)
@@ -367,12 +599,16 @@ namespace Chisel.Components
                     {
                         instance.renderMaterials[i] = materialOverride;
                     }
+                    // The debug visualization renderers are only drawn by the editor, from renderMaterials. The shadow-only
+                    // renderer's MeshRenderer draws with its override too.
+                    if (!instance.debugVisualizationRenderer)
+                        instance.SetMaterialsIfModified(instance.meshRenderer, instance.renderMaterials);
 				} else
                 {
                     for (int i = 0; i < desiredCapacity; i++)
                     {
                         var meshDescription = vertexBufferContents.meshDescriptions[startIndex + i];
-                        var renderMaterial  = meshDescription.surfaceParameter == 0 ? null : Resources.InstanceIDToObject(meshDescription.surfaceParameter) as Material;
+                        var renderMaterial  = meshDescription.surfaceParameter == 0 ? null : Resources.EntityIdToObject(UnityEngine.EntityId.FromULong(meshDescription.surfaceParameter)) as Material;
                         instance.renderMaterials[i] = renderMaterial;
                     }
                     instance.SetMaterialsIfModified(instance.meshRenderer, instance.renderMaterials);
@@ -432,6 +668,14 @@ namespace Chisel.Components
 				}
                 instance.geometryHashValue = geometryHashValue;
 				instance.surfaceHashValue = surfaceHashValue;
+#if UNITY_EDITOR
+                // Geometry re-uploaded => the selection and partial meshes mirroring it must be rebuilt too.
+                if (objectUpdate.meshIsModified)
+                {
+                    instance.selectionMeshDirty = true;
+                    instance.partialMeshDirty = true;
+                }
+#endif
 
                   
 				var gameObjectState = gameObjectStates[objectUpdate.model];
@@ -496,9 +740,15 @@ namespace Chisel.Components
 #if UNITY_EDITOR
         internal void UpdateVisibilityMesh(BrushVisibilityLookup visibilityLookup, bool showMesh)
         {
-            // TODO: FIXME: we need to cache this, this is re-generated each frame and causes a lot of garbage!!
-
             EnsureMeshesAllocated();
+            if (!partialMeshDirty &&
+                partialMeshShown == showMesh &&
+                partialMeshVisibilityVersion == visibilityLookup.Version)
+                return;
+            partialMeshDirty             = false;
+            partialMeshShown             = showMesh;
+            partialMeshVisibilityVersion = visibilityLookup.Version;
+
             var srcMesh = sharedMesh;
             var dstMesh = partialMesh;
 
@@ -511,12 +761,6 @@ namespace Chisel.Components
             triangleBrushes.GenerateSubMesh(visibilityLookup, srcMesh, dstMesh);
 		}
 
-
-		[MethodImpl(MethodImplOptions.AggressiveInlining)]
-		public SelectionDescription[] GetSelectionIndexDescriptionArray()
-		{
-			return triangleBrushes.selectionIndexDescriptions;
-		}
 
 
 		// TODO: improve on this, make this work well with debug modes
@@ -555,12 +799,14 @@ namespace Chisel.Components
 		public void RenderScenePickingPass(int hashcode, HashSet<int> skipSelectionID, int offset)
 		{
 			// TODO: use commandbuffers instead?
-			hashcode = HashCode.Combine(triangleBrushes.hashCode, hashcode, sharedMesh.GetHashCode());
-			if (selectionMeshHashcode != hashcode || selectionMesh == null)
+			hashcode = HashCode.Combine(triangleBrushes.hashCode, hashcode, sharedMesh.GetHashCode(),
+										geometryHashValue, surfaceHashValue);
+			if (selectionMeshDirty || selectionMeshHashcode != hashcode || selectionMesh == null)
 			{
 				EnsureMeshesAllocated();
 				triangleBrushes.GenerateSelectionSubMesh(skipSelectionID, sharedMesh, selectionMesh);
 				selectionMeshHashcode = hashcode;
+				selectionMeshDirty = false;
 			}
             if (!IsValidMesh(selectionMesh))
 			{
@@ -569,7 +815,9 @@ namespace Chisel.Components
 
 			if (BrushPickingMaterial.SetScenePickingPass(offset))
 			{
-				Graphics.DrawMeshNow(selectionMesh, container.transform.localToWorldMatrix);
+				var matrix = container.transform.localToWorldMatrix;
+				for (int subMesh = 0; subMesh < selectionMesh.subMeshCount; subMesh++)
+					Graphics.DrawMeshNow(selectionMesh, matrix, subMesh);
 			}
 		}
 
@@ -589,18 +837,17 @@ namespace Chisel.Components
             var renderParams = new RenderParams
 			{
                 camera                   = camera,
-                instanceID               = 0,
+                entityId                 = default,
                 layer                    = layer,
-                lightProbeProxyVolume    = meshRenderer.lightProbeProxyVolumeOverride == null ? null : meshRenderer.lightProbeProxyVolumeOverride.GetComponent<LightProbeProxyVolume>(),
                 lightProbeUsage          = meshRenderer.lightProbeUsage,
                 matProps                 = materialPropertyBlock,
                 motionVectorMode         = meshRenderer.motionVectorGenerationMode,
-                overrideSceneCullingMask = false,
+                overrideSceneCullingMask = true,
                 receiveShadows           = meshRenderer.receiveShadows,
                 reflectionProbeUsage     = meshRenderer.reflectionProbeUsage,
                 rendererPriority         = meshRenderer.rendererPriority,
                 renderingLayerMask       = meshRenderer.renderingLayerMask,
-                sceneCullingMask         = 0,
+                sceneCullingMask         = meshRenderer.gameObject.sceneCullingMask,
                 shadowCastingMode        = meshRenderer.shadowCastingMode,
                 worldBounds              = meshRenderer.bounds
 			};
@@ -608,10 +855,13 @@ namespace Chisel.Components
             if (enableLightmaps)
             { 
                 var lightmapScaleOffset = meshRenderer.lightmapScaleOffset;
+                // Only an index into the baked lightmaps has one: it is -1 before a bake, 0xFFFE for a renderer the bake
+                // took into account without giving it a lightmap, and whatever it was while the lightmaps are gone
                 var lightmapIndex = meshRenderer.lightmapIndex;
-                if (lightmapIndex != -1)
+                var lightmaps = LightmapSettings.lightmaps;
+                if (lightmapIndex >= 0 && lightmapIndex < lightmaps.Length)
                 {
-                    var lightmapData = LightmapSettings.lightmaps[lightmapIndex];
+                    var lightmapData = lightmaps[lightmapIndex];
                     materialPropertyBlock.SetTexture("unity_Lightmap", lightmapData.lightmapColor);
                     materialPropertyBlock.SetVector("unity_LightmapST", lightmapScaleOffset);
                 } else
@@ -621,11 +871,16 @@ namespace Chisel.Components
 			}
 
 			// TODO: use commandbuffers instead?
+			var materialCount = (renderMaterials == null) ? 0 : renderMaterials.Length;
 			for (int submeshIndex = 0; submeshIndex < mesh.subMeshCount; submeshIndex++)
             {
-                renderParams.material = renderMaterials[submeshIndex];
-                if (enableLightmaps) renderParams.material.EnableKeyword("LIGHTMAP_ON");
-                else renderParams.material.DisableKeyword("LIGHTMAP_ON");
+                var material = (submeshIndex < materialCount) ? renderMaterials[submeshIndex] : null;
+                if (material == null)
+                    continue;
+
+                renderParams.material = material;
+                if (enableLightmaps) material.EnableKeyword("LIGHTMAP_ON");
+                else material.DisableKeyword("LIGHTMAP_ON");
                 Graphics.RenderMesh(in renderParams, mesh, submeshIndex, matrix);
             }
 		}
@@ -661,18 +916,18 @@ namespace Chisel.Components
 		}
         
 
-		private static int GetInvisibleInstanceIds(BrushVisibilityLookup brushVisibilityLookup, ManagedSubMeshTriangleLookup.NeedToRenderForPicking needToRenderForPicking, SelectionDescription[] selectionToInstanceIDs, HashSet<int> skipSelectionID)
+		private static int GetInvisibleEntityIDs(BrushVisibilityLookup brushVisibilityLookup, ManagedSubMeshTriangleLookup.NeedToRenderForPicking needToRenderForPicking, SelectionDescription[] selectionToEntityIDs, HashSet<int> skipSelectionID)
         {
             skipSelectionID.Clear();
             int hashcode = 0;
-			for (int selectionID = 0; selectionID < selectionToInstanceIDs.Length; selectionID++)
+			for (int selectionID = 0; selectionID < selectionToEntityIDs.Length; selectionID++)
             {
-                var instanceID = selectionToInstanceIDs[selectionID].instanceID;
+                var entityID = selectionToEntityIDs[selectionID].entityID;
 
                 GameObject instanceGameObject = null;
-                if (brushVisibilityLookup.IsBrushVisible(instanceID))
+                if (!brushVisibilityLookup.IsBrushHidden(entityID))
                 {
-                    var instanceObj = Resources.InstanceIDToObject(instanceID);
+                    var instanceObj = Resources.EntityIdToObject(UnityEngine.EntityId.FromULong(entityID));
                     if (instanceObj is MonoBehaviour component) instanceGameObject = component.gameObject;
                     else if (instanceObj is GameObject go) instanceGameObject = go;
                 }
@@ -694,6 +949,10 @@ namespace Chisel.Components
             var instance = ChiselModelManager.Instance;
 			foreach (var model in instance.Models)
 			{
+				// a model can be destroyed a while before it is unregistered
+				if (!model)
+					continue;
+
 				var generated = model.generated;
 
 				// TODO: remove gameobject/meshrenderer generation for our meshes
@@ -712,7 +971,7 @@ namespace Chisel.Components
                         continue;
 
 					var skipSelectionID = HashSetPool<int>.Get();
-					var hashcode = GetInvisibleInstanceIds(brushVisibilityLookup, needToRenderForPicking, selectionIndexDescriptions, skipSelectionID);
+					var hashcode = GetInvisibleEntityIDs(brushVisibilityLookup, needToRenderForPicking, selectionIndexDescriptions, skipSelectionID);
                                        
 					selectionOffsets.Add(new SelectionOffset
 					{
@@ -736,7 +995,7 @@ namespace Chisel.Components
 						continue;
 
 					var skipSelectionID = HashSetPool<int>.Get();
-					var hashcode = GetInvisibleInstanceIds(brushVisibilityLookup, needToRenderForPicking, selectionIndexDescriptions, skipSelectionID);
+					var hashcode = GetInvisibleEntityIDs(brushVisibilityLookup, needToRenderForPicking, selectionIndexDescriptions, skipSelectionID);
 					
 					selectionOffsets.Add(new SelectionOffset
 					{
@@ -779,7 +1038,8 @@ namespace Chisel.Components
 			var matrix = model.transform.localToWorldMatrix;
 
             var staticFlags = UnityEditor.GameObjectUtility.GetStaticEditorFlags(model.gameObject);
-			var lightmapStatic = (staticFlags & UnityEditor.StaticEditorFlags.ContributeGI) == UnityEditor.StaticEditorFlags.ContributeGI;
+			// A model that contributes to global illumination can take its own from light probes, and then it has no lightmap
+			var lightmapStatic = ChiselLightmapUVManager.IsLightmapped(model, staticFlags);
 
             if (drawModeFlags == DrawModeFlags.ShowPickingModel)
 			{

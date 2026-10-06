@@ -76,7 +76,7 @@ namespace Chisel.Core
             var planePtr = (float4*)planes.GetUnsafeReadOnlyPtr();
             for (int n = 0; n < planesLength; n++)
             {
-                var distance = math.dot(planePtr[planesOffset + n], localVertex);
+                var distance = CSGMath.SignedDistance(planePtr[planesOffset + n], localVertex);
 
                 // will be 'false' when distance is NaN or Infinity
                 if (!(distance <= kFatPlaneWidthEpsilon))
@@ -90,7 +90,7 @@ namespace Chisel.Core
         {
             for (int n = 0; n < planes.Length; n++)
             {
-                var distance = math.dot(planes[n], localVertex);
+                var distance = CSGMath.SignedDistance(planes[n], localVertex);
 
                 // will be 'false' when distance is NaN or Infinity
                 if (!(distance <= kFatPlaneWidthEpsilon))
@@ -139,6 +139,52 @@ namespace Chisel.Core
             // TODO: shouldn't be testing against our own plane
 
             return IsOutsidePlanes(in planes, segment.planesOffset, segment.planesLength, new float4(midPoint, 1));
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool EdgeStraddlesSegmentPlanes(Edge edge, [NoAlias, ReadOnly] in NativeList<float4> planes, [NoAlias, ReadOnly] in LoopSegment segment, [NoAlias, ReadOnly] in HashedVertices vertices)
+        {
+            var a = IsOutsidePlanes(in planes, segment.planesOffset, segment.planesLength, new float4(vertices[edge.index1], 1));
+            var b = IsOutsidePlanes(in planes, segment.planesOffset, segment.planesLength, new float4(vertices[edge.index2], 1));
+            return a != b;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool EdgeRestsOnSegmentPlanes(Edge edge, [NoAlias, ReadOnly] in NativeList<float4> planes, [NoAlias, ReadOnly] in LoopSegment segment, [NoAlias, ReadOnly] in HashedVertices vertices)
+        {
+            var midPoint = (vertices[edge.index1] + vertices[edge.index2]) * 0.5f;
+            return !IsStrictlyInsidePlanes(in planes, segment.planesOffset, segment.planesLength, new float4(midPoint, 1));
+        }
+
+        // Strictly inside the convex region = below every plane by more than the fat epsilon.
+        static unsafe bool IsStrictlyInsidePlanes([NoAlias, ReadOnly] in NativeList<float4> planes, int planesOffset, int planesLength, float4 localVertex)
+        {
+            var planePtr = (float4*)planes.GetUnsafeReadOnlyPtr();
+            for (int n = 0; n < planesLength; n++)
+                if (!(CSGMath.SignedDistance(planePtr[planesOffset + n], localVertex) < -kFatPlaneWidthEpsilon))
+                    return false;
+            return true;
+        }
+
+        // Strictly outside = above at least one plane by more than the fat epsilon.
+        static unsafe bool IsStrictlyOutsidePlanes([NoAlias, ReadOnly] in NativeList<float4> planes, int planesOffset, int planesLength, float4 localVertex)
+        {
+            var planePtr = (float4*)planes.GetUnsafeReadOnlyPtr();
+            for (int n = 0; n < planesLength; n++)
+                if (CSGMath.SignedDistance(planePtr[planesOffset + n], localVertex) > kFatPlaneWidthEpsilon)
+                    return true;
+            return false;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool EdgeStrictlyCrossesSegmentPlanes(Edge edge, [NoAlias, ReadOnly] in NativeList<float4> planes, [NoAlias, ReadOnly] in LoopSegment segment, [NoAlias, ReadOnly] in HashedVertices vertices)
+        {
+            var v0 = new float4(vertices[edge.index1], 1);
+            var v1 = new float4(vertices[edge.index2], 1);
+            return (IsStrictlyInsidePlanes (in planes, segment.planesOffset, segment.planesLength, v0) &&
+                    IsStrictlyOutsidePlanes(in planes, segment.planesOffset, segment.planesLength, v1)) ||
+                   (IsStrictlyOutsidePlanes(in planes, segment.planesOffset, segment.planesLength, v0) &&
+                    IsStrictlyInsidePlanes (in planes, segment.planesOffset, segment.planesLength, v1));
         }
         /*
         [MethodImpl(MethodImplOptions.AggressiveInlining)]

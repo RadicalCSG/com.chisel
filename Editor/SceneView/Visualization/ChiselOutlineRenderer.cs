@@ -69,7 +69,7 @@ namespace Chisel.Editors
                 if (s_Instance)
                     return s_Instance;
 
-				var foundInstances = UnityEngine.Object.FindObjectsByType<ChiselOutlineRenderer>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
+				var foundInstances = UnityEngine.Object.FindObjectsByType<ChiselOutlineRenderer>(FindObjectsInactive.Exclude);
                 if (foundInstances == null ||
                     foundInstances.Length == 0)
                 {

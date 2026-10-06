@@ -167,18 +167,67 @@ namespace Chisel.Core
             for (int i = 0; i < vertices.Length; i++)
                 vertices[i] -= center;
 
+            var uvPlanes = new float4[polygons.Length];
+            Array.Copy(planes, uvPlanes, polygons.Length);
+
+            var canRemapPolygons = true;
+            for (int i = 1; i < polygons.Length; i++)
+            {
+                if (polygons[i].firstEdge < polygons[i - 1].firstEdge)
+                {
+                    canRemapPolygons = false;
+                    break;
+                }
+            }
+
             Profiler.BeginSample("GetVertexFromIntersectingPlanes");
             for (int v = 0; v < vertices.Length; v++)
                 vertices[v] = GetVertexFromIntersectingPlanes(v);
             Profiler.EndSample();
 
             Profiler.BeginSample("RemoveDegenerateTopology");
-            RemoveDegenerateTopology(out _, out _);
+            RemoveDegenerateTopology(out _, out var polygonRemap);
             Profiler.EndSample();
 
             Profiler.BeginSample("CalculatePlanes");
             CalculatePlanes();
             Profiler.EndSample();
+
+            if (canRemapPolygons && surfaceArray.surfaces != null)
+            {
+                Profiler.BeginSample("UpdateUVMatrices");
+                for (int i = 0; i < polygons.Length; i++)
+                {
+                    var originalIndex = i;
+                    if (polygonRemap != null)
+                    {
+                        originalIndex = Array.IndexOf(polygonRemap, i);
+                        if (originalIndex < 0)
+                            continue;
+                    }
+                    if (originalIndex >= uvPlanes.Length ||
+                        originalIndex >= surfaceArray.surfaces.Length)
+                        continue;
+
+                    var uvPlane = uvPlanes[originalIndex];
+                    if (uvPlane.Equals(planes[i]))
+                        continue;
+
+                    // NOTE: the surface array is indexed the way it was before any polygons were removed,
+                    //       which is also how it was indexed on the way in - it is not compacted here.
+                    ref var surface = ref surfaceArray.surfaces[originalIndex];
+
+                    var localSpaceToUVPlaneSpace    = MathExtensions.GenerateLocalToPlaneSpaceMatrix(uvPlane);
+                    var planeSpaceToLocalSpace      = math.inverse(MathExtensions.GenerateLocalToPlaneSpaceMatrix(planes[i]));
+                    var newUVMatrix = math.mul(math.mul(
+                                                surface.surfaceDetails.UV0.ToFloat4x4(),
+                                                localSpaceToUVPlaneSpace),
+                                                planeSpaceToLocalSpace);
+
+                    surface.surfaceDetails.UV0 = new UVMatrix(newUVMatrix);
+                }
+                Profiler.EndSample();
+            }
 
             //Profiler.BeginSample("SplitNonPlanarPolygons");
             //SplitNonPlanarPolygons();
@@ -546,6 +595,10 @@ namespace Chisel.Core
             polygonRemap = null;
             const float kDistanceEpsilon = 0.0001f; // TODO: why??
 
+			var originalVertices = (float3[])vertices.Clone();
+			var originalHalfEdges = (HalfEdge[])halfEdges.Clone();
+			var originalPolygons = (Polygon[])polygons.Clone();
+
             // TODO: optimize
 
             // FIXME: This piece of code might not work correctly when you have vertices very close to each other, 
@@ -715,9 +768,17 @@ namespace Chisel.Core
             }
             for (int n = 0; n < newHalfEdges.Length; n++)
             {
-                var remap = edgeRemap[newHalfEdges[n].twinIndex];
-				Debug.Assert(remap >= 0 && remap < edgeRemap.Length, $"{remap} >= 0 && {remap} < {edgeRemap.Length}");
-				Debug.Assert(newHalfEdges[remap].vertexIndex != -1, $"halfEdges[{remap}].vertexIndex == -1");
+				var twinIndex = newHalfEdges[n].twinIndex;
+				var remap = (uint)twinIndex < (uint)edgeRemap.Length ? edgeRemap[twinIndex] : -1;
+				if ((uint)remap >= (uint)newHalfEdges.Length)
+				{
+					vertices = originalVertices;
+					halfEdges = originalHalfEdges;
+					polygons = originalPolygons;
+					edgeRemap = null;
+					polygonRemap = null;
+					return;
+				}
                 newHalfEdges[n].twinIndex = remap;
             }
             halfEdges = newHalfEdges;
