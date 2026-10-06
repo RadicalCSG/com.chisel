@@ -20,6 +20,9 @@ namespace Chisel.Editors
 		SerializedProperty surfaceDestinationFlagsProp;
 		SerializedProperty outputFlagsProp;
 		SerializedProperty physicsMaterialProp;
+		SerializedProperty hotspotLayoutProp;
+
+		static readonly GUIContent kHotspotContents = new("Hotspot Layout", "Surfaces with this material take their uvs from the tile of this layout that fits them best");
 
 		internal void OnEnable()
 		{
@@ -28,12 +31,14 @@ namespace Chisel.Editors
 				surfaceDestinationFlagsProp = null;
 				outputFlagsProp = null;
 				physicsMaterialProp = null;
+				hotspotLayoutProp = null;
 				return;
 			}
 
 			surfaceDestinationFlagsProp = serializedObject.FindProperty(ChiselSurfaceMetadata.kDestinationFlagsFieldName);
 			outputFlagsProp = serializedObject.FindProperty(ChiselSurfaceMetadata.kOutputFlagsName);
 			physicsMaterialProp = serializedObject.FindProperty(ChiselSurfaceMetadata.kPhysicsMaterialFieldName);
+			hotspotLayoutProp = serializedObject.FindProperty(ChiselSurfaceMetadata.kHotspotLayoutFieldName);
 		}
 
 		internal void OnDisable()
@@ -41,6 +46,7 @@ namespace Chisel.Editors
 			surfaceDestinationFlagsProp = null;
 			outputFlagsProp = null;
 			physicsMaterialProp = null;
+			hotspotLayoutProp = null;
 		}
 
 		void OnDestroy() { OnDisable(); }
@@ -75,6 +81,50 @@ namespace Chisel.Editors
 			EditorGUI.showMixedValue = false;
 		}
 
+		static Material MaterialOf(UnityEngine.Object metadata)
+		{
+			return AssetDatabase.LoadMainAssetAtPath(AssetDatabase.GetAssetPath(metadata)) as Material;
+		}
+
+		static ChiselHotspotLayout CreateLayoutFor(Material material)
+		{
+			var folder = material != null ? System.IO.Path.GetDirectoryName(AssetDatabase.GetAssetPath(material)) : "Assets";
+			var name   = material != null ? material.name + " Hotspots" : "Hotspot Layout";
+			var layout = CreateInstance<ChiselHotspotLayout>();
+			layout.texture = material != null ? material.mainTexture as Texture2D : null;
+			if (layout.texture != null)
+				layout.size = new Vector2Int(layout.texture.width, layout.texture.height);
+			layout.ResetCuts();
+			AssetDatabase.CreateAsset(layout, AssetDatabase.GenerateUniqueAssetPath(folder + "/" + name + ".asset"));
+			return layout;
+		}
+
+		// The layout, a new one made from the material's texture, and the editor
+		void HotspotGUI()
+		{
+			EditorGUI.BeginChangeCheck();
+			EditorGUILayout.PropertyField(hotspotLayoutProp, kHotspotContents);
+			var changed = EditorGUI.EndChangeCheck();
+			using (new EditorGUILayout.HorizontalScope())
+			{
+				GUILayout.FlexibleSpace();
+				if (hotspotLayoutProp.objectReferenceValue == null)
+				{
+					if (!hotspotLayoutProp.hasMultipleDifferentValues && GUILayout.Button("New Layout", EditorStyles.miniButton))
+					{
+						hotspotLayoutProp.objectReferenceValue = CreateLayoutFor(MaterialOf(target));
+						changed = true;
+					}
+				} else if (GUILayout.Button("Edit Layout", EditorStyles.miniButton))
+					ChiselHotspotLayoutWindow.Open((ChiselHotspotLayout)hotspotLayoutProp.objectReferenceValue);
+			}
+			if (!changed)
+				return;
+			serializedObject.ApplyModifiedProperties();
+			foreach (var metadata in targets)
+				ChiselHotspotLayoutWindow.RefreshSurfacesUsing(MaterialOf(metadata));
+		}
+
 		public override void OnInspectorGUI()
 		{
 			Profiler.BeginSample("OnInspectorGUI");
@@ -87,6 +137,10 @@ namespace Chisel.Editors
 					if (isRenderable && outputFlagsProp != null)
 					{
 						LightmapGUI();
+					}
+					if (isRenderable && hotspotLayoutProp != null)
+					{
+						HotspotGUI();
 					}
 					if (isCollidable)
 					{

@@ -12,6 +12,7 @@ namespace Chisel.Core
         public float2           p0, p1, p2, p3;
         public float2           min, max;       // its bounds in pixels
         public HotspotTileFlags flags;
+        public float            pixelsPerUnit;
 
         public readonly float2 Corner(int index)
         {
@@ -154,7 +155,7 @@ namespace Chisel.Core
         public static HotspotChoice Choose(NativeArray<HotspotTileData> tiles, in HotspotLayoutData layout, in HotspotShape shape, uint seed, int pinnedId, bool radial = false)
         {
             var best = new HotspotChoice { tile = -1, score = float.PositiveInfinity };
-            var size = (shape.max - shape.min) * layout.pixelsPerUnit;
+            var size = shape.max - shape.min;
             if (!(size.x > 0) || !(size.y > 0))
                 return best;
 
@@ -164,7 +165,7 @@ namespace Chisel.Core
                 {
                     if (tiles[t].id != pinnedId)
                         continue;
-                    var pinned = Score(tiles[t], shape, layout.pixelsPerUnit, true);
+                    var pinned = Score(tiles[t], shape, true);
                     pinned.tile = t;
                     return pinned;
                 }
@@ -175,7 +176,7 @@ namespace Chisel.Core
             {
                 if (!Candidate(tiles[t], shape, radial))
                     continue;
-                var choice = Score(tiles[t], shape, layout.pixelsPerUnit, false);
+                var choice = Score(tiles[t], shape, false);
                 if (choice.score < best.score) { best = choice; best.tile = t; ties = 1; }
                 else if (choice.score == best.score) ties++;
             }
@@ -188,7 +189,7 @@ namespace Chisel.Core
             {
                 if (!Candidate(tiles[t], shape, radial))
                     continue;
-                var choice = Score(tiles[t], shape, layout.pixelsPerUnit, false);
+                var choice = Score(tiles[t], shape, false);
                 if (choice.score != best.score)
                     continue;
                 if (pick-- == 0) { choice.tile = t; return choice; }
@@ -206,9 +207,11 @@ namespace Chisel.Core
         }
 
         // Distortion of the best way to put the surface on the tile: 2 |ln(s1 / s2)| + |ln(s1 s2)| / 2 for the scale
-        // factors s1, s2 of the map. A pinned tile may be turned or mirrored whatever its flags say.
-        static HotspotChoice Score(in HotspotTileData tile, in HotspotShape shape, float pixelsPerUnit, bool any)
+        // factors s1, s2 of the map. A tile that may not turn keeps the texture's up: a triangle goes corner to corner
+        // the way that turns it least. A pinned tile may be turned or mirrored whatever its flags say.
+        static HotspotChoice Score(in HotspotTileData tile, in HotspotShape shape, bool any)
         {
+            var pixelsPerUnit = tile.pixelsPerUnit;
             var best = new HotspotChoice { tile = -1, score = float.PositiveInfinity };
             var rotate = any || (tile.flags & HotspotTileFlags.AllowRotation) != 0;
             var mirror = any || (tile.flags & HotspotTileFlags.AllowMirror) != 0;
@@ -233,6 +236,7 @@ namespace Chisel.Core
             if (math.determinant(faceEdges) == 0)
                 return best;
             var inverse = math.inverse(faceEdges);
+            var bestTurn = float.PositiveInfinity;
             for (int flip = 0; flip < (mirror ? 2 : 1); flip++)
             {
                 for (int corner = 0; corner < 3; corner++)
@@ -243,11 +247,21 @@ namespace Chisel.Core
                     var map = math.mul(new float2x2(t1 - t0, t2 - t0), inverse);
                     SingularValues(map, out var s1, out var s2);
                     var score = Distortion(s1, s2);
-                    if (score < best.score)
+                    var turn  = rotate ? 0 : Turn(flip == 0 ? map : math.mul(map, new float2x2(-1, 0, 0, 1)));
+                    if (turn < bestTurn || (turn == bestTurn && score < best.score))
+                    {
+                        bestTurn = turn;
                         best = new HotspotChoice { tile = -1, score = score, corner = corner, mirrored = flip == 1 };
+                    }
                 }
             }
             return best;
+        }
+
+        // How far a map turns: the angle of the rotation in its polar decomposition
+        static float Turn(float2x2 m)
+        {
+            return math.abs(math.atan2(m.c0.y - m.c1.x, m.c0.x + m.c1.y));
         }
 
         static float Distortion(float s1, float s2)
@@ -311,6 +325,7 @@ namespace Chisel.Core
                 if (tile.points == null || (tile.points.Length != 3 && tile.points.Length != 4))
                     continue;
                 var t = new HotspotTileData { id = tile.id, cornerCount = tile.points.Length, flags = tile.flags,
+                                              pixelsPerUnit = tile.pixelsPerUnit > 0 ? tile.pixelsPerUnit : layout.pixelsPerUnit,
                                               min = new float2(float.PositiveInfinity), max = new float2(float.NegativeInfinity) };
                 var count = tile.points.Length;
                 var area  = 0.0f;

@@ -38,6 +38,7 @@ namespace Chisel.Core
 		public const string kDestinationFlagsFieldName = nameof(destinationFlags);
 		public const string kOutputFlagsName           = nameof(outputFlags);
 		public const string kPhysicsMaterialFieldName  = nameof(physicsMaterial);
+		public const string kHotspotLayoutFieldName    = nameof(hotspotLayout);
 
 		public SurfaceDestinationFlags destinationFlags = SurfaceDestinationFlags.Default;
 		public SurfaceOutputFlags	   outputFlags		= SurfaceOutputFlags.Default;

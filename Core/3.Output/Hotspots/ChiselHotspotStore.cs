@@ -23,6 +23,20 @@ namespace Chisel.Core
             return id;
         }
 
+        // An edited layout that surfaces use: every tree updates, and the changed hash maps every surface again
+        public static void LayoutChanged(ChiselHotspotLayout layout)
+        {
+            if (layout == null || !s_Ids.ContainsKey(layout))
+                return;
+            using var trees = new NativeList<CSGTree>(Allocator.Temp);
+            CompactHierarchyManager.GetAllTrees(trees);
+            foreach (var tree in trees)
+            {
+                if (tree.Valid)
+                    tree.SetDirty();
+            }
+        }
+
         // Every registered layout's tiles as they are now; layouts[id - 1] says where a layout's tiles are. Returns a hash
         // of all of it, which changes when a layout does.
         public static uint Gather(NativeList<HotspotTileData> tiles, NativeList<HotspotLayoutData> layouts)
