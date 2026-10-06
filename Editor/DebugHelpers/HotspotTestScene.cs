@@ -14,6 +14,8 @@ namespace Chisel.Editors
         const string kFolder   = "Assets/HotspotTest";
         const string kTexture  = kFolder + "/HotspotTest.png";
         const string kMaterial = kFolder + "/HotspotTest.mat";
+        const string kJson     = kFolder + "/HotspotTest.layout.json";
+        const string kLayout   = kFolder + "/HotspotTest.asset";
         const string kScene    = kFolder + "/HotspotTest.unity";
         const float  kRowSpacing = 14;
 
@@ -73,8 +75,41 @@ namespace Chisel.Editors
             material.SetTexture("_BaseMap", texture);
             material.SetColor("_BaseColor", Color.white);
             EditorUtility.SetDirty(material);
+
+            var layout = CreateLayout();
+            if (layout == null)
+                return null;
+            var metadata = material.HasMetadataOfType<ChiselSurfaceMetadata>()
+                         ? material.GetMetadataOfType<ChiselSurfaceMetadata>()
+                         : material.AddMetadataOfType<ChiselSurfaceMetadata>();
+            metadata.hotspotLayout = layout;
+            EditorUtility.SetDirty(metadata);
             AssetDatabase.SaveAssets();
             return material;
+        }
+
+        // The layout asset, read again from the sheet's json every build
+        static ChiselHotspotLayout CreateLayout()
+        {
+            var json = AssetDatabase.LoadAssetAtPath<TextAsset>(kJson);
+            if (json == null)
+            {
+                Debug.LogError($"No hotspot test layout at {kJson}");
+                return null;
+            }
+            var layout = AssetDatabase.LoadAssetAtPath<ChiselHotspotLayout>(kLayout);
+            if (layout == null)
+            {
+                layout = ScriptableObject.CreateInstance<ChiselHotspotLayout>();
+                AssetDatabase.CreateAsset(layout, kLayout);
+            }
+            if (!ChiselHotspotLayout.TryReadJson(json.text, layout, out var error))
+            {
+                Debug.LogError($"{kJson}: {error}");
+                return null;
+            }
+            EditorUtility.SetDirty(layout);
+            return layout;
         }
 
         static void AssignMaterial(ChiselGeneratorComponent generator)
