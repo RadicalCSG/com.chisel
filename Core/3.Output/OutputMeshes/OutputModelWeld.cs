@@ -71,12 +71,19 @@ namespace Chisel.Core
 
             var workIndex = new NativeParallelHashMap<long, int>(needles.Length * 2 + 16, Allocator.Temp);
             var work      = new NativeList<Working>(Allocator.Temp);
+            var opposites = new Opposites(TriangleCount(brushes), Allocator.Temp);
+            var fresh     = new NativeList<int3>(Allocator.Temp);
             try
             {
-                for (var changed = true; changed; )
+                KeyAll(brushes, work, workIndex, ref opposites);
+                for (bool changed = true, first = true; changed; first = false)
                 {
-                    changed  = CancelOpposites(brushes, work, workIndex, ref cancelled);
-                    changed |= WeldNeedles(brushes, bounds, needles, work, workIndex, ref split, ref paired);
+                    // after the first turn only the triangles the splits made can make a new pair
+                    var from = first ? 0 : opposites.found.Length;
+                    KeyFresh(brushes, work, workIndex, fresh, ref opposites);
+                    fresh.Clear();
+                    changed  = CancelOpposites(brushes, work, workIndex, ref opposites, from, ref cancelled);
+                    changed |= WeldNeedles(brushes, bounds, needles, work, workIndex, fresh, ref split, ref paired);
                 }
 
                 // The copies of the brushes it changed
@@ -109,6 +116,8 @@ namespace Chisel.Core
                 }
                 work.Dispose();
                 workIndex.Dispose();
+                opposites.Dispose();
+                fresh.Dispose();
                 bounds.Dispose();
                 needles.Dispose();
             }
@@ -116,7 +125,8 @@ namespace Chisel.Core
 
         // One pass over the needles; true when it dropped one
         static bool WeldNeedles(NativeList<BrushData> brushes, NativeArray<MinMaxAABB> bounds, NativeList<Needle> needles,
-                                NativeList<Working> work, NativeParallelHashMap<long, int> workIndex, ref int split, ref int paired)
+                                NativeList<Working> work, NativeParallelHashMap<long, int> workIndex, NativeList<int3> fresh,
+                                ref int split, ref int paired)
         {
             var changed = false;
             for (int i = 0; i < needles.Length; i++)
@@ -144,6 +154,8 @@ namespace Chisel.Core
                 {
                     Drop(brushes, work, workIndex, needle.brush, needle.surface, needle.triangle);
                     Split(brushes, work, workIndex, acrossBrush, acrossSurface, acrossTriangle, au, aw, ad, pm);
+                    fresh.Add(new int3(acrossBrush, acrossSurface, acrossTriangle));
+                    fresh.Add(new int3(acrossBrush, acrossSurface, TriangleCount(brushes, work, workIndex, acrossBrush, acrossSurface) - 1));
                     split++;
                     changed = true;
                 } else
@@ -180,7 +192,45 @@ namespace Chisel.Core
             return new TriangleKey { a = a, b = b, c = c };
         }
 
-        static bool CancelOpposites(NativeList<BrushData> brushes, NativeList<Working> work, NativeParallelHashMap<long, int> workIndex, ref int cancelled)
+        // Every keyed triangle; a key goes stale when a split rewrites its triangle or it is dropped, so a match is checked
+        struct Opposites
+        {
+            public NativeList<int3>        found;      // brush, surface, triangle
+            public NativeList<TriangleKey> keys;
+            public NativeList<bool>        gone;
+            public NativeParallelMultiHashMap<TriangleKey, int> byKey;
+
+            public Opposites(int capacity, Allocator allocator)
+            {
+                capacity = math.max(capacity, 16);
+                found = new NativeList<int3>(capacity, allocator);
+                keys  = new NativeList<TriangleKey>(capacity, allocator);
+                gone  = new NativeList<bool>(capacity, allocator);
+                byKey = new NativeParallelMultiHashMap<TriangleKey, int>(capacity, allocator);
+            }
+
+            public void Add(int3 triangle, float3 p0, float3 p1, float3 p2)
+            {
+                // NaN is never one position
+                if (!math.all(math.isfinite(p0) & math.isfinite(p1) & math.isfinite(p2)))
+                    return;
+                var key = KeyOf(Bits(p0), Bits(p1), Bits(p2));
+                byKey.Add(key, found.Length);
+                found.Add(triangle);
+                keys.Add(key);
+                gone.Add(false);
+            }
+
+            public void Dispose()
+            {
+                found.Dispose();
+                keys.Dispose();
+                gone.Dispose();
+                byKey.Dispose();
+            }
+        }
+
+        static int TriangleCount(NativeList<BrushData> brushes)
         {
             var count = 0;
             for (int b = 0; b < brushes.Length; b++)
@@ -191,18 +241,14 @@ namespace Chisel.Core
                 for (int s = 0; s < surfaces.Length; s++)
                 {
                     if (surfaces[s].decalEntityID == 0)
-                        count += TriangleCount(brushes, work, workIndex, b, s);
+                        count += surfaces[s].indices.Length / 3;
                 }
             }
-            if (count < 2)
-                return false;
+            return count;
+        }
 
-            NativeList<int3> found;         // brush, surface, triangle
-            using var _found = found = new NativeList<int3>(count, Allocator.Temp);
-            NativeList<TriangleKey> keys;
-            using var _keys = keys = new NativeList<TriangleKey>(count, Allocator.Temp);
-            NativeParallelMultiHashMap<TriangleKey, int> byKey;
-            using var _byKey = byKey = new NativeParallelMultiHashMap<TriangleKey, int>(count, Allocator.Temp);
+        static void KeyAll(NativeList<BrushData> brushes, NativeList<Working> work, NativeParallelHashMap<long, int> workIndex, ref Opposites opposites)
+        {
             for (int b = 0; b < brushes.Length; b++)
             {
                 if (!brushes[b].brushRenderBuffer.IsCreated)
@@ -212,55 +258,94 @@ namespace Chisel.Core
                 {
                     if (surfaces[s].decalEntityID != 0)
                         continue;
-                    var triangles = TriangleCount(brushes, work, workIndex, b, s);
-                    for (int t = 0; t < triangles; t++)
+                    var w = Find(workIndex, b, s);
+                    if (w >= 0)
                     {
-                        if (!Corners(brushes, work, workIndex, b, s, t, out var i0, out var i1, out var i2))
-                            continue;
-                        var p0 = Position(brushes, work, workIndex, b, s, i0);
-                        var p1 = Position(brushes, work, workIndex, b, s, i1);
-                        var p2 = Position(brushes, work, workIndex, b, s, i2);
-                        // NaN is never one position
-                        if (!math.all(math.isfinite(p0) & math.isfinite(p1) & math.isfinite(p2)))
-                            continue;
-                        var key = KeyOf(Bits(p0), Bits(p1), Bits(p2));
-                        byKey.Add(key, found.Length);
-                        found.Add(new int3(b, s, t));
-                        keys.Add(key);
+                        var copy = work[w];
+                        for (int t = 0; t + 2 < copy.indices.Length; t += 3)
+                        {
+                            if (copy.indices[t] < 0)
+                                continue;
+                            opposites.Add(new int3(b, s, t / 3), copy.collider[copy.indices[t]], copy.collider[copy.indices[t + 1]], copy.collider[copy.indices[t + 2]]);
+                        }
+                        continue;
                     }
+                    ref var indices   = ref surfaces[s].indices;
+                    ref var positions = ref surfaces[s].colliderVertices;
+                    for (int t = 0; t + 2 < indices.Length; t += 3)
+                        opposites.Add(new int3(b, s, t / 3), positions[indices[t]], positions[indices[t + 1]], positions[indices[t + 2]]);
                 }
             }
+        }
 
-            NativeArray<bool> gone;
-            using var _gone = gone = new NativeArray<bool>(found.Length, Allocator.Temp);
-            var changed = false;
-            for (int i = 0; i < found.Length; i++)
+        static void KeyFresh(NativeList<BrushData> brushes, NativeList<Working> work, NativeParallelHashMap<long, int> workIndex,
+                             NativeList<int3> fresh, ref Opposites opposites)
+        {
+            for (int f = 0; f < fresh.Length; f++)
             {
-                if (gone[i])
+                var triangle = fresh[f];
+                if (brushes[triangle.x].brushRenderBuffer.Value.surfaces[triangle.y].decalEntityID != 0)
                     continue;
-                var key = keys[i];
-                if (!byKey.TryGetFirstValue(KeyOf(key.a, key.c, key.b), out var j, out var iterator))
+                if (!Corners(brushes, work, workIndex, triangle.x, triangle.y, triangle.z, out var i0, out var i1, out var i2))
                     continue;
-                var mine = found[i];
+                opposites.Add(triangle, Position(brushes, work, workIndex, triangle.x, triangle.y, i0),
+                                        Position(brushes, work, workIndex, triangle.x, triangle.y, i1),
+                                        Position(brushes, work, workIndex, triangle.x, triangle.y, i2));
+            }
+        }
+
+        // Whether a keyed triangle is still there with that key
+        static bool Current(NativeList<BrushData> brushes, NativeList<Working> work, NativeParallelHashMap<long, int> workIndex, int3 triangle, TriangleKey key)
+        {
+            if (!Corners(brushes, work, workIndex, triangle.x, triangle.y, triangle.z, out var i0, out var i1, out var i2))
+                return false;
+            var p0 = Position(brushes, work, workIndex, triangle.x, triangle.y, i0);
+            var p1 = Position(brushes, work, workIndex, triangle.x, triangle.y, i1);
+            var p2 = Position(brushes, work, workIndex, triangle.x, triangle.y, i2);
+            return KeyOf(Bits(p0), Bits(p1), Bits(p2)).Equals(key);
+        }
+
+        static bool CancelOpposites(NativeList<BrushData> brushes, NativeList<Working> work, NativeParallelHashMap<long, int> workIndex,
+                                    ref Opposites opposites, int from, ref int cancelled)
+        {
+            var changed = false;
+            for (int i = from; i < opposites.found.Length; i++)
+            {
+                if (opposites.gone[i])
+                    continue;
+                var key = opposites.keys[i];
+                if (!opposites.byKey.TryGetFirstValue(KeyOf(key.a, key.c, key.b), out var j, out var iterator))
+                    continue;
+                var mine = opposites.found[i];
+                if (!Current(brushes, work, workIndex, mine, key))
+                {
+                    opposites.gone[i] = true;
+                    continue;
+                }
                 var flags = brushes[mine.x].brushRenderBuffer.Value.surfaces[mine.y].destinationFlags;
                 do
                 {
-                    if (j == i || gone[j])
+                    if (j == i || opposites.gone[j])
                         continue;
-                    var other = found[j];
+                    var other = opposites.found[j];
                     if (brushes[other.x].brushRenderBuffer.Value.surfaces[other.y].destinationFlags != flags)
                         continue;
-                    // two facing needles are WeldNeedles' to drop, and counted there
+                    if (!Current(brushes, work, workIndex, other, opposites.keys[j]))
+                    {
+                        opposites.gone[j] = true;
+                        continue;
+                    }
+                    // two facing needles are WeldNeedles' to drop
                     if (OutputWeld.OnOneLine(math.asfloat(key.a), math.asfloat(key.b), math.asfloat(key.c)))
                         break;
                     Drop(brushes, work, workIndex, mine.x, mine.y, mine.z);
                     Drop(brushes, work, workIndex, other.x, other.y, other.z);
-                    gone[i] = true;
-                    gone[j] = true;
+                    opposites.gone[i] = true;
+                    opposites.gone[j] = true;
                     cancelled++;
                     changed = true;
                     break;
-                } while (byKey.TryGetNextValue(out j, ref iterator));
+                } while (opposites.byKey.TryGetNextValue(out j, ref iterator));
             }
             return changed;
         }
