@@ -15,9 +15,27 @@ namespace Chisel.Core
 		: ScriptableObject
 #endif
 	{
-		public const string kMaterialsName = nameof(materials);
+		public const string kMaterialsName    = nameof(materials);
+		public const string kContentsListName = nameof(contentsList);
 
 		[SerializeField] private ChiselPipelineMaterialsSet materials;
+
+		// The project's contents list asset. This settings object only exists in the editor; a player gets the
+		// list from its preloaded assets instead (see ChiselContentsList.Instance).
+		[SerializeField] private ChiselContentsList contentsList;
+		public static ChiselContentsList ContentsList
+		{
+			get { return instance.contentsList; }
+			set
+			{
+				if (instance.contentsList == value)
+					return;
+				instance.contentsList = value;
+#if UNITY_EDITOR
+				instance.Save();
+#endif
+			}
+		}
 		public static ChiselPipelineMaterialsSet Materials
 		{
 			get
@@ -41,6 +59,7 @@ namespace Chisel.Core
 		public static Material DiscardedSurfacesMaterial	   { get { return Materials.discardedSurfacesMaterial; } set { Materials.discardedSurfacesMaterial = value; } }
 		public static Material ShadowCastingSurfacesMaterial   { get { return Materials.shadowCastingSurfacesMaterial; } set { Materials.shadowCastingSurfacesMaterial = value; } }
 		public static Material ShadowOnlySurfacesMaterial      { get { return Materials.shadowOnlySurfacesMaterial; } set { Materials.shadowOnlySurfacesMaterial = value; } }
+		public static Material ForceShadowOnlySurfacesMaterial { get { return Materials.forceShadowOnlySurfacesMaterial; } set { Materials.forceShadowOnlySurfacesMaterial = value; } }
 		public static Material ShadowReceivingSurfacesMaterial { get { return Materials.shadowReceivingSurfacesMaterial; } set { Materials.shadowReceivingSurfacesMaterial = value; } }
 		public static Material CollisionSurfacesMaterial       { get { return Materials.collisionSurfacesMaterial; } set { Materials.collisionSurfacesMaterial = value; } }
 		public static Material[] DebugVisualizationMaterials   { get { return Materials.DebugVisualizationMaterials; } }

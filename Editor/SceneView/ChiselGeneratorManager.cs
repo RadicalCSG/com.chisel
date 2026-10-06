@@ -9,7 +9,7 @@ namespace Chisel.Editors
     [Serializable]
     public class ChiselEditModeData : ISingletonData
     {
-        public ChiselPlacementToolInstance currentGenerator;
+        [System.NonSerialized] public ChiselPlacementToolInstance currentGenerator;
 
         public void OnAfterDeserialize() {}
         public void OnBeforeSerialize() {}
@@ -22,13 +22,11 @@ namespace Chisel.Editors
         [InitializeOnLoadMethod]
         static void InitializeEditModes()
         {
-            ReflectionExtensions.Initialize();
-
 			// First, for every generator definition we find the component type
 		    var generatorComponentLookup = new Dictionary<Type, Type>();
-            foreach (var type in ReflectionExtensions.AllNonAbstractClasses)
+            foreach (var type in TypeCache.GetTypesDerivedFrom<ChiselGeneratorComponent>())
             {
-                if (!ReflectionExtensions.HasBaseClass<ChiselGeneratorComponent>(type))
+                if (type.IsAbstract || !type.IsClass)
                     continue;
 
                 // Our generator component needs to inherit from ChiselDefinedGeneratorComponent<DefinitionType>
@@ -45,9 +43,17 @@ namespace Chisel.Editors
             }
 
             var generatorModeList = new List<ChiselPlacementToolInstance>();
+
+            // Both placement tool bases derive from ScriptableObject, which narrows the search to a
+            // list Unity already maintains instead of every class in every loaded assembly.
+            var placementToolTypes = TypeCache.GetTypesDerivedFrom<UnityEngine.ScriptableObject>();
+
             // Now, we find all BOUNDS placement tools, create a generic class for it, instantiate it, and register it
-            foreach (var placementToolType in ReflectionExtensions.AllNonAbstractClasses)
+            foreach (var placementToolType in placementToolTypes)
             {
+                if (placementToolType.IsAbstract || !placementToolType.IsClass)
+                    continue;
+
                 var baseType = placementToolType.GetGenericBaseClass(typeof(ChiselBoundsPlacementTool<>));
                 if (baseType == null)
                     continue;
@@ -84,8 +90,11 @@ namespace Chisel.Editors
             }
 
             // Now, we find all SHAPE placement tools, create a generic class for it, instantiate it, and register it
-            foreach (var placementToolType in ReflectionExtensions.AllNonAbstractClasses)
+            foreach (var placementToolType in placementToolTypes)
             {
+                if (placementToolType.IsAbstract || !placementToolType.IsClass)
+                    continue;
+
                 var baseType = placementToolType.GetGenericBaseClass(typeof(ChiselShapePlacementTool<>));
                 if (baseType == null)
                     continue;

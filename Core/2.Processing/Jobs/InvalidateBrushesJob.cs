@@ -28,8 +28,8 @@ namespace Chisel.Core
 
         public void Execute()
         {
-            if (rebuildTreeBrushIndexOrders.Length == 0 &&
-                rebuildTreeBrushIndexOrders.Length == brushCount && !needRemappingRef.Value)
+            if (rebuildTreeBrushIndexOrders.Length == 0 ||
+                rebuildTreeBrushIndexOrders.Length >= brushCount)
                 return;
 
             var nodeIDValueToNodeOrderOffset = nodeIDValueToNodeOrderOffsetRef.Value;
@@ -56,11 +56,13 @@ namespace Chisel.Core
                         continue;
 
                     // TODO: investigate how a brush can be "valid" but not be part of treeBrushes
-                    if (!brushes.Contains(otherBrushID))
+                    var otherBrushIDValue   = otherBrushID.slotIndex.index - nodeIDValueToNodeOrderOffset;
+                    if (otherBrushIDValue < 0 || otherBrushIDValue >= nodeIDValueToNodeOrder.Length)
+                        continue;
+                    var otherBrushOrder     = nodeIDValueToNodeOrder[otherBrushIDValue];
+                    if (otherBrushOrder < 0 || otherBrushOrder >= brushes.Length || brushes[otherBrushOrder] != otherBrushID)
                         continue;
 
-                    var otherBrushIDValue   = otherBrushID.slotIndex.index;
-                    var otherBrushOrder     = nodeIDValueToNodeOrder[otherBrushIDValue - nodeIDValueToNodeOrderOffset];
                     var otherIndexOrder     = new IndexOrder { compactNodeID = otherBrushID, nodeOrder = otherBrushOrder };
                     brushesThatNeedIndirectUpdateHashMap.Add(otherIndexOrder);
                 }

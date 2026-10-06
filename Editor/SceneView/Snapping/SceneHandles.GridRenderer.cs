@@ -121,7 +121,7 @@ namespace Chisel.Editors
             swizzledGridSpacing.y = gridSpacing.z;
             swizzledGridSpacing.z = gridSpacing.y;
 
-            float orthoInterpolation; // hack to get SceneView.m_Ortho.faded
+            float orthoInterpolation; // workaround to get SceneView.m_Ortho.faded
             {
                 const float kOneOverSqrt2 = 0.707106781f;
                 const float kMinOrtho = 0.2f;

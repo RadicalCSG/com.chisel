@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using Unity.Burst;
 using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
@@ -128,7 +129,10 @@ namespace Chisel.Core
                 brushMesh.halfEdges.Length < BrushMesh.kMinimumHalfEdges)
 				return BlobAssetReference<BrushMeshBlob>.Null;
 
-            brushMesh.CalculatePlanes();
+            // Generators give planes: a mesh that carries its planes (one per polygon) is registered with exactly those, and
+            // only a mesh without them gets planes fitted to its outline (Newell)
+            if (brushMesh.planes == null || brushMesh.planes.Length != brushMesh.polygons.Length)
+                brushMesh.CalculatePlanes();
             brushMesh.UpdateHalfEdgePolygonIndices();
 
             var srcVertices = brushMesh.vertices;
@@ -154,18 +158,15 @@ namespace Chisel.Core
             root.localBounds = localBounds;
             
             var dstHalfEdges = builder.Allocate(ref root.halfEdges, brushMesh.halfEdges.Length);
-            HashedVertices hashedVertices;
-			using var _hashedVertices = hashedVertices = new HashedVertices(srcVertices.Length, Allocator.Temp);
             for (int e = 0; e < brushMesh.halfEdges.Length; e++)
             {
                 ref var srcHalfEdge = ref brushMesh.halfEdges[e];
                 dstHalfEdges[e].twinIndex = srcHalfEdge.twinIndex;
-                dstHalfEdges[e].vertexIndex = hashedVertices.AddNoResize(srcVertices[srcHalfEdge.vertexIndex]);
+                dstHalfEdges[e].vertexIndex = srcHalfEdge.vertexIndex;
             }
-            //builder.Construct(ref root.localVertices, srcVertices);
-            var dstVertices = builder.Allocate(ref root.localVertices, hashedVertices.Length);
+            var dstVertices = builder.Allocate(ref root.localVertices, srcVertices.Length);
             for (int i = 0; i < dstVertices.Length; i++)
-                dstVertices[i] = hashedVertices[i];
+                dstVertices[i] = srcVertices[i];
             
             //builder.Construct(ref root.localPlanes, brushMesh.planes);
             root.localPlaneCount = brushMesh.planes.Length;
@@ -227,6 +228,12 @@ namespace Chisel.Core
             public BrushMesh.HalfEdge*  halfEdges;
             public int                  halfEdgesLength;
             public ulong                halfEdgesGCHandle;
+
+            // the mesh's own planes, one per polygon; null (length 0) when it has none, and then they are fitted
+            [NativeDisableUnsafePtrRestriction, NoAlias]
+            public float4*              planes;
+            public int                  planesLength;
+            public ulong                planesGCHandle;
         }
 
         static void RegisterBrushMeshes(in NativeList<BrushMeshPointers> brushMeshPointers, in NativeArray<CSGTreeBrush> nativeTreeBrushes, in NativeArray<BlobAssetReference<BrushMeshBlob>> brushMeshBlobs)
@@ -308,23 +315,41 @@ namespace Chisel.Core
                         var brushMesh    = rebuildTreeBrushOutlines[index];
                         var surfaceArray = surfaceArrays[index];
 
-                        var verticesPtr  = (float3*)UnsafeUtility.PinGCArrayAndGetDataAddress(brushMesh.vertices, out var verticesGCHandle);
-                        var polygonsPtr  = (BrushMesh.Polygon*)UnsafeUtility.PinGCArrayAndGetDataAddress(brushMesh.polygons, out var polygonsGCHandle);
-                        var halfEdgesPtr = (BrushMesh.HalfEdge*)UnsafeUtility.PinGCArrayAndGetDataAddress(brushMesh.halfEdges, out var halfEdgesGCHandle);
+                        var verticesHandle  = GCHandle.Alloc(brushMesh.vertices,  GCHandleType.Pinned);
+                        var polygonsHandle  = GCHandle.Alloc(brushMesh.polygons,  GCHandleType.Pinned);
+                        var halfEdgesHandle = GCHandle.Alloc(brushMesh.halfEdges, GCHandleType.Pinned);
+
+                        var verticesPtr  = (float3*)verticesHandle.AddrOfPinnedObject();
+                        var polygonsPtr  = (BrushMesh.Polygon*)polygonsHandle.AddrOfPinnedObject();
+                        var halfEdgesPtr = (BrushMesh.HalfEdge*)halfEdgesHandle.AddrOfPinnedObject();
 
                         var temp = brushMeshPointers[i];
 
                         temp.vertices            = verticesPtr;
                         temp.verticesLength      = brushMesh.vertices.Length;
-                        temp.verticesGCHandle    = verticesGCHandle;
-                
+                        temp.verticesGCHandle    = (ulong)GCHandle.ToIntPtr(verticesHandle).ToInt64();
+
                         temp.polygons            = polygonsPtr;
                         temp.polygonsLength      = brushMesh.polygons.Length;
-                        temp.polygonsGCHandle    = polygonsGCHandle;
-                
+                        temp.polygonsGCHandle    = (ulong)GCHandle.ToIntPtr(polygonsHandle).ToInt64();
+
                         temp.halfEdges           = halfEdgesPtr;
                         temp.halfEdgesLength     = brushMesh.halfEdges.Length;
-                        temp.halfEdgesGCHandle   = halfEdgesGCHandle;
+                        temp.halfEdgesGCHandle   = (ulong)GCHandle.ToIntPtr(halfEdgesHandle).ToInt64();
+
+                        // Generators give planes: they cross into the job with the rest of the mesh
+                        if (brushMesh.planes != null && brushMesh.planes.Length == brushMesh.polygons.Length)
+                        {
+                            var planesHandle = GCHandle.Alloc(brushMesh.planes, GCHandleType.Pinned);
+                            temp.planes          = (float4*)planesHandle.AddrOfPinnedObject();
+                            temp.planesLength    = brushMesh.planes.Length;
+                            temp.planesGCHandle  = (ulong)GCHandle.ToIntPtr(planesHandle).ToInt64();
+                        } else
+                        {
+                            temp.planes          = null;
+                            temp.planesLength    = 0;
+                            temp.planesGCHandle  = 0;
+                        }
 
                         brushMeshPointers[i] = temp;
                     }
@@ -382,9 +407,11 @@ namespace Chisel.Core
                     {
                         for (int i = 0; i < brushMeshPointers.Length; i++)
                         {
-                            UnsafeUtility.ReleaseGCObject(brushMeshPointers[i].verticesGCHandle);
-                            UnsafeUtility.ReleaseGCObject(brushMeshPointers[i].polygonsGCHandle);
-                            UnsafeUtility.ReleaseGCObject(brushMeshPointers[i].halfEdgesGCHandle);
+                            GCHandle.FromIntPtr(new IntPtr((long)brushMeshPointers[i].verticesGCHandle)).Free();
+                            GCHandle.FromIntPtr(new IntPtr((long)brushMeshPointers[i].polygonsGCHandle)).Free();
+                            GCHandle.FromIntPtr(new IntPtr((long)brushMeshPointers[i].halfEdgesGCHandle)).Free();
+                            if (brushMeshPointers[i].planesGCHandle != 0)
+                                GCHandle.FromIntPtr(new IntPtr((long)brushMeshPointers[i].planesGCHandle)).Free();
                         }
                     } finally { Profiler.EndSample(); }
                 }
@@ -438,27 +465,27 @@ namespace Chisel.Core
 
                 ref var root = ref builder.ConstructRoot<BrushMeshBlob>();
 
+                // The mesh's own vertices, as given (see ConvertToBrushMeshBlob): the planes below are made from these, so a weld
+                // here moved the planes the CSG is given
                 var dstHalfEdges    = builder.Allocate(ref root.halfEdges, brushMesh.halfEdgesLength);
-                HashedVertices hashedVertices;
-				using var _hashedVertices = hashedVertices  = new HashedVertices(brushMesh.verticesLength, Allocator.Temp);
                 for (int e = 0; e < brushMesh.halfEdgesLength; e++)
-                { 
+                {
                     ref var srcHalfEdge = ref brushMesh.halfEdges[e];
                     dstHalfEdges[e].twinIndex = srcHalfEdge.twinIndex;
-                    dstHalfEdges[e].vertexIndex = hashedVertices.AddNoResize(brushMesh.vertices[srcHalfEdge.vertexIndex]);
+                    dstHalfEdges[e].vertexIndex = srcHalfEdge.vertexIndex;
                 }
 
-                var uniqueVertexLength = hashedVertices.Length;
-                var dstVertices = builder.Allocate(ref root.localVertices, uniqueVertexLength);
-                if (uniqueVertexLength > 0)
+                var vertexLength = brushMesh.verticesLength;
+                var dstVertices = builder.Allocate(ref root.localVertices, vertexLength);
+                if (vertexLength > 0)
                 {
-                    var vertex = hashedVertices[0];
+                    var vertex = brushMesh.vertices[0];
                     var min = vertex;
                     var max = vertex;
                     dstVertices[0] = vertex;
-                    for (int i = 1; i < uniqueVertexLength; i++)
+                    for (int i = 1; i < vertexLength; i++)
                     {
-                        vertex = hashedVertices[i];
+                        vertex = brushMesh.vertices[i];
                         min = math.min(min, vertex);
                         max = math.max(max, vertex);
                         dstVertices[i] = vertex;
@@ -483,8 +510,16 @@ namespace Chisel.Core
 
                 root.localPlaneCount = brushMesh.polygonsLength;
                 var localPlanes = builder.Allocate(ref root.localPlanes, brushMesh.polygonsLength + brushMesh.halfEdgesLength);
-                for (int p = 0; p < brushMesh.polygonsLength; p++)
-                    localPlanes[p] = CalculatePlane(dstPolygons[p], in dstVertices, in dstHalfEdges);
+                // Generators give planes: the mesh's own when it has them, fitted to its outline only when it has none
+                if (brushMesh.planesLength == brushMesh.polygonsLength)
+                {
+                    for (int p = 0; p < brushMesh.polygonsLength; p++)
+                        localPlanes[p] = brushMesh.planes[p];
+                } else
+                {
+                    for (int p = 0; p < brushMesh.polygonsLength; p++)
+                        localPlanes[p] = CalculatePlane(dstPolygons[p], in dstVertices, in dstHalfEdges);
+                }
                 
                 var halfEdgePolygonIndices = builder.Allocate(ref root.halfEdgePolygonIndices, brushMesh.halfEdgesLength);
                 for (int p = 0; p < brushMesh.polygonsLength; p++)
@@ -666,28 +701,35 @@ namespace Chisel.Core
             }
 
             var brushMeshBlobRef = ConvertToBrushMeshBlob(brushMesh, in surfaceArray);
-            var brushMeshHash = brushMeshBlobRef.Value.GetHashCode();
-            if (oldBrushMeshHash != 0)
-            {
-                if (oldBrushMeshHash == brushMeshHash)
-				{
-					brushMeshBlobRef.Dispose(); // TODO: Would be better if we could calculate the hash BEFORE we create a blob ..
-					return oldBrushMeshHash;
-                }
-                DecreaseRefCount(oldBrushMeshHash);
-            }
+            return RegisterBrushMesh(ref ChiselMeshLookup.Value.brushMeshBlobCache, brushMeshBlobRef, oldBrushMeshHash);
+        }
 
-            ref var brushMeshBlobs = ref ChiselMeshLookup.Value.brushMeshBlobCache;
-            if (brushMeshBlobs.TryGetValue(brushMeshHash, out var refCountedBrushMeshBlob))
-			{
-                brushMeshBlobRef.Dispose(); // TODO: Would be better if we could calculate the hash BEFORE we create a blob ..
-				refCountedBrushMeshBlob.refCount++;
-			} else
-            { 
-                refCountedBrushMeshBlob = new RefCountedBrushMeshBlob { refCount = 1, brushMeshBlob = brushMeshBlobRef };
+        internal static Int32 FindOrAddBrushMesh([NoAlias] ref NativeParallelHashMap<int, RefCountedBrushMeshBlob> brushMeshBlobCache, [NoAlias] in BlobAssetReference<BrushMeshBlob> brushMeshBlobRef, Int32 avoid)
+        {
+            int brushMeshHash = BrushMeshBlob.CalculateHashCode(ref brushMeshBlobRef.Value);
+            while (true)
+            {
+                if (brushMeshHash == BrushMeshInstance.InvalidEntityID || brushMeshHash == avoid)
+                {
+                    unchecked { brushMeshHash++; }
+                    continue;
+                }
+                if (brushMeshBlobCache.TryGetValue(brushMeshHash, out var refCountedBrushMeshBlob))
+                {
+                    if (refCountedBrushMeshBlob.brushMeshBlob.IsCreated &&
+                        BrushMeshBlob.SameContent(ref refCountedBrushMeshBlob.brushMeshBlob.Value, ref brushMeshBlobRef.Value))
+                    {
+                        brushMeshBlobRef.Dispose();
+                        refCountedBrushMeshBlob.refCount++;
+                        brushMeshBlobCache[brushMeshHash] = refCountedBrushMeshBlob;
+                        return brushMeshHash;
+                    }
+                    unchecked { brushMeshHash++; }
+                    continue;
+                }
+                brushMeshBlobCache[brushMeshHash] = new RefCountedBrushMeshBlob { refCount = 1, brushMeshBlob = brushMeshBlobRef };
+                return brushMeshHash;
             }
-            brushMeshBlobs[brushMeshHash] = refCountedBrushMeshBlob;
-            return brushMeshHash;
         }
 
         internal static void RegisterBrushMeshHash([NoAlias] ref NativeParallelHashMap<int, RefCountedBrushMeshBlob> brushMeshBlobCache, Int32 newBrushMeshHash, Int32 oldBrushMeshHash = 0)
@@ -724,27 +766,19 @@ namespace Chisel.Core
 				return 0;
             }
 
-            int brushMeshHash = BrushMeshBlob.CalculateHashCode(ref brushMeshBlob);
             if (oldBrushMeshHash != 0)
             {
-                if (oldBrushMeshHash == brushMeshHash)
+                // the same mesh as before, bit for bit: it keeps its registration
+                if (brushMeshBlobCache.TryGetValue(oldBrushMeshHash, out var oldRegistration) &&
+                    oldRegistration.brushMeshBlob.IsCreated &&
+                    BrushMeshBlob.SameContent(ref oldRegistration.brushMeshBlob.Value, ref brushMeshBlob))
                 {
                     brushMeshBlobRef.Dispose();
 					return oldBrushMeshHash;
                 }
                 DecreaseRefCount(ref brushMeshBlobCache, oldBrushMeshHash);
             }
-
-            if (brushMeshBlobCache.TryGetValue(brushMeshHash, out var refCountedBrushMeshBlob))
-			{
-				brushMeshBlobRef.Dispose();
-				refCountedBrushMeshBlob.refCount++;
-			} else
-            {
-                refCountedBrushMeshBlob = new RefCountedBrushMeshBlob { refCount = 1, brushMeshBlob = brushMeshBlobRef };
-            }
-            brushMeshBlobCache[brushMeshHash] = refCountedBrushMeshBlob;
-            return brushMeshHash;
+            return FindOrAddBrushMesh(ref brushMeshBlobCache, brushMeshBlobRef, avoid: oldBrushMeshHash);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -807,19 +841,7 @@ namespace Chisel.Core
 					return BrushMeshInstance.InvalidInstance.BrushMeshID;
                 }
 
-                // FIXME: <-- generates null reference exception when generating capsule, but only when using job system?
-                // FIXME: should be impossible b/c we already checked above!
-                int brushMeshHash = brushMeshBlob.GetHashCode(); 
-
-                if (brushMeshBlobCache.TryGetValue(brushMeshHash, out var refCountedBrushMeshBlob))
-                {
-					brushMeshBlobRef.Dispose();
-                    refCountedBrushMeshBlob.refCount++;
-				} else
-                    refCountedBrushMeshBlob = new RefCountedBrushMeshBlob { refCount = 1, brushMeshBlob = brushMeshBlobRef };
-                brushMeshBlobCache[brushMeshHash] = refCountedBrushMeshBlob;
-
-                return brushMeshHash;
+                return BrushMeshManager.FindOrAddBrushMesh(ref brushMeshBlobCache, brushMeshBlobRef, avoid: BrushMeshInstance.InvalidEntityID);
             }
 
             public void Execute()

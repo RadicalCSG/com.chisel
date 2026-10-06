@@ -11,6 +11,9 @@ namespace Chisel.Components
         public const string kDocumentationBaseURL = "http://example.com/docs/"; // TODO: put somewhere else / put documentation online
         public const string kDocumentationExtension = ".html";
 
+        public const string kIconBasePath = "Packages/com.chisel/Editor Resources/Icons/";
+        public const string kIconExtension = ".png";
+
         public abstract string          ChiselNodeTypeName  { get; }
         public abstract CSGTreeNode     TopTreeNode         { get; protected set; }
         internal virtual bool           IsActive            { get { return isActiveAndEnabled; } }

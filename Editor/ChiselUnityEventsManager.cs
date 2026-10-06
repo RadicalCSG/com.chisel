@@ -32,9 +32,8 @@ namespace Chisel.Editors
             UnityEditor.PrefabUtility.prefabInstanceUpdated -= OnPrefabInstanceUpdated;
             UnityEditor.PrefabUtility.prefabInstanceUpdated += OnPrefabInstanceUpdated;
 
-            // OnGUI events for every visible list item in the HierarchyWindow.
-            UnityEditor.EditorApplication.hierarchyWindowItemOnGUI -= OnHierarchyWindowItemOnGUI;
-            UnityEditor.EditorApplication.hierarchyWindowItemOnGUI += OnHierarchyWindowItemOnGUI;
+            // Note: the hierarchy window is UI Toolkit based and never raises the hierarchyWindowItem*OnGUI
+            // events, so per-row decoration lives in ChiselHierarchyDecorator instead.
 
             // Triggered when the hierarchy changes
             UnityEditor.EditorApplication.hierarchyChanged -= OnHierarchyChanged;
@@ -243,39 +242,33 @@ namespace Chisel.Editors
                 return;
             try
             {
+                var interacting = GUIUtility.hotControl != 0;
+                ChiselColliderObjects.DeferBaking = interacting;
+
                 ChiselNodeHierarchyManager.Update();
 				ChiselModelManager.Instance.UpdateModels();
                 ChiselNodeEditorBase.HandleCancelEvent();
+
+                if (!interacting)
+                    ChiselColliderObjects.FlushDeferredBakes();
             }
-            catch (Exception ex) 
+            catch (Exception ex)
             {
                 Debug.LogException(ex);
             }
         }
 
-        private static void OnHierarchyWindowItemOnGUI(int instanceID, Rect selectionRect)
-        {
-            Profiler.BeginSample("OnHierarchyWindowItemOnGUI");
-            try
-            {
-                var obj = UnityEditor.EditorUtility.InstanceIDToObject(instanceID);
-                if (!obj)
-                    return;
-                var gameObject = (GameObject)obj;
-
-                // TODO: implement material drag & drop support for meshes
-
-                var component = gameObject.GetComponent<ChiselNodeComponent>();
-                if (!component)
-                    return;
-                Editors.ChiselHierarchyWindowManager.OnHierarchyWindowItemGUI(instanceID, component, selectionRect);
-            }
-            finally { Profiler.EndSample(); }
-        }
-
         private static void OnPlayModeStateChanged(PlayModeStateChange state)
         {
             ChiselNodeHierarchyManager.firstStart = false;
+
+            // OnEditorApplicationUpdate stops running once play mode is entered, so a bake deferred
+            // during a drag would never be flushed. Physics has to be correct before play starts.
+            if (state == PlayModeStateChange.ExitingEditMode)
+            {
+                ChiselColliderObjects.DeferBaking = false;
+                ChiselColliderObjects.FlushDeferredBakes();
+            }
         }
 
 

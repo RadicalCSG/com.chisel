@@ -14,12 +14,13 @@ namespace Chisel.Core
         public float3 normal;
         public float4 tangent;
         public float2 uv0;
+        public float2 uv1;
 	}
 
 	public struct SelectVertex
 	{
 		public float3 position;
-		public Vector4 instanceID;
+		public Vector4 entityID;
 	}
 
 	public struct SubMeshSection
@@ -44,6 +45,7 @@ namespace Chisel.Core
             new VertexAttributeDescriptor(VertexAttribute.Normal,    dimension: 3, stream: 0),
             new VertexAttributeDescriptor(VertexAttribute.Tangent,   dimension: 4, stream: 0),
             new VertexAttributeDescriptor(VertexAttribute.TexCoord0, dimension: 2, stream: 0),
+            new VertexAttributeDescriptor(VertexAttribute.TexCoord1, dimension: 2, stream: 0),
         };
 		public static ref readonly VertexAttributeDescriptor[] RenderDescriptors => ref kRenderDescriptors;
 

@@ -23,7 +23,7 @@ namespace Chisel.Core
         public int contentsIndex;
         public int colliderIndex;
         public int meshIndex;
-        public int objectIndex;
+        public ulong objectIndex;
         public ChiselMeshType type;
         public SubMeshSection subMeshSection;
 	}
@@ -100,7 +100,7 @@ namespace Chisel.Core
                         {
                             contentsIndex  = i,
                             meshIndex      = meshIndex,
-                            objectIndex    = debugVisualizationIndex,
+                            objectIndex    = (ulong)debugVisualizationIndex,
                             type           = ChiselMeshType.DebugVisualization,
 							subMeshSection = subMeshSection
 						};
@@ -112,12 +112,12 @@ namespace Chisel.Core
                     } else
                     if (subMeshSection.meshQuery.LayerParameterIndex == SurfaceParameterIndex.RenderMaterial)
                     {
-                        var renderIndex = (int)(subMeshSection.meshQuery.LayerQuery & SurfaceDestinationFlags.RenderShadowReceiveAndCasting);
+                        var renderIndex = subMeshSection.meshQuery.LayerQuery.RendererIndex();
                         var meshUpdate = new ChiselMeshUpdate
                         {
                             contentsIndex  = i,
                             meshIndex      = meshIndex,
-                            objectIndex    = renderIndex,
+                            objectIndex    = (ulong)renderIndex,
                             type           = ChiselMeshType.Render,
 						    subMeshSection = subMeshSection
                         };
@@ -169,23 +169,19 @@ namespace Chisel.Core
         where Worker : unmanaged, IChiselOutputMeshCopier
 	{
         // Read
-		[NoAlias, ReadOnly] public SubMeshSource subMeshSource;
-        [NoAlias, ReadOnly] public NativeList<ChiselMeshUpdate> meshUpdates;
 		[NoAlias, ReadOnly] public NativeArray<VertexAttributeDescriptor> descriptors;
+        [NoAlias, ReadOnly] public NativeList<ChiselMeshUpdate> meshUpdates;
+		[NoAlias, ReadOnly] public SubMeshSource subMeshSource;
 
 		// Read / Write
-		[NativeDisableParallelForRestriction,
-			NoAlias, NativeDisableContainerSafetyRestriction] public NativeList<Mesh.MeshData> outputMeshes;
+		[NativeDisableContainerSafetyRestriction] public Mesh.MeshDataArray meshDataArray;
 
         public void Execute(int inputMeshIndex)
         {
-            var update = meshUpdates[inputMeshIndex];
-            unsafe
-            {
-                ref var meshData = ref UnsafeUtility.ArrayElementAsRef<Mesh.MeshData>(outputMeshes.GetUnsafePtr(), update.meshIndex);
-                new Worker().CopyMesh(descriptors, update.subMeshSection, subMeshSource, ref meshData);
-            }
-		} 
+            var update   = meshUpdates[inputMeshIndex];
+            var meshData = meshDataArray[update.meshIndex];
+            new Worker().CopyMesh(descriptors, update.subMeshSection, subMeshSource, ref meshData);
+		}
     }
     
 	[BurstCompile(CompileSynchronously = true)]
@@ -212,7 +208,7 @@ namespace Chisel.Core
 		}
 	}
 
-	// TODO: use instanceIDs so we can also use this for picking
+	// TODO: use entityIDs so we can also use this for picking
 	[BurstCompile(CompileSynchronously = true, OptimizeFor = OptimizeFor.Performance)]
     struct FindTriangleBrushIndicesJob : IJobParallelForDefer
     {
@@ -220,7 +216,7 @@ namespace Chisel.Core
         [NoAlias, ReadOnly] public NativeList<ChiselMeshUpdate> meshUpdates;
         [NoAlias, ReadOnly] public NativeList<SubMeshDescriptions> subMeshDescriptions;
         [NoAlias, ReadOnly] public NativeArray<UnsafeList<SubMeshSurface>> subMeshSurfaces;
-		[NoAlias, ReadOnly] public CompactHierarchyManagerInstance.ReadOnlyInstanceIDLookup instanceIDLookup;
+		[NoAlias, ReadOnly] public CompactHierarchyManagerInstance.ReadOnlyEntityIDLookup entityIDLookup;
 
 		// Read / Write
 		[NoAlias, NativeDisableContainerSafetyRestriction] public NativeList<BlobAssetReference<SubMeshTriangleLookup>> subMeshTriangleLookups;
@@ -231,7 +227,7 @@ namespace Chisel.Core
 			subMeshTriangleLookups[update.contentsIndex] =
 				SubMeshTriangleLookup.Create(
                     update.subMeshSection, subMeshDescriptions, subMeshSurfaces, 
-                    instanceIDLookup);
+                    entityIDLookup);
 		}
     }        
 }

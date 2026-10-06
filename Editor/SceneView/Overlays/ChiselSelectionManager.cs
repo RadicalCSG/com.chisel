@@ -117,6 +117,8 @@ namespace Chisel.Editors
 			public Vector3              worldCameraOrigin;
 			public float                cameraDistance;
 			public GameObject           selectionGameObject;
+			public ChiselRenderObjects  renderObjects;
+			public int                  descriptionIndex;
         }
 
         static ExtraPickingData extraPickingData;
@@ -133,16 +135,19 @@ namespace Chisel.Editors
 				extraPickingDatas.Clear();
 				HandleUtility.GetOverlappingObjects(screenPos, outputObjects);
 				record = false;
+
+				extraPickingDatas.Sort(delegate (ExtraPickingData x, ExtraPickingData y)
+				{
+					return x.cameraDistance.CompareTo(y.cameraDistance);
+				});
+
 				outputIntersections.Clear();
 				foreach (var extraPickingData in extraPickingDatas)
 				{
 					var intersection = Convert(extraPickingData);
 					outputIntersections.Add(intersection);
 				}
-				outputIntersections.Sort(delegate (ChiselIntersection x, ChiselIntersection y)
-				{
-					return x.brushIntersection.surfaceIntersection.distance.CompareTo(y.brushIntersection.surfaceIntersection.distance);
-				});
+
 			}
             finally
 			{
@@ -181,7 +186,11 @@ namespace Chisel.Editors
             if (!model)
 				return ChiselIntersection.None;
 
-			var treeBrush = CSGTreeBrush.Find(extraPickingData.selectionDescription.brushNodeID);
+			var selectionDescription = extraPickingData.renderObjects != null
+									 ? extraPickingData.renderObjects.DescriptionForPicking(model, extraPickingData.descriptionIndex)
+									 : extraPickingData.selectionDescription;
+
+			var treeBrush = CSGTreeBrush.Find(selectionDescription.brushNodeID);
             if (treeBrush == CSGTreeBrush.Invalid)
 				return ChiselIntersection.None;
 
@@ -189,7 +198,7 @@ namespace Chisel.Editors
             if (!brushMeshBlob.IsCreated)
 				return ChiselIntersection.None;
 
-			var surfaceIndex = extraPickingData.selectionDescription.surfaceIndex;
+			var surfaceIndex = selectionDescription.surfaceIndex;
 
 			ref var brushMesh = ref brushMeshBlob.Value;
 			ref var planes = ref brushMesh.localPlanes;
@@ -247,7 +256,7 @@ namespace Chisel.Editors
 			int pickingOffset = args.pickingIndex;
 			int pickingIndex = ChiselRenderObjects.RenderPickingModels(args.NeedToRenderForPicking, pickingOffset, selectionOffsets);
 
-			UnityEditor.RenderPickingResult result = 
+			UnityEditor.RenderPickingResult result =
                 new(pickingIndex - pickingOffset,
 		            delegate(int localPickingIndex, Vector3 worldPos, float depth)
 			        {
@@ -257,7 +266,7 @@ namespace Chisel.Editors
                             var selectionOffset = selectionOffsets[i];
                             if (localPickingIndex < selectionOffset.offset)
                             {
-                                Debug.Log("picking index not found");
+								Debug.Log("picking index not found");
                                 return null;
                             }
 							if (localPickingIndex >= selectionOffset.offset + selectionOffset.Count)
@@ -269,10 +278,12 @@ namespace Chisel.Editors
                                 selectionDescription = selectionOffset.selectionIndexDescriptions[localPickingIndex - selectionOffset.offset],
                                 worldIntersectionPos = worldPos,
                                 worldCameraOrigin = cameraPos,
-								cameraDistance = (worldPos - cameraPos).magnitude
+								cameraDistance = (worldPos - cameraPos).magnitude,
+								renderObjects = selectionOffset.renderObjects,
+								descriptionIndex = localPickingIndex - selectionOffset.offset
 							};
 
-							var obj = Resources.InstanceIDToObject(extraPickingData.selectionDescription.instanceID);
+							var obj = Resources.EntityIdToObject(UnityEngine.EntityId.FromULong(extraPickingData.selectionDescription.entityID));
                             if (obj is MonoBehaviour monoBehaviour)
 								extraPickingData.selectionGameObject = monoBehaviour.gameObject;
                             else
@@ -283,7 +294,9 @@ namespace Chisel.Editors
                                 extraPickingDatas.Add(extraPickingData);
 							}
 
-							return obj;
+							return extraPickingData.selectionGameObject != null
+								 ? extraPickingData.selectionGameObject
+								 : obj;
 						}
 						Debug.Log("picking index not found");
 						return null;

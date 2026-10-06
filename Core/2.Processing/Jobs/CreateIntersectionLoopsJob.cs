@@ -22,9 +22,15 @@ namespace Chisel.Core
         [NoAlias, ReadOnly] public NativeList<BrushPair2> uniqueBrushPairs;
 
         // Read
+        // Gate the vertex weld on plane incidence (WeldIncidenceFilter); set from CSGManager's kUseIncidenceWeld.
+        [NoAlias, ReadOnly] public bool useIncidenceWeld;
         [NoAlias, ReadOnly] public NativeList<BlobAssetReference<BrushTreeSpacePlanes>>       brushTreeSpacePlaneCache;
         [NoAlias, ReadOnly] public NativeList<BlobAssetReference<BrushTreeSpaceVerticesBlob>> treeSpaceVerticesCache;
         [NoAlias, ReadOnly] public NativeStream.Reader                                  intersectingBrushesStream;
+
+        // Canonical vertices (see CanonicalVertices)
+        [NoAlias, ReadOnly] public CanonicalVertexStage                                 canonicalVertexStage;
+        [NoAlias, ReadOnly] public NativeList<BlobAssetReference<BrushesTouchedByBrush>> brushesTouchedByBrushCache;
 
         // Write
         [NoAlias, WriteOnly] public NativeListExtensions.ParallelWriterExt<float3>      outputSurfaceVertices;
@@ -45,7 +51,7 @@ namespace Chisel.Core
         //[NativeDisableContainerSafetyRestriction] HashedVertices                        hashedTreeSpaceVertices;
         //[NativeDisableContainerSafetyRestriction] HashedVertices                        snapHashedVertices;
                 
-        struct PlaneVertexIndexPair
+        internal struct PlaneVertexIndexPair
         {
             public ushort planeIndex;
             public ushort vertexIndex;
@@ -211,7 +217,10 @@ namespace Chisel.Core
                                 [NoAlias] ref HashedVertices            hashedTreeSpaceVertices,
                                 [NoAlias] ref HashedVertices            snapHashedVertices,
                                 [NoAlias] NativeArray<PlaneVertexIndexPair> foundIndices0,
-                                ref int                                     foundIndices0Length)
+                                ref int foundIndices0Length,
+                                in WeldIncidenceFilter weldFilter = default,
+                                in CanonicalVertices canonical = default,
+                                int canonicalNodeOrder = -1)
 		{
             NativeArray<float4> localVertices;
 			using var _localVertices = localVertices = new NativeArray<float4>(usedVertices0Length, Allocator.Temp);
@@ -250,8 +259,9 @@ namespace Chisel.Core
                     continue;
 
                 var treeSpaceVertex = math.mul(nodeToTreeSpaceMatrix1, localVertices[j]).xyz;
-                treeSpaceVertex = snapHashedVertices[snapHashedVertices.AddNoResize(treeSpaceVertex)];
-                var treeSpaceVertexIndex = hashedTreeSpaceVertices.AddNoResize(treeSpaceVertex);
+                treeSpaceVertex = canonical.Canonicalize(treeSpaceVertex, canonicalNodeOrder, CanonicalVertexSite.InsideVertex);
+                treeSpaceVertex = snapHashedVertices[snapHashedVertices.AddNoResize(treeSpaceVertex, in weldFilter)];
+                var treeSpaceVertexIndex = hashedTreeSpaceVertices.AddNoResize(treeSpaceVertex, in weldFilter);
                 for (int i = segment.x; i < segment.x + segment.y; i++)
                 {
                     var planeIndex = vertexIntersectionPlanes[i];
@@ -307,7 +317,10 @@ namespace Chisel.Core
                                       NativeArray<PlaneVertexIndexPair> foundIndices0,
                                       ref int                           foundIndices0Length,
                                       NativeArray<PlaneVertexIndexPair> foundIndices1,
-                                      ref int                           foundIndices1Length)
+                                      ref int                           foundIndices1Length,
+                                      in WeldIncidenceFilter            weldFilter = default,
+                                      in CanonicalVertices              canonical = default,
+                                      int                               canonicalNodeOrder = -1)
         {
             int foundVerticesCount = usedPlanePairs1Length * intersectingPlanes0Length;
             NativeArray<float4> foundVertices;
@@ -412,8 +425,9 @@ namespace Chisel.Core
                 // TODO: should be having a Loop for each plane that intersects this vertex, and add that vertex 
                 //       to ensure they are identical
                 var treeSpaceVertex         = math.mul(nodeToTreeSpaceMatrix0, localVertex).xyz;
-                treeSpaceVertex             = snapHashedVertices[snapHashedVertices.AddNoResize(treeSpaceVertex)];
-                var treeSpaceVertexIndex    = hashedTreeSpaceVertices.AddNoResize(treeSpaceVertex);
+                treeSpaceVertex = canonical.Canonicalize(treeSpaceVertex, canonicalNodeOrder, CanonicalVertexSite.PairIntersection);
+                treeSpaceVertex = snapHashedVertices[snapHashedVertices.AddNoResize(treeSpaceVertex, in weldFilter)];
+                var treeSpaceVertexIndex = hashedTreeSpaceVertices.AddNoResize(treeSpaceVertex, in weldFilter);
 
                 { 
                     // TODO: optimize
@@ -484,6 +498,125 @@ namespace Chisel.Core
         }
         readonly static readonly Comparer kComparer = new Comparer();
         */
+        internal void AddFullSurfaceLoopsForAlignedFaces(
+                            [NoAlias, ReadOnly] ref BlobArray<float3>    treeSpaceVertices0,
+                            [NoAlias, ReadOnly] ref BrushTreeSpacePlanes brushTreeSpacePlanes0,
+                            [NoAlias, ReadOnly] ref BrushTreeSpacePlanes brushTreeSpacePlanes1,
+                            [NoAlias, ReadOnly] NativeArray<SurfaceInfo> surfaceInfos0, int surfaceInfosLength0,
+                            [NoAlias, ReadOnly] NativeArray<int>         intersectingPlaneIndices0, int intersectingPlanesLength0,
+                            int                                         facePlaneCount1,
+                            [NoAlias] NativeArray<PlaneVertexIndexPair>  foundIndices0, ref int foundIndices0Length,
+                            [NoAlias] ref HashedVertices                 hashedTreeSpaceVertices,
+                            [NoAlias] ref HashedVertices                 snapHashedVertices,
+                            in WeldIncidenceFilter                       weldFilter = default,
+                            in CanonicalVertices                         canonical = default,
+                            int                                          canonicalNodeOrder = -1)
+        {
+            ref var planes0 = ref brushTreeSpacePlanes0.treeSpacePlanes;
+            ref var planes1 = ref brushTreeSpacePlanes1.treeSpacePlanes;
+            facePlaneCount1 = math.min(facePlaneCount1, planes1.Length);
+            if (facePlaneCount1 < 4)     // fewer than a tetrahedron's faces cannot bound a volume
+                return;
+
+            for (int i = 0; i < intersectingPlanesLength0; i++)
+            {
+                var planeIndex = intersectingPlaneIndices0[i];
+                if (planeIndex < 0 || planeIndex >= surfaceInfosLength0 || planeIndex >= planes0.Length)
+                    continue;
+
+                var category = (CategoryIndex)surfaceInfos0[planeIndex].interiorCategory;
+
+                if (category != CategoryIndex.Aligned &&
+                    category != CategoryIndex.ReverseAligned)
+                    continue;
+
+                // leave any face that already got a real crossing loop completely alone
+                int alreadyFound = 0;
+                for (int f = 0; f < foundIndices0Length; f++)
+                {
+                    if (foundIndices0[f].planeIndex == planeIndex)
+                        alreadyFound++;
+                }
+                if (alreadyFound >= 3)
+                    continue;
+
+                var facePlane = planes0[planeIndex];
+
+                float4 counterpartProbe = default;
+                bool haveCounterpartProbe = false;
+                for (int v = 0; v < treeSpaceVertices0.Length; v++)
+                {
+                    var candidate = new float4(treeSpaceVertices0[v], 1);
+                    if (math.abs(math.dot(facePlane, candidate)) > kFatPlaneWidthEpsilon)
+                        continue;
+                    counterpartProbe = candidate;
+                    haveCounterpartProbe = true;
+                    break;
+                }
+                if (!haveCounterpartProbe)
+                    continue;
+
+                int coplanarPlane1 = -1;
+                float coplanarDistance = float.MaxValue;
+                for (int q = 0; q < facePlaneCount1; q++)
+                {
+                    if (math.abs(math.dot(facePlane.xyz, planes1[q].xyz)) < CSGConstants.kNormalDotAlignEpsilon)
+                        continue;
+                    var distance = math.abs(math.dot(planes1[q], counterpartProbe));
+                    if (distance < coplanarDistance)
+                    {
+                        coplanarDistance = distance;
+                        coplanarPlane1 = q;
+                    }
+                }
+
+                // every vertex of this face must lie inside the other brush
+                int onFace = 0;
+                bool covered = true;
+                for (int v = 0; v < treeSpaceVertices0.Length && covered; v++)
+                {
+                    var vertex = new float4(treeSpaceVertices0[v], 1);
+                    if (math.abs(math.dot(facePlane, vertex)) > kFatPlaneWidthEpsilon)
+                        continue;
+                    onFace++;
+                    for (int q = 0; q < facePlaneCount1; q++)
+                    {
+                        if (q == coplanarPlane1)
+                            continue;
+                        if (math.dot(planes1[q], vertex) > kFatPlaneWidthEpsilon)
+                        { covered = false; break; }
+                    }
+                }
+                if (!covered || onFace < 3)
+                    continue;
+
+                // the face's own vertices become the loop; GenerateLoop sorts them around the normal
+                for (int v = 0; v < treeSpaceVertices0.Length; v++)
+                {
+                    if (foundIndices0Length >= foundIndices0.Length)
+                        return;
+                    var treeSpaceVertex = treeSpaceVertices0[v];
+                    if (math.abs(math.dot(facePlane, new float4(treeSpaceVertex, 1))) > kFatPlaneWidthEpsilon)
+                        continue;
+                    treeSpaceVertex = canonical.Canonicalize(treeSpaceVertex, canonicalNodeOrder, CanonicalVertexSite.AlignedFace);
+                    treeSpaceVertex = snapHashedVertices[snapHashedVertices.AddNoResize(treeSpaceVertex, in weldFilter)];
+                    var vertexIndex = hashedTreeSpaceVertices.AddNoResize(treeSpaceVertex, in weldFilter);
+                    bool duplicate = false;
+                    for (int f = 0; f < foundIndices0Length; f++)
+                    {
+                        if (foundIndices0[f].vertexIndex == vertexIndex &&
+                            foundIndices0[f].planeIndex == planeIndex)
+                        { duplicate = true; break; }
+                    }
+                    if (duplicate)
+                        continue;
+                    foundIndices0[foundIndices0Length] = new PlaneVertexIndexPair
+                    { planeIndex = (ushort)planeIndex, vertexIndex = vertexIndex };
+                    foundIndices0Length++;
+                }
+            }
+        }
+
 		[MethodImpl(MethodImplOptions.NoInlining)]
         void GenerateLoop(IndexOrder brushIndexOrder0,
                           IndexOrder brushIndexOrder1,
@@ -810,6 +943,20 @@ namespace Chisel.Core
             UnityEngine.Debug.Assert(brushPairIntersection0.brushIndexOrder.compactNodeID == brushIndexOrder0.compactNodeID);
             UnityEngine.Debug.Assert(brushPairIntersection1.brushIndexOrder.compactNodeID == brushIndexOrder1.compactNodeID);
 
+            var weldFilter = WeldIncidenceFilter.Disabled;
+            if (useIncidenceWeld &&
+                brushTreeSpacePlaneCache[brushIndexOrder0.nodeOrder].IsCreated &&
+                brushTreeSpacePlaneCache[brushIndexOrder1.nodeOrder].IsCreated)
+                weldFilter = WeldIncidenceFilter.Create(ref brushTreeSpacePlaneCache[brushIndexOrder0.nodeOrder].Value.treeSpacePlanes, brushPairIntersection0.surfaceInfosLength,
+                                                        ref brushTreeSpacePlaneCache[brushIndexOrder1.nodeOrder].Value.treeSpacePlanes, brushPairIntersection1.surfaceInfosLength);
+
+            // Canonical vertices: every vertex this pair creates lies on its first brush, and that brush's touching
+            // brushes include the second, so the first brush is where each vertex's key is gathered.
+            var canonical = CanonicalVertices.Create(canonicalVertexStage, brushTreeSpacePlaneCache, brushesTouchedByBrushCache);
+            var canonicalNodeOrder = brushIndexOrder0.nodeOrder;
+            if (canonical.DecidesLoopIdentity)
+                weldFilter = WeldIncidenceFilter.SameVertexOnly;
+
             int insideVerticesStream0Capacity   = math.max(1, brushPairIntersection0.usedVerticesLength);
             int insideVerticesStream1Capacity   = math.max(1, brushPairIntersection1.usedVerticesLength);
             int intersectionStream0Capacity     = math.max(1, brushPairIntersection1.usedPlanePairsLength) * brushPairIntersection0.localSpacePlanes0Length;
@@ -841,14 +988,19 @@ namespace Chisel.Core
 
             // TODO: fill them with original brush vertices so that they're always snapped to these
             
+            // With canonical positions the brush corners here would be raw ones, and snapping a canonical vertex onto
+            // them would undo it; a canonical corner that is the same vertex has the same bits anyway.
+            if (canonical.MovesVertices)
+            {
+            } else
             if (brushIndexOrder0.nodeOrder < brushIndexOrder1.nodeOrder)
             {
                 snapHashedVertices.AddUniqueVertices(ref treeSpaceVerticesCache[brushIndexOrder0.nodeOrder].Value.treeSpaceVertices);
-                snapHashedVertices.ReplaceIfExists(ref treeSpaceVerticesCache[brushIndexOrder1.nodeOrder].Value.treeSpaceVertices);
+                snapHashedVertices.ReplaceIfExists(ref treeSpaceVerticesCache[brushIndexOrder1.nodeOrder].Value.treeSpaceVertices, in weldFilter);
             } else
             {
                 snapHashedVertices.AddUniqueVertices(ref treeSpaceVerticesCache[brushIndexOrder1.nodeOrder].Value.treeSpaceVertices);
-                snapHashedVertices.ReplaceIfExists(ref treeSpaceVerticesCache[brushIndexOrder0.nodeOrder].Value.treeSpaceVertices);
+                snapHashedVertices.ReplaceIfExists(ref treeSpaceVerticesCache[brushIndexOrder0.nodeOrder].Value.treeSpaceVertices, in weldFilter);
             }
 
 
@@ -878,7 +1030,7 @@ namespace Chisel.Core
                                                 ref hashedTreeSpaceVertices,
                                                 ref snapHashedVertices,
                                                 foundIndices0, ref foundIndices0Length,
-                                                foundIndices1, ref foundIndices1Length);
+                                                foundIndices1, ref foundIndices1Length, in weldFilter, in canonical, canonicalNodeOrder);
                 }
 
                 if (brushPairIntersection0.usedPlanePairsLength > 0)
@@ -897,7 +1049,7 @@ namespace Chisel.Core
                                                 ref hashedTreeSpaceVertices,
                                                 ref snapHashedVertices,
                                                 foundIndices1, ref foundIndices1Length,
-                                                foundIndices0, ref foundIndices0Length);
+                                                foundIndices0, ref foundIndices0Length, in weldFilter, in canonical, canonicalNodeOrder);
                 }
             }
 
@@ -918,7 +1070,7 @@ namespace Chisel.Core
                                     float4x4.identity,
                                     ref hashedTreeSpaceVertices,
                                     ref snapHashedVertices,
-                                    foundIndices0, ref foundIndices0Length);
+                                    foundIndices0, ref foundIndices0Length, in weldFilter, in canonical, canonicalNodeOrder);
             }
 
             // Find all vertices of brush1 that are inside brush0, and put their intersections into the appropriate loops
@@ -938,13 +1090,38 @@ namespace Chisel.Core
                                     brushPairIntersection1.toOtherBrushSpace,
                                     ref hashedTreeSpaceVertices,
                                     ref snapHashedVertices,
-                                    foundIndices1, ref foundIndices1Length);
+                                    foundIndices1, ref foundIndices1Length, in weldFilter, in canonical, canonicalNodeOrder);
             }
 
 
             ref var brushTreeSpacePlanes0 = ref brushTreeSpacePlaneCache[brushIndexOrder0.nodeOrder].Value;
             ref var brushTreeSpacePlanes1 = ref brushTreeSpacePlaneCache[brushIndexOrder1.nodeOrder].Value;
 
+            // Give a coplanar aligned face a loop to carry its category on; see the method comment.
+            if (intersection.type == IntersectionType.Intersection &&
+                treeSpaceVerticesCache[brushIndexOrder0.nodeOrder].IsCreated &&
+                treeSpaceVerticesCache[brushIndexOrder1.nodeOrder].IsCreated &&
+                brushTreeSpacePlaneCache[brushIndexOrder0.nodeOrder].IsCreated &&
+                brushTreeSpacePlaneCache[brushIndexOrder1.nodeOrder].IsCreated)
+            {
+                AddFullSurfaceLoopsForAlignedFaces(
+                    ref treeSpaceVerticesCache[brushIndexOrder0.nodeOrder].Value.treeSpaceVertices,
+                    ref brushTreeSpacePlanes0, ref brushTreeSpacePlanes1,
+                    brushPairIntersection0.surfaceInfos, brushPairIntersection0.surfaceInfosLength,
+                    brushPairIntersection0.localSpacePlaneIndices0, brushPairIntersection0.localSpacePlaneIndices0Length,
+                    brushPairIntersection1.surfaceInfosLength,
+                    foundIndices0, ref foundIndices0Length,
+                    ref hashedTreeSpaceVertices, ref snapHashedVertices, in weldFilter, in canonical, canonicalNodeOrder);
+
+                AddFullSurfaceLoopsForAlignedFaces(
+                    ref treeSpaceVerticesCache[brushIndexOrder1.nodeOrder].Value.treeSpaceVertices,
+                    ref brushTreeSpacePlanes1, ref brushTreeSpacePlanes0,
+                    brushPairIntersection1.surfaceInfos, brushPairIntersection1.surfaceInfosLength,
+                    brushPairIntersection1.localSpacePlaneIndices0, brushPairIntersection1.localSpacePlaneIndices0Length,
+                    brushPairIntersection0.surfaceInfosLength,
+                    foundIndices1, ref foundIndices1Length,
+                    ref hashedTreeSpaceVertices, ref snapHashedVertices, in weldFilter, in canonical, canonicalNodeOrder);
+            }
 
             if (foundIndices0Length >= 3)
             {

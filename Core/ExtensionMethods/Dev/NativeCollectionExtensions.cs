@@ -468,21 +468,21 @@ namespace Chisel
 		public static int IndexOf<T, U>([ReadOnly] this NativeArray<T> src, U value) where T : unmanaged, IEquatable<U>
 		{
 			CollectionChecks.CheckReadAndThrow(src);
-			unsafe { return NativeArrayExtensions.IndexOf<T, U>(src.GetUnsafeReadOnlyPtr(), src.Length, value); }
+			unsafe { return NativeArrayExtensions.IndexOf<T, U>((T*)src.GetUnsafeReadOnlyPtr(), src.Length, value); }
 		}
 
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public static int IndexOf<T, U>([ReadOnly] this NativeArray<T>.ReadOnly src, U value) where T : unmanaged, IEquatable<U>
 		{
 			CollectionChecks.CheckReadAndThrow(src);
-			unsafe { return NativeArrayExtensions.IndexOf<T, U>(src.GetUnsafeReadOnlyPtr(), src.Length, value); }
+			unsafe { return NativeArrayExtensions.IndexOf<T, U>((T*)src.GetUnsafeReadOnlyPtr(), src.Length, value); }
 		}
 
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public static int IndexOf<T, U>([ReadOnly] this NativeSlice<T> src, U value) where T : unmanaged, IEquatable<U>
 		{
 			CollectionChecks.CheckReadAndThrow(src);
-			unsafe { return NativeArrayExtensions.IndexOf<T, U>(src.GetUnsafeReadOnlyPtr(), src.Length, value); }
+			unsafe { return NativeArrayExtensions.IndexOf<T, U>((T*)src.GetUnsafeReadOnlyPtr(), src.Length, value); }
 		}
 		/*
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -512,7 +512,7 @@ namespace Chisel
 		public static int IndexOf<T, U>([ReadOnly] ref this BlobArray<T> src, U value) where T : unmanaged, IEquatable<U>
 		{
 			CollectionChecks.CheckReadAndThrow(ref src);
-			unsafe { return NativeArrayExtensions.IndexOf<T, U>(src.GetUnsafePtr(), src.Length, value); }
+			unsafe { return NativeArrayExtensions.IndexOf<T, U>((T*)src.GetUnsafePtr(), src.Length, value); }
 		}
 
 

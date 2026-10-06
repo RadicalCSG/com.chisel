@@ -29,8 +29,11 @@ namespace Chisel.Core
 	{
 		public SurfaceDestinationFlags      destinationFlags;
 		public SurfaceDestinationParameters destinationParameters;
+		public SurfaceOutputFlags           outputFlags;
         public UVMatrix UV0;
         public float4   localPlane;
+        // The brush's surface this polygon shows (its index in the generator's surface array)
+        public int      descriptionIndex;
     }
 
     struct BasePolygonsBlob

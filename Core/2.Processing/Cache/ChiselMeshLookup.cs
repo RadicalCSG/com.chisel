@@ -53,7 +53,7 @@ namespace Chisel.Core
                         brushMeshBlobCache = default;
                     }
                 }
-				// FIXME: temporary hack
+				// FIXME: temporary
 				CompactHierarchyManager.Destroy();
 			}
         }

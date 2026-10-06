@@ -164,14 +164,14 @@ namespace Chisel.Core
     struct SurfaceInfo
     {
         public ushort       basePlaneIndex;
-        public byte         interiorCategory;
+        public ushort       interiorCategory;
     }
 
     struct IndexSurfaceInfo
     {
         public IndexOrder   brushIndexOrder;
         public ushort       basePlaneIndex;
-        public byte         interiorCategory;
+        public ushort       interiorCategory;
     }
 
     struct BrushIntersectionLoop

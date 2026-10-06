@@ -3,6 +3,7 @@ using System;
 using Unity.Collections;
 using Unity.Entities;
 using Unity.Mathematics;
+using Unity.Burst;
 
 using Debug = UnityEngine.Debug;
 
@@ -11,8 +12,13 @@ namespace Chisel.Core
     internal struct ChiselSurfaceRenderBuffer
     {
         public int                          surfaceIndex;
+        public int                          baseSurfaceIndex;
+        // The decal drawn in this surface, which clicking it selects; 0 for the brush's own surfaces
+        public ulong                        decalEntityID;
 		public SurfaceDestinationFlags      destinationFlags;
 		public SurfaceDestinationParameters destinationParameters;
+		// How many lightmap texels the surface gets (SurfaceOutputFlags.NoLightmap, SingleLightmapTexel)
+		public SurfaceOutputFlags           outputFlags;
 
         public int    vertexCount;
         public int    indexCount;
@@ -21,11 +27,16 @@ namespace Chisel.Core
         public uint   surfaceHashValue;
 
         public MinMaxAABB aabb;  
+        // The rectangle the surface's lightmap coordinates (RenderVertex.uv1) span in its plane: the lowest in xy, the highest in zw
+        public float4 lightmapChart;
 
         public BlobArray<Int32>		   indices;
         public BlobArray<RenderVertex> renderVertices;
 		public BlobArray<SelectVertex> selectVertices;
 		public BlobArray<float3>	   colliderVertices;
+		// The triangles of three distinct float positions on one line the weld left (OutputWeld.FindNeedles), by index:
+		// what the weld across a model starts from (OutputModelWeld)
+		public BlobArray<Int32>		   needles;
 		
 		public readonly void FixUpOrdering(NativeList<Int32>		indices,
 										   NativeList<float3>		colliderVertices,
@@ -109,6 +120,14 @@ namespace Chisel.Core
 			}
 		}
 
+		[BurstDiscard]
+		static void LogInconsistentVertexStreams(int surfaceIndex, int colliderCount, int selectCount, int renderCount, int indexCount)
+		{
+			Debug.LogError($"Chisel surface {surfaceIndex} produced mismatched vertex streams " +
+						   $"(collider={colliderCount}, select={selectCount}, render={renderCount}, indices={indexCount}). " +
+						   $"Dropping the surface to avoid generating out-of-range mesh indices.");
+		}
+
 		[GenerateTestsForBurstCompatibility]
         public void Construct(BlobBuilder					builder,
 							  NativeList<Int32>				indices,
@@ -116,34 +135,81 @@ namespace Chisel.Core
 							  NativeList<SelectVertex>		selectVertices,
 							  NativeList<RenderVertex>		renderVertices,
 							  int							surfaceIndex,
+							  int							baseSurfaceIndex,
                               SurfaceDestinationFlags		destinationFlags,
-							  SurfaceDestinationParameters	destinationParameters)
+							  SurfaceDestinationParameters	destinationParameters,
+							  SurfaceOutputFlags				outputFlags)
 		{
+			if (colliderVertices.Length != renderVertices.Length ||
+				colliderVertices.Length != selectVertices.Length)
+			{
+				LogInconsistentVertexStreams(surfaceIndex, colliderVertices.Length, selectVertices.Length, renderVertices.Length, indices.Length);
+
+				this.surfaceIndex = surfaceIndex;
+				this.baseSurfaceIndex = baseSurfaceIndex;
+				this.decalEntityID = 0;
+				this.destinationFlags = destinationFlags;
+				this.destinationParameters = destinationParameters;
+				this.outputFlags = outputFlags;
+				this.lightmapChart = float4.zero;
+				this.vertexCount = 0;
+				this.indexCount = 0;
+				this.surfaceHashValue = 0;
+				this.geometryHashValue = 0;
+				this.aabb = default;
+				builder.Allocate(ref this.indices, 0);
+				builder.Allocate(ref this.colliderVertices, 0);
+				builder.Allocate(ref this.renderVertices, 0);
+				builder.Allocate(ref this.selectVertices, 0);
+				builder.Allocate(ref this.needles, 0);
+				return;
+			}
+
+			OutputWeld.WeldSurface(indices, colliderVertices, selectVertices, renderVertices);
+
 			FixUpOrdering(indices, colliderVertices, selectVertices, renderVertices);
 
+			this.surfaceIndex = surfaceIndex;
+			this.baseSurfaceIndex = baseSurfaceIndex;
+			this.decalEntityID = 0;
 
+			this.destinationFlags = destinationFlags;
+			this.destinationParameters = destinationParameters;
+			this.outputFlags = outputFlags;
+
+			Store(builder, indices, colliderVertices, selectVertices, renderVertices);
+		}
+
+		[GenerateTestsForBurstCompatibility]
+		public void Store(BlobBuilder					builder,
+						  NativeList<Int32>				indices,
+						  NativeList<float3>			colliderVertices,
+						  NativeList<SelectVertex>		selectVertices,
+						  NativeList<RenderVertex>		renderVertices)
+		{
 			var vertexHashValue   = colliderVertices.Hash();
 			var indicesHashValue  = indices.Hash();
 			var geometryHashValue = math.hash(new uint2(vertexHashValue, indicesHashValue));
 
-			this.surfaceIndex = surfaceIndex;
-
-			this.destinationFlags = destinationFlags;
-			this.destinationParameters = destinationParameters;
-
 			this.vertexCount = colliderVertices.Length;
 			this.indexCount = indices.Length;
 
-			uint surfaceHash = 0;
+			// The lightmap texels it gets are part of how it is drawn
+			uint surfaceHash = (uint)LightmapUVLayout.ModeOf(outputFlags);
+			var chartMin = new float2(float.PositiveInfinity);
+			var chartMax = new float2(float.NegativeInfinity);
 			for (int i = 0; i < renderVertices.Length; i++)
 			{
 				var renderVertex = renderVertices[i];
 				surfaceHash = math.hash(new uint2(surfaceHash, math.hash(renderVertex.normal)));
 				surfaceHash = math.hash(new uint2(surfaceHash, math.hash(renderVertex.tangent)));
 				surfaceHash = math.hash(new uint2(surfaceHash, math.hash(renderVertex.uv0)));
+				chartMin = math.min(chartMin, renderVertex.uv1);
+				chartMax = math.max(chartMax, renderVertex.uv1);
 			}
 
 			this.surfaceHashValue = surfaceHash;
+			this.lightmapChart = (renderVertices.Length > 0) ? new float4(chartMin, chartMax) : float4.zero;
 			this.geometryHashValue = geometryHashValue;
 
 			this.aabb = colliderVertices.GetMinMax();
@@ -152,6 +218,11 @@ namespace Chisel.Core
 			var outputColliderVertices	= builder.Construct(ref this.colliderVertices, colliderVertices);
 			var outputRenderVertices	= builder.Construct(ref this.renderVertices, renderVertices);
 			var outputSelectVertices	= builder.Construct(ref this.selectVertices, selectVertices);
+			using (var needles = new NativeList<Int32>(Allocator.Temp))
+			{
+				OutputWeld.FindNeedles(indices, colliderVertices, needles);
+				builder.Construct(ref this.needles, needles);
+			}
 
 			UnityEngine.Debug.Assert(outputColliderVertices.Length == this.vertexCount);
 			UnityEngine.Debug.Assert(outputRenderVertices.Length == this.vertexCount);
@@ -163,7 +234,7 @@ namespace Chisel.Core
 	internal struct ChiselQuerySurface
     {
         public int	surfaceIndex;
-        public int	surfaceParameter;
+        public ulong	surfaceParameter;
 
         public int	vertexCount;
         public int	indexCount;

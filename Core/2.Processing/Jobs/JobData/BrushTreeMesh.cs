@@ -15,5 +15,7 @@ namespace Chisel.Core
     struct BrushTreeSpacePlanes
     {
         public BlobArray<float4> treeSpacePlanes;
+        // How many of treeSpacePlanes are the brush's faces (BrushMeshBlob.localPlaneCount); the rest are edge planes.
+        public int               faceCount;
     }
 }

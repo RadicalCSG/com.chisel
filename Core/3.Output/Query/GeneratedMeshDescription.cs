@@ -18,7 +18,6 @@ namespace Chisel.Core
     ///		contents.CopyTo(unityMesh);
     ///	}
     /// </code>
-    /// See the [Create Unity Meshes](~/documentation/createUnityMesh.md) article for more information.
     /// <note>The hash values can be used to determine if an existing mesh has changed, and to decide if a new mesh should be created or not.</note>
     /// </remarks>
     /// <seealso cref="Chisel.Core.MeshQuery" />
@@ -33,7 +32,7 @@ namespace Chisel.Core
 
         /// <value>If requested by the <see cref="Chisel.Core.MeshQuery"/> this hold a surface parameter, otherwise its 0.</value>
         /// <remarks>A surface parameter can be used to, for example, differentiate between meshes that use a different [UnityEngine.Material](https://docs.unity3d.com/ScriptReference/Material.html).</remarks>
-        public Int32		surfaceParameter;
+        public ulong		surfaceParameter;
 
         /// <value>An unique index for each found <paramref name="meshQuery"/>/<paramref name="surfaceParameter"/> pair.</value>
         public Int32		meshQueryIndex;
@@ -80,7 +79,7 @@ namespace Chisel.Core
             var hashCode = -190551774;
             hashCode = hashCode * -1521134295;
             hashCode = hashCode * -1521134295 + meshQuery.GetHashCode();
-            hashCode = hashCode * -1521134295 + (int)surfaceParameter;
+            hashCode = hashCode * -1521134295 + surfaceParameter.GetHashCode();
             hashCode = hashCode * -1521134295 + (int)subMeshQueryIndex;
             hashCode = hashCode * -1521134295 + (int)meshQueryIndex;
             hashCode = hashCode * -1521134295 + (int)geometryHashValue;

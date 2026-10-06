@@ -40,7 +40,7 @@ public class SceneObjectsWindow : EditorWindow
     private void UpdateValues()
     {
         sceneTypeList.Clear();
-		var sceneList = FindObjectsByType<Object>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
+		var sceneList = FindObjectsByType<Object>(FindObjectsInactive.Exclude);
 		for (int i = 0; i < sceneList.Length; i++)
         {
             var obj = sceneList[i];

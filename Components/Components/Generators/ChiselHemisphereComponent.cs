@@ -5,6 +5,7 @@ namespace Chisel.Components
 {
     [ExecuteInEditMode, HelpURL(kDocumentationBaseURL + kNodeTypeName + kDocumentationExtension)]
     [DisallowMultipleComponent, AddComponentMenu("Chisel/" + kNodeTypeName)]
+    [Icon(kIconBasePath + "hemisphere" + kIconExtension)]
     public sealed class ChiselHemisphereComponent : ChiselBrushGeneratorComponent<ChiselHemisphereDefinition, Core.ChiselHemisphere>
     {
         public const string kNodeTypeName = Core.ChiselHemisphereDefinition.kNodeTypeName;

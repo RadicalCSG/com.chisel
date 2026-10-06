@@ -96,8 +96,8 @@ namespace Chisel.Core
         /// <remarks><note>NodeIDs are eventually recycled, so be careful holding on to Nodes that have been destroyed.</note></remarks>
         public readonly NodeID  NodeID			{ get { return nodeID; } }
 
-        /// <value>Gets the <see cref="Chisel.Core.CSGTreeNode.InstanceID"/> set to the <see cref="Chisel.Core.CSGTreeNode"/> at creation time.</value>
-        public readonly Int32	InstanceID			{ get { return CompactHierarchyManager.GetNodeInstanceID(nodeID); } }
+        /// <value>Gets the <see cref="Chisel.Core.CSGTreeNode.EntityId"/> set to the <see cref="Chisel.Core.CSGTreeNode"/> at creation time.</value>
+        public readonly UnityEngine.EntityId	EntityId			{ get { return UnityEngine.EntityId.FromULong(CompactHierarchyManager.GetNodeEntityID(nodeID)); } }
 
         /// <value>Returns the dirty flag of the <see cref="Chisel.Core.CSGTreeNode"/>.</value>
         public readonly bool	Dirty			{ get { return CompactHierarchyManager.IsNodeDirty(nodeID); } }
@@ -220,7 +220,7 @@ namespace Chisel.Core
         internal void ClearStatusFlag(NodeStatusFlags flag) { Hierarchy.ClearStatusFlag(CompactNodeID, flag); }
         internal void ClearAllStatusFlags()                 { Hierarchy.ClearAllStatusFlags(CompactNodeID); }
 
-        [SerializeField] internal NodeID nodeID;
+        internal NodeID nodeID;
 
 
         internal readonly CompactNodeID CompactNodeID           { get { return CompactHierarchyManager.GetCompactNodeID(nodeID); } }
@@ -236,6 +236,6 @@ namespace Chisel.Core
             }
         }
 
-        public override string ToString() => $"{Type} ({nodeID})";
+        public readonly override string ToString() => $"{Type} ({nodeID})";
     }
 }

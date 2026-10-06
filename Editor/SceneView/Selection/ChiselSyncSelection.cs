@@ -17,7 +17,7 @@ namespace Chisel.Editors
                 if (s_Instance)
                     return s_Instance;
 
-				var foundInstances = UnityEngine.Object.FindObjectsByType<ChiselSyncSelection>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
+				var foundInstances = UnityEngine.Object.FindObjectsByType<ChiselSyncSelection>(FindObjectsInactive.Exclude);
                 if (foundInstances == null ||
                     foundInstances.Length == 0)
                 {
@@ -56,7 +56,7 @@ namespace Chisel.Editors
         public static void ClearBrushVariants(CSGTreeBrush brush)
         {
             Undo.RecordObject(ChiselSyncSelection.Instance, "ClearBrushVariants variant");
-            var node = Resources.InstanceIDToObject(brush.InstanceID) as ChiselNodeComponent;
+            var node = Resources.EntityIdToObject(brush.EntityId) as ChiselNodeComponent;
             if (node) node.hierarchyItem.SetBoundsDirty();
             var modified = false;
             if (modified)
@@ -66,7 +66,7 @@ namespace Chisel.Editors
         public static void DeselectBrushVariant(CSGTreeBrush brush)
         {
             Undo.RecordObject(ChiselSyncSelection.Instance, "Deselected brush variant");
-            var node = Resources.InstanceIDToObject(brush.InstanceID) as ChiselNodeComponent;
+            var node = Resources.EntityIdToObject(brush.EntityId) as ChiselNodeComponent;
             if (node) node.hierarchyItem.SetBoundsDirty();
             var selectedBrushesLookup = Instance.selectedBrushesLookup;
             var modified = selectedBrushesLookup.Remove(brush);
@@ -77,7 +77,7 @@ namespace Chisel.Editors
         public static void SelectBrushVariant(CSGTreeBrush brush, bool uniqueSelection = false)
         {
             Undo.RecordObject(ChiselSyncSelection.Instance, "Selected brush variant");
-            var node = Resources.InstanceIDToObject(brush.InstanceID) as ChiselNodeComponent;
+            var node = Resources.EntityIdToObject(brush.EntityId) as ChiselNodeComponent;
             if (node) node.hierarchyItem.SetBoundsDirty();
             var selectedBrushesLookup = Instance.selectedBrushesLookup;
             var modified = false;/*

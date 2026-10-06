@@ -16,7 +16,11 @@ namespace Chisel.Components
 	public struct BrushVisibilityLookup : IBrushVisibilityLookup, IDisposable
 	{
 		NativeHashMap<CompactNodeID, VisibilityState> compactNodeIDVisibilityStateLookup;
-		NativeHashMap<int, VisibilityState> instanceIDVisibilityStateLookup;
+		NativeHashMap<ulong, VisibilityState> entityIDVisibilityStateLookup;
+
+		// Bumped on every change to the tables above, so consumers that derive data from them (the
+		// per-renderable partial meshes) can tell whether their cached result is still current.
+		public int Version { get; private set; }
 
 		public void Dispose()
 		{
@@ -25,15 +29,16 @@ namespace Chisel.Components
                 compactNodeIDVisibilityStateLookup.Dispose();
             compactNodeIDVisibilityStateLookup = default;
 
-			if (instanceIDVisibilityStateLookup.IsCreated)
-				instanceIDVisibilityStateLookup.Dispose();
-			instanceIDVisibilityStateLookup = default;
+			if (entityIDVisibilityStateLookup.IsCreated)
+				entityIDVisibilityStateLookup.Dispose();
+			entityIDVisibilityStateLookup = default;
 		}
 
         internal void Clear()
 		{
 			compactNodeIDVisibilityStateLookup.Clear();
-			instanceIDVisibilityStateLookup.Clear();
+			entityIDVisibilityStateLookup.Clear();
+			Version++;
 		}
 
         [GenerateTestsForBurstCompatibility]
@@ -43,9 +48,20 @@ namespace Chisel.Components
 		}
 
 		[GenerateTestsForBurstCompatibility]
-		public bool IsBrushVisible(int instanceID)
+		public bool IsBrushVisible(ulong entityID)
 		{
-			return instanceIDVisibilityStateLookup.TryGetValue(instanceID, out VisibilityState state) && state == VisibilityState.AllVisible;
+			return entityIDVisibilityStateLookup.TryGetValue(entityID, out VisibilityState state) && state == VisibilityState.AllVisible;
+		}
+
+		[GenerateTestsForBurstCompatibility]
+		public bool IsBrushHidden(ulong entityID)
+		{
+			return entityIDVisibilityStateLookup.TryGetValue(entityID, out VisibilityState state) && state == VisibilityState.AllInvisible;
+		}
+
+		public bool TryGetBrushVisibility(ulong entityID, out VisibilityState state)
+		{
+			return entityIDVisibilityStateLookup.TryGetValue(entityID, out state);
 		}
 
 		private readonly VisibilityState GetVisibilityState(SceneVisibilityManager instance, ChiselGeneratorComponent generator)
@@ -82,6 +98,21 @@ namespace Chisel.Components
             return true;
         }
 
+        void EnsureCreated()
+        {
+            if (!compactNodeIDVisibilityStateLookup.IsCreated)
+				compactNodeIDVisibilityStateLookup = new NativeHashMap<CompactNodeID, VisibilityState>(2048, Allocator.Persistent); // Confirmed to be disposed
+			if (!entityIDVisibilityStateLookup.IsCreated)
+				entityIDVisibilityStateLookup = new NativeHashMap<ulong, VisibilityState>(2048, Allocator.Persistent); // Confirmed to be disposed
+        }
+
+        internal void UpdateNodeVisibility(ChiselGeneratorComponent node)
+        {
+            EnsureCreated();
+            UpdateVisibility(SceneVisibilityManager.instance, node);
+            Version++;
+        }
+
         void UpdateVisibility(SceneVisibilityManager sceneVisibilityManager, ChiselGeneratorComponent node)
         {
             var treeNode = node.TopTreeNode;
@@ -104,7 +135,7 @@ namespace Chisel.Components
             foreach (var childCompactNodeID in CompactHierarchyManager.GetAllChildren(compactNodeID))
                 compactNodeIDVisibilityStateLookup[childCompactNodeID] = state;
             compactNodeIDVisibilityStateLookup[modelCompactNodeID] = state | prevState;
-			instanceIDVisibilityStateLookup[node.GetInstanceID()] = state | prevState;
+			entityIDVisibilityStateLookup[UnityEngine.EntityId.ToULong(node.GetEntityId())] = state | prevState;
 		}
 
         public void UpdateVisibility(IEnumerable<ChiselModelComponent> models)
@@ -113,13 +144,10 @@ namespace Chisel.Components
             //       2. find a way to render partial mesh instead
             //          A. needs to show lightmap of original mesh, even when modified
             //          B. updating lightmaps needs to still work as if original mesh is changed
-            if (!compactNodeIDVisibilityStateLookup.IsCreated)
-				compactNodeIDVisibilityStateLookup = new NativeHashMap<CompactNodeID, VisibilityState>(2048, Allocator.Persistent); // Confirmed to be disposed
+            EnsureCreated();
 			compactNodeIDVisibilityStateLookup.Clear();
-
-			if (!instanceIDVisibilityStateLookup.IsCreated)
-				instanceIDVisibilityStateLookup = new NativeHashMap<int, VisibilityState>(2048, Allocator.Persistent); // Confirmed to be disposed
-			instanceIDVisibilityStateLookup.Clear();
+			entityIDVisibilityStateLookup.Clear();
+			Version++;
 
 			var sceneVisibilityManager = SceneVisibilityManager.instance;
             foreach (var generator in ChiselModelManager.Instance.Generators)
@@ -141,7 +169,7 @@ namespace Chisel.Components
                 if (!compactNodeIDVisibilityStateLookup.TryGetValue(modelCompactNodeID, out VisibilityState state))
                 {
                     compactNodeIDVisibilityStateLookup[modelCompactNodeID] = VisibilityState.AllVisible;
-                    instanceIDVisibilityStateLookup[model.GetInstanceID()] = VisibilityState.AllVisible;
+                    entityIDVisibilityStateLookup[UnityEngine.EntityId.ToULong(model.GetEntityId())] = VisibilityState.AllVisible;
 					model.generated.visibilityState = VisibilityState.AllVisible;
                     continue; 
                 }

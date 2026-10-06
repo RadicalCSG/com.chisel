@@ -7,7 +7,7 @@ using UnityEngine;
 namespace Chisel.Core
 {
     /// <summary>Contains a shape that can be used to initialize and update a <see cref="Chisel.Core.CSGTreeBrush"/>.</summary>
-    /// <remarks>See the [Brush Meshes](~/documentation/brushMesh.md) article for more information.
+    /// <remarks>
     /// <note>This struct is safe to serialize.</note>
     /// <seealso cref="Chisel.Core.BrushMeshInstance"/>
     /// <seealso cref="Chisel.Core.BrushMeshInstance.Create"/>

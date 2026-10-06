@@ -6,6 +6,7 @@ namespace Chisel.Components
 {
     [ExecuteInEditMode, HelpURL(kDocumentationBaseURL + kNodeTypeName + kDocumentationExtension)]
     [DisallowMultipleComponent, AddComponentMenu("Chisel/" + kNodeTypeName)]
+    [Icon(kIconBasePath + "linear_stairs" + kIconExtension)]
     public sealed class ChiselLinearStairsComponent : ChiselBranchGeneratorComponent<Core.ChiselLinearStairs, ChiselLinearStairsDefinition>
     {
         public const string kNodeTypeName = Core.ChiselLinearStairsDefinition.kNodeTypeName;

@@ -109,9 +109,10 @@ namespace Chisel.Core
     [GenerateTestsForBurstCompatibility]
 	public struct CompactNode
     {
-        public Int32                instanceID;
+        public ulong                entityID;
 
         public CSGOperationType     operation;
+        public int                  contents;       // brushes only: index into ChiselContentsList, 0 is Solid
         public float4x4             transformation; // local (may include non-ChiselNode parent transformations)
         public NodeStatusFlags      flags;          // TODO: replace with using hashes to compare changes        
         
@@ -121,7 +122,7 @@ namespace Chisel.Core
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public int GetHashcode() { unchecked { return (int)this.Hash(); } }
 
-        public override readonly string ToString() { return $"{nameof(brushMeshHash)} = {brushMeshHash}, {nameof(operation)} = {operation}, {nameof(instanceID)} = {instanceID}, {nameof(transformation)} = {transformation}"; }
+        public override readonly string ToString() { return $"{nameof(brushMeshHash)} = {brushMeshHash}, {nameof(operation)} = {operation}, {nameof(contents)} = {contents}, {nameof(entityID)} = {entityID}, {nameof(transformation)} = {transformation}"; }
     }
 
     [GenerateTestsForBurstCompatibility]
@@ -139,7 +140,7 @@ namespace Chisel.Core
         readonly static CompactChildNode kInvalid = default;
 		public static CompactChildNode Invalid { [MethodImpl(MethodImplOptions.AggressiveInlining)] get { return kInvalid; } }
 
-		public override readonly string ToString() { return $"{nameof(compactNodeID)} = {compactNodeID}, {nameof(parentID)} = {parentID}, {nameof(nodeInformation.instanceID)} = {nodeInformation.instanceID}, {nameof(childCount)} = {childCount}, {nameof(childOffset)} = {childOffset}, {nameof(nodeInformation.brushMeshHash)} = {nodeInformation.brushMeshHash}, {nameof(nodeInformation.operation)} = {nodeInformation.operation}, {nameof(nodeInformation.transformation)} = {nodeInformation.transformation}"; }
+		public override readonly string ToString() { return $"{nameof(compactNodeID)} = {compactNodeID}, {nameof(parentID)} = {parentID}, {nameof(nodeInformation.entityID)} = {nodeInformation.entityID}, {nameof(childCount)} = {childCount}, {nameof(childOffset)} = {childOffset}, {nameof(nodeInformation.brushMeshHash)} = {nodeInformation.brushMeshHash}, {nameof(nodeInformation.operation)} = {nodeInformation.operation}, {nameof(nodeInformation.transformation)} = {nodeInformation.transformation}"; }
     }
 
     // TODO: make sure everything is covered in tests
@@ -148,9 +149,9 @@ namespace Chisel.Core
     {
         #region CreateHierarchy
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static CompactHierarchy CreateHierarchy(NodeID nodeID, Int32 instanceID, Allocator allocator)
+        public static CompactHierarchy CreateHierarchy(NodeID nodeID, ulong entityID, Allocator allocator)
         {
-            return CreateHierarchy(CompactHierarchyID.Invalid, nodeID, instanceID, allocator);
+            return CreateHierarchy(CompactHierarchyID.Invalid, nodeID, entityID, allocator);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -161,7 +162,7 @@ namespace Chisel.Core
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal static CompactHierarchy CreateHierarchy(CompactHierarchyID hierarchyID, 
-                                                         NodeID nodeID, Int32 instanceID, Allocator allocator = Allocator.Persistent) // Indirect
+                                                         NodeID nodeID, ulong entityID, Allocator allocator = Allocator.Persistent) // Indirect
 		{
             var compactHierarchy = new CompactHierarchy
             {
@@ -173,7 +174,7 @@ namespace Chisel.Core
             };
             compactHierarchy.RootID = compactHierarchy.CreateNode(nodeID, new CompactNode
             {
-                instanceID     = instanceID,
+                entityID     = entityID,
                 operation      = CSGOperationType.Additive,
                 transformation = float4x4.identity,
                 brushMeshHash  = Int32.MaxValue
@@ -184,14 +185,14 @@ namespace Chisel.Core
 
         #region CreateBranch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public CompactNodeID CreateBranch(NodeID nodeID, CSGOperationType operation = CSGOperationType.Additive, Int32 instanceID = 0) { return CreateBranch(nodeID, float4x4.identity, operation, instanceID); }
+        public CompactNodeID CreateBranch(NodeID nodeID, CSGOperationType operation = CSGOperationType.Additive, ulong entityID = 0) { return CreateBranch(nodeID, float4x4.identity, operation, entityID); }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public CompactNodeID CreateBranch(NodeID nodeID, float4x4 transformation, CSGOperationType operation = CSGOperationType.Additive, Int32 instanceID = 0)
+        public CompactNodeID CreateBranch(NodeID nodeID, float4x4 transformation, CSGOperationType operation = CSGOperationType.Additive, ulong entityID = 0)
         {
             return CreateNode(nodeID, new CompactNode
             {
-                instanceID          = instanceID,
+                entityID          = entityID,
                 operation       = operation,
                 transformation  = transformation,
                 brushMeshHash   = Int32.MaxValue
@@ -201,14 +202,14 @@ namespace Chisel.Core
 
         #region CreateBrush
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public CompactNodeID CreateBrush(NodeID nodeID, Int32 brushMeshID, CSGOperationType operation = CSGOperationType.Additive, Int32 instanceID = 0) { return CreateBrush(nodeID, brushMeshID, float4x4.identity, operation, instanceID); }
+        public CompactNodeID CreateBrush(NodeID nodeID, Int32 brushMeshID, CSGOperationType operation = CSGOperationType.Additive, ulong entityID = 0) { return CreateBrush(nodeID, brushMeshID, float4x4.identity, operation, entityID); }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public CompactNodeID CreateBrush(NodeID nodeID, Int32 brushMeshID, float4x4 transformation, CSGOperationType operation = CSGOperationType.Additive, Int32 instanceID = 0)
+        public CompactNodeID CreateBrush(NodeID nodeID, Int32 brushMeshID, float4x4 transformation, CSGOperationType operation = CSGOperationType.Additive, ulong entityID = 0)
         {
             return CreateNode(nodeID, new CompactNode
             {
-                instanceID      = instanceID,
+                entityID      = entityID,
                 operation       = operation,
                 transformation  = transformation,
                 brushMeshHash   = brushMeshID, 

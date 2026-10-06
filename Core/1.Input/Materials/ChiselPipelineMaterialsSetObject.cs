@@ -17,6 +17,7 @@ namespace Chisel.Core
 		public const string kDefaultTreadMaterialName	= nameof(defaultTreadMaterial);
 		public const string kDefaultWallMaterialName	= nameof(defaultWallMaterial);
 		public const string kDefaultPhysicMaterialName	= nameof(defaultPhysicsMaterial);
+		public const string kDefaultForceShadowOnlyMaterialName = nameof(forceShadowOnlySurfacesMaterial);
 
 		public const string kUserHiddenSurfacesMaterialName		 = nameof(userHiddenSurfacesMaterial);
 		public const string kShadowCastingSurfacesMaterialName	 = nameof(shadowCastingSurfacesMaterial);
@@ -35,6 +36,7 @@ namespace Chisel.Core
 		public Material collisionSurfacesMaterial;
 		public Material shadowCastingSurfacesMaterial;
 		public Material shadowOnlySurfacesMaterial;
+		public Material forceShadowOnlySurfacesMaterial;
 		public Material shadowReceivingSurfacesMaterial;
 		public Material discardedSurfacesMaterial;
 		public Material userHiddenSurfacesMaterial;

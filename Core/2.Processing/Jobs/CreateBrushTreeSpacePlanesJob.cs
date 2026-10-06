@@ -38,6 +38,7 @@ namespace Chisel.Core
 			using var builder = new BlobBuilder(Allocator.Temp, totalSize);
             ref var root = ref builder.ConstructRoot<BrushTreeSpacePlanes>();
             var treeSpacePlaneArray = builder.Allocate(ref root.treeSpacePlanes, localPlanes.Length);
+            root.faceCount = brushMeshBlob.localPlaneCount;
             for (int i = 0; i < localPlanes.Length; i++)
             {
                 var localPlane = localPlanes[i];

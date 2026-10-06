@@ -33,6 +33,14 @@ namespace Chisel.Core
         [NoAlias, ReadOnly] public NativeList<NodeTransformations>                transformationCache;
         [NoAlias, ReadOnly] public NativeArray<BlobAssetReference<BrushMeshBlob>> brushMeshLookup;
 
+        // Shared plane identity (InternBrushPlanesJob). When usePlaneIds is false these are empty
+        // and alignment falls back to comparing plane equations.
+        [NoAlias, ReadOnly] public bool                 usePlaneIds;
+        [NoAlias, ReadOnly] public NativeList<int>      brushPlaneIds;
+        [NoAlias, ReadOnly] public NativeArray<int2>    brushPlaneIdRange;
+
+        [NoAlias, ReadOnly] public bool                 canonicalAlignment;
+
         // Write
         [NoAlias, WriteOnly] public NativeStream.Writer                     intersectingBrushesStream;
         /*
@@ -245,14 +253,95 @@ namespace Chisel.Core
         }
 
 
+        // The encoded id of one brush face, or 0 if it has none. See InternBrushPlanesJob for the
+        // encoding: (id + 1), negated when the shared plane faces the other way from this face.
+        readonly int EncodedPlaneId(int nodeOrder, int planeIndex)
+        {
+            if (nodeOrder < 0 || nodeOrder >= brushPlaneIdRange.Length)
+                return 0;
+            var range = brushPlaneIdRange[nodeOrder];
+            if (planeIndex < 0 || planeIndex >= range.y)
+                return 0;
+            return brushPlaneIds[range.x + planeIndex];
+        }
+
+        void FindAlignedPlanesByID(IntersectionType type,
+                                   int nodeOrder0, ref NativeArray<int> intersectingPlaneIndices0, int intersectingPlanesLength0,
+                                   int localPlaneCount0, ref NativeArray<SurfaceInfo> surfaceInfos0,
+                                   int nodeOrder1, ref NativeArray<int> intersectingPlaneIndices1, int intersectingPlanesLength1,
+                                   int localPlaneCount1, ref NativeArray<SurfaceInfo> surfaceInfos1)
+        {
+            NativeCollectionHelpers.EnsureMinimumSize(ref surfaceInfos0, localPlaneCount0);
+            for (int i = 0; i < localPlaneCount0; i++)
+                surfaceInfos0[i] = new SurfaceInfo { basePlaneIndex = (ushort)i, interiorCategory = (byte)CategoryIndex.Inside };
+
+            NativeCollectionHelpers.EnsureMinimumSize(ref surfaceInfos1, localPlaneCount1);
+            for (int i = 0; i < localPlaneCount1; i++)
+                surfaceInfos1[i] = new SurfaceInfo { basePlaneIndex = (ushort)i, interiorCategory = (byte)CategoryIndex.Inside };
+
+            if (type != IntersectionType.Intersection)
+                return;
+
+            for (int i1 = 0; i1 < intersectingPlanesLength0; i1++)
+            {
+                var p1 = intersectingPlaneIndices0[i1];
+                var id1 = EncodedPlaneId(nodeOrder0, p1);
+                if (id1 == 0)
+                    continue;
+                for (int i2 = 0; i2 < intersectingPlanesLength1; i2++)
+                {
+                    var p2 = intersectingPlaneIndices1[i2];
+                    var id2 = EncodedPlaneId(nodeOrder1, p2);
+                    if (id2 == 0)
+                        continue;
+
+                    CategoryIndex category;
+                    if (id1 == id2)       category = CategoryIndex.Aligned;
+                    else if (id1 == -id2) category = CategoryIndex.ReverseAligned;
+                    else continue;
+
+                    var surfaceInfo0 = surfaceInfos0[p1];
+                    surfaceInfo0.interiorCategory = (byte)category;
+                    surfaceInfos0[p1] = surfaceInfo0;
+                    var surfaceInfo1 = surfaceInfos1[p2];
+                    surfaceInfo1.interiorCategory = (byte)category;
+                    surfaceInfos1[p2] = surfaceInfo1;
+                }
+            }
+        }
+
         // work around this, because this can fail hard
+        const float kPlaneVertexAlignEpsilon = 0.01f;   // < kVertexEqualEpsilon (0.0125), below which
+                                                        // the pipeline already refuses to tell two
+                                                        // vertices apart
+
+        // Does the face of brush0 lying on `facePlane` also lie on `otherPlane`? Needs at least a
+        // triangle's worth of vertices on the face, and every one of them within `epsilon` of it.
+        internal static bool FaceLiesOnPlane(ref BlobArray<float3> localVertices0, float4 facePlane, float4 otherPlane,
+                                             float epsilon = kPlaneVertexAlignEpsilon)
+        {
+            int onFace = 0;
+            for (int v = 0; v < localVertices0.Length; v++)
+            {
+                var vertex = new float4(localVertices0[v], 1);
+                if (math.abs(math.dot(facePlane, vertex)) > kPlaneWAlignEpsilon)
+                    continue;
+                onFace++;
+                if (math.abs(math.dot(otherPlane, vertex)) >= epsilon)
+                    return false;
+            }
+            return onFace >= 3;
+        }
+
         static void FindAlignedPlanes(IntersectionType type,
                                       ref NativeArray<int>          intersectingPlaneIndices0, int intersectingPlanesLength0,
                                       ref NativeArray<float4>       localSpacePlanes0, int localSpacePlanes0Length,
                                       ref NativeArray<SurfaceInfo>  surfaceInfos0,
                                       ref NativeArray<int>          intersectingPlaneIndices1, int intersectingPlanesLength1,
                                       ref NativeArray<float4>       localSpacePlanes1, int localSpacePlanes1Length,
-                                      ref NativeArray<SurfaceInfo> surfaceInfos1)
+                                      ref NativeArray<SurfaceInfo>  surfaceInfos1,
+                                      ref BlobArray<float3>         localVertices0,
+                                      bool                          canonicalAlignment)
         {
             NativeCollectionHelpers.EnsureMinimumSize(ref surfaceInfos0, localSpacePlanes0Length);
             for (int i = 0; i < localSpacePlanes0Length; i++)
@@ -275,29 +364,28 @@ namespace Chisel.Core
                     {
                         var p2 = intersectingPlaneIndices1[i2];
                         var localPlane2 = localSpacePlanes1[p2];
-                        if (math.abs(localPlane1.w - localPlane2.w) >= kPlaneWAlignEpsilon ||
-                            math.dot(localPlane1.xyz, localPlane2.xyz) < kNormalDotAlignEpsilon)
-                        {
-                            localPlane2 = -localPlane2;
-                            if (math.abs(localPlane1.w - localPlane2.w) >= kPlaneWAlignEpsilon ||
-                                math.dot(localPlane1.xyz, localPlane2.xyz) < kNormalDotAlignEpsilon)
-                                continue;
 
-                            var surfaceInfo0 = surfaceInfos0[p1];
-                            surfaceInfo0.interiorCategory = (byte)CategoryIndex.ReverseAligned;
-                            surfaceInfos0[p1] = surfaceInfo0;
-                            var surfaceInfo1 = surfaceInfos1[p2];
-                            surfaceInfo1.interiorCategory = (byte)CategoryIndex.ReverseAligned;
-                            surfaceInfos1[p2] = surfaceInfo1;
-                        } else
-                        {
-                            var surfaceInfo0 = surfaceInfos0[p1];
-                            surfaceInfo0.interiorCategory = (byte)CategoryIndex.Aligned;
-                            surfaceInfos0[p1] = surfaceInfo0;
-                            var surfaceInfo1 = surfaceInfos1[p2];
-                            surfaceInfo1.interiorCategory = (byte)CategoryIndex.Aligned;
-                            surfaceInfos1[p2] = surfaceInfo1;
-                        }
+                        // Parallel either way round is required; which way decides the category.
+                        var normalDot = math.dot(localPlane1.xyz, localPlane2.xyz);
+                        bool sameFacing = normalDot >= kNormalDotAlignEpsilon;
+                        if (!sameFacing && normalDot > -kNormalDotAlignEpsilon)
+                            continue;
+                        if (!sameFacing)
+                            localPlane2 = -localPlane2;
+
+                        bool coincident = math.abs(localPlane1.w - localPlane2.w) < kPlaneWAlignEpsilon
+                                       || FaceLiesOnPlane(ref localVertices0, localPlane1, localPlane2,
+                                                          canonicalAlignment ? kFatPlaneWidthEpsilon : kPlaneVertexAlignEpsilon);
+                        if (!coincident)
+                            continue;
+
+                        var category = sameFacing ? CategoryIndex.Aligned : CategoryIndex.ReverseAligned;
+                        var surfaceInfo0 = surfaceInfos0[p1];
+                        surfaceInfo0.interiorCategory = (byte)category;
+                        surfaceInfos0[p1] = surfaceInfo0;
+                        var surfaceInfo1 = surfaceInfos1[p2];
+                        surfaceInfo1.interiorCategory = (byte)category;
+                        surfaceInfos1[p2] = surfaceInfo1;
                     }
                 }
             }
@@ -455,8 +543,13 @@ namespace Chisel.Core
                 FindPlanePairs(type, ref mesh0, intersectingPlaneIndices0, intersectingPlanesLength0, localSpacePlanes0, ref vertexUsed, float4x4.identity, false, ref usedPlanePairs0, ref usedVertices0, ref planeAvailable, out int usedPlanePairsLength0, out int usedVerticesLength0);
                 FindPlanePairs(type, ref mesh1, intersectingPlaneIndices1, intersectingPlanesLength1, localSpacePlanes1, ref vertexUsed, node1ToNode0, true, ref usedPlanePairs1, ref usedVertices1, ref planeAvailable, out int usedPlanePairsLength1, out int usedVerticesLength1);
 
-                FindAlignedPlanes(type, ref intersectingPlaneIndices0, intersectingPlanesLength0, ref localSpacePlanes0, mesh0.localPlaneCount, ref surfaceInfos0,
-                                        ref intersectingPlaneIndices1, intersectingPlanesLength1, ref localSpacePlanes1, mesh1.localPlaneCount, ref surfaceInfos1);
+                if (usePlaneIds)
+                    FindAlignedPlanesByID(type, brushIndexOrder0.nodeOrder, ref intersectingPlaneIndices0, intersectingPlanesLength0, mesh0.localPlaneCount, ref surfaceInfos0,
+                                                brushIndexOrder1.nodeOrder, ref intersectingPlaneIndices1, intersectingPlanesLength1, mesh1.localPlaneCount, ref surfaceInfos1);
+                else
+                    FindAlignedPlanes(type, ref intersectingPlaneIndices0, intersectingPlanesLength0, ref localSpacePlanes0, mesh0.localPlaneCount, ref surfaceInfos0,
+                                            ref intersectingPlaneIndices1, intersectingPlanesLength1, ref localSpacePlanes1, mesh1.localPlaneCount, ref surfaceInfos1,
+                                            ref mesh0.localVertices, canonicalAlignment);
 
                 FindPlanesIntersectingVertices(ref usedVertices0, usedVerticesLength0,
                                                ref intersectingPlaneIndices0, intersectingPlanesLength0,

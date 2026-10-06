@@ -173,6 +173,109 @@ namespace Chisel.Core
             }
         }
 
+        public unsafe static ushort AddNoResize(ushort* hashTable, UnsafeList<ushort>* chainedIndices, UnsafeList<float3>* vertices, float3 vertex, in WeldIncidenceFilter filter)
+        {
+            var centerIndex = new int3((int)(vertex.x / HashedVertices.kCellSize), (int)(vertex.y / HashedVertices.kCellSize), (int)(vertex.z / HashedVertices.kCellSize));
+            var offsets = stackalloc int3[]
+            {
+                new int3(-1, -1, -1), new int3(-1, -1,  0), new int3(-1, -1, +1),
+                new int3(-1,  0, -1), new int3(-1,  0,  0), new int3(-1,  0, +1),
+                new int3(-1, +1, -1), new int3(-1, +1,  0), new int3(-1, +1, +1),
+
+                new int3( 0, -1, -1), new int3( 0, -1,  0), new int3( 0, -1, +1),
+                new int3( 0,  0, -1), new int3( 0,  0,  0), new int3( 0,  0, +1),
+                new int3( 0, +1, -1), new int3( 0, +1,  0), new int3( 0, +1, +1),
+
+                new int3(+1, -1, -1), new int3(+1, -1,  0), new int3(+1, -1, +1),
+                new int3(+1,  0, -1), new int3(+1,  0,  0), new int3(+1,  0, +1),
+                new int3(+1, +1, -1), new int3(+1, +1,  0), new int3(+1, +1, +1)
+            };
+
+            float3* verticesPtr = (float3*)vertices->Ptr;
+
+            ushort closestVertexIndex = ushort.MaxValue;
+            for (int i = 0; i < 3 * 3 * 3; i++)
+            {
+                var index = centerIndex + offsets[i];
+                var chainIndex = ((int)hashTable[GetHash(index)]) - 1;
+                {
+                    double closestDistance = CSGConstants.kSqrVertexEqualEpsilon;
+                    while (chainIndex != -1)
+                    {
+                        var nextChainIndex  = ((int)((ushort*)chainedIndices->Ptr)[chainIndex]) - 1;
+                        var sqrDistance     = math.lengthsq((double3)verticesPtr[chainIndex] - (double3)vertex);
+                        if (sqrDistance < closestDistance && filter.Allows(vertex, verticesPtr[chainIndex]))
+                        {
+                            closestVertexIndex = (ushort)chainIndex;
+                            closestDistance = sqrDistance;
+                        }
+                        chainIndex = nextChainIndex;
+                    }
+                }
+            }
+            if (closestVertexIndex != ushort.MaxValue)
+                return closestVertexIndex;
+
+            // Add Unique vertex
+            {
+
+                var hashCode        = GetHash(centerIndex);
+                var prevChainIndex  = hashTable[hashCode];
+                var newChainIndex   = chainedIndices->Length;
+                vertices      ->AddNoResize(vertex);
+                chainedIndices->AddNoResize((ushort)prevChainIndex);
+                hashTable[(int)hashCode] = (ushort)(newChainIndex + 1);
+                return (ushort)newChainIndex;
+            }
+        }
+
+        // Same as ReplaceIfExists, but a stored vertex is only moved onto the given position when the filter allows it.
+        public unsafe static void ReplaceIfExists(ushort* hashTable, UnsafeList<ushort>* chainedIndices, UnsafeList<float3>* vertices, float3 vertex, in WeldIncidenceFilter filter)
+        {
+            var centerIndex = new int3((int)(vertex.x / HashedVertices.kCellSize), (int)(vertex.y / HashedVertices.kCellSize), (int)(vertex.z / HashedVertices.kCellSize));
+            var offsets = stackalloc int3[]
+            {
+                new int3(-1, -1, -1), new int3(-1, -1,  0), new int3(-1, -1, +1),
+                new int3(-1,  0, -1), new int3(-1,  0,  0), new int3(-1,  0, +1),
+                new int3(-1, +1, -1), new int3(-1, +1,  0), new int3(-1, +1, +1),
+
+                new int3( 0, -1, -1), new int3( 0, -1,  0), new int3( 0, -1, +1),
+                new int3( 0,  0, -1), new int3( 0,  0,  0), new int3( 0,  0, +1),
+                new int3( 0, +1, -1), new int3( 0, +1,  0), new int3( 0, +1, +1),
+
+                new int3(+1, -1, -1), new int3(+1, -1,  0), new int3(+1, -1, +1),
+                new int3(+1,  0, -1), new int3(+1,  0,  0), new int3(+1,  0, +1),
+                new int3(+1, +1, -1), new int3(+1, +1,  0), new int3(+1, +1, +1)
+            };
+
+            float3* verticesPtr = (float3*)vertices->Ptr;
+
+            ushort closestVertexIndex = ushort.MaxValue;
+            for (int i = 0; i < 3 * 3 * 3; i++)
+            {
+                var index = centerIndex + offsets[i];
+                var chainIndex = ((int)hashTable[GetHash(index)]) - 1;
+                {
+                    double closestDistance = CSGConstants.kSqrVertexEqualEpsilon;
+                    while (chainIndex != -1)
+                    {
+                        var nextChainIndex  = ((int)((ushort*)chainedIndices->Ptr)[chainIndex]) - 1;
+                        var sqrDistance     = math.lengthsq((double3)verticesPtr[chainIndex] - (double3)vertex);
+                        if (sqrDistance < closestDistance && filter.Allows(verticesPtr[chainIndex], vertex))
+                        {
+                            closestVertexIndex = (ushort)chainIndex;
+                            closestDistance = sqrDistance;
+                        }
+                        chainIndex = nextChainIndex;
+                    }
+                }
+            }
+            if (closestVertexIndex == ushort.MaxValue)
+                return;
+
+            verticesPtr[closestVertexIndex] = vertex;
+        }
+
         // Add but make the assumption we're not growing any list
         public unsafe static ushort Add(ushort* hashTable, UnsafeList<ushort>* chainedIndices, UnsafeList<float3>* vertices, float3 vertex)
         {
@@ -607,6 +710,35 @@ namespace Chisel.Core
         }
 
 
+        // Merges onto an existing vertex only when the filter allows it; see WeldIncidenceFilter.
+        internal unsafe ushort AddNoResize(float3 vertex, in WeldIncidenceFilter filter)
+        {
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+            AtomicSafetyHandle.CheckWriteAndThrow(m_Safety);
+#endif
+            if (!filter.IsEnabled)
+                return HashedVerticesUtility.AddNoResize((ushort*)m_HashTable, m_ChainedIndices, m_Vertices, vertex);
+            return HashedVerticesUtility.AddNoResize((ushort*)m_HashTable, m_ChainedIndices, m_Vertices, vertex, in filter);
+        }
+
+        // Moves stored vertices onto the given ones only where the filter allows it; see WeldIncidenceFilter.
+        internal unsafe void ReplaceIfExists([ReadOnly] ref BlobArray<float3> uniqueVertices, in WeldIncidenceFilter filter)
+        {
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+            AtomicSafetyHandle.CheckWriteAndThrow(m_Safety);
+#endif
+            if (!filter.IsEnabled)
+            {
+                ReplaceIfExists(ref uniqueVertices);
+                return;
+            }
+            for (int i = 0; i < uniqueVertices.Length; i++)
+            {
+                var vertex = uniqueVertices[i];
+                HashedVerticesUtility.ReplaceIfExists((ushort*)m_HashTable, m_ChainedIndices, m_Vertices, vertex, in filter);
+            }
+        }
+
         public unsafe void AddUniqueVertices([ReadOnly] ref BlobArray<float3> uniqueVertices)
         {
 #if ENABLE_UNITY_COLLECTIONS_CHECKS
@@ -667,6 +799,34 @@ namespace Chisel.Core
             for (int i = 0; i < uniqueVertices.Length; i++)
             {
                 var vertex = uniqueVertices[i];
+                HashedVerticesUtility.ReplaceIfExists((ushort*)m_HashTable, m_ChainedIndices, m_Vertices, vertex);
+            }
+        }
+
+        public unsafe void ReplaceIfExists([ReadOnly] ref BlobArray<float3> uniqueVertices, float3 min, float3 max)
+        {
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+            AtomicSafetyHandle.CheckWriteAndThrow(m_Safety);
+#endif
+            for (int i = 0; i < uniqueVertices.Length; i++)
+            {
+                var vertex = uniqueVertices[i];
+                if (math.any(vertex < min) || math.any(vertex > max))
+                    continue;
+                HashedVerticesUtility.ReplaceIfExists((ushort*)m_HashTable, m_ChainedIndices, m_Vertices, vertex);
+            }
+        }
+
+        public unsafe void ReplaceIfExists([ReadOnly] in UnsafeList<float3> uniqueVertices, float3 min, float3 max)
+        {
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+            AtomicSafetyHandle.CheckWriteAndThrow(m_Safety);
+#endif
+            for (int i = 0; i < uniqueVertices.Length; i++)
+            {
+                var vertex = uniqueVertices[i];
+                if (math.any(vertex < min) || math.any(vertex > max))
+                    continue;
                 HashedVerticesUtility.ReplaceIfExists((ushort*)m_HashTable, m_ChainedIndices, m_Vertices, vertex);
             }
         }

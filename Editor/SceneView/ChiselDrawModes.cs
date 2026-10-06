@@ -34,18 +34,10 @@ namespace Chisel.Editors
 			if (s_Initialized)
 				return;
 			s_Initialized = true;
-			if (GraphicsSettings.defaultRenderPipeline == null)
-			{
-				RenderPipelineManager.beginCameraRendering -= CustomOnPostRender;
-				Camera.onPreCull -= DrawWithCamera;
-				Camera.onPreCull += DrawWithCamera;
-			}
-			else
-			{
-				Camera.onPreCull -= DrawWithCamera;
-				RenderPipelineManager.beginCameraRendering -= CustomOnPostRender;
-				RenderPipelineManager.beginCameraRendering += CustomOnPostRender;
-			}
+			Camera.onPreCull -= DrawWithCamera;
+			Camera.onPreCull += DrawWithCamera;
+			RenderPipelineManager.beginCameraRendering -= CustomOnPostRender;
+			RenderPipelineManager.beginCameraRendering += CustomOnPostRender;
 		}
 
 
@@ -103,6 +95,8 @@ namespace Chisel.Editors
 			SceneManager.sceneLoaded += OnSceneLoaded;
 			ChiselModelManager.Instance.PostUpdateModels -= OnPostUpdateModels;
 			ChiselModelManager.Instance.PostUpdateModels += OnPostUpdateModels;
+
+			Initialize();
 		}
 
 		private static void OnSceneLoaded(Scene scene, LoadSceneMode mode)
@@ -121,6 +115,14 @@ namespace Chisel.Editors
 			ChiselModelManager.Instance.HideDebugVisualizationSurfaces();
 		}
 
+		/// <summary>Whether <paramref name="cameraModeName"/> is one of the Chisel camera modes, and
+		/// so overrides <see cref="ChiselEditorSettings.HelperSurfaceFlags"/>.</summary>
+		public static bool IsChiselCameraMode(string cameraModeName)
+		{
+			SetupDrawModes();
+			return s_DrawModeLookup.ContainsKey(cameraModeName);
+		}
+
 		public static void HandleDrawMode(SceneView sceneView)
 		{
 			ChiselDrawModes.SetupDrawModes();
@@ -133,7 +135,7 @@ namespace Chisel.Editors
 
 			s_KnownCameras.Add(camera);
 
-			var desiredDrawModeFlags = DrawModeFlags.Default;
+			var desiredDrawModeFlags = ChiselEditorSettings.HelperSurfaceFlags;
 			if (sceneView.cameraMode.drawMode == DrawCameraMode.UserDefined)
 			{
 				if (s_DrawModeLookup.TryGetValue(sceneView.cameraMode.name, out var flags))

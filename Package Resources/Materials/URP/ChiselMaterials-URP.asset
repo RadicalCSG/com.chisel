@@ -21,6 +21,7 @@ MonoBehaviour:
     collisionSurfacesMaterial: {fileID: 2100000, guid: 47b54e6f8308cb746a50ca4e51851d51, type: 2}
     shadowCastingSurfacesMaterial: {fileID: 2100000, guid: 9096e4e4d4d79d2479d1920dbea96a2d, type: 2}
     shadowOnlySurfacesMaterial: {fileID: 2100000, guid: a5a0ad8da5f45ec4490a02829fd5b8e0, type: 2}
+    forceShadowOnlySurfacesMaterial: {fileID: 2100000, guid: beff52a572c6eea4484b63b5511a466a, type: 2}
     shadowReceivingSurfacesMaterial: {fileID: 2100000, guid: 56cffff6ee3d2e44fbe6806b9da4baf5, type: 2}
     discardedSurfacesMaterial: {fileID: 2100000, guid: 7b8a1b33740303049aa58ef411310871, type: 2}
     userHiddenSurfacesMaterial: {fileID: 2100000, guid: 5f57f2bf7cf7fec4ba861bbfb0082132, type: 2}

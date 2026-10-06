@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Text;
 using UnityEditor;
 using Chisel.Core;
+using Chisel.Components;
 
 namespace Chisel.Editors
 {
@@ -33,7 +34,12 @@ namespace Chisel.Editors
         public static float				UniformSnapSize { get { return ChiselGridSettings.kSize.Value.x; } set { Grid.DefaultGrid.Spacing = ChiselGridSettings.kSize.Value = new UnityEngine.Vector3(value, value, value); } } 
 
         public static bool				ShowAllAxi      { get; set; } = false;
-        public static DistanceUnit		DistanceUnit	{ get; set; } = DistanceUnit.Meters; 
+        public static DistanceUnit		DistanceUnit	{ get; set; } = DistanceUnit.Meters;
+
+        /// <summary>Which helper surfaces (collider, shadow-only, discarded, ...) are drawn in the
+        /// scene view on top of the regular geometry. Read by <see cref="ChiselDrawModes"/> every
+        /// time it refreshes a scene view camera's draw mode.</summary>
+        public static DrawModeFlags		HelperSurfaceFlags { get; set; } = DrawModeFlags.Default;
 
         public static bool				RotateSnapping  { get { return Snapping.RotateSnappingEnabled; } set { Snapping.RotateSnappingEnabled = value; } }
         public static float 			RotateSnap      { get; set; } = 30.0f;
@@ -54,6 +60,8 @@ namespace Chisel.Editors
             ShowAllAxi		= !EditorPrefs.GetBool("UniformGrid",		true);
             
             DistanceUnit	= (DistanceUnit)EditorPrefs.GetInt("DistanceUnit", (int)DistanceUnit.Meters);
+
+            HelperSurfaceFlags = (DrawModeFlags)EditorPrefs.GetInt("HelperSurfaceFlags", (int)DrawModeFlags.Default);
 
             RotateSnapping	= EditorPrefs.GetBool ("RotateSnapping",	true);
 			RotateSnap      = EditorPrefs.GetFloat("RotationSnap",		15.0f);
@@ -90,6 +98,8 @@ namespace Chisel.Editors
             EditorPrefs.SetBool("UniformGrid",		!ShowAllAxi);
 
             EditorPrefs.SetInt  ("DistanceUnit",	(int)DistanceUnit);
+
+            EditorPrefs.SetInt("HelperSurfaceFlags", (int)HelperSurfaceFlags);
 
             EditorPrefs.SetBool("RotateSnapping",	RotateSnapping);
             EditorPrefs.SetFloat("RotationSnap",    RotateSnap);

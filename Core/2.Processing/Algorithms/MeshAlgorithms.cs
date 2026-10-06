@@ -6,6 +6,7 @@ using ReadOnlyAttribute = Unity.Collections.ReadOnlyAttribute;
 using WriteOnlyAttribute = Unity.Collections.WriteOnlyAttribute;
 using System.Runtime.CompilerServices;
 using UnityEditor;
+using UnityEngine;
 
 namespace Chisel.Core
 {
@@ -37,6 +38,27 @@ namespace Chisel.Core
 		public NativeList<int>      lookup;
 		public NativeList<double2>  positions2D;
 		public NativeList<int>      edgeIndices;
+
+		public NativeArray<int>     collapseDegree;
+		public NativeArray<int>     collapseNeighbourA;
+		public NativeArray<int>     collapseNeighbourB;
+
+		public static NativeArray<int> AllocateCollapseScratch(int vertexCount)
+		{
+			return new NativeArray<int>(math.max(vertexCount, 1), Allocator.Temp, NativeArrayOptions.ClearMemory);
+		}
+
+		void EnsureCollapseScratch(int vertexCount)
+		{
+			if (collapseDegree.IsCreated && collapseDegree.Length >= vertexCount)
+				return;
+			if (collapseDegree.IsCreated)     collapseDegree.Dispose();
+			if (collapseNeighbourA.IsCreated) collapseNeighbourA.Dispose();
+			if (collapseNeighbourB.IsCreated) collapseNeighbourB.Dispose();
+			collapseDegree     = AllocateCollapseScratch(vertexCount);
+			collapseNeighbourA = AllocateCollapseScratch(vertexCount);
+			collapseNeighbourB = AllocateCollapseScratch(vertexCount);
+		}
 
         public struct ReadOnly
 		{
@@ -79,6 +101,31 @@ namespace Chisel.Core
 			};
         }
 
+        public bool RepairBoundary()
+        {
+            int edgeCount = edgeIndices.Length / 2;
+            if (edgeCount < 2)
+                return false;
+
+            var tmp = new UnsafeList<Edge>(edgeCount, Allocator.Temp);
+            for (int e = 0; e < edgeCount; e++)
+                tmp.Add(new Edge { index1 = (ushort)edgeIndices[e * 2], index2 = (ushort)edgeIndices[e * 2 + 1] });
+
+            var changed = LoopEdgeSplitter.RemoveTinyComponents(ref tmp);
+            changed |= LoopEdgeSplitter.CloseSingleOpenChain(ref tmp);
+            if (changed)
+            {
+                edgeIndices.Clear();
+                for (int i = 0; i < tmp.Length; i++)
+                {
+                    edgeIndices.Add(tmp[i].index1);
+                    edgeIndices.Add(tmp[i].index2);
+                }
+            }
+            tmp.Dispose();
+            return changed;
+        }
+
         public void Clear()
         {
 	        lookup.Clear();
@@ -88,25 +135,122 @@ namespace Chisel.Core
 
 		public void ConvertToPlaneSpace(UnsafeList<float3> vertices, UnsafeList<Edge> edges, Map3DTo2D map3DTo2D)
 		{
+			ConvertToPlaneSpace(vertices, edges, map3DTo2D, default);
+		}
+
+		public void ConvertToPlaneSpace(UnsafeList<float3> vertices, UnsafeList<Edge> edges, Map3DTo2D map3DTo2D, NativeArray<bool> protectedVertices)
+		{
 			lookup.Clear();
 			positions2D.Clear();
             edgeIndices.Clear();
 
+			var cleanEdges = new NativeList<int2>(edges.Length, Allocator.Temp);
+			for (int e = 0; e < edges.Length; e++)
+			{
+				int a = edges[e].index1;
+				int b = edges[e].index2;
+				if (a == b)                 // drop degenerate (zero-length) edges
+					continue;
+				int lo = math.min(a, b), hi = math.max(a, b);
+				bool duplicate = false;
+				for (int k = 0; k < cleanEdges.Length; k++)
+				{
+					var ck = cleanEdges[k];
+					if (math.min(ck.x, ck.y) == lo && math.max(ck.x, ck.y) == hi) { duplicate = true; break; }
+				}
+				if (!duplicate)
+					cleanEdges.Add(new int2(a, b));
+			}
+
+			if (cleanEdges.Length > 0)
+			{
+				const float kSqrEps = CSGConstants.kSqrEdgeDistanceEpsilon;
+				EnsureCollapseScratch(vertices.Length);
+				var deg  = collapseDegree;
+				var nbrA = collapseNeighbourA;
+				var nbrB = collapseNeighbourB;
+				bool changed = true;
+				while (changed && cleanEdges.Length > 0)
+				{
+					changed = false;
+
+					// Rebuild degree + (up to two) neighbours for every vertex still referenced.
+					for (int e = 0; e < cleanEdges.Length; e++)
+					{
+						deg[cleanEdges[e].x] = 0;
+						deg[cleanEdges[e].y] = 0;
+					}
+					for (int e = 0; e < cleanEdges.Length; e++)
+					{
+						int x = cleanEdges[e].x, y = cleanEdges[e].y;
+						if (deg[x] == 0) nbrA[x] = y; else if (deg[x] == 1) nbrB[x] = y;
+						deg[x]++;
+						if (deg[y] == 0) nbrA[y] = x; else if (deg[y] == 1) nbrB[y] = x;
+						deg[y]++;
+					}
+
+					// Find one collapsible vertex (restart the pass after each collapse so the
+					// adjacency stays valid - loops are tiny so this is cheap).
+					int collapse = -1, pA = -1, pB = -1;
+					for (int e = 0; e < cleanEdges.Length && collapse < 0; e++)
+					{
+						for (int s = 0; s < 2; s++)
+						{
+							int v = (s == 0) ? cleanEdges[e].x : cleanEdges[e].y;
+							if (deg[v] != 2) continue;
+							if (protectedVertices.IsCreated && v < protectedVertices.Length && protectedVertices[v]) continue;
+							int a = nbrA[v], b = nbrB[v];
+							if (a == b) continue;
+							double3 pv = vertices[v], p = vertices[a], q = vertices[b];
+							double3 d = q - p;
+							double dlen2 = math.dot(d, d);
+							if (dlen2 < 1e-12) continue;                 // neighbours coincide
+							double t = math.dot(pv - p, d) / dlen2;
+							if (t < 0.0 || t > 1.0) continue;            // only true mid-points
+							double3 diff = pv - (p + t * d);
+							if (math.dot(diff, diff) > kSqrEps) continue;
+							collapse = v; pA = a; pB = b; break;
+						}
+					}
+
+					if (collapse >= 0)
+					{
+						for (int e = cleanEdges.Length - 1; e >= 0; e--)
+						{
+							if (cleanEdges[e].x == collapse || cleanEdges[e].y == collapse)
+								cleanEdges.RemoveAt(e);
+						}
+						if (pA != pB)   // wire the two neighbours together (dedup against existing)
+						{
+							int lo = math.min(pA, pB), hi = math.max(pA, pB);
+							bool present = false;
+							for (int k = 0; k < cleanEdges.Length; k++)
+							{
+								var ck = cleanEdges[k];
+								if (math.min(ck.x, ck.y) == lo && math.max(ck.x, ck.y) == hi) { present = true; break; }
+							}
+							if (!present) cleanEdges.Add(new int2(pA, pB));
+						}
+						changed = true;
+					}
+				}
+			}
+
 			if (lookup.Capacity < vertices.Length) lookup.Capacity = vertices.Length;
 			if (positions2D.Capacity < vertices.Length) positions2D.Capacity = vertices.Length;
-			if (edgeIndices.Capacity < edges.Length * 2) edgeIndices.Capacity = edges.Length * 2;
+			if (edgeIndices.Capacity < cleanEdges.Length * 2) edgeIndices.Capacity = cleanEdges.Length * 2;
 						
 			UnsafeList<int> usedIndices;			
 			using var _usedIndices = usedIndices = new UnsafeList<int>(vertices.Length, Allocator.Temp);
 
 			usedIndices.Resize(vertices.Length, NativeArrayOptions.ClearMemory);
 			lookup.Resize(vertices.Length, NativeArrayOptions.ClearMemory);
-			edgeIndices.Resize(edges.Length * 2,
+			edgeIndices.Resize(cleanEdges.Length * 2,
 				NativeArrayOptions.ClearMemory);
 				//NativeArrayOptions.UninitializedMemory);
-			for (int i = 0, j = 0; j < edges.Length; i += 2, j++)
+			for (int i = 0, j = 0; j < cleanEdges.Length; i += 2, j++)
 			{
-				var index1 = edges[j].index1;
+				var index1 = cleanEdges[j].x;
 				if (usedIndices[index1] == 0)
 				{
 					lookup[positions2D.Length] = index1;
@@ -115,7 +259,7 @@ namespace Chisel.Core
 				}
 				index1 = (ushort)(usedIndices[index1] - 1);
 
-				var index2 = edges[j].index2;
+				var index2 = cleanEdges[j].y;
 				if (usedIndices[index2] == 0)
 				{
 					lookup[positions2D.Length] = index2;
@@ -129,6 +273,7 @@ namespace Chisel.Core
 			}
 			
             usedIndices.Dispose();
+			cleanEdges.Dispose();
 		}
 		
 		public void RemoveDuplicates()
@@ -166,9 +311,8 @@ namespace Chisel.Core
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
 		private static int Orientation(double2 p, double2 q, double2 r)
 		{
-			// Using double for precision in cross-product calculation
-			double val = (q.y - p.y) * (r.x - q.x) -
-			             (q.x - p.x) * (r.y - q.y);
+			// Signed area via the centralized predicate.
+			double val = CSGMath.Orient2D(p, q, r);
 
 			if (math.abs(val) < 1e-12) return 0; // Collinear (use a small epsilon for float comparison)
 			return (val > 0) ? 1 : 2; // Clockwise or Counterclockwise
@@ -238,6 +382,10 @@ namespace Chisel.Core
 					double2 p2 = positions2D[idx_p2];
 					double2 q2 = positions2D[idx_q2];
 
+					if (math.any(math.min(p1, q1) > math.max(p2, q2)) ||
+						math.any(math.max(p1, q1) < math.min(p2, q2)))
+						continue;
+
 					// Check if the segments intersect
 					if (SegmentsIntersect(p1, q1, p2, q2))
 					{
@@ -282,6 +430,11 @@ namespace Chisel.Core
 					double2 p2 = positions2D[p2i];
 					double2 q2 = positions2D[q2i];
 
+					// Same strictly-disjoint bounding-box reject as CheckForSelfIntersections.
+					if (math.any(math.min(p1, q1) > math.max(p2, q2)) ||
+						math.any(math.max(p1, q1) < math.min(p2, q2)))
+						continue;
+
 					if (SegmentsIntersect(p1, q1, p2, q2))
 					{
 						removeFlags[i] = true;
@@ -310,10 +463,12 @@ namespace Chisel.Core
 
 		public void Dispose()
         {
-			// Confirmed to be called
 		    lookup.Dispose();
 		    positions2D.Dispose();
 		    edgeIndices.Dispose();
+		    if (collapseDegree.IsCreated)     collapseDegree.Dispose();
+		    if (collapseNeighbourA.IsCreated) collapseNeighbourA.Dispose();
+		    if (collapseNeighbourB.IsCreated) collapseNeighbourB.Dispose();
         }
     }
     
@@ -334,7 +489,7 @@ namespace Chisel.Core
 			surfaceRenderVertices.Clear();
 		}
 
-		public void RegisterVertices(NativeList<int> triangles, int startIndex, [ReadOnly] UnsafeList<float3> sourceVertices, float3 normal, int instanceID, CategoryIndex categoryIndex)
+		public void RegisterVertices(NativeList<int> triangles, int startIndex, [ReadOnly] UnsafeList<float3> sourceVertices, float3 normal, ulong entityID, CategoryIndex categoryIndex)
 		{
 			var surfaceNormal = normal;
 			if (categoryIndex == CategoryIndex.ValidReverseAligned || categoryIndex == CategoryIndex.ReverseAligned)
@@ -356,8 +511,8 @@ namespace Chisel.Core
 					surfaceSelectVertices.Add(new SelectVertex
 					{
 						position = position,
-						instanceID = HandleUtility.EncodeSelectionId(instanceID)
-					});
+						entityID = new Vector4((int)(byte)(entityID & 0xFF), (int)(byte)((entityID >> 8) & 0xFF), (int)(byte)((entityID >> 16) & 0xFF), (int)(byte)((entityID >> 24) & 0xFF)) / 255f
+				});
 					indexRemap[vertexIndexSrc] = vertexIndexDst + 1;
 				} else
 					vertexIndexDst--;
@@ -367,7 +522,6 @@ namespace Chisel.Core
 
 		public void Dispose()
 		{
-			// Confirmed to be called
 			if (indexRemap.IsCreated) indexRemap.Dispose(); indexRemap = default;
 			if (surfaceColliderVertices.IsCreated) surfaceColliderVertices.Dispose(); surfaceColliderVertices = default;
 			if (surfaceSelectVertices.IsCreated) surfaceSelectVertices.Dispose(); surfaceSelectVertices = default;
@@ -388,6 +542,109 @@ namespace Chisel.Core
 			}
 		}
 
+		/// <summary>
+		/// The axes a surface's lightmap chart lies along in its plane. They follow the world: a floor's run along x and z, a
+		/// wall's along the ground and up, so the texels of a surface in an axis' plane line up with its edges, and surfaces in
+		/// one plane share one grid.
+		/// </summary>
+		public static void LightmapAxes(float3 planeNormal, out float3 u, out float3 v)
+		{
+			var normal = math.normalizesafe(planeNormal, new float3(0, 1, 0));
+			var size   = math.abs(normal);
+			// Along x, unless the plane faces mostly along x
+			var along  = (size.x > size.y && size.x >= size.z) ? new float3(0, 0, 1) : new float3(1, 0, 0);
+			u = math.normalize(along - (normal * math.dot(normal, along)));
+			v = math.cross(normal, u);
+		}
+
+		/// <summary>
+		/// Gives the vertices of a surface their lightmap coordinates: where they lie in its plane, along <see cref="LightmapAxes"/>,
+		/// in the units of the tree. Each output mesh lays its surfaces' charts out in its own lightmap (LightmapUVLayout).
+		/// </summary>
+		public static void ComputeLightmapCoordinates(NativeList<RenderVertex> vertices, float3 planeNormal)
+		{
+			LightmapAxes(planeNormal, out var u, out var v);
+			for (int i = 0; i < vertices.Length; i++)
+			{
+				var vertex = vertices[i];
+				vertex.uv1 = new float2(math.dot(vertex.position, u), math.dot(vertex.position, v));
+				vertices[i] = vertex;
+			}
+		}
+
+		/// <summary>
+		/// Gives the vertices of a planar surface their tangents from its plane and its texture mapping, the way their normals
+		/// come from its plane: the tangent is the direction in the plane along which u grows while v stays put, the
+		/// bitangent the same for v, for the affine mapping uv = uvMatrix * position. Every triangle of the surface gives
+		/// that same answer - except one as thin as a float step, whose corners round to one point, which gives NaN. The
+		/// exact CSG draws such triangles where brushes meet a hair out of line, and a NaN tangent lights its surface NaN.
+		/// Each vertex's tangent is made perpendicular to its own normal, which normal smoothing may have turned.
+		/// </summary>
+		public static void ComputeTangents(NativeList<RenderVertex> vertices, float3 planeNormal, float4x4 uvMatrix)
+		{
+			// u = dot(a, position) + ..., v = dot(b, position) + ...: rows 0 and 1 of the mapping
+			var n = math.normalizesafe((double3)planeNormal);
+			var a = new double3(uvMatrix.c0.x, uvMatrix.c1.x, uvMatrix.c2.x);
+			var b = new double3(uvMatrix.c0.y, uvMatrix.c1.y, uvMatrix.c2.y);
+			// In the plane: a.T = 1, b.T = 0 and a.B = 0, b.B = 1, solved by T = (b x n) / det, B = (n x a) / det
+			var determinant = math.dot(n, math.cross(a, b));
+			var mapped = determinant != 0 && math.isfinite(determinant);
+			var tangent   = mapped ? math.cross(b, n) / determinant : double3.zero;
+			var bitangent = mapped ? math.cross(n, a) / determinant : double3.zero;
+			for (int i = 0; i < vertices.Length; i++)
+			{
+				var vertex = vertices[i];
+				var normal = math.normalizesafe((double3)vertex.normal, n);
+				vertex.tangent = Tangent(normal, tangent, bitangent);
+				vertices[i] = vertex;
+			}
+		}
+
+		static float4 Tangent(double3 normal, double3 tangent, double3 bitangent)
+		{
+			var perpendicular = tangent - normal * math.dot(normal, tangent);
+			var length = math.length(perpendicular);
+			if (!(length > 0) || !math.isfinite(length))
+				return AxisTangent(normal);
+			perpendicular /= length;
+			var side = math.dot(math.cross(normal, perpendicular), bitangent);
+			return new float4((float3)perpendicular, side < 0 ? -1 : 1);
+		}
+
+		static float4 AxisTangent(double3 normal)
+		{
+			var dpXN = math.abs(math.dot(new double3(1, 0, 0), normal));
+			var dpYN = math.abs(math.dot(new double3(0, 1, 0), normal));
+			var dpZN = math.abs(math.dot(new double3(0, 0, 1), normal));
+
+			double3 axis1, axis2;
+			if (dpXN <= dpYN && dpXN <= dpZN)
+			{
+				axis1 = new double3(1, 0, 0);
+				axis2 = (dpYN <= dpZN) ? new double3(0, 1, 0) : new double3(0, 0, 1);
+			}
+			else if (dpYN <= dpXN && dpYN <= dpZN)
+			{
+				axis1 = new double3(0, 1, 0);
+				axis2 = (dpXN <= dpZN) ? new double3(1, 0, 0) : new double3(0, 0, 1);
+			}
+			else
+			{
+				axis1 = new double3(0, 0, 1);
+				axis2 = (dpXN <= dpYN) ? new double3(1, 0, 0) : new double3(0, 1, 0);
+			}
+
+			var tangent   = math.normalizesafe(axis1 - math.dot(normal, axis1) * normal, axis1);
+			var bitangent = math.normalizesafe(axis2 - math.dot(normal, axis2) * normal - math.dot(tangent, axis2) * tangent, axis2);
+			var side = math.dot(math.cross(normal, tangent), bitangent);
+			return new float4((float3)tangent, side < 0 ? -1 : 1);
+		}
+
+		/// <summary>
+		/// Tangents from the triangles, for texture coordinates that are not one affine mapping of the plane (a perspective
+		/// decal's). A triangle that gives no tangent - its corners rounded to one point, or its texture coordinates to one
+		/// line - is left out instead of writing NaN over what its neighbours gave.
+		/// </summary>
 		public static void ComputeTangents([ReadOnly] NativeList<int> indices, NativeList<RenderVertex> vertices)
 		{
 			NativeArray<double3> triTangents;
@@ -434,6 +691,11 @@ namespace Chisel.Core
                 var weight1 = math.acos(math.clamp(angle1, -1.0, 1.0));
                 var weight2 = math.acos(math.clamp(angle2, -1.0, 1.0));
 
+                // a triangle with no area in space or in its texture coordinates has no tangent to give
+                if (!math.all(math.isfinite(tangent)) || !math.all(math.isfinite(binormal)) ||
+                    !math.isfinite(weight0) || !math.isfinite(weight1) || !math.isfinite(weight2))
+                    continue;
+
                 triTangents[index0] = weight0 * tangent;
                 triTangents[index1] = weight1 * tangent;
                 triTangents[index2] = weight2 * tangent;
@@ -445,61 +707,9 @@ namespace Chisel.Core
 
             for (int v = 0; v < vertices.Length; ++v)
             {
-                var originalTangent = triTangents[v];
-                var originalBinormal = triBinormals[v];
                 var vertex = vertices[v];
-                var normal = (double3)vertex.normal;
-
-                var dotTangent = math.dot(normal, originalTangent);
-                var newTangent = new double3(originalTangent.x - dotTangent * normal.x,
-                                                originalTangent.y - dotTangent * normal.y,
-                                                originalTangent.z - dotTangent * normal.z);
-                var tangentMagnitude = math.length(newTangent);
-                newTangent /= tangentMagnitude;
-
-                var dotBinormal = math.dot(normal, originalBinormal);
-                dotTangent = math.dot(newTangent, originalBinormal) * tangentMagnitude;
-                var newBinormal = new double3(originalBinormal.x - dotBinormal * normal.x - dotTangent * newTangent.x,
-                                                originalBinormal.y - dotBinormal * normal.y - dotTangent * newTangent.y,
-                                                originalBinormal.z - dotBinormal * normal.z - dotTangent * newTangent.z);
-                var binormalMagnitude = math.length(newBinormal);
-                newBinormal /= binormalMagnitude;
-
-                const double kNormalizeEpsilon = 1e-6;
-                if (tangentMagnitude <= kNormalizeEpsilon || binormalMagnitude <= kNormalizeEpsilon)
-                {
-                    var dpXN = math.abs(math.dot(new double3(1, 0, 0), normal));
-                    var dpYN = math.abs(math.dot(new double3(0, 1, 0), normal));
-                    var dpZN = math.abs(math.dot(new double3(0, 0, 1), normal));
-
-                    double3 axis1, axis2;
-                    if (dpXN <= dpYN && dpXN <= dpZN)
-                    {
-                        axis1 = new double3(1, 0, 0);
-                        axis2 = (dpYN <= dpZN) ? new double3(0, 1, 0) : new double3(0, 0, 1);
-                    }
-                    else if (dpYN <= dpXN && dpYN <= dpZN)
-                    {
-                        axis1 = new double3(0, 1, 0);
-                        axis2 = (dpXN <= dpZN) ? new double3(1, 0, 0) : new double3(0, 0, 1);
-                    }
-                    else
-                    {
-                        axis1 = new double3(0, 0, 1);
-                        axis2 = (dpXN <= dpYN) ? new double3(1, 0, 0) : new double3(0, 1, 0);
-                    }
-
-                    newTangent = axis1 - math.dot(normal, axis1) * normal;
-                    newBinormal = axis2 - math.dot(normal, axis2) * normal - math.dot(newTangent, axis2) * math.normalizesafe(newTangent);
-
-                    newTangent = math.normalizesafe(newTangent);
-                    newBinormal = math.normalizesafe(newBinormal);
-                }
-
-                var dp = math.dot(math.cross(normal, newTangent), newBinormal);
-                var tangent = new float4((float3)newTangent.xyz, (dp > 0) ? 1 : -1);
-
-                vertex.tangent = tangent;
+                var normal = math.normalizesafe((double3)vertex.normal, new double3(0, 1, 0));
+                vertex.tangent = Tangent(normal, triTangents[v], triBinormals[v]);
                 vertices[v] = vertex;
             }
 		}

@@ -51,17 +51,14 @@ namespace Chisel.Editors
         readonly static GUIContent kColliderSettingsContent                = new("Collider");
         readonly static GUIContent kCreateRenderComponentsContents         = new("Renderable");
         readonly static GUIContent kCreateColliderComponentsContents       = new("Collidable");
-        readonly static GUIContent kUnwrapParamsContents                   = new("UV Generation");
+        readonly static GUIContent kUnwrapParamsContents                   = new("Lightmap UVs");
+        readonly static GUIContent kChartPaddingContents                   = new("Chart Padding", "The lightmap texels between two surfaces' charts, so that filtering the lightmap doesn't mix their lighting");
         readonly static GUIContent kSubtractiveWorkflowContents            = new("Subtractive Workflow", "Flip generated surface orientations to support subtractive workflows.");
         readonly static GUIContent kNormalSmoothingContents                = new("Normal Smoothing", "Smooth generated normals across adjacent faces.");
         readonly static GUIContent kNormalSmoothingAngleContents           = new("Angle", "Smoothing angle in degrees (0-180).");
 
-        readonly static GUIContent kForceBuildUVsContents                  = new("Build", "Manually build lightmap UVs for generated meshes. This operation can be slow for more complicated meshes");
-        readonly static GUIContent kForceRebuildUVsContents                = new("Rebuild", "Manually rebuild lightmap UVs for generated meshes. This operation can be slow for more complicated meshes");
-        readonly static GUIContent kAutoRebuildUVsContents                 = new("Auto UV Generation", "Automatically lightmap UVs for generated meshes. This operation can be slow for more complicated meshes");
-        readonly static GUIContent kNeedsLightmapBuildContents             = new("In order for lightmapping to work properly the lightmap UVs need to be build.");
-        readonly static GUIContent kNeedsLightmapRebuildContents           = new("In order for lightmapping to work properly the lightmap UVs need to be rebuild.");
-
+        readonly static GUIContent kCastShadowsContents                    = new("Cast Shadows", "Whether the model casts shadows. A surface also needs its material to cast them.");
+        readonly static GUIContent kReceiveShadowsContents                 = new("Receive Shadows", "Whether the model receives shadows. A surface also needs its material to receive them.");
         readonly static GUIContent kMotionVectorsContent                   = new("Motion Vectors", "Specifies whether the Model renders 'Per Object Motion', 'Camera Motion', or 'No Motion' vectors to the Camera Motion Vector Texture.");
         readonly static GUIContent kLightmappingContents                   = new("Lightmapping");
         readonly static GUIContent kGINotEnabledInfoContents               = new("Lightmapping settings are currently disabled. Enable Baked Global Illumination or Realtime Global Illumination to display these settings.");
@@ -79,8 +76,6 @@ namespace Chisel.Editors
 		readonly static GUIContent kLightProbeUsageContents                = new("Light Probes", "Specifies how Light Probes will handle the interpolation of lighting and occlusion. Disabled if the object is set to Lightmap Static.");
         readonly static GUIContent kLightProbeVolumeOverrideContents       = new("Proxy Volume Override", "If set, the Model will use the Light Probe Proxy Volume component from another GameObject.");
         readonly static GUIContent kLightProbeCustomContents               = new("The Custom Provided mode is not supported.");
-        readonly static GUIContent kLightProbeVolumeContents               = new("A valid Light Probe Proxy Volume component could not be found.");
-        readonly static GUIContent kLightProbeVolumeUnsupportedContents    = new("The Light Probe Proxy Volume feature is unsupported by the current graphics hardware or API configuration. Simple 'Blend Probes' mode will be used instead.");
         readonly static GUIContent kRenderingLayerMaskStyle                = new("Rendering Layer Mask", "Mask that can be used with SRP DrawRenderers command to filter renderers outside of the normal layering system.");
         readonly static GUIContent kStaticBatchingWarningContents          = new("This model is statically batched and uses an instanced shader at the same time. Instancing will be disabled in such a case. Consider disabling static batching if you want it to be instanced.");
         readonly static GUIContent kNoNormalsNoLightmappingContents        = new("VertexChannels is set to not have any normals. Normals are needed for lightmapping.");
@@ -131,12 +126,10 @@ namespace Chisel.Editors
         SerializedProperty vertexChannelMaskProp;
         SerializedProperty createRenderComponentsProp;
         SerializedProperty createColliderComponentsProp;
-        SerializedProperty autoRebuildUVsProp;
-        SerializedProperty angleErrorProp;
-        SerializedProperty areaErrorProp;
-        SerializedProperty hardAngleProp;
         SerializedProperty packMarginPixelsProp;
         SerializedProperty motionVectorsProp;
+        SerializedProperty castShadowsProp;
+        SerializedProperty receiveShadowsProp;
         SerializedProperty importantGIProp;
         SerializedProperty receiveGIProp;
         SerializedProperty lightmapScaleProp;
@@ -223,17 +216,15 @@ namespace Chisel.Editors
             vertexChannelMaskProp        = serializedObject.FindProperty($"{ChiselModelComponent.kVertexChannelMaskName}");
             createRenderComponentsProp   = serializedObject.FindProperty($"{ChiselModelComponent.kCreateRenderComponentsName}");
             createColliderComponentsProp = serializedObject.FindProperty($"{ChiselModelComponent.kCreateColliderComponentsName}");
-            autoRebuildUVsProp           = serializedObject.FindProperty($"{ChiselModelComponent.kAutoRebuildUVsName}");
             subtractiveWorkflowProp      = serializedObject.FindProperty($"{ChiselModelComponent.kRenderSettingsName}.{ChiselGeneratedRenderSettings.kSubtractiveWorkflowName}");
             normalSmoothingProp          = serializedObject.FindProperty($"{ChiselModelComponent.kRenderSettingsName}.{ChiselGeneratedRenderSettings.kNormalSmoothingName}");
             normalSmoothingAngleProp     = serializedObject.FindProperty($"{ChiselModelComponent.kRenderSettingsName}.{ChiselGeneratedRenderSettings.kNormalSmoothingAngleName}");
-            angleErrorProp               = serializedObject.FindProperty($"{ChiselModelComponent.kRenderSettingsName}.{ChiselGeneratedRenderSettings.kUVGenerationSettingsName}.{SerializableUnwrapParam.kAngleErrorName}");
-            areaErrorProp                = serializedObject.FindProperty($"{ChiselModelComponent.kRenderSettingsName}.{ChiselGeneratedRenderSettings.kUVGenerationSettingsName}.{SerializableUnwrapParam.kAreaErrorName}");
-            hardAngleProp                = serializedObject.FindProperty($"{ChiselModelComponent.kRenderSettingsName}.{ChiselGeneratedRenderSettings.kUVGenerationSettingsName}.{SerializableUnwrapParam.kHardAngleName}");
             packMarginPixelsProp         = serializedObject.FindProperty($"{ChiselModelComponent.kRenderSettingsName}.{ChiselGeneratedRenderSettings.kUVGenerationSettingsName}.{SerializableUnwrapParam.kPackMarginPixelsName}");
 
 
             motionVectorsProp                   = serializedObject.FindProperty($"{ChiselModelComponent.kRenderSettingsName}.{ChiselGeneratedRenderSettings.kMotionVectorGenerationModeName}");
+            castShadowsProp                     = serializedObject.FindProperty($"{ChiselModelComponent.kRenderSettingsName}.{ChiselGeneratedRenderSettings.kCastShadowsName}");
+            receiveShadowsProp                  = serializedObject.FindProperty($"{ChiselModelComponent.kRenderSettingsName}.{ChiselGeneratedRenderSettings.kReceiveShadowsName}");
             importantGIProp                     = serializedObject.FindProperty($"{ChiselModelComponent.kRenderSettingsName}.{ChiselGeneratedRenderSettings.kImportantGIName}");
             receiveGIProp                       = serializedObject.FindProperty($"{ChiselModelComponent.kRenderSettingsName}.{ChiselGeneratedRenderSettings.kReceiveGIName}");
             lightmapScaleProp                   = serializedObject.FindProperty($"{ChiselModelComponent.kRenderSettingsName}.{ChiselGeneratedRenderSettings.kScaleInLightmapName}");
@@ -299,90 +290,21 @@ namespace Chisel.Editors
             EditorApplication.contextualPropertyMenu -= OnPropertyContextMenu;
         }
 
-        void ClearLightmapData()
-        {
-            foreach (var obj in targets)
-            {
-                var modelComponent = target as ChiselModelComponent;
-				if (!modelComponent)
-                    continue;
-
-                GameObjectState state = GameObjectState.Create(modelComponent.gameObject);
-
-				foreach (var renderable in modelComponent.generated.renderables)
-                {
-                    if (renderable == null || !renderable.IsValid())
-                        continue;
-                    if (ChiselUnityUVGenerationManager.ClearLightmapData(state, renderable))
-                    {
-                        //Debug.Log($"ClearLightmapData for {renderable.container.name}", renderable.container);
-                    }
-				}
-			}
-        }
-
 		void OnPropertyContextMenu(GenericMenu menu, SerializedProperty property)
 		{
-            if (property.propertyPath == angleErrorProp.propertyPath)
+			if (packMarginPixelsProp == null || property.propertyPath != packMarginPixelsProp.propertyPath)
+				return;
+			var propertyCopy = property.Copy();
+			menu.AddItem(new GUIContent("Reset"), false, () =>
 			{
-				var propertyCopy = property.Copy();
-				menu.AddItem(new GUIContent("Reset"), false, () =>
+				propertyCopy.floatValue = SerializableUnwrapParam.GetDefaultPackMarginPixels();
+				propertyCopy.serializedObject.ApplyModifiedProperties();
+				foreach (var target in propertyCopy.serializedObject.targetObjects)
 				{
-					float val = SerializableUnwrapParam.GetDefaultAngleError();
-					propertyCopy.floatValue = val;
-					propertyCopy.serializedObject.ApplyModifiedProperties();
-					if (autoRebuildUVsProp.boolValue)
-					{
-						ChiselUnityUVGenerationManager.ForceUpdateDelayedUVGeneration();
-						ClearLightmapData();
-					}
-				});
-			} else
-            if (property.propertyPath == areaErrorProp.propertyPath)
-			{
-				var propertyCopy = property.Copy();
-				menu.AddItem(new GUIContent("Reset"), false, () =>
-                {
-                    float val = SerializableUnwrapParam.GetDefaultAreaError();
-					propertyCopy.floatValue = val;
-					propertyCopy.serializedObject.ApplyModifiedProperties();
-					if (autoRebuildUVsProp.boolValue)
-					{
-						ChiselUnityUVGenerationManager.ForceUpdateDelayedUVGeneration();
-						ClearLightmapData();
-					}
-				});
-            } else
-			if (property.propertyPath == hardAngleProp.propertyPath)
-			{
-				var propertyCopy = property.Copy();
-				menu.AddItem(new GUIContent("Reset"), false, () =>
-                {
-                    float val = SerializableUnwrapParam.GetDefaultHardAngle();
-					propertyCopy.floatValue = val;
-					propertyCopy.serializedObject.ApplyModifiedProperties();
-					if (autoRebuildUVsProp.boolValue)
-					{
-						ChiselUnityUVGenerationManager.ForceUpdateDelayedUVGeneration();
-						ClearLightmapData();
-					}
-				});
-			} else
-			if (property.propertyPath == packMarginPixelsProp.propertyPath)
-			{
-				var propertyCopy = property.Copy();
-				menu.AddItem(new GUIContent("Reset"), false, () =>
-                {
-                    float val = SerializableUnwrapParam.GetDefaultPackMarginPixels();
-					propertyCopy.floatValue = val;
-					propertyCopy.serializedObject.ApplyModifiedProperties();
-					if (autoRebuildUVsProp.boolValue)
-					{
-						ChiselUnityUVGenerationManager.ForceUpdateDelayedUVGeneration();
-						ClearLightmapData();
-					}
-				});
-			}
+					if (target is ChiselModelComponent model)
+						model.SyncModelSettingsStore();
+				}
+			});
 		}
 
 		bool IsPreset
@@ -599,48 +521,6 @@ namespace Chisel.Editors
             return false;
         }
 
-        bool NeedLightmapRebuild()
-        {
-            if (target == null)
-                return false;
-
-            foreach(var target in targets)
-            {
-                var model = target as ChiselModelComponent;
-                if (!model)
-                    continue;
-
-                if (ChiselUnityUVGenerationManager.NeedUVGeneration(model))
-                    return true;
-            }
-            return false;
-        }
-
-        internal bool IsUsingLightProbeProxyVolume()
-        {
-            bool isUsingLightProbeVolumes =
-                ((targets.Length == 1) && (lightProbeUsageProp.intValue == (int)LightProbeUsage.UseProxyVolume)) ||
-                ((targets.Length > 1) && !lightProbeUsageProp.hasMultipleDifferentValues && (lightProbeUsageProp.intValue == (int)LightProbeUsage.UseProxyVolume));
-
-            return isUsingLightProbeVolumes;
-        }
-
-        internal bool HasLightProbeProxyOrOverride()
-        {/*
-            LightProbeProxyVolume lightProbeProxyVol = renderer.GetComponent<LightProbeProxyVolume>();
-            bool invalidProxyVolumeOverride = (renderer.lightProbeProxyVolumeOverride == null) ||
-                (renderer.lightProbeProxyVolumeOverride.GetComponent<LightProbeProxyVolume>() == null);
-            */
-            return false;
-            // TODO: figure out how to set up LightProxyVolumes
-            /*
-            var lightProbeProxyVol = renderer.GetComponent<LightProbeProxyVolume>();
-            bool invalidProxyVolumeOverride = (renderer.lightProbeProxyVolumeOverride == null) ||
-                                                  (renderer.lightProbeProxyVolumeOverride.GetComponent<LightProbeProxyVolume>() == null);
-            return lightProbeProxyVol == null && invalidProxyVolumeOverride;
-            */
-        }
-
         static internal bool AreLightProbesAllowed(ChiselModelComponent model)
         {
             // TODO: return false if lightmapped or dynamic lightmapped
@@ -709,25 +589,6 @@ namespace Chisel.Editors
             }
         }
 
-        internal void RenderLightProbeProxyVolumeWarningNote()
-        {
-            if (IsUsingLightProbeProxyVolume())
-            {
-                if (SupportedRenderingFeatures.active.lightProbeProxyVolumes &&
-                    LightProbeProxyVolume.isFeatureSupported)
-                {
-                    bool hasLightProbeProxyOrOverride = HasLightProbeProxyOrOverride();
-                    if (hasLightProbeProxyOrOverride && AreLightProbesAllowed())
-                    {
-                        EditorGUILayout.HelpBox(kLightProbeVolumeContents.text, MessageType.Warning);
-                    }
-                } else
-                {
-                    EditorGUILayout.HelpBox(kLightProbeVolumeUnsupportedContents.text, MessageType.Warning);
-                }
-            }
-        }
-
         internal void RenderReflectionProbeUsage(bool isDeferredRenderingPath, bool isDeferredReflections)
         {
             if (!SupportedRenderingFeatures.active.reflectionProbes)
@@ -766,8 +627,6 @@ namespace Chisel.Editors
             bool areLightProbesAllowed = AreLightProbesAllowed();
 
             RenderLightProbeUsage(areLightProbesAllowed);
-
-            RenderLightProbeProxyVolumeWarningNote();
 
             RenderReflectionProbeUsage(isDeferredRenderingPath, isDeferredReflections);
 
@@ -976,7 +835,7 @@ namespace Chisel.Editors
                 return;
 
             // TODO: why are we doing this again?
-            bool usingSRP = GraphicsSettings.defaultRenderPipeline != null;
+            bool usingSRP = GraphicsSettings.currentRenderPipeline != null;
             if (!usingSRP)
                 return;
 
@@ -1033,29 +892,14 @@ namespace Chisel.Editors
             bool isDeferredRenderingPath = ChiselEditorUtility.IsUsingDeferredRenderingPath();
 
 
-            if (haveLightmaps)
-            {
-                var needLightmapRebuild = NeedLightmapRebuild();
-                if (!autoRebuildUVsProp.boolValue && needLightmapRebuild)
-                {
-                    EditorGUILayout.BeginHorizontal(EditorStyles.helpBox); 
-                    var messageContents = needLightmapRebuild ? kNeedsLightmapBuildContents : kNeedsLightmapRebuildContents;
-                    GUILayout.Label(EditorGUIUtility.TrTextContent(messageContents.text, ChiselEditorUtility.GetHelpIcon(MessageType.Warning)), EditorStyles.wordWrappedLabel);
-                    GUILayout.Space(3);
-                    var buttonContents = needLightmapRebuild ? kForceBuildUVsContents : kForceRebuildUVsContents;
-                    if (GUILayout.Button(buttonContents, GUILayout.ExpandWidth(false)))
-                    {
-						ChiselUnityUVGenerationManager.DelayedUVGeneration(force: true);
-                    }
-                    EditorGUILayout.EndHorizontal();
-                }
-            }
-
-
             showLighting = EditorGUILayout.BeginFoldoutHeaderGroup(showLighting, kLightingContent);
             if (showLighting)
             {
                 EditorGUI.indentLevel++;
+                if (castShadowsProp != null)
+                    EditorGUILayout.PropertyField(castShadowsProp, kCastShadowsContents);
+                if (receiveShadowsProp != null)
+                    EditorGUILayout.PropertyField(receiveShadowsProp, kReceiveShadowsContents);
                 RenderMeshSettingsGUI(receiveGI);
                 EditorGUI.indentLevel--;
             }
@@ -1067,20 +911,7 @@ namespace Chisel.Editors
                 if (showUnwrapParams)
                 {
                     EditorGUI.indentLevel++;
-                    EditorGUI.BeginChangeCheck();
-                    EditorGUILayout.PropertyField(autoRebuildUVsProp, kAutoRebuildUVsContents);
-                    EditorGUILayout.PropertyField(angleErrorProp);
-                    EditorGUILayout.PropertyField(areaErrorProp);
-                    EditorGUILayout.PropertyField(hardAngleProp);
-                    EditorGUILayout.PropertyField(packMarginPixelsProp);
-					if (EditorGUI.EndChangeCheck())
-					{
-                        if (autoRebuildUVsProp.boolValue)
-                        {
-                            ChiselUnityUVGenerationManager.ForceUpdateDelayedUVGeneration();
-							ClearLightmapData();
-						}
-					}
+					EditorGUILayout.PropertyField(packMarginPixelsProp, kChartPaddingContents);
 					EditorGUI.indentLevel--;
                 }
                 EditorGUILayout.EndFoldoutHeaderGroup();

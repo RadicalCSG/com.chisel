@@ -5,6 +5,8 @@ namespace Chisel.Components
 {
     [ExecuteInEditMode, HelpURL(kDocumentationBaseURL + kNodeTypeName + kDocumentationExtension)]
     [DisallowMultipleComponent, AddComponentMenu("Chisel/" + kNodeTypeName)]
+    // The placement tool for this generator is called "Free Draw", which is where its icon comes from.
+    [Icon(kIconBasePath + "free_draw" + kIconExtension)]
     public sealed class ChiselExtrudedShapeComponent : ChiselBranchGeneratorComponent<Core.ChiselExtrudedShape, ChiselExtrudedShapeDefinition>
     {
         public const string kNodeTypeName = Core.ChiselExtrudedShapeDefinition.kNodeTypeName;

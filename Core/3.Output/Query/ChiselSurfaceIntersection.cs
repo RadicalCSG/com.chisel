@@ -11,7 +11,7 @@ namespace Chisel.Core
     [Serializable, StructLayout(LayoutKind.Sequential, Pack = 4)]
     public struct ChiselSurfaceIntersection
     {
-        public Plane    treePlane;
+        [System.NonSerialized] public Plane    treePlane;
         public Vector3  treePlaneIntersection;
 
         public float	distance;
