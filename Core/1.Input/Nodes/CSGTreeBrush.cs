@@ -23,18 +23,11 @@ namespace Chisel.Core
     [System.Diagnostics.DebuggerDisplay("Brush ({nodeID})")]
     public struct CSGTreeBrush : IEquatable<CSGTreeBrush>
     {
-        #region Create
-        /// <summary>Generates a brush and returns a <see cref="Chisel.Core.CSGTreeBrush"/> struct that contains a reference to it.</summary>
-        /// <param name="instanceID">A unique id to help identify this particular brush. For instance, this could be an InstanceID to a [UnityEngine.Object](https://docs.unity3d.com/ScriptReference/Object.html)</param>
-        /// <param name="localTransformation">The transformation of the brush relative to the tree root</param>
-        /// <param name="brushMesh">A <see cref="Chisel.Core.BrushMeshInstance"/>, which is a reference to a <see cref="Chisel.Core.BrushMesh"/>.</param>
-        /// <param name="operation">The <see cref="Chisel.Core.CSGOperationType"/> that needs to be performed with this <see cref="Chisel.Core.CSGTreeBrush"/>.</param>
-        /// <param name="flags"><see cref="Chisel.Core.CSGTreeBrush"/> specific flags</param>
-        /// <returns>A new <see cref="Chisel.Core.CSGTreeBrush"/>. May be an invalid node if it failed to create it.</returns>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static CSGTreeBrush Create(Int32 instanceID, float4x4 localTransformation, BrushMeshInstance brushMesh = default(BrushMeshInstance), CSGOperationType operation = CSGOperationType.Additive)
+		#region Create
+		[MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static CSGTreeBrush Create(UnityEngine.EntityId entityId, float4x4 localTransformation, BrushMeshInstance brushMesh = default(BrushMeshInstance), CSGOperationType operation = CSGOperationType.Additive)
         {
-            var brushNodeID = CompactHierarchyManager.CreateBrush(brushMesh, localTransformation, operation, instanceID);
+            var brushNodeID = CompactHierarchyManager.CreateBrush(brushMesh, localTransformation, operation, UnityEngine.EntityId.ToULong(entityId));
             Debug.Assert(CompactHierarchyManager.IsValidNodeID(brushNodeID));
             CompactHierarchyManager.SetDirty(brushNodeID);
             return CSGTreeBrush.Find(brushNodeID);
@@ -45,20 +38,20 @@ namespace Chisel.Core
         /// <param name="operation">The <see cref="Chisel.Core.CSGOperationType"/> that needs to be performed with this <see cref="Chisel.Core.CSGTreeBrush"/>.</param>
         /// <param name="flags"><see cref="Chisel.Core.CSGTreeBrush"/> specific flags</param>
         /// <returns>A new <see cref="Chisel.Core.CSGTreeBrush"/>. May be an invalid node if it failed to create it.</returns>
-        public static CSGTreeBrush Create(Matrix4x4 localTransformation, Int32 instanceID = 0, BrushMeshInstance brushMesh = default(BrushMeshInstance), CSGOperationType operation = CSGOperationType.Additive)
+        public static CSGTreeBrush Create(Matrix4x4 localTransformation, UnityEngine.EntityId entityId = default, BrushMeshInstance brushMesh = default(BrushMeshInstance), CSGOperationType operation = CSGOperationType.Additive)
         {
-            return Create(instanceID, localTransformation, brushMesh, operation);
+            return Create(entityId, localTransformation, brushMesh, operation);
         }
 
         /// <summary>Generates a brush and returns a <see cref="Chisel.Core.CSGTreeBrush"/> struct that contains a reference to it.</summary>
-        /// <param name="instanceID">A unique id to help identify this particular brush. For instance, this could be an InstanceID to a [UnityEngine.Object](https://docs.unity3d.com/ScriptReference/Object.html)</param>
+        /// <param name="entityID">A unique id to help identify this particular brush. For instance, this could be an EntityID to a [UnityEngine.Object](https://docs.unity3d.com/ScriptReference/Object.html)</param>
         /// <param name="brushMesh">A <see cref="Chisel.Core.BrushMeshInstance"/>, which is a reference to a <see cref="Chisel.Core.BrushMesh"/>.</param>
         /// <param name="operation">The <see cref="Chisel.Core.CSGOperationType"/> that needs to be performed with this <see cref="Chisel.Core.CSGTreeBrush"/>.</param>
         /// <param name="flags"><see cref="Chisel.Core.CSGTreeBrush"/> specific flags</param>
         /// <returns>A new <see cref="Chisel.Core.CSGTreeBrush"/>. May be an invalid node if it failed to create it.</returns>
-        public static CSGTreeBrush Create(Int32 instanceID = 0, BrushMeshInstance brushMesh = default(BrushMeshInstance), CSGOperationType operation = CSGOperationType.Additive)
+        public static CSGTreeBrush Create(UnityEngine.EntityId entityId = default, BrushMeshInstance brushMesh = default(BrushMeshInstance), CSGOperationType operation = CSGOperationType.Additive)
         {
-            return Create(instanceID, float4x4.identity, brushMesh, operation);
+            return Create(entityId, float4x4.identity, brushMesh, operation);
         }
         #endregion
 
@@ -115,8 +108,8 @@ namespace Chisel.Core
         /// <remarks><note>NodeIDs are eventually recycled, so be careful holding on to Nodes that have been destroyed.</note></remarks>
         public NodeID           NodeID			{ get { return nodeID; } }
 
-        /// <value>Gets the <see cref="Chisel.Core.CSGTreeBrush.InstanceID"/> set to the <see cref="Chisel.Core.CSGTreeBrush"/> at creation time.</value>
-        public Int32			InstanceID			{ get { return CompactHierarchyManager.GetNodeInstanceID(nodeID); } }
+        /// <value>Gets the <see cref="Chisel.Core.CSGTreeBrush.EntityId"/> set to the <see cref="Chisel.Core.CSGTreeBrush"/> at creation time.</value>
+        public UnityEngine.EntityId	EntityId			{ get { return UnityEngine.EntityId.FromULong(CompactHierarchyManager.GetNodeEntityID(nodeID)); } }
 
         /// <value>Returns the dirty flag of the <see cref="Chisel.Core.CSGTreeBrush"/>. When the it's dirty, then it means (some of) its generated meshes have been modified.</value>
         public bool				Dirty			{ get { return CompactHierarchyManager.IsNodeDirty(nodeID); } }
@@ -156,7 +149,12 @@ namespace Chisel.Core
             get { return new BrushMeshInstance { brushMeshHash = CompactHierarchyManager.GetBrushMeshID(nodeID) }; } 
         }
         
-        public readonly BlobAssetReference<NativeWireframeBlob> Outline 
+        /// <value>What this <see cref="Chisel.Core.CSGTreeBrush"/> is made of: an index into the project's <see cref="Chisel.Core.ChiselContentsList"/>, where 0 is Solid.</value>
+        /// <remarks>A face inside a brush of its own type, or inside a Solid brush, is removed; every other interface is kept.
+        /// An index past the end of the list builds as Solid.</remarks>
+        public int                  Contents        { get { return CompactHierarchyManager.GetNodeContents(nodeID); } set { CompactHierarchyManager.SetNodeContents(nodeID, value); } }
+
+        public readonly BlobAssetReference<NativeWireframeBlob> Outline
         { 
             get 
             { 
@@ -227,7 +225,7 @@ namespace Chisel.Core
         internal void ClearAllStatusFlags()                 { Hierarchy.ClearAllStatusFlags(CompactNodeID); }
 
 
-        [SerializeField] internal NodeID nodeID;
+        internal NodeID nodeID;
 
 
         internal readonly CompactNodeID      CompactNodeID       { get { return CompactHierarchyManager.GetCompactNodeID(nodeID); } }
@@ -253,6 +251,6 @@ namespace Chisel.Core
 			}
 		}
 
-		public override string ToString() => $"{((CSGTreeNode)this).Type} ({nodeID})";
+		public readonly override string ToString() => $"{((CSGTreeNode)this).Type} ({nodeID})";
     }
 }

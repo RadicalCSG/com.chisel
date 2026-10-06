@@ -49,6 +49,7 @@ namespace Chisel.Components
         
         Transform m_Transform;
         public Transform            Transform => (Component == null) ? null : (m_Transform != null) ? m_Transform : (m_Transform = Component.transform);
+        internal Transform          RegisteredTransform => m_Transform;
         GameObject m_GameObject;
         public GameObject           GameObject => (Component == null) ? null : (m_GameObject != null) ? m_GameObject : (m_GameObject = Component.gameObject);
         
@@ -109,6 +110,9 @@ namespace Chisel.Components
             if (parentTransform == iterator.parent &&
                 ignoreWhenParentIsChiselNode)
                 return false;
+
+            if (!iterator.IsChildOf(parentTransform))
+                return true;
 
             do
             {

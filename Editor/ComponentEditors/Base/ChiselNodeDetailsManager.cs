@@ -18,9 +18,13 @@ namespace Chisel.Editors
         [InitializeOnLoadMethod]
         static void InitializeNodeDetails()
         {
-            ReflectionExtensions.Initialize();
-            foreach (var type in ReflectionExtensions.AllNonAbstractClasses)
+            // Every ChiselNodeDetails<T> implements IChiselNodeDetails, so TypeCache finds exactly the
+            // candidates that the old scan over every class in every loaded assembly used to filter for.
+            foreach (var type in TypeCache.GetTypesDerivedFrom<IChiselNodeDetails>())
             {
+                if (type.IsAbstract || !type.IsClass)
+                    continue;
+
                 var baseType = type.GetGenericBaseClass(typeof(ChiselNodeDetails<>));
                 if (baseType == null)
                     continue;

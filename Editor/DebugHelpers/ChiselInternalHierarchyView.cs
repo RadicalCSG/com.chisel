@@ -232,20 +232,20 @@ namespace Chisel.Editors
             return children;
         }
 
-        static void AddFoldOuts(ref Rect itemRect, ref Rect visibleArea, CSGTreeNode[] hierarchyItems, HashSet<int> selectedInstanceIDs, ref Dictionary<CSGTreeNode, bool> openNodes)
+        static void AddFoldOuts(ref Rect itemRect, ref Rect visibleArea, CSGTreeNode[] hierarchyItems, HashSet<UnityEngine.EntityId> selectedEntityIDs, ref Dictionary<CSGTreeNode, bool> openNodes)
         {
             if (hierarchyItems == null || hierarchyItems.Length == 0)
                 return;
 
             var defaultColor = GUI.color;
-            AddFoldOuts(ref itemRect, ref visibleArea, hierarchyItems, selectedInstanceIDs, defaultColor, ref openNodes);
+            AddFoldOuts(ref itemRect, ref visibleArea, hierarchyItems, selectedEntityIDs, defaultColor, ref openNodes);
             GUI.color = defaultColor;
         }
 
         static string NameForTreeNode(CSGTreeNode treeNode)
         {
-            var instanceID = treeNode.InstanceID;
-            var obj = (instanceID != 0) ? EditorUtility.InstanceIDToObject(instanceID) : null;
+            var entityID = treeNode.EntityId;
+            var obj = (entityID != default) ? EditorUtility.EntityIdToObject(entityID) : null;
             string name;
             if (obj == null)
             {
@@ -258,19 +258,19 @@ namespace Chisel.Editors
             {
                 var brush = (CSGTreeBrush)treeNode;
                 if (treeNode.Valid)
-                    return $"{name} [{treeNode}:{instanceID}:{brush.BrushMesh.BrushMeshID}]";
+                    return $"{name} [{treeNode}:{entityID}:{brush.BrushMesh.BrushMeshID}]";
                 else
-                    return $"{name} [{treeNode}:{instanceID}:{brush.BrushMesh.BrushMeshID}] (INVALID)";
+                    return $"{name} [{treeNode}:{entityID}:{brush.BrushMesh.BrushMeshID}] (INVALID)";
             } else
             {
                 if (treeNode.Valid)
-                    return $"{name} [{treeNode}:{instanceID}]";
+                    return $"{name} [{treeNode}:{entityID}]";
                 else
-                    return $"{name} [{treeNode}:{instanceID}] (INVALID)";
+                    return $"{name} [{treeNode}:{entityID}] (INVALID)";
             }
         }
 
-        static void AddFoldOuts(ref Rect itemRect, ref Rect visibleArea, CSGTreeNode[] hierarchyItems, HashSet<int> selectedInstanceIDs, Color defaultColor, ref Dictionary<CSGTreeNode, bool> openNodes)
+        static void AddFoldOuts(ref Rect itemRect, ref Rect visibleArea, CSGTreeNode[] hierarchyItems, HashSet<UnityEngine.EntityId> selectedEntityIDs, Color defaultColor, ref Dictionary<CSGTreeNode, bool> openNodes)
         {
             if (hierarchyItems == null)
                 return;
@@ -300,12 +300,12 @@ namespace Chisel.Editors
                 }
 
                 var child       = children[i];
-                var instanceID	= child.InstanceID;
+                var entityID	= child.EntityId;
                 var childCount	= child.Count;
                 if (itemRect.y > visibleArea.yMin)
                 {
                     var name			= NameForTreeNode(child);
-                    var selected		= selectedInstanceIDs.Contains(instanceID);
+                    var selected		= selectedEntityIDs.Contains(entityID);
                     var labelStyle		= (childCount > 0) ?
                                             (selected ? s_Styles.foldOutLabelSelected : s_Styles.foldOutLabel) :
                                             (selected ? s_Styles.emptyLabelSelected : s_Styles.emptyLabelItem);
@@ -340,14 +340,14 @@ namespace Chisel.Editors
                     if (EditorGUI.EndChangeCheck() ||
                         GUI.Button(labelRect, name, labelStyle))
                     {
-                        var obj = EditorUtility.InstanceIDToObject(instanceID);
+                        var obj = EditorUtility.EntityIdToObject(entityID);
                         if (!(obj is GameObject))
                         {
                             var mono = (obj as MonoBehaviour);
                             if (mono)
-                                instanceID = mono.gameObject.GetInstanceID();
+                                entityID = mono.gameObject.GetEntityId();
                         }
-                        Selection.instanceIDs = new[] { instanceID };
+                        Selection.entityIds = new[] { entityID };
                     }
                     if (!child.Valid)
                         GUI.color = prevColor;
@@ -372,18 +372,18 @@ namespace Chisel.Editors
         {
             UpdateStyles();
             
-            var selectedInstanceIDs = new HashSet<int>();
+            var selectedEntityIDs = new HashSet<UnityEngine.EntityId>();
 
-            foreach (var instanceID in Selection.instanceIDs)
+            foreach (var entityID in Selection.entityIds)
             {
-                var obj = EditorUtility.InstanceIDToObject(instanceID);
+                var obj = EditorUtility.EntityIdToObject(entityID);
                 var go = obj as GameObject;
                 if (go != null)
                 {
                     foreach(var no in go.GetComponents<ChiselNodeComponent>())
                     {
-                        var instanceID_ = no.GetInstanceID();
-                        selectedInstanceIDs.Add(instanceID_);
+                        var entityID_ = no.GetEntityId();
+                        selectedEntityIDs.Add(entityID_);
                     }
                 }
             }
@@ -427,13 +427,13 @@ namespace Chisel.Editors
                         visibleArea.x += s_ScrollPos.x;
                         visibleArea.y += s_ScrollPos.y;
                 
-                        AddFoldOuts(ref itemRect, ref visibleArea, allRootNodes, selectedInstanceIDs, ref openNodes);
+                        AddFoldOuts(ref itemRect, ref visibleArea, allRootNodes, selectedEntityIDs, ref openNodes);
                     }
                     GUI.EndScrollView();
-                    if (selectedInstanceIDs.Count == 1)
+                    if (selectedEntityIDs.Count == 1)
                     {
-                        var instanceID = selectedInstanceIDs.First();
-                        var obj = EditorUtility.InstanceIDToObject(instanceID) as ChiselNodeComponent;
+                        var entityID_ = selectedEntityIDs.First();
+                        var obj = EditorUtility.EntityIdToObject(entityID_) as ChiselNodeComponent;
                         if (obj)
                         {
                             var brush = obj as ChiselBrushComponent;
@@ -447,7 +447,7 @@ namespace Chisel.Editors
                             {
                                 for (int n = 0; n < allTreeNodes.Length; n++)
                                 {
-                                    if (allTreeNodes[n].InstanceID == instanceID)
+                                    if (allTreeNodes[n].EntityId == entityID_)
                                     {
                                         node = allTreeNodes[n];
                                         break;
@@ -462,7 +462,7 @@ namespace Chisel.Editors
                                 labelArea.y = labelArea.height;
                                 labelArea.height = kItemHeight;
                                 GUI.Label(labelArea, $"Node: {node}"); labelArea.y += kItemHeight;
-                                GUI.Label(labelArea, $"InstanceID: {node.InstanceID}"); labelArea.y += kItemHeight;
+                                GUI.Label(labelArea, $"EntityID: {node.EntityId}"); labelArea.y += kItemHeight;
                                 GUI.Label(labelArea, $"Operation: {node.Operation}"); labelArea.y += kItemHeight;
                                 GUI.Label(labelArea, $"Valid: {node.Valid}"); labelArea.y += kItemHeight;
                                 GUI.Label(labelArea, $"NodeType: {node.Type}"); labelArea.y += kItemHeight;

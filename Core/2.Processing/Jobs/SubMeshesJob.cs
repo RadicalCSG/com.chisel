@@ -15,7 +15,7 @@ namespace Chisel.Core
         public MeshQuery meshQuery;
         public int meshQueryIndex;
         public int subMeshQueryIndex;
-        public int surfaceParameter;
+        public ulong surfaceParameter;
             
         public int surfacesOffset;
         public int surfacesCount;
@@ -31,7 +31,7 @@ namespace Chisel.Core
 	{
 		public CompactNodeID brushNodeID;
 		public int surfaceIndex;
-		public int surfaceParameter;
+		public ulong surfaceParameter;
 
 		public int vertexCount;
 		public int indexCount;
@@ -82,10 +82,14 @@ namespace Chisel.Core
         [NoAlias, ReadOnly] public NativeList<BlobAssetReference<ChiselBrushRenderBuffer>> brushRenderBufferCache;
 
         // Write
-        [NoAlias, WriteOnly] public NativeList<BrushData>.ParallelWriter brushRenderData;
+        [NoAlias] public NativeList<BrushData> brushRenderData;
+        [NoAlias] public NativeList<BlobAssetReference<ChiselBrushRenderBuffer>> patchedRenderBuffers;
+
+        [NoAlias] public NativeReference<int> surfaceCountRef;
 
         public void Execute()
         {
+            var totalSurfaceCount = 0;
             for (int b = 0, count_b = allTreeBrushIndexOrders.Length; b < count_b; b++)
             {
                 var brushIndexOrder     = allTreeBrushIndexOrders[b];
@@ -101,6 +105,7 @@ namespace Chisel.Core
                     continue;
 
                 var brushSurfaceOffset = brushRenderBufferRef.surfaceOffset;
+                totalSurfaceCount += brushSurfaceCount;
                 brushRenderData.AddNoResize(new BrushData{
                     brushIndexOrder     = brushIndexOrder,
                     brushSurfaceOffset  = brushSurfaceOffset,
@@ -108,6 +113,11 @@ namespace Chisel.Core
                     brushRenderBuffer   = brushRenderBuffer
                 });
             }
+            if (surfaceCountRef.Value < totalSurfaceCount)
+                surfaceCountRef.Value = totalSurfaceCount;
+
+            // The weld at the very end across the whole model: needles that close a seam go with the triangle across them
+            OutputModelWeld.WeldModel(brushRenderData, patchedRenderBuffers);
         }
     }
 
@@ -122,15 +132,6 @@ namespace Chisel.Core
         public Allocator allocator;
         [NativeDisableParallelForRestriction]
         [NoAlias] public NativeArray<UnsafeList<SubMeshSurface>> subMeshSurfaces;
-
-        struct SubMeshSurfaceComparer : System.Collections.Generic.IComparer<SubMeshSurface>
-        {
-            public int Compare(SubMeshSurface x, SubMeshSurface y)
-            {
-                return x.surfaceParameter.CompareTo(y.surfaceParameter);
-            }
-        }
-		readonly static SubMeshSurfaceComparer kSubMeshSurfaceComparer = new();
 
         public void Execute(int t)
         {
@@ -154,35 +155,84 @@ namespace Chisel.Core
                 subMeshSurfaces[t] = default;
             }
 
-            var subMeshSurfaceList = new UnsafeList<SubMeshSurface>(requiredSurfaceCount, allocator);
+            var subMeshSurfaceList = new UnsafeList<SubMeshSurface>(math.max(1, requiredSurfaceCount), allocator);
+
+            // One key per surface of this query. Sorted, this both yields the distinct parameters and
+            // counts each group's surfaces, so the per-brush blobs are walked twice, not three times.
+            var parameters = new NativeList<ulong>(math.max(1, requiredSurfaceCount), Allocator.Temp);
+            for (int b = 0, count_b = brushRenderData.Length; b < count_b; b++)
+            {
+                ref var surfaces = ref brushRenderData[b].brushRenderBuffer.Value.querySurfaces[t].surfaces;
+                for (int s = 0; s < surfaces.Length; s++)
+                    parameters.AddNoResize(surfaces[s].surfaceParameter);
+            }
+            var surfaceCount = parameters.Length;
+            subMeshSurfaceList.Resize(surfaceCount, NativeArrayOptions.UninitializedMemory);
+            if (surfaceCount == 0)
+            {
+                parameters.Dispose();
+                subMeshSurfaces[t] = subMeshSurfaceList;
+                return;
+            }
+
+            parameters.Sort();
+
+            // Run-length encode the sorted keys into distinct parameters + the offset of each group
+            var groupOffsets = new NativeList<int>(surfaceCount + 1, Allocator.Temp);
+            int uniqueCount = 0;
+            for (int i = 0; i < surfaceCount; i++)
+            {
+                if (uniqueCount == 0 || parameters[uniqueCount - 1] != parameters[i])
+                {
+                    parameters[uniqueCount++] = parameters[i];
+                    groupOffsets.AddNoResize(i);
+                }
+            }
+            parameters.Length = uniqueCount;
+
+            // Scatter, keeping brush order within a group
             for (int b = 0, count_b = brushRenderData.Length; b < count_b; b++)
             {
                 var brushData         = brushRenderData[b];
                 var brushRenderBuffer = brushData.brushRenderBuffer;
-                ref var querySurfaces = ref brushRenderBuffer.Value.querySurfaces[t]; // <-- 1. somehow this needs to 
-                                                                                        //     be in outer loop
+                ref var querySurfaces = ref brushRenderBuffer.Value.querySurfaces[t];
                 ref var brushNodeID   = ref querySurfaces.brushNodeID;
 				ref var surfaces      = ref querySurfaces.surfaces;
 
-                for (int s = 0; s < surfaces.Length; s++) 
+                for (int s = 0; s < surfaces.Length; s++)
                 {
-                    subMeshSurfaceList.AddNoResize(new SubMeshSurface
+                    var group = FindGroup(parameters, surfaces[s].surfaceParameter);
+                    var index = groupOffsets[group];
+                    groupOffsets[group] = index + 1;
+                    subMeshSurfaceList[index] = new SubMeshSurface
                     {
                         brushNodeID       = brushNodeID,
                         surfaceIndex      = surfaces[s].surfaceIndex,
-                        surfaceParameter  = surfaces[s].surfaceParameter, // <-- 2. store array per surfaceParameter => no sort
+                        surfaceParameter  = surfaces[s].surfaceParameter,
                         vertexCount       = surfaces[s].vertexCount,
                         indexCount        = surfaces[s].indexCount,
                         surfaceHashValue  = surfaces[s].surfaceHashValue,
                         geometryHashValue = surfaces[s].geometryHashValue,
-                        brushRenderBuffer = brushRenderBuffer, // <-- 3. Get rid of this somehow => memcpy
-                    });
+                        brushRenderBuffer = brushRenderBuffer,
+                    };
                 }
-                // ^ do those 3 points (mentioned in comments)
             }
-            
-            subMeshSurfaceList.Sort(kSubMeshSurfaceComparer);
+            groupOffsets.Dispose();
+            parameters.Dispose();
+
             subMeshSurfaces[t] = subMeshSurfaceList;
+        }
+
+        // Index of `value` in the sorted, distinct `parameters` (every value looked up came from it)
+        static int FindGroup(in NativeList<ulong> parameters, ulong value)
+        {
+            int lo = 0, hi = parameters.Length - 1;
+            while (lo < hi)
+            {
+                var mid = (lo + hi) >> 1;
+                if (parameters[mid] < value) lo = mid + 1; else hi = mid;
+            }
+            return lo;
         }
     }
     

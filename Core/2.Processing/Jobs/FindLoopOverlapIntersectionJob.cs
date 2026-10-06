@@ -19,6 +19,16 @@ namespace Chisel.Core
         const float kSqrVertexEqualEpsilon      = CSGConstants.kSqrVertexEqualEpsilon;
         const float kFatPlaneWidthEpsilon       = CSGConstants.kFatPlaneWidthEpsilon;
 
+        // Set false to skip the base-polygon T-junction split.
+        const bool kSplitBasePolygonsAtIntersectionVertices = true;
+
+        // Gate the vertex weld on plane incidence (WeldIncidenceFilter); set from CSGManager's kUseIncidenceWeld.
+        [NoAlias, ReadOnly] public bool useIncidenceWeld;
+
+        // Canonical vertices (see CanonicalVertices)
+        [NoAlias, ReadOnly] public CanonicalVertexStage                                  canonicalVertexStage;
+        [NoAlias, ReadOnly] public NativeList<BlobAssetReference<BrushesTouchedByBrush>> brushesTouchedByBrushCache;
+
         // Read
         [NoAlias, ReadOnly] public NativeList<IndexOrder>                                       allUpdateBrushIndexOrders;
         [NoAlias, ReadOnly] public NativeList<float3>                                           outputSurfaceVertices;
@@ -65,7 +75,22 @@ namespace Chisel.Core
 
 		readonly static CompareSortByBasePlaneIndex kCompareSortByBasePlaneIndex = new CompareSortByBasePlaneIndex();
 
-        void CopyFrom(NativeList<UnsafeList<Edge>> dst, int index, ref BrushIntersectionLoop brushIntersectionLoop, HashedVertices hashedTreeSpaceVertices, int extraCapacity)
+        // The faces of this brush and of the brush it is being cut by are what identify the vertices here.
+        WeldIncidenceFilter CreateWeldFilter(int selfNodeOrder, int otherNodeOrder)
+        {
+            // Canonical vertices: a vertex computed twice has the same bits, so only the same position is the same vertex.
+            if (canonicalVertexStage >= CanonicalVertexStage.LoopIdentity &&
+                CanonicalVertices.IsAvailable(canonicalVertexStage, brushTreeSpacePlaneCache, brushesTouchedByBrushCache))
+                return WeldIncidenceFilter.SameVertexOnly;
+            if (!useIncidenceWeld ||
+                !brushTreeSpacePlaneCache[selfNodeOrder].IsCreated  || !basePolygonCache[selfNodeOrder].IsCreated ||
+                !brushTreeSpacePlaneCache[otherNodeOrder].IsCreated || !basePolygonCache[otherNodeOrder].IsCreated)
+                return WeldIncidenceFilter.Disabled;
+            return WeldIncidenceFilter.Create(ref brushTreeSpacePlaneCache[selfNodeOrder].Value.treeSpacePlanes, basePolygonCache[selfNodeOrder].Value.polygons.Length,
+                                              ref brushTreeSpacePlaneCache[otherNodeOrder].Value.treeSpacePlanes, basePolygonCache[otherNodeOrder].Value.polygons.Length);
+        }
+
+        void CopyFrom(NativeList<UnsafeList<Edge>> dst, int index, ref BrushIntersectionLoop brushIntersectionLoop, HashedVertices hashedTreeSpaceVertices, int extraCapacity, in WeldIncidenceFilter weldFilter)
         {
             Debug.Assert(extraCapacity >= 0);
             ref var vertexIndex     = ref brushIntersectionLoop.loopVertexIndex;
@@ -77,7 +102,7 @@ namespace Chisel.Core
 
             hashedTreeSpaceVertices.ReserveAdditionalVertices(loopVertexCount);
             for (int j = 0; j < loopVertexCount; j++)
-                srcIndices[j] = hashedTreeSpaceVertices.AddNoResize(outputSurfaceVertices[vertexIndex + j]);
+                srcIndices[j] = hashedTreeSpaceVertices.AddNoResize(outputSurfaceVertices[vertexIndex + j], in weldFilter);
 
             var dstEdges = new UnsafeList<Edge>(loopVertexCount + extraCapacity, Allocator.Temp);
             for (int j = 1; j < loopVertexCount; j++)
@@ -207,6 +232,9 @@ namespace Chisel.Core
                 }
                 else
                 {
+                    // Canonical vertices: every split point lies on this brush, so its key is gathered here.
+                    var canonical = CanonicalVertices.Create(canonicalVertexStage, brushTreeSpacePlaneCache, brushesTouchedByBrushCache);
+
                     NativeList<BrushIntersectionLoop> brushIntersections;
 					using var _brushIntersections = brushIntersections = new NativeList<BrushIntersectionLoop>(intersectionCount, Allocator.Temp);
                     //NativeCollectionHelpers.EnsureCapacityAndClear(ref brushIntersections, intersectionCount);
@@ -286,7 +314,8 @@ namespace Chisel.Core
                                         intersectionSurfaceSegments[s] = new int2(startIndex, 0);
                                     prevBasePlaneIndex = basePlaneIndex;
                                 }
-                                CopyFrom(intersectionEdges, l, ref brushIntersectionLoop, hashedTreeSpaceVertices, brushIntersections.Length * 4);
+                                CopyFrom(intersectionEdges, l, ref brushIntersectionLoop, hashedTreeSpaceVertices, brushIntersections.Length * 4,
+                                         CreateWeldFilter(brushNodeOrder, brushIntersectionLoop.indexOrder1.nodeOrder));
                             }
 
                             intersectionSurfaceSegments[prevBasePlaneIndex] = new int2(startIndex, brushIntersections.Length - startIndex);
@@ -311,9 +340,11 @@ namespace Chisel.Core
                                         int intersectionBrushOrder1 = brushIntersections[intersectionSurfaceOffset + l1].indexOrder1.nodeOrder;// intersectionIndex1.w;
 
                                         FindLoopPlaneIntersections(brushTreeSpacePlaneCache.AsArray(),
+                                                                   CreateWeldFilter(brushNodeOrder, intersectionBrushOrder1),
                                                                     intersectionBrushOrder1,
-                                                                    //intersectionBrushOrder0, 
-                                                                    hashedTreeSpaceVertices, ref edges);
+                                                                    //intersectionBrushOrder0,
+                                                                    hashedTreeSpaceVertices, ref edges,
+                                                                    in canonical, brushNodeOrder);
 
                                         // TODO: merge these so that intersections will be identical on both loops (without using math, use logic)
                                         // TODO: make sure that intersections between loops will be identical on OTHER brushes (without using math, use logic)
@@ -342,8 +373,10 @@ namespace Chisel.Core
                                     var selfEdges = basePolygonEdges[b];
                                     //var before = selfEdges.Length;
 
-                                    FindBasePolygonPlaneIntersections(ref otherPlanes, //ref selfPlanes, 
-                                                                        ref selfEdges, hashedTreeSpaceVertices);
+                                    FindBasePolygonPlaneIntersections(ref otherPlanes, //ref selfPlanes,
+                                                                        CreateWeldFilter(brushNodeOrder, otherBrushNodeOrder),
+                                                                        ref selfEdges, hashedTreeSpaceVertices,
+                                                                        in canonical, brushNodeOrder);
                                     basePolygonEdges[b] = selfEdges;
                                 }
                             }
@@ -375,6 +408,54 @@ namespace Chisel.Core
                                     //       Somehow it can also cause artifacts sometimes???
                                     //FindLoopVertexOverlaps(ref otherPlanes, ref bp_edges, in_edges, hashedTreeSpaceVertices);
                                 }
+                            }
+
+                            if (kSplitBasePolygonsAtIntersectionVertices)
+                            {
+                                var splitVertexCount = hashedTreeSpaceVertices.Length;
+
+                                // Mark which vertices belong to any intersection loop.
+                                var isIntersectionVertex = new NativeArray<bool>(splitVertexCount, Allocator.Temp);
+                                for (int i = 0; i < intersectionEdges.Length; i++)
+                                {
+                                    if (!intersectionEdges[i].IsCreated)
+                                        continue;
+                                    var ie = intersectionEdges[i];
+                                    for (int e = 0; e < ie.Length; e++)
+                                    {
+                                        isIntersectionVertex[ie[e].index1] = true;
+                                        isIntersectionVertex[ie[e].index2] = true;
+                                    }
+                                }
+
+                                var candidateCount = 0;
+                                for (int v = 0; v < splitVertexCount; v++)
+                                    if (isIntersectionVertex[v]) candidateCount++;
+
+                                if (candidateCount > 0)
+                                {
+                                    var splitPositions  = new NativeArray<float3>(splitVertexCount, Allocator.Temp);
+                                    for (int v = 0; v < splitVertexCount; v++)
+                                        splitPositions[v] = hashedTreeSpaceVertices[v];
+
+                                    var splitCandidates = new NativeArray<ushort>(candidateCount, Allocator.Temp);
+                                    var k = 0;
+                                    for (int v = 0; v < splitVertexCount; v++)
+                                        if (isIntersectionVertex[v]) splitCandidates[k++] = (ushort)v;
+
+                                    for (int b = 0; b < basePolygonEdges.Length; b++)
+                                    {
+                                        if (!basePolygonEdges[b].IsCreated)
+                                            continue;
+                                        var splitEdges = basePolygonEdges[b];
+                                        LoopEdgeSplitter.SplitEdgesAtVertices(ref splitEdges, in splitPositions, in splitCandidates, candidateCount, CSGConstants.kSqrEdgeDistanceEpsilon);
+                                        basePolygonEdges[b] = splitEdges;
+                                    }
+
+                                    splitPositions.Dispose();
+                                    splitCandidates.Dispose();
+                                }
+                                isIntersectionVertex.Dispose();
                             }
 
                             for (int i = 0; i < intersectionEdges.Length; i++)
@@ -481,9 +562,12 @@ namespace Chisel.Core
 		}
 
         public void FindLoopPlaneIntersections(NativeArray<BlobAssetReference<BrushTreeSpacePlanes>> brushTreeSpacePlanes,
+                                               in WeldIncidenceFilter weldFilter,
                                                int intersectionBrushOrder1, //int intersectionBrushOrder0,
-                                               HashedVertices hashedTreeSpaceVertices, 
-                                               ref UnsafeList<Edge> edges)
+                                               HashedVertices hashedTreeSpaceVertices,
+                                               ref UnsafeList<Edge> edges,
+                                               in CanonicalVertices canonical = default,
+                                               int canonicalNodeOrder = -1)
         {
             if (edges.Length < 3)
                 return;
@@ -505,7 +589,7 @@ namespace Chisel.Core
             var otherPlaneCount = otherPlanes.Length;
             //var selfPlaneCount  = selfPlanes.Length;
 
-            hashedTreeSpaceVertices.ReserveAdditionalVertices(otherPlaneCount); // ensure we have at least this many extra vertices in capacity
+            hashedTreeSpaceVertices.ReserveAdditionalVertices(inputEdgesLength * 2);
 
             // TODO: Optimize the hell out of this
             for (int e = 0; e < inputEdgesLength; e++)
@@ -560,11 +644,8 @@ namespace Chisel.Core
                         newVertex = vertex1 - (vector * delta);
                     }
 
-                    // Check if the new vertex is identical to one of the edge vertices
-                    if (math.lengthsq(vertex0 - newVertex) <= kSqrVertexEqualEpsilon ||
-                        math.lengthsq(vertex1 - newVertex) <= kSqrVertexEqualEpsilon)
-                        continue;
-
+                    // Whether the crossing exists at all is decided with the computed point, before canonicalization,
+                    // so that moving it cannot carry it across the other brush's planes (and most candidates end here).
                     var newVertex4 = new float4(newVertex, 1);
                     for (int p2 = 0; p2 < otherPlaneCount; p2++)
                     {
@@ -585,7 +666,15 @@ namespace Chisel.Core
                     }
                     //*/
 
-                    var tempVertexIndex = hashedTreeSpaceVertices.AddNoResize(newVertex);
+                    // The position this crossing is identified by.
+                    var identityVertex = canonical.Canonicalize(newVertex, canonicalNodeOrder, CanonicalVertexSite.LoopSplit);
+
+                    // Check if the new vertex is identical to one of the edge vertices
+                    if ((math.lengthsq(vertex0 - identityVertex) <= kSqrVertexEqualEpsilon && weldFilter.Allows(identityVertex, vertex0)) ||
+                            (math.lengthsq(vertex1 - identityVertex) <= kSqrVertexEqualEpsilon && weldFilter.Allows(identityVertex, vertex1)))
+                        continue;
+
+                    var tempVertexIndex = hashedTreeSpaceVertices.AddNoResize(identityVertex, in weldFilter);
                     if ((foundVertices == 0 || tempVertexIndex != tempVertices[1]) &&
                         vertexIndex0 != tempVertexIndex &&
                         vertexIndex1 != tempVertexIndex)
@@ -622,19 +711,22 @@ namespace Chisel.Core
                     for (int i = 1; i < 2 + foundVertices; i++)
                     {
                         if (tempVertices[i - 1] != tempVertices[i])
-                            edges.AddNoResize(new Edge() { index1 = (ushort)tempVertices[i - 1], index2 = (ushort)tempVertices[i] });
+                            edges.Add(new Edge() { index1 = (ushort)tempVertices[i - 1], index2 = (ushort)tempVertices[i] });
                     }
                 } else
                 {
-                    edges.AddNoResize(newSelfEdges[e]);
+                    edges.Add(newSelfEdges[e]);
                 }
             }
         }
         
         public void FindBasePolygonPlaneIntersections([NoAlias, ReadOnly] ref BlobArray<float4>   otherPlanes,
+                                                      in WeldIncidenceFilter                     weldFilter,
                                                       //[NoAlias] ref BlobArray<float4>       selfPlanes,
                                                       [NoAlias] ref UnsafeList<Edge>          selfEdges,
-                                                      [NoAlias, ReadOnly] HashedVertices      combinedVertices)
+                                                      [NoAlias, ReadOnly] HashedVertices      combinedVertices,
+                                                      in CanonicalVertices                    canonical = default,
+                                                      int                                     canonicalNodeOrder = -1)
         {
             if (selfEdges.Length < 3)
                 return;
@@ -646,6 +738,7 @@ namespace Chisel.Core
 			//NativeCollectionHelpers.EnsureMinimumSize(ref newSelfEdges, newSelfEdgesLength); 
             
             newSelfEdges.CopyFrom(selfEdges, 0, selfEdges.Length);
+            // Re-added with Add for the reason given in FindLoopPlaneIntersections: this runs once per other brush.
             selfEdges.Clear();
 
             int4 tempVertices = int4.zero;
@@ -653,7 +746,8 @@ namespace Chisel.Core
             var otherPlaneCount = otherPlanes.Length;
             //var selfPlaneCount  = selfPlanes.Length;
 
-            combinedVertices.ReserveAdditionalVertices(otherPlaneCount); // ensure we have at least this many extra vertices in capacity
+            // At most two new vertices per edge; see FindLoopPlaneIntersections for why one per plane was not enough.
+            combinedVertices.ReserveAdditionalVertices(newSelfEdgesLength * 2);
 
             // TODO: Optimize the hell out of this
             for (int e = 0; e < newSelfEdgesLength; e++)
@@ -708,11 +802,7 @@ namespace Chisel.Core
                             newVertex = vertex1 - (vector * delta);
                         }
 
-                        // Check if the new vertex is identical to one of our existing vertices
-                        if (math.lengthsq(vertex0 - newVertex) <= kSqrVertexEqualEpsilon ||
-                            math.lengthsq(vertex1 - newVertex) <= kSqrVertexEqualEpsilon)
-                            continue;
-
+                        // Existence first, with the computed point, as in FindLoopPlaneIntersections.
                         var newVertexw = new float4(newVertex, 1);
                         for (int p2 = 0; p2 < otherPlaneCount; p2++)
                         {
@@ -732,7 +822,15 @@ namespace Chisel.Core
                         }
                         //*/
 
-                        var tempVertexIndex = combinedVertices.AddNoResize(newVertex);
+                        // Identified by its canonical position.
+                        var identityVertex = canonical.Canonicalize(newVertex, canonicalNodeOrder, CanonicalVertexSite.BaseSplit);
+
+                        // Check if the new vertex is identical to one of our existing vertices
+                        if ((math.lengthsq(vertex0 - identityVertex) <= kSqrVertexEqualEpsilon && weldFilter.Allows(identityVertex, vertex0)) ||
+                                (math.lengthsq(vertex1 - identityVertex) <= kSqrVertexEqualEpsilon && weldFilter.Allows(identityVertex, vertex1)))
+                            continue;
+
+                        var tempVertexIndex = combinedVertices.AddNoResize(identityVertex, in weldFilter);
                         if ((foundVertices == 0 || tempVertexIndex != tempVertices[1]) &&
                             vertexIndex0 != tempVertexIndex &&
                             vertexIndex1 != tempVertexIndex)
@@ -769,11 +867,11 @@ namespace Chisel.Core
                         for (int i = 1; i < 2 + foundVertices; i++)
                         {
                             if (tempVertices[i - 1] != tempVertices[i])
-                                selfEdges.AddNoResize(new Edge() { index1 = (ushort)tempVertices[i - 1], index2 = (ushort)tempVertices[i] });
+                                selfEdges.Add(new Edge() { index1 = (ushort)tempVertices[i - 1], index2 = (ushort)tempVertices[i] });
                         }
                     } else
                     {
-                        selfEdges.AddNoResize(newSelfEdges[e]);
+                        selfEdges.Add(newSelfEdges[e]);
                     }
                 }
         }
@@ -843,6 +941,8 @@ namespace Chisel.Core
 			//NativeCollectionHelpers.EnsureMinimumSize(ref newSelfEdges, inputEdgesLength);
                 
             newSelfEdges.CopyFrom(selfEdges, 0, selfEdges.Length);
+            // Re-added with Add: every vertex of the other loop that lies on an edge adds one, which no capacity the
+            // caller reserved accounts for (see FindLoopPlaneIntersections).
             selfEdges.Clear();
 
             // TODO: Optimize the hell out of this
@@ -868,7 +968,8 @@ namespace Chisel.Core
                     var dot = math.dot(otherVertex - vertex0, delta);
                     if (dot <= 0 || dot >= max)
                         continue;
-                    if (!MathExtensions.IsPointOnLineSegment(otherVertex, vertex0, vertex1, CSGConstants.kVertexEqualEpsilon, CSGConstants.kEdgeIntersectionEpsilon))
+                    // Both epsilons are compared against SQUARED distances (see IsPointOnLineSegment).
+                    if (!MathExtensions.IsPointOnLineSegment(otherVertex, vertex0, vertex1, CSGConstants.kSqrVertexEqualEpsilon, CSGConstants.kSqrEdgeDistanceEpsilon))
                         continue;
 
                     // Note: the otherVertices array cannot contain any indices that are part in 
@@ -900,17 +1001,17 @@ namespace Chisel.Core
                         }
                     }
                     if (vertexIndex0 != tempList[0])
-                        selfEdges.AddNoResize(new Edge { index1 = vertexIndex0, index2 = tempList[0] });
+                        selfEdges.Add(new Edge { index1 = vertexIndex0, index2 = tempList[0] });
                     for (int i = 1; i < tempList.Length; i++)
                     {
                         if (tempList[i - 1] != tempList[i])
-                            selfEdges.AddNoResize(new Edge { index1 = tempList[i - 1], index2 = tempList[i] });
+                            selfEdges.Add(new Edge { index1 = tempList[i - 1], index2 = tempList[i] });
                     }
                     if (tempList[tempList.Length - 1] != vertexIndex1)
-                        selfEdges.AddNoResize(new Edge { index1 = tempList[tempList.Length - 1], index2 = vertexIndex1 });
+                        selfEdges.Add(new Edge { index1 = tempList[tempList.Length - 1], index2 = vertexIndex1 });
                 } else
                 {
-                    selfEdges.AddNoResize(newSelfEdges[e]);
+                    selfEdges.Add(newSelfEdges[e]);
                 }
             }
         }

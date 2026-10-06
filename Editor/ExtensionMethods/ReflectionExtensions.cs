@@ -23,11 +23,12 @@ namespace Chisel.Editors
             return (T)result;
         }
         public void SetValue(object instance, T value)
-        { 
+        {
             if (property == null ||
+                !property.CanWrite ||
                 instance == null)
                 return;
-            property.SetValue(instance, value, null);            
+            property.SetValue(instance, value, null);
         }
     }   
 
@@ -53,7 +54,7 @@ namespace Chisel.Editors
             }
             set
             {
-                if (property == null)
+                if (property == null || !property.CanWrite)
                     return;
                 property.SetValue(instance, value, null);
             }
@@ -90,45 +91,13 @@ namespace Chisel.Editors
 
     public static class ReflectionExtensions
     {
-        static Assembly[] s_Assemblies;
-        static Type[] s_AllTypes = null;
-        static Type[] s_AllNonAbstractTypes = null;
-        static Dictionary<string, Type> s_TypeLookups;
+        static readonly Dictionary<string, Type> s_TypeLookups = new();
 
-        [InitializeOnLoadMethod]
-        public static void Initialize()
+        static readonly Assembly[] s_NamedTypeAssemblies =
         {
-            if (s_Assemblies != null &&
-                s_TypeLookups != null &&
-                s_AllNonAbstractTypes != null)
-                return;
-
-            s_Assemblies = System.AppDomain.CurrentDomain.GetAssemblies();
-            {
-                var typeList = new List<Type>();
-                foreach (var assembly in s_Assemblies)
-                    typeList.AddRange(assembly.GetTypes());
-                s_AllTypes = typeList.ToArray();
-            }
-
-            {
-                var nonAbstractTypesList = new List<Type>();
-                foreach (var type in s_AllTypes)
-                {
-                    if (type.IsAbstract ||
-                        !type.IsClass)
-                        continue;
-                    nonAbstractTypesList.Add(type);
-                }
-                s_AllNonAbstractTypes = nonAbstractTypesList.ToArray();
-            }
-
-            {
-                s_TypeLookups = new Dictionary<string, Type>();
-                foreach (var type in s_AllTypes)
-                    s_TypeLookups[type.FullName] = type;
-            }
-        }
+            typeof(UnityEditor.Editor).Assembly,
+            typeof(UnityEngine.Object).Assembly
+        };
 
         public static bool HasBaseClass<T>(this Type self)
         {
@@ -181,21 +150,29 @@ namespace Chisel.Editors
 
         public static Type GetTypeByName(string fullName)
         {
-            Initialize();
-            if (s_TypeLookups == null)
+            if (s_TypeLookups.TryGetValue(fullName, out var cached))
+                return cached;
+
+            // Type.GetType only searches this assembly and mscorlib unless the name is assembly
+            // qualified, so fall back to the assemblies the internal editor types live in.
+            var type = Type.GetType(fullName);
+            if (type == null)
             {
-                Debug.LogError("Failed to initialize Reflection information");
-                return null;
+                foreach (var assembly in s_NamedTypeAssemblies)
+                {
+                    type = assembly.GetType(fullName);
+                    if (type != null)
+                        break;
+                }
             }
-            if (s_TypeLookups.TryGetValue(fullName, out Type type))
-                return type;
-			Debug.LogError($"Could not find type for {fullName}");
-			return null;
+            if (type == null)
+			{
+				Debug.LogError($"Could not find type for {fullName}");
+				return null;
+			}
+            s_TypeLookups[fullName] = type;
+            return type;
         }
-
-        public static Type[] AllTypes { get { return s_AllTypes; } }
-
-        public static Type[] AllNonAbstractClasses { get { return s_AllNonAbstractTypes; } }
 
         #region Properties
 

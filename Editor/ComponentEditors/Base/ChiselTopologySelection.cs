@@ -130,7 +130,7 @@ namespace Chisel.Editors
         public class ChiselNodeSelection
         {
             public ChiselNodeComponent node;
-            [SerializeField] internal Dictionary<int, ChiselTopologySelection> brushMeshSelections = new Dictionary<int, ChiselTopologySelection>();
+            internal Dictionary<int, ChiselTopologySelection> brushMeshSelections = new Dictionary<int, ChiselTopologySelection>();
 
             public ChiselTopologySelection this[int index]
             {

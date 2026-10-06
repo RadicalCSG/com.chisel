@@ -22,8 +22,8 @@ namespace Chisel.Components
     {
         public static ChiselIntersection Convert(CSGTreeBrushIntersection intersection)
         {
-			var node  = Resources.InstanceIDToObject(intersection.brush.InstanceID) as ChiselNodeComponent;
-            var model = Resources.InstanceIDToObject(intersection.tree.InstanceID) as ChiselModelComponent;
+			var node  = Resources.EntityIdToObject(intersection.brush.EntityId) as ChiselNodeComponent;
+            var model = Resources.EntityIdToObject(intersection.tree.EntityId) as ChiselModelComponent;
 
             var treeLocalToWorldMatrix  = model.transform.localToWorldMatrix;            
             
@@ -42,10 +42,11 @@ namespace Chisel.Components
 
 		public static bool FindFirstWorldIntersection(List<ChiselIntersection> foundIntersections, Vector3 worldRayStart, Vector3 worldRayEnd, int visibleLayers = ~0, SurfaceDestinationFlags visibleLayerFlags = SurfaceDestinationFlags.Renderable, bool ignoreBackfaced = false, bool ignoreDiscarded = false, GameObject[] ignore = null, GameObject[] filter = null)
         {
+            ChiselModelManager.Instance.BuildModelsWithSavedOutputs();
             bool found = false;
 
-            var ignoreInstanceIDs = HashSetPool<int>.Get();
-            var filterInstanceIDs = HashSetPool<int>.Get();
+            var ignoreEntityIDs = HashSetPool<ulong>.Get();
+            var filterEntityIDs = HashSetPool<ulong>.Get();
             var ignoreNodes = ListPool<CSGTreeNode>.Get();
             var filterNodes = ListPool<CSGTreeNode>.Get();
             try
@@ -57,7 +58,7 @@ namespace Chisel.Components
                         if (go.TryGetComponent<ChiselNodeComponent>(out var node))
                         {
                             ChiselNodeHierarchyManager.GetChildrenOfHierarchyItemNoAlloc(node.hierarchyItem, ignoreNodes);
-                            ignoreInstanceIDs.Add(node.GetInstanceID());
+                            ignoreEntityIDs.Add(UnityEngine.EntityId.ToULong(node.GetEntityId()));
                         }
                     }
                 }
@@ -68,10 +69,10 @@ namespace Chisel.Components
 						if (go.TryGetComponent<ChiselNodeComponent>(out var node))
 						{
                             ChiselNodeHierarchyManager.GetChildrenOfHierarchyItemNoAlloc(node.hierarchyItem, filterNodes);
-                            filterInstanceIDs.Add(node.GetInstanceID());
+                            filterEntityIDs.Add(UnityEngine.EntityId.ToULong(node.GetEntityId()));
                             if (node.hierarchyItem != null &&
                                 node.hierarchyItem.Model)
-                                filterInstanceIDs.Add(node.hierarchyItem.Model.GetInstanceID());
+                                filterEntityIDs.Add(UnityEngine.EntityId.ToULong(node.hierarchyItem.Model.GetEntityId()));
                         }
                     }
                 }
@@ -81,16 +82,16 @@ namespace Chisel.Components
 				for (var t = 0; t < allTrees.Length; t++)
 				{
 					var tree = allTrees[t];
-					var model = Resources.InstanceIDToObject(tree.InstanceID) as ChiselModelComponent;
+					var model = Resources.EntityIdToObject(tree.EntityId) as ChiselModelComponent;
 					if (!ChiselModelManager.Instance.IsSelectable(model))
 						continue;
 
 					if (((1 << model.gameObject.layer) & visibleLayers) == 0)
 						continue;
 
-					var modelInstanceID = model.GetInstanceID();
-					if (ignoreInstanceIDs.Contains(modelInstanceID) ||
-						(filterInstanceIDs.Count > 0 && !filterInstanceIDs.Contains(modelInstanceID)))
+					var modeEntityID = UnityEngine.EntityId.ToULong(model.GetEntityId());
+					if (ignoreEntityIDs.Contains(modeEntityID) ||
+						(filterEntityIDs.Count > 0 && !filterEntityIDs.Contains(modeEntityID)))
 						continue;
 
 					var query = ChiselSceneQuery.GetMeshQuery(model);
@@ -125,10 +126,10 @@ namespace Chisel.Components
 					{
 						var intersection = treeIntersections[i];
 						var brush = intersection.brush;
-						var instanceID = brush.InstanceID;
+						var entityID = UnityEngine.EntityId.ToULong(brush.EntityId);
 
-						if ((filterInstanceIDs.Count > 0 && !filterInstanceIDs.Contains(instanceID)) ||
-							ignoreInstanceIDs.Contains(instanceID))
+						if ((filterEntityIDs.Count > 0 && !filterEntityIDs.Contains(entityID)) ||
+							ignoreEntityIDs.Contains(entityID))
 							continue;
 
 						foundIntersections.Add(Convert(intersection));
@@ -139,8 +140,8 @@ namespace Chisel.Components
 			}
             finally
             {
-                HashSetPool<int>.Release(ignoreInstanceIDs);
-                HashSetPool<int>.Release(filterInstanceIDs);
+                HashSetPool<ulong>.Release(ignoreEntityIDs);
+                HashSetPool<ulong>.Release(filterEntityIDs);
                 ListPool<CSGTreeNode>.Release(ignoreNodes);
                 ListPool<CSGTreeNode>.Release(filterNodes);
             }
@@ -148,6 +149,7 @@ namespace Chisel.Components
 
         public static bool GetNodesInFrustum(Frustum frustum, int visibleLayers, SurfaceDestinationFlags visibleLayerFlags, ref HashSet<CSGTreeNode> rectFoundNodes)
         {
+            ChiselModelManager.Instance.BuildModelsWithSavedOutputs();
             rectFoundNodes.Clear();
             var planes = new Plane[6];
             Vector4 srcVector;
@@ -157,7 +159,7 @@ namespace Chisel.Components
 			for (var t = 0; t < allTrees.Length; t++)
 			{
 				var tree = allTrees[t];
-				var model = Resources.InstanceIDToObject(tree.InstanceID) as ChiselModelComponent;
+				var model = Resources.EntityIdToObject(tree.EntityId) as ChiselModelComponent;
 				if (!ChiselModelManager.Instance.IsSelectable(model))
 					continue;
 
@@ -263,6 +265,36 @@ namespace Chisel.Components
             return false;
         }
         
+        // An opaque decal takes its part out of the surface it covers (Documentation~/Design/Decals.md), so there the
+        // surface is only in the decal's slots, after the brush's own surfaces.
+        static bool IsPointInsideSurfaceOrItsDecals(ref BlobArray<ChiselSurfaceRenderBuffer> surfaces, int surfaceIndex, int surfaceCount,
+                                                    float3 treeSpacePoint, out float3 treeSpaceNormal)
+        {
+            if (IsPointInsideSurface(ref surfaces[surfaceIndex], treeSpacePoint, out treeSpaceNormal))
+                return true;
+            for (int s = surfaceCount; s < surfaces.Length; s++)
+            {
+                if (surfaces[s].baseSurfaceIndex != surfaceIndex)
+                    continue;
+                if (IsPointInsideSurface(ref surfaces[s], treeSpacePoint, out treeSpaceNormal))
+                    return true;
+            }
+            return false;
+        }
+
+        static bool HasTriangles(ref BlobArray<ChiselSurfaceRenderBuffer> surfaces, int surfaceIndex, int surfaceCount)
+        {
+            if (surfaces[surfaceIndex].indices.Length > 0)
+                return true;
+            for (int s = surfaceCount; s < surfaces.Length; s++)
+            {
+                if (surfaces[s].baseSurfaceIndex == surfaceIndex &&
+                    surfaces[s].indices.Length > 0)
+                    return true;
+            }
+            return false;
+        }
+
         // Requirement: out values only set when something is found, otherwise are not modified
         static bool BrushRayCast (MeshQuery[]       meshQueries,
                                   CSGTree           tree,
@@ -278,8 +310,8 @@ namespace Chisel.Components
 
                                   List<CSGTreeBrushIntersection> foundIntersections)
         {
-            var brushMeshInstanceID = brush.BrushMesh.brushMeshHash;
-            var brushMeshBlob       = BrushMeshManager.GetBrushMeshBlob(brushMeshInstanceID);
+            var brushMeshEntityID = brush.BrushMesh.brushMeshHash;
+            var brushMeshBlob       = BrushMeshManager.GetBrushMeshBlob(brushMeshEntityID);
             if (!brushMeshBlob.IsCreated)
                 return false;
 
@@ -305,7 +337,7 @@ namespace Chisel.Components
                 // Compare surface with 'current' meshquery (is this surface even being rendered???)
                 if (ignoreDiscarded)
                 {
-                    if (surfaces[s].indices.Length == 0)
+                    if (!HasTriangles(ref surfaces, s, planeCount))
                         continue;
 
                     if (!IsSurfaceVisible(meshQueries, ref surfaces[s]))
@@ -345,7 +377,7 @@ namespace Chisel.Components
                     continue;
                 
                 var treeIntersection = nodeToTreeSpace.MultiplyPoint(intersection);
-                if (!IsPointInsideSurface(ref surfaces[s], treeIntersection, out var treeSpaceNormal))
+                if (!IsPointInsideSurfaceOrItsDecals(ref surfaces, s, planeCount, treeIntersection, out var treeSpaceNormal))
                 {
                     if (ignoreDiscarded)
                         continue;
@@ -411,6 +443,7 @@ namespace Chisel.Components
         {
             if (!tree.Valid)
                 return null;
+            ChiselModelManager.Instance.BuildModelsWithSavedOutputs();
 			
             var ignoreNodeIndices = HashSetPool<CSGTreeNode>.Get();
 			var filterNodeIndices = HashSetPool<CSGTreeNode>.Get();
@@ -506,6 +539,7 @@ namespace Chisel.Components
                                                       MeshQuery[]   meshQueries, // TODO: add meshquery support here
                                                       Plane[]       planes)
         {
+            ChiselModelManager.Instance.BuildModelsWithSavedOutputs();
             if (planes == null)
                 throw new ArgumentNullException("planes");
 

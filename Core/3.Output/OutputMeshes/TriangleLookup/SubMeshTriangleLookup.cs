@@ -12,12 +12,12 @@ namespace Chisel.Core
 {
 	public struct SelectionDescription : IEquatable<SelectionDescription>
 	{
-		public int instanceID;
+		public ulong entityID;
 		public int surfaceIndex;
 		public CompactNodeID brushNodeID;
 
 		public override readonly int GetHashCode() { return (int)Hash(); }
-		public readonly uint Hash() { unchecked { return (uint)math.hash(new int3(instanceID, surfaceIndex, (int)brushNodeID.Hash())); } }
+		public readonly uint Hash() { unchecked { return math.hash(new int4((int)entityID, (int)(entityID >> 32), surfaceIndex, (int)brushNodeID.Hash())); } }
 		public override readonly bool Equals(object obj)
 		{
 			if (obj is SelectionDescription selectionDescription) return Equals(selectionDescription);
@@ -25,7 +25,7 @@ namespace Chisel.Core
 		}
 		public readonly bool Equals(SelectionDescription other)
 		{
-			return instanceID == other.instanceID && surfaceIndex == other.surfaceIndex && brushNodeID == other.brushNodeID;
+			return entityID == other.entityID && surfaceIndex == other.surfaceIndex && brushNodeID == other.brushNodeID;
 		}
 	} 
 
@@ -45,7 +45,7 @@ namespace Chisel.Core
 							SubMeshSection subMeshSection,
 							NativeList<SubMeshDescriptions> subMeshDescriptions,
 							NativeArray<UnsafeList<SubMeshSurface>> subMeshSurfaces,
-							CompactHierarchyManagerInstance.ReadOnlyInstanceIDLookup instanceIDLookup,
+							CompactHierarchyManagerInstance.ReadOnlyEntityIDLookup entityIDLookup,
 							Allocator allocator = Allocator.Persistent)// Indirect
 		{
             var totalVertexCount    = subMeshSection.totalVertexCount;
@@ -65,8 +65,10 @@ namespace Chisel.Core
 			var perTriangleSelectionIDLookup = builder.Allocate(ref root.perTriangleSelectionIDLookup, triangleCount);
 			var perTriangleNodeIDLookup = builder.Allocate(ref root.perTriangleNodeIDLookup, triangleCount);
 
-			using var uniqueInstanceIDs = new NativeHashMap<SelectionDescription, int>(triangleCount, Allocator.Temp);
 			using var selectionIndexDescriptions = new NativeList<SelectionDescription>(triangleCount, Allocator.Temp);
+
+			var lastBrushNodeID = CompactNodeID.Invalid;
+			ulong lastEntityID = 0;
 
 			int currentBaseIndex = 0;
 			for (int subMeshIndex = 0, d = startIndex; d < endIndex; d++, subMeshIndex++)
@@ -92,22 +94,26 @@ namespace Chisel.Core
 						continue;
 
 					var brushNodeID	= subMeshSurface.brushNodeID;
-					var instanceID	= instanceIDLookup.SafeGetNodeInstanceID(brushNodeID);
-
-					var selectionDescription = new SelectionDescription()
+					if (brushNodeID != lastBrushNodeID)
 					{
-						instanceID = instanceID,
-						surfaceIndex = subMeshSurface.surfaceIndex,
-						brushNodeID = brushNodeID
-					};
-					if (!uniqueInstanceIDs.TryGetValue(selectionDescription, out int selectionID))
-					{
-						selectionID = selectionIndexDescriptions.Length;
-						uniqueInstanceIDs.Add(selectionDescription, selectionID);
-						selectionIndexDescriptions.Add(selectionDescription);
+						lastBrushNodeID = brushNodeID;
+						lastEntityID    = entityIDLookup.SafeGetNodeEntityID(brushNodeID);
 					}
 
+					var selectionID = selectionIndexDescriptions.Length;
+					selectionIndexDescriptions.Add(new SelectionDescription()
+					{
+						// A decal's surface selects the decal, and the brush surface it lies on
+						entityID = surface.decalEntityID != 0 ? surface.decalEntityID : lastEntityID,
+						surfaceIndex = surface.baseSurfaceIndex,
+						brushNodeID = brushNodeID
+					});
+
 					var brushTriangleCount = brushIndexCount / 3;
+					if (brushIDIndexOffset + brushTriangleCount > triangleCount)
+						brushTriangleCount = triangleCount - brushIDIndexOffset;
+					if (brushTriangleCount <= 0)
+						break;
 					for (int n = 0; n < brushTriangleCount; n++)
 					{
 						perTriangleNodeIDLookup[n + brushIDIndexOffset] = brushNodeID;
@@ -161,29 +167,33 @@ namespace Chisel.Core
 			else
 				managedSubMeshTriangleLookup.perTriangleNodeIDLookup = Array.Empty<CompactNodeID>();
 			managedSubMeshTriangleLookup.hashCode = hashCode;
-		} 
+			managedSubMeshTriangleLookup.validTriangleCount = perTriangleSelectionIDLookup.Length;
+		}
 	}
 
 	public interface IBrushVisibilityLookup
     {
         bool IsBrushVisible(CompactNodeID brushID);
-		bool IsBrushVisible(int instanceID);
+		bool IsBrushVisible(ulong entityID);
 	}
 
 	// TODO: use the native blob instead
 	[Serializable]
 	public class ManagedSubMeshTriangleLookup
 	{
-		public CompactNodeID[] perTriangleNodeIDLookup = Array.Empty<CompactNodeID>();
+		[System.NonSerialized] public CompactNodeID[] perTriangleNodeIDLookup = Array.Empty<CompactNodeID>();
 		public int[] perTriangleSelectionIDLookup = Array.Empty<int>();
-		public SelectionDescription[] selectionIndexDescriptions = Array.Empty<SelectionDescription>();
+		[System.NonSerialized] public SelectionDescription[] selectionIndexDescriptions = Array.Empty<SelectionDescription>();
 		public int[] perTriangleSurfaceIndexLookup = Array.Empty<int>();
 		public int hashCode = 0;
+
+		[System.NonSerialized] public int validTriangleCount = 0;
 
 		public void Clear()
 		{
 			perTriangleNodeIDLookup = Array.Empty<CompactNodeID>();
 			perTriangleSurfaceIndexLookup = Array.Empty<int>();
+			validTriangleCount = 0;
 			hashCode = 0;
 		}
 
@@ -193,6 +203,7 @@ namespace Chisel.Core
 			where BrushVisibilityLookup : unmanaged, IBrushVisibilityLookup
 		{
 			dstMesh.Clear(keepVertexLayout: true);
+			dstMesh.indexFormat = UnityEngine.Rendering.IndexFormat.UInt32;
 			if (perTriangleNodeIDLookup.Length == 0)
 				return;
 
@@ -204,6 +215,8 @@ namespace Chisel.Core
 			List<int> sDstTriangles = new();
 
 			srcMesh.GetVertices(sVertices);
+			if (sVertices.Count == 0)
+				return;
 			dstMesh.SetVertices(sVertices);
 
 			srcMesh.GetNormals(sNormals);
@@ -237,9 +250,15 @@ namespace Chisel.Core
 						if (!isBrushVisible)
 							continue;
 					}
-					sDstTriangles.Add(sSrcTriangles[i + 0]);
-					sDstTriangles.Add(sSrcTriangles[i + 1]);
-					sDstTriangles.Add(sSrcTriangles[i + 2]);
+					var i0 = sSrcTriangles[i + 0];
+					var i1 = sSrcTriangles[i + 1];
+					var i2 = sSrcTriangles[i + 2];
+					var maxIndex = sVertices.Count - baseVertex;
+					if (i0 < 0 || i0 >= maxIndex || i1 < 0 || i1 >= maxIndex || i2 < 0 || i2 >= maxIndex)
+						continue;
+					sDstTriangles.Add(i0);
+					sDstTriangles.Add(i1);
+					sDstTriangles.Add(i2);
 				}
 				dstMesh.SetTriangles(sDstTriangles, subMesh, calculateBounds, baseVertex);
 			}
@@ -254,6 +273,7 @@ namespace Chisel.Core
 		public void GenerateSelectionSubMesh(HashSet<int> skipSelectionID, Mesh srcMesh, Mesh dstMesh)
 		{
 			dstMesh.Clear(keepVertexLayout: true);
+			dstMesh.indexFormat = UnityEngine.Rendering.IndexFormat.UInt32;
 			if (perTriangleNodeIDLookup.Length == 0)
 			{
 				Debug.Log("perTriangleNodeIDLookup.Length == 0");
@@ -267,8 +287,14 @@ namespace Chisel.Core
 			srcMesh.GetVertices(sSrcVertices);
 
 			var vertexLookup = DictionaryPool<(int, Vector3), int>.Get();
-			var sInstanceIDs = ListPool<Vector4>.Get();
+			var sEntityIDs = ListPool<Vector4>.Get();
 			var sVertices = ListPool<Vector3>.Get();
+
+
+			// Only the first validTriangleCount entries were written by the last CopyTo; the rest of the
+			// array is capacity left over from a previous, larger build.
+			var validCount = validTriangleCount > 0 ? validTriangleCount : perTriangleSelectionIDLookup.Length;
+			int overrun = 0;
 
 			dstMesh.subMeshCount = srcMesh.subMeshCount;
 			for (int subMesh = 0, n = 0; subMesh < srcMesh.subMeshCount; subMesh++)
@@ -280,11 +306,17 @@ namespace Chisel.Core
 
 				for (int i = 0; i < sSrcTriangles.Count; i += 3, n++)
 				{
+					if (n >= validCount)
+					{
+						overrun++;
+						continue;
+					}
 					var selectionID = perTriangleSelectionIDLookup[n];
-					if (skipSelectionID.Contains(selectionID))
+					if (skipSelectionID != null && skipSelectionID.Contains(selectionID))
 						continue;
 
-					var selectionIDVec = HandleUtility.EncodeSelectionId(selectionID);
+					//var selectionIDVec = HandleUtility.EncodeSelectionId(selectionID);
+					var selectionIDVec = new Vector4((int)(byte)(selectionID & 0xFF), (int)(byte)((selectionID >> 8) & 0xFF), (int)(byte)((selectionID >> 16) & 0xFF), (int)(byte)((selectionID >> 24) & 0xFF)) / 255f;
 
 					{
 						var srcIndex = sSrcTriangles[i + 0];
@@ -294,7 +326,7 @@ namespace Chisel.Core
 							dstIndex = sVertices.Count;
 							vertexLookup[(selectionID, srcVertex)] = dstIndex;
 							sVertices.Add(srcVertex);
-							sInstanceIDs.Add(selectionIDVec);
+							sEntityIDs.Add(selectionIDVec);
 						}
 						sDstTriangles.Add(dstIndex);
 					}
@@ -307,7 +339,7 @@ namespace Chisel.Core
 							dstIndex = sVertices.Count;
 							vertexLookup[(selectionID, srcVertex)] = dstIndex;
 							sVertices.Add(srcVertex);
-							sInstanceIDs.Add(selectionIDVec);
+							sEntityIDs.Add(selectionIDVec);
 						}
 						sDstTriangles.Add(dstIndex);
 					}
@@ -320,15 +352,20 @@ namespace Chisel.Core
 							dstIndex = sVertices.Count;
 							vertexLookup[(selectionID, srcVertex)] = dstIndex;
 							sVertices.Add(srcVertex);
-							sInstanceIDs.Add(selectionIDVec);
+							sEntityIDs.Add(selectionIDVec);
 						}
 						sDstTriangles.Add(dstIndex);
 					}
 				}
 			}
 
+			if (overrun > 0)
+				Debug.LogError($"Picking selection mesh: the rendered mesh has {overrun} more triangles than the " +
+							   $"per-triangle brush-id lookup covers ({validCount}). Those triangles are not pickable; " +
+							   $"the lookup and the mesh were built from different data.");
+
 			dstMesh.SetVertices(sVertices);
-			dstMesh.SetUVs(0, sInstanceIDs);
+			dstMesh.SetUVs(0, sEntityIDs);
 
 			for (int subMesh = 0; subMesh < srcMesh.subMeshCount; subMesh++)
 			{
@@ -351,7 +388,7 @@ namespace Chisel.Core
 			DictionaryPool<(int, Vector3), int>.Release(vertexLookup);
 
 			ListPool<Vector3>.Release(sVertices);
-			ListPool<Vector4>.Release(sInstanceIDs);
+			ListPool<Vector4>.Release(sEntityIDs);
 		}
 	}
 }

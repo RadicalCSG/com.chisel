@@ -19,7 +19,11 @@ namespace Chisel.Core
         [NoAlias, ReadOnly] public NativeList<BlobAssetReference<BrushesTouchedByBrush>>          brushesTouchedByBrushCache;
         [NoAlias, ReadOnly] public NativeArray<BlobAssetReference<BrushMeshBlob>>                 brushMeshLookup;
         [NoAlias, ReadOnly] public NativeList<BlobAssetReference<BrushTreeSpaceVerticesBlob>>     treeSpaceVerticesCache;
-        
+
+        // Canonical vertices (see CanonicalVertices)
+        [NoAlias, ReadOnly] public CanonicalVertexStage                                           canonicalVertexStage;
+        [NoAlias, ReadOnly] public NativeList<BlobAssetReference<BrushTreeSpacePlanes>>           brushTreeSpacePlaneCache;
+
         // Write
         [NativeDisableParallelForRestriction]
         [NoAlias, WriteOnly] public NativeList<BlobAssetReference<BasePolygonsBlob>>              basePolygonCache;
@@ -76,7 +80,7 @@ namespace Chisel.Core
             }
         }
 
-        bool CopyPolygonToIndices([NoAlias, ReadOnly] BlobAssetReference<BrushMeshBlob> mesh, [NoAlias, ReadOnly] ref BlobArray<float3> treeSpaceVertices, int polygonIndex, [NoAlias] HashedVertices hashedTreeSpaceVertices, [NoAlias] NativeArray<Edge> edges, [NoAlias] ref int edgeCount)
+        bool CopyPolygonToIndices([NoAlias, ReadOnly] BlobAssetReference<BrushMeshBlob> mesh, [NoAlias, ReadOnly] NativeArray<float3> treeSpaceVertices, int polygonIndex, [NoAlias] HashedVertices hashedTreeSpaceVertices, [NoAlias] NativeArray<Edge> edges, [NoAlias] ref int edgeCount, in WeldIncidenceFilter weldFilter)
         {
             ref var halfEdges   = ref mesh.Value.halfEdges;
             ref var polygon     = ref mesh.Value.polygons[polygonIndex];
@@ -91,7 +95,7 @@ namespace Chisel.Core
                 var vertexIndex     = halfEdges[e].vertexIndex;
                 var treeSpaceVertex = treeSpaceVertices[vertexIndex];
 
-                var newIndex = hashedTreeSpaceVertices.AddNoResize(treeSpaceVertex);
+                var newIndex = hashedTreeSpaceVertices.AddNoResize(treeSpaceVertex, in weldFilter);
                 if (e > firstEdge)
                 {
                     var edge = edges[edgeCount - 1];
@@ -135,10 +139,19 @@ namespace Chisel.Core
                 return;
 
             var mesh                    = brushMeshLookup[nodeOrder];
-            ref var treeSpaceVertices   = ref treeSpaceVerticesCache[nodeOrder].Value.treeSpaceVertices;
+            ref var treeSpaceVerticesBlob = ref treeSpaceVerticesCache[nodeOrder].Value.treeSpaceVertices;
             ref var halfEdges           = ref mesh.Value.halfEdges;
             ref var localPlanes         = ref mesh.Value.localPlanes;
             ref var polygons            = ref mesh.Value.polygons;
+
+            var canonical  = CanonicalVertices.Create(canonicalVertexStage, brushTreeSpacePlaneCache, brushesTouchedByBrushCache);
+            var weldFilter = canonical.DecidesLoopIdentity ? WeldIncidenceFilter.SameVertexOnly : WeldIncidenceFilter.Disabled;
+
+            // Each corner once, not once per face it belongs to.
+            NativeArray<float3> treeSpaceVertices;
+            using var _treeSpaceVertices = treeSpaceVertices = new NativeArray<float3>(treeSpaceVerticesBlob.Length, Allocator.Temp);
+            for (int v = 0; v < treeSpaceVerticesBlob.Length; v++)
+                treeSpaceVertices[v] = canonical.Canonicalize(treeSpaceVerticesBlob[v], nodeOrder, CanonicalVertexSite.BrushCorner);
 
 			HashedVertices hashedTreeSpaceVertices;
 			using var _hashedTreeSpaceVertices = hashedTreeSpaceVertices = new HashedVertices(math.max(treeSpaceVertices.Length, 1000), Allocator.Temp);
@@ -185,7 +198,7 @@ namespace Chisel.Core
                 
 
                 //var tempEdges = new NativeArray<Edge>(polygon.edgeCount, Allocator.Temp);
-                CopyPolygonToIndices(mesh, ref treeSpaceVertices, polygonIndex, hashedTreeSpaceVertices, tempEdges, ref edgeCount);
+                CopyPolygonToIndices(mesh, treeSpaceVertices, polygonIndex, hashedTreeSpaceVertices, tempEdges, ref edgeCount, in weldFilter);
                 if (edgeCount == 0) // Can happen when multiple vertices are collapsed on eachother / degenerate polygon
                 {
                     validPolygons[totalSurfaceCount] = new ValidPolygon
@@ -219,7 +232,10 @@ namespace Chisel.Core
 
             // NOTE: assumes brushIntersections is in the same order as the brushes are in the tree
             ref var brushIntersections = ref brushesTouchedByBrushCache[nodeOrder].Value.brushIntersections;
-            for (int i = 0; i < brushIntersections.Length; i++)
+            // Canonical corners that are the same vertex already have the same bits, and snapping onto a
+            // neighbour's raw corners would undo them.
+            var snapToNeighbours = !canonical.MovesVertices;
+            for (int i = 0; snapToNeighbours && i < brushIntersections.Length; i++)
             {
                 var intersectingNodeOrder = brushIntersections[i].nodeIndexOrder.nodeOrder;
                 if (intersectingNodeOrder < nodeOrder)
@@ -275,8 +291,10 @@ namespace Chisel.Core
                 {
                     destinationFlags      = polygon.surface.destinationFlags,
                     destinationParameters = polygon.surface.parameters,
+                    outputFlags           = polygon.surface.outputFlags,
                     UV0                   = polygon.surface.details.UV0,
-                    localPlane            = localPlane
+                    localPlane            = localPlane,
+                    descriptionIndex      = polygon.descriptionIndex
                 };
             }
             var basePolygonsBlob = builder.CreateBlobAssetReference<BasePolygonsBlob>(Allocator.Persistent); // Confirmed to be disposed

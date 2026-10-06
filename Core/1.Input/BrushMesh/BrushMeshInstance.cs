@@ -16,7 +16,7 @@ namespace Chisel.Core
         public Int32			brushMeshHash;
 
         /// <value>Is the current <see cref="Chisel.Core.BrushMeshInstance"/> in a correct state</value>
-        public bool				Valid				{ get { return brushMeshHash != BrushMeshInstance.InvalidInstanceID && BrushMeshManager.IsBrushMeshIDValid(brushMeshHash); } }
+        public bool				Valid				{ get { return brushMeshHash != BrushMeshInstance.InvalidEntityID && BrushMeshManager.IsBrushMeshIDValid(brushMeshHash); } }
         
         /// <value>Returns the unique id of this <see cref="Chisel.Core.BrushMesh"/></value>
         public Int32			BrushMeshID			{ get { return brushMeshHash; } }
@@ -27,7 +27,7 @@ namespace Chisel.Core
         public static BrushMeshInstance Create(BrushMesh brushMesh, in ChiselSurfaceArray surfaceArray) { var newInstance = new BrushMeshInstance(); newInstance.Set(brushMesh, in surfaceArray); return newInstance; }
 
         /// <summary>Destroy the <see cref="Chisel.Core.BrushMeshInstance"/> and release the memory used by this instance.</summary>
-        public void	Destroy() { var prevBrushMeshID = brushMeshHash; brushMeshHash = BrushMeshInstance.InvalidInstanceID; BrushMeshManager.DecreaseRefCount(prevBrushMeshID); }
+        public void	Destroy() { var prevBrushMeshID = brushMeshHash; brushMeshHash = BrushMeshInstance.InvalidEntityID; BrushMeshManager.DecreaseRefCount(prevBrushMeshID); }
 
         /// <summary>Update this <see cref="Chisel.Core.BrushMeshInstance"/> with the given <see cref="Chisel.Core.BrushMesh"/>.</summary>
         /// <param name="brushMesh">The <see cref="Chisel.Core.BrushMesh"/> to update the <see cref="Chisel.Core.BrushMeshInstance"/> with</param>
@@ -39,9 +39,9 @@ namespace Chisel.Core
         }
         
         /// <value>An invalid instance</value>
-        readonly static BrushMeshInstance kInvalidInstance = new() { brushMeshHash = BrushMeshInstance.InvalidInstanceID };
+        readonly static BrushMeshInstance kInvalidInstance = new() { brushMeshHash = BrushMeshInstance.InvalidEntityID };
 		public static ref readonly BrushMeshInstance InvalidInstance => ref kInvalidInstance;
-		internal const Int32 InvalidInstanceID = 0;
+		internal const Int32 InvalidEntityID = 0;
         
         #region Comparison
         [EditorBrowsable(EditorBrowsableState.Never)]

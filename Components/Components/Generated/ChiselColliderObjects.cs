@@ -17,7 +17,7 @@ namespace Chisel.Components
     [Serializable, BurstCompile(CompileSynchronously = true)]
     public class ChiselColliderObjects
     {
-        public int              surfaceParameter;
+        public ulong            surfaceParameter;
         public Mesh             sharedMesh;
         public MeshCollider     meshCollider;
         public PhysicsMaterial  physicsMaterial;
@@ -25,9 +25,9 @@ namespace Chisel.Components
         public uint             geometryHashValue;
 
         private ChiselColliderObjects() { }
-        public static ChiselColliderObjects Create(GameObject container, int surfaceParameter)
+        public static ChiselColliderObjects Create(GameObject container, ulong surfaceParameter)
         {
-            var physicsMaterial = surfaceParameter == 0 ? null : Resources.InstanceIDToObject(surfaceParameter) as PhysicsMaterial;
+            var physicsMaterial = surfaceParameter == 0 ? null : Resources.EntityIdToObject(UnityEngine.EntityId.FromULong(surfaceParameter)) as PhysicsMaterial;
             var sharedMesh      = new Mesh { name = ChiselGeneratedObjects.kGeneratedMeshColliderName };
             var meshCollider    = container.AddComponent<MeshCollider>();
             var colliderObjects = new ChiselColliderObjects
@@ -83,8 +83,8 @@ namespace Chisel.Components
             [NoAlias, ReadOnly] public NativeArray<BakeData> bakingSettings;
             public void Execute(int index)
             {
-                if (bakingSettings[index].instanceID != 0)
-                    Physics.BakeMesh(bakingSettings[index].instanceID, bakingSettings[index].convex, bakingSettings[index].cookingOptions);
+                if (bakingSettings[index].entityID != 0)
+                    Physics.BakeMesh(UnityEngine.EntityId.FromULong(bakingSettings[index].entityID), bakingSettings[index].convex, bakingSettings[index].cookingOptions);
             }
         }
         /*/
@@ -94,8 +94,8 @@ namespace Chisel.Components
             [NoAlias, ReadOnly] public BakeData bakingSettings;
             public void Execute()
             {
-                if (bakingSettings.instanceID != 0)
-                    Physics.BakeMesh(bakingSettings.instanceID, bakingSettings.convex, bakingSettings.cookingOptions);
+                if (bakingSettings.entityID != 0)
+                    Physics.BakeMesh(UnityEngine.EntityId.FromULong(bakingSettings.entityID), bakingSettings.convex, bakingSettings.cookingOptions);
             }
         }
         //*/
@@ -103,7 +103,7 @@ namespace Chisel.Components
         {
             public bool                         convex;
             public MeshColliderCookingOptions   cookingOptions;
-            public int                          instanceID;
+            public ulong                        entityID;
         }
 
         //*/
@@ -135,31 +135,76 @@ namespace Chisel.Components
 
         const Allocator defaultAllocator = Allocator.TempJob;
 
+        public static bool DeferBaking { get; set; }
+
+        struct DeferredBake
+        {
+            public ChiselModelComponent   model;
+            public ChiselColliderObjects[] colliders;
+        }
+        static readonly System.Collections.Generic.List<DeferredBake> s_DeferredBakes = new();
+
         public static void ScheduleColliderBake(ChiselModelComponent model, ChiselColliderObjects[] colliders)
+        {
+            if (DeferBaking)
+            {
+                // Only the most recent state of a model matters; an earlier deferred bake for it is stale.
+                for (int i = 0; i < s_DeferredBakes.Count; i++)
+                {
+                    if (s_DeferredBakes[i].model != model)
+                        continue;
+                    s_DeferredBakes[i] = new DeferredBake { model = model, colliders = colliders };
+                    return;
+                }
+                s_DeferredBakes.Add(new DeferredBake { model = model, colliders = colliders });
+                return;
+            }
+            BakeColliders(model, colliders);
+        }
+
+        // Must be called once an interaction ends, and before anything relies on the colliders being
+        // up to date (entering play mode, for instance).
+        public static void FlushDeferredBakes()
+        {
+            if (s_DeferredBakes.Count == 0)
+                return;
+            var deferred = s_DeferredBakes.ToArray();
+            s_DeferredBakes.Clear();
+            for (int i = 0; i < deferred.Length; i++)
+            {
+                if (deferred[i].model == null || deferred[i].colliders == null)
+                    continue;
+                BakeColliders(deferred[i].model, deferred[i].colliders);
+            }
+        }
+
+        static void BakeColliders(ChiselModelComponent model, ChiselColliderObjects[] colliders)
         {
             var colliderSettings = model.ColliderSettings;
             //*
-            // TODO: find all the instanceIDs before we start doing CSG, then we can do the Bake's in the same job that sets the meshes
+            // TODO: find all the entityIDs before we start doing CSG, then we can do the Bake's in the same job that sets the meshes
             //          hopefully that will make it easier for Unity to not screw up the scheduling
             var bakingSettings = new NativeArray<BakeData>(colliders.Length, defaultAllocator);
             for (int i = 0; i < colliders.Length; i++)
             {
-                var meshCollider = colliders[i].meshCollider;
-                if (!meshCollider)
+                // A deferred bake can outlive what it referred to, so nothing here may assume the
+                // collider or its mesh still exists.
+                var meshCollider = colliders[i] == null ? null : colliders[i].meshCollider;
+                var sharedMesh   = colliders[i] == null ? null : colliders[i].sharedMesh;
+                if (!meshCollider || !sharedMesh)
                 {
                     bakingSettings[i] = new BakeData
                     {
-                        instanceID = 0
+                        entityID = 0
                     };
                     continue;
                 }
 
-                var sharedMesh = colliders[i].sharedMesh;
                 bakingSettings[i] = new BakeData
                 {
                     convex          = colliderSettings.convex,
                     cookingOptions  = colliderSettings.cookingOptions,
-                    instanceID      = sharedMesh.GetInstanceID()
+                    entityID        = UnityEngine.EntityId.ToULong(sharedMesh.GetEntityId())
                 };
             }
             //*
@@ -186,14 +231,14 @@ namespace Chisel.Components
             bakingSettings = default;
 
             allJobHandles.Complete();
-            disposeJob.Complete();
+            disposeJob.Complete(); 
 
 			//*/
 			//*
 			// TODO: is there a way to defer forcing the collider to update?
 			for (int i = 0; i < colliders.Length; i++)
             {
-                var meshCollider = colliders[i].meshCollider;
+                var meshCollider = colliders[i] == null ? null : colliders[i].meshCollider;
                 if (!meshCollider)
                     continue;
 

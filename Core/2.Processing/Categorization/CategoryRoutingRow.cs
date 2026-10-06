@@ -42,13 +42,15 @@ namespace Chisel.Core
 		}
 
 #if HAVE_SELF_CATEGORIES
-		const byte Invalid            = (byte)255;
-        const byte Inside             = (byte)CategoryIndex.Inside;
-        const byte Aligned            = (byte)CategoryIndex.Aligned;
-        const byte SelfAligned        = (byte)CategoryIndex.SelfAligned;
-        const byte SelfReverseAligned = (byte)CategoryIndex.SelfReverseAligned;
-        const byte ReverseAligned     = (byte)CategoryIndex.ReverseAligned;
-        const byte Outside            = (byte)CategoryIndex.Outside;
+		// Invalid is the sentinel, so it has to be a value no real destination can take. It used to be 255,
+        // which stopped being safe the moment a node could have 255 rows.
+        const ushort Invalid            = ushort.MaxValue;
+        const ushort Inside             = (ushort)CategoryIndex.Inside;
+        const ushort Aligned            = (ushort)CategoryIndex.Aligned;
+        const ushort SelfAligned        = (ushort)CategoryIndex.SelfAligned;
+        const ushort SelfReverseAligned = (ushort)CategoryIndex.SelfReverseAligned;
+        const ushort ReverseAligned     = (ushort)CategoryIndex.ReverseAligned;
+        const ushort Outside            = (ushort)CategoryIndex.Outside;
         
         public readonly static CategoryRoutingRow Identity              = new(Inside,  Aligned, SelfAligned, SelfReverseAligned, ReverseAligned, Outside);
         public readonly static CategoryRoutingRow AllInvalid            = new(Invalid, Invalid, Invalid, Invalid, Invalid, Invalid);
@@ -60,18 +62,18 @@ namespace Chisel.Core
         public const int Length = (int)CategoryIndex.LastCategory + 1;
 
         // Is PolygonGroupIndex instead of int, but C# doesn't like that
-        [FieldOffset(0)] public readonly byte inside;
-        [FieldOffset(1)] public readonly byte aligned;
-		[FieldOffset(2)] public readonly byte selfAligned;
-		[FieldOffset(3)] public readonly byte selfReverseAligned;
-		[FieldOffset(4)] public readonly byte reverseAligned;
-        [FieldOffset(5)] public readonly byte outside;
+        [FieldOffset(0)]  public readonly ushort inside;
+        [FieldOffset(2)]  public readonly ushort aligned;
+		[FieldOffset(4)]  public readonly ushort selfAligned;
+		[FieldOffset(6)]  public readonly ushort selfReverseAligned;
+		[FieldOffset(8)]  public readonly ushort reverseAligned;
+        [FieldOffset(10)] public readonly ushort outside;
 #else
-		const byte Invalid            = (byte)255;
-        const byte Inside             = (byte)CategoryIndex.Inside;
-        const byte Aligned            = (byte)CategoryIndex.Aligned;
-        const byte ReverseAligned     = (byte)CategoryIndex.ReverseAligned;
-        const byte Outside            = (byte)CategoryIndex.Outside;
+		const ushort Invalid            = ushort.MaxValue;
+        const ushort Inside             = (ushort)CategoryIndex.Inside;
+        const ushort Aligned            = (ushort)CategoryIndex.Aligned;
+        const ushort ReverseAligned     = (ushort)CategoryIndex.ReverseAligned;
+        const ushort Outside            = (ushort)CategoryIndex.Outside;
         
         public readonly static CategoryRoutingRow Identity              = new(Inside,  Aligned, ReverseAligned, Outside);
         public readonly static CategoryRoutingRow AllInvalid            = new(Invalid, Invalid, Invalid, Invalid);
@@ -84,16 +86,16 @@ namespace Chisel.Core
 
         // Is PolygonGroupIndex instead of int, but C# doesn't like that
         //[FieldOffset(0)] fixed byte destination[Length];
-        [FieldOffset(0)] readonly uint destination;
-        [FieldOffset(0)] public readonly byte inside;
-        [FieldOffset(1)] public readonly byte aligned;
-        [FieldOffset(2)] public readonly byte reverseAligned;
-        [FieldOffset(3)] public readonly byte outside;
+        [FieldOffset(0)] readonly ulong destination;
+        [FieldOffset(0)] public readonly ushort inside;
+        [FieldOffset(2)] public readonly ushort aligned;
+        [FieldOffset(4)] public readonly ushort reverseAligned;
+        [FieldOffset(6)] public readonly ushort outside;
 #endif
 
 		#region Operation tables           
 #if HAVE_SELF_CATEGORIES
-        public readonly static byte[] kOperationTables = // NOTE: burst supports readonly static tables like this
+        public readonly static ushort[] kOperationTables = // NOTE: burst supports readonly static tables like this
         {
             // Additive set operation on polygons: output = (left-node || right-node)
             // Defines final output from combination of categorization of left and right node
@@ -164,7 +166,7 @@ namespace Chisel.Core
         public const int RowStride       = OperationCount;
         public const int OperationStride = OperationCount * RowStride;
 #else
-		public readonly static byte[] kOperationTables = // NOTE: burst supports readonly static tables like this
+		public readonly static ushort[] kOperationTables = // NOTE: burst supports readonly static tables like this
         {
             // Regular Operation Tables
             // Additive set operation on polygons: output = (left-node || right-node)
@@ -367,27 +369,27 @@ namespace Chisel.Core
 #if HAVE_SELF_CATEGORIES
             return new CategoryRoutingRow
             (
-                inside             : (byte)(oldRow.inside + offset),
-                aligned            : (byte)(oldRow.aligned + offset),
-                selfAligned        : (byte)(oldRow.selfAligned + offset),
-                selfReverseAligned : (byte)(oldRow.selfReverseAligned + offset),
-                reverseAligned     : (byte)(oldRow.reverseAligned + offset),
-                outside            : (byte)(oldRow.outside + offset)
+                inside             : (ushort)(oldRow.inside + offset),
+                aligned            : (ushort)(oldRow.aligned + offset),
+                selfAligned        : (ushort)(oldRow.selfAligned + offset),
+                selfReverseAligned : (ushort)(oldRow.selfReverseAligned + offset),
+                reverseAligned     : (ushort)(oldRow.reverseAligned + offset),
+                outside            : (ushort)(oldRow.outside + offset)
             );
 #else
             return new CategoryRoutingRow
             (
-                inside          : (byte)(oldRow.inside + offset),
-                aligned         : (byte)(oldRow.aligned + offset),
-                reverseAligned  : (byte)(oldRow.reverseAligned + offset),
-                outside         : (byte)(oldRow.outside + offset)
+                inside          : (ushort)(oldRow.inside + offset),
+                aligned         : (ushort)(oldRow.aligned + offset),
+                reverseAligned  : (ushort)(oldRow.reverseAligned + offset),
+                outside         : (ushort)(oldRow.outside + offset)
             );
 #endif
 		}
 
 #if HAVE_SELF_CATEGORIES
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public CategoryRoutingRow(byte inside, byte aligned, byte selfAligned, byte selfReverseAligned, byte reverseAligned, byte outside)
+        public CategoryRoutingRow(ushort inside, ushort aligned, ushort selfAligned, ushort selfReverseAligned, ushort reverseAligned, ushort outside)
         {
             //this.destination        = 0;
             this.inside             = inside;
@@ -399,7 +401,7 @@ namespace Chisel.Core
 		}
 #else
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public CategoryRoutingRow(byte inside, byte aligned, byte reverseAligned, byte outside)
+        public CategoryRoutingRow(ushort inside, ushort aligned, ushort reverseAligned, ushort outside)
         {
             this.destination    = 0;
             this.inside         = inside;
@@ -410,22 +412,22 @@ namespace Chisel.Core
 #endif
 
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public CategoryRoutingRow(byte value)
+        public CategoryRoutingRow(ushort value)
 		{
 #if HAVE_SELF_CATEGORIES
 			//this.destination        = 0;
-            this.inside             = (byte)value;
-            this.aligned            = (byte)value;
-			this.selfAligned        = (byte)value;
-			this.selfReverseAligned = (byte)value;
-			this.reverseAligned     = (byte)value;
-            this.outside            = (byte)value;
+            this.inside             = value;
+            this.aligned            = value;
+			this.selfAligned        = value;
+			this.selfReverseAligned = value;
+			this.reverseAligned     = value;
+            this.outside            = value;
 #else
 			this.destination    = 0;
-            this.inside         = (byte)value;
-            this.aligned        = (byte)value;
-            this.reverseAligned = (byte)value;
-            this.outside        = (byte)value;
+            this.inside         = value;
+            this.aligned        = value;
+            this.reverseAligned = value;
+            this.outside        = value;
 #endif
 		}
 
@@ -481,7 +483,7 @@ namespace Chisel.Core
 #endif
 		}
 
-		public byte this[int index]
+		public ushort this[int index]
         {
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             get
@@ -499,7 +501,7 @@ namespace Chisel.Core
 					case 5: return outside;
 				}
 #else
-				return (byte)((destination << (index * 8)) & 255);
+				return (ushort)((destination >> (index * 16)) & 0xFFFF);
 #endif
 			}
 		}

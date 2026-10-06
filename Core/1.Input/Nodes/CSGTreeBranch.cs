@@ -23,15 +23,15 @@ namespace Chisel.Core
     [System.Diagnostics.DebuggerDisplay("Branch ({nodeID})")]
     public struct CSGTreeBranch : IEquatable<CSGTreeBranch>
     {
-        #region Create
-        /// <summary>Generates a branch and returns a <see cref="Chisel.Core.CSGTreeBranch"/> struct that contains a reference to it.</summary>
-        /// <param name="instanceID">A unique id to help identify this particular branch. For instance, this could be an InstanceID to a [UnityEngine.Object](https://docs.unity3d.com/ScriptReference/Object.html)</param>
-        /// <param name="children">The child nodes that are children of this branch. A branch may not have duplicate children, contain itself or contain a <see cref="Chisel.Core.CSGTree"/>.</param>
-        /// <returns>A new <see cref="Chisel.Core.CSGTreeBranch"/>. May be an invalid node if it failed to create it.</returns>
-        [BurstDiscard, MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static CSGTreeBranch Create(Int32 instanceID = 0, CSGOperationType operation = CSGOperationType.Additive, params CSGTreeNode[] children)
+		#region Create
+		/// <summary>Generates a branch and returns a <see cref="Chisel.Core.CSGTreeBranch"/> struct that contains a reference to it.</summary>
+		/// <param name="entityID">A unique id to help identify this particular branch. For instance, this could be an EntityID to a [UnityEngine.Object](https://docs.unity3d.com/ScriptReference/Object.html)</param>
+		/// <param name="children">The child nodes that are children of this branch. A branch may not have duplicate children, contain itself or contain a <see cref="Chisel.Core.CSGTree"/>.</param>
+		/// <returns>A new <see cref="Chisel.Core.CSGTreeBranch"/>. May be an invalid node if it failed to create it.</returns>
+		[BurstDiscard, MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static CSGTreeBranch Create(UnityEngine.EntityId entityId = default, CSGOperationType operation = CSGOperationType.Additive, params CSGTreeNode[] children)
         {
-            var branchNodeID = CompactHierarchyManager.CreateBranch(operation, instanceID);
+            var branchNodeID = CompactHierarchyManager.CreateBranch(operation, UnityEngine.EntityId.ToULong(entityId));
             Debug.Assert(CompactHierarchyManager.IsValidNodeID(branchNodeID));
             if (children != null && children.Length > 0)
             {
@@ -47,17 +47,17 @@ namespace Chisel.Core
         }
 
         /// <summary>Generates a branch and returns a <see cref="Chisel.Core.CSGTreeBranch"/> struct that contains a reference to it.</summary>
-        /// <param name="instanceID">A unique id to help identify this particular branch. For instance, this could be an InstanceID to a [UnityEngine.Object](https://docs.unity3d.com/ScriptReference/Object.html)</param>
+        /// <param name="entityID">A unique id to help identify this particular branch. For instance, this could be an EntityID to a [UnityEngine.Object](https://docs.unity3d.com/ScriptReference/Object.html)</param>
         /// <param name="children">The child nodes that are children of this branch. A branch may not have duplicate children, contain itself or contain a <see cref="Chisel.Core.CSGTree"/>.</param>
         /// <returns>A new <see cref="Chisel.Core.CSGTreeBranch"/>. May be an invalid node if it failed to create it.</returns>
         [BurstDiscard, MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static CSGTreeBranch Create(Int32 instanceID, params CSGTreeNode[] children) { return Create(instanceID: instanceID, CSGOperationType.Additive, children); }
+        public static CSGTreeBranch Create(UnityEngine.EntityId entityId, params CSGTreeNode[] children) { return Create(entityId: entityId, CSGOperationType.Additive, children); }
 
         /// <summary>Generates a branch and returns a <see cref="Chisel.Core.CSGTreeBranch"/> struct that contains a reference to it.</summary>
         /// <param name="children">The child nodes that are children of this branch. A branch may not have duplicate children, contain itself or contain a <see cref="Chisel.Core.CSGTree"/>.</param>
         /// <returns>A new <see cref="Chisel.Core.CSGTreeBranch"/>. May be an invalid node if it failed to create it.</returns>
         [BurstDiscard, MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static CSGTreeBranch Create(params CSGTreeNode[] children) { return Create(0, children); }
+        public static CSGTreeBranch Create(params CSGTreeNode[] children) { return Create(default(UnityEngine.EntityId), children); }
         #endregion
 
 
@@ -115,8 +115,8 @@ namespace Chisel.Core
         /// <remarks><note>NodeIDs are eventually recycled, so be careful holding on to Nodes that have been destroyed.</note></remarks>
         public NodeID           NodeID			{ get { return nodeID; } }
         
-        /// <value>Gets the <see cref="Chisel.Core.CSGTreeBranch.InstanceID"/> set to the <see cref="Chisel.Core.CSGTreeBranch"/> at creation time.</value>
-        public Int32			InstanceID			{ get { return CompactHierarchyManager.GetNodeInstanceID(nodeID); } }
+        /// <value>Gets the <see cref="Chisel.Core.CSGTreeBranch.EntityId"/> set to the <see cref="Chisel.Core.CSGTreeBranch"/> at creation time.</value>
+        public UnityEngine.EntityId	EntityId			{ get { return UnityEngine.EntityId.FromULong(CompactHierarchyManager.GetNodeEntityID(nodeID)); } }
         
         /// <value>Returns the dirty flag of the <see cref="Chisel.Core.CSGTreeBranch"/>. When the it's dirty, then it means (some of) its generated meshes have been modified.</value>
         public bool				Dirty			{ get { return CompactHierarchyManager.IsNodeDirty(nodeID); } }
@@ -283,7 +283,7 @@ namespace Chisel.Core
         internal void ClearAllStatusFlags()                 { Hierarchy.ClearAllStatusFlags(CompactNodeID); }
         
 
-        [SerializeField] internal NodeID nodeID;
+        internal NodeID nodeID;
 
 
         internal readonly CompactNodeID      CompactNodeID       { get { return CompactHierarchyManager.GetCompactNodeID(nodeID); } }
@@ -300,6 +300,6 @@ namespace Chisel.Core
             }
         }
 
-        public override readonly string ToString() => $"{((CSGTreeNode)this).Type} ({nodeID})";
+        public readonly override string ToString() => $"{((CSGTreeNode)this).Type} ({nodeID})";
     }
 }

@@ -241,7 +241,7 @@ namespace Chisel.Editors
                 ref var vertices                = ref brushMesh.localVertices;
                 ref var halfEdgePolygonIndices  = ref brushMesh.halfEdgePolygonIndices;
 
-                var model           = Resources.InstanceIDToObject(csgTree.InstanceID) as ChiselModelComponent;
+                var model           = Resources.EntityIdToObject(csgTree.EntityId) as ChiselModelComponent;
                 var worldToNode     = (Matrix4x4)csgBrush.TreeToNodeSpaceMatrix * model.hierarchyItem.WorldToLocalMatrix;
                 var nodeToWorld     = model.hierarchyItem.LocalToWorldMatrix * (Matrix4x4)csgBrush.NodeToTreeSpaceMatrix;
                 
@@ -409,7 +409,7 @@ namespace Chisel.Editors
                     ref var halfEdgePolygonIndices = ref brushMesh.halfEdgePolygonIndices;
 
                     // TODO: store this information with brush 
-                    var model = Resources.InstanceIDToObject(csgTree.InstanceID) as ChiselModelComponent;
+                    var model = Resources.EntityIdToObject(csgTree.EntityId) as ChiselModelComponent;
                     var worldToNode = (Matrix4x4)csgBrush.TreeToNodeSpaceMatrix * model.hierarchyItem.WorldToLocalMatrix;
                     var nodeToWorld = model.hierarchyItem.LocalToWorldMatrix * (Matrix4x4)csgBrush.NodeToTreeSpaceMatrix;
 
@@ -816,7 +816,7 @@ namespace Chisel.Editors
                         polygonVertices.Add(vertex);
                     }
                 
-                    var model           = Resources.InstanceIDToObject(brush.Tree.InstanceID) as ChiselModelComponent;
+                    var model           = Resources.EntityIdToObject(brush.Tree.EntityId) as ChiselModelComponent;
                     var nodeToWorld     = model.hierarchyItem.LocalToWorldMatrix * (Matrix4x4)brush.NodeToTreeSpaceMatrix;
                     ChiselOutlineRenderer.DrawLineLoop(nodeToWorld, polygonVertices, Handles.color, thickness: 2);
                 }

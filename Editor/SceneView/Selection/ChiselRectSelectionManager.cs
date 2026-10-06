@@ -308,7 +308,7 @@ namespace Chisel.Editors
                                         }
                                     }
                                 }
-                                var nodeComponent = Resources.InstanceIDToObject(treeNode.InstanceID) as ChiselNodeComponent;
+                                var nodeComponent = Resources.EntityIdToObject(treeNode.EntityId) as ChiselNodeComponent;
                                 if (!nodeComponent)
                                     continue;
                                 var gameObject = nodeComponent.gameObject;

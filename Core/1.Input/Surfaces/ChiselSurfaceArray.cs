@@ -6,7 +6,7 @@ using Unity.Entities;
 
 namespace Chisel.Core
 {
-    [Serializable]
+	[Serializable]
     public sealed class ChiselSurfaceArray
     {
         public ChiselSurface[] surfaces;

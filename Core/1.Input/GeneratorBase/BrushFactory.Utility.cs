@@ -1118,6 +1118,36 @@ namespace Chisel.Core
 
             // cut the brush using the given planes.
             brushMesh.Cut(planes);
+
+            AssignCuttingPlanes(brushMesh, planes);
+        }
+
+        // Every face the cut created, or found lying on a cutting plane, has that plane's index as its
+        // descriptionIndex; the faces of the initial box, which are all -1, are left alone.
+        static void AssignCuttingPlanes(BrushMesh brushMesh, float4[] planes)
+        {
+            if (brushMesh.polygons == null || brushMesh.planes == null)
+                return;
+
+            for (int p = 0; p < brushMesh.polygons.Length && p < brushMesh.planes.Length; p++)
+            {
+                var descriptionIndex = brushMesh.polygons[p].descriptionIndex;
+                if (descriptionIndex < 0 || descriptionIndex >= planes.Length)
+                    continue;
+
+                var plane = planes[descriptionIndex];
+                var length = math.length(plane.xyz);
+                if (!(length > 0))
+                    continue;
+                if (math.abs(length - 1) > 1e-5f)
+                    plane /= length;
+
+                // The cut keeps the inside of every plane, so a face faces the same way as its plane; compare with
+                // the derived plane anyway rather than assume it, in case a face ended up the other way around.
+                if (math.dot(brushMesh.planes[p].xyz, plane.xyz) < 0)
+                    plane = -plane;
+                brushMesh.planes[p] = plane;
+            }
         }
 
         /// <summary>

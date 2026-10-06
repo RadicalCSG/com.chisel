@@ -17,7 +17,7 @@ namespace Chisel.Components
         public ChiselModelComponent	model;
         public ChiselNodeComponent	treeNode;
 
-        public Plane        worldPlane;
+        [System.NonSerialized] public Plane        worldPlane;
         public Vector3      worldPlaneIntersection;
 
         public CSGTreeBrushIntersection brushIntersection;

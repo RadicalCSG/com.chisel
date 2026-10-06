@@ -1,4 +1,5 @@
 using System;
+using Unity.Mathematics;
 using UnityEngine;
 
 namespace Chisel.Core
@@ -15,6 +16,23 @@ namespace Chisel.Core
         // TODO: avoid storing surfaceDefinition and surfaces in brushOutline twice, which is wasteful and causes potential conflicts
         [HideInInspector]
         public BrushMesh        brushOutline;
+
+        [HideInInspector]
+        public float4[]         inputPlanes;
+        // the planes the outline was derived from: a changed or newly given brush derives it again, an unchanged one not
+        [HideInInspector]
+        [SerializeField] int    derivedFromHash;
+
+        public bool IsGivenAsPlanes => inputPlanes != null && inputPlanes.Length > 0;
+
+        // Gives the brush as planes, in its own space; its surfaces are then one per plane, in this order
+        public void SetPlanes(float4[] planes)
+        {
+            inputPlanes     = planes == null ? null : (float4[])planes.Clone();
+            brushOutline    = null;
+            derivedFromHash = 0;
+            ResetValidState();
+        }
 
 
         [HideInInspector]
@@ -37,6 +55,7 @@ namespace Chisel.Core
                     return;
 				ResetValidState();
 				brushOutline = value;
+				inputPlanes = null;     // an outline given from outside (an edit): the brush is its outline from now on
 			}
         }
 
@@ -64,6 +83,7 @@ namespace Chisel.Core
         {
 			ResetValidState();
             brushOutline = null;
+            inputPlanes = null;
 		}
 
         public bool EnsurePlanarPolygons()
@@ -75,7 +95,7 @@ namespace Chisel.Core
             return brushOutline.SplitNonPlanarPolygons();
         }
 
-        public int RequiredSurfaceCount { get { return brushOutline?.polygons?.Length ?? 0; } }
+        public int RequiredSurfaceCount { get { return IsGivenAsPlanes ? inputPlanes.Length : (brushOutline?.polygons?.Length ?? 0); } }
 
         public void UpdateSurfaces(ref ChiselSurfaceArray surfaceDefinition)
         {
@@ -83,14 +103,57 @@ namespace Chisel.Core
                 surfaceDefinition.surfaces.Length == 0)
                 return;
 
+            // given as planes: each face already has its plane's index, and the surfaces are one per plane
+            if (IsGivenAsPlanes)
+                return;
+
             for (int p = 0; p < brushOutline.polygons.Length; p++)
                 brushOutline.polygons[p].descriptionIndex = p;
         }
+
+		bool ValidatePlanes()
+		{
+			if (version != kLatestVersion)
+				version = kLatestVersion;
+			int hash = HashOf(inputPlanes);
+			if (brushOutline == null || derivedFromHash != hash)
+			{
+				if (!ExactBrushOutline.FromPlanes(inputPlanes, out var outline, out var problem))
+				{
+					errorMessage = "Brush given as " + inputPlanes.Length + " planes: " + problem;
+					Debug.LogError(errorMessage);
+					brushOutline = null;
+					validState = false;
+					return false;
+				}
+				brushOutline = outline;
+				derivedFromHash = hash;
+			}
+			isInsideOut = false;
+			return validState;
+		}
+
+		static int HashOf(float4[] planes)
+		{
+			unchecked
+			{
+				uint hash = 2166136261;
+				for (int p = 0; p < planes.Length; p++)
+				{
+					var bits = math.asuint(planes[p]);
+					hash = (hash ^ bits.x) * 16777619; hash = (hash ^ bits.y) * 16777619;
+					hash = (hash ^ bits.z) * 16777619; hash = (hash ^ bits.w) * 16777619;
+				}
+				return hash == 0 ? 1 : (int)hash;     // 0 is "never derived"
+			}
+		}
 
 		public bool Validate()
 		{
 			try
 			{
+				if (IsGivenAsPlanes)
+					return ValidatePlanes();
 				if (!IsValid)
                     return false;
 
@@ -105,7 +168,10 @@ namespace Chisel.Core
                     return false;
 				}
 
-				brushOutline.CalculatePlanes();
+				// Generators give planes: an outline that carries its planes keeps them (the editor's tools fit them again
+				// whenever they change the outline); only one without planes gets them fitted
+				if (brushOutline.planes == null || brushOutline.planes.Length != brushOutline.polygons.Length)
+					brushOutline.CalculatePlanes();
 
 				// If the brush is concave, we set the generator to not be valid, so that when we commit, it will be reverted
 				if (!brushOutline.ValidateShape(out errorMessage))
@@ -183,6 +249,38 @@ namespace Chisel.Core
                 Profiler.EndSample();
             }
         }*/
+
+        public UnityEngine.Hash128 GetInputHash()
+        {
+            var hash    = new UnityEngine.Hash128();
+            var version = kLatestVersion;
+            var state   = (isInsideOut ? 1 : 0) | (validState ? 2 : 0);
+            hash.Append(ref version);
+            hash.Append(ref state);
+            if (brushOutline == null ||
+                brushOutline.vertices == null ||
+                brushOutline.halfEdges == null ||
+                brushOutline.polygons == null)
+            {
+                var nothing = -1;
+                hash.Append(ref nothing);
+                return hash;
+            }
+            hash.Append(brushOutline.vertices);
+            hash.Append(brushOutline.halfEdges);
+            // A polygon holds a surface, which is a reference: only the shape is hashed here, the surfaces are
+            // hashed with the component that owns them
+            var polygonCount = brushOutline.polygons.Length;
+            hash.Append(ref polygonCount);
+            for (int p = 0; p < polygonCount; p++)
+            {
+                var polygon = brushOutline.polygons[p];
+                hash.Append(ref polygon.firstEdge);
+                hash.Append(ref polygon.edgeCount);
+                hash.Append(ref polygon.descriptionIndex);
+            }
+            return hash;
+        }
 
         public void OnEdit(IChiselHandles handles)
         {
