@@ -78,7 +78,9 @@ namespace Chisel.Core
                     var right  = input.right;
                     var up     = input.up;
                     var normal = math.normalizesafe(math.cross(up, right));
-                    sections.Split(right, up, normal, indices, collider, select, render);
+                    // cut once where the sections meet; a surface that is not one convex loop, triangle by triangle
+                    if (!sections.CutConvex(right, up, normal, indices, collider, select, render))
+                        sections.Split(right, up, normal, indices, collider, select, render);
                     if (sections.Conforms)
                     {
                         sections.conformSize = input.textureSize;

@@ -498,10 +498,31 @@ namespace Chisel.Core
             side.Dispose();
             anchor.Dispose();
 
-            // the interior: wherever no band section is, unless it is all border
+            // the interior: wherever no band section is, unless it is all border; inside every inset of a convex outline
             interiorCell = conform ? cells.Length : -1;
             if (!allBorder)
-                AddCell(halfPlanes.Length, s.inner[0], s.inner[1], s.inner[3], t.inner[0], t.inner[1], t.inner[3], size);
+            {
+                var start = halfPlanes.Length;
+                if (bordered && loops.Length == 1 && Convex(corners, loops[0]))
+                {
+                    for (int k = 0; k < inset.Length; k++)
+                        Half(inset[k], 1);
+                }
+                AddCell(start, s.inner[0], s.inner[1], s.inner[3], t.inner[0], t.inner[1], t.inner[3], size);
+            }
+            return true;
+        }
+
+        static bool Convex(NativeList<double2> corners, int2 loop)
+        {
+            for (int k = 0; k < loop.y; k++)
+            {
+                var a = corners[loop.x + (k + loop.y - 1) % loop.y];
+                var b = corners[loop.x + k];
+                var c = corners[loop.x + (k + 1) % loop.y];
+                if (!(Cross(b - a, c - b) > 0))
+                    return false;
+            }
             return true;
         }
 
