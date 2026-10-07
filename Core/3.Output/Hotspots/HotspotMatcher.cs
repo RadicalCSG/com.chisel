@@ -78,6 +78,9 @@ namespace Chisel.Core
         // A tile magnified more than this is too small for the surface: then, as a last resort, a tile repeats at its own
         // density even when it is not meant to repeat (target capacity)
         public const float kLastResortScale = 1 / 3f;
+        // As a last resort, fewest repeats first, then least stretch (the design's repeat rule): each repeat costs more
+        // than any stretch the rounding of repeats leaves
+        const float kLastResortRepeatCost = 100;
 
         // The texture's right and up on a surface: up follows the tree's up on walls and its +z on floors and ceilings,
         // and right is normal x up, so the texture reads the right way round from in front of the surface
@@ -220,8 +223,9 @@ namespace Chisel.Core
                 best = Best(tiles, layout, shape, seed, false, false);
             if (best.tile >= 0 && best.scale < kLastResortScale && shape.cornerCount != 3)
             {
+                // the best tile failed: the one that repeats fewest times instead
                 var repeated = Best(tiles, layout, shape, seed, round, true);
-                if (repeated.tile >= 0 && repeated.score < best.score)
+                if (repeated.tile >= 0)
                     best = repeated;
             }
             return best;
@@ -287,7 +291,7 @@ namespace Chisel.Core
                     var target  = quarter == 0 ? size : size.yx;
                     Repeats(target, face, quarter == 0 ? repeatU : repeatV, quarter == 0 ? repeatV : repeatU, partial,
                             out var repeats, out var scales, out var last);
-                    var score = Distortion(scales.x, scales.y);
+                    var score = Distortion(scales.x, scales.y) + (lastResort ? repeats.x * repeats.y * kLastResortRepeatCost : 0);
                     if (score < best.score)
                         best = new HotspotChoice { tile = -1, score = score, rotated = quarter == 1, repeatX = repeats.x, repeatY = repeats.y,
                                                    lastRepeat = last, scale = math.sqrt(scales.x * scales.y) };
