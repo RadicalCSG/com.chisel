@@ -848,7 +848,8 @@ namespace Chisel.Core
 					uvMat = HotspotMatcher.Mapping(hotspotTiles[choice.tile], layout, shape, choice, finalFaceNormal);
 					// a tile that repeats or has a border: what is drawn is cut where its sections meet, after the
 					// model's weld (OutputHotspotSections)
-					if (hotspotTiles[choice.tile].border > 0 || choice.Repeated)
+					// or that may conform: what it draws is not its bounds
+					if (hotspotTiles[choice.tile].border > 0 || choice.Repeated || (shape.cornerCount != 3 && !shape.boxed))
 						sectionInput = HotspotSections.Input(hotspotTiles[choice.tile], layout, shape, choice, finalFaceNormal);
 				}
 			}

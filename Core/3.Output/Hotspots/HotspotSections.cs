@@ -58,6 +58,12 @@ namespace Chisel.Core
         public NativeList<HotspotSectionLine>      lines;
         public NativeList<HotspotSectionHalfPlane> halfPlanes;
         public NativeList<HotspotSectionCell>      cells;
+        // A conforming interior (BuildConforming): its outline, where each corner of it goes in the tile (pixels), the
+        // texture's size, and its cell (-1: none)
+        public NativeList<double2>                 conformLoop;
+        public NativeList<double2>                 conformImage;
+        public double2                             conformSize;
+        public int                                 interiorCell;
 
         // What the sections of a surface on its tile are built from
         public static HotspotSectionInput Input(in HotspotTileData tile, in HotspotLayoutData layout, in HotspotShape shape, in HotspotChoice choice, float3 normal)
@@ -76,9 +82,12 @@ namespace Chisel.Core
         {
             return new HotspotSections
             {
-                lines      = new NativeList<HotspotSectionLine>(12, allocator),
-                halfPlanes = new NativeList<HotspotSectionHalfPlane>(32, allocator),
-                cells      = new NativeList<HotspotSectionCell>(13, allocator)
+                lines        = new NativeList<HotspotSectionLine>(12, allocator),
+                halfPlanes   = new NativeList<HotspotSectionHalfPlane>(32, allocator),
+                cells        = new NativeList<HotspotSectionCell>(13, allocator),
+                conformLoop  = new NativeList<double2>(8, allocator),
+                conformImage = new NativeList<double2>(8, allocator),
+                interiorCell = -1
             };
         }
 
@@ -89,6 +98,8 @@ namespace Chisel.Core
             if (lines.IsCreated)      lines.Dispose();
             if (halfPlanes.IsCreated) halfPlanes.Dispose();
             if (cells.IsCreated)      cells.Dispose();
+            if (conformLoop.IsCreated)  conformLoop.Dispose();
+            if (conformImage.IsCreated) conformImage.Dispose();
             this = default;
         }
 
@@ -244,6 +255,9 @@ namespace Chisel.Core
             lines.Clear();
             halfPlanes.Clear();
             cells.Clear();
+            conformLoop.Clear();
+            conformImage.Clear();
+            interiorCell = -1;
             var count = input.count;
             if (count != 3 && count != 4)
                 return false;
@@ -409,10 +423,10 @@ namespace Chisel.Core
         // How far apart two uvs of one vertex may be and still be one vertex
         const float kSameUV = 1e-5f;
 
-        // Each triangle's uvs from the section it is in. A vertex on a seam, where repeats meet, gets a vertex of its own
-        // for each side.
+        // Each triangle's uvs from the section it is in; the conforming interior's from interiorUVs (SolveInterior). A
+        // vertex on a seam, where repeats meet, gets a vertex of its own for each side.
         public readonly void AssignUVs(NativeList<int> indices, NativeList<float3> colliderVertices, NativeList<SelectVertex> selectVertices,
-                                       NativeList<RenderVertex> renderVertices, float3 right, float3 up)
+                                       NativeList<RenderVertex> renderVertices, float3 right, float3 up, NativeList<float2> interiorUVs = default)
         {
             var r = (double3)right; var u = (double3)up;
             var assigned = new NativeList<bool>(renderVertices.Length, Allocator.Temp);
@@ -437,7 +451,9 @@ namespace Chisel.Core
                     }
                     var vertex = renderVertices[index];
                     var p = (double3)vertex.position;
-                    var uv = UV(cell, new double2(math.dot(r, p), math.dot(u, p)));
+                    var uv = cell == interiorCell && interiorUVs.IsCreated && index < interiorUVs.Length && !math.any(math.isnan(interiorUVs[index]))
+                           ? interiorUVs[index]
+                           : UV(cell, new double2(math.dot(r, p), math.dot(u, p)));
                     if (!assigned[index])
                     {
                         vertex.uv0 = uv;
@@ -499,7 +515,7 @@ namespace Chisel.Core
             using var newCollider = new NativeList<float3>(colliderVertices.Length * 2, Allocator.Temp);
             using var newSelect   = new NativeList<SelectVertex>(colliderVertices.Length * 2, Allocator.Temp);
             using var newRender   = new NativeList<RenderVertex>(colliderVertices.Length * 2, Allocator.Temp);
-            using var lookup      = new UnsafeHashMap<double3, int>(colliderVertices.Length * 2, Allocator.Temp);
+            using var lookup      = new UnsafeHashMap<float3, int>(colliderVertices.Length * 2, Allocator.Temp);
             using var values      = new NativeList<double>(16, Allocator.Temp);
             var points     = new NativeList<PiecePoint>(64, Allocator.Temp);
             var ranges     = new NativeList<int2>(16, Allocator.Temp);
@@ -595,18 +611,24 @@ namespace Chisel.Core
                         var third  = points[range.x + i + 1];
                         if (Cross(second.p2 - first.p2, third.p2 - first.p2) == 0)
                             continue;
-                        newIndices.Add(Vertex(first, indices, t));
-                        newIndices.Add(Vertex(second, indices, t));
-                        newIndices.Add(Vertex(third, indices, t));
+                        // points that round to one float position are one vertex (lines crossing at one point make it
+                        // from different pairs of them); a triangle that loses a corner to that is left out
+                        var i0 = Vertex(first, indices, t); var i1 = Vertex(second, indices, t); var i2 = Vertex(third, indices, t);
+                        if (i0 == i1 || i1 == i2 || i2 == i0)
+                            continue;
+                        newIndices.Add(i0);
+                        newIndices.Add(i1);
+                        newIndices.Add(i2);
                     }
                 }
 
                 int Vertex(in PiecePoint point, NativeList<int> sourceIndices, int triangle)
                 {
-                    if (lookup.TryGetValue(point.p3, out var index))
+                    var key = (point.kind == 0 ? colliderVertices[sourceIndices[triangle + point.a]] : (float3)point.p3) + 0.0f;
+                    if (lookup.TryGetValue(key, out var index))
                         return index;
                     index = newCollider.Length;
-                    lookup.Add(point.p3, index);
+                    lookup.Add(key, index);
                     if (point.kind == 0)
                     {
                         var source = sourceIndices[triangle + point.a];

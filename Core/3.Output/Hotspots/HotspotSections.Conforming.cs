@@ -5,9 +5,11 @@ using Unity.Mathematics;
 namespace Chisel.Core
 {
     // A border that follows what a surface draws: a strip along every edge of its outline (its holes too), each mapped to
-    // the side of the tile its outside faces, as deep into the tile as it is into the surface; a corner where two strips
-    // meet at a convex corner; at a reflex corner the strips meet on the line that halves it. The rest is the interior,
-    // mapped as the surface's bounds are.
+    // a side of the tile, as deep into the tile as it is into the surface; a corner where two strips meet at a convex
+    // corner; at a reflex corner the strips meet on the line through it and its inner corner. The rest is the interior.
+    // The interior maps as the surface's bounds do, unless the outline is one convex loop that is not its bounds: then its
+    // outline goes round the tile's inner rectangle, the corners nearest the bounds' corners on the tile's corners, and
+    // the inside follows (HotspotSections.Interior); the border's strips then run along the sides their edges go to.
     public partial struct HotspotSections
     {
         // The loops of a surface's outline in its frame, the surface on their left: corners, and (start, count) per loop.
@@ -141,27 +143,50 @@ namespace Chisel.Core
             return pixel - t.inward[j] * math.dot(t.inward[j], pixel - t.corner[j]) + t.inward[j] * depth;
         }
 
-        // The border along the outline of what the surface draws (indices, positions); false when the tile has no border
-        // or no band fits
+        // Whether a loop's corners are those of the bounds, in some order (the bounds are in float: within a millionth of
+        // their size)
+        static bool IsBounds(NativeList<double2> corners, int2 loop, double2 min, double2 max)
+        {
+            if (loop.y != 4)
+                return false;
+            var tolerance = math.cmax(max - min) * 1e-6;
+            for (int k = 0; k < 4; k++)
+            {
+                var c = corners[loop.x + k];
+                var onX = math.abs(c.x - min.x) <= tolerance || math.abs(c.x - max.x) <= tolerance;
+                var onY = math.abs(c.y - min.y) <= tolerance || math.abs(c.y - max.y) <= tolerance;
+                if (!onX || !onY)
+                    return false;
+            }
+            return true;
+        }
+
+        // The border along the outline of what the surface draws (indices, positions), and the outline of its interior when
+        // that conforms (conformLoop, conformImage, interiorCell); false when there is neither
         public bool BuildConforming(in HotspotSectionInput input, NativeList<int> indices, NativeList<float3> positions)
         {
             lines.Clear();
             halfPlanes.Clear();
             cells.Clear();
-            if (input.count != 4 || !(input.border > 0) || !(input.pixelsPerUnit > 0) || input.Repeated)
+            conformLoop.Clear();
+            conformImage.Clear();
+            interiorCell = -1;
+            if (input.count != 4 || !(input.pixelsPerUnit > 0) || input.Repeated)
                 return false;
             var s = new Outline(4, input.f0, input.f1, input.f2);
             var t = new Outline(4, input.t0, input.t1, input.t2);
             var surfaceBand = math.min((double)input.border / input.pixelsPerUnit, 0.5 * s.MaxBand());
             var tileBand    = math.min((double)input.border, 0.5 * t.MaxBand());
-            if (!(surfaceBand > 0) || !(tileBand > 0))
-                return false;
+            var bordered    = input.border > 0 && surfaceBand > 0 && tileBand > 0;
+            if (!bordered)
+                surfaceBand = tileBand = 0;
             s.Inset(surfaceBand);
             t.Inset(tileBand);
             var size = (double2)input.textureSize;
-            var depthScale = tileBand / surfaceBand;
+            conformSize = size;
+            var depthScale = bordered ? tileBand / surfaceBand : 0;
 
-            // the interior: the surface's inset bounds onto the tile's, in pixels
+            // the interior as the bounds map it: the surface's inset bounds onto the tile's, in pixels
             var origin = s.inner[0];
             var linear = math.mul(new double2x2(t.inner[1] - t.inner[0], t.inner[3] - t.inner[0]),
                                   math.inverse(new double2x2(s.inner[1] - origin, s.inner[3] - origin)));
@@ -174,38 +199,62 @@ namespace Chisel.Core
             if (loops.Length == 0)
                 return false;
 
+            var boundsMin = math.min(s.corner[0], s.corner[2]);
+            var boundsMax = math.max(s.corner[0], s.corner[2]);
+            var conform = (input.flags & HotspotTileFlags.Radial) == 0 && loops.Length == 1 && !IsBounds(corners, loops[0], boundsMin, boundsMax);
+            if (conform)
+            {
+                for (int k = 0; k < loops[0].y && conform; k++)
+                {
+                    var a = corners[loops[0].x + (k + loops[0].y - 1) % loops[0].y];
+                    var b = corners[loops[0].x + k];
+                    var c = corners[loops[0].x + (k + 1) % loops[0].y];
+                    conform = Cross(b - a, c - b) > 0;
+                }
+            }
+            if (!bordered && !conform)
+                return false;
+
             using var along    = new NativeList<double2>(corners.Length, Allocator.Temp);
             using var inward   = new NativeList<double2>(corners.Length, Allocator.Temp);
             using var inner    = new NativeList<double2>(corners.Length, Allocator.Temp);
             using var convex   = new NativeList<bool>(corners.Length, Allocator.Temp);
             using var outer    = new NativeList<int>(corners.Length, Allocator.Temp);
             using var inset    = new NativeList<int>(corners.Length, Allocator.Temp);
-            using var side     = new NativeList<int>(corners.Length, Allocator.Temp);
+            var side           = new NativeList<int>(corners.Length, Allocator.Temp);
+            var anchor         = new NativeList<int>(corners.Length, Allocator.Temp);   // the tile corner a corner is on, or -1
             var starts         = new NativeList<int2>(corners.Length, Allocator.Temp);   // (line, side) where a strip starts
             var ends           = new NativeList<int2>(corners.Length, Allocator.Temp);   // and where it ends
             for (int l = 0; l < loops.Length; l++)
             {
                 var first = loops[l].x; var count = loops[l].y;
                 int At(int k) => first + (k % count + count) % count;
-                along.Clear(); inward.Clear(); inner.Clear(); convex.Clear(); outer.Clear(); inset.Clear(); side.Clear(); starts.Clear(); ends.Clear();
+                along.Clear(); inward.Clear(); inner.Clear(); convex.Clear(); outer.Clear(); inset.Clear(); side.Clear(); anchor.Clear(); starts.Clear(); ends.Clear();
                 for (int k = 0; k < count; k++)
                 {
                     var d = math.normalize(corners[At(k + 1)] - corners[At(k)]);
                     var n = new double2(-d.y, d.x);
                     along.Add(d);
                     inward.Add(n);
-                    outer.Add(AddLine(n, corners[At(k)]));
-                    inset.Add(AddLine(n, corners[At(k)] + n * surfaceBand));
+                    if (bordered)
+                    {
+                        outer.Add(AddLine(n, corners[At(k)]));
+                        inset.Add(AddLine(n, corners[At(k)] + n * surfaceBand));
+                    } else
+                    {
+                        outer.Add(-1);
+                        inset.Add(-1);
+                    }
                     side.Add(SideFacing(t, math.mul(linear, -n)));
+                    anchor.Add(-1);
                     starts.Add(default);
                     ends.Add(default);
                 }
-                // each corner k, between edge k - 1 and edge k
+                // each corner k, between edge k - 1 and edge k: its inner corner
                 for (int k = 0; k < count; k++)
                 {
                     var h = (k + count - 1) % count;
                     var c = corners[At(k)];
-                    var turn = Cross(along[h], along[k]);
                     var nh = inward[h]; var nk = inward[k];
                     var determinant = Cross(nh, nk);
                     var point = math.abs(determinant) > 0
@@ -213,8 +262,98 @@ namespace Chisel.Core
                                             (nh.x * (math.dot(nk, c) + surfaceBand) - (math.dot(nh, c) + surfaceBand) * nk.x) / determinant)
                               : c + nk * surfaceBand;
                     inner.Add(point);
-                    convex.Add(turn > 0);
-                    if (turn > 0)
+                    convex.Add(Cross(along[h], along[k]) > 0);
+                }
+
+                if (conform)
+                {
+                    // the inner outline round the tile's inner rectangle: the corner nearest each corner of the inset bounds
+                    // on that tile corner, the rest by length along the outline between them
+                    var ok = true;
+                    for (int j = 0; j < 4; j++)
+                    {
+                        var nearest = -1; var distance = double.PositiveInfinity;
+                        for (int k = 0; k < count; k++)
+                        {
+                            var dk = math.lengthsq(inner[k] - s.inner[j]);
+                            if (dk < distance) { distance = dk; nearest = k; }
+                        }
+                        if (anchor[nearest] >= 0) { ok = false; break; }
+                        anchor[nearest] = j;
+                    }
+                    // in the tile's order round the outline
+                    var firstAnchor = -1;
+                    for (int k = 0; k < count && ok; k++)
+                    {
+                        if (anchor[k] == 0) firstAnchor = k;
+                    }
+                    if (ok && firstAnchor >= 0)
+                    {
+                        var expected = 0;
+                        for (int step = 0; step < count; step++)
+                        {
+                            var k = (firstAnchor + step) % count;
+                            if (anchor[k] < 0)
+                                continue;
+                            if (anchor[k] != expected) { ok = false; break; }
+                            expected++;
+                        }
+                    } else
+                        ok = false;
+                    if (!ok)
+                    {
+                        conform = false;
+                        for (int k = 0; k < count; k++)
+                            anchor[k] = -1;
+                        if (!bordered)
+                        {
+                            starts.Dispose();
+                            ends.Dispose();
+                            side.Dispose();
+                            anchor.Dispose();
+                            lines.Clear(); halfPlanes.Clear(); cells.Clear();
+                            return false;
+                        }
+                    } else
+                    {
+                        for (int k = 0; k < count; k++)
+                        {
+                            conformLoop.Add(inner[k]);
+                            conformImage.Add(default);
+                        }
+                        for (int j = 0; j < 4; j++)
+                        {
+                            int from = -1, to = -1;
+                            for (int k = 0; k < count; k++)
+                            {
+                                if (anchor[k] == j) from = k;
+                                if (anchor[k] == (j + 1) % 4) to = k;
+                            }
+                            var length = 0.0;
+                            for (int k = from; k != to; k = (k + 1) % count)
+                                length += math.length(inner[(k + 1) % count] - inner[k]);
+                            var walked = 0.0;
+                            for (int k = from; k != to; k = (k + 1) % count)
+                            {
+                                conformImage[k] = math.lerp(t.inner[j], t.inner[(j + 1) % 4], length > 0 ? walked / length : 0);
+                                // its edge runs along this side of the tile
+                                side[k] = j;
+                                walked += math.length(inner[(k + 1) % count] - inner[k]);
+                            }
+                        }
+                    }
+                }
+
+                if (!bordered)
+                    continue;
+
+                for (int k = 0; k < count; k++)
+                {
+                    var h = (k + count - 1) % count;
+                    var c = corners[At(k)];
+                    var point = inner[k];
+                    var nk = inward[k];
+                    if (convex[k])
                     {
                         // square to each edge through the inner corner, the corner's side negative
                         ends[h]   = new int2(AddLine(-along[h], point), 1);
@@ -247,8 +386,8 @@ namespace Chisel.Core
                     var step = to - from;
                     if ((input.flags & HotspotTileFlags.RepeatBorder) != 0 && step > 0)
                     {
-                        var next = (j + 1) % t.count;
-                        var period = math.length(t.footPrevious[next] - t.footNext[j]) / depthScale;
+                        var nextSide = (j + 1) % t.count;
+                        var period = math.length(t.footPrevious[nextSide] - t.footNext[j]) / depthScale;
                         if ((input.flags & HotspotTileFlags.PartialRepeats) != 0)
                         {
                             repeats = math.max(1, PartialRepeats(step, period, out var last));
@@ -268,17 +407,23 @@ namespace Chisel.Core
                         Half(inset[k], -1);
                         Half(previousCut.x, previousCut.y);
                         Half(cut.x, cut.y);
-                        if (repeats == 1)
+                        if (repeats == 1 && conform)
+                        {
+                            // along the side its edge goes to, meeting the conforming interior at its inner edge
+                            var q0 = inner[k]; var q1 = inner[(k + 1) % count];
+                            var r0 = conformImage[k]; var r1 = conformImage[(k + 1) % count];
+                            AddCell(start, q0, q1, q0 - n * surfaceBand, r0, r1, r0 - t.inward[j] * tileBand, size);
+                        } else if (repeats == 1)
                             AddCell(start, a, a + d, a + n * surfaceBand, Strip(a), Strip(a + d), Strip(a + n * surfaceBand), size);
                         else
                         {
                             // each repeat is the tile's whole strip on that side, which way round its edge runs
-                            var next = (j + 1) % t.count;
+                            var nextSide = (j + 1) % t.count;
                             var forward = math.dot(math.mul(linear, d), t.along[j]) >= 0;
                             var p0 = a + d * (from + step * rep);
                             AddCell(start, p0, p0 + d * step, p0 + n * surfaceBand,
-                                    forward ? t.footNext[j] : t.footPrevious[next], forward ? t.footPrevious[next] : t.footNext[j],
-                                    forward ? t.inner[j] : t.inner[next], size);
+                                    forward ? t.footNext[j] : t.footPrevious[nextSide], forward ? t.footPrevious[nextSide] : t.footNext[j],
+                                    forward ? t.inner[j] : t.inner[nextSide], size);
                         }
                         previousCut = new int2(cut.x, -cut.y);
                     }
@@ -294,7 +439,22 @@ namespace Chisel.Core
                     var hEdge = h; var kEdge = k;
                     double Depth(double2 p, int edge) => math.dot(inward[edge], p - corners[At(edge)]) * depthScale;
                     var jh = side[h]; var jk = side[k];
-                    if (jh != jk && math.abs(math.dot(t.inward[jh], t.inward[jk])) < 1e-9)
+                    var footK = c + along[k] * math.dot(inner[k] - c, along[k]);
+                    var footH = c + along[h] * math.dot(inner[k] - c, along[h]);
+                    if (conform && anchor[k] >= 0)
+                    {
+                        // the tile's corner, in two halves since the surface's corner need not be square
+                        var j = anchor[k];
+                        var toInner = math.normalizesafe(inner[k] - c, inward[k]);
+                        var diagonal = AddLine(new double2(-toInner.y, toInner.x), c);
+                        var towardK = lines[diagonal].Value(c + along[k]) > 0 ? 1 : -1;
+                        var start = halfPlanes.Length;
+                        Half(outer[h], 1); Half(outer[k], 1); Half(ends[h].x, -ends[h].y); Half(starts[k].x, -starts[k].y); Half(diagonal, towardK);
+                        AddCell(start, c, footK, inner[k], t.corner[j], t.footNext[j], t.inner[j], size);
+                        start = halfPlanes.Length;
+                        Half(outer[h], 1); Half(outer[k], 1); Half(ends[h].x, -ends[h].y); Half(starts[k].x, -starts[k].y); Half(diagonal, -towardK);
+                        AddCell(start, c, inner[k], footH, t.corner[j], t.inner[j], t.footPrevious[j], size);
+                    } else if (!conform && jh != jk && math.abs(math.dot(t.inward[jh], t.inward[jk])) < 1e-9)
                     {
                         double2 Corner(double2 p) => WithDepth(WithDepth(Interior(p), t, jh, Depth(p, hEdge)), t, jk, Depth(p, kEdge));
                         var start = halfPlanes.Length;
@@ -309,24 +469,45 @@ namespace Chisel.Core
                         var toInner = math.normalizesafe(inner[k] - c, inward[k]);
                         var diagonal = AddLine(new double2(-toInner.y, toInner.x), c);
                         var towardK = lines[diagonal].Value(c + along[k]) > 0 ? 1 : -1;
-                        double2 StripOf(double2 p, int edge) => WithDepth(Interior(p), t, side[edge], Depth(p, edge));
                         var start = halfPlanes.Length;
                         Half(outer[h], 1); Half(outer[k], 1); Half(ends[h].x, -ends[h].y); Half(starts[k].x, -starts[k].y); Half(diagonal, towardK);
-                        AddCell(start, c, c + along[k], c + inward[k], StripOf(c, kEdge), StripOf(c + along[k], kEdge), StripOf(c + inward[k], kEdge), size);
-                        start = halfPlanes.Length;
-                        Half(outer[h], 1); Half(outer[k], 1); Half(ends[h].x, -ends[h].y); Half(starts[k].x, -starts[k].y); Half(diagonal, -towardK);
-                        AddCell(start, c, c - along[h], c + inward[h], StripOf(c, hEdge), StripOf(c - along[h], hEdge), StripOf(c + inward[h], hEdge), size);
+                        if (conform)
+                        {
+                            // the conforming strips: each half from its edge's strip map
+                            AddStripLike(start, k, inner, conformImage, inward, t, side[k], surfaceBand, tileBand, size, count);
+                            start = halfPlanes.Length;
+                            Half(outer[h], 1); Half(outer[k], 1); Half(ends[h].x, -ends[h].y); Half(starts[k].x, -starts[k].y); Half(diagonal, -towardK);
+                            AddStripLike(start, h, inner, conformImage, inward, t, side[h], surfaceBand, tileBand, size, count);
+                        } else
+                        {
+                            double2 StripOf(double2 p, int edge) => WithDepth(Interior(p), t, side[edge], Depth(p, edge));
+                            AddCell(start, c, c + along[k], c + inward[k], StripOf(c, kEdge), StripOf(c + along[k], kEdge), StripOf(c + inward[k], kEdge), size);
+                            start = halfPlanes.Length;
+                            Half(outer[h], 1); Half(outer[k], 1); Half(ends[h].x, -ends[h].y); Half(starts[k].x, -starts[k].y); Half(diagonal, -towardK);
+                            AddCell(start, c, c - along[h], c + inward[h], StripOf(c, hEdge), StripOf(c - along[h], hEdge), StripOf(c + inward[h], hEdge), size);
+                        }
                     }
                 }
             }
-
             starts.Dispose();
             ends.Dispose();
+            side.Dispose();
+            anchor.Dispose();
 
             // the interior: wherever no band section is
             var interiorStart = halfPlanes.Length;
+            interiorCell = conform ? cells.Length : -1;
             AddCell(interiorStart, s.inner[0], s.inner[1], s.inner[3], t.inner[0], t.inner[1], t.inner[3], size);
             return true;
+        }
+
+        // A conforming strip's map for edge k (its inner edge onto its images, its outer edge a band's depth further out)
+        void AddStripLike(int start, int k, NativeList<double2> inner, NativeList<double2> images, NativeList<double2> inward,
+                          in Outline t, int j, double surfaceBand, double tileBand, double2 size, int count)
+        {
+            var q0 = inner[k]; var q1 = inner[(k + 1) % count];
+            var r0 = images[k]; var r1 = images[(k + 1) % count];
+            AddCell(start, q0, q1, q0 - inward[k] * surfaceBand, r0, r1, r0 - t.inward[j] * tileBand, size);
         }
     }
 }

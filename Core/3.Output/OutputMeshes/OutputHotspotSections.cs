@@ -63,8 +63,9 @@ namespace Chisel.Core
                     using var render   = ToList(ref from.renderVertices);
                     var input    = from.sectionInput;
                     var sections = HotspotSections.Create(Allocator.Temp);
-                    // a border around what the surface draws, unless it is a triangle (exact already) or repeats
-                    var built = input.count == 4 && input.border > 0 && !input.Repeated
+                    // around what the surface draws (its border, its interior), unless it is a triangle (exact already) or
+                    // repeats
+                    var built = input.count == 4 && !input.Repeated
                               ? sections.BuildConforming(input, indices, collider)
                               : sections.Build(input);
                     if (!built)
@@ -78,7 +79,15 @@ namespace Chisel.Core
                     var up     = input.up;
                     var normal = math.normalizesafe(math.cross(up, right));
                     sections.Split(right, up, normal, indices, collider, select, render);
-                    sections.AssignUVs(indices, collider, select, render, right, up);
+                    if (sections.Conforms)
+                    {
+                        sections.conformSize = input.textureSize;
+                        HotspotSections.Subdivide(sections.SubdivisionLevels(indices, collider, right, up), indices, collider, select, render);
+                        using var interiorUVs = sections.SolveInterior(indices, collider, right, up, Allocator.Temp);
+                        sections.AssignUVs(indices, collider, select, render, right, up, interiorUVs);
+                        MeshAlgorithms.ComputeTangents(indices, render);
+                    } else
+                        sections.AssignUVs(indices, collider, select, render, right, up);
                     sections.Dispose();
                     to.Store(builder, indices, collider, select, render);
                     // the collider keeps what the weld left, uncut
