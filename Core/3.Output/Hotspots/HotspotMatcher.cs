@@ -94,10 +94,39 @@ namespace Chisel.Core
             right = math.cross(n, up);
         }
 
+        // The frame turned around the normal (degrees, counter-clockwise seen from in front), and mirrored left to right
+        public static void Frame(float3 normal, float rotation, bool mirror, out float3 right, out float3 up)
+        {
+            Frame(normal, out right, out up);
+            if (rotation != 0)
+            {
+                double sin, cos;
+                var quarters = rotation / 90.0;
+                if (quarters == math.round(quarters))
+                {
+                    // a quarter turn exactly, so a rectangle stays its own bounds
+                    var q = ((int)math.round(quarters) % 4 + 4) % 4;
+                    sin = q == 1 ? 1 : (q == 3 ? -1 : 0);
+                    cos = q == 0 ? 1 : (q == 2 ? -1 : 0);
+                } else
+                    math.sincos(math.radians((double)rotation), out sin, out cos);
+                var r = (double3)right; var u = (double3)up;
+                right = (float3)(r * cos + u * sin);
+                up    = (float3)(u * cos - r * sin);
+            }
+            if (mirror)
+                right = -right;
+        }
+
         // The outline of what a surface draws: its bounds in the frame, and its corners when it is a triangle
         public static HotspotShape ShapeOf(NativeArray<float3> positions, float3 normal)
         {
             Frame(normal, out var right, out var up);
+            return ShapeOf(positions, right, up);
+        }
+
+        public static HotspotShape ShapeOf(NativeArray<float3> positions, float3 right, float3 up)
+        {
             var shape = new HotspotShape { min = new float2(float.PositiveInfinity), max = new float2(float.NegativeInfinity) };
             if (positions.Length == 0)
                 return shape;
@@ -199,7 +228,8 @@ namespace Chisel.Core
         // The matching tile: the lowest score among the enabled tiles of the surface's kind (triangles for a triangle,
         // rectangles otherwise; radial tiles for round surfaces, the others when there are none). Tiles that score
         // exactly the same - identical tiles - are told apart by the seed. A pinned tile (its id) is always the one.
-        public static HotspotChoice Choose(NativeArray<HotspotTileData> tiles, in HotspotLayoutData layout, in HotspotShape shape, uint seed, int pinnedId, bool radial = false)
+        // density: how many times the tiles' pixels a unit the surface takes
+        public static HotspotChoice Choose(NativeArray<HotspotTileData> tiles, in HotspotLayoutData layout, in HotspotShape shape, uint seed, int pinnedId, bool radial = false, float density = 1)
         {
             var best = new HotspotChoice { tile = -1, score = float.PositiveInfinity };
             var size = shape.max - shape.min;
@@ -212,20 +242,20 @@ namespace Chisel.Core
                 {
                     if (tiles[t].id != pinnedId)
                         continue;
-                    var pinned = Score(tiles[t], shape, true);
+                    var pinned = Score(tiles[t], shape, density, true);
                     pinned.tile = t;
                     return pinned;
                 }
             }
 
             var round = radial || shape.radial;
-            best = Best(tiles, layout, shape, seed, round, false);
+            best = Best(tiles, layout, shape, seed, round, false, density);
             if (round && best.tile < 0)
-                best = Best(tiles, layout, shape, seed, false, false);
+                best = Best(tiles, layout, shape, seed, false, false, density);
             if (best.tile >= 0 && best.scale < kLastResortScale && shape.cornerCount != 3)
             {
                 // the best tile failed: the one that repeats fewest times instead
-                var repeated = Best(tiles, layout, shape, seed, round, true);
+                var repeated = Best(tiles, layout, shape, seed, round, true, density);
                 if (repeated.tile >= 0)
                 {
                     best = repeated;
@@ -235,7 +265,7 @@ namespace Chisel.Core
             return best;
         }
 
-        static HotspotChoice Best(NativeArray<HotspotTileData> tiles, in HotspotLayoutData layout, in HotspotShape shape, uint seed, bool radial, bool lastResort)
+        static HotspotChoice Best(NativeArray<HotspotTileData> tiles, in HotspotLayoutData layout, in HotspotShape shape, uint seed, bool radial, bool lastResort, float density)
         {
             var best = new HotspotChoice { tile = -1, score = float.PositiveInfinity };
             var ties = 0;
@@ -243,7 +273,7 @@ namespace Chisel.Core
             {
                 if (!Candidate(tiles[t], shape, radial))
                     continue;
-                var choice = Score(tiles[t], shape, false, lastResort);
+                var choice = Score(tiles[t], shape, density, false, lastResort);
                 if (choice.score < best.score) { best = choice; best.tile = t; ties = 1; }
                 else if (choice.score == best.score) ties++;
             }
@@ -256,7 +286,7 @@ namespace Chisel.Core
             {
                 if (!Candidate(tiles[t], shape, radial))
                     continue;
-                var choice = Score(tiles[t], shape, false, lastResort);
+                var choice = Score(tiles[t], shape, density, false, lastResort);
                 if (choice.score != best.score)
                     continue;
                 if (pick-- == 0) { choice.tile = t; return choice; }
@@ -276,9 +306,9 @@ namespace Chisel.Core
         // Distortion of the best way to put the surface on the tile: 2 |ln(s1 / s2)| + |ln(s1 s2)| / 2 for the scale
         // factors s1, s2 of the map. A tile that may not turn keeps the texture's up: a triangle goes corner to corner
         // the way that turns it least. A pinned tile may be turned or mirrored whatever its flags say.
-        static HotspotChoice Score(in HotspotTileData tile, in HotspotShape shape, bool any, bool lastResort = false)
+        static HotspotChoice Score(in HotspotTileData tile, in HotspotShape shape, float density, bool any, bool lastResort = false)
         {
-            var pixelsPerUnit = tile.pixelsPerUnit;
+            var pixelsPerUnit = tile.pixelsPerUnit * density;
             var best = new HotspotChoice { tile = -1, score = float.PositiveInfinity };
             var rotate = any || (tile.flags & HotspotTileFlags.AllowRotation) != 0;
             var mirror = any || (tile.flags & HotspotTileFlags.AllowMirror) != 0;
@@ -386,6 +416,12 @@ namespace Chisel.Core
         public static float4x4 Mapping(in HotspotTileData tile, in HotspotLayoutData layout, in HotspotShape shape, in HotspotChoice choice, float3 normal)
         {
             Frame(normal, out var right, out var up);
+            return Mapping(tile, layout, shape, choice, right, up);
+        }
+
+        // In the frame the shape was found in (ShapeOf)
+        public static float4x4 Mapping(in HotspotTileData tile, in HotspotLayoutData layout, in HotspotShape shape, in HotspotChoice choice, float3 right, float3 up)
+        {
             Corners(tile, shape, choice, out _, out var f0, out var f1, out var f2, out var t0, out var t1, out var t2);
             // into uv
             t0 /= layout.textureSize; t1 /= layout.textureSize; t2 /= layout.textureSize;

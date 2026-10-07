@@ -68,12 +68,18 @@ namespace Chisel.Core
         // What the sections of a surface on its tile are built from
         public static HotspotSectionInput Input(in HotspotTileData tile, in HotspotLayoutData layout, in HotspotShape shape, in HotspotChoice choice, float3 normal)
         {
-            HotspotMatcher.Corners(tile, shape, choice, out var count, out var f0, out var f1, out var f2, out var t0, out var t1, out var t2);
             HotspotMatcher.Frame(normal, out var right, out var up);
+            return Input(tile, layout, shape, choice, right, up, 1);
+        }
+
+        // In the frame the shape was found in (HotspotMatcher.ShapeOf), at density times the tile's pixels a unit
+        public static HotspotSectionInput Input(in HotspotTileData tile, in HotspotLayoutData layout, in HotspotShape shape, in HotspotChoice choice, float3 right, float3 up, float density)
+        {
+            HotspotMatcher.Corners(tile, shape, choice, out var count, out var f0, out var f1, out var f2, out var t0, out var t1, out var t2);
             return new HotspotSectionInput
             {
                 count = count, f0 = f0, f1 = f1, f2 = f2, t0 = t0, t1 = t1, t2 = t2,
-                textureSize = layout.textureSize, border = tile.border, pixelsPerUnit = tile.pixelsPerUnit, flags = tile.flags,
+                textureSize = layout.textureSize, border = tile.border, pixelsPerUnit = tile.pixelsPerUnit * density, flags = tile.flags,
                 repeatX = choice.repeatX, repeatY = choice.repeatY, lastRepeat = choice.lastRepeat, right = right, up = up
             };
         }

@@ -38,6 +38,10 @@ namespace Chisel.Core
         public int      hotspotLayout;
         public int      hotspotPinned;
         public uint     hotspotSeed;
+        // and how the texture lies on it: turned (degrees), its density, mirrored (HotspotSurface)
+        public float    hotspotRotation;
+        public float    hotspotDensity;
+        public bool     hotspotMirror;
     }
 
     struct BasePolygonsBlob

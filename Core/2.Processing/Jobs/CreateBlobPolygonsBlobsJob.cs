@@ -297,7 +297,10 @@ namespace Chisel.Core
                     descriptionIndex      = polygon.descriptionIndex,
                     hotspotLayout         = polygon.surface.hotspotLayout,
                     hotspotPinned         = polygon.surface.details.hotspot.pinnedTile,
-                    hotspotSeed           = polygon.surface.details.hotspot.seed
+                    hotspotSeed           = polygon.surface.details.hotspot.seed,
+                    hotspotRotation       = polygon.surface.details.hotspot.rotation,
+                    hotspotDensity        = polygon.surface.details.hotspot.Density,
+                    hotspotMirror         = polygon.surface.details.hotspot.mirror
                 };
             }
             var basePolygonsBlob = builder.CreateBlobAssetReference<BasePolygonsBlob>(Allocator.Persistent); // Confirmed to be disposed

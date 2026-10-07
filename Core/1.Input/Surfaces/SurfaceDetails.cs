@@ -39,6 +39,14 @@ namespace Chisel.Core
 		public int  pinnedTile;
 		// Tells identical tiles apart for this surface
 		public uint seed;
+		// Degrees the texture turns around the surface's normal, counter-clockwise seen from in front
+		public float rotation;
+		// How many times the tile's pixels a unit the surface takes; 0 is 1, the tile's own density
+		public float density;
+		// The texture mirrored left to right
+		public bool  mirror;
+
+		public readonly float Density => density > 0 ? density : 1;
 	}
 
 	/// <summary>

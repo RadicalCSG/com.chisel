@@ -840,21 +840,23 @@ namespace Chisel.Core
 			var hotspotInfo  = default(HotspotSurfaceInfo);
 			if (hotspot > 0 && hotspot <= hotspotLayouts.Length && hotspotLayouts[hotspot - 1].tileCount > 0)
 			{
-				var layout = hotspotLayouts[hotspot - 1];
-				var shape  = HotspotMatcher.ShapeOf(uniqueVertexMapper.surfaceColliderVertices.AsArray(), finalFaceNormal);
+				var layout  = hotspotLayouts[hotspot - 1];
+				var density = baseSurfaces[surf].hotspotDensity > 0 ? baseSurfaces[surf].hotspotDensity : 1;
+				HotspotMatcher.Frame(finalFaceNormal, baseSurfaces[surf].hotspotRotation, baseSurfaces[surf].hotspotMirror, out var hotspotRight, out var hotspotUp);
+				var shape  = HotspotMatcher.ShapeOf(uniqueVertexMapper.surfaceColliderVertices.AsArray(), hotspotRight, hotspotUp);
 				var seed   = math.hash(new uint2(baseSurfaces[surf].hotspotSeed, (uint)baseSurfaces[surf].descriptionIndex));
-				var choice = HotspotMatcher.Choose(hotspotTiles, layout, shape, seed, baseSurfaces[surf].hotspotPinned);
+				var choice = HotspotMatcher.Choose(hotspotTiles, layout, shape, seed, baseSurfaces[surf].hotspotPinned, density: density);
 				if (choice.tile >= 0)
 				{
-					uvMat = HotspotMatcher.Mapping(hotspotTiles[choice.tile], layout, shape, choice, finalFaceNormal);
+					uvMat = HotspotMatcher.Mapping(hotspotTiles[choice.tile], layout, shape, choice, hotspotRight, hotspotUp);
 					// a tile that repeats or has a border: what is drawn is cut where its sections meet, after the
 					// model's weld (OutputHotspotSections)
 					// or that may conform: what it draws is not its bounds
 					if (hotspotTiles[choice.tile].border > 0 || choice.Repeated || (shape.cornerCount != 3 && !shape.boxed))
-						sectionInput = HotspotSections.Input(hotspotTiles[choice.tile], layout, shape, choice, finalFaceNormal);
+						sectionInput = HotspotSections.Input(hotspotTiles[choice.tile], layout, shape, choice, hotspotRight, hotspotUp, density);
 					var pinnedId = baseSurfaces[surf].hotspotPinned;
 					hotspotInfo = HotspotDiagnostics.Info(hotspotTiles[choice.tile], layout, choice, sectionInput,
-														  pinnedId != 0 && hotspotTiles[choice.tile].id == pinnedId);
+														  pinnedId != 0 && hotspotTiles[choice.tile].id == pinnedId, density);
 				}
 			}
 			

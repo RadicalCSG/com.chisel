@@ -32,8 +32,9 @@ namespace Chisel.Core
     // the texture is squeezed, below 1 stretched.
     public static class HotspotDiagnostics
     {
+        // density: how many times the tile's pixels a unit the surface asked for
         public static HotspotSurfaceInfo Info(in HotspotTileData tile, in HotspotLayoutData layout, in HotspotChoice choice,
-                                              in HotspotSectionInput sectionInput, bool pinned)
+                                              in HotspotSectionInput sectionInput, bool pinned, float density = 1)
         {
             var flags = HotspotSurfaceFlags.None;
             if (choice.lastResort)                                              flags |= HotspotSurfaceFlags.LastResort;
@@ -44,7 +45,7 @@ namespace Chisel.Core
             {
                 tileId        = tile.id,
                 textureSize   = layout.textureSize,
-                pixelsPerUnit = tile.pixelsPerUnit,
+                pixelsPerUnit = tile.pixelsPerUnit * density,
                 scale         = choice.scale,
                 flags         = flags
             };
