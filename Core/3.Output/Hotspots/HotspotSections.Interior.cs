@@ -4,16 +4,11 @@ using Unity.Mathematics;
 
 namespace Chisel.Core
 {
-    // The conforming interior: the surface is subdivided, its interior's
-    // outline goes round the tile's inner rectangle (BuildConforming), and every vertex inside is the mean value weighted
-    // average of its neighbours. With the outline convex and the weights positive the map is one to one (Floater), and
-    // mean value weights reproduce an affine map exactly.
+    // The conforming interior: its outline goes round the tile's inner
+    // rectangle (BuildConforming), and every vertex inside, if there is one, is the mean value weighted average of its
+    // neighbours. Nothing is cut for it: only the border is.
     public partial struct HotspotSections
     {
-        // The interior's subdivision: until its longest edge is at most this part of the bounds' larger side, at most
-        // kMaxSubdivisions times
-        public const double kSubdivisionPart  = 0.125;
-        public const int    kMaxSubdivisions  = 3;
         // The solve: over-relaxed Gauss-Seidel, until no uv moves more than this, at most this many sweeps
         const double kSolveRelaxation = 1.6;
         const double kSolveTolerance  = 1e-10;
@@ -41,80 +36,6 @@ namespace Chisel.Core
                 }
             }
             return (float2)(uv / conformSize);
-        }
-
-        // How many times to subdivide for the interior's triangles
-        public readonly int SubdivisionLevels(NativeList<int> indices, NativeList<float3> positions, float3 right, float3 up)
-        {
-            if (!Conforms)
-                return 0;
-            var r = (double3)right; var u = (double3)up;
-            var min = new double2(double.PositiveInfinity); var max = new double2(double.NegativeInfinity);
-            var longest = 0.0;
-            for (int t = 0; t + 2 < indices.Length; t += 3)
-            {
-                var a = FrameOf(positions[indices[t]], r, u); var b = FrameOf(positions[indices[t + 1]], r, u); var c = FrameOf(positions[indices[t + 2]], r, u);
-                min = math.min(min, math.min(a, math.min(b, c)));
-                max = math.max(max, math.max(a, math.max(b, c)));
-                if (Locate((a + b + c) / 3) != interiorCell)
-                    continue;
-                longest = math.max(longest, math.max(math.length(b - a), math.max(math.length(c - b), math.length(a - c))));
-            }
-            var target = math.cmax(max - min) * kSubdivisionPart;
-            var levels = 0;
-            while (longest > target && levels < kMaxSubdivisions)
-            {
-                longest *= 0.5;
-                levels++;
-            }
-            return levels;
-        }
-
-        // Every triangle into four at its edges' middles, levels times; a middle is made once for both triangles of an edge
-        public static void Subdivide(int levels, NativeList<int> indices, NativeList<float3> positions,
-                                     NativeList<SelectVertex> selectVertices, NativeList<RenderVertex> renderVertices)
-        {
-            for (int level = 0; level < levels; level++)
-            {
-                var middles = new UnsafeHashMap<int2, int>(indices.Length, Allocator.Temp);
-                var result  = new NativeList<int>(indices.Length * 4, Allocator.Temp);
-                int Middle(int a, int b)
-                {
-                    var key = new int2(math.min(a, b), math.max(a, b));
-                    if (middles.TryGetValue(key, out var m))
-                        return m;
-                    m = positions.Length;
-                    var p = (float3)(((double3)positions[key.x] + (double3)positions[key.y]) * 0.5);
-                    positions.Add(p);
-                    var select = selectVertices[a];
-                    select.position = p;
-                    selectVertices.Add(select);
-                    var ra = renderVertices[key.x]; var rb = renderVertices[key.y];
-                    renderVertices.Add(new RenderVertex
-                    {
-                        position = p,
-                        normal   = math.normalizesafe(ra.normal + rb.normal, ra.normal),
-                        tangent  = (ra.tangent + rb.tangent) * 0.5f,
-                        uv0      = (ra.uv0 + rb.uv0) * 0.5f,
-                        uv1      = (ra.uv1 + rb.uv1) * 0.5f
-                    });
-                    middles.Add(key, m);
-                    return m;
-                }
-                for (int t = 0; t + 2 < indices.Length; t += 3)
-                {
-                    var a = indices[t]; var b = indices[t + 1]; var c = indices[t + 2];
-                    var ab = Middle(a, b); var bc = Middle(b, c); var ca = Middle(c, a);
-                    result.Add(a);  result.Add(ab); result.Add(ca);
-                    result.Add(ab); result.Add(b);  result.Add(bc);
-                    result.Add(ca); result.Add(bc); result.Add(c);
-                    result.Add(ab); result.Add(bc); result.Add(ca);
-                }
-                indices.Clear();
-                indices.AddRange(result.AsArray());
-                result.Dispose();
-                middles.Dispose();
-            }
         }
 
         // The uvs of the interior's vertices (NaN for the others): on its outline round the tile's inner rectangle, inside
