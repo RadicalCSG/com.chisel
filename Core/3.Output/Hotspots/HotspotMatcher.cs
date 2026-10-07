@@ -58,6 +58,10 @@ namespace Chisel.Core
         public float score;     // lower is better: distortion of shape and of size
         public int   repeatX;   // how many times a repeating tile repeats across the surface's bounds (0 or 1: once)
         public int   repeatY;   // and up them
+        public float2 lastRepeat; // how much of the last repeat across and up is used, with PartialRepeats (0: all of it)
+
+        // More than one section: repeats, or a part of one
+        public readonly bool Repeated => repeatX > 1 || repeatY > 1 || (lastRepeat.x > 0 && lastRepeat.x < 1) || (lastRepeat.y > 0 && lastRepeat.y < 1);
         public float scale;     // how many texture pixels a pixel of the surface (at the tile's density) takes
     }
 
@@ -266,15 +270,16 @@ namespace Chisel.Core
                 var size = tile.max - tile.min;
                 var repeatU = lastResort || (tile.flags & HotspotTileFlags.RepeatU) != 0;
                 var repeatV = lastResort || (tile.flags & HotspotTileFlags.RepeatV) != 0;
+                var partial = (tile.flags & HotspotTileFlags.PartialRepeats) != 0;
                 for (int quarter = 0; quarter < (rotate ? 2 : 1); quarter++)
                 {
                     var target  = quarter == 0 ? size : size.yx;
-                    var repeats = Repeats(target, face, quarter == 0 ? repeatU : repeatV, quarter == 0 ? repeatV : repeatU);
-                    var s1      = target.x * repeats.x / face.x;
-                    var s2      = target.y * repeats.y / face.y;
-                    var score   = Distortion(s1, s2);
+                    Repeats(target, face, quarter == 0 ? repeatU : repeatV, quarter == 0 ? repeatV : repeatU, partial,
+                            out var repeats, out var scales, out var last);
+                    var score = Distortion(scales.x, scales.y);
                     if (score < best.score)
-                        best = new HotspotChoice { tile = -1, score = score, rotated = quarter == 1, repeatX = repeats.x, repeatY = repeats.y, scale = math.sqrt(s1 * s2) };
+                        best = new HotspotChoice { tile = -1, score = score, rotated = quarter == 1, repeatX = repeats.x, repeatY = repeats.y,
+                                                   lastRepeat = last, scale = math.sqrt(scales.x * scales.y) };
                 }
                 return best;
             }
@@ -314,16 +319,30 @@ namespace Chisel.Core
         }
 
         // How many times a tile repeats across and up a surface (in pixels): along one axis as many as fit at the scale
-        // that fits the other, along both as many as fit at the tile's own density
-        static int2 Repeats(float2 tile, float2 face, bool across, bool up)
+        // that fits the other, along both as many as fit at the tile's own density. Whole repeats stretch to fit;
+        // partial ones keep that scale and cut the last one off (last: how much of it is used). scales: tile pixels per
+        // surface pixel across and up.
+        static void Repeats(float2 tile, float2 face, bool across, bool up, bool partial, out int2 count, out float2 scales, out float2 last)
         {
+            count  = new int2(1);
+            scales = tile / face;
+            last   = float2.zero;
             if (!across && !up)
-                return new int2(1);
+                return;
             var scale = across && up ? 1.0 : (across ? (double)tile.y / face.y : (double)tile.x / face.x);
-            var x = across ? HotspotSections.Repeats(face.x * scale, tile.x) : 1;
-            var y = up     ? HotspotSections.Repeats(face.y * scale, tile.y) : 1;
+            var x = across ? (partial ? HotspotSections.PartialRepeats(face.x * scale, tile.x, out var lastX) : HotspotSections.Repeats(face.x * scale, tile.x)) : 1;
+            var y = up     ? (partial ? HotspotSections.PartialRepeats(face.y * scale, tile.y, out var lastY) : HotspotSections.Repeats(face.y * scale, tile.y)) : 1;
             // too many: a sliver, stretched instead
-            return (x == 0 || y == 0) ? new int2(1) : new int2(x, y);
+            if (x == 0 || y == 0)
+                return;
+            count = new int2(x, y);
+            if (across) scales.x = partial ? (float)scale : tile.x * x / face.x;
+            if (up)     scales.y = partial ? (float)scale : tile.y * y / face.y;
+            if (partial)
+            {
+                if (across) last.x = (float)(face.x * scale / tile.x - (x - 1));
+                if (up)     last.y = (float)(face.y * scale / tile.y - (y - 1));
+            }
         }
 
         static float Distortion(float s1, float s2)

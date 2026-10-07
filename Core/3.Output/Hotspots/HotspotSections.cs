@@ -184,6 +184,23 @@ namespace Chisel.Core
             return count > kMaxRepeats ? 0 : (int)count;
         }
 
+        // How many repeats of a period it takes to cover a length, the last cut off (last: how much of it is used, 1 for
+        // all); 0 when that is more than kMaxRepeats. A length within a millionth of a whole number of periods is that.
+        public static int PartialRepeats(double length, double period, out double last)
+        {
+            last = 1;
+            if (!(period > 0))
+                return 1;
+            var periods = length / period;
+            var whole = math.round(periods);
+            var count = math.abs(periods - whole) <= 1e-6 * math.max(1, whole) ? whole : math.ceil(periods);
+            count = math.max(1, count);
+            if (count > kMaxRepeats)
+                return 0;
+            last = math.clamp(periods - (count - 1), 0, 1);
+            return (int)count;
+        }
+
         // The sections of a surface on its tile; false when it is one section: the tile neither repeats nor has a
         // border, or no band fits
         public bool Build(in HotspotTileData tile, in HotspotLayoutData layout, in HotspotShape shape, in HotspotChoice choice)
@@ -192,8 +209,10 @@ namespace Chisel.Core
             halfPlanes.Clear();
             cells.Clear();
             HotspotMatcher.Corners(tile, shape, choice, out var count, out var f0, out var f1, out var f2, out var t0, out var t1, out var t2);
-            if (choice.repeatX > 1 || choice.repeatY > 1)
-                return BuildRepeats(math.max(1, choice.repeatX), math.max(1, choice.repeatY), f0, f1, f2, t0, t1, t2, layout.textureSize);
+            if (choice.Repeated)
+                return BuildRepeats(math.max(1, choice.repeatX), math.max(1, choice.repeatY),
+                                    choice.lastRepeat.x > 0 ? choice.lastRepeat.x : 1, choice.lastRepeat.y > 0 ? choice.lastRepeat.y : 1,
+                                    f0, f1, f2, t0, t1, t2, layout.textureSize);
             if (!(tile.border > 0) || !(tile.pixelsPerUnit > 0))
                 return false;
             var s = new Outline(count, f0, f1, f2);
@@ -234,19 +253,32 @@ namespace Chisel.Core
             {
                 var next = (i + 1) % count;
                 var length = math.length(s.footPrevious[next] - s.footNext[i]);
-                var repeats = (tile.flags & HotspotTileFlags.RepeatBorder) == 0 ? 1
-                            : math.max(1, Repeats(length, math.length(t.footPrevious[next] - t.footNext[i]) * surfaceBand / tileBand));
+                var period = math.length(t.footPrevious[next] - t.footNext[i]) * surfaceBand / tileBand;
+                var repeats = 1;
+                var step = length;
+                if ((tile.flags & HotspotTileFlags.RepeatBorder) != 0)
+                {
+                    if ((tile.flags & HotspotTileFlags.PartialRepeats) != 0)
+                    {
+                        repeats = math.max(1, PartialRepeats(length, period, out var last));
+                        step = repeats > 1 || last < 1 ? period : length;
+                    } else
+                    {
+                        repeats = math.max(1, Repeats(length, period));
+                        step = length / repeats;
+                    }
+                }
                 // the strip, or its repeats: each from the tile's whole strip, cut square to the edge
                 var previousCut = squareNext[i];
                 for (int r = 0; r < repeats; r++)
                 {
-                    var a = s.footNext[i] + s.along[i] * (length * r / repeats);
-                    var cut = r + 1 < repeats ? AddLine(s.along[i], s.footNext[i] + s.along[i] * (length * (r + 1) / repeats)) : -1;
+                    var a = s.footNext[i] + s.along[i] * (step * r);
+                    var cut = r + 1 < repeats ? AddLine(s.along[i], s.footNext[i] + s.along[i] * (step * (r + 1))) : -1;
                     var start = halfPlanes.Length;
                     Half(inset[i], -1);
                     Half(previousCut, 1);
                     if (cut >= 0) Half(cut, -1); else Half(squarePrevious[next], 1);
-                    AddCell(start, a, a + s.along[i] * (length / repeats), a + s.inward[i] * surfaceBand,
+                    AddCell(start, a, a + s.along[i] * step, a + s.inward[i] * surfaceBand,
                             t.footNext[i], t.footPrevious[next], t.inner[i], size);
                     previousCut = cut;
                 }
@@ -267,19 +299,21 @@ namespace Chisel.Core
             return true;
         }
 
-        // A rectangle repeatX by repeatY times the tile, each repeat (f0', f1', f2') to (t0, t1, t2)
-        bool BuildRepeats(int repeatX, int repeatY, float2 f0, float2 f1, float2 f2, float2 t0, float2 t1, float2 t2, float2 textureSize)
+        // A rectangle repeatX by repeatY times the tile, each repeat (f0', f1', f2') to (t0, t1, t2); of the last repeat
+        // across and up only lastX and lastY are used
+        bool BuildRepeats(int repeatX, int repeatY, double lastX, double lastY, float2 f0, float2 f1, float2 f2, float2 t0, float2 t1, float2 t2, float2 textureSize)
         {
             var origin = (double2)f0;
-            var across = (double2)f1 - origin; var up = (double2)f2 - origin;
+            var across = ((double2)f1 - origin) / (repeatX - 1 + lastX);
+            var up     = ((double2)f2 - origin) / (repeatY - 1 + lastY);
             if (!(math.lengthsq(across) > 0) || !(math.lengthsq(up) > 0))
                 return false;
             var linesX = lines.Length;
             for (int i = 1; i < repeatX; i++)
-                AddLine(math.normalize(across), origin + across * ((double)i / repeatX));
+                AddLine(math.normalize(across), origin + across * i);
             var linesY = lines.Length;
             for (int j = 1; j < repeatY; j++)
-                AddLine(math.normalize(up), origin + up * ((double)j / repeatY));
+                AddLine(math.normalize(up), origin + up * j);
             for (int j = 0; j < repeatY; j++)
             {
                 for (int i = 0; i < repeatX; i++)
@@ -289,8 +323,8 @@ namespace Chisel.Core
                     if (i + 1 < repeatX) Half(linesX + i, -1);
                     if (j > 0)           Half(linesY + j - 1, 1);
                     if (j + 1 < repeatY) Half(linesY + j, -1);
-                    var a = origin + across * ((double)i / repeatX) + up * ((double)j / repeatY);
-                    AddCell(start, a, a + across / repeatX, a + up / repeatY, t0, t1, t2, textureSize);
+                    var a = origin + across * i + up * j;
+                    AddCell(start, a, a + across, a + up, t0, t1, t2, textureSize);
                 }
             }
             return true;

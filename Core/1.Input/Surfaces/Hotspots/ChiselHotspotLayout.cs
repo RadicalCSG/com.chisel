@@ -22,6 +22,8 @@ namespace Chisel.Core
         Alternate     = 1 << 6,
         // The border's strips repeat along the edges instead of stretching
         RepeatBorder  = 1 << 7,
+        // Repeats keep their exact size, and the last one is cut off, instead of all stretching to fit
+        PartialRepeats = 1 << 8,
     }
 
     // One region of a hotspot texture: a rectangle or a triangle
@@ -175,6 +177,7 @@ namespace Chisel.Core
                     case "alt":
                     case "alternate": flags |= HotspotTileFlags.Alternate; break;
                     case "repeat-border": flags |= HotspotTileFlags.RepeatBorder; break;
+                    case "repeat-partial": flags |= HotspotTileFlags.PartialRepeats; break;
                 }
             }
             return flags;

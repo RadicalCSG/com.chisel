@@ -848,7 +848,7 @@ namespace Chisel.Core
 				{
 					uvMat = HotspotMatcher.Mapping(hotspotTiles[choice.tile], layout, shape, choice, finalFaceNormal);
 					// a tile that repeats or has a border: the surface is cut where its sections meet
-					if (hotspotTiles[choice.tile].border > 0 || choice.repeatX > 1 || choice.repeatY > 1)
+					if (hotspotTiles[choice.tile].border > 0 || choice.Repeated)
 					{
 						HotspotMatcher.Frame(finalFaceNormal, out hotspotRight, out hotspotUp);
 						sections = HotspotSections.Create(Allocator.Temp);

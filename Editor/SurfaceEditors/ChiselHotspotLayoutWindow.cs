@@ -477,6 +477,7 @@ namespace Chisel.Editors
             tile.flags = Flag(tile.flags, HotspotTileFlags.AllowMirror,   "May mirror",    "Matching may mirror the texture to fit");
             tile.flags = Flag(tile.flags, HotspotTileFlags.Alternate,     "Alternate",     "Only taken when a surface is pinned to it, like Valve's alt rectangles");
             tile.flags = Flag(tile.flags, HotspotTileFlags.RepeatBorder,  "Border repeats", "The border's strips repeat along the edges instead of stretching");
+            tile.flags = Flag(tile.flags, HotspotTileFlags.PartialRepeats, "Repeats cut off", "Repeats keep their exact size and the last one is cut off, instead of all stretching to fit");
             tile.border = Mathf.Max(0, EditorGUILayout.IntField(new GUIContent("Border (px)", "The width of the tile's border, a band along its outline (0 for none)"), tile.border));
             tile.pixelsPerUnit = Mathf.Max(0, EditorGUILayout.FloatField(new GUIContent("Pixels per unit", "The texture density this tile is meant for; 0 takes the layout's"), tile.pixelsPerUnit));
             if (EditorGUI.EndChangeCheck())
