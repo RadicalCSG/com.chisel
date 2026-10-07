@@ -58,6 +58,7 @@ namespace Chisel.Core
         public float score;     // lower is better: distortion of shape and of size
         public int   repeatX;   // how many times a repeating tile repeats across the surface's bounds (0 or 1: once)
         public int   repeatY;   // and up them
+        public float scale;     // how many texture pixels a pixel of the surface (at the tile's density) takes
     }
 
     public static class HotspotMatcher
@@ -68,6 +69,9 @@ namespace Chisel.Core
         // its middle, and its bounds within this fraction of square
         public const int    kRadialCorners   = 8;
         public const double kRadialTolerance = 0.1;
+        // A tile magnified more than this is too small for the surface: then, as a last resort, a tile repeats at its own
+        // density even when it is not meant to repeat (target capacity)
+        public const float kLastResortScale = 1 / 3f;
 
         // The texture's right and up on a surface: up follows the tree's up on walls and its +z on floors and ceilings,
         // and right is normal x up, so the texture reads the right way round from in front of the surface
@@ -196,13 +200,19 @@ namespace Chisel.Core
             }
 
             var round = radial || shape.radial;
-            best = Best(tiles, layout, shape, seed, round);
+            best = Best(tiles, layout, shape, seed, round, false);
             if (round && best.tile < 0)
-                best = Best(tiles, layout, shape, seed, false);
+                best = Best(tiles, layout, shape, seed, false, false);
+            if (best.tile >= 0 && best.scale < kLastResortScale && shape.cornerCount != 3)
+            {
+                var repeated = Best(tiles, layout, shape, seed, round, true);
+                if (repeated.tile >= 0 && repeated.score < best.score)
+                    best = repeated;
+            }
             return best;
         }
 
-        static HotspotChoice Best(NativeArray<HotspotTileData> tiles, in HotspotLayoutData layout, in HotspotShape shape, uint seed, bool radial)
+        static HotspotChoice Best(NativeArray<HotspotTileData> tiles, in HotspotLayoutData layout, in HotspotShape shape, uint seed, bool radial, bool lastResort)
         {
             var best = new HotspotChoice { tile = -1, score = float.PositiveInfinity };
             var ties = 0;
@@ -210,7 +220,7 @@ namespace Chisel.Core
             {
                 if (!Candidate(tiles[t], shape, radial))
                     continue;
-                var choice = Score(tiles[t], shape, false);
+                var choice = Score(tiles[t], shape, false, lastResort);
                 if (choice.score < best.score) { best = choice; best.tile = t; ties = 1; }
                 else if (choice.score == best.score) ties++;
             }
@@ -223,7 +233,7 @@ namespace Chisel.Core
             {
                 if (!Candidate(tiles[t], shape, radial))
                     continue;
-                var choice = Score(tiles[t], shape, false);
+                var choice = Score(tiles[t], shape, false, lastResort);
                 if (choice.score != best.score)
                     continue;
                 if (pick-- == 0) { choice.tile = t; return choice; }
@@ -243,7 +253,7 @@ namespace Chisel.Core
         // Distortion of the best way to put the surface on the tile: 2 |ln(s1 / s2)| + |ln(s1 s2)| / 2 for the scale
         // factors s1, s2 of the map. A tile that may not turn keeps the texture's up: a triangle goes corner to corner
         // the way that turns it least. A pinned tile may be turned or mirrored whatever its flags say.
-        static HotspotChoice Score(in HotspotTileData tile, in HotspotShape shape, bool any)
+        static HotspotChoice Score(in HotspotTileData tile, in HotspotShape shape, bool any, bool lastResort = false)
         {
             var pixelsPerUnit = tile.pixelsPerUnit;
             var best = new HotspotChoice { tile = -1, score = float.PositiveInfinity };
@@ -254,15 +264,17 @@ namespace Chisel.Core
                 // the surface's bounds onto the tile's bounds, or onto as many repeats of it as fit best
                 var face = (shape.max - shape.min) * pixelsPerUnit;
                 var size = tile.max - tile.min;
-                var repeatU = (tile.flags & HotspotTileFlags.RepeatU) != 0;
-                var repeatV = (tile.flags & HotspotTileFlags.RepeatV) != 0;
+                var repeatU = lastResort || (tile.flags & HotspotTileFlags.RepeatU) != 0;
+                var repeatV = lastResort || (tile.flags & HotspotTileFlags.RepeatV) != 0;
                 for (int quarter = 0; quarter < (rotate ? 2 : 1); quarter++)
                 {
                     var target  = quarter == 0 ? size : size.yx;
                     var repeats = Repeats(target, face, quarter == 0 ? repeatU : repeatV, quarter == 0 ? repeatV : repeatU);
-                    var score   = Distortion(target.x * repeats.x / face.x, target.y * repeats.y / face.y);
+                    var s1      = target.x * repeats.x / face.x;
+                    var s2      = target.y * repeats.y / face.y;
+                    var score   = Distortion(s1, s2);
                     if (score < best.score)
-                        best = new HotspotChoice { tile = -1, score = score, rotated = quarter == 1, repeatX = repeats.x, repeatY = repeats.y };
+                        best = new HotspotChoice { tile = -1, score = score, rotated = quarter == 1, repeatX = repeats.x, repeatY = repeats.y, scale = math.sqrt(s1 * s2) };
                 }
                 return best;
             }
@@ -288,7 +300,7 @@ namespace Chisel.Core
                     if (turn < bestTurn || (turn == bestTurn && score < best.score))
                     {
                         bestTurn = turn;
-                        best = new HotspotChoice { tile = -1, score = score, corner = corner, mirrored = flip == 1 };
+                        best = new HotspotChoice { tile = -1, score = score, corner = corner, mirrored = flip == 1, scale = math.sqrt(s1 * s2) };
                     }
                 }
             }
