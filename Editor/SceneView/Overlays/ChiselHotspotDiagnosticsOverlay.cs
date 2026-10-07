@@ -72,6 +72,8 @@ namespace Chisel.Editors
                 EditorGUILayout.LabelField($"energy up to {summary.mostEnergy:0.00}, {summary.mirrored} mirrored", EditorStyles.miniLabel);
                 EditorGUILayout.LabelField($"{summary.lastResort} repeated as a last resort, {summary.allBorder} all border, {summary.pinned} pinned", EditorStyles.miniLabel);
             }
+            if (summary.withoutData > 0 || summary.withoutLookup > 0)
+                EditorGUILayout.HelpBox($"{summary.withoutData} drawn surfaces and {summary.withoutLookup} meshes have no data to show: rebuild the models to see them.", MessageType.Info);
         }
 
         static void Legend(Color color, string text)

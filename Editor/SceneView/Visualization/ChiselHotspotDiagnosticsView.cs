@@ -28,6 +28,9 @@ namespace Chisel.Editors
         public struct Summary
         {
             public int    models, surfaces, triangles, lastResort, allBorder, pinned, mirrored;
+            // drawn surfaces left out: without render data (not built since), not hotspot mapped, decals; triangles
+            // without area; drawn meshes without triangle lookups
+            public int    withoutData, notMapped, decals, unmeasured, withoutLookup;
             public double leastDensity, mostDensity, mostAnisotropy, mostEnergy;
         }
 
@@ -190,7 +193,10 @@ namespace Chisel.Editors
             var selectionIDs = lookup?.perTriangleSelectionIDLookup;
             var descriptions = lookup?.selectionIndexDescriptions;
             if (selectionIDs == null || descriptions == null || selectionIDs.Length == 0 || descriptions.Length == 0)
+            {
+                summary.withoutLookup++;
                 return null;
+            }
             var mesh = renderable.sharedMesh;
             var positions = mesh.vertices;
             var uvs = mesh.uv;
@@ -206,16 +212,25 @@ namespace Chisel.Editors
                 surfaceOf[d] = -1;
                 var description = descriptions[d];
                 if (!buffers.TryGetValue(description.brushNodeID, out var buffer) || !buffer.IsCreated)
+                {
+                    summary.withoutData++;
                     continue;
+                }
                 ref var surfaces = ref buffer.Value.surfaces;
                 if (description.surfaceIndex < 0 || description.surfaceIndex >= surfaces.Length)
+                {
+                    summary.withoutData++;
                     continue;
+                }
                 var isDecal = false;
                 for (int s = 0; s < surfaces.Length && !isDecal; s++)
                     isDecal = surfaces[s].decalEntityID != 0 && surfaces[s].decalEntityID == description.entityID;
                 var info = surfaces[description.surfaceIndex].hotspot;
                 if (isDecal || !info.IsMapped)
+                {
+                    if (isDecal) summary.decals++; else summary.notMapped++;
                     continue;
+                }
                 var key = (description.brushNodeID, description.surfaceIndex);
                 if (!keys.TryGetValue(key, out var index))
                 {
@@ -245,7 +260,10 @@ namespace Chisel.Editors
                     int i0 = indices[i], i1 = indices[i + 1], i2 = indices[i + 2];
                     if (!HotspotDiagnostics.Measure(positions[i0], positions[i1], positions[i2], uvs[i0], uvs[i1], uvs[i2],
                                                     info.textureSize, info.pixelsPerUnit, out var s1, out var s2, out var mirrored))
+                    {
+                        summary.unmeasured++;
                         continue;
+                    }
                     var area = 0.5 * math.length(math.cross((double3)(float3)(positions[i1] - positions[i0]), (double3)(float3)(positions[i2] - positions[i0])));
                     triangles.Add(new Triangle { surface = surfaceOf[id], i0 = i0, i1 = i1, i2 = i2, s1 = s1, s2 = s2, area = area, mirrored = mirrored });
                 }
