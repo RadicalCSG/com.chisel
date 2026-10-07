@@ -84,6 +84,7 @@ namespace Chisel.Core
                         sections.conformSize = input.textureSize;
                         HotspotSections.Subdivide(sections.SubdivisionLevels(indices, collider, right, up), indices, collider, select, render);
                         using var interiorUVs = sections.SolveInterior(indices, collider, right, up, Allocator.Temp);
+                        sections.RefineInterior(indices, collider, right, up, interiorUVs, (double2)input.textureSize / input.pixelsPerUnit);
                         sections.AssignUVs(indices, collider, select, render, right, up, interiorUVs);
                         MeshAlgorithms.ComputeTangents(indices, render);
                     } else

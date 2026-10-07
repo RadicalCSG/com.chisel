@@ -852,8 +852,9 @@ namespace Chisel.Core
 					// a tile that repeats or has a border: what is drawn is cut where its sections meet, after the
 					// model's weld (OutputHotspotSections)
 					// or that may conform: what it draws is not its bounds
-					if (hotspotTiles[choice.tile].border > 0 || choice.Repeated || (shape.cornerCount != 3 && !shape.boxed))
-						sectionInput = HotspotSections.Input(hotspotTiles[choice.tile], layout, shape, choice, hotspotRight, hotspotUp, density);
+					// or whose repeats are moved along
+					if (hotspotTiles[choice.tile].border > 0 || choice.Repeated || (shape.cornerCount != 3 && !shape.boxed) || math.any(baseSurfaces[surf].hotspotOffset != 0))
+						sectionInput = HotspotSections.Input(hotspotTiles[choice.tile], layout, shape, choice, hotspotRight, hotspotUp, density, baseSurfaces[surf].hotspotOffset);
 					var pinnedId = baseSurfaces[surf].hotspotPinned;
 					hotspotInfo = HotspotDiagnostics.Info(hotspotTiles[choice.tile], layout, choice, sectionInput,
 														  pinnedId != 0 && hotspotTiles[choice.tile].id == pinnedId, density);

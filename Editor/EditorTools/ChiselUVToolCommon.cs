@@ -129,6 +129,7 @@ namespace Chisel.Editors
                 hotspotRotationProp  = hotspotProp?.FindPropertyRelative(nameof(HotspotSurface.rotation));
                 hotspotDensityProp   = hotspotProp?.FindPropertyRelative(nameof(HotspotSurface.density));
                 hotspotMirrorProp    = hotspotProp?.FindPropertyRelative(nameof(HotspotSurface.mirror));
+                hotspotOffsetProp    = hotspotProp?.FindPropertyRelative(nameof(HotspotSurface.offset));
 			}
 			chiselMaterialProp = surfaceProp.FindPropertyRelative(ChiselSurface.kChiselMaterialName);
             initialized = true;
@@ -152,6 +153,7 @@ namespace Chisel.Editors
         SerializedProperty hotspotRotationProp;
         SerializedProperty hotspotDensityProp;
         SerializedProperty hotspotMirrorProp;
+        SerializedProperty hotspotOffsetProp;
         [SerializeField] UnityEngine.Object[]    undoableObjects = Array.Empty<UnityEngine.Object>();
         [SerializeField] ChiselSelectedSurface[] surfaces        = Array.Empty<ChiselSelectedSurface>();
 
@@ -508,6 +510,7 @@ namespace Chisel.Editors
         static readonly GUIContent kHotspotRightContents     = new("+90", "A quarter turn counter-clockwise");
         static readonly GUIContent kHotspotDensityContents   = new("Density", "How many times the tile's pixels a unit the surface takes: 2 makes the texture half as large");
         static readonly GUIContent kHotspotMirrorContents    = new("Mirror", "The texture mirrored left to right");
+        static readonly GUIContent kHotspotOffsetContents    = new("Offset", "How far a repeating tile's repeats move along the texture's right and up, in repeats");
 
         // With a hotspot material: the tile the surfaces keep, and another variation of the automatic choice
         void HotspotGUI()
@@ -573,6 +576,8 @@ namespace Chisel.Editors
             }
             if (hotspotMirrorProp != null)
                 EditorGUILayout.PropertyField(hotspotMirrorProp, kHotspotMirrorContents);
+            if (hotspotOffsetProp != null)
+                EditorGUILayout.PropertyField(hotspotOffsetProp, kHotspotOffsetContents);
         }
 
         

@@ -42,6 +42,7 @@ namespace Chisel.Core
         public float    hotspotRotation;
         public float    hotspotDensity;
         public bool     hotspotMirror;
+        public float2   hotspotOffset;
     }
 
     struct BasePolygonsBlob

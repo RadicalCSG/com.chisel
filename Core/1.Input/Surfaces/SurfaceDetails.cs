@@ -1,5 +1,6 @@
 using System;
 using System.Runtime.InteropServices;
+using Unity.Mathematics;
 
 namespace Chisel.Core
 {
@@ -45,6 +46,8 @@ namespace Chisel.Core
 		public float density;
 		// The texture mirrored left to right
 		public bool  mirror;
+		// How far a repeating tile's repeats move along the texture's right and up, in repeats
+		public float2 offset;
 
 		public readonly float Density => density > 0 ? density : 1;
 	}

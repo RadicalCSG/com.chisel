@@ -31,9 +31,12 @@ namespace Chisel.Core
         public HotspotTileFlags flags;
         public int              repeatX, repeatY;
         public float2           lastRepeat;
+        // how far the repeats are moved along, a part of one (0 along an axis that does not repeat)
+        public float2           offset;
         public float3           right, up;
 
-        public readonly bool Repeated => repeatX > 1 || repeatY > 1 || (lastRepeat.x > 0 && lastRepeat.x < 1) || (lastRepeat.y > 0 && lastRepeat.y < 1);
+        public readonly bool Repeated => repeatX > 1 || repeatY > 1 || (lastRepeat.x > 0 && lastRepeat.x < 1) || (lastRepeat.y > 0 && lastRepeat.y < 1) ||
+                                         math.any(offset != 0);
     }
 
     // A section of a surface on a bordered tile, mapped affinely: uv = uvOrigin + map * (p - origin). A cell without
@@ -72,15 +75,24 @@ namespace Chisel.Core
             return Input(tile, layout, shape, choice, right, up, 1);
         }
 
-        // In the frame the shape was found in (HotspotMatcher.ShapeOf), at density times the tile's pixels a unit
-        public static HotspotSectionInput Input(in HotspotTileData tile, in HotspotLayoutData layout, in HotspotShape shape, in HotspotChoice choice, float3 right, float3 up, float density)
+        // In the frame the shape was found in (HotspotMatcher.ShapeOf), at density times the tile's pixels a unit, its
+        // repeats moved along by offset (in repeats, along the texture's right and up)
+        public static HotspotSectionInput Input(in HotspotTileData tile, in HotspotLayoutData layout, in HotspotShape shape, in HotspotChoice choice, float3 right, float3 up, float density,
+                                                float2 offset = default)
         {
             HotspotMatcher.Corners(tile, shape, choice, out var count, out var f0, out var f1, out var f2, out var t0, out var t1, out var t2);
+            // the axes along which the tile repeats, in the surface's frame
+            var repeatU = choice.lastResort || (tile.flags & HotspotTileFlags.RepeatU) != 0;
+            var repeatV = choice.lastResort || (tile.flags & HotspotTileFlags.RepeatV) != 0;
+            var across  = count == 4 && (choice.rotated ? repeatV : repeatU);
+            var along   = count == 4 && (choice.rotated ? repeatU : repeatV);
+            var shift   = offset - math.floor(offset);
             return new HotspotSectionInput
             {
                 count = count, f0 = f0, f1 = f1, f2 = f2, t0 = t0, t1 = t1, t2 = t2,
                 textureSize = layout.textureSize, border = tile.border, pixelsPerUnit = tile.pixelsPerUnit * density, flags = tile.flags,
-                repeatX = choice.repeatX, repeatY = choice.repeatY, lastRepeat = choice.lastRepeat, right = right, up = up
+                repeatX = choice.repeatX, repeatY = choice.repeatY, lastRepeat = choice.lastRepeat, right = right, up = up,
+                offset = new float2(across ? shift.x : 0, along ? shift.y : 0)
             };
         }
 
@@ -303,7 +315,7 @@ namespace Chisel.Core
             if (input.Repeated)
                 return BuildRepeats(math.max(1, input.repeatX), math.max(1, input.repeatY),
                                     input.lastRepeat.x > 0 ? input.lastRepeat.x : 1, input.lastRepeat.y > 0 ? input.lastRepeat.y : 1,
-                                    f0, f1, f2, t0, t1, t2, input.textureSize);
+                                    input.offset, f0, f1, f2, t0, t1, t2, input.textureSize);
             var s = new Outline(count, f0, f1, f2);
             var t = new Outline(count, t0, t1, t2);
             if (!Bands(input, s, t, out var surfaceBand, out var tileBand))
@@ -398,13 +410,18 @@ namespace Chisel.Core
         }
 
         // A rectangle repeatX by repeatY times the tile, each repeat (f0', f1', f2') to (t0, t1, t2); of the last repeat
-        // across and up only lastX and lastY are used
-        bool BuildRepeats(int repeatX, int repeatY, double lastX, double lastY, float2 f0, float2 f1, float2 f2, float2 t0, float2 t1, float2 t2, float2 textureSize)
+        // across and up only lastX and lastY are used. Moved along by shift (a part of a repeat), the first repeat is cut
+        // off and the rest reach one further.
+        bool BuildRepeats(int repeatX, int repeatY, double lastX, double lastY, float2 shift, float2 f0, float2 f1, float2 f2, float2 t0, float2 t1, float2 t2, float2 textureSize)
         {
-            var origin = (double2)f0;
-            var across = ((double2)f1 - origin) / (repeatX - 1 + lastX);
-            var up     = ((double2)f2 - origin) / (repeatY - 1 + lastY);
+            var across = ((double2)f1 - (double2)f0) / (repeatX - 1 + lastX);
+            var up     = ((double2)f2 - (double2)f0) / (repeatY - 1 + lastY);
             if (!(math.lengthsq(across) > 0) || !(math.lengthsq(up) > 0))
+                return false;
+            var origin = (double2)f0 - across * shift.x - up * shift.y;
+            repeatX = (int)math.ceil(repeatX - 1 + lastX + shift.x - 1e-9);
+            repeatY = (int)math.ceil(repeatY - 1 + lastY + shift.y - 1e-9);
+            if (repeatX > kMaxRepeats + 1 || repeatY > kMaxRepeats + 1)
                 return false;
             var linesX = lines.Length;
             for (int i = 1; i < repeatX; i++)
