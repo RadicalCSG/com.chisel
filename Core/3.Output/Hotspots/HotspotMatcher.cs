@@ -65,6 +65,7 @@ namespace Chisel.Core
         // More than one section: repeats, or a part of one
         public readonly bool Repeated => repeatX > 1 || repeatY > 1 || (lastRepeat.x > 0 && lastRepeat.x < 1) || (lastRepeat.y > 0 && lastRepeat.y < 1);
         public float scale;     // how many texture pixels a pixel of the surface (at the tile's density) takes
+        public bool  lastResort; // repeated because no tile was large enough
     }
 
     public static class HotspotMatcher
@@ -226,7 +227,10 @@ namespace Chisel.Core
                 // the best tile failed: the one that repeats fewest times instead
                 var repeated = Best(tiles, layout, shape, seed, round, true);
                 if (repeated.tile >= 0)
+                {
                     best = repeated;
+                    best.lastResort = true;
+                }
             }
             return best;
         }

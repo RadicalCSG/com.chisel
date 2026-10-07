@@ -837,6 +837,7 @@ namespace Chisel.Core
 			// A surface whose material has a hotspot layout takes its uvs from the tile that fits what it draws
 			var hotspot = baseSurfaces[surf].hotspotLayout;
 			var sectionInput = default(HotspotSectionInput);
+			var hotspotInfo  = default(HotspotSurfaceInfo);
 			if (hotspot > 0 && hotspot <= hotspotLayouts.Length && hotspotLayouts[hotspot - 1].tileCount > 0)
 			{
 				var layout = hotspotLayouts[hotspot - 1];
@@ -851,6 +852,9 @@ namespace Chisel.Core
 					// or that may conform: what it draws is not its bounds
 					if (hotspotTiles[choice.tile].border > 0 || choice.Repeated || (shape.cornerCount != 3 && !shape.boxed))
 						sectionInput = HotspotSections.Input(hotspotTiles[choice.tile], layout, shape, choice, finalFaceNormal);
+					var pinnedId = baseSurfaces[surf].hotspotPinned;
+					hotspotInfo = HotspotDiagnostics.Info(hotspotTiles[choice.tile], layout, choice, sectionInput,
+														  pinnedId != 0 && hotspotTiles[choice.tile].id == pinnedId);
 				}
 			}
 			
@@ -906,6 +910,7 @@ namespace Chisel.Core
 						uniqueVertexMapper.surfaceRenderVertices,
 						surf, surf, flags, parms, outputFlags);
 			buf.sectionInput = sectionInput;
+			buf.hotspot      = hotspotInfo;
 		}
 
 		// After every surface: the empty decal slots, the mesh queries, and the brush's render buffer in the cache.

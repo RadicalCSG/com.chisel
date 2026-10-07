@@ -50,8 +50,8 @@ namespace Chisel.Core
     // - a tile that repeats: the surface is cut where the repeats meet, each repeat the whole tile;
     // - a tile with a border: a strip along each edge keeps the border's width in pixels at the tile's pixels per unit
     //   and stretches (or repeats, RepeatBorder) along the edge, a corner where two strips meet, the interior takes the
-    //   rest. These sections meet without seams. A band too wide for the surface or the tile is narrowed to half of
-    //   what fits.
+    //   rest. These sections meet without seams. A border keeps its width: a surface too small for it is all border,
+    //   its strips meeting in the middle and cut off there.
     // A repeating tile's border is not drawn.
     public partial struct HotspotSections : IDisposable
     {
@@ -146,13 +146,22 @@ namespace Chisel.Core
                 }
             }
 
-            // The widest band that leaves an interior: half the shorter side of a rectangle, the inradius of a triangle
+            // The widest band: where the strips meet, half the shorter side of a rectangle, the inradius of a triangle
             public readonly double MaxBand()
             {
                 if (count == 4)
                     return 0.5 * math.min(math.length(corner[1] - corner[0]), math.length(corner[3] - corner[0]));
                 var perimeter = math.length(corner[1] - corner[0]) + math.length(corner[2] - corner[1]) + math.length(corner[0] - corner[2]);
                 return perimeter > 0 ? math.abs(Cross(corner[1] - corner[0], corner[2] - corner[0])) / perimeter : 0;
+            }
+
+            // Whether the strips along edge i, band wide on both sides, meet: a triangle's at its inradius, a
+            // rectangle's on its shorter sides
+            public readonly bool Closed(int i, double band)
+            {
+                if (band < MaxBand())
+                    return false;
+                return count == 3 || math.length(corner[(i + 1) % count] - corner[i]) <= 2 * band * (1 + 1e-9);
             }
 
             public void Inset(double band)
@@ -173,6 +182,29 @@ namespace Chisel.Core
                 var determinant = Cross(n0, n1);
                 return new double2((c0 * n1.y - n0.y * c1) / determinant, (n0.x * c1 - c0 * n1.x) / determinant);
             }
+        }
+
+        // The band in the surface (units) and in the tile (pixels): the border's width at the tile's density, at most
+        // where the surface's strips meet; false when there is none
+        static bool Bands(in HotspotSectionInput input, in Outline s, in Outline t, out double surfaceBand, out double tileBand)
+        {
+            surfaceBand = tileBand = 0;
+            if (!(input.border > 0) || !(input.pixelsPerUnit > 0))
+                return false;
+            var full = (double)input.border / input.pixelsPerUnit;
+            surfaceBand = math.min(full, s.MaxBand());
+            tileBand    = math.min(input.border * (surfaceBand / full), t.MaxBand());
+            return surfaceBand > 0 && tileBand > 0;
+        }
+
+        // Whether a surface is all border: too small for its border to leave an interior
+        public static bool IsAllBorder(in HotspotSectionInput input)
+        {
+            if ((input.count != 3 && input.count != 4) || input.Repeated)
+                return false;
+            var s = new Outline(input.count, input.f0, input.f1, input.f2);
+            var t = new Outline(input.count, input.t0, input.t1, input.t2);
+            return Bands(input, s, t, out var surfaceBand, out _) && surfaceBand >= s.MaxBand();
         }
 
         int AddLine(double2 normal, double2 through)
@@ -266,13 +298,9 @@ namespace Chisel.Core
                 return BuildRepeats(math.max(1, input.repeatX), math.max(1, input.repeatY),
                                     input.lastRepeat.x > 0 ? input.lastRepeat.x : 1, input.lastRepeat.y > 0 ? input.lastRepeat.y : 1,
                                     f0, f1, f2, t0, t1, t2, input.textureSize);
-            if (!(input.border > 0) || !(input.pixelsPerUnit > 0))
-                return false;
             var s = new Outline(count, f0, f1, f2);
             var t = new Outline(count, t0, t1, t2);
-            var surfaceBand = math.min((double)input.border / input.pixelsPerUnit, 0.5 * s.MaxBand());
-            var tileBand    = math.min((double)input.border, 0.5 * t.MaxBand());
-            if (!(surfaceBand > 0) || !(tileBand > 0))
+            if (!Bands(input, s, t, out var surfaceBand, out var tileBand))
                 return false;
             s.Inset(surfaceBand);
             t.Inset(tileBand);
@@ -300,11 +328,18 @@ namespace Chisel.Core
                 }
             }
 
-            AddCell(s.inner[0], s.inner[1], s.inner[count - 1], t.inner[0], t.inner[1], t.inner[count - 1], size,
-                    inset[0], 1, inset[1], 1, inset[2], 1, count == 4 ? inset[3] : -1, 1);
+            // all border: no interior, and no strip where the strips across meet
+            if (surfaceBand < s.MaxBand())
+                AddCell(s.inner[0], s.inner[1], s.inner[count - 1], t.inner[0], t.inner[1], t.inner[count - 1], size,
+                        inset[0], 1, inset[1], 1, inset[2], 1, count == 4 ? inset[3] : -1, 1);
             for (int i = 0; i < count; i++)
             {
                 var next = (i + 1) % count;
+                if (s.Closed(i, surfaceBand))
+                {
+                    AddCorner(i, count, s, t, size, squareNext, squarePrevious, diagonal);
+                    continue;
+                }
                 var length = math.length(s.footPrevious[next] - s.footNext[i]);
                 var period = math.length(t.footPrevious[next] - t.footNext[i]) * surfaceBand / tileBand;
                 var repeats = 1;
@@ -335,21 +370,25 @@ namespace Chisel.Core
                             t.footNext[i], t.footPrevious[next], t.inner[i], size);
                     previousCut = cut;
                 }
-                if (count == 4)
-                {
-                    AddCell(s.corner[i], s.footNext[i], s.footPrevious[i], t.corner[i], t.footNext[i], t.footPrevious[i], size,
-                            squareNext[i], -1, squarePrevious[i], -1);
-                } else
-                {
-                    // a triangle's corners differ from its tile's, so each is two triangles
-                    var side = lines[diagonal[i]].Value(s.footNext[i]) > 0 ? 1 : -1;
-                    AddCell(s.corner[i], s.footNext[i], s.inner[i], t.corner[i], t.footNext[i], t.inner[i], size,
-                            squareNext[i], -1, squarePrevious[i], -1, diagonal[i], side);
-                    AddCell(s.corner[i], s.inner[i], s.footPrevious[i], t.corner[i], t.inner[i], t.footPrevious[i], size,
-                            squareNext[i], -1, squarePrevious[i], -1, diagonal[i], -side);
-                }
+                AddCorner(i, count, s, t, size, squareNext, squarePrevious, diagonal);
             }
             return true;
+        }
+
+        void AddCorner(int i, int count, in Outline s, in Outline t, double2 size, int4 squareNext, int4 squarePrevious, int4 diagonal)
+        {
+            if (count == 4)
+            {
+                AddCell(s.corner[i], s.footNext[i], s.footPrevious[i], t.corner[i], t.footNext[i], t.footPrevious[i], size,
+                        squareNext[i], -1, squarePrevious[i], -1);
+                return;
+            }
+            // a triangle's corners differ from its tile's, so each is two triangles
+            var side = lines[diagonal[i]].Value(s.footNext[i]) > 0 ? 1 : -1;
+            AddCell(s.corner[i], s.footNext[i], s.inner[i], t.corner[i], t.footNext[i], t.inner[i], size,
+                    squareNext[i], -1, squarePrevious[i], -1, diagonal[i], side);
+            AddCell(s.corner[i], s.inner[i], s.footPrevious[i], t.corner[i], t.inner[i], t.footPrevious[i], size,
+                    squareNext[i], -1, squarePrevious[i], -1, diagonal[i], -side);
         }
 
         // A rectangle repeatX by repeatY times the tile, each repeat (f0', f1', f2') to (t0, t1, t2); of the last repeat

@@ -6,7 +6,8 @@ namespace Chisel.Core
 {
     // A border that follows what a surface draws: a strip along every edge of its outline (its holes too), each mapped to
     // a side of the tile, as deep into the tile as it is into the surface; a corner where two strips meet at a convex
-    // corner; at a reflex corner the strips meet on the line through it and its inner corner. The rest is the interior.
+    // corner; at a reflex corner the strips meet on the line through it and its inner corner. The rest is the interior;
+    // a surface whose bounds are too small for the border to leave one is all border.
     // The interior maps as the surface's bounds do, unless the outline is one convex loop that is not its bounds: then its
     // outline goes round the tile's inner rectangle, the corners nearest the bounds' corners on the tile's corners, and
     // the inside follows (HotspotSections.Interior); the border's strips then run along the sides their edges go to.
@@ -175,21 +176,24 @@ namespace Chisel.Core
                 return false;
             var s = new Outline(4, input.f0, input.f1, input.f2);
             var t = new Outline(4, input.t0, input.t1, input.t2);
-            var surfaceBand = math.min((double)input.border / input.pixelsPerUnit, 0.5 * s.MaxBand());
-            var tileBand    = math.min((double)input.border, 0.5 * t.MaxBand());
-            var bordered    = input.border > 0 && surfaceBand > 0 && tileBand > 0;
+            var bordered = Bands(input, s, t, out var surfaceBand, out var tileBand);
             if (!bordered)
                 surfaceBand = tileBand = 0;
+            var allBorder = bordered && surfaceBand >= s.MaxBand();
             s.Inset(surfaceBand);
             t.Inset(tileBand);
             var size = (double2)input.textureSize;
             conformSize = size;
             var depthScale = bordered ? tileBand / surfaceBand : 0;
 
-            // the interior as the bounds map it: the surface's inset bounds onto the tile's, in pixels
+            // the interior as the bounds map it: the surface's inset bounds onto the tile's, in pixels; across a surface
+            // that is all border, where the inset bounds have no width, at the border's density
             var origin = s.inner[0];
-            var linear = math.mul(new double2x2(t.inner[1] - t.inner[0], t.inner[3] - t.inner[0]),
-                                  math.inverse(new double2x2(s.inner[1] - origin, s.inner[3] - origin)));
+            var acrossS = s.inner[1] - origin; var acrossT = t.inner[1] - t.inner[0];
+            var upS     = s.inner[3] - origin; var upT     = t.inner[3] - t.inner[0];
+            if (allBorder && s.Closed(0, surfaceBand)) { acrossS = s.along[0];  acrossT = t.along[0] * depthScale; }
+            if (allBorder && s.Closed(3, surfaceBand)) { upS     = -s.along[3]; upT     = -t.along[3] * depthScale; }
+            var linear = math.mul(new double2x2(acrossT, upT), math.inverse(new double2x2(acrossS, upS)));
             var pixelOrigin = t.inner[0];
             double2 Interior(double2 p) => pixelOrigin + math.mul(linear, p - origin);
 
@@ -201,7 +205,7 @@ namespace Chisel.Core
 
             var boundsMin = math.min(s.corner[0], s.corner[2]);
             var boundsMax = math.max(s.corner[0], s.corner[2]);
-            var conform = (input.flags & HotspotTileFlags.Radial) == 0 && loops.Length == 1 && !IsBounds(corners, loops[0], boundsMin, boundsMax);
+            var conform = !allBorder && (input.flags & HotspotTileFlags.Radial) == 0 && loops.Length == 1 && !IsBounds(corners, loops[0], boundsMin, boundsMax);
             if (conform)
             {
                 for (int k = 0; k < loops[0].y && conform; k++)
@@ -494,10 +498,10 @@ namespace Chisel.Core
             side.Dispose();
             anchor.Dispose();
 
-            // the interior: wherever no band section is
-            var interiorStart = halfPlanes.Length;
+            // the interior: wherever no band section is, unless it is all border
             interiorCell = conform ? cells.Length : -1;
-            AddCell(interiorStart, s.inner[0], s.inner[1], s.inner[3], t.inner[0], t.inner[1], t.inner[3], size);
+            if (!allBorder)
+                AddCell(halfPlanes.Length, s.inner[0], s.inner[1], s.inner[3], t.inner[0], t.inner[1], t.inner[3], size);
             return true;
         }
 

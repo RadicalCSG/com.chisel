@@ -42,10 +42,13 @@ namespace Chisel.Core
 		public BlobArray<float3>	   physicsVertices;
 		// What the hotspot sections what is drawn is cut into after the model's weld are built from (count 0: not cut)
 		public HotspotSectionInput     sectionInput;
+		// What hotspot mapping chose for the surface (the diagnostic view)
+		public HotspotSurfaceInfo      hotspot;
 
 		public void CopySections(BlobBuilder builder, ref ChiselSurfaceRenderBuffer from)
 		{
 			sectionInput = from.sectionInput;
+			hotspot      = from.hotspot;
 		}
 
 		// The sections and the uncut collider triangles, as they are
