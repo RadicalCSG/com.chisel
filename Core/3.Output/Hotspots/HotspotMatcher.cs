@@ -56,6 +56,8 @@ namespace Chisel.Core
         public bool  mirrored;
         public bool  rotated;   // a rectangle turned a quarter turn
         public float score;     // lower is better: distortion of shape and of size
+        public int   repeatX;   // how many times a repeating tile repeats across the surface's bounds (0 or 1: once)
+        public int   repeatY;   // and up them
     }
 
     public static class HotspotMatcher
@@ -249,15 +251,18 @@ namespace Chisel.Core
             var mirror = any || (tile.flags & HotspotTileFlags.AllowMirror) != 0;
             if (shape.cornerCount != 3 || tile.cornerCount != 3)
             {
-                // the surface's bounds onto the tile's bounds
+                // the surface's bounds onto the tile's bounds, or onto as many repeats of it as fit best
                 var face = (shape.max - shape.min) * pixelsPerUnit;
                 var size = tile.max - tile.min;
+                var repeatU = (tile.flags & HotspotTileFlags.RepeatU) != 0;
+                var repeatV = (tile.flags & HotspotTileFlags.RepeatV) != 0;
                 for (int quarter = 0; quarter < (rotate ? 2 : 1); quarter++)
                 {
-                    var target = quarter == 0 ? size : size.yx;
-                    var score  = Distortion(target.x / face.x, target.y / face.y);
+                    var target  = quarter == 0 ? size : size.yx;
+                    var repeats = Repeats(target, face, quarter == 0 ? repeatU : repeatV, quarter == 0 ? repeatV : repeatU);
+                    var score   = Distortion(target.x * repeats.x / face.x, target.y * repeats.y / face.y);
                     if (score < best.score)
-                        best = new HotspotChoice { tile = -1, score = score, rotated = quarter == 1 };
+                        best = new HotspotChoice { tile = -1, score = score, rotated = quarter == 1, repeatX = repeats.x, repeatY = repeats.y };
                 }
                 return best;
             }
@@ -294,6 +299,19 @@ namespace Chisel.Core
         static float Turn(float2x2 m)
         {
             return math.abs(math.atan2(m.c0.y - m.c1.x, m.c0.x + m.c1.y));
+        }
+
+        // How many times a tile repeats across and up a surface (in pixels): along one axis as many as fit at the scale
+        // that fits the other, along both as many as fit at the tile's own density
+        static int2 Repeats(float2 tile, float2 face, bool across, bool up)
+        {
+            if (!across && !up)
+                return new int2(1);
+            var scale = across && up ? 1.0 : (across ? (double)tile.y / face.y : (double)tile.x / face.x);
+            var x = across ? HotspotSections.Repeats(face.x * scale, tile.x) : 1;
+            var y = up     ? HotspotSections.Repeats(face.y * scale, tile.y) : 1;
+            // too many: a sliver, stretched instead
+            return (x == 0 || y == 0) ? new int2(1) : new int2(x, y);
         }
 
         static float Distortion(float s1, float s2)

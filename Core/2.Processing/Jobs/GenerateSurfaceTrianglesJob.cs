@@ -836,7 +836,7 @@ namespace Chisel.Core
 			var uvMat = math.mul(UV0.ToFloat4x4(), treeToPlane);
 			// A surface whose material has a hotspot layout takes its uvs from the tile that fits what it draws
 			var hotspot = baseSurfaces[surf].hotspotLayout;
-			var border  = default(HotspotBorder);
+			var sections = default(HotspotSections);
 			float3 hotspotRight = default, hotspotUp = default;
 			if (hotspot > 0 && hotspot <= hotspotLayouts.Length && hotspotLayouts[hotspot - 1].tileCount > 0)
 			{
@@ -847,20 +847,21 @@ namespace Chisel.Core
 				if (choice.tile >= 0)
 				{
 					uvMat = HotspotMatcher.Mapping(hotspotTiles[choice.tile], layout, shape, choice, finalFaceNormal);
-					// a tile with a border: the surface is cut where its sections meet
-					if (hotspotTiles[choice.tile].border > 0)
+					// a tile that repeats or has a border: the surface is cut where its sections meet
+					if (hotspotTiles[choice.tile].border > 0 || choice.repeatX > 1 || choice.repeatY > 1)
 					{
 						HotspotMatcher.Frame(finalFaceNormal, out hotspotRight, out hotspotUp);
-						border = HotspotBorder.Create(Allocator.Temp);
-						if (border.Build(hotspotTiles[choice.tile], layout, shape, choice))
-							border.Split(hotspotRight, hotspotUp, finalFaceNormal, surfaceIndexList, uniqueVertexMapper.surfaceColliderVertices,
-										 uniqueVertexMapper.surfaceSelectVertices, uniqueVertexMapper.surfaceRenderVertices);
+						sections = HotspotSections.Create(Allocator.Temp);
+						if (sections.Build(hotspotTiles[choice.tile], layout, shape, choice))
+							sections.Split(hotspotRight, hotspotUp, finalFaceNormal, surfaceIndexList, uniqueVertexMapper.surfaceColliderVertices,
+										   uniqueVertexMapper.surfaceSelectVertices, uniqueVertexMapper.surfaceRenderVertices);
 					}
 				}
 			}
 			
-			if (!border.IsEmpty)
-				border.AssignUVs(uniqueVertexMapper.surfaceRenderVertices, hotspotRight, hotspotUp);
+			if (!sections.IsEmpty)
+				sections.AssignUVs(surfaceIndexList, uniqueVertexMapper.surfaceColliderVertices, uniqueVertexMapper.surfaceSelectVertices,
+								   uniqueVertexMapper.surfaceRenderVertices, hotspotRight, hotspotUp);
 			else
 				MeshAlgorithms.ComputeUVs(uniqueVertexMapper.surfaceRenderVertices, uvMat);
 			MeshAlgorithms.ComputeTangents(uniqueVertexMapper.surfaceRenderVertices, finalFaceNormal, uvMat);
@@ -901,8 +902,8 @@ namespace Chisel.Core
 			{
 				// An opaque decal took part of this surface: the rest of it is drawn instead
 				var remaining = decalBuilder.surface;
-				if (!border.IsEmpty)
-					border.AssignUVs(remaining.renderVertices, hotspotRight, hotspotUp);
+				if (!sections.IsEmpty)
+					sections.AssignUVs(remaining.indices, remaining.colliderVertices, remaining.selectVertices, remaining.renderVertices, hotspotRight, hotspotUp);
 				else
 					MeshAlgorithms.ComputeUVs(remaining.renderVertices, uvMat);
 				MeshAlgorithms.ComputeTangents(remaining.renderVertices, finalFaceNormal, uvMat);
@@ -916,7 +917,7 @@ namespace Chisel.Core
 						uniqueVertexMapper.surfaceSelectVertices,
 						uniqueVertexMapper.surfaceRenderVertices,
 						surf, surf, flags, parms, outputFlags);
-			border.Dispose();
+			sections.Dispose();
 		}
 
 		// After every surface: the empty decal slots, the mesh queries, and the brush's render buffer in the cache.

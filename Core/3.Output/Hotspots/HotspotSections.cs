@@ -6,7 +6,7 @@ using Unity.Mathematics;
 namespace Chisel.Core
 {
     // A line in a surface's frame (HotspotMatcher.Frame): Value(p) = dot(normal, p) + offset
-    public struct HotspotBorderLine
+    public struct HotspotSectionLine
     {
         public double2 normal;
         public double  offset;
@@ -14,14 +14,14 @@ namespace Chisel.Core
     }
 
     // The side of a line where Value * side >= 0
-    public struct HotspotBorderHalfPlane
+    public struct HotspotSectionHalfPlane
     {
         public int line;
         public int side;
     }
 
     // A section of a surface on a bordered tile, mapped affinely: uv = uvOrigin + map * (p - origin)
-    public struct HotspotBorderCell
+    public struct HotspotSectionCell
     {
         public int       halfPlaneStart, halfPlaneCount;
         public double2   origin;
@@ -29,23 +29,26 @@ namespace Chisel.Core
         public double2x2 map;
     }
 
-    // A surface on a tile with a border: a strip along each edge keeps
-    // the border's width in pixels at the tile's pixels per unit and stretches along the edge, a corner where two strips
-    // meet, and the interior takes the rest. The sections meet without seams. A band too wide for the surface or the
-    // tile is narrowed to half of what fits.
-    public struct HotspotBorder : IDisposable
+    // A surface on its tile in sections, each mapped affinely:
+    // - a tile that repeats: the surface is cut where the repeats meet, each repeat the whole tile;
+    // - a tile with a border: a strip along each edge keeps the border's width in pixels at the tile's pixels per unit
+    //   and stretches (or repeats, RepeatBorder) along the edge, a corner where two strips meet, the interior takes the
+    //   rest. These sections meet without seams. A band too wide for the surface or the tile is narrowed to half of
+    //   what fits.
+    // A repeating tile's border is not drawn.
+    public struct HotspotSections : IDisposable
     {
-        public NativeList<HotspotBorderLine>      lines;
-        public NativeList<HotspotBorderHalfPlane> halfPlanes;
-        public NativeList<HotspotBorderCell>      cells;
+        public NativeList<HotspotSectionLine>      lines;
+        public NativeList<HotspotSectionHalfPlane> halfPlanes;
+        public NativeList<HotspotSectionCell>      cells;
 
-        public static HotspotBorder Create(Allocator allocator)
+        public static HotspotSections Create(Allocator allocator)
         {
-            return new HotspotBorder
+            return new HotspotSections
             {
-                lines      = new NativeList<HotspotBorderLine>(12, allocator),
-                halfPlanes = new NativeList<HotspotBorderHalfPlane>(32, allocator),
-                cells      = new NativeList<HotspotBorderCell>(13, allocator)
+                lines      = new NativeList<HotspotSectionLine>(12, allocator),
+                halfPlanes = new NativeList<HotspotSectionHalfPlane>(32, allocator),
+                cells      = new NativeList<HotspotSectionCell>(13, allocator)
             };
         }
 
@@ -133,7 +136,7 @@ namespace Chisel.Core
 
         int AddLine(double2 normal, double2 through)
         {
-            lines.Add(new HotspotBorderLine { normal = normal, offset = -math.dot(normal, through) });
+            lines.Add(new HotspotSectionLine { normal = normal, offset = -math.dot(normal, through) });
             return lines.Length - 1;
         }
 
@@ -141,13 +144,25 @@ namespace Chisel.Core
                      int line0, int side0, int line1, int side1, int line2 = -1, int side2 = 0, int line3 = -1, int side3 = 0)
         {
             var start = halfPlanes.Length;
-            halfPlanes.Add(new HotspotBorderHalfPlane { line = line0, side = side0 });
-            halfPlanes.Add(new HotspotBorderHalfPlane { line = line1, side = side1 });
-            if (line2 >= 0) halfPlanes.Add(new HotspotBorderHalfPlane { line = line2, side = side2 });
-            if (line3 >= 0) halfPlanes.Add(new HotspotBorderHalfPlane { line = line3, side = side3 });
+            Half(line0, side0);
+            Half(line1, side1);
+            Half(line2, side2);
+            Half(line3, side3);
+            AddCell(start, a, b, c, ta, tb, tc, textureSize);
+        }
+
+        void Half(int line, int side)
+        {
+            if (line >= 0)
+                halfPlanes.Add(new HotspotSectionHalfPlane { line = line, side = side });
+        }
+
+        // A cell of the half planes added since start, (a, b, c) to (ta, tb, tc)
+        void AddCell(int start, double2 a, double2 b, double2 c, double2 ta, double2 tb, double2 tc, double2 textureSize)
+        {
             var surface = new double2x2(b - a, c - a);
             var tile    = new double2x2((tb - ta) / textureSize, (tc - ta) / textureSize);
-            cells.Add(new HotspotBorderCell
+            cells.Add(new HotspotSectionCell
             {
                 halfPlaneStart = start,
                 halfPlaneCount = halfPlanes.Length - start,
@@ -157,15 +172,30 @@ namespace Chisel.Core
             });
         }
 
-        // The sections of a surface on its tile; false when the tile has no border, or no band fits
+        // Repeats too many to cut a surface into: a sliver, stretched instead
+        public const int kMaxRepeats = 4096;
+
+        // How many times a length takes a period, at least once; 0 when that is more than kMaxRepeats
+        public static int Repeats(double length, double period)
+        {
+            if (!(period > 0))
+                return 1;
+            var count = math.max(1.0, math.round(length / period));
+            return count > kMaxRepeats ? 0 : (int)count;
+        }
+
+        // The sections of a surface on its tile; false when it is one section: the tile neither repeats nor has a
+        // border, or no band fits
         public bool Build(in HotspotTileData tile, in HotspotLayoutData layout, in HotspotShape shape, in HotspotChoice choice)
         {
             lines.Clear();
             halfPlanes.Clear();
             cells.Clear();
+            HotspotMatcher.Corners(tile, shape, choice, out var count, out var f0, out var f1, out var f2, out var t0, out var t1, out var t2);
+            if (choice.repeatX > 1 || choice.repeatY > 1)
+                return BuildRepeats(math.max(1, choice.repeatX), math.max(1, choice.repeatY), f0, f1, f2, t0, t1, t2, layout.textureSize);
             if (!(tile.border > 0) || !(tile.pixelsPerUnit > 0))
                 return false;
-            HotspotMatcher.Corners(tile, shape, choice, out var count, out var f0, out var f1, out var f2, out var t0, out var t1, out var t2);
             var s = new Outline(count, f0, f1, f2);
             var t = new Outline(count, t0, t1, t2);
             var surfaceBand = math.min((double)tile.border / tile.pixelsPerUnit, 0.5 * s.MaxBand());
@@ -203,8 +233,23 @@ namespace Chisel.Core
             for (int i = 0; i < count; i++)
             {
                 var next = (i + 1) % count;
-                AddCell(s.footNext[i], s.footPrevious[next], s.inner[i], t.footNext[i], t.footPrevious[next], t.inner[i], size,
-                        inset[i], -1, squareNext[i], 1, squarePrevious[next], 1);
+                var length = math.length(s.footPrevious[next] - s.footNext[i]);
+                var repeats = (tile.flags & HotspotTileFlags.RepeatBorder) == 0 ? 1
+                            : math.max(1, Repeats(length, math.length(t.footPrevious[next] - t.footNext[i]) * surfaceBand / tileBand));
+                // the strip, or its repeats: each from the tile's whole strip, cut square to the edge
+                var previousCut = squareNext[i];
+                for (int r = 0; r < repeats; r++)
+                {
+                    var a = s.footNext[i] + s.along[i] * (length * r / repeats);
+                    var cut = r + 1 < repeats ? AddLine(s.along[i], s.footNext[i] + s.along[i] * (length * (r + 1) / repeats)) : -1;
+                    var start = halfPlanes.Length;
+                    Half(inset[i], -1);
+                    Half(previousCut, 1);
+                    if (cut >= 0) Half(cut, -1); else Half(squarePrevious[next], 1);
+                    AddCell(start, a, a + s.along[i] * (length / repeats), a + s.inward[i] * surfaceBand,
+                            t.footNext[i], t.footPrevious[next], t.inner[i], size);
+                    previousCut = cut;
+                }
                 if (count == 4)
                 {
                     AddCell(s.corner[i], s.footNext[i], s.footPrevious[i], t.corner[i], t.footNext[i], t.footPrevious[i], size,
@@ -222,8 +267,37 @@ namespace Chisel.Core
             return true;
         }
 
-        // The uv at a point of the frame: the section it is in, or the nearest one for a point just outside them all
-        public readonly float2 UV(double2 p)
+        // A rectangle repeatX by repeatY times the tile, each repeat (f0', f1', f2') to (t0, t1, t2)
+        bool BuildRepeats(int repeatX, int repeatY, float2 f0, float2 f1, float2 f2, float2 t0, float2 t1, float2 t2, float2 textureSize)
+        {
+            var origin = (double2)f0;
+            var across = (double2)f1 - origin; var up = (double2)f2 - origin;
+            if (!(math.lengthsq(across) > 0) || !(math.lengthsq(up) > 0))
+                return false;
+            var linesX = lines.Length;
+            for (int i = 1; i < repeatX; i++)
+                AddLine(math.normalize(across), origin + across * ((double)i / repeatX));
+            var linesY = lines.Length;
+            for (int j = 1; j < repeatY; j++)
+                AddLine(math.normalize(up), origin + up * ((double)j / repeatY));
+            for (int j = 0; j < repeatY; j++)
+            {
+                for (int i = 0; i < repeatX; i++)
+                {
+                    var start = halfPlanes.Length;
+                    if (i > 0)           Half(linesX + i - 1, 1);
+                    if (i + 1 < repeatX) Half(linesX + i, -1);
+                    if (j > 0)           Half(linesY + j - 1, 1);
+                    if (j + 1 < repeatY) Half(linesY + j, -1);
+                    var a = origin + across * ((double)i / repeatX) + up * ((double)j / repeatY);
+                    AddCell(start, a, a + across / repeatX, a + up / repeatY, t0, t1, t2, textureSize);
+                }
+            }
+            return true;
+        }
+
+        // The section a point of the frame is in, or the nearest one for a point just outside them all
+        public readonly int Locate(double2 p)
         {
             var best = 0;
             var bestMargin = double.NegativeInfinity;
@@ -239,20 +313,73 @@ namespace Chisel.Core
                     best = c;
                 }
             }
-            var found = cells[best];
+            return best;
+        }
+
+        public readonly float2 UV(double2 p) => UV(Locate(p), p);
+
+        public readonly float2 UV(int cell, double2 p)
+        {
+            var found = cells[cell];
             return (float2)(found.uvOrigin + math.mul(found.map, p - found.origin));
         }
 
-        public readonly void AssignUVs(NativeList<RenderVertex> vertices, float3 right, float3 up)
+        // How far apart two uvs of one vertex may be and still be one vertex
+        const float kSameUV = 1e-5f;
+
+        // Each triangle's uvs from the section it is in. A vertex on a seam, where repeats meet, gets a vertex of its own
+        // for each side.
+        public readonly void AssignUVs(NativeList<int> indices, NativeList<float3> colliderVertices, NativeList<SelectVertex> selectVertices,
+                                       NativeList<RenderVertex> renderVertices, float3 right, float3 up)
         {
             var r = (double3)right; var u = (double3)up;
-            for (int i = 0; i < vertices.Length; i++)
+            var assigned = new NativeList<bool>(renderVertices.Length, Allocator.Temp);
+            assigned.Resize(renderVertices.Length, NativeArrayOptions.ClearMemory);
+            var copies = new UnsafeHashMap<int2, int>(renderVertices.Length, Allocator.Temp);
+            for (int t = 0; t + 2 < indices.Length; t += 3)
             {
-                var vertex = vertices[i];
-                var p = (double3)vertex.position;
-                vertex.uv0 = UV(new double2(math.dot(r, p), math.dot(u, p)));
-                vertices[i] = vertex;
+                var centroid = double2.zero;
+                for (int k = 0; k < 3; k++)
+                {
+                    var p = (double3)renderVertices[indices[t + k]].position;
+                    centroid += new double2(math.dot(r, p), math.dot(u, p));
+                }
+                var cell = Locate(centroid / 3);
+                for (int k = 0; k < 3; k++)
+                {
+                    var index = indices[t + k];
+                    if (copies.TryGetValue(new int2(index, cell), out var copy))
+                    {
+                        indices[t + k] = copy;
+                        continue;
+                    }
+                    var vertex = renderVertices[index];
+                    var p = (double3)vertex.position;
+                    var uv = UV(cell, new double2(math.dot(r, p), math.dot(u, p)));
+                    if (!assigned[index])
+                    {
+                        vertex.uv0 = uv;
+                        renderVertices[index] = vertex;
+                        assigned[index] = true;
+                        copies.Add(new int2(index, cell), index);
+                    } else if (math.distancesq(vertex.uv0, uv) <= kSameUV * kSameUV)
+                    {
+                        copies.Add(new int2(index, cell), index);
+                    } else
+                    {
+                        vertex.uv0 = uv;
+                        renderVertices.Add(vertex);
+                        colliderVertices.Add(colliderVertices[index]);
+                        selectVertices.Add(selectVertices[index]);
+                        assigned.Add(true);
+                        copy = renderVertices.Length - 1;
+                        copies.Add(new int2(index, cell), copy);
+                        indices[t + k] = copy;
+                    }
+                }
             }
+            assigned.Dispose();
+            copies.Dispose();
         }
 
         // A point of a piece of a surface triangle. kind 0: corner a of the triangle; 1: where triangle edge a crosses

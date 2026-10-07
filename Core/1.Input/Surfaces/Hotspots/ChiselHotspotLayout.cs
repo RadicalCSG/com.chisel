@@ -20,6 +20,8 @@ namespace Chisel.Core
         AllowMirror   = 1 << 5,
         // Only taken when pinned, like Valve's "alt" rectangles
         Alternate     = 1 << 6,
+        // The border's strips repeat along the edges instead of stretching
+        RepeatBorder  = 1 << 7,
     }
 
     // One region of a hotspot texture: a rectangle or a triangle
@@ -172,6 +174,7 @@ namespace Chisel.Core
                     case "mirror":   flags |= HotspotTileFlags.AllowMirror; break;
                     case "alt":
                     case "alternate": flags |= HotspotTileFlags.Alternate; break;
+                    case "repeat-border": flags |= HotspotTileFlags.RepeatBorder; break;
                 }
             }
             return flags;
