@@ -42,6 +42,15 @@ namespace Chisel.Core
         public NativeList<HotspotSectionHalfPlane> halfPlanes;
         public NativeList<HotspotSectionCell>      cells;
 
+        internal static HotspotSections FromBlob(ref ChiselSurfaceRenderBuffer surface, Allocator allocator)
+        {
+            var sections = Create(allocator);
+            for (int i = 0; i < surface.sectionLines.Length; i++)      sections.lines.Add(surface.sectionLines[i]);
+            for (int i = 0; i < surface.sectionHalfPlanes.Length; i++) sections.halfPlanes.Add(surface.sectionHalfPlanes[i]);
+            for (int i = 0; i < surface.sectionCells.Length; i++)      sections.cells.Add(surface.sectionCells[i]);
+            return sections;
+        }
+
         public static HotspotSections Create(Allocator allocator)
         {
             return new HotspotSections
@@ -574,7 +583,9 @@ namespace Chisel.Core
                     newRender.Add(new RenderVertex
                     {
                         position = position,
-                        normal   = math.normalizesafe(w.x * render0.normal + w.y * render1.normal + w.z * render2.normal, normal)
+                        normal   = math.normalizesafe(w.x * render0.normal + w.y * render1.normal + w.z * render2.normal, normal),
+                        tangent  = w.x * render0.tangent + w.y * render1.tangent + w.z * render2.tangent,
+                        uv1      = w.x * render0.uv1 + w.y * render1.uv1 + w.z * render2.uv1
                     });
                     return index;
                 }

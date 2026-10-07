@@ -289,19 +289,24 @@ namespace Chisel.Core
             var indexCount		    = subMeshCount.indexCount;
             var subMeshSurfaceArray = subMeshSource.subMeshSurfaces[meshQueryIndex];
 
+            // A surface whose drawn triangles are cut (hotspot sections) gives the collider its uncut ones
             using var colliderPositions = new NativeList<float3>(totalVertexCount, Allocator.Temp);
             using var positionIndex     = new NativeParallelHashMap<float3, int>(totalVertexCount, Allocator.Temp);
             using var vertexRemap       = new NativeList<int>(totalVertexCount, Allocator.Temp);
+            var colliderIndexCount = 0;
             for (int surfaceIndex = surfacesOffset, lastSurfaceIndex = surfacesCount + surfacesOffset;
                     surfaceIndex < lastSurfaceIndex;
                     ++surfaceIndex)
             {
                 var subMeshSurface      = subMeshSurfaceArray[surfaceIndex];
                 ref var sourceBuffer    = ref subMeshSurface.brushRenderBuffer.Value.surfaces[subMeshSurface.surfaceIndex];
-                ref var sourceVertices  = ref sourceBuffer.colliderVertices;
-                if (sourceBuffer.indices.Length == 0 ||
+                var physics             = sourceBuffer.physicsIndices.Length > 0;
+                ref var sourceIndices   = ref (physics ? ref sourceBuffer.physicsIndices : ref sourceBuffer.indices);
+                ref var sourceVertices  = ref (physics ? ref sourceBuffer.physicsVertices : ref sourceBuffer.colliderVertices);
+                if (sourceIndices.Length == 0 ||
                     sourceVertices.Length == 0)
                     continue;
+                colliderIndexCount += sourceIndices.Length;
                 for (int v = 0; v < sourceVertices.Length; v++)
                 {
                     var position = sourceVertices[v] + 0.0f;    // -0 becomes 0, so equal positions hash alike
@@ -316,7 +321,7 @@ namespace Chisel.Core
             }
 
             meshData.SetVertexBufferParams(colliderPositions.Length, descriptors);
-            meshData.SetIndexBufferParams(totalIndexCount, IndexFormat.UInt32);
+            meshData.SetIndexBufferParams(colliderIndexCount, IndexFormat.UInt32);
 
             var vertices            = meshData.GetVertexData<float3>(stream: 0);
             var indices             = meshData.GetIndexData<int>();
@@ -339,8 +344,9 @@ namespace Chisel.Core
             {
                 var subMeshSurface      = subMeshSurfaceArray[surfaceIndex];
                 ref var sourceBuffer    = ref subMeshSurface.brushRenderBuffer.Value.surfaces[subMeshSurface.surfaceIndex];
-                ref var sourceIndices   = ref sourceBuffer.indices;
-                ref var sourceVertices  = ref sourceBuffer.colliderVertices;
+                var physics             = sourceBuffer.physicsIndices.Length > 0;
+                ref var sourceIndices   = ref (physics ? ref sourceBuffer.physicsIndices : ref sourceBuffer.indices);
+                ref var sourceVertices  = ref (physics ? ref sourceBuffer.physicsVertices : ref sourceBuffer.colliderVertices);
 
                 var sourceIndexCount    = sourceIndices.Length;
                 var sourceVertexCount   = sourceVertices.Length;
@@ -373,21 +379,21 @@ namespace Chisel.Core
                 vertexOffset += sourceVertexCount;
             }
             // Same reasoning as above: never leave an uninitialized tail in the index buffer.
-            for (int z = indexOffset; z < totalIndexCount && z < indexBufferLength; z++)
+            for (int z = indexOffset; z < colliderIndexCount && z < indexBufferLength; z++)
                 indices[z] = 0;
 
-            Debug.Assert(indexOffset == totalIndexCount);
-            Debug.Assert(vertexOffset == totalVertexCount);
+            Debug.Assert(indexOffset == colliderIndexCount);
+            Debug.Assert(vertexOffset == vertexRemap.Length);
 
             meshData.subMeshCount = 1;
             // read here: an argument computed in the call is discarded with the call under Burst (BC1371)
             var colliderVertexCount = colliderPositions.Length;
-            ChiselOutputMeshValidation.ValidateSubMeshIndices(indices, 0, indexCount, colliderVertexCount, 0);
+            ChiselOutputMeshValidation.ValidateSubMeshIndices(indices, 0, colliderIndexCount, colliderVertexCount, 0);
             meshData.SetSubMesh(0, new SubMeshDescriptor
             {
                 baseVertex  = 0,
                 indexStart  = 0,
-                indexCount  = indexCount,
+                indexCount  = colliderIndexCount,
 				//firstVertex = 0,
 				//vertexCount = vertexCount,
 				bounds      = aabb.ToBounds(),

@@ -847,23 +847,18 @@ namespace Chisel.Core
 				if (choice.tile >= 0)
 				{
 					uvMat = HotspotMatcher.Mapping(hotspotTiles[choice.tile], layout, shape, choice, finalFaceNormal);
-					// a tile that repeats or has a border: the surface is cut where its sections meet
+					// a tile that repeats or has a border: what is drawn is cut where its sections meet, after the
+					// model's weld (OutputHotspotSections)
 					if (hotspotTiles[choice.tile].border > 0 || choice.Repeated)
 					{
 						HotspotMatcher.Frame(finalFaceNormal, out hotspotRight, out hotspotUp);
 						sections = HotspotSections.Create(Allocator.Temp);
-						if (sections.Build(hotspotTiles[choice.tile], layout, shape, choice))
-							sections.Split(hotspotRight, hotspotUp, finalFaceNormal, surfaceIndexList, uniqueVertexMapper.surfaceColliderVertices,
-										   uniqueVertexMapper.surfaceSelectVertices, uniqueVertexMapper.surfaceRenderVertices);
+						sections.Build(hotspotTiles[choice.tile], layout, shape, choice);
 					}
 				}
 			}
 			
-			if (!sections.IsEmpty)
-				sections.AssignUVs(surfaceIndexList, uniqueVertexMapper.surfaceColliderVertices, uniqueVertexMapper.surfaceSelectVertices,
-								   uniqueVertexMapper.surfaceRenderVertices, hotspotRight, hotspotUp);
-			else
-				MeshAlgorithms.ComputeUVs(uniqueVertexMapper.surfaceRenderVertices, uvMat);
+			MeshAlgorithms.ComputeUVs(uniqueVertexMapper.surfaceRenderVertices, uvMat);
 			MeshAlgorithms.ComputeTangents(uniqueVertexMapper.surfaceRenderVertices, finalFaceNormal, uvMat);
 			MeshAlgorithms.ComputeLightmapCoordinates(uniqueVertexMapper.surfaceRenderVertices, finalFaceNormal);
 
@@ -902,10 +897,7 @@ namespace Chisel.Core
 			{
 				// An opaque decal took part of this surface: the rest of it is drawn instead
 				var remaining = decalBuilder.surface;
-				if (!sections.IsEmpty)
-					sections.AssignUVs(remaining.indices, remaining.colliderVertices, remaining.selectVertices, remaining.renderVertices, hotspotRight, hotspotUp);
-				else
-					MeshAlgorithms.ComputeUVs(remaining.renderVertices, uvMat);
+				MeshAlgorithms.ComputeUVs(remaining.renderVertices, uvMat);
 				MeshAlgorithms.ComputeTangents(remaining.renderVertices, finalFaceNormal, uvMat);
 				MeshAlgorithms.ComputeLightmapCoordinates(remaining.renderVertices, finalFaceNormal);
 				buf.Construct(builder, remaining.indices, remaining.colliderVertices,
@@ -917,6 +909,8 @@ namespace Chisel.Core
 						uniqueVertexMapper.surfaceSelectVertices,
 						uniqueVertexMapper.surfaceRenderVertices,
 						surf, surf, flags, parms, outputFlags);
+			if (!sections.IsEmpty)
+				buf.StoreSections(builder, sections, hotspotRight, hotspotUp);
 			sections.Dispose();
 		}
 

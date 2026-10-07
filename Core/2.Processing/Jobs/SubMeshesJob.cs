@@ -118,6 +118,8 @@ namespace Chisel.Core
 
             // The weld at the very end across the whole model: needles that close a seam go with the triangle across them
             OutputModelWeld.WeldModel(brushRenderData, patchedRenderBuffers);
+            // Then what is drawn of hotspot surfaces is cut into its sections; the collider stays as welded
+            OutputHotspotSections.CutModel(brushRenderData, patchedRenderBuffers);
         }
     }
 

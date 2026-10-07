@@ -525,20 +525,11 @@ namespace Chisel.Core
                     to.destinationFlags      = from.destinationFlags;
                     to.destinationParameters = from.destinationParameters;
                     to.outputFlags           = from.outputFlags;
+                    to.CopyHotspot(builder, ref from);
                     var w = Find(workIndex, brush, s);
                     if (w < 0)
                     {
-                        to.vertexCount       = from.vertexCount;
-                        to.indexCount        = from.indexCount;
-                        to.geometryHashValue = from.geometryHashValue;
-                        to.surfaceHashValue  = from.surfaceHashValue;
-                        to.aabb              = from.aabb;
-                        to.lightmapChart     = from.lightmapChart;
-                        builder.Construct(ref to.indices,          ref from.indices);
-                        builder.Construct(ref to.renderVertices,   ref from.renderVertices);
-                        builder.Construct(ref to.selectVertices,   ref from.selectVertices);
-                        builder.Construct(ref to.colliderVertices, ref from.colliderVertices);
-                        builder.Construct(ref to.needles,          ref from.needles);
+                        to.CopyGeometry(builder, ref from);
                         continue;
                     }
 
