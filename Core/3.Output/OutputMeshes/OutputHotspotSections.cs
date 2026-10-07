@@ -90,6 +90,14 @@ namespace Chisel.Core
                     } else
                         sections.AssignUVs(indices, collider, select, render, right, up);
                     sections.Dispose();
+                    // a surface whose cut went wrong is drawn uncut: one bad point would hide the whole model (its
+                    // bounds)
+                    if (!Finite(collider, render))
+                    {
+                        to.CopyGeometry(builder, ref from);
+                        to.CopyHotspot(builder, ref from);
+                        continue;
+                    }
                     to.Store(builder, indices, collider, select, render);
                     // the collider keeps what the weld left, uncut
                     builder.Construct(ref to.physicsIndices,  ref from.indices);
@@ -127,6 +135,21 @@ namespace Chisel.Core
             {
                 builder.Dispose();
             }
+        }
+
+        static bool Finite(NativeList<float3> positions, NativeList<RenderVertex> render)
+        {
+            for (int i = 0; i < positions.Length; i++)
+            {
+                if (!math.all(math.isfinite(positions[i])))
+                    return false;
+            }
+            for (int i = 0; i < render.Length; i++)
+            {
+                if (!math.all(math.isfinite(render[i].position)) || !math.all(math.isfinite(render[i].uv0)))
+                    return false;
+            }
+            return true;
         }
 
         static NativeList<T> ToList<T>(ref BlobArray<T> array) where T : unmanaged

@@ -552,7 +552,9 @@ namespace Chisel.Core
             public int     kind, a, b;
             public int     support;
 
-            public readonly bool OnLine(int line) => (kind == 1 && b == line) || (kind == 2 && (a == line || b == line));
+            // on the line, or on one that is the same line (same: the first of the lines it coincides with)
+            public readonly bool OnLine(int line, NativeArray<int> same) =>
+                (kind == 1 && same[b] == same[line]) || (kind == 2 && (same[a] == same[line] || same[b] == same[line]));
         }
 
         static bool Before(double3 p, double3 q)
@@ -572,6 +574,24 @@ namespace Chisel.Core
                 return;
             var r = (double3)right; var u = (double3)up; var n = (double3)normal;
             var planeDistance = math.dot(n, (double3)colliderVertices[indices[0]]);
+            // lines that coincide (strips meeting in the middle of a surface that is all border) are one line: a point on
+            // one is on the other, and they never cross
+            var same = new NativeArray<int>(lines.Length, Allocator.Temp);
+            for (int l = 0; l < lines.Length; l++)
+            {
+                same[l] = l;
+                for (int m = 0; m < l; m++)
+                {
+                    var a = lines[l]; var b = lines[m];
+                    var direction = math.dot(a.normal, b.normal) >= 0 ? 1.0 : -1.0;
+                    var tolerance = 1e-9 * math.max(1, math.abs(a.offset));
+                    if (math.abs(Cross(a.normal, b.normal)) <= 1e-12 && math.abs(a.offset - direction * b.offset) <= tolerance)
+                    {
+                        same[l] = same[m];
+                        break;
+                    }
+                }
+            }
 
             using var newIndices  = new NativeList<int>(indices.Length * 4, Allocator.Temp);
             using var newCollider = new NativeList<float3>(colliderVertices.Length * 2, Allocator.Temp);
@@ -615,7 +635,7 @@ namespace Chisel.Core
                         for (int i = 0; i < range.y; i++)
                         {
                             var point = points[range.x + i];
-                            var value = point.OnLine(line) ? 0 : lines[line].Value(point.p2);
+                            var value = point.OnLine(line, same) ? 0 : lines[line].Value(point.p2);
                             values.Add(value);
                             above |= value > 0;
                             below |= value < 0;
@@ -715,6 +735,7 @@ namespace Chisel.Core
             }
             q3.Dispose();
             q2.Dispose();
+            same.Dispose();
             points.Dispose();
             ranges.Dispose();
             nextPoints.Dispose();
