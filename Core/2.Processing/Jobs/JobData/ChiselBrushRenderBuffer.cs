@@ -40,28 +40,12 @@ namespace Chisel.Core
 		// When what is drawn is cut into hotspot sections (after the model's weld): the collider's triangles, uncut
 		public BlobArray<Int32>		   physicsIndices;
 		public BlobArray<float3>	   physicsVertices;
-		// The hotspot sections what is drawn is cut into after the model's weld (HotspotSections); none: not cut
-		public BlobArray<HotspotSectionLine>      sectionLines;
-		public BlobArray<HotspotSectionHalfPlane> sectionHalfPlanes;
-		public BlobArray<HotspotSectionCell>      sectionCells;
-		public float3                             sectionRight, sectionUp;
-
-		public void StoreSections(BlobBuilder builder, in HotspotSections sections, float3 right, float3 up)
-		{
-			builder.Construct(ref sectionLines,      sections.lines);
-			builder.Construct(ref sectionHalfPlanes, sections.halfPlanes);
-			builder.Construct(ref sectionCells,      sections.cells);
-			sectionRight = right;
-			sectionUp    = up;
-		}
+		// What the hotspot sections what is drawn is cut into after the model's weld are built from (count 0: not cut)
+		public HotspotSectionInput     sectionInput;
 
 		public void CopySections(BlobBuilder builder, ref ChiselSurfaceRenderBuffer from)
 		{
-			builder.Construct(ref sectionLines,      ref from.sectionLines);
-			builder.Construct(ref sectionHalfPlanes, ref from.sectionHalfPlanes);
-			builder.Construct(ref sectionCells,      ref from.sectionCells);
-			sectionRight = from.sectionRight;
-			sectionUp    = from.sectionUp;
+			sectionInput = from.sectionInput;
 		}
 
 		// The sections and the uncut collider triangles, as they are

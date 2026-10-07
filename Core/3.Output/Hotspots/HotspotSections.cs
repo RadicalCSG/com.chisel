@@ -20,7 +20,24 @@ namespace Chisel.Core
         public int side;
     }
 
-    // A section of a surface on a bordered tile, mapped affinely: uv = uvOrigin + map * (p - origin)
+    // What a surface's sections are built from: its corners in its frame and the tile's they go to
+    // (HotspotMatcher.Corners; count 0: no sections), the tile's border and repeats, and the frame
+    public struct HotspotSectionInput
+    {
+        public int              count;
+        public float2           f0, f1, f2, t0, t1, t2;
+        public float2           textureSize;
+        public float            border, pixelsPerUnit;
+        public HotspotTileFlags flags;
+        public int              repeatX, repeatY;
+        public float2           lastRepeat;
+        public float3           right, up;
+
+        public readonly bool Repeated => repeatX > 1 || repeatY > 1 || (lastRepeat.x > 0 && lastRepeat.x < 1) || (lastRepeat.y > 0 && lastRepeat.y < 1);
+    }
+
+    // A section of a surface on a bordered tile, mapped affinely: uv = uvOrigin + map * (p - origin). A cell without
+    // half planes is the interior: where no other cell is.
     public struct HotspotSectionCell
     {
         public int       halfPlaneStart, halfPlaneCount;
@@ -36,19 +53,23 @@ namespace Chisel.Core
     //   rest. These sections meet without seams. A band too wide for the surface or the tile is narrowed to half of
     //   what fits.
     // A repeating tile's border is not drawn.
-    public struct HotspotSections : IDisposable
+    public partial struct HotspotSections : IDisposable
     {
         public NativeList<HotspotSectionLine>      lines;
         public NativeList<HotspotSectionHalfPlane> halfPlanes;
         public NativeList<HotspotSectionCell>      cells;
 
-        internal static HotspotSections FromBlob(ref ChiselSurfaceRenderBuffer surface, Allocator allocator)
+        // What the sections of a surface on its tile are built from
+        public static HotspotSectionInput Input(in HotspotTileData tile, in HotspotLayoutData layout, in HotspotShape shape, in HotspotChoice choice, float3 normal)
         {
-            var sections = Create(allocator);
-            for (int i = 0; i < surface.sectionLines.Length; i++)      sections.lines.Add(surface.sectionLines[i]);
-            for (int i = 0; i < surface.sectionHalfPlanes.Length; i++) sections.halfPlanes.Add(surface.sectionHalfPlanes[i]);
-            for (int i = 0; i < surface.sectionCells.Length; i++)      sections.cells.Add(surface.sectionCells[i]);
-            return sections;
+            HotspotMatcher.Corners(tile, shape, choice, out var count, out var f0, out var f1, out var f2, out var t0, out var t1, out var t2);
+            HotspotMatcher.Frame(normal, out var right, out var up);
+            return new HotspotSectionInput
+            {
+                count = count, f0 = f0, f1 = f1, f2 = f2, t0 = t0, t1 = t1, t2 = t2,
+                textureSize = layout.textureSize, border = tile.border, pixelsPerUnit = tile.pixelsPerUnit, flags = tile.flags,
+                repeatX = choice.repeatX, repeatY = choice.repeatY, lastRepeat = choice.lastRepeat, right = right, up = up
+            };
         }
 
         public static HotspotSections Create(Allocator allocator)
@@ -214,25 +235,34 @@ namespace Chisel.Core
         // border, or no band fits
         public bool Build(in HotspotTileData tile, in HotspotLayoutData layout, in HotspotShape shape, in HotspotChoice choice)
         {
+            return Build(Input(tile, layout, shape, choice, new float3(0, 0, -1)));
+        }
+
+        // The sections from their input, around the surface's bounds (or its triangle)
+        public bool Build(in HotspotSectionInput input)
+        {
             lines.Clear();
             halfPlanes.Clear();
             cells.Clear();
-            HotspotMatcher.Corners(tile, shape, choice, out var count, out var f0, out var f1, out var f2, out var t0, out var t1, out var t2);
-            if (choice.Repeated)
-                return BuildRepeats(math.max(1, choice.repeatX), math.max(1, choice.repeatY),
-                                    choice.lastRepeat.x > 0 ? choice.lastRepeat.x : 1, choice.lastRepeat.y > 0 ? choice.lastRepeat.y : 1,
-                                    f0, f1, f2, t0, t1, t2, layout.textureSize);
-            if (!(tile.border > 0) || !(tile.pixelsPerUnit > 0))
+            var count = input.count;
+            if (count != 3 && count != 4)
+                return false;
+            float2 f0 = input.f0, f1 = input.f1, f2 = input.f2, t0 = input.t0, t1 = input.t1, t2 = input.t2;
+            if (input.Repeated)
+                return BuildRepeats(math.max(1, input.repeatX), math.max(1, input.repeatY),
+                                    input.lastRepeat.x > 0 ? input.lastRepeat.x : 1, input.lastRepeat.y > 0 ? input.lastRepeat.y : 1,
+                                    f0, f1, f2, t0, t1, t2, input.textureSize);
+            if (!(input.border > 0) || !(input.pixelsPerUnit > 0))
                 return false;
             var s = new Outline(count, f0, f1, f2);
             var t = new Outline(count, t0, t1, t2);
-            var surfaceBand = math.min((double)tile.border / tile.pixelsPerUnit, 0.5 * s.MaxBand());
-            var tileBand    = math.min((double)tile.border, 0.5 * t.MaxBand());
+            var surfaceBand = math.min((double)input.border / input.pixelsPerUnit, 0.5 * s.MaxBand());
+            var tileBand    = math.min((double)input.border, 0.5 * t.MaxBand());
             if (!(surfaceBand > 0) || !(tileBand > 0))
                 return false;
             s.Inset(surfaceBand);
             t.Inset(tileBand);
-            var size = (double2)layout.textureSize;
+            var size = (double2)input.textureSize;
 
             // inset[i] parallel to edge i, positive inside; squareNext[i] and squarePrevious[i] square to the edges
             // after and before corner i through its inner corner, negative on the corner's side
@@ -265,9 +295,9 @@ namespace Chisel.Core
                 var period = math.length(t.footPrevious[next] - t.footNext[i]) * surfaceBand / tileBand;
                 var repeats = 1;
                 var step = length;
-                if ((tile.flags & HotspotTileFlags.RepeatBorder) != 0)
+                if ((input.flags & HotspotTileFlags.RepeatBorder) != 0)
                 {
-                    if ((tile.flags & HotspotTileFlags.PartialRepeats) != 0)
+                    if ((input.flags & HotspotTileFlags.PartialRepeats) != 0)
                     {
                         repeats = math.max(1, PartialRepeats(length, period, out var last));
                         step = repeats > 1 || last < 1 ? period : length;
@@ -339,14 +369,21 @@ namespace Chisel.Core
             return true;
         }
 
-        // The section a point of the frame is in, or the nearest one for a point just outside them all
+        // The section a point of the frame is in, or the nearest one for a point just outside them all; the interior
+        // (a cell without half planes) when it is in none
         public readonly int Locate(double2 p)
         {
             var best = 0;
             var bestMargin = double.NegativeInfinity;
+            var interior = -1;
             for (int c = 0; c < cells.Length; c++)
             {
                 var cell = cells[c];
+                if (cell.halfPlaneCount == 0)
+                {
+                    interior = c;
+                    continue;
+                }
                 var margin = double.PositiveInfinity;
                 for (int h = cell.halfPlaneStart; h < cell.halfPlaneStart + cell.halfPlaneCount; h++)
                     margin = math.min(margin, halfPlanes[h].side * lines[halfPlanes[h].line].Value(p));
@@ -356,6 +393,8 @@ namespace Chisel.Core
                     best = c;
                 }
             }
+            if (interior >= 0 && !(bestMargin >= 0))
+                return interior;
             return best;
         }
 

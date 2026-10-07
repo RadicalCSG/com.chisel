@@ -26,7 +26,7 @@ namespace Chisel.Core
         {
             for (int s = 0; s < buffer.surfaces.Length; s++)
             {
-                if (buffer.surfaces[s].sectionCells.Length > 0 && buffer.surfaces[s].indices.Length > 0)
+                if (buffer.surfaces[s].sectionInput.count > 0 && buffer.surfaces[s].indices.Length > 0)
                     return true;
             }
             return false;
@@ -50,7 +50,7 @@ namespace Chisel.Core
                     to.destinationFlags      = from.destinationFlags;
                     to.destinationParameters = from.destinationParameters;
                     to.outputFlags           = from.outputFlags;
-                    if (from.sectionCells.Length == 0 || from.indices.Length == 0)
+                    if (from.sectionInput.count == 0 || from.indices.Length == 0)
                     {
                         to.CopyGeometry(builder, ref from);
                         to.CopyHotspot(builder, ref from);
@@ -61,9 +61,21 @@ namespace Chisel.Core
                     using var collider = ToList(ref from.colliderVertices);
                     using var select   = ToList(ref from.selectVertices);
                     using var render   = ToList(ref from.renderVertices);
-                    var sections = HotspotSections.FromBlob(ref from, Allocator.Temp);
-                    var right  = from.sectionRight;
-                    var up     = from.sectionUp;
+                    var input    = from.sectionInput;
+                    var sections = HotspotSections.Create(Allocator.Temp);
+                    // a border around what the surface draws, unless it is a triangle (exact already) or repeats
+                    var built = input.count == 4 && input.border > 0 && !input.Repeated
+                              ? sections.BuildConforming(input, indices, collider)
+                              : sections.Build(input);
+                    if (!built)
+                    {
+                        sections.Dispose();
+                        to.CopyGeometry(builder, ref from);
+                        to.CopyHotspot(builder, ref from);
+                        continue;
+                    }
+                    var right  = input.right;
+                    var up     = input.up;
                     var normal = math.normalizesafe(math.cross(up, right));
                     sections.Split(right, up, normal, indices, collider, select, render);
                     sections.AssignUVs(indices, collider, select, render, right, up);

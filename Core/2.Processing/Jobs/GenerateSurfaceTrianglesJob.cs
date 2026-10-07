@@ -836,8 +836,7 @@ namespace Chisel.Core
 			var uvMat = math.mul(UV0.ToFloat4x4(), treeToPlane);
 			// A surface whose material has a hotspot layout takes its uvs from the tile that fits what it draws
 			var hotspot = baseSurfaces[surf].hotspotLayout;
-			var sections = default(HotspotSections);
-			float3 hotspotRight = default, hotspotUp = default;
+			var sectionInput = default(HotspotSectionInput);
 			if (hotspot > 0 && hotspot <= hotspotLayouts.Length && hotspotLayouts[hotspot - 1].tileCount > 0)
 			{
 				var layout = hotspotLayouts[hotspot - 1];
@@ -850,11 +849,7 @@ namespace Chisel.Core
 					// a tile that repeats or has a border: what is drawn is cut where its sections meet, after the
 					// model's weld (OutputHotspotSections)
 					if (hotspotTiles[choice.tile].border > 0 || choice.Repeated)
-					{
-						HotspotMatcher.Frame(finalFaceNormal, out hotspotRight, out hotspotUp);
-						sections = HotspotSections.Create(Allocator.Temp);
-						sections.Build(hotspotTiles[choice.tile], layout, shape, choice);
-					}
+						sectionInput = HotspotSections.Input(hotspotTiles[choice.tile], layout, shape, choice, finalFaceNormal);
 				}
 			}
 			
@@ -909,9 +904,7 @@ namespace Chisel.Core
 						uniqueVertexMapper.surfaceSelectVertices,
 						uniqueVertexMapper.surfaceRenderVertices,
 						surf, surf, flags, parms, outputFlags);
-			if (!sections.IsEmpty)
-				buf.StoreSections(builder, sections, hotspotRight, hotspotUp);
-			sections.Dispose();
+			buf.sectionInput = sectionInput;
 		}
 
 		// After every surface: the empty decal slots, the mesh queries, and the brush's render buffer in the cache.
