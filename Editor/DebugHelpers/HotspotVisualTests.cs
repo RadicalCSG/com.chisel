@@ -41,6 +41,12 @@ namespace Chisel.Editors
             }
             if (!HotspotTestScene.BuildScene())
                 return;
+            // the models of the new scene built before they are drawn
+            for (int i = 0; i < 3; i++)
+            {
+                ChiselNodeHierarchyManager.Update();
+                ChiselModelManager.Instance.UpdateModels();
+            }
             Directory.CreateDirectory(folder);
             foreach (var file in Directory.GetFiles(folder))
                 File.Delete(file);
@@ -49,7 +55,8 @@ namespace Chisel.Editors
 
             var index = new StringBuilder();
             index.Append("Hotspot visual tests: each case of Editor/DebugHelpers/HotspotTestScene.cs, as drawn and in the diagnostic view (distortion)\n\n");
-            var cameraObject = new GameObject("hotspot visual test camera") { hideFlags = HideFlags.HideAndDontSave };
+            // in the scene, so the models draw for it; removed again below
+            var cameraObject = new GameObject("hotspot visual test camera");
             var texture = new RenderTexture(kWidth, kHeight, 24) { antiAliasing = 4 };
             var image = new Texture2D(kWidth, kHeight, TextureFormat.RGB24, false);
             try
@@ -69,7 +76,9 @@ namespace Chisel.Editors
                         continue;
                     var name = Sanitize(StationNumber(station) + " " + generator.name);
                     Render(camera, image, Path.Combine(folder, name + ".png"), HotspotDiagnosticMode.Off);
-                    Render(camera, image, Path.Combine(folder, name + ".distortion.png"), HotspotDiagnosticMode.Distortion);
+                    var summary = Render(camera, image, Path.Combine(folder, name + ".distortion.png"), HotspotDiagnosticMode.Distortion);
+                    if (count == 0)
+                        index.Append($"The diagnostic view found {summary.surfaces} surfaces, {summary.triangles} triangles; energy up to {summary.mostEnergy:0.00}\n\n");
                     index.Append(name).Append(".png\t").Append(station).Append(" / ").Append(generator.name).Append('\n');
                     count++;
                 }
@@ -148,15 +157,22 @@ namespace Chisel.Editors
             return true;
         }
 
-        static void Render(Camera camera, Texture2D image, string path, HotspotDiagnosticMode mode)
+        static ChiselHotspotDiagnosticsView.Summary Render(Camera camera, Texture2D image, string path, HotspotDiagnosticMode mode)
         {
-            ChiselHotspotDiagnosticsView.Capture(camera, mode);
+            // the models drawn for this camera as the scene view draws them, whether or not its render reaches the hooks
+            foreach (var model in ChiselModelManager.Instance.Models)
+            {
+                if (model && model.isActiveAndEnabled && model.generated != null)
+                    ChiselRenderObjects.OnRenderModel(camera, model, DrawModeFlags.None);
+            }
+            var summary = ChiselHotspotDiagnosticsView.Capture(camera, mode);
             camera.Render();
             RenderTexture.active = camera.targetTexture;
             image.ReadPixels(new Rect(0, 0, image.width, image.height), 0, 0);
             image.Apply();
             RenderTexture.active = null;
             File.WriteAllBytes(path, image.EncodeToPNG());
+            return summary;
         }
     }
 }
