@@ -89,6 +89,7 @@ namespace Chisel.Editors
             }
 			surfaceFlagsProp = null;
 			UV0Prop = null;
+			pinnedTileProp = null;
 			initialized = false;
         }
 
@@ -123,6 +124,7 @@ namespace Chisel.Editors
             {
                 surfaceFlagsProp     = surfaceDetailsProp.FindPropertyRelative(SurfaceDetails.kDetailFlagsName);
                 UV0Prop              = surfaceDetailsProp.FindPropertyRelative(SurfaceDetails.kUV0Name);
+                pinnedTileProp       = surfaceDetailsProp.FindPropertyRelative(nameof(SurfaceDetails.hotspot))?.FindPropertyRelative(nameof(HotspotSurface.pinnedTile));
 			}
 			chiselMaterialProp = surfaceProp.FindPropertyRelative(ChiselSurface.kChiselMaterialName);
             initialized = true;
@@ -142,6 +144,7 @@ namespace Chisel.Editors
 
 		SerializedProperty surfaceFlagsProp;
         SerializedProperty UV0Prop;
+        SerializedProperty pinnedTileProp;
         [SerializeField] UnityEngine.Object[]    undoableObjects = Array.Empty<UnityEngine.Object>();
         [SerializeField] ChiselSelectedSurface[] surfaces        = Array.Empty<ChiselSelectedSurface>();
 
@@ -478,6 +481,8 @@ namespace Chisel.Editors
                 if (UV0Prop != null)
                     EditorGUI.PropertyField(position, UV0Prop, SurfaceDetailsPropertyDrawer.kUV0Contents, true);
 
+                HotspotGUI();
+
                 EditorGUIUtility.labelWidth = prevLabelWidth;
             }
             if (EditorGUI.EndChangeCheck() && undoableObjects.Length > 0)
@@ -486,6 +491,49 @@ namespace Chisel.Editors
                 serializedObject.ApplyModifiedProperties();
                 foreach (var item in surfaces)
                     item.Store();
+            }
+        }
+
+        static readonly GUIContent kHotspotTileContents      = new("Hotspot Tile", "The tile of the material's hotspot layout this surface keeps; Automatic lets matching choose");
+        static readonly GUIContent kHotspotVariationContents = new("Next Variation", "Another of the tiles that fit this surface equally well");
+
+        // With a hotspot material: the tile the surfaces keep, and another variation of the automatic choice
+        void HotspotGUI()
+        {
+            if (pinnedTileProp == null || surfaces.Length == 0)
+                return;
+            var metadata = surfaces[0].Surface.RenderMaterial != null ? surfaces[0].Surface.RenderMaterial.GetMetadataOfType<ChiselSurfaceMetadata>() : null;
+            var layout   = metadata != null ? metadata.hotspotLayout : null;
+            if (layout == null)
+                return;
+            var names = new List<GUIContent> { new("Automatic") };
+            var ids   = new List<int> { 0 };
+            foreach (var tile in layout.tiles)
+            {
+                names.Add(new GUIContent(string.IsNullOrEmpty(tile.name) ? "Tile " + tile.id : tile.name));
+                ids.Add(tile.id);
+            }
+            var current = ids.IndexOf(pinnedTileProp.intValue);
+            EditorGUI.showMixedValue = pinnedTileProp.hasMultipleDifferentValues;
+            var chosen = EditorGUILayout.Popup(kHotspotTileContents, Mathf.Max(0, current), names.ToArray());
+            EditorGUI.showMixedValue = false;
+            if (chosen != current && chosen >= 0)
+                pinnedTileProp.intValue = ids[chosen];
+            using (new EditorGUI.DisabledScope(pinnedTileProp.intValue != 0 || pinnedTileProp.hasMultipleDifferentValues))
+            {
+                if (GUILayout.Button(kHotspotVariationContents) && undoableObjects.Length > 0)
+                {
+                    Undo.RegisterCompleteObjectUndo(undoableObjects, "Next Hotspot Variation");
+                    foreach (var item in surfaces)
+                    {
+                        var details = item.Surface.surfaceDetails;
+                        details.hotspot.seed = details.hotspot.seed * 1664525u + 1013904223u;
+                        item.Surface.surfaceDetails = details;
+                        item.Store();
+                    }
+                    serializedObject.Update();
+                    GUIUtility.ExitGUI();
+                }
             }
         }
 
