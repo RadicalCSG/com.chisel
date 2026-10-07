@@ -425,8 +425,8 @@ namespace Chisel.Editors
             }
             using (new EditorGUILayout.HorizontalScope())
             {
-                if (GUILayout.Button("Import JSON…"))
-                    ImportJson();
+                if (GUILayout.Button(new GUIContent("Import…", "A Chisel layout (.json), Valve rectangles (.rect), an SVG, or a colour mask image (one flat colour per tile)")))
+                    Import();
                 if (GUILayout.Button("Start over") &&
                     EditorUtility.DisplayDialog("Start over", "Replace every tile with one tile over the whole texture?", "Start over", "Cancel"))
                     Edit("Reset Hotspot Layout", layout.ResetCuts);
@@ -475,6 +475,7 @@ namespace Chisel.Editors
             tile.flags = Flag(tile.flags, HotspotTileFlags.RepeatV,       "Repeats down",  "Meant to repeat along its height");
             tile.flags = Flag(tile.flags, HotspotTileFlags.AllowRotation, "May turn",      "Matching may turn the texture to fit; otherwise it stays upright");
             tile.flags = Flag(tile.flags, HotspotTileFlags.AllowMirror,   "May mirror",    "Matching may mirror the texture to fit");
+            tile.flags = Flag(tile.flags, HotspotTileFlags.Alternate,     "Alternate",     "Only taken when a surface is pinned to it, like Valve's alt rectangles");
             tile.border = Mathf.Max(0, EditorGUILayout.IntField(new GUIContent("Border (px)", "The width of the tile's border, a band along its outline (0 for none)"), tile.border));
             tile.pixelsPerUnit = Mathf.Max(0, EditorGUILayout.FloatField(new GUIContent("Pixels per unit", "The texture density this tile is meant for; 0 takes the layout's"), tile.pixelsPerUnit));
             if (EditorGUI.EndChangeCheck())
@@ -487,14 +488,45 @@ namespace Chisel.Editors
             return on ? flags | flag : flags & ~flag;
         }
 
-        void ImportJson()
+        void Import()
         {
-            var path = EditorUtility.OpenFilePanel("Import hotspot layout", Application.dataPath, "json");
+            var path = EditorUtility.OpenFilePanelWithFilters("Import hotspot layout", Application.dataPath,
+                new[] { "Hotspot layouts", "json,rect,svg,png,tga", "All files", "*" });
             if (string.IsNullOrEmpty(path))
                 return;
             string error = null;
-            var json = File.ReadAllText(path);
-            Edit("Import Hotspot Layout", () => ChiselHotspotLayout.TryReadJson(json, layout, out error));
+            var extension = Path.GetExtension(path).ToLowerInvariant();
+            if (extension == ".png" || extension == ".tga")
+            {
+                var mask = new Texture2D(2, 2, TextureFormat.RGBA32, false);
+                try
+                {
+                    if (!mask.LoadImage(File.ReadAllBytes(path)))
+                        error = "the image could not be read";
+                    else
+                    {
+                        var pixels = mask.GetPixels32();
+                        Edit("Import Hotspot Layout", () => ChiselHotspotLayout.TryReadColorMask(pixels, mask.width, mask.height, layout, out error));
+                    }
+                }
+                finally { DestroyImmediate(mask); }
+            } else
+            {
+                var text = File.ReadAllText(path);
+                var size = layout.texture != null ? new Vector2Int(layout.texture.width, layout.texture.height) : layout.size;
+                Edit("Import Hotspot Layout", () =>
+                {
+                    switch (extension)
+                    {
+                        case ".rect": ChiselHotspotLayout.TryReadRect(text, size, layout, out error); break;
+                        case ".svg":  ChiselHotspotLayout.TryReadSvg(text, layout, out error); break;
+                        default:      ChiselHotspotLayout.TryReadJson(text, layout, out error); break;
+                    }
+                });
+            }
+            // a layout drawn at another resolution than its texture's: to the texture's
+            if (error == null && layout.texture != null && layout.size != new Vector2Int(layout.texture.width, layout.texture.height))
+                Edit("Import Hotspot Layout", () => layout.Resize(new Vector2Int(layout.texture.width, layout.texture.height)));
             if (error != null)
                 EditorUtility.DisplayDialog("Import hotspot layout", error, "OK");
             else if (!layout.HasCuts)

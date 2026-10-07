@@ -43,6 +43,8 @@ namespace Chisel.Core
         // 3 when what is drawn is a triangle (its corners c0, c1, c2 counter-clockwise), otherwise 0
         public int    cornerCount;
         public float2 c0, c1, c2;
+        // Round: at least kRadialCorners corners, all about as far from the middle of its bounds, which are square
+        public bool   radial;
 
         public readonly float2 Corner(int index) { return index == 0 ? c0 : (index == 1 ? c1 : c2); }
     }
@@ -60,6 +62,10 @@ namespace Chisel.Core
     {
         // How much more a change of shape counts than a change of size
         public const float kShapeWeight = 2.0f;
+        // A round surface has at least this many corners, its corners within this fraction of the same distance from
+        // its middle, and its bounds within this fraction of square
+        public const int    kRadialCorners   = 8;
+        public const double kRadialTolerance = 0.1;
 
         // The texture's right and up on a surface: up follows the tree's up on walls and its +z on floors and ceilings,
         // and right is normal x up, so the texture reads the right way round from in front of the surface
@@ -100,6 +106,20 @@ namespace Chisel.Core
                 var next     = positions[hull[(i + 1) % hull.Length]];
                 if (!OutputWeld.OnOneLine(previous, current, next))
                     corners.Add(hull[i]);
+            }
+            if (corners.Length >= kRadialCorners)
+            {
+                var middle = ((double2)shape.min + (double2)shape.max) * 0.5;
+                var extent = (double2)shape.max - (double2)shape.min;
+                double nearest = double.PositiveInfinity, farthest = 0;
+                for (int i = 0; i < corners.Length; i++)
+                {
+                    var distance = math.length(points[corners[i]] - middle);
+                    nearest  = math.min(nearest, distance);
+                    farthest = math.max(farthest, distance);
+                }
+                shape.radial = nearest >= farthest * (1 - kRadialTolerance) &&
+                               math.abs(extent.x - extent.y) <= math.max(extent.x, extent.y) * kRadialTolerance;
             }
             if (corners.Length == 3)
             {
@@ -152,8 +172,8 @@ namespace Chisel.Core
         static double Cross(double2 o, double2 a, double2 b) { return (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x); }
 
         // The matching tile: the lowest score among the enabled tiles of the surface's kind (triangles for a triangle,
-        // rectangles otherwise; radial tiles only for radial surfaces). Tiles that score exactly the same - identical
-        // tiles - are told apart by the seed. A pinned tile (its id) is always the one.
+        // rectangles otherwise; radial tiles for round surfaces, the others when there are none). Tiles that score
+        // exactly the same - identical tiles - are told apart by the seed. A pinned tile (its id) is always the one.
         public static HotspotChoice Choose(NativeArray<HotspotTileData> tiles, in HotspotLayoutData layout, in HotspotShape shape, uint seed, int pinnedId, bool radial = false)
         {
             var best = new HotspotChoice { tile = -1, score = float.PositiveInfinity };
@@ -173,6 +193,16 @@ namespace Chisel.Core
                 }
             }
 
+            var round = radial || shape.radial;
+            best = Best(tiles, layout, shape, seed, round);
+            if (round && best.tile < 0)
+                best = Best(tiles, layout, shape, seed, false);
+            return best;
+        }
+
+        static HotspotChoice Best(NativeArray<HotspotTileData> tiles, in HotspotLayoutData layout, in HotspotShape shape, uint seed, bool radial)
+        {
+            var best = new HotspotChoice { tile = -1, score = float.PositiveInfinity };
             var ties = 0;
             for (int t = layout.tileStart; t < layout.tileStart + layout.tileCount; t++)
             {
@@ -201,7 +231,7 @@ namespace Chisel.Core
 
         static bool Candidate(in HotspotTileData tile, in HotspotShape shape, bool radial)
         {
-            if ((tile.flags & HotspotTileFlags.Disabled) != 0)
+            if ((tile.flags & (HotspotTileFlags.Disabled | HotspotTileFlags.Alternate)) != 0)
                 return false;
             if (((tile.flags & HotspotTileFlags.Radial) != 0) != radial)
                 return false;

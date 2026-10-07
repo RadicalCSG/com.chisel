@@ -18,6 +18,8 @@ namespace Chisel.Core
         // Matching may turn the tile, or mirror it
         AllowRotation = 1 << 4,
         AllowMirror   = 1 << 5,
+        // Only taken when pinned, like Valve's "alt" rectangles
+        Alternate     = 1 << 6,
     }
 
     // One region of a hotspot texture: a rectangle or a triangle
@@ -160,7 +162,7 @@ namespace Chisel.Core
             var flags = HotspotTileFlags.None;
             foreach (var tag in tags ?? Array.Empty<string>())
             {
-                switch (tag)
+                switch (tag.ToLowerInvariant())
                 {
                     case "disabled": flags |= HotspotTileFlags.Disabled; break;
                     case "radial":   flags |= HotspotTileFlags.Radial; break;
@@ -168,6 +170,8 @@ namespace Chisel.Core
                     case "repeat-v": flags |= HotspotTileFlags.RepeatV; break;
                     case "rotate":   flags |= HotspotTileFlags.AllowRotation; break;
                     case "mirror":   flags |= HotspotTileFlags.AllowMirror; break;
+                    case "alt":
+                    case "alternate": flags |= HotspotTileFlags.Alternate; break;
                 }
             }
             return flags;
