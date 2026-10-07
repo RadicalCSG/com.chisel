@@ -70,7 +70,8 @@ namespace Chisel.Editors
             public Mesh      lines;
         }
 
-        static readonly List<View> s_Views = new();
+        static readonly List<View> s_Views    = new();
+        static readonly List<View> s_Captures = new();
         static bool s_Dirty = true;
 
         [InitializeOnLoadMethod]
@@ -82,6 +83,8 @@ namespace Chisel.Editors
             ChiselModelManager.Instance.PostUpdateModels += OnPostUpdateModels;
             AssemblyReloadEvents.beforeAssemblyReload -= Clear;
             AssemblyReloadEvents.beforeAssemblyReload += Clear;
+            AssemblyReloadEvents.beforeAssemblyReload -= ClearCaptures;
+            AssemblyReloadEvents.beforeAssemblyReload += ClearCaptures;
         }
 
         static void OnPostUpdateModels() { s_Dirty = true; }
@@ -104,14 +107,37 @@ namespace Chisel.Editors
 
         static void Clear()
         {
-            foreach (var view in s_Views)
+            Destroy(s_Views);
+            s_Dirty = true;
+        }
+
+        static void Destroy(List<View> views)
+        {
+            foreach (var view in views)
             {
                 if (view.triangles) Object.DestroyImmediate(view.triangles);
                 if (view.lines)     Object.DestroyImmediate(view.lines);
             }
-            s_Views.Clear();
-            s_Dirty = true;
+            views.Clear();
         }
+
+        // The view in this mode, drawn by the camera's next render (the visual tests), whatever the scene view shows
+        internal static Summary Capture(Camera camera, HotspotDiagnosticMode mode)
+        {
+            Destroy(s_Captures);
+            var summary = Gather(mode, s_Captures);
+            var material = SceneHandleMaterialManager.ColoredPolygonMaterial;
+            if (!material)
+                return summary;
+            foreach (var view in s_Captures)
+            {
+                if (view.triangles) Graphics.DrawMesh(view.triangles, view.matrix, material, 0, camera);
+                if (view.lines)     Graphics.DrawMesh(view.lines, view.matrix, material, 0, camera);
+            }
+            return summary;
+        }
+
+        internal static void ClearCaptures() { Destroy(s_Captures); }
 
         public static Color ColorOf(HotspotDiagnosticMode mode, double s1, double s2)
         {
@@ -152,13 +178,14 @@ namespace Chisel.Editors
         {
             Clear();
             s_Dirty = false;
+            LastSummary = Gather(Mode, s_Views);
+        }
+
+        static Summary Gather(HotspotDiagnosticMode mode, List<View> views)
+        {
             var summary = new Summary { leastDensity = double.PositiveInfinity };
-            var mode = Mode;
             if (mode == HotspotDiagnosticMode.Off)
-            {
-                LastSummary = summary;
-                return;
-            }
+                return summary;
             var lookups = ChiselTreeLookup.Value;
             foreach (var model in ChiselModelManager.Instance.Models)
             {
@@ -177,13 +204,13 @@ namespace Chisel.Editors
                     var view = Build(renderable, buffers, mode, ref summary);
                     if (view == null)
                         continue;
-                    s_Views.Add(view);
+                    views.Add(view);
                     if (!counted) { summary.models++; counted = true; }
                 }
             }
             if (summary.triangles == 0)
                 summary.leastDensity = 0;
-            LastSummary = summary;
+            return summary;
         }
 
         static View Build(ChiselRenderObjects renderable, Unity.Collections.NativeParallelHashMap<CompactNodeID, Unity.Entities.BlobAssetReference<ChiselBrushRenderBuffer>> buffers,

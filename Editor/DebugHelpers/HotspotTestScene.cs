@@ -24,13 +24,16 @@ namespace Chisel.Editors
         static int s_Row;
 
         [MenuItem("Tools/Chisel/Hotspot Test Scene")]
-        public static void Build()
+        public static void Build() { BuildScene(); }
+
+        // The scene built, saved and open; false when it was not
+        internal static bool BuildScene()
         {
             if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo())
-                return;
+                return false;
             s_Material = CreateMaterial();
             if (s_Material == null)
-                return;
+                return false;
 
             EditorSceneManager.NewScene(NewSceneSetup.DefaultGameObjects, NewSceneMode.Single);
             s_Model = new GameObject("Hotspot Test").AddComponent<ChiselModelComponent>().transform;
@@ -55,7 +58,7 @@ namespace Chisel.Editors
             ChiselNodeHierarchyManager.Update();
             ChiselModelManager.Instance.UpdateModels();
 
-            EditorSceneManager.SaveScene(EditorSceneManager.GetActiveScene(), kScene);
+            return EditorSceneManager.SaveScene(EditorSceneManager.GetActiveScene(), kScene);
         }
 
         static Material CreateMaterial()
