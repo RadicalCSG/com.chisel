@@ -75,6 +75,9 @@ namespace Chisel.Core
         public Texture2D         texture;
         public Vector2Int        size          = new(2048, 2048);
         public float             pixelsPerUnit = 256;
+        // Pixels left out along every tile's edges (a gutter), so filtering never reaches a neighbouring tile; a tile's
+        // border keeps its inner edge, so it narrows by as much
+        public float             padding       = 0;
         public List<HotspotTile> tiles         = new();
         // Empty when the tiles were given without them (an import that is not a grid)
         public List<HotspotCut>  cuts          = new();

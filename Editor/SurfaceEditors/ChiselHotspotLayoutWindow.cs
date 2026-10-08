@@ -461,6 +461,8 @@ namespace Chisel.Editors
         static readonly GUIContent kPixelsPerUnitContents = new("Pixels per unit", "How many of the texture's pixels cover one unit of a surface (one unit in the scene): a 1024 pixel tile at 256 covers 4 units. Matching, the border's width and the repeats go by it; a tile can have its own");
 
         // The layout's own settings, as the window and the inspectors show them; true when they changed
+        static readonly GUIContent kPaddingContents = new("Padding", "Pixels left out along every tile's edges, so a filtered (or mipmapped) texture never shows a neighbouring tile: a gutter. A tile's border keeps its inner edge and narrows by as much");
+
         internal static bool LayoutFields(ChiselHotspotLayout layout)
         {
             EditorGUI.BeginChangeCheck();
@@ -468,6 +470,7 @@ namespace Chisel.Editors
             // the tiles' pixels: the texture's, or given when there is none
             var size          = layout.texture != null ? layout.size : EditorGUILayout.Vector2IntField("Size in pixels", layout.size);
             var pixelsPerUnit = EditorGUILayout.FloatField(kPixelsPerUnitContents, layout.pixelsPerUnit);
+            var padding       = EditorGUILayout.FloatField(kPaddingContents, layout.padding);
             if (!EditorGUI.EndChangeCheck())
                 return false;
             EditLayout(layout, "Change Hotspot Layout", () =>
@@ -476,6 +479,7 @@ namespace Chisel.Editors
                     size = new Vector2Int(texture.width, texture.height);
                 layout.texture = texture;
                 layout.pixelsPerUnit = Mathf.Max(0.001f, pixelsPerUnit);
+                layout.padding = Mathf.Max(0, padding);
                 layout.Resize(size);
             });
             return true;

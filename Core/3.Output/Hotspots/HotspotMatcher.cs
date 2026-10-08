@@ -501,12 +501,57 @@ namespace Chisel.Core
                     var point = tile.points[area >= 0 ? i : count - 1 - i];
                     var p = new float2(point.x, layout.size.y - point.y);
                     switch (i) { case 0: t.p0 = p; break; case 1: t.p1 = p; break; case 2: t.p2 = p; break; default: t.p3 = p; break; }
-                    t.min = math.min(t.min, p);
-                    t.max = math.max(t.max, p);
+                }
+                if (layout.padding > 0)
+                    Pad(ref t, layout.padding);
+                for (int i = 0; i < count; i++)
+                {
+                    t.min = math.min(t.min, t.Corner(i));
+                    t.max = math.max(t.max, t.Corner(i));
                 }
                 tiles.Add(t);
             }
             data.tileCount = tiles.Length - data.tileStart;
+        }
+
+        // A tile without the padding along its edges (counter-clockwise, y up): each edge moved in, the corners where the
+        // moved edges meet; its border as much narrower. A tile too small for it keeps its corners.
+        static void Pad(ref HotspotTileData tile, float padding)
+        {
+            var count = tile.cornerCount;
+            var moved = new float2x4();
+            for (int i = 0; i < count; i++)
+            {
+                var previous = (i + count - 1) % count;
+                var a = (double2)tile.Corner(previous); var b = (double2)tile.Corner(i); var c = (double2)tile.Corner((i + 1) % count);
+                var d0 = math.normalize(b - a); var d1 = math.normalize(c - b);
+                var n0 = new double2(-d0.y, d0.x); var n1 = new double2(-d1.y, d1.x);
+                // where a + n0 * padding + d0 * s meets b + n1 * padding + d1 * t
+                var p0 = a + n0 * padding; var p1 = b + n1 * padding;
+                var determinant = d0.x * d1.y - d0.y * d1.x;
+                if (math.abs(determinant) < 1e-12)
+                    return;
+                var s = ((p1.x - p0.x) * d1.y - (p1.y - p0.y) * d1.x) / determinant;
+                moved[i] = (float2)(p0 + d0 * s);
+            }
+            // every edge still the way it went, and every corner inside the tile as it was: otherwise it was too small
+            for (int i = 0; i < count; i++)
+            {
+                if (!(math.dot(moved[(i + 1) % count] - moved[i], tile.Corner((i + 1) % count) - tile.Corner(i)) > 0))
+                    return;
+            }
+            for (int i = 0; i < count; i++)
+            {
+                for (int k = 0; k < count; k++)
+                {
+                    var a = tile.Corner(k); var b = tile.Corner((k + 1) % count);
+                    if ((b.x - a.x) * (moved[i].y - a.y) - (b.y - a.y) * (moved[i].x - a.x) <= 0)
+                        return;
+                }
+            }
+            tile.p0 = moved[0]; tile.p1 = moved[1]; tile.p2 = moved[2];
+            if (count == 4) tile.p3 = moved[3];
+            tile.border = math.max(0, tile.border - padding);
         }
     }
 }
