@@ -83,21 +83,45 @@ namespace Chisel.Core
         // than any stretch the rounding of repeats leaves
         const float kLastResortRepeatCost = 100;
 
-        // The texture's right and up on a surface: up follows the tree's up on walls and its +z on floors and ceilings,
-        // and right is normal x up, so the texture reads the right way round from in front of the surface
+        // The texture's right and up on a surface: up follows +y on walls and +z on floors and ceilings, and right is
+        // normal x up, so the texture reads the right way round from in front of the surface
         public static void Frame(float3 normal, out float3 right, out float3 up)
         {
+            Frame(normal, UpAxis(normal), out right, out up);
+        }
+
+        // The axis up follows on a surface with this normal: +y on walls, +z on floors and ceilings
+        public static float3 UpAxis(float3 normal)
+        {
+            var a = math.abs(normal);
+            return (a.y >= a.x && a.y >= a.z) ? new float3(0, 0, 1) : new float3(0, 1, 0);
+        }
+
+        // Up along axis, as it lies on the surface
+        public static void Frame(float3 normal, float3 axis, out float3 right, out float3 up)
+        {
             var n = math.normalize(normal);
-            var a = math.abs(n);
-            var axis = (a.y >= a.x && a.y >= a.z) ? new float3(0, 0, 1) : new float3(0, 1, 0);
             up    = math.normalize(axis - n * math.dot(n, axis));
             right = math.cross(n, up);
+        }
+
+        // In the brush's own space: up is found from its local normal and carried into the tree, so the texture turns
+        // with the brush
+        public static void Frame(float3 normal, float3 localNormal, float4x4 nodeToTree, float rotation, bool mirror, out float3 right, out float3 up)
+        {
+            Frame(localNormal, out _, out var localUp);
+            Frame(normal, math.mul(nodeToTree, new float4(localUp, 0)).xyz, rotation, mirror, out right, out up);
         }
 
         // The frame turned around the normal (degrees, counter-clockwise seen from in front), and mirrored left to right
         public static void Frame(float3 normal, float rotation, bool mirror, out float3 right, out float3 up)
         {
-            Frame(normal, out right, out up);
+            Frame(normal, UpAxis(normal), rotation, mirror, out right, out up);
+        }
+
+        public static void Frame(float3 normal, float3 axis, float rotation, bool mirror, out float3 right, out float3 up)
+        {
+            Frame(normal, axis, out right, out up);
             if (rotation != 0)
             {
                 double sin, cos;

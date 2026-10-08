@@ -730,7 +730,7 @@ namespace Chisel.Core
 						}
 
 						if (surfaceIndexList.Length == 0) continue;
-						FinishSurface(surf, brushNodeOrder, ref baseSurfaces, treeToPlane, finalFaceNormal, surfaceIndexList, ref uniqueVertexMapper,
+						FinishSurface(surf, brushNodeOrder, ref baseSurfaces, treeToPlane, transform.nodeToTree, finalFaceNormal, surfaceIndexList, ref uniqueVertexMapper,
 						              builder, surfaceBuffers, ref decalBuilder, decalCandidates, decalTargeted, decalCandidateStart, baseSurfaceCount);
 					}
 
@@ -768,7 +768,7 @@ namespace Chisel.Core
 		}
 		// After a surface's triangles have been registered: normal smoothing, UVs, tangents, lightmap coordinates, the decals on
 		// it and its render buffer. Shared by both inputs.
-		unsafe void FinishSurface(int surf, int brushNodeOrder, ref BlobArray<BaseSurface> baseSurfaces, float4x4 treeToPlane, float3 finalFaceNormal,
+		unsafe void FinishSurface(int surf, int brushNodeOrder, ref BlobArray<BaseSurface> baseSurfaces, float4x4 treeToPlane, float4x4 nodeToTree, float3 finalFaceNormal,
 						   NativeList<int> surfaceIndexList, ref UniqueVertexMapper uniqueVertexMapper,
 						   BlobBuilder builder, BlobBuilderArray<ChiselSurfaceRenderBuffer> surfaceBuffers,
 						   ref DecalSurfaceBuilder decalBuilder, NativeList<int> decalCandidates, NativeList<byte> decalTargeted,
@@ -842,7 +842,7 @@ namespace Chisel.Core
 			{
 				var layout  = hotspotLayouts[hotspot - 1];
 				var density = baseSurfaces[surf].hotspotDensity > 0 ? baseSurfaces[surf].hotspotDensity : 1;
-				HotspotMatcher.Frame(finalFaceNormal, baseSurfaces[surf].hotspotRotation, baseSurfaces[surf].hotspotMirror, out var hotspotRight, out var hotspotUp);
+				HotspotMatcher.Frame(finalFaceNormal, baseSurfaces[surf].localPlane.xyz, nodeToTree, baseSurfaces[surf].hotspotRotation, baseSurfaces[surf].hotspotMirror, out var hotspotRight, out var hotspotUp);
 				var shape  = HotspotMatcher.ShapeOf(uniqueVertexMapper.surfaceColliderVertices.AsArray(), hotspotRight, hotspotUp);
 				var seed   = math.hash(new uint2(baseSurfaces[surf].hotspotSeed, (uint)baseSurfaces[surf].descriptionIndex));
 				var choice = HotspotMatcher.Choose(hotspotTiles, layout, shape, seed, baseSurfaces[surf].hotspotPinned, density: density);
@@ -1105,7 +1105,7 @@ namespace Chisel.Core
 					}
 					if (surfaceIndexList.Length == 0)
 						continue;
-					FinishSurface(surf, brushNodeOrder, ref baseSurfaces, treeToPlane, finalFaceNormal, surfaceIndexList, ref uniqueVertexMapper,
+					FinishSurface(surf, brushNodeOrder, ref baseSurfaces, treeToPlane, transform.nodeToTree, finalFaceNormal, surfaceIndexList, ref uniqueVertexMapper,
 								  builder, surfaceBuffers, ref decalBuilder, decalCandidates, decalTargeted, decalCandidateStart, baseSurfaceCount);
 				}
 				FinishBrush(brushIndexOrder, brushNodeOrder, builder, ref root, surfaceBuffers, decalCandidateStart, baseSurfaceCount);
