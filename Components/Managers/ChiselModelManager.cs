@@ -294,6 +294,8 @@ namespace Chisel.Components
 
 			// The decals go to their models' trees first, so this update draws them
 			ChiselDecalManager.Update();
+			// and the surfaces connected or disconnected by hand
+			ChiselHotspotLinks.Update();
 
 			// Update the tree meshes
 			Profiler.BeginSample("Flush");

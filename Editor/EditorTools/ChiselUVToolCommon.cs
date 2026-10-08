@@ -578,6 +578,33 @@ namespace Chisel.Editors
                 EditorGUILayout.PropertyField(hotspotMirrorProp, kHotspotMirrorContents);
             if (hotspotOffsetProp != null)
                 EditorGUILayout.PropertyField(hotspotOffsetProp, kHotspotOffsetContents);
+            ConnectionGUI();
+        }
+
+        static readonly GUIContent kHotspotConnectionContents = new("Connection", "How the two selected surfaces are mapped where they touch: as one surface (Connected), apart (Disconnected), or as touching coplanar surfaces are by themselves (Automatic)");
+        static readonly string[]   kHotspotConnectionNames    = { "Automatic", "Connected", "Disconnected" };
+
+        // With two surfaces selected: whether they are mapped as one where they touch
+        void ConnectionGUI()
+        {
+            if (surfaces.Length != 2)
+                return;
+            var a = surfaces[0].SurfaceReference; var b = surfaces[1].SurfaceReference;
+            var model = ChiselHotspotLinks.ModelOfSurfaces(a, b);
+            if (!model)
+                return;
+            var state  = ChiselHotspotLinks.StateOf(a, b);
+            var chosen = (ChiselHotspotLinkState)EditorGUILayout.Popup(kHotspotConnectionContents, (int)state, kHotspotConnectionNames);
+            if (chosen == state)
+                return;
+            Undo.RecordObject(model, "Hotspot Connection");
+            switch (chosen)
+            {
+                case ChiselHotspotLinkState.Connected:    ChiselHotspotLinks.Connect(a, b); break;
+                case ChiselHotspotLinkState.Disconnected: ChiselHotspotLinks.Disconnect(a, b); break;
+                default:                                  ChiselHotspotLinks.Forget(a, b); break;
+            }
+            EditorUtility.SetDirty(model);
         }
 
         

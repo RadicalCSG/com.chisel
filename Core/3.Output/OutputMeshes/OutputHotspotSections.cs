@@ -10,7 +10,7 @@ namespace Chisel.Core
     internal static class OutputHotspotSections
     {
         public static void CutModel(NativeList<BrushData> brushes, NativeList<BlobAssetReference<ChiselBrushRenderBuffer>> patched,
-                                    NativeArray<HotspotTileData> tiles, NativeArray<HotspotLayoutData> layouts)
+                                    NativeArray<HotspotTileData> tiles, NativeArray<HotspotLayoutData> layouts, NativeArray<HotspotLink> links)
         {
             // coplanar neighbours, of any brush, mapped as one surface (HotspotGroups)
             var groupOf    = new UnsafeHashMap<int2, int>(64, Allocator.Temp);
@@ -18,7 +18,7 @@ namespace Chisel.Core
             var lines      = new NativeList<HotspotSectionLine>(32, Allocator.Temp);
             var halfPlanes = new NativeList<HotspotSectionHalfPlane>(64, Allocator.Temp);
             var cells      = new NativeList<HotspotSectionCell>(32, Allocator.Temp);
-            HotspotGroups.Find(brushes, tiles, layouts, ref groupOf, groups, lines, halfPlanes, cells);
+            HotspotGroups.Find(brushes, tiles, layouts, links, ref groupOf, groups, lines, halfPlanes, cells);
             for (int b = 0; b < brushes.Length; b++)
             {
                 if (!brushes[b].brushRenderBuffer.IsCreated ||

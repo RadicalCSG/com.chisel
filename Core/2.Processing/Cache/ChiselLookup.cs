@@ -39,6 +39,8 @@ namespace Chisel.Core
             public NativeList<DecalVolume>                                      decalVolumes;
             public NativeList<ChiselDecalTarget>                                decalVolumeTargets;
             public NativeList<MinMaxAABB>                                       changedDecalBounds;
+            // The surfaces connected or disconnected by hand (ChiselHotspotLinkStore)
+            public NativeList<HotspotLink>                                      hotspotLinks;
 
             public NativeParallelHashMap<CompactNodeID, BlobAssetReference<ChiselBrushRenderBuffer>> brushRenderBufferLookup;
 
@@ -70,6 +72,7 @@ namespace Chisel.Core
 				decalInstances              = new NativeList<ChiselDecalInstance>(16, Allocator.Persistent);
 				decalBounds                 = new NativeList<MinMaxAABB>(16, Allocator.Persistent);
 				decalVolumes                = new NativeList<DecalVolume>(16, Allocator.Persistent);
+				hotspotLinks                = new NativeList<HotspotLink>(4, Allocator.Persistent);
 				decalTargets                = new NativeList<ChiselDecalTarget>(16, Allocator.Persistent);
 				decalVolumeTargets          = new NativeList<ChiselDecalTarget>(16, Allocator.Persistent);
 				changedDecalBounds          = new NativeList<MinMaxAABB>(16, Allocator.Persistent);
@@ -260,6 +263,8 @@ namespace Chisel.Core
                 decalTargets = default;
                 decalVolumeTargets = default;
                 if (changedDecalBounds.IsCreated) changedDecalBounds.Dispose();
+                if (hotspotLinks.IsCreated)       hotspotLinks.Dispose();
+                hotspotLinks = default;
                 decalInstances = default;
                 decalBounds = default;
                 decalVolumes = default;

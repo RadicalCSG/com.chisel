@@ -310,6 +310,8 @@ namespace Chisel.Core
                 // Hotspot layouts (ChiselHotspotStore), as they are this update
                 public NativeArray<HotspotTileData>         hotspotTiles;
                 public NativeArray<HotspotLayoutData>       hotspotLayouts;
+                // and the surfaces connected or disconnected by hand (ChiselHotspotLinkStore)
+                public NativeArray<HotspotLink>             hotspotLinks;
             } 
             internal TemporariesStruct Temporaries;
             #endregion
@@ -597,6 +599,7 @@ namespace Chisel.Core
                     chiselLookupValues.hotspotHash = hotspotHash;
                     Temporaries.hotspotTiles   = new NativeArray<HotspotTileData>(hotspotTiles.AsArray(), defaultAllocator);
                     Temporaries.hotspotLayouts = new NativeArray<HotspotLayoutData>(hotspotLayouts.AsArray(), defaultAllocator);
+                    Temporaries.hotspotLinks   = new NativeArray<HotspotLink>(chiselLookupValues.hotspotLinks.AsArray(), defaultAllocator);
                 }
 
                 Temporaries.subMeshDescriptions             = new NativeList<SubMeshDescriptions>(defaultAllocator);
@@ -2388,6 +2391,7 @@ namespace Chisel.Core
                         brushRenderBufferCache  = chiselLookupValues.brushRenderBufferCache,
                         hotspotTiles            = Temporaries.hotspotTiles,
                         hotspotLayouts          = Temporaries.hotspotLayouts,
+                        hotspotLinks            = Temporaries.hotspotLinks,
 
                         // Write
                         brushRenderData      = Temporaries.brushRenderData,
@@ -2872,6 +2876,7 @@ namespace Chisel.Core
                 lastJobHandle.AddDependency(Temporaries.decalTargets                 .SafeDispose(JobHandles[JobHandleType.decalVolumesJobHandle].readWriteBarrier));
                 lastJobHandle.AddDependency(Temporaries.hotspotTiles                 .SafeDispose(JobHandles[JobHandleType.decalVolumesJobHandle].readWriteBarrier));
                 lastJobHandle.AddDependency(Temporaries.hotspotLayouts               .SafeDispose(JobHandles[JobHandleType.decalVolumesJobHandle].readWriteBarrier));
+                lastJobHandle.AddDependency(Temporaries.hotspotLinks                 .SafeDispose(JobHandles[JobHandleType.decalVolumesJobHandle].readWriteBarrier));
                 
                 
                 // Note: cannot use "IsCreated" on this job, for some reason it won't be scheduled and then complain that it's leaking? Bug in IsCreated?

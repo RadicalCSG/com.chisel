@@ -255,6 +255,9 @@ namespace Chisel.Components
 		[HideInInspector] public ChiselGeneratedObjects generated;
 		[HideInInspector] public CSGTree Node;
 
+        // The surfaces of this model connected or disconnected by hand for hotspot mapping (ChiselHotspotLinks)
+        [SerializeField, HideInInspector] internal List<ChiselHotspotLink> hotspotLinks = new();
+
         public ChiselGeneratedColliderSettings colliderSettings;
         public ChiselGeneratedRenderSettings renderSettings;
 

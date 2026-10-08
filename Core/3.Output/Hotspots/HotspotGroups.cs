@@ -17,7 +17,8 @@ namespace Chisel.Core
 
     // Coplanar neighbouring surfaces, of any brush in the model, with the same hotspot layout and frame are connected
     //: mapped as one surface on one tile, with the first one's settings, the border only along their
-    // outline together.
+    // outline together. By hand (HotspotLink) two touching coplanar surfaces are connected whatever their frames, or kept
+    // apart; the newest link counts.
     internal static class HotspotGroups
     {
         // Normals and frames agree this closely (the cosine), and the surfaces share at least two corners
@@ -34,7 +35,7 @@ namespace Chisel.Core
         }
 
         // The groups of the model's surfaces (groupOf: (brush, surface) -> group) and their sections, flat
-        public static void Find(NativeList<BrushData> brushes, NativeArray<HotspotTileData> tiles, NativeArray<HotspotLayoutData> layouts,
+        public static void Find(NativeList<BrushData> brushes, NativeArray<HotspotTileData> tiles, NativeArray<HotspotLayoutData> layouts, NativeArray<HotspotLink> links,
                                 ref UnsafeHashMap<int2, int> groupOf, NativeList<Group> groups, NativeList<HotspotSectionLine> lines,
                                 NativeList<HotspotSectionHalfPlane> halfPlanes, NativeList<HotspotSectionCell> cells)
         {
@@ -107,6 +108,33 @@ namespace Chisel.Core
             }
             having.Dispose();
 
+            // the links between candidates: the newest of each two (order, connected)
+            var linked = new UnsafeHashMap<int2, int2>(math.max(1, links.IsCreated ? links.Length : 0), Allocator.Temp);
+            if (links.IsCreated && links.Length > 0)
+            {
+                var brushOf = new UnsafeHashMap<CompactNodeID, int>(brushes.Length, Allocator.Temp);
+                for (int b = 0; b < brushes.Length; b++)
+                    brushOf.TryAdd(brushes[b].brushIndexOrder.compactNodeID, b);
+                var candidateOf = new UnsafeHashMap<int2, int>(candidates.Length, Allocator.Temp);
+                for (int c = 0; c < candidates.Length; c++)
+                    candidateOf.TryAdd(candidates[c], c);
+                for (int l = 0; l < links.Length; l++)
+                {
+                    var link = links[l];
+                    if (!brushOf.TryGetValue(link.brushA, out var ba) || !brushOf.TryGetValue(link.brushB, out var bb) ||
+                        !candidateOf.TryGetValue(new int2(ba, link.surfaceA), out var ca) || !candidateOf.TryGetValue(new int2(bb, link.surfaceB), out var cb) ||
+                        ca == cb)
+                        continue;
+                    var pair = new int2(math.min(ca, cb), math.max(ca, cb));
+                    if (linked.TryGetValue(pair, out var older) && older.x > link.order)
+                        continue;
+                    linked.Remove(pair);
+                    linked.Add(pair, new int2(link.order, link.connect ? 1 : 0));
+                }
+                candidateOf.Dispose();
+                brushOf.Dispose();
+            }
+
             var parent = new NativeArray<int>(candidates.Length, Allocator.Temp);
             for (int c = 0; c < parent.Length; c++)
                 parent[c] = c;
@@ -127,8 +155,12 @@ namespace Chisel.Core
                         continue;
                     var a = SourceOf(brushes, candidates[pairs[i].x]);
                     var b = SourceOf(brushes, candidates[pairs[i].y]);
-                    if (a.layout != b.layout || math.dot(a.normal, b.normal) < kSameDirection ||
-                        math.dot(a.right, b.right) < kSameDirection || math.dot(a.up, b.up) < kSameDirection)
+                    var coplanar  = a.layout == b.layout && math.dot(a.normal, b.normal) >= kSameDirection;
+                    var sameFrame = math.dot(a.right, b.right) >= kSameDirection && math.dot(a.up, b.up) >= kSameDirection;
+                    var together  = coplanar && sameFrame;
+                    if (linked.TryGetValue(pairs[i], out var link))
+                        together = coplanar && link.y != 0;
+                    if (!together)
                         continue;
                     var ra = Root(pairs[i].x); var rb = Root(pairs[i].y);
                     if (ra != rb)
@@ -136,6 +168,7 @@ namespace Chisel.Core
                 }
             }
             shared.Dispose();
+            linked.Dispose();
 
             // each group of more than one: its members, matched as one surface on the first one's settings
             var size = new NativeArray<int>(candidates.Length, Allocator.Temp);
