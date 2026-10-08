@@ -841,11 +841,31 @@ namespace Chisel.Core
 			if (hotspot > 0 && hotspot <= hotspotLayouts.Length && hotspotLayouts[hotspot - 1].tileCount > 0)
 			{
 				var layout  = hotspotLayouts[hotspot - 1];
-				var density = baseSurfaces[surf].hotspotDensity > 0 ? baseSurfaces[surf].hotspotDensity : 1;
-				HotspotMatcher.Frame(finalFaceNormal, baseSurfaces[surf].localPlane.xyz, nodeToTree, baseSurfaces[surf].hotspotRotation, baseSurfaces[surf].hotspotMirror, out var hotspotRight, out var hotspotUp);
-				var shape  = HotspotMatcher.ShapeOf(uniqueVertexMapper.surfaceColliderVertices.AsArray(), hotspotRight, hotspotUp);
-				var seed   = math.hash(new uint2(baseSurfaces[surf].hotspotSeed, (uint)baseSurfaces[surf].descriptionIndex));
-				var choice = HotspotMatcher.Choose(hotspotTiles, layout, shape, seed, baseSurfaces[surf].hotspotPinned, density: density);
+				// the faces round a pole, close enough to a flat circle, take one radial tile together, as their first
+				// face's settings ask
+				using var capFaces   = new NativeList<int>(16, Allocator.Temp);
+				using var capCorners = new NativeList<float3>(64, Allocator.Temp);
+				var cap  = HotspotCaps.Find(ref basePolygonCache[brushNodeOrder].Value, surf, capFaces, capCorners, out var capNormal);
+				var lead = cap ? capFaces[0] : surf;
+				var hotspotRight = float3.zero; var hotspotUp = float3.zero; var shape = default(HotspotShape);
+				if (cap)
+				{
+					if (math.dot(capNormal, finalFaceNormal) < 0)
+						capNormal = -capNormal;
+					var localNormal = math.mul(math.transpose(new float3x3(nodeToTree)), capNormal);
+					HotspotMatcher.Frame(capNormal, localNormal, nodeToTree, baseSurfaces[lead].hotspotRotation, baseSurfaces[lead].hotspotMirror, out hotspotRight, out hotspotUp);
+					shape = HotspotMatcher.ShapeOf(capCorners.AsArray(), hotspotRight, hotspotUp);
+					cap = shape.radial;
+				}
+				if (!cap)
+				{
+					lead = surf;
+					HotspotMatcher.Frame(finalFaceNormal, baseSurfaces[surf].localPlane.xyz, nodeToTree, baseSurfaces[surf].hotspotRotation, baseSurfaces[surf].hotspotMirror, out hotspotRight, out hotspotUp);
+					shape = HotspotMatcher.ShapeOf(uniqueVertexMapper.surfaceColliderVertices.AsArray(), hotspotRight, hotspotUp);
+				}
+				var density = baseSurfaces[lead].hotspotDensity > 0 ? baseSurfaces[lead].hotspotDensity : 1;
+				var seed   = math.hash(new uint2(baseSurfaces[lead].hotspotSeed, (uint)baseSurfaces[lead].descriptionIndex));
+				var choice = HotspotMatcher.Choose(hotspotTiles, layout, shape, seed, baseSurfaces[lead].hotspotPinned, density: density);
 				if (choice.tile >= 0)
 				{
 					uvMat = HotspotMatcher.Mapping(hotspotTiles[choice.tile], layout, shape, choice, hotspotRight, hotspotUp);
@@ -853,9 +873,10 @@ namespace Chisel.Core
 					// model's weld (OutputHotspotSections)
 					// or that may conform: what it draws is not its bounds
 					// or whose repeats are moved along
-					if (hotspotTiles[choice.tile].border > 0 || choice.Repeated || (shape.cornerCount != 3 && !shape.boxed) || math.any(baseSurfaces[surf].hotspotOffset != 0))
+					// (a cap is mapped whole)
+					if (!cap && (hotspotTiles[choice.tile].border > 0 || choice.Repeated || (shape.cornerCount != 3 && !shape.boxed) || math.any(baseSurfaces[surf].hotspotOffset != 0)))
 						sectionInput = HotspotSections.Input(hotspotTiles[choice.tile], layout, shape, choice, hotspotRight, hotspotUp, density, baseSurfaces[surf].hotspotOffset);
-					var pinnedId = baseSurfaces[surf].hotspotPinned;
+					var pinnedId = baseSurfaces[lead].hotspotPinned;
 					hotspotInfo = HotspotDiagnostics.Info(hotspotTiles[choice.tile], layout, choice, sectionInput,
 														  pinnedId != 0 && hotspotTiles[choice.tile].id == pinnedId, density);
 				}
