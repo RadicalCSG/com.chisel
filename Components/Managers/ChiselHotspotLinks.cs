@@ -6,7 +6,8 @@ using UnityEngine;
 
 namespace Chisel.Components
 {
-    // Two surfaces connected or disconnected by hand (Chisel.Core.HotspotLink), kept by the model they are in
+    // Two surfaces connected or disconnected by hand, and the border along the edge they share (Chisel.Core.HotspotLink),
+    // kept by the model they are in
     [Serializable]
     public struct ChiselHotspotLink
     {
@@ -15,13 +16,19 @@ namespace Chisel.Components
         public ChiselGeneratorComponent b;
         public int                      brushB, surfaceB;
         public bool                     connect;
+        public bool                     automatic;          // connected or not as they would be by themselves (connect unused)
+        public ChiselHotspotBorderState border;
         public int                      order;              // the newer, the higher
     }
 
     public enum ChiselHotspotLinkState { Automatic, Connected, Disconnected }
 
+    // Along the edge two surfaces share: a border as they would have by themselves, a border, or none
+    public enum ChiselHotspotBorderState { Automatic, Shown, Hidden }
+
     // Connecting and disconnecting surfaces by hand: two touching surfaces of one model are mapped as one, even when their
-    // frames differ, or never; the newest link between two surfaces counts, and it counts only while they touch
+    // frames differ, or never; along the edge they share a border can be shown or hidden. The newest link between two
+    // surfaces counts, and it counts only while they touch.
     public static class ChiselHotspotLinks
     {
         static readonly List<CSGTreeBrush> s_Brushes = new();
@@ -73,32 +80,70 @@ namespace Chisel.Components
                    (link.a == b && link.brushA == brushB && link.surfaceA == surfaceB && link.b == a && link.brushB == brushA && link.surfaceB == surfaceA);
         }
 
+        static ChiselHotspotLinkState ConnectionOf(in ChiselHotspotLink link)
+        {
+            return link.automatic ? ChiselHotspotLinkState.Automatic : (link.connect ? ChiselHotspotLinkState.Connected : ChiselHotspotLinkState.Disconnected);
+        }
+
+        // The newest link between two surfaces, if they have one
+        static bool Newest(SurfaceReference a, SurfaceReference b, out ChiselHotspotLink newest)
+        {
+            newest = default;
+            var model = ModelOf(a, b);
+            if (!model || !Locate(a, out var brushA) || !Locate(b, out var brushB))
+                return false;
+            var found = false;
+            foreach (var link in model.hotspotLinks)
+            {
+                if (!Between(link, a.node, brushA, a.surfaceIndex, b.node, brushB, b.surfaceIndex) || (found && link.order < newest.order))
+                    continue;
+                newest = link;
+                found = true;
+            }
+            return found;
+        }
+
         // How two surfaces are linked by hand
         public static ChiselHotspotLinkState StateOf(SurfaceReference a, SurfaceReference b)
         {
-            var model = ModelOf(a, b);
-            if (!model || !Locate(a, out var brushA) || !Locate(b, out var brushB))
-                return ChiselHotspotLinkState.Automatic;
-            var state = ChiselHotspotLinkState.Automatic; var newest = int.MinValue;
-            foreach (var link in model.hotspotLinks)
-            {
-                if (!Between(link, a.node, brushA, a.surfaceIndex, b.node, brushB, b.surfaceIndex) || link.order < newest)
-                    continue;
-                newest = link.order;
-                state = link.connect ? ChiselHotspotLinkState.Connected : ChiselHotspotLinkState.Disconnected;
-            }
-            return state;
+            return Newest(a, b, out var link) ? ConnectionOf(link) : ChiselHotspotLinkState.Automatic;
         }
 
-        public static bool Connect(SurfaceReference a, SurfaceReference b)    { return Set(a, b, ChiselHotspotLinkState.Connected); }
-        public static bool Disconnect(SurfaceReference a, SurfaceReference b) { return Set(a, b, ChiselHotspotLinkState.Disconnected); }
-        // Back to what touching coplanar surfaces do by themselves
-        public static bool Forget(SurfaceReference a, SurfaceReference b)     { return Set(a, b, ChiselHotspotLinkState.Automatic); }
+        // The border along the edge two surfaces share, as given by hand
+        public static ChiselHotspotBorderState BorderOf(SurfaceReference a, SurfaceReference b)
+        {
+            return Newest(a, b, out var link) ? link.border : ChiselHotspotBorderState.Automatic;
+        }
+
+        public static bool Connect(SurfaceReference a, SurfaceReference b)    { return SetConnection(a, b, ChiselHotspotLinkState.Connected); }
+        public static bool Disconnect(SurfaceReference a, SurfaceReference b) { return SetConnection(a, b, ChiselHotspotLinkState.Disconnected); }
+        // Connected, apart, or as they would be by themselves; the border along their edge as it was given
+        public static bool SetConnection(SurfaceReference a, SurfaceReference b, ChiselHotspotLinkState state) { return Set(a, b, state, BorderOf(a, b)); }
+        // Back to what touching coplanar surfaces do by themselves (the border along their edge too)
+        public static bool Forget(SurfaceReference a, SurfaceReference b)     { return Set(a, b, ChiselHotspotLinkState.Automatic, ChiselHotspotBorderState.Automatic); }
+
+        // A border along the edge two surfaces share (Shown), none (Hidden), or as they would have by themselves
+        public static bool SetBorder(SurfaceReference a, SurfaceReference b, ChiselHotspotBorderState border) { return Set(a, b, StateOf(a, b), border); }
+
+        // Every link of a surface removed (it takes another hotspot material); true when it had any
+        public static bool ForgetAllOf(SurfaceReference surface)
+        {
+            if (surface == null || !surface.node || !Locate(surface, out var brush))
+                return false;
+            var model = surface.node.hierarchyItem.Model;
+            if (!model)
+                return false;
+            var removed = model.hotspotLinks.RemoveAll(link => (link.a == surface.node && link.brushA == brush && link.surfaceA == surface.surfaceIndex) ||
+                                                               (link.b == surface.node && link.brushB == brush && link.surfaceB == surface.surfaceIndex));
+            if (removed > 0)
+                surface.node.SetDirty();
+            return removed > 0;
+        }
 
         // The model the two surfaces are in (to record for undo first), or null when they are not in one
         public static ChiselModelComponent ModelOfSurfaces(SurfaceReference a, SurfaceReference b) { return ModelOf(a, b); }
 
-        static bool Set(SurfaceReference a, SurfaceReference b, ChiselHotspotLinkState state)
+        static bool Set(SurfaceReference a, SurfaceReference b, ChiselHotspotLinkState state, ChiselHotspotBorderState border)
         {
             var model = ModelOf(a, b);
             if (!model || !Locate(a, out var brushA) || !Locate(b, out var brushB) ||
@@ -112,10 +157,12 @@ namespace Chisel.Components
                 if (Between(link, a.node, brushA, a.surfaceIndex, b.node, brushB, b.surfaceIndex))
                     model.hotspotLinks.RemoveAt(i);
             }
-            if (state != ChiselHotspotLinkState.Automatic)
+            if (state != ChiselHotspotLinkState.Automatic || border != ChiselHotspotBorderState.Automatic)
                 model.hotspotLinks.Add(new ChiselHotspotLink { a = a.node, brushA = brushA, surfaceA = a.surfaceIndex,
                                                                b = b.node, brushB = brushB, surfaceB = b.surfaceIndex,
-                                                               connect = state == ChiselHotspotLinkState.Connected, order = order + 1 });
+                                                               connect = state == ChiselHotspotLinkState.Connected,
+                                                               automatic = state == ChiselHotspotLinkState.Automatic,
+                                                               border = border, order = order + 1 });
             a.node.SetDirty();
             b.node.SetDirty();
             return true;
@@ -136,7 +183,9 @@ namespace Chisel.Components
                         continue;
                     links.Add(new HotspotLink { brushA = CompactHierarchyManager.GetCompactNodeID(brushA), surfaceA = link.surfaceA,
                                                 brushB = CompactHierarchyManager.GetCompactNodeID(brushB), surfaceB = link.surfaceB,
-                                                order = link.order, connect = link.connect });
+                                                order = link.order,
+                                                connection = link.automatic ? 0 : (link.connect ? 1 : -1),
+                                                border = link.border == ChiselHotspotBorderState.Shown ? 1 : (link.border == ChiselHotspotBorderState.Hidden ? -1 : 0) });
                 }
                 if (ChiselHotspotLinkStore.SetLinks(model.Node, links.AsArray()))
                 {

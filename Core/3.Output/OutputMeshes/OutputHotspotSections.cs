@@ -19,19 +19,22 @@ namespace Chisel.Core
             var lines      = new NativeList<HotspotSectionLine>(32, Allocator.Temp);
             var halfPlanes = new NativeList<HotspotSectionHalfPlane>(64, Allocator.Temp);
             var cells      = new NativeList<HotspotSectionCell>(32, Allocator.Temp);
-            HotspotGroups.Find(brushes, tiles, layouts, links, ref groupOf, ref unfoldOf, groups, lines, halfPlanes, cells);
+            // and the edges given a border or none by hand
+            var bordersOf  = new UnsafeParallelMultiHashMap<int2, HotspotBorderCorner>(8, Allocator.Temp);
+            HotspotGroups.Borders(brushes, links, ref bordersOf);
+            HotspotGroups.Find(brushes, tiles, layouts, links, bordersOf, ref groupOf, ref unfoldOf, groups, lines, halfPlanes, cells);
             for (int b = 0; b < brushes.Length; b++)
             {
                 if (!brushes[b].brushRenderBuffer.IsCreated ||
                     (!HasSections(ref brushes[b].brushRenderBuffer.Value) && !InGroup(ref brushes[b].brushRenderBuffer.Value, b, groupOf)))
                     continue;
-                var copy = Cut(brushes[b].brushRenderBuffer, b, groupOf, unfoldOf, groups, lines, halfPlanes, cells);
+                var copy = Cut(brushes[b].brushRenderBuffer, b, groupOf, unfoldOf, bordersOf, groups, lines, halfPlanes, cells);
                 patched.Add(copy);
                 var data = brushes[b];
                 data.brushRenderBuffer = copy;
                 brushes[b] = data;
             }
-            groupOf.Dispose(); unfoldOf.Dispose(); groups.Dispose(); lines.Dispose(); halfPlanes.Dispose(); cells.Dispose();
+            groupOf.Dispose(); unfoldOf.Dispose(); bordersOf.Dispose(); groups.Dispose(); lines.Dispose(); halfPlanes.Dispose(); cells.Dispose();
         }
 
         static bool InGroup(ref ChiselBrushRenderBuffer buffer, int brush, UnsafeHashMap<int2, int> groupOf)
@@ -55,7 +58,7 @@ namespace Chisel.Core
         }
 
         static BlobAssetReference<ChiselBrushRenderBuffer> Cut(BlobAssetReference<ChiselBrushRenderBuffer> source, int brush, UnsafeHashMap<int2, int> groupOf,
-                                                               UnsafeHashMap<int2, float4x4> unfoldOf,
+                                                               UnsafeHashMap<int2, float4x4> unfoldOf, in UnsafeParallelMultiHashMap<int2, HotspotBorderCorner> bordersOf,
                                                                NativeList<HotspotGroups.Group> groups, NativeList<HotspotSectionLine> groupLines,
                                                                NativeList<HotspotSectionHalfPlane> groupHalfPlanes, NativeList<HotspotSectionCell> groupCells)
         {
@@ -94,10 +97,12 @@ namespace Chisel.Core
                     using var render   = ToList(ref from.renderVertices);
                     var input    = from.sectionInput;
                     var sections = HotspotSections.Create(Allocator.Temp);
+                    using var rules = new NativeList<HotspotBorderCorner>(4, Allocator.Temp);
+                    HotspotGroups.BordersOf(new int2(brush, s), bordersOf, rules);
                     // around what the surface draws (its border, its interior), unless it is a triangle (exact already) or
                     // repeats
                     var built = input.count == 4 && !input.Repeated
-                              ? sections.BuildConforming(input, indices, collider)
+                              ? sections.BuildConforming(input, indices, collider, rules.AsArray())
                               : sections.Build(input);
                     if (!built)
                     {
@@ -233,7 +238,7 @@ namespace Chisel.Core
                                                NativeList<int> indices, NativeList<float3> collider, NativeList<SelectVertex> select, NativeList<RenderVertex> render)
         {
             var repeats = HotspotSections.Create(Allocator.Temp);
-            if (sections.interiorCell < 0 || !repeats.BuildInteriorRepeats(input))
+            if (sections.interiorCell < 0 || !repeats.BuildInteriorRepeats(input, sections.openSides, sections.interiorToEdges))
             {
                 repeats.cells.Clear();
                 return repeats;

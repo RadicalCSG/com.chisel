@@ -63,6 +63,10 @@ namespace Chisel.Core
         public NativeList<HotspotSectionCell>      cells;
         // The interior's cell (BuildConforming), -1: none; where its repeats are laid (BuildInteriorRepeats)
         public int                                 interiorCell;
+        // The interior reaches the outline where an edge has no border (HotspotBorderCorner), so its repeats go on to it;
+        // the sides of the bounds (a bit each) along which the outline has no border, where the interior starts
+        public bool                                interiorToEdges;
+        public int                                 openSides;
 
         // What the sections of a surface on its tile are built from
         public static HotspotSectionInput Input(in HotspotTileData tile, in HotspotLayoutData layout, in HotspotShape shape, in HotspotChoice choice, float3 normal)
@@ -174,13 +178,16 @@ namespace Chisel.Core
                 return count == 3 || math.length(corner[(i + 1) % count] - corner[i]) <= 2 * band * (1 + 1e-9);
             }
 
-            public void Inset(double band)
+            // open: the edges (a bit each) not inset
+            public void Inset(double band, int open = 0)
             {
                 for (int i = 0; i < count; i++)
                 {
                     var previous = (i + count - 1) % count;
-                    inner[i] = Intersect(inward[previous], math.dot(inward[previous], corner[previous]) + band,
-                                         inward[i],        math.dot(inward[i], corner[i]) + band);
+                    var bandPrevious = (open & (1 << previous)) != 0 ? 0 : band;
+                    var bandHere     = (open & (1 << i)) != 0 ? 0 : band;
+                    inner[i] = Intersect(inward[previous], math.dot(inward[previous], corner[previous]) + bandPrevious,
+                                         inward[i],        math.dot(inward[i], corner[i]) + bandHere);
                     footNext[i]     = corner[i] + along[i] * math.dot(inner[i] - corner[i], along[i]);
                     footPrevious[i] = corner[i] + along[previous] * math.dot(inner[i] - corner[i], along[previous]);
                 }
@@ -298,6 +305,8 @@ namespace Chisel.Core
             halfPlanes.Clear();
             cells.Clear();
             interiorCell = -1;
+            interiorToEdges = false;
+            openSides = 0;
             var count = input.count;
             if (count != 3 && count != 4)
                 return false;

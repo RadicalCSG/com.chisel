@@ -19,11 +19,14 @@ namespace Chisel.Core
     //: mapped as one surface on one tile, with the first one's settings, the border only along their
     // outline together. By hand (HotspotLink) two touching surfaces are connected whatever their frames, or kept apart;
     // the newest link counts. Connected surfaces that are not coplanar are unfolded about the edge they share into the
-    // first one's plane (the texture wraps round), each by a rigid map (unfoldOf).
+    // first one's plane (the texture wraps round), each by a rigid map (unfoldOf). A link can also put
+    // a border along the edge two surfaces share, or leave it out (Borders).
     internal static class HotspotGroups
     {
         // Normals and frames agree this closely (the cosine), and the surfaces share at least two corners
         const float kSameDirection = 1 - 1e-6f;
+        // A corner two members have, unfolded by each, is one point when they put it this close (squared)
+        const float kSamePoint = 1e-10f;
 
         public struct Group
         {
@@ -34,12 +37,92 @@ namespace Chisel.Core
             // its sections (when input has some), in the flat lists Find fills: where they start and how many there are
             public int3                sectionStart, sectionCount;
             public int                 interiorCell;
+            public bool                interiorToEdges;
+            public int                 openSides;
+        }
+
+        // The corners two surfaces share where the newest link between them puts a border along their edge or leaves it
+        // out (bordersOf: (brush, surface) -> corner, both surfaces), for OutlineOf
+        public static void Borders(NativeList<BrushData> brushes, NativeArray<HotspotLink> links, ref UnsafeParallelMultiHashMap<int2, HotspotBorderCorner> bordersOf)
+        {
+            bordersOf.Clear();
+            if (!links.IsCreated || links.Length == 0)
+                return;
+            var brushOf = new UnsafeHashMap<CompactNodeID, int>(brushes.Length, Allocator.Temp);
+            for (int b = 0; b < brushes.Length; b++)
+                brushOf.TryAdd(brushes[b].brushIndexOrder.compactNodeID, b);
+            // the newest link of each two surfaces: (brush, surface, brush, surface) -> link
+            var newest = new UnsafeHashMap<int4, int>(links.Length, Allocator.Temp);
+            for (int l = 0; l < links.Length; l++)
+            {
+                var link = links[l];
+                if (!brushOf.TryGetValue(link.brushA, out var ba) || !brushOf.TryGetValue(link.brushB, out var bb) ||
+                    !HasSurface(brushes, ba, link.surfaceA) || !HasSurface(brushes, bb, link.surfaceB))
+                    continue;
+                var key = ba < bb || (ba == bb && link.surfaceA <= link.surfaceB) ? new int4(ba, link.surfaceA, bb, link.surfaceB)
+                                                                                    : new int4(bb, link.surfaceB, ba, link.surfaceA);
+                if (key.xy.Equals(key.zw) || (newest.TryGetValue(key, out var older) && links[older].order > link.order))
+                    continue;
+                newest.Remove(key);
+                newest.Add(key, l);
+            }
+            brushOf.Dispose();
+            var shared = new NativeList<float3>(8, Allocator.Temp);
+            var others = new UnsafeHashSet<float3>(16, Allocator.Temp);
+            using (var pairs = newest.GetKeyArray(Allocator.Temp))
+            {
+                for (int i = 0; i < pairs.Length; i++)
+                {
+                    var link = links[newest[pairs[i]]];
+                    if (link.border == 0)
+                        continue;
+                    ref var a = ref brushes[pairs[i].x].brushRenderBuffer.Value.surfaces[pairs[i].y];
+                    ref var b = ref brushes[pairs[i].z].brushRenderBuffer.Value.surfaces[pairs[i].w];
+                    others.Clear();
+                    for (int v = 0; v < b.colliderVertices.Length; v++)
+                        others.Add(b.colliderVertices[v] + 0.0f);
+                    shared.Clear();
+                    for (int v = 0; v < a.colliderVertices.Length; v++)
+                    {
+                        var p = a.colliderVertices[v] + 0.0f;
+                        if (others.Contains(p) && !shared.Contains(p))
+                            shared.Add(p);
+                    }
+                    if (shared.Length < 2)
+                        continue;
+                    for (int c = 0; c < shared.Length; c++)
+                    {
+                        var corner = new HotspotBorderCorner { position = shared[c], rule = link.order, border = link.border > 0 ? 1 : -1 };
+                        bordersOf.Add(pairs[i].xy, corner);
+                        bordersOf.Add(pairs[i].zw, corner);
+                    }
+                }
+            }
+            others.Dispose();
+            shared.Dispose();
+            newest.Dispose();
+        }
+
+        static bool HasSurface(NativeList<BrushData> brushes, int brush, int surface)
+        {
+            return brushes[brush].brushRenderBuffer.IsCreated && surface >= 0 && surface < brushes[brush].brushRenderBuffer.Value.surfaces.Length &&
+                   brushes[brush].brushRenderBuffer.Value.surfaces[surface].indices.Length >= 3;
+        }
+
+        // The corners of a surface's edges given a border or none by hand (Borders), unfolded by its map
+        public static void BordersOf(int2 surface, in UnsafeParallelMultiHashMap<int2, HotspotBorderCorner> bordersOf, NativeList<HotspotBorderCorner> rules)
+        {
+            rules.Clear();
+            if (!bordersOf.IsCreated || !bordersOf.TryGetFirstValue(surface, out var corner, out var iterator))
+                return;
+            do rules.Add(corner);
+            while (bordersOf.TryGetNextValue(out corner, ref iterator));
         }
 
         // The groups of the model's surfaces (groupOf: (brush, surface) -> group; unfoldOf: how a surface not in its group's
-        // first plane is unfolded into it) and their sections, flat
+        // first plane is unfolded into it) and their sections, flat; bordersOf: where links put or leave out a border (Borders)
         public static void Find(NativeList<BrushData> brushes, NativeArray<HotspotTileData> tiles, NativeArray<HotspotLayoutData> layouts, NativeArray<HotspotLink> links,
-                                ref UnsafeHashMap<int2, int> groupOf, ref UnsafeHashMap<int2, float4x4> unfoldOf, NativeList<Group> groups, NativeList<HotspotSectionLine> lines,
+                                in UnsafeParallelMultiHashMap<int2, HotspotBorderCorner> bordersOf, ref UnsafeHashMap<int2, int> groupOf, ref UnsafeHashMap<int2, float4x4> unfoldOf, NativeList<Group> groups, NativeList<HotspotSectionLine> lines,
                                 NativeList<HotspotSectionHalfPlane> halfPlanes, NativeList<HotspotSectionCell> cells)
         {
             groupOf.Clear();
@@ -112,7 +195,7 @@ namespace Chisel.Core
             }
             having.Dispose();
 
-            // the links between candidates: the newest of each two (order, connected)
+            // the links between candidates: the newest of each two (order, connection)
             var linked = new UnsafeHashMap<int2, int2>(math.max(1, links.IsCreated ? links.Length : 0), Allocator.Temp);
             if (links.IsCreated && links.Length > 0)
             {
@@ -133,7 +216,7 @@ namespace Chisel.Core
                     if (linked.TryGetValue(pair, out var older) && older.x > link.order)
                         continue;
                     linked.Remove(pair);
-                    linked.Add(pair, new int2(link.order, link.connect ? 1 : 0));
+                    linked.Add(pair, new int2(link.order, link.connection));
                 }
                 candidateOf.Dispose();
                 brushOf.Dispose();
@@ -163,8 +246,8 @@ namespace Chisel.Core
                     var coplanar  = a.layout == b.layout && math.dot(a.normal, b.normal) >= kSameDirection;
                     var sameFrame = math.dot(a.right, b.right) >= kSameDirection && math.dot(a.up, b.up) >= kSameDirection;
                     var together  = coplanar && sameFrame;
-                    if (linked.TryGetValue(pairs[i], out var link))
-                        together = a.layout == b.layout && link.y != 0;
+                    if (linked.TryGetValue(pairs[i], out var link) && link.y != 0)
+                        together = a.layout == b.layout && link.y > 0;
                     if (!together)
                         continue;
                     joined.Add(pairs[i]);
@@ -215,11 +298,24 @@ namespace Chisel.Core
             var members   = new NativeList<int>(16, Allocator.Temp);
             var positions = new NativeList<float3>(64, Allocator.Temp);
             var indices   = new NativeList<int>(64, Allocator.Temp);
+            var rules     = new NativeList<HotspotBorderCorner>(8, Allocator.Temp);
+            var memberRules = new NativeList<HotspotBorderCorner>(8, Allocator.Temp);
+            // where each corner was unfolded to first: the edge two members share is the same in both
+            var placed    = new UnsafeHashMap<float3, float3>(64, Allocator.Temp);
+            float3 Place(float3 p, float4x4 map)
+            {
+                p += 0.0f;
+                var q = math.mul(map, new float4(p, 1)).xyz;
+                if (placed.TryGetValue(p, out var first) && math.distancesq(first, q) <= kSamePoint * math.max(1, math.lengthsq(q)))
+                    return first;
+                placed.TryAdd(p, q);
+                return q;
+            }
             for (int lead = 0; lead < candidates.Length; lead++)
             {
                 if (Root(lead) != lead || size[lead] < 2)
                     continue;
-                members.Clear(); positions.Clear(); indices.Clear();
+                members.Clear(); positions.Clear(); indices.Clear(); rules.Clear(); placed.Clear();
                 for (int c = lead; c < candidates.Length; c++)
                 {
                     if (Root(c) != lead)
@@ -228,9 +324,19 @@ namespace Chisel.Core
                     ref var surface = ref brushes[candidates[c].x].brushRenderBuffer.Value.surfaces[candidates[c].y];
                     var first = positions.Length;
                     for (int v = 0; v < surface.colliderVertices.Length; v++)
-                        positions.Add(math.mul(unfold[c], new float4(surface.colliderVertices[v], 1)).xyz);
+                        positions.Add(Place(surface.colliderVertices[v], unfold[c]));
                     for (int i = 0; i < surface.indices.Length; i++)
                         indices.Add(first + surface.indices[i]);
+                }
+                for (int m = 0; m < members.Length; m++)
+                {
+                    BordersOf(candidates[members[m]], bordersOf, memberRules);
+                    for (int i = 0; i < memberRules.Length; i++)
+                    {
+                        var corner = memberRules[i];
+                        corner.position = Place(corner.position, unfold[members[m]]);
+                        rules.Add(corner);
+                    }
                 }
                 var source  = SourceOf(brushes, candidates[lead]);
                 var layout  = layouts[source.layout - 1];
@@ -254,11 +360,13 @@ namespace Chisel.Core
                     // built once from what the group draws together, so the border runs only along its outline
                     var sections = HotspotSections.Create(Allocator.Temp);
                     var built = group.input.count == 4 && !group.input.Repeated
-                              ? sections.BuildConforming(group.input, indices, positions)
+                              ? sections.BuildConforming(group.input, indices, positions, rules.AsArray())
                               : sections.Build(group.input);
                     if (built)
                     {
-                        group.interiorCell = sections.interiorCell;
+                        group.interiorCell    = sections.interiorCell;
+                        group.interiorToEdges = sections.interiorToEdges;
+                        group.openSides       = sections.openSides;
                         group.sectionStart = new int3(lines.Length, halfPlanes.Length, cells.Length);
                         group.sectionCount = new int3(sections.lines.Length, sections.halfPlanes.Length, sections.cells.Length);
                         lines.AddRange(sections.lines.AsArray());
@@ -276,7 +384,7 @@ namespace Chisel.Core
                         unfoldOf.TryAdd(candidates[members[m]], unfold[members[m]]);
                 }
             }
-            members.Dispose(); positions.Dispose(); indices.Dispose();
+            members.Dispose(); positions.Dispose(); indices.Dispose(); rules.Dispose(); memberRules.Dispose(); placed.Dispose();
             size.Dispose();
             unfold.Dispose();
             parent.Dispose();
@@ -291,7 +399,9 @@ namespace Chisel.Core
             sections.lines.AddRange(lines.AsArray().GetSubArray(group.sectionStart.x, group.sectionCount.x));
             sections.halfPlanes.AddRange(halfPlanes.AsArray().GetSubArray(group.sectionStart.y, group.sectionCount.y));
             sections.cells.AddRange(cells.AsArray().GetSubArray(group.sectionStart.z, group.sectionCount.z));
-            sections.interiorCell = group.interiorCell;
+            sections.interiorCell    = group.interiorCell;
+            sections.interiorToEdges = group.interiorToEdges;
+            sections.openSides       = group.openSides;
             return sections;
         }
 

@@ -61,6 +61,10 @@ namespace Chisel.Editors
             // what is connected by hand, now that its brushes are there
             if (s_Corner)
                 ChiselHotspotLinks.Connect(Face(s_Corner, p => -p.z), Face(s_Corner, p => p.x));
+            if (s_ShownLeft && s_ShownRight)
+                ChiselHotspotLinks.SetBorder(Face(s_ShownLeft, p => -p.z), Face(s_ShownRight, p => -p.z), ChiselHotspotBorderState.Shown);
+            if (s_Foot && s_Slab)
+                ChiselHotspotLinks.SetBorder(Face(s_Foot, p => -p.z), Face(s_Slab, p => p.y), ChiselHotspotBorderState.Hidden);
             ChiselNodeHierarchyManager.Update();
             ChiselModelManager.Instance.UpdateModels();
 
@@ -337,18 +341,23 @@ namespace Chisel.Editors
             Subtract(Box(s, "diagonal cutter", new Vector3(24 + 1.5f, 1.5f, 0), new Vector3(5, 3, 1), new Vector3(0, 0, 45)));
         }
 
-        static ChiselBoxComponent s_Corner;
+        static ChiselBoxComponent s_Corner, s_ShownLeft, s_ShownRight, s_Foot, s_Slab;
 
         // Coplanar surfaces that touch connect by themselves (one tile across them, the border only round them all);
-        // round a corner only by hand, and then the tile wraps round it
+        // round a corner only by hand, and then the tile wraps round it. By hand, the border along the edge two surfaces
+        // share can be shown or hidden.
         static void Connections()
         {
-            var s = Station("12 connections (touching coplanar walls, offset bricks, a corner connected by hand)");
+            var s = Station("12 connections (touching coplanar walls, offset bricks, a corner connected by hand, a border shown and one hidden by hand)");
             Box(s, "two walls, left", new Vector3(1, 0, 0), new Vector3(2, 2, 0.25f));
             Box(s, "two walls, right", new Vector3(3, 0, 0), new Vector3(2, 2, 0.25f));
             Box(s, "offset bricks, lower", new Vector3(7, 0, 0), new Vector3(4, 1, 0.25f));
             Box(s, "offset bricks, upper", new Vector3(9, 1, 0), new Vector3(4, 1, 0.25f));
             s_Corner = Box(s, "block, front and right side connected by hand", new Vector3(15, 0, 0), new Vector3(2, 2, 2));
+            s_ShownLeft  = Box(s, "two walls, the border shown where they meet, left", new Vector3(20, 0, 0), new Vector3(2, 2, 0.25f));
+            s_ShownRight = Box(s, "two walls, the border shown where they meet, right", new Vector3(22, 0, 0), new Vector3(2, 2, 0.25f));
+            s_Slab = Box(s, "slab", new Vector3(28, 0, 0), new Vector3(5, 0.5f, 2));
+            s_Foot = Box(s, "wall on the slab, no border along its foot", new Vector3(28, 0.5f, 0), new Vector3(4, 2, 0.25f));
         }
 
         // The face of a generator's first brush whose corners score highest on average

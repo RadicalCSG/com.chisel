@@ -583,6 +583,8 @@ namespace Chisel.Editors
 
         static readonly GUIContent kHotspotConnectionContents = new("Connection", "How the two selected surfaces are mapped where they touch: as one surface (Connected), apart (Disconnected), or as touching coplanar surfaces are by themselves (Automatic)");
         static readonly string[]   kHotspotConnectionNames    = { "Automatic", "Connected", "Disconnected" };
+        static readonly GUIContent kHotspotBorderContents     = new("Border", "The border along the edge the two selected surfaces share: none where they are mapped as one and a border where each has its own (Automatic), a border (Shown), or none (Hidden)");
+        static readonly string[]   kHotspotBorderNames        = { "Automatic", "Shown", "Hidden" };
 
         // With two surfaces selected: whether they are mapped as one where they touch
         void ConnectionGUI()
@@ -595,16 +597,20 @@ namespace Chisel.Editors
                 return;
             var state  = ChiselHotspotLinks.StateOf(a, b);
             var chosen = (ChiselHotspotLinkState)EditorGUILayout.Popup(kHotspotConnectionContents, (int)state, kHotspotConnectionNames);
-            if (chosen == state)
-                return;
-            Undo.RecordObject(model, "Hotspot Connection");
-            switch (chosen)
+            if (chosen != state)
             {
-                case ChiselHotspotLinkState.Connected:    ChiselHotspotLinks.Connect(a, b); break;
-                case ChiselHotspotLinkState.Disconnected: ChiselHotspotLinks.Disconnect(a, b); break;
-                default:                                  ChiselHotspotLinks.Forget(a, b); break;
+                Undo.RecordObject(model, "Hotspot Connection");
+                ChiselHotspotLinks.SetConnection(a, b, chosen);
+                EditorUtility.SetDirty(model);
             }
-            EditorUtility.SetDirty(model);
+            var border       = ChiselHotspotLinks.BorderOf(a, b);
+            var chosenBorder = (ChiselHotspotBorderState)EditorGUILayout.Popup(kHotspotBorderContents, (int)border, kHotspotBorderNames);
+            if (chosenBorder != border)
+            {
+                Undo.RecordObject(model, "Hotspot Border");
+                ChiselHotspotLinks.SetBorder(a, b, chosenBorder);
+                EditorUtility.SetDirty(model);
+            }
         }
 
         
@@ -1258,6 +1264,17 @@ namespace Chisel.Editors
 
         static SurfaceReference     s_StartSurfaceReference;
         static Vector2              s_JumpedMousePosition;
+
+        // The surface the drag started on
+        internal static SurfaceReference StartSurfaceReference => s_StartSurfaceReference;
+
+        // Whether a surface's material maps it with a hotspot layout
+        internal static bool IsHotspotMapped(SurfaceReference surface)
+        {
+            var material = surface?.RenderMaterial;
+            var metadata = material != null ? material.GetMetadataOfType<ChiselSurfaceMetadata>() : null;
+            return metadata != null && metadata.hotspotLayout != null;
+        }
 
         internal static Plane       s_WorldDragPlane;
         internal static Plane       s_WorldProjectionPlane;

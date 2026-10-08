@@ -1,3 +1,6 @@
+using System.Collections.Generic;
+using Chisel.Core;
+using Chisel.Components;
 using UnityEngine;
 using UnityEditor;
 using UnityEditor.ShortcutManagement;
@@ -89,6 +92,18 @@ namespace Chisel.Editors
         private static bool SurfaceMoveTool(SelectionType selectionType, Rect dragArea)
         {
             var id = GUIUtility.GetControlID(kSurfaceMoveHash, FocusType.Keyboard, dragArea);
+            switch (Event.current.GetTypeForControl(id))
+            {
+                case EventType.MouseDown: s_Connecting = false; s_ConnectTarget = null; break;
+                // before the tool lets go of what it dragged
+                case EventType.MouseUp:
+                {
+                    if (s_Connecting && ChiselUVToolCommon.ToolIsDragging && ChiselUVToolCommon.IsToolEnabled(id))
+                        ConnectDragged();
+                    s_Connecting = false;
+                    break;
+                }
+            }
             if (!ChiselUVToolCommon.SurfaceToolBase(id, selectionType, dragArea))
                 return false;
 
@@ -101,6 +116,12 @@ namespace Chisel.Editors
                     if (!ChiselUVToolCommon.ToolIsDragging)
                         break;
 
+                    if (s_Connecting)
+                    {
+                        RenderConnection();
+                        break;
+                    }
+
                     ChiselUVToolCommon.RenderIntersectionPoint();
                     ChiselUVToolCommon.RenderSnapEvent();
 
@@ -112,12 +133,75 @@ namespace Chisel.Editors
                     if (!ChiselUVToolCommon.IsToolEnabled(id))
                         break;
 
-                    ChiselUVToolCommon.StartToolDragging();
+                    var mousePosition = Event.current.mousePosition;
+                    if (ChiselUVToolCommon.StartToolDragging())
+                        s_Connecting = ChiselUVToolCommon.IsHotspotMapped(ChiselUVToolCommon.StartSurfaceReference);
+                    if (s_Connecting)
+                    {
+                        UpdateConnectTarget(mousePosition);
+                        needRepaint = true;
+                        break;
+                    }
                     TranslateSurfacesInWorldSpace(ChiselUVToolCommon.s_WorldDragDeltaVector);
                     break;
                 }
             }
             return needRepaint;
+        }
+        #endregion
+
+        #region Hotspot Connect
+        // Dragging from a hotspot mapped surface (its uvs come from its layout, so there is nothing to move) onto another
+        // connects the two (surface connections): the other takes the
+        // first one's material, and loses its own links when it had another hotspot material
+        static bool             s_Connecting;
+        static SurfaceReference s_ConnectTarget;
+        static Vector3          s_ConnectEnd;
+        static readonly List<SurfaceReference> s_FoundSurfaces = new();
+
+        static void UpdateConnectTarget(Vector2 mousePosition)
+        {
+            var start = ChiselUVToolCommon.StartSurfaceReference;
+            s_ConnectTarget = null;
+            s_ConnectEnd    = ChiselUVToolCommon.s_WorldIntersection;
+            s_FoundSurfaces.Clear();
+            if (!ChiselClickSelectionManager.FindSurfaceReferences(mousePosition, false, s_FoundSurfaces, out var intersection, out var surface) ||
+                ReferenceEquals(surface, null) || ReferenceEquals(start, null) || start.Equals(surface))
+                return;
+            s_ConnectEnd = intersection.worldPlaneIntersection;
+            if (ChiselHotspotLinks.ModelOfSurfaces(start, surface))
+                s_ConnectTarget = surface;
+        }
+
+        static void RenderConnection()
+        {
+            var start = ChiselUVToolCommon.s_WorldStartPosition;
+            var color = ReferenceEquals(s_ConnectTarget, null) ? Color.white : Color.green;
+            ChiselOutlineRenderer.DrawLine(start, s_ConnectEnd, color, LineMode.NoZTest, 4, 0);
+            HandleRendering.RenderVertexBox(s_ConnectEnd);
+        }
+
+        static void ConnectDragged()
+        {
+            var source = ChiselUVToolCommon.StartSurfaceReference;
+            var target = s_ConnectTarget;
+            s_ConnectTarget = null;
+            if (ReferenceEquals(source, null) || ReferenceEquals(target, null) || source.Equals(target))
+                return;
+            var model = ChiselHotspotLinks.ModelOfSurfaces(source, target);
+            if (!model)
+                return;
+            Undo.RecordObjects(new Object[] { model, target.node }, "Hotspot Connect");
+            var material = source.RenderMaterial;
+            if (target.RenderMaterial != material)
+            {
+                if (ChiselUVToolCommon.IsHotspotMapped(target))
+                    ChiselHotspotLinks.ForgetAllOf(target);
+                target.RenderMaterial = material;
+            }
+            ChiselHotspotLinks.Connect(source, target);
+            EditorUtility.SetDirty(model);
+            EditorUtility.SetDirty(target.node);
         }
         #endregion
     }
