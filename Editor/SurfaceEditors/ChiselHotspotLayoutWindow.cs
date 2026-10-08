@@ -37,13 +37,27 @@ namespace Chisel.Editors
         [MenuItem("Window/Chisel/Hotspot Layout")]
         public static void Open() { Open(Selection.activeObject as ChiselHotspotLayout); }
 
-        public static void Open(ChiselHotspotLayout layout)
+        public static void Open(ChiselHotspotLayout layout) { Open(layout, null); }
+
+        // From a material: a layout without a texture of its own takes the material's
+        public static void Open(ChiselHotspotLayout layout, Material material)
         {
+            if (layout != null && layout.texture == null && material != null && material.mainTexture is Texture2D texture)
+                EditLayout(layout, "Hotspot Layout Texture", () => layout.texture = texture);
             var window = GetWindow<ChiselHotspotLayoutWindow>();
             window.titleContent = new GUIContent("Hotspot Layout");
             if (layout != null)
                 window.SetLayout(layout);
             window.Show();
+        }
+
+        // Records the layout for undo, and afterwards tells the models it changed
+        internal static void EditLayout(ChiselHotspotLayout layout, string name, System.Action edit)
+        {
+            Undo.RecordObject(layout, name);
+            edit();
+            EditorUtility.SetDirty(layout);
+            layout.NotifyChanged();
         }
 
         void SetLayout(ChiselHotspotLayout newLayout)
@@ -75,13 +89,9 @@ namespace Chisel.Editors
                 SetLayout(selected);
         }
 
-        // Records the layout for undo, and afterwards tells the models it changed
         void Edit(string name, System.Action edit)
         {
-            Undo.RecordObject(layout, name);
-            edit();
-            EditorUtility.SetDirty(layout);
-            layout.NotifyChanged();
+            EditLayout(layout, name, edit);
             Repaint();
         }
 
@@ -408,21 +418,8 @@ namespace Chisel.Editors
         void Panel()
         {
             EditorGUILayout.LabelField("Layout", EditorStyles.boldLabel);
-            EditorGUI.BeginChangeCheck();
-            var texture       = (Texture2D)EditorGUILayout.ObjectField("Texture", layout.texture, typeof(Texture2D), false);
-            var size          = EditorGUILayout.Vector2IntField("Size in pixels", layout.size);
-            var pixelsPerUnit = EditorGUILayout.FloatField("Pixels per unit", layout.pixelsPerUnit);
-            if (EditorGUI.EndChangeCheck())
-            {
-                Edit("Change Hotspot Layout", () =>
-                {
-                    if (texture != layout.texture && texture != null && size == layout.size)
-                        size = new Vector2Int(texture.width, texture.height);
-                    layout.texture = texture;
-                    layout.pixelsPerUnit = Mathf.Max(0.001f, pixelsPerUnit);
-                    layout.Resize(size);
-                });
-            }
+            if (LayoutFields(layout))
+                Repaint();
             using (new EditorGUILayout.HorizontalScope())
             {
                 if (GUILayout.Button(new GUIContent("Import…", "A Chisel layout (.json), Valve rectangles (.rect), an SVG, or a colour mask image (one flat colour per tile)")))
@@ -456,8 +453,35 @@ namespace Chisel.Editors
 
         void TilePanel(int index)
         {
-            var tile = layout.tiles[index];
             EditorGUILayout.LabelField("Tile", EditorStyles.boldLabel);
+            if (TileFields(layout, index))
+                Repaint();
+        }
+
+        // The layout's own settings, as the window and the inspectors show them; true when they changed
+        internal static bool LayoutFields(ChiselHotspotLayout layout)
+        {
+            EditorGUI.BeginChangeCheck();
+            var texture       = (Texture2D)EditorGUILayout.ObjectField("Texture", layout.texture, typeof(Texture2D), false);
+            var size          = EditorGUILayout.Vector2IntField("Size in pixels", layout.size);
+            var pixelsPerUnit = EditorGUILayout.FloatField("Pixels per unit", layout.pixelsPerUnit);
+            if (!EditorGUI.EndChangeCheck())
+                return false;
+            EditLayout(layout, "Change Hotspot Layout", () =>
+            {
+                if (texture != layout.texture && texture != null && size == layout.size)
+                    size = new Vector2Int(texture.width, texture.height);
+                layout.texture = texture;
+                layout.pixelsPerUnit = Mathf.Max(0.001f, pixelsPerUnit);
+                layout.Resize(size);
+            });
+            return true;
+        }
+
+        // A tile's settings, as the window and the inspectors show them; true when they changed
+        internal static bool TileFields(ChiselHotspotLayout layout, int index)
+        {
+            var tile = layout.tiles[index];
             EditorGUILayout.LabelField("Id", tile.id.ToString());
             if (tile.points != null && tile.points.Length >= 3)
             {
@@ -480,8 +504,10 @@ namespace Chisel.Editors
             tile.flags = Flag(tile.flags, HotspotTileFlags.PartialRepeats, "Repeats cut off", "Repeats keep their exact size and the last one is cut off, instead of all stretching to fit");
             tile.border = Mathf.Max(0, EditorGUILayout.IntField(new GUIContent("Border (px)", "The width of the tile's border, a band along its outline (0 for none)"), tile.border));
             tile.pixelsPerUnit = Mathf.Max(0, EditorGUILayout.FloatField(new GUIContent("Pixels per unit", "The texture density this tile is meant for; 0 takes the layout's"), tile.pixelsPerUnit));
-            if (EditorGUI.EndChangeCheck())
-                Edit("Change Hotspot Tile", () => layout.tiles[index] = tile);
+            if (!EditorGUI.EndChangeCheck())
+                return false;
+            EditLayout(layout, "Change Hotspot Tile", () => layout.tiles[index] = tile);
+            return true;
         }
 
         static HotspotTileFlags Flag(HotspotTileFlags flags, HotspotTileFlags flag, string label, string tooltip)
@@ -559,18 +585,31 @@ namespace Chisel.Editors
         }
     }
 
+    // Every setting of a layout and of each of its tiles (the lines are drawn and moved in the window)
     [CustomEditor(typeof(ChiselHotspotLayout))]
     public sealed class ChiselHotspotLayoutEditor : Editor
     {
+        readonly HashSet<int> unfolded = new();
+
         public override void OnInspectorGUI()
         {
             var layout = (ChiselHotspotLayout)target;
-            serializedObject.Update();
-            EditorGUILayout.PropertyField(serializedObject.FindProperty(nameof(ChiselHotspotLayout.texture)));
-            EditorGUILayout.PropertyField(serializedObject.FindProperty(nameof(ChiselHotspotLayout.size)));
-            EditorGUILayout.PropertyField(serializedObject.FindProperty(nameof(ChiselHotspotLayout.pixelsPerUnit)));
-            serializedObject.ApplyModifiedProperties();
+            ChiselHotspotLayoutWindow.LayoutFields(layout);
             EditorGUILayout.LabelField("Tiles", $"{layout.tiles.Count} ({(layout.HasCuts ? "divided by lines" : "without lines")})");
+            EditorGUI.indentLevel++;
+            for (int i = 0; i < layout.tiles.Count; i++)
+            {
+                var tile = layout.tiles[i];
+                var name = string.IsNullOrEmpty(tile.name) ? "Tile " + tile.id : tile.name;
+                var open = EditorGUILayout.Foldout(unfolded.Contains(tile.id), name, true);
+                if (open) unfolded.Add(tile.id); else unfolded.Remove(tile.id);
+                if (!open)
+                    continue;
+                EditorGUI.indentLevel++;
+                ChiselHotspotLayoutWindow.TileFields(layout, i);
+                EditorGUI.indentLevel--;
+            }
+            EditorGUI.indentLevel--;
             if (GUILayout.Button("Edit Layout"))
                 ChiselHotspotLayoutWindow.Open(layout);
         }

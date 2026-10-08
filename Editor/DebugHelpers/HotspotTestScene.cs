@@ -88,6 +88,7 @@ namespace Chisel.Editors
             var layout = CreateLayout();
             if (layout == null)
                 return null;
+            layout.texture = texture;
             var metadata = material.HasMetadataOfType<ChiselSurfaceMetadata>()
                          ? material.GetMetadataOfType<ChiselSurfaceMetadata>()
                          : material.AddMetadataOfType<ChiselSurfaceMetadata>();
