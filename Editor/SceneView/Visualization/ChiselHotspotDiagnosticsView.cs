@@ -441,6 +441,18 @@ namespace Chisel.Editors
                 var modelMatrix = model.transform.localToWorldMatrix;
                 foreach (var link in links)
                 {
+                    // the border along one edge of a surface by itself: along that edge
+                    if (link.single)
+                    {
+                        if (!ChiselHotspotLinks.Resolve(link, out var brush, out _) || !Polygon(brush, link.surfaceA, modelMatrix, s_PolygonA) ||
+                            link.edge < 0 || link.edge >= s_PolygonA.Count)
+                            continue;
+                        var from = s_PolygonA[link.edge]; var to = s_PolygonA[(link.edge + 1) % s_PolygonA.Count];
+                        Handles.color = kBorderOnlyColor;
+                        Handles.DrawAAPolyLine(6, from, to);
+                        Handles.Label((from + to) * 0.5f, $"#{link.order} border " + (link.border == ChiselHotspotBorderState.Hidden ? "hidden" : "shown"), s_LabelStyle);
+                        continue;
+                    }
                     if (!ChiselHotspotLinks.Resolve(link, out var brushA, out var brushB) ||
                         !Polygon(brushA, link.surfaceA, modelMatrix, s_PolygonA) || !Polygon(brushB, link.surfaceB, modelMatrix, s_PolygonB))
                         continue;

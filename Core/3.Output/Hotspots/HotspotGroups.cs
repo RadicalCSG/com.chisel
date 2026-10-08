@@ -56,6 +56,14 @@ namespace Chisel.Core
             for (int l = 0; l < links.Length; l++)
             {
                 var link = links[l];
+                // one edge of a surface by itself: the rule is the edge
+                if (link.OfOneEdge)
+                {
+                    if (link.border != 0 && brushOf.TryGetValue(link.brushA, out var brush) && HasSurface(brushes, brush, link.surfaceA))
+                        bordersOf.Add(new int2(brush, link.surfaceA), new HotspotBorderCorner { position = link.edgeFrom, end = link.edgeTo, segment = true,
+                                                                                               rule = link.order, border = link.border > 0 ? 1 : -1 });
+                    continue;
+                }
                 if (!brushOf.TryGetValue(link.brushA, out var ba) || !brushOf.TryGetValue(link.brushB, out var bb) ||
                     !HasSurface(brushes, ba, link.surfaceA) || !HasSurface(brushes, bb, link.surfaceB))
                     continue;
@@ -367,6 +375,8 @@ namespace Chisel.Core
                     {
                         var corner = memberRules[i];
                         corner.position = Place(corner.position, unfold[members[m]]);
+                        if (corner.segment)
+                            corner.end = Place(corner.end, unfold[members[m]]);
                         rules.Add(corner);
                     }
                 }

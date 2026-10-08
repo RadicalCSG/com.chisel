@@ -50,24 +50,47 @@ namespace Chisel.Core
             }
             double2 Frame(float3 p) => new double2(math.dot(r, (double3)p), math.dot(u, (double3)p));
 
-            // (corner, rule) -> border, and the rules newest first
+            // (corner, rule) -> border, the edges of single edge rules (from, to in the frame; rule, border), and the rules
+            // newest first
             var ruled    = new UnsafeHashMap<int2, int>(rules.IsCreated ? math.max(1, rules.Length) : 1, Allocator.Temp);
+            var segments = new NativeList<double4>(rules.IsCreated ? math.max(1, rules.Length) : 1, Allocator.Temp);
+            var segmentOf = new NativeList<int2>(rules.IsCreated ? math.max(1, rules.Length) : 1, Allocator.Temp);
             var newest   = new NativeList<int>(4, Allocator.Temp);
             for (int i = 0; rules.IsCreated && i < rules.Length; i++)
             {
-                if (!ids.TryGetValue(math.asint(rules[i].position + 0.0f), out var id))
-                    continue;
-                ruled.TryAdd(new int2(id, rules[i].rule), rules[i].border);
+                if (rules[i].segment)
+                {
+                    segments.Add(new double4(Frame(rules[i].position), Frame(rules[i].end)));
+                    segmentOf.Add(new int2(rules[i].rule, rules[i].border));
+                } else
+                {
+                    if (!ids.TryGetValue(math.asint(rules[i].position + 0.0f), out var id))
+                        continue;
+                    ruled.TryAdd(new int2(id, rules[i].rule), rules[i].border);
+                }
                 if (!newest.Contains(rules[i].rule))
                     newest.Add(rules[i].rule);
             }
             newest.Sort();
+            // a point of the outline this close to a single edge rule's edge is on it (the edge comes from the brush, the
+            // outline from the CSG): the larger of tolerance and a few float steps
+            var extent = 0.0;
+            for (int i = 0; i < where.Length; i++)
+                extent = math.max(extent, math.cmax(math.abs(Frame(where[i]))));
+            var alongEdge = math.max(tolerance, 1e-6 * math.max(1, extent));
             int BorderOf(int a, int b)
             {
                 for (int i = newest.Length - 1; i >= 0; i--)
                 {
                     if (ruled.TryGetValue(new int2(a, newest[i]), out var border) && ruled.ContainsKey(new int2(b, newest[i])))
                         return border;
+                    for (int k = 0; k < segments.Length; k++)
+                    {
+                        if (segmentOf[k].x == newest[i] &&
+                            Deviation(segments[k].xy, Frame(where[a]), segments[k].zw) <= alongEdge &&
+                            Deviation(segments[k].xy, Frame(where[b]), segments[k].zw) <= alongEdge)
+                            return segmentOf[k].y;
+                    }
                 }
                 return 0;
             }
@@ -223,6 +246,8 @@ namespace Chisel.Core
             used.Dispose();
             outline.Dispose();
             newest.Dispose();
+            segments.Dispose();
+            segmentOf.Dispose();
             ruled.Dispose();
             next.Dispose();
             edges.Dispose();

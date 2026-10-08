@@ -5,6 +5,7 @@ using Chisel.Core;
 using Chisel.Components;
 using Unity.Mathematics;
 using UnityEditor;
+using UnityEditor.ShortcutManagement;
 using UnityEngine;
 using System.Buffers;
 using UnityEngine.Pool;
@@ -543,7 +544,7 @@ namespace Chisel.Editors
                     foreach (var item in surfaces)
                     {
                         var details = item.Surface.surfaceDetails;
-                        details.hotspot.seed = details.hotspot.seed * 1664525u + 1013904223u;
+                        details.hotspot.seed = NextSeed(details.hotspot.seed);
                         item.Surface.surfaceDetails = details;
                         item.Store();
                     }
@@ -1268,6 +1269,32 @@ namespace Chisel.Editors
 
         // The surface the drag started on
         internal static SurfaceReference StartSurfaceReference => s_StartSurfaceReference;
+
+        static uint NextSeed(uint seed) => seed * 1664525u + 1013904223u;
+
+        // Next Variation for every selected hotspot surface that keeps no tile of its own, from the keyboard
+        // (editor workflow: cycle through the candidates)
+        const string kNextVariationShortcutName = "Next Hotspot Variation";
+        [Shortcut(ChiselKeyboardDefaults.ShortCutEditModeBase + kNextVariationShortcutName, typeof(SceneView), KeyCode.N, ShortcutModifiers.Alt, displayName = kNextVariationShortcutName)]
+        static void NextHotspotVariation()
+        {
+            var selected = ChiselSurfaceSelectionManager.Selection;
+            if (selected == null || selected.Count == 0)
+                return;
+            Undo.RecordObjects(ChiselSurfaceSelectionManager.SelectedNodes.ToArray(), kNextVariationShortcutName);
+            foreach (var surface in selected)
+            {
+                if (!IsHotspotMapped(surface))
+                    continue;
+                var details = surface.SurfaceDetails;
+                if (details.hotspot.pinnedTile != 0)
+                    continue;
+                details.hotspot.seed = NextSeed(details.hotspot.seed);
+                surface.SurfaceDetails = details;
+            }
+            if (s_Instance)
+                s_Instance.UpdateAllSurfaces();
+        }
 
         // Whether a surface's material maps it with a hotspot layout
         internal static bool IsHotspotMapped(SurfaceReference surface)

@@ -13,7 +13,8 @@ namespace Chisel.Editors
 {
     // Dragging from a hotspot mapped surface onto another connects the two (,
     // surface connections): the other takes the first one's material, and loses its own links when it had another hotspot
-    // material. Dragging between two that are connected disconnects them.
+    // material. Dragging between two that are connected disconnects them. Clicking an edge of a hotspot mapped surface (it
+    // lights up under the mouse) hides the border along it, or brings it back.
     sealed class ChiselUVConnectTool : ChiselEditToolBase
     {
         const string kToolName = "UV Connect";
@@ -50,7 +51,10 @@ namespace Chisel.Editors
             HandleUtility.AddDefaultControl(defaultID);
 
             var selectionType = ChiselRectSelectionManager.GetCurrentSelectionType();
-            var repaint       = ChiselUVToolCommon.SurfaceSelection(dragArea, selectionType);
+            var repaint       = false;
+            if (Event.current.type == EventType.MouseMove)
+                repaint = UpdateHoverEdge(Event.current.mousePosition);
+            repaint = ChiselUVToolCommon.SurfaceSelection(dragArea, selectionType) || repaint;
             repaint = SurfaceConnectTool(selectionType, dragArea) || repaint;
 
             MouseCursor cursor;
@@ -85,6 +89,8 @@ namespace Chisel.Editors
                 {
                     if (s_Connecting && ChiselUVToolCommon.ToolIsDragging && ChiselUVToolCommon.IsToolEnabled(id))
                         ConnectDragged();
+                    else if (!ChiselUVToolCommon.ToolIsDragging && ChiselUVToolCommon.IsToolEnabled(id) && s_Edge >= 0)
+                        ToggleEdgeBorder();
                     s_Connecting = false;
                     break;
                 }
@@ -99,6 +105,8 @@ namespace Chisel.Editors
                 {
                     if (ChiselUVToolCommon.ToolIsDragging && s_Connecting)
                         RenderConnection();
+                    else if (!ChiselUVToolCommon.ToolIsDragging && s_Edge >= 0)
+                        RenderHoverEdge();
                     break;
                 }
                 case EventType.MouseDrag:
@@ -117,6 +125,53 @@ namespace Chisel.Editors
                 }
             }
             return needRepaint;
+        }
+
+        // The edge of a hotspot mapped surface under the mouse, if it is this close to one (pixels)
+        const float kEdgePickDistance = 6;
+        static SurfaceReference s_EdgeSurface;
+        static int              s_Edge = -1;
+        static Vector3          s_EdgeFrom, s_EdgeTo;
+
+        static bool UpdateHoverEdge(Vector2 mousePosition)
+        {
+            var before = s_Edge; var beforeSurface = s_EdgeSurface;
+            s_Edge = -1; s_EdgeSurface = null;
+            s_FoundSurfaces.Clear();
+            if (ChiselClickSelectionManager.FindSurfaceReferences(mousePosition, false, s_FoundSurfaces, out _, out var surface) &&
+                !ReferenceEquals(surface, null) && ChiselUVToolCommon.IsHotspotMapped(surface))
+            {
+                var modelMatrix = ChiselNodeHierarchyManager.FindModelTransformMatrixOfTransform(surface.node.transform);
+                var best = kEdgePickDistance;
+                for (int edge = 0; ChiselHotspotLinks.EdgeOf(surface.brush, surface.surfaceIndex, edge, out var from, out var to); edge++)
+                {
+                    var a = modelMatrix.MultiplyPoint3x4(from); var b = modelMatrix.MultiplyPoint3x4(to);
+                    var distance = HandleUtility.DistanceToLine(a, b);
+                    if (distance >= best)
+                        continue;
+                    best = distance;
+                    s_Edge = edge; s_EdgeSurface = surface; s_EdgeFrom = a; s_EdgeTo = b;
+                }
+            }
+            return s_Edge != before || !Equals(s_EdgeSurface, beforeSurface);
+        }
+
+        // yellow: clicking hides the border along it; cyan: it has none, clicking brings it back
+        static void RenderHoverEdge()
+        {
+            var hidden = ChiselHotspotLinks.EdgeBorderOf(s_EdgeSurface, s_Edge) == ChiselHotspotBorderState.Hidden;
+            ChiselOutlineRenderer.DrawLine(s_EdgeFrom, s_EdgeTo, hidden ? Color.cyan : Color.yellow, LineMode.NoZTest, 4, 0);
+        }
+
+        static void ToggleEdgeBorder()
+        {
+            var model = s_EdgeSurface.node ? s_EdgeSurface.node.hierarchyItem.Model : null;
+            if (!model)
+                return;
+            Undo.RecordObject(model, "Hotspot Edge Border");
+            var hidden = ChiselHotspotLinks.EdgeBorderOf(s_EdgeSurface, s_Edge) == ChiselHotspotBorderState.Hidden;
+            ChiselHotspotLinks.SetEdgeBorder(s_EdgeSurface, s_Edge, hidden ? ChiselHotspotBorderState.Automatic : ChiselHotspotBorderState.Hidden);
+            EditorUtility.SetDirty(model);
         }
 
         static void UpdateTarget(Vector2 mousePosition)

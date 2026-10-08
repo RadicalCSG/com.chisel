@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using Chisel.Core;
 using Unity.Collections;
+using Unity.Mathematics;
 using UnityEngine;
 
 namespace Chisel.Components
@@ -17,6 +18,8 @@ namespace Chisel.Components
         public int                      brushB, surfaceB;
         public bool                     connect;
         public bool                     automatic;          // connected or not as they would be by themselves (connect unused)
+        public bool                     single;             // the border along one edge of surface A by itself (b, brushB unused)
+        public int                      edge;               // single: the edge, by its place in the polygon (from its corner edge to the next)
         public ChiselHotspotBorderState border;
         public int                      order;              // the newer, the higher
     }
@@ -115,6 +118,65 @@ namespace Chisel.Components
             return Newest(a, b, out var link) ? link.border : ChiselHotspotBorderState.Automatic;
         }
 
+        // The border along one edge of a surface by itself (edge: its place in the brush polygon), as given by hand
+        public static ChiselHotspotBorderState EdgeBorderOf(SurfaceReference surface, int edge)
+        {
+            if (surface == null || !surface.node || !Locate(surface, out var brush))
+                return ChiselHotspotBorderState.Automatic;
+            var model = surface.node.hierarchyItem.Model;
+            if (!model)
+                return ChiselHotspotBorderState.Automatic;
+            foreach (var link in model.hotspotLinks)
+            {
+                if (link.single && link.a == surface.node && link.brushA == brush && link.surfaceA == surface.surfaceIndex && link.edge == edge)
+                    return link.border;
+            }
+            return ChiselHotspotBorderState.Automatic;
+        }
+
+        // A border along one edge of a surface by itself (Shown), none (Hidden), or as it would have by itself
+        public static bool SetEdgeBorder(SurfaceReference surface, int edge, ChiselHotspotBorderState border)
+        {
+            if (surface == null || !surface.node || !Locate(surface, out var brush) || edge < 0)
+                return false;
+            var model = surface.node.hierarchyItem.Model;
+            if (!model)
+                return false;
+            var order = 0;
+            for (int i = model.hotspotLinks.Count - 1; i >= 0; i--)
+            {
+                var link = model.hotspotLinks[i];
+                order = Math.Max(order, link.order);
+                if (link.single && link.a == surface.node && link.brushA == brush && link.surfaceA == surface.surfaceIndex && link.edge == edge)
+                    model.hotspotLinks.RemoveAt(i);
+            }
+            if (border != ChiselHotspotBorderState.Automatic)
+                model.hotspotLinks.Add(new ChiselHotspotLink { a = surface.node, brushA = brush, surfaceA = surface.surfaceIndex,
+                                                               b = surface.node, brushB = brush, surfaceB = -1,
+                                                               single = true, edge = edge, automatic = true, border = border, order = order + 1 });
+            surface.node.SetDirty();
+            return true;
+        }
+
+        // An edge of a brush polygon in tree space: from its corner to the next
+        public static bool EdgeOf(CSGTreeBrush brush, int polygon, int edge, out float3 from, out float3 to)
+        {
+            from = to = default;
+            if (!brush.Valid)
+                return false;
+            var blob = BrushMeshManager.GetBrushMeshBlob(brush.BrushMesh);
+            if (!blob.IsCreated)
+                return false;
+            ref var mesh = ref blob.Value;
+            if (polygon < 0 || polygon >= mesh.polygons.Length || edge < 0 || edge >= mesh.polygons[polygon].edgeCount)
+                return false;
+            var first = mesh.polygons[polygon].firstEdge; var count = mesh.polygons[polygon].edgeCount;
+            var toTree = brush.NodeToTreeSpaceMatrix;
+            from = math.mul(toTree, new float4(mesh.localVertices[mesh.halfEdges[first + edge].vertexIndex], 1)).xyz;
+            to   = math.mul(toTree, new float4(mesh.localVertices[mesh.halfEdges[first + (edge + 1) % count].vertexIndex], 1)).xyz;
+            return true;
+        }
+
         public static bool Connect(SurfaceReference a, SurfaceReference b)    { return SetConnection(a, b, ChiselHotspotLinkState.Connected); }
         public static bool Disconnect(SurfaceReference a, SurfaceReference b) { return SetConnection(a, b, ChiselHotspotLinkState.Disconnected); }
         // Connected, apart, or as they would be by themselves; the border along their edge as it was given
@@ -192,6 +254,16 @@ namespace Chisel.Components
                 using var links = new NativeList<HotspotLink>(Math.Max(1, stored.Count), Allocator.Temp);
                 foreach (var link in stored)
                 {
+                    if (link.single)
+                    {
+                        if (!Resolve(link.a, link.brushA, out var brush) || !EdgeOf(brush, link.surfaceA, link.edge, out var from, out var to))
+                            continue;
+                        var id = CompactHierarchyManager.GetCompactNodeID(brush);
+                        links.Add(new HotspotLink { brushA = id, surfaceA = link.surfaceA, brushB = id, surfaceB = -1, edgeFrom = from, edgeTo = to,
+                                                    order = link.order,
+                                                    border = link.border == ChiselHotspotBorderState.Shown ? 1 : (link.border == ChiselHotspotBorderState.Hidden ? -1 : 0) });
+                        continue;
+                    }
                     if (!Resolve(link.a, link.brushA, out var brushA) || !Resolve(link.b, link.brushB, out var brushB))
                         continue;
                     links.Add(new HotspotLink { brushA = CompactHierarchyManager.GetCompactNodeID(brushA), surfaceA = link.surfaceA,
