@@ -494,7 +494,8 @@ namespace Chisel.Core
         // repeat along each axis cut off where the surface ends): cells over the whole plane between the repeats' seams,
         // from the inset bounds' first corner, each repeat onto the tile's inner rectangle. Where edges have no border
         // (openSides, interiorToEdges) the inset bounds reach the bounds on those sides, and the repeats go on over the
-        // border's width too. False when the surface is all border or would take more than kMaxRepeats.
+        // border's width too. The surface's Offset moves the repeats along (interiorOffset), as it moves a repeating
+        // tile's. False when the surface is all border or would take more than kMaxRepeats.
         public bool BuildInteriorRepeats(in HotspotSectionInput input, int openSides = 0, bool toEdges = false)
         {
             lines.Clear();
@@ -512,14 +513,15 @@ namespace Chisel.Core
             var period = new double2(math.length(t.inner[1] - t.inner[0]), math.length(t.inner[3] - t.inner[0])) / input.pixelsPerUnit;
             if (!(period.x > 0) || !(period.y > 0))
                 return false;
-            var origin = s.inner[0];
+            var shift  = period * (double2)input.interiorOffset;
+            var origin = s.inner[0] - shift;
             var extent = new double2(math.length(s.inner[1] - s.inner[0]), math.length(s.inner[3] - s.inner[0]));
             var band   = toEdges ? (double)surfaceBand : 0;
-            // the repeats' cells, i from x0 up to x1 and j from y0 up to y1
-            var x0 = -(int)math.ceil(band / period.x - 1e-9);
-            var y0 = -(int)math.ceil(band / period.y - 1e-9);
-            var x1 = math.max(1, (int)math.ceil((extent.x + band) / period.x - 1e-9));
-            var y1 = math.max(1, (int)math.ceil((extent.y + band) / period.y - 1e-9));
+            // the repeats' cells, i from x0 up to x1 and j from y0 up to y1, from where the band starts to where it ends
+            var x0 = (int)math.floor((shift.x - band) / period.x + 1e-9);
+            var y0 = (int)math.floor((shift.y - band) / period.y + 1e-9);
+            var x1 = math.max(x0 + 1, (int)math.ceil((extent.x + band + shift.x) / period.x - 1e-9));
+            var y1 = math.max(y0 + 1, (int)math.ceil((extent.y + band + shift.y) / period.y - 1e-9));
             if ((long)(x1 - x0) * (y1 - y0) > kMaxRepeats)
                 return false;
             var firstX = lines.Length - x0 - 1;

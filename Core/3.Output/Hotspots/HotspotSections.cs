@@ -33,6 +33,8 @@ namespace Chisel.Core
         public float2           lastRepeat;
         // how far the repeats are moved along, a part of one (0 along an axis that does not repeat)
         public float2           offset;
+        // how far a bordered tile's interior repeats are moved along, a part of one (BuildInteriorRepeats)
+        public float2           interiorOffset;
         public float3           right, up;
 
         public readonly bool Repeated => repeatX > 1 || repeatY > 1 || (lastRepeat.x > 0 && lastRepeat.x < 1) || (lastRepeat.y > 0 && lastRepeat.y < 1) ||
@@ -92,7 +94,8 @@ namespace Chisel.Core
                 count = count, f0 = f0, f1 = f1, f2 = f2, t0 = t0, t1 = t1, t2 = t2,
                 textureSize = layout.textureSize, border = tile.border, pixelsPerUnit = tile.pixelsPerUnit * density, flags = tile.flags,
                 repeatX = choice.repeatX, repeatY = choice.repeatY, lastRepeat = choice.lastRepeat, right = right, up = up,
-                offset = new float2(across ? shift.x : 0, along ? shift.y : 0)
+                offset = new float2(across ? shift.x : 0, along ? shift.y : 0),
+                interiorOffset = count == 4 ? shift : float2.zero
             };
         }
 

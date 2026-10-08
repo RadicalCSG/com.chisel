@@ -81,7 +81,7 @@ namespace Chisel.Core
                     if (from.indices.Length > 0 && groupOf.TryGetValue(new int2(brush, s), out var g))
                     {
                         var unfolded = unfoldOf.TryGetValue(new int2(brush, s), out var unfold);
-                        MapInGroup(builder, ref from, ref to, groups[g], unfolded ? unfold : float4x4.identity, unfolded, groupLines, groupHalfPlanes, groupCells);
+                        MapInGroup(builder, ref from, ref to, groups[g], g, unfolded ? unfold : float4x4.identity, unfolded, groupLines, groupHalfPlanes, groupCells);
                         continue;
                     }
                     if (from.sectionInput.count == 0 || from.indices.Length == 0)
@@ -171,7 +171,7 @@ namespace Chisel.Core
         // A surface mapped with its group: cut with the group's sections (built from what the group draws together), or
         // given the group's tile as it is; one not in the group's first plane is unfolded into it for that (unfold), and
         // folded back, its own corners exactly where they were
-        static void MapInGroup(BlobBuilder builder, ref ChiselSurfaceRenderBuffer from, ref ChiselSurfaceRenderBuffer to, in HotspotGroups.Group group,
+        static void MapInGroup(BlobBuilder builder, ref ChiselSurfaceRenderBuffer from, ref ChiselSurfaceRenderBuffer to, in HotspotGroups.Group group, int groupIndex,
                                float4x4 unfold, bool unfolded,
                                NativeList<HotspotSectionLine> lines, NativeList<HotspotSectionHalfPlane> halfPlanes, NativeList<HotspotSectionCell> cells)
         {
@@ -228,6 +228,7 @@ namespace Chisel.Core
                 to.CopySections(builder, ref from);
                 to.sectionInput = group.input;
                 to.hotspot      = group.info;
+                to.hotspot.group = groupIndex + 1;
             }
             indices.Dispose(); collider.Dispose(); select.Dispose(); render.Dispose();
         }

@@ -140,6 +140,19 @@ namespace Chisel.Components
             return removed > 0;
         }
 
+        // The links a model keeps
+        public static IReadOnlyList<ChiselHotspotLink> LinksOf(ChiselModelComponent model)
+        {
+            return model ? model.hotspotLinks : Array.Empty<ChiselHotspotLink>();
+        }
+
+        // A link's brushes as they are now; false when either is gone
+        public static bool Resolve(in ChiselHotspotLink link, out CSGTreeBrush brushA, out CSGTreeBrush brushB)
+        {
+            brushB = default;
+            return Resolve(link.a, link.brushA, out brushA) && Resolve(link.b, link.brushB, out brushB);
+        }
+
         // The model the two surfaces are in (to record for undo first), or null when they are not in one
         public static ChiselModelComponent ModelOfSurfaces(SurfaceReference a, SurfaceReference b) { return ModelOf(a, b); }
 

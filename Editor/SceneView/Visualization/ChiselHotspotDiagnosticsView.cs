@@ -22,12 +22,13 @@ namespace Chisel.Editors
     // The hotspot diagnostic view (diagnostics): every drawn triangle of
     // a hotspot surface coloured by how its texture lies on it against its tile's density (HotspotDiagnostics.Measure),
     // triangles mirrored against the rest of their surface in magenta; the outlines of surfaces repeated as a last resort
-    // and of surfaces that are all border; optionally the drawn triangles' edges and the seams where the uvs jump.
+    // and of surfaces that are all border; optionally the drawn triangles' edges, the seams where the uvs jump, the
+    // outlines of groups of surfaces mapped as one, and the links made by hand (with or without the rest).
     public static class ChiselHotspotDiagnosticsView
     {
         public struct Summary
         {
-            public int    models, surfaces, triangles, lastResort, allBorder, pinned, mirrored;
+            public int    models, surfaces, triangles, lastResort, allBorder, pinned, mirrored, grouped, groups;
             // drawn surfaces left out: without render data (not built since), not hotspot mapped, decals; triangles
             // without area; drawn meshes without triangle lookups
             public int    withoutData, notMapped, decals, unmeasured, withoutLookup;
@@ -39,11 +40,17 @@ namespace Chisel.Editors
         public static readonly Color kSeamColor       = new(1, 1, 1, 1);
         public static readonly Color kEdgeColor       = new(0, 0, 0, 0.6f);
         public static readonly Color kMirroredColor   = new(1, 0, 1, 0.75f);
+        public static readonly Color kGroupColor      = new(0.25f, 0.45f, 1.0f, 1);
+        public static readonly Color kConnectedColor  = new(0.2f, 1.0f, 0.2f, 1);
+        public static readonly Color kApartColor      = new(1.0f, 0.25f, 0.2f, 1);
+        public static readonly Color kBorderOnlyColor = new(1.0f, 1.0f, 1.0f, 1);
         const float kAlpha = 0.55f;
 
-        const string kModeKey  = "ChiselHotspotDiagnostics.Mode";
-        const string kEdgesKey = "ChiselHotspotDiagnostics.Edges";
-        const string kSeamsKey = "ChiselHotspotDiagnostics.Seams";
+        const string kModeKey   = "ChiselHotspotDiagnostics.Mode";
+        const string kEdgesKey  = "ChiselHotspotDiagnostics.Edges";
+        const string kSeamsKey  = "ChiselHotspotDiagnostics.Seams";
+        const string kGroupsKey = "ChiselHotspotDiagnostics.Groups";
+        const string kLinksKey  = "ChiselHotspotDiagnostics.Links";
 
         public static HotspotDiagnosticMode Mode
         {
@@ -59,6 +66,17 @@ namespace Chisel.Editors
         {
             get => EditorPrefs.GetBool(kSeamsKey, true);
             set { if (value != ShowSeams) { EditorPrefs.SetBool(kSeamsKey, value); s_Dirty = true; SceneView.RepaintAll(); } }
+        }
+
+        public static bool ShowGroups
+        {
+            get => EditorPrefs.GetBool(kGroupsKey, true);
+            set { if (value != ShowGroups) { EditorPrefs.SetBool(kGroupsKey, value); s_Dirty = true; SceneView.RepaintAll(); } }
+        }
+        public static bool ShowLinks
+        {
+            get => EditorPrefs.GetBool(kLinksKey, false);
+            set { if (value != ShowLinks) { EditorPrefs.SetBool(kLinksKey, value); SceneView.RepaintAll(); } }
         }
 
         public static Summary LastSummary { get; private set; }
@@ -91,7 +109,11 @@ namespace Chisel.Editors
 
         static void OnSceneGUI(SceneView sceneView)
         {
-            if (Mode == HotspotDiagnosticMode.Off || Event.current.type != EventType.Repaint)
+            if (Event.current.type != EventType.Repaint)
+                return;
+            if (ShowLinks)
+                DrawLinks();
+            if (Mode == HotspotDiagnosticMode.Off)
                 return;
             if (s_Dirty)
                 Rebuild();
@@ -186,6 +208,7 @@ namespace Chisel.Editors
             var summary = new Summary { leastDensity = double.PositiveInfinity };
             if (mode == HotspotDiagnosticMode.Off)
                 return summary;
+            var groups = new HashSet<(ChiselModelComponent, int)>();
             var lookups = ChiselTreeLookup.Value;
             foreach (var model in ChiselModelManager.Instance.Models)
             {
@@ -201,7 +224,7 @@ namespace Chisel.Editors
                 {
                     if (renderable == null || !renderable.Valid || renderable.debugVisualizationRenderer || !renderable.HasGeometry || !renderable.container)
                         continue;
-                    var view = Build(renderable, buffers, mode, ref summary);
+                    var view = Build(renderable, buffers, mode, ref summary, model, groups);
                     if (view == null)
                         continue;
                     views.Add(view);
@@ -210,11 +233,12 @@ namespace Chisel.Editors
             }
             if (summary.triangles == 0)
                 summary.leastDensity = 0;
+            summary.groups = groups.Count;
             return summary;
         }
 
         static View Build(ChiselRenderObjects renderable, Unity.Collections.NativeParallelHashMap<CompactNodeID, Unity.Entities.BlobAssetReference<ChiselBrushRenderBuffer>> buffers,
-                          HotspotDiagnosticMode mode, ref Summary summary)
+                          HotspotDiagnosticMode mode, ref Summary summary, ChiselModelComponent model, HashSet<(ChiselModelComponent, int)> groups)
         {
             var lookup = renderable.triangleBrushes;
             var selectionIDs = lookup?.perTriangleSelectionIDLookup;
@@ -311,7 +335,7 @@ namespace Chisel.Editors
             var colors   = new List<Color>(triangles.Count * 3);
             var lineVertices = new List<Vector3>();
             var lineColors   = new List<Color>();
-            var edges = new Dictionary<(Vector3, Vector3), (int surface, Vector2 uvA, Vector2 uvB, int uses, bool seam)>();
+            var edges = new Dictionary<(Vector3, Vector3), (int surface, Vector2 uvA, Vector2 uvB, int uses, bool seam, int group, bool groupEdge)>();
             foreach (var t in triangles)
             {
                 var flipped = t.mirrored != (mirroredArea[t.surface] * 2 > totalArea[t.surface]);
@@ -333,12 +357,14 @@ namespace Chisel.Editors
                     var forward = Less(pa, pb);
                     var key = forward ? (pa, pb) : (pb, pa);
                     var ua = forward ? uvs[a] : uvs[b]; var ub = forward ? uvs[b] : uvs[a];
+                    var group = infos[t.surface].group;
                     if (edges.TryGetValue(key, out var seen))
                     {
                         var seam = seen.seam || seen.uvA != ua || seen.uvB != ub;
-                        edges[key] = (seen.surface == t.surface ? seen.surface : -1, seen.uvA, seen.uvB, seen.uses + 1, seam);
+                        edges[key] = (seen.surface == t.surface ? seen.surface : -1, seen.uvA, seen.uvB, seen.uses + 1, seam, seen.group,
+                                      seen.groupEdge || seen.group != group);
                     } else
-                        edges.Add(key, (t.surface, ua, ub, 1, false));
+                        edges.Add(key, (t.surface, ua, ub, 1, false, group, false));
                 }
             }
 
@@ -348,9 +374,14 @@ namespace Chisel.Editors
                 if ((infos[s].flags & HotspotSurfaceFlags.LastResort) != 0) summary.lastResort++;
                 if ((infos[s].flags & HotspotSurfaceFlags.AllBorder) != 0)  summary.allBorder++;
                 if ((infos[s].flags & HotspotSurfaceFlags.Pinned) != 0)     summary.pinned++;
+                if (infos[s].group > 0)
+                {
+                    summary.grouped++;
+                    groups.Add((model, infos[s].group));
+                }
             }
 
-            var showEdges = ShowEdges; var showSeams = ShowSeams;
+            var showEdges = ShowEdges; var showSeams = ShowSeams; var showGroups = ShowGroups;
             foreach (var (key, edge) in edges)
             {
                 Color color;
@@ -358,6 +389,8 @@ namespace Chisel.Editors
                     color = kLastResortColor;
                 else if (edge.uses == 1 && edge.surface >= 0 && (infos[edge.surface].flags & HotspotSurfaceFlags.AllBorder) != 0)
                     color = kAllBorderColor;
+                else if (showGroups && edge.group > 0 && (edge.uses == 1 || edge.groupEdge))
+                    color = kGroupColor;
                 else if (showSeams && edge.seam)
                     color = kSeamColor;
                 else if (showEdges)
@@ -387,6 +420,104 @@ namespace Chisel.Editors
                 view.lines.SetIndices(lineOrder, MeshTopology.Lines, 0);
             }
             return view;
+        }
+
+        // The links made by hand (ChiselHotspotLinks): a line along each part of the edge the two surfaces share, with its
+        // order and what it sets; dotted between the surfaces while they do not touch (the link waits)
+        static readonly List<Vector3> s_PolygonA = new(), s_PolygonB = new(), s_Shared = new();
+        static GUIStyle s_LabelStyle;
+
+        static void DrawLinks()
+        {
+            s_LabelStyle ??= new GUIStyle(EditorStyles.whiteMiniLabel) { alignment = TextAnchor.MiddleCenter };
+            var previousColor = Handles.color;
+            foreach (var model in ChiselModelManager.Instance.Models)
+            {
+                if (!model || !model.isActiveAndEnabled)
+                    continue;
+                var links = ChiselHotspotLinks.LinksOf(model);
+                if (links.Count == 0)
+                    continue;
+                var modelMatrix = model.transform.localToWorldMatrix;
+                foreach (var link in links)
+                {
+                    if (!ChiselHotspotLinks.Resolve(link, out var brushA, out var brushB) ||
+                        !Polygon(brushA, link.surfaceA, modelMatrix, s_PolygonA) || !Polygon(brushB, link.surfaceB, modelMatrix, s_PolygonB))
+                        continue;
+                    var color = link.automatic ? kBorderOnlyColor : (link.connect ? kConnectedColor : kApartColor);
+                    var text  = $"#{link.order} " + (link.automatic ? "" : (link.connect ? "connected" : "apart")) +
+                                (link.border == ChiselHotspotBorderState.Shown ? " border shown" : link.border == ChiselHotspotBorderState.Hidden ? " border hidden" : "");
+                    Handles.color = color;
+                    SharedSegments(s_PolygonA, s_PolygonB, s_Shared);
+                    Vector3 at;
+                    if (s_Shared.Count > 0)
+                    {
+                        for (int i = 0; i + 1 < s_Shared.Count; i += 2)
+                            Handles.DrawAAPolyLine(6, s_Shared[i], s_Shared[i + 1]);
+                        at = (s_Shared[0] + s_Shared[1]) * 0.5f;
+                    } else
+                    {
+                        var ca = Center(s_PolygonA); var cb = Center(s_PolygonB);
+                        Handles.DrawDottedLine(ca, cb, 4);
+                        at = (ca + cb) * 0.5f;
+                        text += " (not touching)";
+                    }
+                    Handles.Label(at, text.Trim(), s_LabelStyle);
+                }
+            }
+            Handles.color = previousColor;
+        }
+
+        // A brush polygon's corners in world space
+        static bool Polygon(CSGTreeBrush brush, int polygon, Matrix4x4 modelMatrix, List<Vector3> corners)
+        {
+            corners.Clear();
+            var blob = BrushMeshManager.GetBrushMeshBlob(brush.BrushMesh);
+            if (!blob.IsCreated)
+                return false;
+            ref var mesh = ref blob.Value;
+            if (polygon < 0 || polygon >= mesh.polygons.Length)
+                return false;
+            var matrix = modelMatrix * (Matrix4x4)brush.NodeToTreeSpaceMatrix;
+            var first = mesh.polygons[polygon].firstEdge;
+            for (int e = 0; e < mesh.polygons[polygon].edgeCount; e++)
+                corners.Add(matrix.MultiplyPoint3x4(mesh.localVertices[mesh.halfEdges[first + e].vertexIndex]));
+            return corners.Count >= 3;
+        }
+
+        static Vector3 Center(List<Vector3> corners)
+        {
+            var sum = Vector3.zero;
+            foreach (var p in corners)
+                sum += p;
+            return sum / corners.Count;
+        }
+
+        // Where an edge of one polygon lies along an edge of the other: the parts both have, two points each
+        static void SharedSegments(List<Vector3> a, List<Vector3> b, List<Vector3> shared)
+        {
+            shared.Clear();
+            for (int i = 0; i < a.Count; i++)
+            {
+                var p0 = a[i]; var p1 = a[(i + 1) % a.Count];
+                var length = Vector3.Distance(p0, p1);
+                if (!(length > 0))
+                    continue;
+                var d = (p1 - p0) / length;
+                var tolerance = 1e-4f * Mathf.Max(1, length);
+                for (int j = 0; j < b.Count; j++)
+                {
+                    var q0 = b[j]; var q1 = b[(j + 1) % b.Count];
+                    var t0 = Vector3.Dot(q0 - p0, d); var t1 = Vector3.Dot(q1 - p0, d);
+                    if (Vector3.Distance(p0 + d * t0, q0) > tolerance || Vector3.Distance(p0 + d * t1, q1) > tolerance)
+                        continue;
+                    var from = Mathf.Max(0, Mathf.Min(t0, t1)); var to = Mathf.Min(length, Mathf.Max(t0, t1));
+                    if (to - from <= tolerance)
+                        continue;
+                    shared.Add(p0 + d * from);
+                    shared.Add(p0 + d * to);
+                }
+            }
         }
 
         static bool Less(Vector3 a, Vector3 b)

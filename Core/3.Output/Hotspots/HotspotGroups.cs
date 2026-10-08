@@ -234,7 +234,8 @@ namespace Chisel.Core
                 }
                 return c;
             }
-            var joined = new NativeList<int2>(candidates.Length, Allocator.Temp);
+            // (candidate, candidate, priority): the order of the link that connected them, or above every link by themselves
+            var joined = new NativeList<int3>(candidates.Length, Allocator.Temp);
             using (var pairs = shared.GetKeyArray(Allocator.Temp))
             {
                 for (int i = 0; i < pairs.Length; i++)
@@ -246,11 +247,15 @@ namespace Chisel.Core
                     var coplanar  = a.layout == b.layout && math.dot(a.normal, b.normal) >= kSameDirection;
                     var sameFrame = math.dot(a.right, b.right) >= kSameDirection && math.dot(a.up, b.up) >= kSameDirection;
                     var together  = coplanar && sameFrame;
+                    var priority  = int.MaxValue;
                     if (linked.TryGetValue(pairs[i], out var link) && link.y != 0)
+                    {
                         together = a.layout == b.layout && link.y > 0;
+                        priority = link.x;
+                    }
                     if (!together)
                         continue;
-                    joined.Add(pairs[i]);
+                    joined.Add(new int3(pairs[i], priority));
                     var ra = Root(pairs[i].x); var rb = Root(pairs[i].y);
                     if (ra != rb)
                         parent[math.max(ra, rb)] = math.min(ra, rb);   // the first candidate leads
@@ -263,6 +268,32 @@ namespace Chisel.Core
             var size = new NativeArray<int>(candidates.Length, Allocator.Temp);
             for (int c = 0; c < candidates.Length; c++)
                 size[Root(c)]++;
+
+            // where a ring of connected surfaces closes, one edge keeps a seam: the oldest link's (the design's newest-first
+            // priority), so the members are unfolded along the newest links that reach them all (a spanning tree)
+            joined.Sort(new NewestFirst());
+            var tree       = new NativeList<int2>(joined.Length, Allocator.Temp);
+            var treeParent = new NativeArray<int>(candidates.Length, Allocator.Temp);
+            for (int c = 0; c < treeParent.Length; c++)
+                treeParent[c] = c;
+            int TreeRoot(int c)
+            {
+                while (treeParent[c] != c)
+                {
+                    treeParent[c] = treeParent[treeParent[c]];
+                    c = treeParent[c];
+                }
+                return c;
+            }
+            for (int j = 0; j < joined.Length; j++)
+            {
+                var ra = TreeRoot(joined[j].x); var rb = TreeRoot(joined[j].y);
+                if (ra == rb)
+                    continue;
+                treeParent[ra] = rb;
+                tree.Add(joined[j].xy);
+            }
+            treeParent.Dispose();
 
             // each member unfolded into its group's first plane: from the first outwards, each about the edge it shares with
             // the one it was reached from
@@ -281,9 +312,9 @@ namespace Chisel.Core
                 for (int q = 0; q < queue.Length; q++)
                 {
                     var from = queue[q];
-                    for (int j = 0; j < joined.Length; j++)
+                    for (int j = 0; j < tree.Length; j++)
                     {
-                        var to = joined[j].x == from ? joined[j].y : (joined[j].y == from ? joined[j].x : -1);
+                        var to = tree[j].x == from ? tree[j].y : (tree[j].y == from ? tree[j].x : -1);
                         if (to < 0 || reached[to])
                             continue;
                         reached[to] = true;
@@ -294,6 +325,7 @@ namespace Chisel.Core
             }
             reached.Dispose();
             queue.Dispose();
+            tree.Dispose();
             joined.Dispose();
             var members   = new NativeList<int>(16, Allocator.Temp);
             var positions = new NativeList<float3>(64, Allocator.Temp);
@@ -389,6 +421,14 @@ namespace Chisel.Core
             unfold.Dispose();
             parent.Dispose();
             candidates.Dispose();
+        }
+
+        // The newest link first (connected by themselves before any), then by candidate, so the order never depends on a
+        // hash map's
+        struct NewestFirst : System.Collections.Generic.IComparer<int3>
+        {
+            public readonly int Compare(int3 a, int3 b) =>
+                a.z != b.z ? b.z.CompareTo(a.z) : (a.x != b.x ? a.x.CompareTo(b.x) : a.y.CompareTo(b.y));
         }
 
         // A group's sections, as Find stored them

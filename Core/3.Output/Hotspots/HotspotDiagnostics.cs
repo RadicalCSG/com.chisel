@@ -23,6 +23,8 @@ namespace Chisel.Core
         public float               pixelsPerUnit;
         public float               scale;
         public HotspotSurfaceFlags flags;
+        // the connected group it was mapped with (HotspotGroups, its index in the model + 1); 0: by itself
+        public int                 group;
 
         public readonly bool IsMapped => pixelsPerUnit > 0;
     }

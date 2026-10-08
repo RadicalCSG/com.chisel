@@ -14,6 +14,8 @@ namespace Chisel.Editors
         readonly static GUIContent kMode  = new("View",  "What the colours show: the texture's density against its tile's, how much more one way than the other, or both");
         readonly static GUIContent kEdges = new("Edges", "The edges of the triangles that are drawn");
         readonly static GUIContent kSeams = new("Seams", "Where the uvs jump between triangles");
+        readonly static GUIContent kGroups = new("Groups", "The outline of each group of surfaces mapped as one (connected by themselves or by hand)");
+        readonly static GUIContent kLinks  = new("Links", "Surfaces connected, kept apart, or given a border by hand: along the edge they share, dotted between them while they do not touch");
 
         [MenuItem("Tools/Chisel/Hotspot Diagnostics")]
         static void Show()
@@ -35,6 +37,14 @@ namespace Chisel.Editors
             {
                 ChiselHotspotDiagnosticsView.ShowEdges = EditorGUILayout.ToggleLeft(kEdges, ChiselHotspotDiagnosticsView.ShowEdges);
                 ChiselHotspotDiagnosticsView.ShowSeams = EditorGUILayout.ToggleLeft(kSeams, ChiselHotspotDiagnosticsView.ShowSeams);
+                ChiselHotspotDiagnosticsView.ShowGroups = EditorGUILayout.ToggleLeft(kGroups, ChiselHotspotDiagnosticsView.ShowGroups);
+            }
+            ChiselHotspotDiagnosticsView.ShowLinks = EditorGUILayout.ToggleLeft(kLinks, ChiselHotspotDiagnosticsView.ShowLinks);
+            if (ChiselHotspotDiagnosticsView.ShowLinks)
+            {
+                Legend(ChiselHotspotDiagnosticsView.kConnectedColor, "link: connected");
+                Legend(ChiselHotspotDiagnosticsView.kApartColor,     "link: kept apart");
+                Legend(ChiselHotspotDiagnosticsView.kBorderOnlyColor, "link: only the border set");
             }
             var mode = ChiselHotspotDiagnosticsView.Mode;
             if (mode == HotspotDiagnosticMode.Off)
@@ -62,6 +72,8 @@ namespace Chisel.Editors
             Legend(ChiselHotspotDiagnosticsView.kMirroredColor,   "mirrored against the rest of its surface");
             Legend(ChiselHotspotDiagnosticsView.kLastResortColor, "outline: repeated, no tile large enough");
             Legend(ChiselHotspotDiagnosticsView.kAllBorderColor,  "outline: too small for its border, all border");
+            if (ChiselHotspotDiagnosticsView.ShowGroups)
+                Legend(ChiselHotspotDiagnosticsView.kGroupColor,  "outline: a group of surfaces mapped as one");
 
             var summary = ChiselHotspotDiagnosticsView.LastSummary;
             EditorGUILayout.Space();
@@ -71,6 +83,7 @@ namespace Chisel.Editors
                 EditorGUILayout.LabelField($"density {summary.leastDensity:0.00} .. {summary.mostDensity:0.00}, anisotropy up to {summary.mostAnisotropy:0.00}", EditorStyles.miniLabel);
                 EditorGUILayout.LabelField($"energy up to {summary.mostEnergy:0.00}, {summary.mirrored} mirrored", EditorStyles.miniLabel);
                 EditorGUILayout.LabelField($"{summary.lastResort} repeated as a last resort, {summary.allBorder} all border, {summary.pinned} pinned", EditorStyles.miniLabel);
+                EditorGUILayout.LabelField($"{summary.grouped} in {summary.groups} groups mapped as one", EditorStyles.miniLabel);
             }
             if (summary.withoutData > 0 || summary.withoutLookup > 0)
                 EditorGUILayout.HelpBox($"{summary.withoutData} drawn surfaces and {summary.withoutLookup} meshes have no data to show: rebuild the models to see them.", MessageType.Info);
