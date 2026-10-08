@@ -17,8 +17,9 @@ namespace Chisel.Core
 
     // Coplanar neighbouring surfaces, of any brush in the model, with the same hotspot layout and frame are connected
     //: mapped as one surface on one tile, with the first one's settings, the border only along their
-    // outline together. By hand (HotspotLink) two touching coplanar surfaces are connected whatever their frames, or kept
-    // apart; the newest link counts.
+    // outline together. By hand (HotspotLink) two touching surfaces are connected whatever their frames, or kept apart;
+    // the newest link counts. Connected surfaces that are not coplanar are unfolded about the edge they share into the
+    // first one's plane (the texture wraps round), each by a rigid map (unfoldOf).
     internal static class HotspotGroups
     {
         // Normals and frames agree this closely (the cosine), and the surfaces share at least two corners
@@ -34,12 +35,14 @@ namespace Chisel.Core
             public int3                sectionStart, sectionCount;
         }
 
-        // The groups of the model's surfaces (groupOf: (brush, surface) -> group) and their sections, flat
+        // The groups of the model's surfaces (groupOf: (brush, surface) -> group; unfoldOf: how a surface not in its group's
+        // first plane is unfolded into it) and their sections, flat
         public static void Find(NativeList<BrushData> brushes, NativeArray<HotspotTileData> tiles, NativeArray<HotspotLayoutData> layouts, NativeArray<HotspotLink> links,
-                                ref UnsafeHashMap<int2, int> groupOf, NativeList<Group> groups, NativeList<HotspotSectionLine> lines,
+                                ref UnsafeHashMap<int2, int> groupOf, ref UnsafeHashMap<int2, float4x4> unfoldOf, NativeList<Group> groups, NativeList<HotspotSectionLine> lines,
                                 NativeList<HotspotSectionHalfPlane> halfPlanes, NativeList<HotspotSectionCell> cells)
         {
             groupOf.Clear();
+            unfoldOf.Clear();
             groups.Clear();
             if (!tiles.IsCreated || !layouts.IsCreated)
                 return;
@@ -147,6 +150,7 @@ namespace Chisel.Core
                 }
                 return c;
             }
+            var joined = new NativeList<int2>(candidates.Length, Allocator.Temp);
             using (var pairs = shared.GetKeyArray(Allocator.Temp))
             {
                 for (int i = 0; i < pairs.Length; i++)
@@ -159,9 +163,10 @@ namespace Chisel.Core
                     var sameFrame = math.dot(a.right, b.right) >= kSameDirection && math.dot(a.up, b.up) >= kSameDirection;
                     var together  = coplanar && sameFrame;
                     if (linked.TryGetValue(pairs[i], out var link))
-                        together = coplanar && link.y != 0;
+                        together = a.layout == b.layout && link.y != 0;
                     if (!together)
                         continue;
+                    joined.Add(pairs[i]);
                     var ra = Root(pairs[i].x); var rb = Root(pairs[i].y);
                     if (ra != rb)
                         parent[math.max(ra, rb)] = math.min(ra, rb);   // the first candidate leads
@@ -174,6 +179,38 @@ namespace Chisel.Core
             var size = new NativeArray<int>(candidates.Length, Allocator.Temp);
             for (int c = 0; c < candidates.Length; c++)
                 size[Root(c)]++;
+
+            // each member unfolded into its group's first plane: from the first outwards, each about the edge it shares with
+            // the one it was reached from
+            var unfold  = new NativeArray<float4x4>(candidates.Length, Allocator.Temp);
+            var reached = new NativeArray<bool>(candidates.Length, Allocator.Temp);
+            var queue   = new NativeList<int>(16, Allocator.Temp);
+            for (int c = 0; c < candidates.Length; c++)
+                unfold[c] = float4x4.identity;
+            for (int lead = 0; lead < candidates.Length; lead++)
+            {
+                if (Root(lead) != lead || size[lead] < 2)
+                    continue;
+                queue.Clear();
+                queue.Add(lead);
+                reached[lead] = true;
+                for (int q = 0; q < queue.Length; q++)
+                {
+                    var from = queue[q];
+                    for (int j = 0; j < joined.Length; j++)
+                    {
+                        var to = joined[j].x == from ? joined[j].y : (joined[j].y == from ? joined[j].x : -1);
+                        if (to < 0 || reached[to])
+                            continue;
+                        reached[to] = true;
+                        queue.Add(to);
+                        unfold[to] = math.mul(unfold[from], Hinge(brushes, candidates[from], candidates[to]));
+                    }
+                }
+            }
+            reached.Dispose();
+            queue.Dispose();
+            joined.Dispose();
             var members   = new NativeList<int>(16, Allocator.Temp);
             var positions = new NativeList<float3>(64, Allocator.Temp);
             var indices   = new NativeList<int>(64, Allocator.Temp);
@@ -190,7 +227,7 @@ namespace Chisel.Core
                     ref var surface = ref brushes[candidates[c].x].brushRenderBuffer.Value.surfaces[candidates[c].y];
                     var first = positions.Length;
                     for (int v = 0; v < surface.colliderVertices.Length; v++)
-                        positions.Add(surface.colliderVertices[v]);
+                        positions.Add(math.mul(unfold[c], new float4(surface.colliderVertices[v], 1)).xyz);
                     for (int i = 0; i < surface.indices.Length; i++)
                         indices.Add(first + surface.indices[i]);
                 }
@@ -231,10 +268,15 @@ namespace Chisel.Core
                 var index = groups.Length;
                 groups.Add(group);
                 for (int m = 0; m < members.Length; m++)
+                {
                     groupOf.TryAdd(candidates[members[m]], index);
+                    if (!unfold[members[m]].Equals(float4x4.identity))
+                        unfoldOf.TryAdd(candidates[members[m]], unfold[members[m]]);
+                }
             }
             members.Dispose(); positions.Dispose(); indices.Dispose();
             size.Dispose();
+            unfold.Dispose();
             parent.Dispose();
             candidates.Dispose();
         }
@@ -248,6 +290,42 @@ namespace Chisel.Core
             sections.halfPlanes.AddRange(halfPlanes.AsArray().GetSubArray(group.sectionStart.y, group.sectionCount.y));
             sections.cells.AddRange(cells.AsArray().GetSubArray(group.sectionStart.z, group.sectionCount.z));
             return sections;
+        }
+
+        // The rigid map that turns surface to about the edge it shares with surface from into from's plane (identity when they
+        // are coplanar, or share no edge)
+        static float4x4 Hinge(NativeList<BrushData> brushes, int2 from, int2 to)
+        {
+            var nFrom = math.normalizesafe(SourceOf(brushes, from).normal);
+            var nTo   = math.normalizesafe(SourceOf(brushes, to).normal);
+            if (math.dot(nFrom, nTo) >= kSameDirection)
+                return float4x4.identity;
+            ref var a = ref brushes[from.x].brushRenderBuffer.Value.surfaces[from.y];
+            ref var b = ref brushes[to.x].brushRenderBuffer.Value.surfaces[to.y];
+            var corners = new UnsafeHashSet<float3>(a.colliderVertices.Length, Allocator.Temp);
+            for (int v = 0; v < a.colliderVertices.Length; v++)
+                corners.Add(a.colliderVertices[v] + 0.0f);
+            // the shared edge: the two shared corners furthest apart
+            var q0 = float3.zero; var q1 = float3.zero; var longest = 0f;
+            for (int i = 0; i < b.colliderVertices.Length; i++)
+            {
+                var p = b.colliderVertices[i] + 0.0f;
+                if (!corners.Contains(p))
+                    continue;
+                for (int k = i + 1; k < b.colliderVertices.Length; k++)
+                {
+                    var r = b.colliderVertices[k] + 0.0f;
+                    if (!corners.Contains(r) || !(math.distancesq(p, r) > longest))
+                        continue;
+                    longest = math.distancesq(p, r); q0 = p; q1 = r;
+                }
+            }
+            corners.Dispose();
+            if (!(longest > 0))
+                return float4x4.identity;
+            var axis  = math.normalize(q1 - q0);
+            var angle = math.atan2(math.dot(axis, math.cross(nTo, nFrom)), math.dot(nTo, nFrom));
+            return math.mul(float4x4.Translate(q0), math.mul(float4x4.AxisAngle(axis, angle), float4x4.Translate(-q0)));
         }
 
         static HotspotSurfaceSource SourceOf(NativeList<BrushData> brushes, int2 at)
