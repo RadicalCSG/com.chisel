@@ -23,9 +23,6 @@ namespace Chisel.Editors
 		SerializedProperty hotspotLayoutProp;
 
 		static readonly GUIContent kHotspotContents = new("Hotspot Layout", "Surfaces with this material take their uvs from the tile of this layout that fits them best");
-		static readonly GUIContent kUseTextureContents = new("Use the material's texture", "The layout has no texture of its own: take this material's");
-
-		Editor layoutEditor;
 
 		internal void OnEnable()
 		{
@@ -52,12 +49,7 @@ namespace Chisel.Editors
 			hotspotLayoutProp = null;
 		}
 
-		void OnDestroy()
-		{
-			OnDisable();
-			if (layoutEditor != null)
-				DestroyImmediate(layoutEditor);
-		}
+		void OnDestroy() { OnDisable(); }
 
         public static void GetSurfaceDestinationFlags(SerializedProperty surfaceDestinationFlagsProp, out bool isRenderable, out bool isCollidable)
 		{
@@ -125,18 +117,6 @@ namespace Chisel.Editors
 					}
 				} else if (GUILayout.Button("Edit Layout", EditorStyles.miniButton))
 					ChiselHotspotLayoutWindow.Open((ChiselHotspotLayout)hotspotLayoutProp.objectReferenceValue, MaterialOf(target));
-			}
-			// every setting of the layout, here as well
-			if (!hotspotLayoutProp.hasMultipleDifferentValues && hotspotLayoutProp.objectReferenceValue is ChiselHotspotLayout layout)
-			{
-				var material = MaterialOf(target);
-				if (layout.texture == null && material != null && material.mainTexture is Texture2D texture &&
-					GUILayout.Button(kUseTextureContents, EditorStyles.miniButton))
-					ChiselHotspotLayoutWindow.EditLayout(layout, "Hotspot Layout Texture", () => layout.texture = texture);
-				CreateCachedEditor(layout, typeof(ChiselHotspotLayoutEditor), ref layoutEditor);
-				EditorGUI.indentLevel++;
-				layoutEditor.OnInspectorGUI();
-				EditorGUI.indentLevel--;
 			}
 			if (!changed)
 				return;
