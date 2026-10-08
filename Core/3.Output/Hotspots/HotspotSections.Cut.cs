@@ -110,7 +110,8 @@ namespace Chisel.Core
         // Cuts the surface where its sections meet and nowhere else; false (nothing changed) when its pieces would not
         // cover it once (then Split cuts it)
         public readonly bool CutOnce(float3 right, float3 up, float3 normal, NativeList<int> indices,
-                                     NativeList<float3> colliderVertices, NativeList<SelectVertex> selectVertices, NativeList<RenderVertex> renderVertices)
+                                     NativeList<float3> colliderVertices, NativeList<SelectVertex> selectVertices, NativeList<RenderVertex> renderVertices,
+                                     bool asTriangles = false)
         {
             if (cells.Length == 0 || indices.Length < 3)
                 return false;
@@ -146,7 +147,7 @@ namespace Chisel.Core
             var startRanges = new NativeList<int3>(indices.Length / 3, Allocator.Temp);   // start, count, triangle
             using (var loop = new NativeList<int>(16, Allocator.Temp))
             {
-                if (ConvexLoop(indices, frame, rep, loop))
+                if (!asTriangles && ConvexLoop(indices, frame, rep, loop))
                 {
                     startRanges.Add(new int3(0, loop.Length, -1));
                     starts.AddRange(loop.AsArray());

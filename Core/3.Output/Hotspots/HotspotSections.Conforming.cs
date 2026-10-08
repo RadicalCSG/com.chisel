@@ -210,6 +210,7 @@ namespace Chisel.Core
             lines.Clear();
             halfPlanes.Clear();
             cells.Clear();
+            interiorCell = -1;
             if (input.count != 4 || !(input.pixelsPerUnit > 0) || input.Repeated)
                 return false;
             var s = new Outline(4, input.f0, input.f1, input.f2);
@@ -404,7 +405,58 @@ namespace Chisel.Core
                     for (int k = 0; k < inset.Length; k++)
                         Half(inset[k], 1);
                 }
+                interiorCell = cells.Length;
                 AddCell(start, s.inner[0], s.inner[1], s.inner[3], t.inner[0], t.inner[1], t.inner[3], size);
+            }
+            return true;
+        }
+
+        // The repeats of a bordered tile's interior (the interior repeats at the tile's density, the last
+        // repeat along each axis cut off where the surface ends): cells over the whole plane between the repeats' seams,
+        // from the inset bounds' first corner, each repeat onto the tile's inner rectangle; false when the surface is all
+        // border or would take more than kMaxRepeats
+        public bool BuildInteriorRepeats(in HotspotSectionInput input)
+        {
+            lines.Clear();
+            halfPlanes.Clear();
+            cells.Clear();
+            interiorCell = -1;
+            if (input.count != 4 || !(input.pixelsPerUnit > 0) || input.Repeated)
+                return false;
+            var s = new Outline(4, input.f0, input.f1, input.f2);
+            var t = new Outline(4, input.t0, input.t1, input.t2);
+            if (!Bands(input, s, t, out var surfaceBand, out var tileBand) || surfaceBand >= s.MaxBand())
+                return false;
+            s.Inset(surfaceBand);
+            t.Inset(tileBand);
+            var period = new double2(math.length(t.inner[1] - t.inner[0]), math.length(t.inner[3] - t.inner[0])) / input.pixelsPerUnit;
+            if (!(period.x > 0) || !(period.y > 0))
+                return false;
+            var origin = s.inner[0];
+            var extent = new double2(math.length(s.inner[1] - s.inner[0]), math.length(s.inner[3] - s.inner[0]));
+            var countX = math.max(1, (int)math.ceil(extent.x / period.x - 1e-9));
+            var countY = math.max(1, (int)math.ceil(extent.y / period.y - 1e-9));
+            if ((long)countX * countY > kMaxRepeats)
+                return false;
+            var firstX = lines.Length;
+            for (int i = 1; i < countX; i++)
+                AddLine(new double2(1, 0), origin + new double2(i * period.x, 0));
+            var firstY = lines.Length;
+            for (int j = 1; j < countY; j++)
+                AddLine(new double2(0, 1), origin + new double2(0, j * period.y));
+            var size = (double2)input.textureSize;
+            for (int j = 0; j < countY; j++)
+            {
+                for (int i = 0; i < countX; i++)
+                {
+                    var start = halfPlanes.Length;
+                    if (i > 0)          Half(firstX + i - 1, 1);
+                    if (i < countX - 1) Half(firstX + i, -1);
+                    if (j > 0)          Half(firstY + j - 1, 1);
+                    if (j < countY - 1) Half(firstY + j, -1);
+                    var corner = origin + new double2(i * period.x, j * period.y);
+                    AddCell(start, corner, corner + new double2(period.x, 0), corner + new double2(0, period.y), t.inner[0], t.inner[1], t.inner[3], size);
+                }
             }
             return true;
         }

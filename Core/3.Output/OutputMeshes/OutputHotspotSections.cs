@@ -112,7 +112,9 @@ namespace Chisel.Core
                     // cut once where the sections meet; triangle by triangle when that would not cover it once
                     if (!sections.CutOnce(right, up, normal, indices, collider, select, render))
                         sections.Split(right, up, normal, indices, collider, select, render);
-                    sections.AssignUVs(indices, collider, select, render, right, up);
+                    var repeats = InteriorRepeats(sections, input, right, up, normal, indices, collider, select, render);
+                    sections.AssignUVs(indices, collider, select, render, right, up, repeats);
+                    repeats.Dispose();
                     sections.Dispose();
                     // a surface whose cut went wrong is drawn uncut: one bad point would hide the whole model (its
                     // bounds)
@@ -190,7 +192,9 @@ namespace Chisel.Core
                 var normal = math.normalizesafe(math.cross(group.up, group.right));
                 if (!sections.CutOnce(group.right, group.up, normal, indices, collider, select, render))
                     sections.Split(group.right, group.up, normal, indices, collider, select, render);
-                sections.AssignUVs(indices, collider, select, render, group.right, group.up);
+                var repeats = InteriorRepeats(sections, group.input, group.right, group.up, normal, indices, collider, select, render);
+                sections.AssignUVs(indices, collider, select, render, group.right, group.up, repeats);
+                repeats.Dispose();
                 sections.Dispose();
             } else
                 MeshAlgorithms.ComputeUVs(render, group.uvMatrix);
@@ -221,6 +225,22 @@ namespace Chisel.Core
                 to.hotspot      = group.info;
             }
             indices.Dispose(); collider.Dispose(); select.Dispose(); render.Dispose();
+        }
+
+        // A bordered tile's interior repeated at the tile's density (BuildInteriorRepeats): what is drawn cut again, triangle
+        // by triangle, where the repeats meet (the border's strips too, so no edge has a point on one side only)
+        static HotspotSections InteriorRepeats(in HotspotSections sections, in HotspotSectionInput input, float3 right, float3 up, float3 normal,
+                                               NativeList<int> indices, NativeList<float3> collider, NativeList<SelectVertex> select, NativeList<RenderVertex> render)
+        {
+            var repeats = HotspotSections.Create(Allocator.Temp);
+            if (sections.interiorCell < 0 || !repeats.BuildInteriorRepeats(input))
+            {
+                repeats.cells.Clear();
+                return repeats;
+            }
+            if (repeats.cells.Length > 1 && !repeats.CutOnce(right, up, normal, indices, collider, select, render, asTriangles: true))
+                repeats.Split(right, up, normal, indices, collider, select, render);
+            return repeats;
         }
 
         static bool Finite(NativeList<float3> positions, NativeList<RenderVertex> render)

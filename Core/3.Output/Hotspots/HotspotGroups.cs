@@ -33,6 +33,7 @@ namespace Chisel.Core
             public float3              right, up;
             // its sections (when input has some), in the flat lists Find fills: where they start and how many there are
             public int3                sectionStart, sectionCount;
+            public int                 interiorCell;
         }
 
         // The groups of the model's surfaces (groupOf: (brush, surface) -> group; unfoldOf: how a surface not in its group's
@@ -257,6 +258,7 @@ namespace Chisel.Core
                               : sections.Build(group.input);
                     if (built)
                     {
+                        group.interiorCell = sections.interiorCell;
                         group.sectionStart = new int3(lines.Length, halfPlanes.Length, cells.Length);
                         group.sectionCount = new int3(sections.lines.Length, sections.halfPlanes.Length, sections.cells.Length);
                         lines.AddRange(sections.lines.AsArray());
@@ -289,6 +291,7 @@ namespace Chisel.Core
             sections.lines.AddRange(lines.AsArray().GetSubArray(group.sectionStart.x, group.sectionCount.x));
             sections.halfPlanes.AddRange(halfPlanes.AsArray().GetSubArray(group.sectionStart.y, group.sectionCount.y));
             sections.cells.AddRange(cells.AsArray().GetSubArray(group.sectionStart.z, group.sectionCount.z));
+            sections.interiorCell = group.interiorCell;
             return sections;
         }
 

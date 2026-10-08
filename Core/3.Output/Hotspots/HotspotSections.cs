@@ -61,6 +61,8 @@ namespace Chisel.Core
         public NativeList<HotspotSectionLine>      lines;
         public NativeList<HotspotSectionHalfPlane> halfPlanes;
         public NativeList<HotspotSectionCell>      cells;
+        // The interior's cell (BuildConforming), -1: none; where its repeats are laid (BuildInteriorRepeats)
+        public int                                 interiorCell;
 
         // What the sections of a surface on its tile are built from
         public static HotspotSectionInput Input(in HotspotTileData tile, in HotspotLayoutData layout, in HotspotShape shape, in HotspotChoice choice, float3 normal)
@@ -97,6 +99,7 @@ namespace Chisel.Core
                 lines        = new NativeList<HotspotSectionLine>(12, allocator),
                 halfPlanes   = new NativeList<HotspotSectionHalfPlane>(32, allocator),
                 cells        = new NativeList<HotspotSectionCell>(13, allocator),
+                interiorCell = -1
             };
         }
 
@@ -294,6 +297,7 @@ namespace Chisel.Core
             lines.Clear();
             halfPlanes.Clear();
             cells.Clear();
+            interiorCell = -1;
             var count = input.count;
             if (count != 3 && count != 4)
                 return false;
@@ -471,11 +475,19 @@ namespace Chisel.Core
         // How far apart two uvs of one vertex may be and still be one vertex
         const float kSameUV = 1e-5f;
 
-        // Each triangle's uvs from the section it is in. A
+        // Each triangle's uvs from the section it is in, the interior's from its repeats when there are any
+        // (BuildInteriorRepeats). A
         // vertex on a seam, where repeats meet, gets a vertex of its own for each side.
         public readonly void AssignUVs(NativeList<int> indices, NativeList<float3> colliderVertices, NativeList<SelectVertex> selectVertices,
                                        NativeList<RenderVertex> renderVertices, float3 right, float3 up)
         {
+            AssignUVs(indices, colliderVertices, selectVertices, renderVertices, right, up, default);
+        }
+
+        public readonly void AssignUVs(NativeList<int> indices, NativeList<float3> colliderVertices, NativeList<SelectVertex> selectVertices,
+                                       NativeList<RenderVertex> renderVertices, float3 right, float3 up, in HotspotSections repeats)
+        {
+            var repeated = interiorCell >= 0 && repeats.cells.IsCreated && repeats.cells.Length > 0;
             var r = (double3)right; var u = (double3)up;
             var assigned = new NativeList<bool>(renderVertices.Length, Allocator.Temp);
             assigned.Resize(renderVertices.Length, NativeArrayOptions.ClearMemory);
@@ -489,6 +501,13 @@ namespace Chisel.Core
                     centroid += new double2(math.dot(r, p), math.dot(u, p));
                 }
                 var cell = Locate(centroid / 3);
+                // a repeat's cell of the interior counts after the sections' own
+                var repeat = -1;
+                if (repeated && cell == interiorCell)
+                {
+                    repeat = repeats.Locate(centroid / 3);
+                    cell = cells.Length + repeat;
+                }
                 for (int k = 0; k < 3; k++)
                 {
                     var index = indices[t + k];
@@ -499,7 +518,8 @@ namespace Chisel.Core
                     }
                     var vertex = renderVertices[index];
                     var p = (double3)vertex.position;
-                    var uv = UV(cell, new double2(math.dot(r, p), math.dot(u, p)));
+                    var uv = repeat >= 0 ? repeats.UV(repeat, new double2(math.dot(r, p), math.dot(u, p)))
+                                         : UV(cell, new double2(math.dot(r, p), math.dot(u, p)));
                     if (!assigned[index])
                     {
                         vertex.uv0 = uv;
