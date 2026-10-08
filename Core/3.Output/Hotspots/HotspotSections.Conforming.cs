@@ -12,7 +12,8 @@ namespace Chisel.Core
     public partial struct HotspotSections
     {
         // The loops of a surface's outline in its frame, the surface on their left: corners, and (start, count) per loop.
-        // Points on a straight edge are no corners.
+        // Points on a straight edge are no corners. An edge with another's corner on it (where surfaces of two brushes meet)
+        // is taken in parts, so the edges both have cancel.
         public static void OutlineOf(NativeList<int> indices, NativeList<float3> positions, float3 right, float3 up,
                                      NativeList<double2> corners, NativeList<int2> loops)
         {
@@ -46,6 +47,14 @@ namespace Chisel.Core
             var flip = area < 0;
 
             var edges = new UnsafeHashMap<int2, int>(indices.Length, Allocator.Temp);
+            var on    = new NativeList<double2>(4, Allocator.Temp);   // (where along, corner)
+            void Add(int a, int b)
+            {
+                var edge = flip ? new int2(b, a) : new int2(a, b);
+                edges.TryGetValue(edge, out var count);
+                edges.Remove(edge);
+                edges.Add(edge, count + 1);
+            }
             for (int t = 0; t + 2 < indices.Length; t += 3)
             {
                 for (int k = 0; k < 3; k++)
@@ -53,12 +62,36 @@ namespace Chisel.Core
                     var a = vertexId[indices[t + k]]; var b = vertexId[indices[t + (k + 1) % 3]];
                     if (a == b)
                         continue;
-                    var edge = flip ? new int2(b, a) : new int2(a, b);
-                    edges.TryGetValue(edge, out var count);
-                    edges.Remove(edge);
-                    edges.Add(edge, count + 1);
+                    // the corners on it, in order
+                    var pa = Frame(where[a]); var ab = Frame(where[b]) - pa;
+                    var length = math.lengthsq(ab);
+                    on.Clear();
+                    for (int c = 0; c < where.Length && length > 0; c++)
+                    {
+                        if (c == a || c == b)
+                            continue;
+                        var ac = Frame(where[c]) - pa;
+                        var along = math.dot(ac, ab) / length;
+                        var off = Cross(ab, ac);
+                        if (along > 1e-9 && along < 1 - 1e-9 && off * off <= 1e-12 * length * length)
+                            on.Add(new double2(along, c));
+                    }
+                    for (int i = 1; i < on.Length; i++)
+                    {
+                        var item = on[i]; var j = i - 1;
+                        while (j >= 0 && on[j].x > item.x) { on[j + 1] = on[j]; j--; }
+                        on[j + 1] = item;
+                    }
+                    var from = a;
+                    for (int i = 0; i < on.Length; i++)
+                    {
+                        Add(from, (int)on[i].y);
+                        from = (int)on[i].y;
+                    }
+                    Add(from, b);
                 }
             }
+            on.Dispose();
             // an edge without its reverse is on the outline; where two loops touch at a corner (the steps of a spiral
             // staircase) that corner has two ways on
             var next    = new UnsafeParallelMultiHashMap<int, int>(indices.Length, Allocator.Temp);

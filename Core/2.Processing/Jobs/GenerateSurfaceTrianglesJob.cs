@@ -836,8 +836,9 @@ namespace Chisel.Core
 			var uvMat = math.mul(UV0.ToFloat4x4(), treeToPlane);
 			// A surface whose material has a hotspot layout takes its uvs from the tile that fits what it draws
 			var hotspot = baseSurfaces[surf].hotspotLayout;
-			var sectionInput = default(HotspotSectionInput);
-			var hotspotInfo  = default(HotspotSurfaceInfo);
+			var sectionInput  = default(HotspotSectionInput);
+			var hotspotInfo   = default(HotspotSurfaceInfo);
+			var hotspotSource = default(HotspotSurfaceSource);
 			if (hotspot > 0 && hotspot <= hotspotLayouts.Length && hotspotLayouts[hotspot - 1].tileCount > 0)
 			{
 				var layout  = hotspotLayouts[hotspot - 1];
@@ -866,6 +867,10 @@ namespace Chisel.Core
 				var density = baseSurfaces[lead].hotspotDensity > 0 ? baseSurfaces[lead].hotspotDensity : 1;
 				var seed   = math.hash(new uint2(baseSurfaces[lead].hotspotSeed, (uint)baseSurfaces[lead].descriptionIndex));
 				var choice = HotspotMatcher.Choose(hotspotTiles, layout, shape, seed, baseSurfaces[lead].hotspotPinned, density: density);
+				// coplanar neighbours with this layout and frame, of any brush, are matched again together (HotspotGroups)
+				if (!cap)
+					hotspotSource = new HotspotSurfaceSource { layout = hotspot, right = hotspotRight, up = hotspotUp, normal = finalFaceNormal, seed = seed,
+															   pinned = baseSurfaces[surf].hotspotPinned, density = density, offset = baseSurfaces[surf].hotspotOffset };
 				if (choice.tile >= 0)
 				{
 					uvMat = HotspotMatcher.Mapping(hotspotTiles[choice.tile], layout, shape, choice, hotspotRight, hotspotUp);
@@ -933,7 +938,8 @@ namespace Chisel.Core
 						uniqueVertexMapper.surfaceRenderVertices,
 						surf, surf, flags, parms, outputFlags);
 			buf.sectionInput = sectionInput;
-			buf.hotspot      = hotspotInfo;
+			buf.hotspot       = hotspotInfo;
+			buf.hotspotSource = hotspotSource;
 		}
 
 		// After every surface: the empty decal slots, the mesh queries, and the brush's render buffer in the cache.

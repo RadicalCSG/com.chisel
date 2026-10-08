@@ -1,4 +1,5 @@
 using Unity.Collections;
+using Unity.Collections.LowLevel.Unsafe;
 using Unity.Entities;
 using Unity.Mathematics;
 
@@ -8,18 +9,38 @@ namespace Chisel.Core
     // Only what is drawn is cut; the collider keeps the welded triangles (ChiselSurfaceRenderBuffer.physicsIndices).
     internal static class OutputHotspotSections
     {
-        public static void CutModel(NativeList<BrushData> brushes, NativeList<BlobAssetReference<ChiselBrushRenderBuffer>> patched)
+        public static void CutModel(NativeList<BrushData> brushes, NativeList<BlobAssetReference<ChiselBrushRenderBuffer>> patched,
+                                    NativeArray<HotspotTileData> tiles, NativeArray<HotspotLayoutData> layouts)
         {
+            // coplanar neighbours, of any brush, mapped as one surface (HotspotGroups)
+            var groupOf    = new UnsafeHashMap<int2, int>(64, Allocator.Temp);
+            var groups     = new NativeList<HotspotGroups.Group>(8, Allocator.Temp);
+            var lines      = new NativeList<HotspotSectionLine>(32, Allocator.Temp);
+            var halfPlanes = new NativeList<HotspotSectionHalfPlane>(64, Allocator.Temp);
+            var cells      = new NativeList<HotspotSectionCell>(32, Allocator.Temp);
+            HotspotGroups.Find(brushes, tiles, layouts, ref groupOf, groups, lines, halfPlanes, cells);
             for (int b = 0; b < brushes.Length; b++)
             {
-                if (!brushes[b].brushRenderBuffer.IsCreated || !HasSections(ref brushes[b].brushRenderBuffer.Value))
+                if (!brushes[b].brushRenderBuffer.IsCreated ||
+                    (!HasSections(ref brushes[b].brushRenderBuffer.Value) && !InGroup(ref brushes[b].brushRenderBuffer.Value, b, groupOf)))
                     continue;
-                var copy = Cut(brushes[b].brushRenderBuffer);
+                var copy = Cut(brushes[b].brushRenderBuffer, b, groupOf, groups, lines, halfPlanes, cells);
                 patched.Add(copy);
                 var data = brushes[b];
                 data.brushRenderBuffer = copy;
                 brushes[b] = data;
             }
+            groupOf.Dispose(); groups.Dispose(); lines.Dispose(); halfPlanes.Dispose(); cells.Dispose();
+        }
+
+        static bool InGroup(ref ChiselBrushRenderBuffer buffer, int brush, UnsafeHashMap<int2, int> groupOf)
+        {
+            for (int s = 0; s < buffer.surfaces.Length; s++)
+            {
+                if (groupOf.ContainsKey(new int2(brush, s)))
+                    return true;
+            }
+            return false;
         }
 
         static bool HasSections(ref ChiselBrushRenderBuffer buffer)
@@ -32,7 +53,9 @@ namespace Chisel.Core
             return false;
         }
 
-        static BlobAssetReference<ChiselBrushRenderBuffer> Cut(BlobAssetReference<ChiselBrushRenderBuffer> source)
+        static BlobAssetReference<ChiselBrushRenderBuffer> Cut(BlobAssetReference<ChiselBrushRenderBuffer> source, int brush, UnsafeHashMap<int2, int> groupOf,
+                                                               NativeList<HotspotGroups.Group> groups, NativeList<HotspotSectionLine> groupLines,
+                                                               NativeList<HotspotSectionHalfPlane> groupHalfPlanes, NativeList<HotspotSectionCell> groupCells)
         {
             var builder = new BlobBuilder(Allocator.Temp);
             try
@@ -50,6 +73,11 @@ namespace Chisel.Core
                     to.destinationFlags      = from.destinationFlags;
                     to.destinationParameters = from.destinationParameters;
                     to.outputFlags           = from.outputFlags;
+                    if (from.indices.Length > 0 && groupOf.TryGetValue(new int2(brush, s), out var g))
+                    {
+                        MapInGroup(builder, ref from, ref to, groups[g], groupLines, groupHalfPlanes, groupCells);
+                        continue;
+                    }
                     if (from.sectionInput.count == 0 || from.indices.Length == 0)
                     {
                         to.CopyGeometry(builder, ref from);
@@ -128,6 +156,40 @@ namespace Chisel.Core
             {
                 builder.Dispose();
             }
+        }
+
+        // A surface mapped with its group: cut with the group's sections (built from what the group draws together), or
+        // given the group's tile as it is
+        static void MapInGroup(BlobBuilder builder, ref ChiselSurfaceRenderBuffer from, ref ChiselSurfaceRenderBuffer to, in HotspotGroups.Group group,
+                               NativeList<HotspotSectionLine> lines, NativeList<HotspotSectionHalfPlane> halfPlanes, NativeList<HotspotSectionCell> cells)
+        {
+            using var indices  = ToList(ref from.indices);
+            using var collider = ToList(ref from.colliderVertices);
+            using var select   = ToList(ref from.selectVertices);
+            using var render   = ToList(ref from.renderVertices);
+            if (group.sectionCount.z > 0)
+            {
+                var sections = HotspotGroups.Sections(group, lines, halfPlanes, cells, Allocator.Temp);
+                var normal = math.normalizesafe(math.cross(group.up, group.right));
+                if (!sections.CutOnce(group.right, group.up, normal, indices, collider, select, render))
+                    sections.Split(group.right, group.up, normal, indices, collider, select, render);
+                sections.AssignUVs(indices, collider, select, render, group.right, group.up);
+                sections.Dispose();
+            } else
+                MeshAlgorithms.ComputeUVs(render, group.uvMatrix);
+            MeshAlgorithms.ComputeTangents(indices, render);
+            if (!Finite(collider, render))
+            {
+                to.CopyGeometry(builder, ref from);
+                to.CopyHotspot(builder, ref from);
+                return;
+            }
+            to.Store(builder, indices, collider, select, render);
+            builder.Construct(ref to.physicsIndices,  ref from.indices);
+            builder.Construct(ref to.physicsVertices, ref from.colliderVertices);
+            to.CopySections(builder, ref from);
+            to.sectionInput = group.input;
+            to.hotspot      = group.info;
         }
 
         static bool Finite(NativeList<float3> positions, NativeList<RenderVertex> render)

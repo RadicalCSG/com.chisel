@@ -80,6 +80,8 @@ namespace Chisel.Core
         [NoAlias, ReadOnly] public int meshQueryLength;
         [NoAlias, ReadOnly] public NativeList<IndexOrder>                                  allTreeBrushIndexOrders;
         [NoAlias, ReadOnly] public NativeList<BlobAssetReference<ChiselBrushRenderBuffer>> brushRenderBufferCache;
+        [NoAlias, ReadOnly] public NativeArray<HotspotTileData>   hotspotTiles;
+        [NoAlias, ReadOnly] public NativeArray<HotspotLayoutData> hotspotLayouts;
 
         // Write
         [NoAlias] public NativeList<BrushData> brushRenderData;
@@ -119,7 +121,7 @@ namespace Chisel.Core
             // The weld at the very end across the whole model: needles that close a seam go with the triangle across them
             OutputModelWeld.WeldModel(brushRenderData, patchedRenderBuffers);
             // Then what is drawn of hotspot surfaces is cut into its sections; the collider stays as welded
-            OutputHotspotSections.CutModel(brushRenderData, patchedRenderBuffers);
+            OutputHotspotSections.CutModel(brushRenderData, patchedRenderBuffers, hotspotTiles, hotspotLayouts);
         }
     }
 

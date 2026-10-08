@@ -2386,6 +2386,8 @@ namespace Chisel.Core
                         meshQueryLength         = Temporaries.meshQueriesLength,
                         allTreeBrushIndexOrders = Temporaries.allTreeBrushIndexOrders,
                         brushRenderBufferCache  = chiselLookupValues.brushRenderBufferCache,
+                        hotspotTiles            = Temporaries.hotspotTiles,
+                        hotspotLayouts          = Temporaries.hotspotLayouts,
 
                         // Write
                         brushRenderData      = Temporaries.brushRenderData,
@@ -2398,7 +2400,8 @@ namespace Chisel.Core
                         JobHandles.Read(
                             JobHandleType.meshQueriesJobHandle,
                             JobHandleType.allTreeBrushIndexOrdersJobHandle,
-                            JobHandleType.brushRenderBufferCacheJobHandle),
+                            JobHandleType.brushRenderBufferCacheJobHandle,
+                            JobHandleType.decalVolumesJobHandle),   // the hotspot tiles and layouts are disposed with the decals
                         JobHandles.Write(
                             JobHandleType.brushRenderDataJobHandle,
                             JobHandleType.surfaceCountRefJobHandle));

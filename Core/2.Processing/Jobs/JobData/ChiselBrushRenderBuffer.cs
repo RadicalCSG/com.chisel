@@ -44,11 +44,14 @@ namespace Chisel.Core
 		public HotspotSectionInput     sectionInput;
 		// What hotspot mapping chose for the surface (the diagnostic view)
 		public HotspotSurfaceInfo      hotspot;
+		// What matching it again together with its coplanar neighbours takes (HotspotGroups)
+		public HotspotSurfaceSource    hotspotSource;
 
 		public void CopySections(BlobBuilder builder, ref ChiselSurfaceRenderBuffer from)
 		{
-			sectionInput = from.sectionInput;
-			hotspot      = from.hotspot;
+			sectionInput  = from.sectionInput;
+			hotspot       = from.hotspot;
+			hotspotSource = from.hotspotSource;
 		}
 
 		// The sections and the uncut collider triangles, as they are
