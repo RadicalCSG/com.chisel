@@ -61,35 +61,58 @@ namespace Chisel.Core
                     edges.Add(edge, count + 1);
                 }
             }
-            // an edge without its reverse is on the outline
-            var next = new UnsafeHashMap<int, int>(indices.Length, Allocator.Temp);
+            // an edge without its reverse is on the outline; where two loops touch at a corner (the steps of a spiral
+            // staircase) that corner has two ways on
+            var next    = new UnsafeParallelMultiHashMap<int, int>(indices.Length, Allocator.Temp);
+            var outline = new NativeList<int2>(indices.Length, Allocator.Temp);
             using (var all = edges.GetKeyArray(Allocator.Temp))
             {
                 for (int e = 0; e < all.Length; e++)
                 {
                     var edge = all[e];
-                    if (!edges.ContainsKey(edge.yx))
-                        next.TryAdd(edge.x, edge.y);
+                    if (edges.ContainsKey(edge.yx))
+                        continue;
+                    next.Add(edge.x, edge.y);
+                    outline.Add(edge);
                 }
             }
-            var loop  = new NativeList<int>(16, Allocator.Temp);
-            var taken = new UnsafeHashSet<int>(16, Allocator.Temp);
-            using (var starts = next.GetKeyArray(Allocator.Temp))
+            outline.Sort(new EdgeOrder());
+            var loop = new NativeList<int>(16, Allocator.Temp);
+            var used = new UnsafeHashSet<int2>(outline.Length, Allocator.Temp);
             {
-                starts.Sort();
-                for (int s = 0; s < starts.Length; s++)
+                for (int s = 0; s < outline.Length; s++)
                 {
-                    if (taken.Contains(starts[s]))
+                    var first = outline[s];
+                    if (used.Contains(first))
                         continue;
                     loop.Clear();
-                    var current = starts[s];
+                    used.Add(first);
+                    loop.Add(first.x);
+                    var from = first.x; var current = first.y;
                     var closed = false;
-                    while (!taken.Contains(current) && next.TryGetValue(current, out var following))
+                    for (int guard = 0; guard < outline.Length; guard++)
                     {
-                        taken.Add(current);
+                        if (current == first.x) { closed = true; break; }
                         loop.Add(current);
-                        current = following;
-                        if (current == starts[s]) { closed = true; break; }
+                        // of the ways on, the one that turns furthest left keeps to this loop (the surface is on its left)
+                        var incoming = Frame(where[current]) - Frame(where[from]);
+                        var best = -1; var bestTurn = double.NegativeInfinity;
+                        if (next.TryGetFirstValue(current, out var to, out var iterator))
+                        {
+                            do
+                            {
+                                if (used.Contains(new int2(current, to)))
+                                    continue;
+                                var outgoing = Frame(where[to]) - Frame(where[current]);
+                                var turn = math.atan2(Cross(incoming, outgoing), math.dot(incoming, outgoing));
+                                if (turn > bestTurn) { bestTurn = turn; best = to; }
+                            } while (next.TryGetNextValue(out to, ref iterator));
+                        }
+                        if (best < 0)
+                            break;
+                        used.Add(new int2(current, best));
+                        from = current;
+                        current = best;
                     }
                     if (!closed)
                         continue;
@@ -117,12 +140,18 @@ namespace Chisel.Core
                 }
             }
             loop.Dispose();
-            taken.Dispose();
+            used.Dispose();
+            outline.Dispose();
             next.Dispose();
             edges.Dispose();
             vertexId.Dispose();
             where.Dispose();
             ids.Dispose();
+        }
+
+        struct EdgeOrder : System.Collections.Generic.IComparer<int2>
+        {
+            public readonly int Compare(int2 a, int2 b) => a.x != b.x ? a.x.CompareTo(b.x) : a.y.CompareTo(b.y);
         }
 
         // A tile's side (of t) whose outside faces this way in the tile
