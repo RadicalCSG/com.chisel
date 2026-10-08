@@ -12,7 +12,8 @@ namespace Chisel.Editors
     // The visual inspection suite (automated and visual verification):
     // every case of the hotspot test scene (HotspotTestScene) rendered as it is drawn and in the diagnostic view, into
     // HotspotVisualTests beside Assets. An image is named after its station and case, as the test scene's code names
-    // them, so the case can be found from the image. Nothing is compared: it is for a person to look at.
+    // them, so the case can be found from the image; each station also has one image of all its cases together (where
+    // cases belong together, as connected surfaces do). Nothing is compared: it is for a person to look at.
     static class HotspotVisualTests
     {
         const string kFolderName = "HotspotVisualTests";
@@ -70,9 +71,18 @@ namespace Chisel.Editors
                 camera.targetTexture   = texture;
 
                 var count = 0;
+                foreach (var (station, generators) in Stations())
+                {
+                    if (!Frame(camera, generators))
+                        continue;
+                    var name = Sanitize(StationNumber(station) + " station");
+                    Render(camera, image, Path.Combine(folder, name + ".png"), HotspotDiagnosticMode.Off);
+                    Render(camera, image, Path.Combine(folder, name + ".distortion.png"), HotspotDiagnosticMode.Distortion);
+                    index.Append(name).Append(".png\t").Append(station).Append(" (all its cases)\n");
+                }
                 foreach (var (station, generator) in Cases())
                 {
-                    if (!Frame(camera, generator))
+                    if (!Frame(camera, new[] { generator }))
                         continue;
                     var name = Sanitize(StationNumber(station) + " " + generator.name);
                     Render(camera, image, Path.Combine(folder, name + ".png"), HotspotDiagnosticMode.Off);
@@ -90,6 +100,8 @@ namespace Chisel.Editors
                 ChiselHotspotDiagnosticsView.ClearCaptures();
                 Object.DestroyImmediate(image);
                 RenderTexture.active = null;
+                if (cameraObject.TryGetComponent<Camera>(out var used))
+                    used.targetTexture = null;
                 Object.DestroyImmediate(texture);
                 Object.DestroyImmediate(cameraObject);
             }
@@ -113,6 +125,25 @@ namespace Chisel.Editors
             }
         }
 
+        // Each station of the test scene with its cases
+        static IEnumerable<(string station, List<ChiselGeneratorComponent> generators)> Stations()
+        {
+            string current = null;
+            var generators = new List<ChiselGeneratorComponent>();
+            foreach (var (station, generator) in Cases())
+            {
+                if (current != null && station != current)
+                {
+                    yield return (current, generators);
+                    generators = new List<ChiselGeneratorComponent>();
+                }
+                current = station;
+                generators.Add(generator);
+            }
+            if (current != null)
+                yield return (current, generators);
+        }
+
         static string StationNumber(string station)
         {
             var space = station.IndexOf(' ');
@@ -127,33 +158,49 @@ namespace Chisel.Editors
             return builder.ToString().Trim();
         }
 
-        // The camera in front of the case, a little above and to the left, the whole of it in view
-        static bool Frame(Camera camera, ChiselGeneratorComponent generator)
+        // The camera in front of the cases, a little above and to the left, the whole of them in view
+        static bool Frame(Camera camera, IEnumerable<ChiselGeneratorComponent> generators)
         {
-            var brushes = new HashSet<CSGTreeBrush>();
-            ChiselModelManager.Instance.GetAllTreeBrushes(generator, brushes);
-            var modelMatrix = ChiselNodeHierarchyManager.FindModelTransformMatrixOfTransform(generator.transform);
             var bounds = new Bounds();
             var any = false;
-            foreach (var brush in brushes)
+            var brushes = new HashSet<CSGTreeBrush>();
+            foreach (var generator in generators)
             {
-                if (!brush.Valid)
-                    continue;
-                var box = brush.GetBounds(modelMatrix * (Matrix4x4)brush.NodeToTreeSpaceMatrix);
-                if (!math.all(math.isfinite(box.Min)) || !math.all(math.isfinite(box.Max)) || math.any(box.Max < box.Min))
-                    continue;
-                var b = new Bounds();
-                b.SetMinMax(box.Min, box.Max);
-                if (!any) bounds = b; else bounds.Encapsulate(b);
-                any = true;
+                brushes.Clear();
+                ChiselModelManager.Instance.GetAllTreeBrushes(generator, brushes);
+                var modelMatrix = ChiselNodeHierarchyManager.FindModelTransformMatrixOfTransform(generator.transform);
+                foreach (var brush in brushes)
+                {
+                    if (!brush.Valid)
+                        continue;
+                    var box = brush.GetBounds(modelMatrix * (Matrix4x4)brush.NodeToTreeSpaceMatrix);
+                    if (!math.all(math.isfinite(box.Min)) || !math.all(math.isfinite(box.Max)) || math.any(box.Max < box.Min))
+                        continue;
+                    var b = new Bounds();
+                    b.SetMinMax(box.Min, box.Max);
+                    if (!any) bounds = b; else bounds.Encapsulate(b);
+                    any = true;
+                }
             }
             if (!any)
                 return false;
+            // as close as keeps every corner of the bounds in view, with a little room
             var direction = new Vector3(-0.35f, 0.45f, -1).normalized;
-            var radius = Mathf.Max(bounds.extents.magnitude, 0.1f);
-            var distance = radius / Mathf.Sin(camera.fieldOfView * 0.5f * Mathf.Deg2Rad);
-            camera.transform.position = bounds.center + direction * distance;
+            camera.transform.position = bounds.center + direction;
             camera.transform.LookAt(bounds.center);
+            var tanY = Mathf.Tan(camera.fieldOfView * 0.5f * Mathf.Deg2Rad);
+            var tanX = tanY * camera.aspect;
+            var right = camera.transform.right; var up = camera.transform.up; var forward = camera.transform.forward;
+            var distance = 0.1f;
+            for (int corner = 0; corner < 8; corner++)
+            {
+                var offset = new Vector3((corner & 1) != 0 ? bounds.extents.x : -bounds.extents.x,
+                                         (corner & 2) != 0 ? bounds.extents.y : -bounds.extents.y,
+                                         (corner & 4) != 0 ? bounds.extents.z : -bounds.extents.z);
+                var depth = Vector3.Dot(offset, forward);
+                distance = Mathf.Max(distance, Mathf.Abs(Vector3.Dot(offset, right)) / tanX - depth, Mathf.Abs(Vector3.Dot(offset, up)) / tanY - depth);
+            }
+            camera.transform.position = bounds.center - forward * distance * 1.1f;
             return true;
         }
 

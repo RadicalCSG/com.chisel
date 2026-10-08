@@ -175,11 +175,12 @@ namespace Chisel.Core
                 return -1 - id;
             }
 
-            // a point this close to a line is on it (its size: the surface's extent)
+            // a point this close to a line is on it (its size: the surface's extent): a few float steps of the positions,
+            // so a line passing a corner within their precision does not cut a sliver off beside it
             var extent = 0.0;
             for (int i = 0; i < starts.Length; i++)
                 extent = math.max(extent, math.cmax(math.abs(frame[starts[i]])));
-            var onLine = 1e-12 * math.max(1, extent);
+            var onLine = 1e-6 * math.max(1, extent);
 
             // each bounded section's piece of each start
             var points  = new NativeList<CutPoint>(starts.Length * cells.Length, Allocator.Temp);
