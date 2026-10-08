@@ -19,7 +19,10 @@ namespace Chisel.Core
         static double2 FrameOf(float3 p, double3 r, double3 u) => new double2(math.dot(r, (double3)p), math.dot(u, (double3)p));
 
         // The uv on the conforming interior's outline nearest p
-        readonly float2 OutlineUV(double2 p)
+        readonly float2 OutlineUV(double2 p) => (float2)(OutlinePixels(p) / conformSize);
+
+        // The pixel on the conforming interior's outline nearest p
+        readonly double2 OutlinePixels(double2 p)
         {
             var best = double.PositiveInfinity;
             var uv = double2.zero;
@@ -35,7 +38,7 @@ namespace Chisel.Core
                     uv = math.lerp(conformImage[k], conformImage[(k + 1) % conformLoop.Length], t);
                 }
             }
-            return (float2)(uv / conformSize);
+            return uv;
         }
 
         // The uvs of the interior's vertices (NaN for the others): on its outline round the tile's inner rectangle, inside

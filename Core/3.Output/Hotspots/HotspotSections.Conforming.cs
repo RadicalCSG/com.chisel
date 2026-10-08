@@ -271,39 +271,9 @@ namespace Chisel.Core
 
                 if (conform)
                 {
-                    // the inner outline round the tile's inner rectangle: the corner nearest each corner of the inset bounds
-                    // on that tile corner, the rest by length along the outline between them
-                    var ok = true;
-                    for (int j = 0; j < 4; j++)
-                    {
-                        var nearest = -1; var distance = double.PositiveInfinity;
-                        for (int k = 0; k < count; k++)
-                        {
-                            var dk = math.lengthsq(inner[k] - s.inner[j]);
-                            if (dk < distance) { distance = dk; nearest = k; }
-                        }
-                        if (anchor[nearest] >= 0) { ok = false; break; }
-                        anchor[nearest] = j;
-                    }
-                    // in the tile's order round the outline
-                    var firstAnchor = -1;
-                    for (int k = 0; k < count && ok; k++)
-                    {
-                        if (anchor[k] == 0) firstAnchor = k;
-                    }
-                    if (ok && firstAnchor >= 0)
-                    {
-                        var expected = 0;
-                        for (int step = 0; step < count; step++)
-                        {
-                            var k = (firstAnchor + step) % count;
-                            if (anchor[k] < 0)
-                                continue;
-                            if (anchor[k] != expected) { ok = false; break; }
-                            expected++;
-                        }
-                    } else
-                        ok = false;
+                    // the inner outline round the tile's inner rectangle: four of its corners on the tile's corners
+                    // (ChooseAnchors), the rest by length along the outline between them
+                    var ok = ChooseAnchors(inner.AsArray(), s, t, anchor.AsArray());
                     if (!ok)
                     {
                         conform = false;
@@ -325,26 +295,7 @@ namespace Chisel.Core
                             conformLoop.Add(inner[k]);
                             conformImage.Add(default);
                         }
-                        for (int j = 0; j < 4; j++)
-                        {
-                            int from = -1, to = -1;
-                            for (int k = 0; k < count; k++)
-                            {
-                                if (anchor[k] == j) from = k;
-                                if (anchor[k] == (j + 1) % 4) to = k;
-                            }
-                            var length = 0.0;
-                            for (int k = from; k != to; k = (k + 1) % count)
-                                length += math.length(inner[(k + 1) % count] - inner[k]);
-                            var walked = 0.0;
-                            for (int k = from; k != to; k = (k + 1) % count)
-                            {
-                                conformImage[k] = math.lerp(t.inner[j], t.inner[(j + 1) % 4], length > 0 ? walked / length : 0);
-                                // its edge runs along this side of the tile
-                                side[k] = j;
-                                walked += math.length(inner[(k + 1) % count] - inner[k]);
-                            }
-                        }
+                        Walk(inner.AsArray(), anchor.AsArray(), t, conformImage.AsArray(), side.AsArray());
                     }
                 }
 
@@ -511,6 +462,97 @@ namespace Chisel.Core
                 AddCell(start, s.inner[0], s.inner[1], s.inner[3], t.inner[0], t.inner[1], t.inner[3], size);
             }
             return true;
+        }
+
+        // How many of the corners nearest each corner of the inset bounds may go on that corner of the tile
+        const int kAnchorCandidates = 3;
+
+        // Which corners go on the tile's corners (anchor[k] = j): of the corners nearest each corner of the inset bounds
+        // (across the bounds as a unit square), the four in the tile's order round the outline whose map onto the tile's
+        // inner rectangle distorts least (LeastDistorted), so a corner and its twin a hair away are not both taken; false
+        // when every choice lays a triangle flat along a side of the tile
+        static bool ChooseAnchors(NativeArray<double2> inner, in Outline s, in Outline t, NativeArray<int> anchor)
+        {
+            var count  = inner.Length;
+            var origin = math.min(s.inner[0], s.inner[2]);
+            var extent = math.abs(s.inner[2] - s.inner[0]);
+            extent = math.select(extent, 1, extent <= 0);
+            var candidates = new NativeArray<int>(4 * kAnchorCandidates, Allocator.Temp);
+            for (int j = 0; j < 4; j++)
+            {
+                var target = (s.inner[j] - origin) / extent;
+                for (int c = 0; c < kAnchorCandidates; c++)
+                {
+                    var best = -1; var distance = double.PositiveInfinity;
+                    for (int k = 0; k < count; k++)
+                    {
+                        var taken = false;
+                        for (int e = 0; e < c; e++)
+                            taken |= candidates[j * kAnchorCandidates + e] == k;
+                        if (taken) continue;
+                        var dk = math.lengthsq((inner[k] - origin) / extent - target);
+                        if (dk < distance) { distance = dk; best = k; }
+                    }
+                    candidates[j * kAnchorCandidates + c] = best;
+                }
+            }
+            var images = new NativeArray<double2>(count, Allocator.Temp);
+            var trial  = new NativeArray<int>(count, Allocator.Temp);
+            var chosen = new int4(-1);
+            var least  = double.PositiveInfinity;
+            for (int c0 = 0; c0 < kAnchorCandidates; c0++)
+            for (int c1 = 0; c1 < kAnchorCandidates; c1++)
+            for (int c2 = 0; c2 < kAnchorCandidates; c2++)
+            for (int c3 = 0; c3 < kAnchorCandidates; c3++)
+            {
+                var k = new int4(candidates[c0], candidates[kAnchorCandidates + c1], candidates[2 * kAnchorCandidates + c2], candidates[3 * kAnchorCandidates + c3]);
+                if (math.any(k < 0))
+                    continue;
+                // in the tile's order round the outline
+                var d = (k - k.x + count) % count;
+                if (!(d.y > 0 && d.z > d.y && d.w > d.z))
+                    continue;
+                for (int i = 0; i < count; i++)
+                    trial[i] = -1;
+                trial[k.x] = 0; trial[k.y] = 1; trial[k.z] = 2; trial[k.w] = 3;
+                Walk(inner, trial, t, images, default);
+                var distortion = LeastDistorted(inner, images, default);
+                if (distortion < least) { least = distortion; chosen = k; }
+            }
+            candidates.Dispose();
+            images.Dispose();
+            trial.Dispose();
+            if (chosen.x < 0)
+                return false;
+            anchor[chosen.x] = 0; anchor[chosen.y] = 1; anchor[chosen.z] = 2; anchor[chosen.w] = 3;
+            return true;
+        }
+
+        // The images of the corners round the tile's inner rectangle, each by length along the outline from the corner on
+        // the tile corner before it (anchor); side[k], when given, the side of the tile edge k runs along
+        static void Walk(NativeArray<double2> inner, NativeArray<int> anchor, in Outline t, NativeArray<double2> images, NativeArray<int> side)
+        {
+            var count = inner.Length;
+            for (int j = 0; j < 4; j++)
+            {
+                int from = -1, to = -1;
+                for (int k = 0; k < count; k++)
+                {
+                    if (anchor[k] == j) from = k;
+                    if (anchor[k] == (j + 1) % 4) to = k;
+                }
+                var length = 0.0;
+                for (int k = from; k != to; k = (k + 1) % count)
+                    length += math.length(inner[(k + 1) % count] - inner[k]);
+                var walked = 0.0;
+                for (int k = from; k != to; k = (k + 1) % count)
+                {
+                    images[k] = math.lerp(t.inner[j], t.inner[(j + 1) % 4], length > 0 ? walked / length : 0);
+                    if (side.IsCreated)
+                        side[k] = j;
+                    walked += math.length(inner[(k + 1) % count] - inner[k]);
+                }
+            }
         }
 
         static bool Convex(NativeList<double2> corners, int2 loop)

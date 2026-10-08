@@ -374,7 +374,8 @@ namespace Chisel.Core
                 for (int i = 0; i < piece.y; i++)
                     Along(pointVertex[piece.x + i], pointVertex[piece.x + (i + 1) % piece.y], points[piece.x + i].support);
                 CloseRing();
-                complete &= EarClip(ring, ringP, orientation < 0, newIndices);
+                complete &= piece.z == interiorCell && Conforms ? TriangulateInterior(ring, ringP, orientation < 0, newIndices)
+                                                                : EarClip(ring, ringP, orientation < 0, newIndices);
             }
 
             // what no bounded section took: each start's outline less its pieces, edges both ways round cancelling
@@ -441,7 +442,8 @@ namespace Chisel.Core
                             area += Cross(ringP[i], ringP[(i + 1) % ringP.Length]);
                         // a hole in what is left: cut triangle by triangle instead
                         if (!(area > 0)) { complete = false; break; }
-                        complete &= EarClip(ring, ringP, orientation < 0, newIndices);
+                        complete &= unbounded == interiorCell && Conforms ? TriangulateInterior(ring, ringP, orientation < 0, newIndices)
+                                                                          : EarClip(ring, ringP, orientation < 0, newIndices);
                     }
                 }
                 traced.Dispose(); next.Dispose(); directed.Dispose();
@@ -537,6 +539,110 @@ namespace Chisel.Core
                 tangent  = weights.x * r0.tangent + weights.y * r1.tangent + weights.z * r2.tangent,
                 uv1      = weights.x * r0.uv1 + weights.y * r1.uv1 + weights.z * r2.uv1
             };
+        }
+
+        // A convex piece of the conforming interior, counter-clockwise, into the triangles whose map round the tile's inner
+        // rectangle distorts least (LeastDistorted), so none lies flat along one side of the tile; by ear clipping when it
+        // is not convex or every triangulation has such a triangle
+        readonly bool TriangulateInterior(NativeList<int> ring, NativeList<double2> points, bool reversed, NativeList<int> output)
+        {
+            var count = points.Length;
+            var convex = count >= 3;
+            for (int i = 0; i < count && convex; i++)
+            {
+                var a = points[(i + count - 1) % count]; var b = points[i]; var c = points[(i + 1) % count];
+                convex = Cross(b - a, c - b) >= -1e-12 * math.max(math.lengthsq(b - a), math.lengthsq(c - b));
+            }
+            if (!convex)
+                return EarClip(ring, points, reversed, output);
+            var images = new NativeArray<double2>(count, Allocator.Temp);
+            for (int i = 0; i < count; i++)
+                images[i] = OutlinePixels(points[i]);
+            var triangles = new NativeList<int3>(count, Allocator.Temp);
+            var least = LeastDistorted(points.AsArray(), images, triangles);
+            var taken = !double.IsPositiveInfinity(least);
+            if (taken)
+            {
+                for (int i = 0; i < triangles.Length; i++)
+                {
+                    var triangle = triangles[i];
+                    output.Add(ring[triangle.x]);
+                    if (reversed) { output.Add(ring[triangle.z]); output.Add(ring[triangle.y]); }
+                    else          { output.Add(ring[triangle.y]); output.Add(ring[triangle.z]); }
+                }
+            }
+            images.Dispose();
+            triangles.Dispose();
+            return taken || EarClip(ring, points, reversed, output);
+        }
+
+        // The triangulation of a convex polygon (counter-clockwise, points on its straight edges included) whose map onto
+        // images distorts least: the least sum over its triangles of their area times |J|^2 / det J, the map's conformal
+        // distortion (2 where it only scales and turns). A triangle without area, or turned over, in either is never taken.
+        // Infinity when every triangulation has one; triangles (when created) gets the corners of each.
+        static double LeastDistorted(NativeArray<double2> points, NativeArray<double2> images, NativeList<int3> triangles)
+        {
+            var count = points.Length;
+            if (count < 3)
+                return double.PositiveInfinity;
+            // mirrored images keep their distortion
+            var imageArea = 0.0;
+            for (int i = 0; i < count; i++)
+                imageArea += Cross(images[i], images[(i + 1) % count]);
+            var flip = imageArea < 0 ? new double2(1, -1) : new double2(1, 1);
+            var cost  = new NativeArray<double>(count * count, Allocator.Temp);
+            var split = new NativeArray<int>(count * count, Allocator.Temp);
+            for (int gap = 2; gap < count; gap++)
+            {
+                for (int i = 0; i + gap < count; i++)
+                {
+                    var j = i + gap;
+                    var best = double.PositiveInfinity; var at = -1;
+                    for (int k = i + 1; k < j; k++)
+                    {
+                        var c = cost[i * count + k] + cost[k * count + j]
+                              + Distortion(points[i], points[k], points[j], images[i] * flip, images[k] * flip, images[j] * flip);
+                        if (c < best) { best = c; at = k; }
+                    }
+                    cost[i * count + j] = best;
+                    split[i * count + j] = at;
+                }
+            }
+            var least = cost[count - 1];
+            if (!double.IsPositiveInfinity(least) && triangles.IsCreated)
+            {
+                var spans = new NativeList<int2>(count, Allocator.Temp);
+                spans.Add(new int2(0, count - 1));
+                while (spans.Length > 0)
+                {
+                    var span = spans[spans.Length - 1];
+                    spans.RemoveAt(spans.Length - 1);
+                    if (span.y - span.x < 2)
+                        continue;
+                    var k = split[span.x * count + span.y];
+                    triangles.Add(new int3(span.x, k, span.y));
+                    spans.Add(new int2(span.x, k));
+                    spans.Add(new int2(k, span.y));
+                }
+                spans.Dispose();
+            }
+            cost.Dispose();
+            split.Dispose();
+            return least;
+        }
+
+        static double Distortion(double2 p0, double2 p1, double2 p2, double2 q0, double2 q1, double2 q2)
+        {
+            var e1 = p1 - p0; var e2 = p2 - p0;
+            var area = Cross(e1, e2);
+            if (!(area > 1e-12 * math.max(math.lengthsq(e1), math.lengthsq(e2))))
+                return double.PositiveInfinity;
+            var f1 = q1 - q0; var f2 = q2 - q0;
+            var imageArea = Cross(f1, f2);
+            if (!(imageArea > 1e-12 * math.max(math.lengthsq(f1), math.lengthsq(f2))))
+                return double.PositiveInfinity;
+            var map = math.mul(new double2x2(f1, f2), math.inverse(new double2x2(e1, e2)));
+            return 0.5 * area * (math.lengthsq(map.c0) + math.lengthsq(map.c1)) / math.determinant(map);
         }
 
         // A simple polygon, counter-clockwise (points on its straight edges included), into triangles that use every
