@@ -367,6 +367,33 @@ namespace Chisel.Core
                 while (ring.Length > 1 && ring[0] == ring[ring.Length - 1]) { ring.RemoveAt(ring.Length - 1); ringP.RemoveAt(ringP.Length - 1); }
             }
 
+            // the conforming interior's piece: in the triangles that distort least, with as few points inside it as
+            // bring its distortion down (InteriorTriangles)
+            var insidePoints   = new NativeList<double2>(8, Allocator.Temp);
+            var self           = this;
+            var insideVertex   = new NativeList<int>(8, Allocator.Temp);
+            var insideTriangle = new NativeList<int3>(16, Allocator.Temp);
+            bool Interior()
+            {
+                if (!self.InteriorTriangles(ringP, insidePoints, insideTriangle))
+                    return EarClip(ring, ringP, orientation < 0, newIndices);
+                insideVertex.Clear();
+                for (int i = 0; i < insidePoints.Length; i++)
+                {
+                    var p = insidePoints[i];
+                    insideVertex.Add(VertexOf(new CutPoint { p2 = p, p3 = r * p.x + u * p.y + n * planeDistance, kind = 3, a = -1, b = -1 }, -1));
+                }
+                int Vertex(int k) => k < ring.Length ? ring[k] : insideVertex[k - ring.Length];
+                for (int i = 0; i < insideTriangle.Length; i++)
+                {
+                    var triangle = insideTriangle[i];
+                    newIndices.Add(Vertex(triangle.x));
+                    if (orientation < 0) { newIndices.Add(Vertex(triangle.z)); newIndices.Add(Vertex(triangle.y)); }
+                    else                 { newIndices.Add(Vertex(triangle.y)); newIndices.Add(Vertex(triangle.z)); }
+                }
+                return true;
+            }
+
             for (int g = 0; g < pieces.Length && complete; g++)
             {
                 var piece = pieces[g];
@@ -374,8 +401,7 @@ namespace Chisel.Core
                 for (int i = 0; i < piece.y; i++)
                     Along(pointVertex[piece.x + i], pointVertex[piece.x + (i + 1) % piece.y], points[piece.x + i].support);
                 CloseRing();
-                complete &= piece.z == interiorCell && Conforms ? TriangulateInterior(ring, ringP, orientation < 0, newIndices)
-                                                                : EarClip(ring, ringP, orientation < 0, newIndices);
+                complete &= piece.z == interiorCell && Conforms ? Interior() : EarClip(ring, ringP, orientation < 0, newIndices);
             }
 
             // what no bounded section took: each start's outline less its pieces, edges both ways round cancelling
@@ -442,8 +468,7 @@ namespace Chisel.Core
                             area += Cross(ringP[i], ringP[(i + 1) % ringP.Length]);
                         // a hole in what is left: cut triangle by triangle instead
                         if (!(area > 0)) { complete = false; break; }
-                        complete &= unbounded == interiorCell && Conforms ? TriangulateInterior(ring, ringP, orientation < 0, newIndices)
-                                                                          : EarClip(ring, ringP, orientation < 0, newIndices);
+                        complete &= unbounded == interiorCell && Conforms ? Interior() : EarClip(ring, ringP, orientation < 0, newIndices);
                     }
                 }
                 traced.Dispose(); next.Dispose(); directed.Dispose();
@@ -458,6 +483,7 @@ namespace Chisel.Core
                 complete = math.abs(cutArea - startArea) <= 1e-6 * math.max(1, math.abs(startArea));
             }
 
+            insidePoints.Dispose(); insideVertex.Dispose(); insideTriangle.Dispose();
             between.Dispose(); ring.Dispose(); ringP.Dispose();
             startVertex.Dispose(); pointVertex.Dispose(); onSupport.Dispose(); lookup.Dispose(); where.Dispose();
             pieces.Dispose(); points.Dispose(); edges.Dispose(); edgeIds.Dispose();
@@ -541,11 +567,23 @@ namespace Chisel.Core
             };
         }
 
-        // A convex piece of the conforming interior, counter-clockwise, into the triangles whose map round the tile's inner
-        // rectangle distorts least (LeastDistorted), so none lies flat along one side of the tile; by ear clipping when it
-        // is not convex or every triangulation has such a triangle
-        readonly bool TriangulateInterior(NativeList<int> ring, NativeList<double2> points, bool reversed, NativeList<int> output)
+        // The conforming interior's map kinks where its triangles meet: there its slope (J) jumps. A piece whose worst jump
+        // (|J1 - J2| / |J1|) is above kInteriorKink gets one point in its middle; when that still leaves one above
+        // kInteriorRingKink, also a ring of points halfway out, if that takes away a fifth of it (// subdivide only to reduce the distortion, to a minimum)
+        const double kInteriorKink     = 0.25;
+        const double kInteriorRingKink = 0.6;
+        const double kInteriorRing     = 0.5;
+        const double kWorthTheRing     = 0.8;
+
+        // A convex piece of the conforming interior (points, counter-clockwise) into the triangles whose map round the
+        // tile's inner rectangle distorts least, none flat along one side of the tile (LeastDistorted), with as few
+        // points inside it (inside) as smooth its kinks. A triangle's corners below points.Length are its points, the
+        // others the points inside. False when it is not convex or every triangulation has a flat triangle (then it is
+        // ear clipped).
+        readonly bool InteriorTriangles(NativeList<double2> points, NativeList<double2> inside, NativeList<int3> triangles)
         {
+            inside.Clear();
+            triangles.Clear();
             var count = points.Length;
             var convex = count >= 3;
             for (int i = 0; i < count && convex; i++)
@@ -554,26 +592,142 @@ namespace Chisel.Core
                 convex = Cross(b - a, c - b) >= -1e-12 * math.max(math.lengthsq(b - a), math.lengthsq(c - b));
             }
             if (!convex)
-                return EarClip(ring, points, reversed, output);
-            var images = new NativeArray<double2>(count, Allocator.Temp);
+                return false;
+            var images = new NativeArray<double2>(count + count + 1, Allocator.Temp);
             for (int i = 0; i < count; i++)
                 images[i] = OutlinePixels(points[i]);
-            var triangles = new NativeList<int3>(count, Allocator.Temp);
-            var least = LeastDistorted(points.AsArray(), images, triangles);
-            var taken = !double.IsPositiveInfinity(least);
-            if (taken)
+            var least = LeastDistorted(points.AsArray(), images.GetSubArray(0, count), triangles);
+            if (double.IsPositiveInfinity(least))
             {
-                for (int i = 0; i < triangles.Length; i++)
+                images.Dispose();
+                return false;
+            }
+            var all = new NativeList<double2>(count * 2 + 1, Allocator.Temp);
+            all.AddRange(points.AsArray());
+            var kink = Kink(all, triangles, images);
+            if (kink > kInteriorKink)
+            {
+                var middle = double2.zero;
+                for (int i = 0; i < count; i++)
+                    middle += points[i];
+                middle /= count;
+                var fan = new NativeList<int3>(count, Allocator.Temp);
+                for (int i = 0; i < count; i++)
+                    fan.Add(new int3(i, (i + 1) % count, count));
+                all.Add(middle);
+                if (SolveInside(all, count, fan, images))
                 {
-                    var triangle = triangles[i];
-                    output.Add(ring[triangle.x]);
-                    if (reversed) { output.Add(ring[triangle.z]); output.Add(ring[triangle.y]); }
-                    else          { output.Add(ring[triangle.y]); output.Add(ring[triangle.z]); }
+                    var fanKink = Kink(all, fan, images);
+                    if (fanKink < kink)
+                    {
+                        kink = fanKink;
+                        inside.Clear(); inside.Add(middle);
+                        triangles.Clear(); triangles.AddRange(fan.AsArray());
+                    }
+                }
+                fan.Dispose();
+                if (inside.Length > 0 && kink > kInteriorRingKink)
+                {
+                    all.Clear();
+                    all.AddRange(points.AsArray());
+                    for (int i = 0; i < count; i++)
+                        all.Add(middle + (points[i] - middle) * kInteriorRing);
+                    all.Add(middle);
+                    var ring = new NativeList<int3>(count * 3, Allocator.Temp);
+                    for (int i = 0; i < count; i++)
+                    {
+                        var j = (i + 1) % count;
+                        ring.Add(new int3(i, j, count + j));
+                        ring.Add(new int3(i, count + j, count + i));
+                        ring.Add(new int3(count + i, count + j, count + count));
+                    }
+                    if (SolveInside(all, count, ring, images) && Kink(all, ring, images) < kink * kWorthTheRing)
+                    {
+                        inside.Clear();
+                        for (int i = count; i < all.Length; i++)
+                            inside.Add(all[i]);
+                        triangles.Clear(); triangles.AddRange(ring.AsArray());
+                    }
+                    ring.Dispose();
                 }
             }
+            all.Dispose();
             images.Dispose();
-            triangles.Dispose();
-            return taken || EarClip(ring, points, reversed, output);
+            return true;
+        }
+
+        // The images of the points after the first count (whose images are given): each the mean value weighted average
+        // of its neighbours, as SolveInterior gives them; false when a triangle has a point twice
+        static bool SolveInside(NativeList<double2> points, int count, NativeList<int3> triangles, NativeArray<double2> images)
+        {
+            for (int i = count; i < points.Length; i++)
+                images[i] = double2.zero;
+            for (int sweep = 0; sweep < 500; sweep++)
+            {
+                var moved = 0.0;
+                for (int v = count; v < points.Length; v++)
+                {
+                    var sum = double2.zero; var weights = 0.0;
+                    for (int t = 0; t < triangles.Length; t++)
+                    {
+                        var triangle = triangles[t];
+                        int a, b;
+                        if (triangle.x == v)      { a = triangle.y; b = triangle.z; }
+                        else if (triangle.y == v) { a = triangle.z; b = triangle.x; }
+                        else if (triangle.z == v) { a = triangle.x; b = triangle.y; }
+                        else continue;
+                        var da = points[a] - points[v]; var db = points[b] - points[v];
+                        var la = math.length(da); var lb = math.length(db);
+                        if (!(la > 0) || !(lb > 0))
+                            return false;
+                        var half = math.tan(0.5 * math.acos(math.clamp(math.dot(da, db) / (la * lb), -1, 1)));
+                        sum += images[a] * (half / la) + images[b] * (half / lb);
+                        weights += half / la + half / lb;
+                    }
+                    if (!(weights > 0))
+                        return false;
+                    var next = sum / weights;
+                    moved = math.max(moved, math.lengthsq(next - images[v]));
+                    images[v] = next;
+                }
+                if (moved < 1e-14)
+                    break;
+            }
+            return true;
+        }
+
+        // The worst kink of a map: of every two triangles sharing an edge, how far their slopes differ (|J1 - J2| / |J1|);
+        // infinity when a triangle is flat or turned over in either
+        static double Kink(NativeList<double2> points, NativeList<int3> triangles, NativeArray<double2> images)
+        {
+            var slopes = new NativeArray<double2x2>(triangles.Length, Allocator.Temp);
+            var worst = 0.0;
+            for (int t = 0; t < triangles.Length && worst < double.PositiveInfinity; t++)
+            {
+                var triangle = triangles[t];
+                var e1 = points[triangle.y] - points[triangle.x]; var e2 = points[triangle.z] - points[triangle.x];
+                var f1 = images[triangle.y] - images[triangle.x]; var f2 = images[triangle.z] - images[triangle.x];
+                if (!(Cross(e1, e2) > 0) || !(Cross(f1, f2) * Cross(e1, e2) > 0))
+                    worst = double.PositiveInfinity;
+                else
+                    slopes[t] = math.mul(new double2x2(f1, f2), math.inverse(new double2x2(e1, e2)));
+            }
+            for (int t = 0; t < triangles.Length && worst < double.PositiveInfinity; t++)
+            {
+                for (int o = t + 1; o < triangles.Length; o++)
+                {
+                    var a = triangles[t]; var b = triangles[o];
+                    var shared = (a.x == b.x || a.x == b.y || a.x == b.z ? 1 : 0) + (a.y == b.x || a.y == b.y || a.y == b.z ? 1 : 0)
+                               + (a.z == b.x || a.z == b.y || a.z == b.z ? 1 : 0);
+                    if (shared != 2)
+                        continue;
+                    var difference = slopes[t] - slopes[o];
+                    var size = math.min(math.lengthsq(slopes[t].c0) + math.lengthsq(slopes[t].c1), math.lengthsq(slopes[o].c0) + math.lengthsq(slopes[o].c1));
+                    worst = math.max(worst, math.sqrt((math.lengthsq(difference.c0) + math.lengthsq(difference.c1)) / size));
+                }
+            }
+            slopes.Dispose();
+            return worst;
         }
 
         // The triangulation of a convex polygon (counter-clockwise, points on its straight edges included) whose map onto
