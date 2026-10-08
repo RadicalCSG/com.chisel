@@ -50,11 +50,17 @@ namespace Chisel.Editors
             MixedMaterials();
             ScaledTransforms();
             Triangles();
+            Connections();
 
             ChiselNodeHierarchyManager.Update();
             ChiselModelManager.Instance.UpdateModels();
             foreach (var generator in s_Model.GetComponentsInChildren<ChiselGeneratorComponent>())
                 AssignMaterial(generator);
+            ChiselNodeHierarchyManager.Update();
+            ChiselModelManager.Instance.UpdateModels();
+            // what is connected by hand, now that its brushes are there
+            if (s_Corner)
+                ChiselHotspotLinks.Connect(Face(s_Corner, p => -p.z), Face(s_Corner, p => p.x));
             ChiselNodeHierarchyManager.Update();
             ChiselModelManager.Instance.UpdateModels();
 
@@ -328,6 +334,40 @@ namespace Chisel.Editors
             float x = 24;
             Wall(s, "wall cut diagonally by the CSG (triangle left)", ref x, 3, 3, 0);
             Subtract(Box(s, "diagonal cutter", new Vector3(24 + 1.5f, 1.5f, 0), new Vector3(5, 3, 1), new Vector3(0, 0, 45)));
+        }
+
+        static ChiselBoxComponent s_Corner;
+
+        // Coplanar surfaces that touch connect by themselves (one tile across them, the border only round them all);
+        // round a corner only by hand, and then the tile wraps round it
+        static void Connections()
+        {
+            var s = Station("12 connections (touching coplanar walls, offset bricks, a corner connected by hand)");
+            Box(s, "two walls, left", new Vector3(1, 0, 0), new Vector3(2, 2, 0.25f));
+            Box(s, "two walls, right", new Vector3(3, 0, 0), new Vector3(2, 2, 0.25f));
+            Box(s, "offset bricks, lower", new Vector3(7, 0, 0), new Vector3(4, 1, 0.25f));
+            Box(s, "offset bricks, upper", new Vector3(9, 1, 0), new Vector3(4, 1, 0.25f));
+            s_Corner = Box(s, "block, front and right side connected by hand", new Vector3(15, 0, 0), new Vector3(2, 2, 2));
+        }
+
+        // The face of a generator's first brush whose corners score highest on average
+        static SurfaceReference Face(ChiselGeneratorComponent generator, System.Func<float3, float> score)
+        {
+            var brush = (CSGTreeBrush)generator.TopTreeNode;
+            var blob = BrushMeshManager.GetBrushMeshBlob(brush.BrushMesh);
+            if (!blob.IsCreated)
+                return null;
+            ref var mesh = ref blob.Value;
+            var best = -1; var bestScore = float.NegativeInfinity;
+            for (int p = 0; p < mesh.polygons.Length; p++)
+            {
+                var sum = 0f;
+                for (int e = 0; e < mesh.polygons[p].edgeCount; e++)
+                    sum += score(mesh.localVertices[mesh.halfEdges[mesh.polygons[p].firstEdge + e].vertexIndex]);
+                sum /= mesh.polygons[p].edgeCount;
+                if (sum > bestScore) { bestScore = sum; best = p; }
+            }
+            return best < 0 ? null : new SurfaceReference(generator, mesh.polygons[best].descriptionIndex, brush, best);
         }
 
         // World size follows the transform: scaled brushes take tiles by their scaled size
