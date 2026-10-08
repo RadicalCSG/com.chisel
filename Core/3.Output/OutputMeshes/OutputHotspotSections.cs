@@ -81,14 +81,7 @@ namespace Chisel.Core
                     // cut once where the sections meet; triangle by triangle when that would not cover it once
                     if (!sections.CutOnce(right, up, normal, indices, collider, select, render))
                         sections.Split(right, up, normal, indices, collider, select, render);
-                    if (sections.Conforms)
-                    {
-                        sections.conformSize = input.textureSize;
-                        using var interiorUVs = sections.SolveInterior(indices, collider, right, up, Allocator.Temp);
-                        sections.AssignUVs(indices, collider, select, render, right, up, interiorUVs);
-                        MeshAlgorithms.ComputeTangents(indices, render);
-                    } else
-                        sections.AssignUVs(indices, collider, select, render, right, up);
+                    sections.AssignUVs(indices, collider, select, render, right, up);
                     sections.Dispose();
                     // a surface whose cut went wrong is drawn uncut: one bad point would hide the whole model (its
                     // bounds)

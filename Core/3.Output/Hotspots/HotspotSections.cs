@@ -61,12 +61,6 @@ namespace Chisel.Core
         public NativeList<HotspotSectionLine>      lines;
         public NativeList<HotspotSectionHalfPlane> halfPlanes;
         public NativeList<HotspotSectionCell>      cells;
-        // A conforming interior (BuildConforming): its outline, where each corner of it goes in the tile (pixels), the
-        // texture's size, and its cell (-1: none)
-        public NativeList<double2>                 conformLoop;
-        public NativeList<double2>                 conformImage;
-        public double2                             conformSize;
-        public int                                 interiorCell;
 
         // What the sections of a surface on its tile are built from
         public static HotspotSectionInput Input(in HotspotTileData tile, in HotspotLayoutData layout, in HotspotShape shape, in HotspotChoice choice, float3 normal)
@@ -103,9 +97,6 @@ namespace Chisel.Core
                 lines        = new NativeList<HotspotSectionLine>(12, allocator),
                 halfPlanes   = new NativeList<HotspotSectionHalfPlane>(32, allocator),
                 cells        = new NativeList<HotspotSectionCell>(13, allocator),
-                conformLoop  = new NativeList<double2>(8, allocator),
-                conformImage = new NativeList<double2>(8, allocator),
-                interiorCell = -1
             };
         }
 
@@ -116,8 +107,6 @@ namespace Chisel.Core
             if (lines.IsCreated)      lines.Dispose();
             if (halfPlanes.IsCreated) halfPlanes.Dispose();
             if (cells.IsCreated)      cells.Dispose();
-            if (conformLoop.IsCreated)  conformLoop.Dispose();
-            if (conformImage.IsCreated) conformImage.Dispose();
             this = default;
         }
 
@@ -305,9 +294,6 @@ namespace Chisel.Core
             lines.Clear();
             halfPlanes.Clear();
             cells.Clear();
-            conformLoop.Clear();
-            conformImage.Clear();
-            interiorCell = -1;
             var count = input.count;
             if (count != 3 && count != 4)
                 return false;
@@ -485,10 +471,10 @@ namespace Chisel.Core
         // How far apart two uvs of one vertex may be and still be one vertex
         const float kSameUV = 1e-5f;
 
-        // Each triangle's uvs from the section it is in; the conforming interior's from interiorUVs (SolveInterior). A
+        // Each triangle's uvs from the section it is in. A
         // vertex on a seam, where repeats meet, gets a vertex of its own for each side.
         public readonly void AssignUVs(NativeList<int> indices, NativeList<float3> colliderVertices, NativeList<SelectVertex> selectVertices,
-                                       NativeList<RenderVertex> renderVertices, float3 right, float3 up, NativeList<float2> interiorUVs = default)
+                                       NativeList<RenderVertex> renderVertices, float3 right, float3 up)
         {
             var r = (double3)right; var u = (double3)up;
             var assigned = new NativeList<bool>(renderVertices.Length, Allocator.Temp);
@@ -513,9 +499,7 @@ namespace Chisel.Core
                     }
                     var vertex = renderVertices[index];
                     var p = (double3)vertex.position;
-                    var uv = cell == interiorCell && interiorUVs.IsCreated && index < interiorUVs.Length && !math.any(math.isnan(interiorUVs[index]))
-                           ? interiorUVs[index]
-                           : UV(cell, new double2(math.dot(r, p), math.dot(u, p)));
+                    var uv = UV(cell, new double2(math.dot(r, p), math.dot(u, p)));
                     if (!assigned[index])
                     {
                         vertex.uv0 = uv;

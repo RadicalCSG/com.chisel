@@ -45,8 +45,6 @@ namespace Chisel.Core
         public float2 c0, c1, c2;
         // Round: at least kRadialCorners corners, all about as far from the middle of its bounds, which are square
         public bool   radial;
-        // Its hull is its bounds
-        public bool   boxed;
 
         public readonly float2 Corner(int index) { return index == 0 ? c0 : (index == 1 ? c1 : c2); }
     }
@@ -191,15 +189,6 @@ namespace Chisel.Core
                 }
                 shape.radial = nearest >= farthest * (1 - kRadialTolerance) &&
                                math.abs(extent.x - extent.y) <= math.max(extent.x, extent.y) * kRadialTolerance;
-            }
-            if (corners.Length == 4)
-            {
-                shape.boxed = true;
-                for (int i = 0; i < 4; i++)
-                {
-                    var c = (float2)points[corners[i]];
-                    shape.boxed &= (c.x == shape.min.x || c.x == shape.max.x) && (c.y == shape.min.y || c.y == shape.max.y);
-                }
             }
             if (corners.Length == 3)
             {
