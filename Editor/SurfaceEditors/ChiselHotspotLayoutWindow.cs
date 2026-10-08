@@ -585,31 +585,14 @@ namespace Chisel.Editors
         }
     }
 
-    // Every setting of a layout and of each of its tiles (the lines are drawn and moved in the window)
+    // The layout's own settings (its tiles are edited in the window)
     [CustomEditor(typeof(ChiselHotspotLayout))]
     public sealed class ChiselHotspotLayoutEditor : Editor
     {
-        readonly HashSet<int> unfolded = new();
-
         public override void OnInspectorGUI()
         {
             var layout = (ChiselHotspotLayout)target;
             ChiselHotspotLayoutWindow.LayoutFields(layout);
-            EditorGUILayout.LabelField("Tiles", $"{layout.tiles.Count} ({(layout.HasCuts ? "divided by lines" : "without lines")})");
-            EditorGUI.indentLevel++;
-            for (int i = 0; i < layout.tiles.Count; i++)
-            {
-                var tile = layout.tiles[i];
-                var name = string.IsNullOrEmpty(tile.name) ? "Tile " + tile.id : tile.name;
-                var open = EditorGUILayout.Foldout(unfolded.Contains(tile.id), name, true);
-                if (open) unfolded.Add(tile.id); else unfolded.Remove(tile.id);
-                if (!open)
-                    continue;
-                EditorGUI.indentLevel++;
-                ChiselHotspotLayoutWindow.TileFields(layout, i);
-                EditorGUI.indentLevel--;
-            }
-            EditorGUI.indentLevel--;
             if (GUILayout.Button("Edit Layout"))
                 ChiselHotspotLayoutWindow.Open(layout);
         }
