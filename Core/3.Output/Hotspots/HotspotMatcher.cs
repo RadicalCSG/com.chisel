@@ -82,19 +82,21 @@ namespace Chisel.Core
         // As a last resort, fewest repeats first, then least stretch (the design's repeat rule): each repeat costs more
         // than any stretch the rounding of repeats leaves
         const float kLastResortRepeatCost = 100;
+        // A surface tilted less than this (the square of the sine of its tilt) is level
+        const float kLevel = 1e-10f;
 
-        // The texture's right and up on a surface: up follows +y on walls and +z on floors and ceilings, and right is
-        // normal x up, so the texture reads the right way round from in front of the surface
+        // The texture's right and up on a surface: up follows +y, up the slope on a sloped surface, and +z on a level floor
+        // or ceiling, and right is normal x up, so the texture reads the right way round from in front of the surface
         public static void Frame(float3 normal, out float3 right, out float3 up)
         {
             Frame(normal, UpAxis(normal), out right, out up);
         }
 
-        // The axis up follows on a surface with this normal: +y on walls, +z on floors and ceilings
+        // The axis up follows on a surface with this normal: +z on a level floor or ceiling, +y on anything else
         public static float3 UpAxis(float3 normal)
         {
-            var a = math.abs(normal);
-            return (a.y >= a.x && a.y >= a.z) ? new float3(0, 0, 1) : new float3(0, 1, 0);
+            var level = normal.x * normal.x + normal.z * normal.z <= kLevel * math.lengthsq(normal);
+            return level ? new float3(0, 0, 1) : new float3(0, 1, 0);
         }
 
         // Up along axis, as it lies on the surface
