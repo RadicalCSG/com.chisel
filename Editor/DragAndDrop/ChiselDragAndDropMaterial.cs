@@ -114,7 +114,8 @@ namespace Chisel.Editors
 
             if (ChiselUVMoveTool.IsActive() ||
                 ChiselUVRotateTool.IsActive() ||
-                ChiselUVScaleTool.IsActive())
+                ChiselUVScaleTool.IsActive() ||
+                ChiselUVConnectTool.IsActive())
                 return surfaceReferences;
 
             // TODO: implement the ability to query this from the edit mode
