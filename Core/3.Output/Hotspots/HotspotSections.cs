@@ -590,24 +590,22 @@ namespace Chisel.Core
                 return;
             var r = (double3)right; var u = (double3)up; var n = (double3)normal;
             var planeDistance = math.dot(n, (double3)colliderVertices[indices[0]]);
+            // a point this close to a line is on it, as in CutOnce: a few float steps of the positions
+            var extent = 0.0; var centre = double2.zero;
+            for (int i = 0; i < indices.Length; i++)
+            {
+                var p = new double2(math.dot(r, (double3)colliderVertices[indices[i]]), math.dot(u, (double3)colliderVertices[indices[i]]));
+                extent = math.max(extent, math.cmax(math.abs(p)));
+                centre += p;
+            }
+            centre /= indices.Length;
+            var size = 0.0;
+            for (int i = 0; i < indices.Length; i++)
+                size = math.max(size, math.distance(new double2(math.dot(r, (double3)colliderVertices[indices[i]]), math.dot(u, (double3)colliderVertices[indices[i]])), centre));
+            var onLine = 1e-6 * math.max(1, extent);
             // lines that coincide (strips meeting in the middle of a surface that is all border) are one line: a point on
             // one is on the other, and they never cross
-            var same = new NativeArray<int>(lines.Length, Allocator.Temp);
-            for (int l = 0; l < lines.Length; l++)
-            {
-                same[l] = l;
-                for (int m = 0; m < l; m++)
-                {
-                    var a = lines[l]; var b = lines[m];
-                    var direction = math.dot(a.normal, b.normal) >= 0 ? 1.0 : -1.0;
-                    var tolerance = 1e-9 * math.max(1, math.abs(a.offset));
-                    if (math.abs(Cross(a.normal, b.normal)) <= 1e-12 && math.abs(a.offset - direction * b.offset) <= tolerance)
-                    {
-                        same[l] = same[m];
-                        break;
-                    }
-                }
-            }
+            var same = SameLines(Allocator.Temp, centre, size, onLine);
 
             using var newIndices  = new NativeList<int>(indices.Length * 4, Allocator.Temp);
             using var newCollider = new NativeList<float3>(colliderVertices.Length * 2, Allocator.Temp);
@@ -652,6 +650,7 @@ namespace Chisel.Core
                         {
                             var point = points[range.x + i];
                             var value = point.OnLine(line, same) ? 0 : lines[line].Value(point.p2);
+                            if (math.abs(value) <= onLine) value = 0;
                             values.Add(value);
                             above |= value > 0;
                             below |= value < 0;
@@ -707,7 +706,9 @@ namespace Chisel.Core
                     {
                         var second = points[range.x + i];
                         var third  = points[range.x + i + 1];
-                        if (Cross(second.p2 - first.p2, third.p2 - first.p2) == 0)
+                        // flat as far as the positions tell: no triangle
+                        var longest = math.sqrt(math.max(math.distancesq(first.p2, second.p2), math.max(math.distancesq(second.p2, third.p2), math.distancesq(third.p2, first.p2))));
+                        if (!(math.abs(Cross(second.p2 - first.p2, third.p2 - first.p2)) > onLine * longest))
                             continue;
                         // points that round to one float position are one vertex (lines crossing at one point make it
                         // from different pairs of them); a triangle that loses a corner to that is left out

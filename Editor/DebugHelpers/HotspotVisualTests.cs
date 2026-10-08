@@ -201,6 +201,16 @@ namespace Chisel.Editors
                 distance = Mathf.Max(distance, Mathf.Abs(Vector3.Dot(offset, right)) / tanX - depth, Mathf.Abs(Vector3.Dot(offset, up)) / tanY - depth);
             }
             camera.transform.position = bounds.center - forward * distance * 1.1f;
+            // what stands in front of the cases (the next station, closer to the camera) is clipped away
+            var nearest = float.PositiveInfinity;
+            for (int corner = 0; corner < 8; corner++)
+            {
+                var offset = new Vector3((corner & 1) != 0 ? bounds.extents.x : -bounds.extents.x,
+                                         (corner & 2) != 0 ? bounds.extents.y : -bounds.extents.y,
+                                         (corner & 4) != 0 ? bounds.extents.z : -bounds.extents.z);
+                nearest = Mathf.Min(nearest, Vector3.Dot(bounds.center + offset - camera.transform.position, forward));
+            }
+            camera.nearClipPlane = Mathf.Max(0.02f, nearest * 0.98f);
             return true;
         }
 

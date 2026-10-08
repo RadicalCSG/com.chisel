@@ -22,9 +22,11 @@ namespace Chisel.Core
 
         // The same, with the edges given a border or none by hand (rules): an edge both have (where surfaces mapped as one
         // meet) is on the outline when a rule puts a border along it; bordered, when created, tells for each corner
-        // whether the edge from it to the next has a border. A corner where that changes stays, straight or not.
+        // whether the edge from it to the next has a border. A corner where that changes stays, straight or not. A corner
+        // closer than tolerance to the line between its neighbours is none either (the CSG can leave a corner cut off by a
+        // tenth of a millimetre, as where a capsule's side meets its cap: a border along it would be micro triangles).
         public static void OutlineOf(NativeList<int> indices, NativeList<float3> positions, float3 right, float3 up, NativeArray<HotspotBorderCorner> rules,
-                                     NativeList<double2> corners, NativeList<int2> loops, NativeList<bool> bordered)
+                                     NativeList<double2> corners, NativeList<int2> loops, NativeList<bool> bordered, double tolerance = 0)
         {
             corners.Clear();
             loops.Clear();
@@ -196,7 +198,8 @@ namespace Chisel.Core
                             var previous = where[loop[h]];
                             var here     = where[loop[k]];
                             var after    = where[loop[(k + 1) % loop.Length]];
-                            if (state[h] != state[k] || !OutputWeld.OnOneLine(previous, here, after))
+                            if (state[h] != state[k] ||
+                                !(OutputWeld.OnOneLine(previous, here, after) || Deviation(Frame(previous), Frame(here), Frame(after)) <= tolerance))
                                 continue;
                             loop.RemoveAt(k);
                             state.RemoveAt(k);
@@ -226,6 +229,15 @@ namespace Chisel.Core
             vertexId.Dispose();
             where.Dispose();
             ids.Dispose();
+        }
+
+        // How far a point is from the segment between two others
+        static double Deviation(double2 a, double2 p, double2 b)
+        {
+            var ab = b - a;
+            var length = math.lengthsq(ab);
+            var t = length > 0 ? math.saturate(math.dot(p - a, ab) / length) : 0;
+            return math.distance(p, a + ab * t);
         }
 
         struct EdgeOrder : System.Collections.Generic.IComparer<int2>
@@ -279,7 +291,8 @@ namespace Chisel.Core
             using var corners  = new NativeList<double2>(32, Allocator.Temp);
             using var loops    = new NativeList<int2>(4, Allocator.Temp);
             using var bordered = new NativeList<bool>(32, Allocator.Temp);
-            OutlineOf(indices, positions, input.right, input.up, rules, corners, loops, bordered);
+            // a corner less than a quarter of a pixel off the line through its neighbours makes no difference to be seen
+            OutlineOf(indices, positions, input.right, input.up, rules, corners, loops, bordered, 0.25 / input.pixelsPerUnit);
             if (loops.Length == 0)
                 return false;
             if (!allBorder)

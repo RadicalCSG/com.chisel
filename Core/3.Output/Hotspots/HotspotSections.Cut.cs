@@ -24,8 +24,10 @@ namespace Chisel.Core
                 (kind == 1 && same[b] == same[line]) || (kind == 2 && (same[a] == same[line] || same[b] == same[line]));
         }
 
-        // The first of the lines each line coincides with (strips that meet in the middle of a surface that is all border)
-        readonly NativeArray<int> SameLines(Allocator allocator)
+        // The first of the lines each line coincides with (strips that meet in the middle of a surface that is all border):
+        // over the surface (within size of its centre) never further apart than tolerance, the precision of its positions
+        // (lines built from different edges meet a float step apart)
+        readonly NativeArray<int> SameLines(Allocator allocator, double2 centre, double size, double tolerance)
         {
             var same = new NativeArray<int>(lines.Length, allocator);
             for (int l = 0; l < lines.Length; l++)
@@ -35,8 +37,7 @@ namespace Chisel.Core
                 {
                     var a = lines[l]; var b = lines[m];
                     var direction = math.dot(a.normal, b.normal) >= 0 ? 1.0 : -1.0;
-                    var tolerance = 1e-9 * math.max(1, math.abs(a.offset));
-                    if (math.abs(Cross(a.normal, b.normal)) <= 1e-12 && math.abs(a.offset - direction * b.offset) <= tolerance)
+                    if (math.abs(Cross(a.normal, b.normal)) * size <= tolerance && math.abs(a.Value(centre) - direction * b.Value(centre)) <= tolerance)
                     {
                         same[l] = same[m];
                         break;
@@ -139,7 +140,6 @@ namespace Chisel.Core
             for (int t = 0; t + 2 < indices.Length; t += 3)
                 orientation += Cross(frame[indices[t + 1]] - frame[indices[t]], frame[indices[t + 2]] - frame[indices[t]]);
             var planeDistance = math.dot(n, (double3)colliderVertices[indices[0]]);
-            var same = SameLines(Allocator.Temp);
 
             // the polygons to start from, counter-clockwise in the frame: the outline when it is one convex loop, otherwise
             // each triangle (the triangle a start is, for what a point inside it takes from its corners; -1: none)
@@ -181,6 +181,14 @@ namespace Chisel.Core
             for (int i = 0; i < starts.Length; i++)
                 extent = math.max(extent, math.cmax(math.abs(frame[starts[i]])));
             var onLine = 1e-6 * math.max(1, extent);
+            var centre = double2.zero;
+            for (int i = 0; i < starts.Length; i++)
+                centre += frame[starts[i]];
+            centre /= math.max(1, starts.Length);
+            var size = 0.0;
+            for (int i = 0; i < starts.Length; i++)
+                size = math.max(size, math.distance(frame[starts[i]], centre));
+            var same = SameLines(Allocator.Temp, centre, size, onLine);
 
             // each bounded section's piece of each start
             var points  = new NativeList<CutPoint>(starts.Length * cells.Length, Allocator.Temp);
@@ -265,15 +273,29 @@ namespace Chisel.Core
             var newRender   = new NativeList<RenderVertex>(colliderVertices.Length * 2, Allocator.Temp);
             var where       = new NativeList<double2>(colliderVertices.Length * 2, Allocator.Temp);
             var lookup      = new UnsafeHashMap<float3, int>(points.Length + starts.Length, Allocator.Temp);
+            // a crossing by what crosses there (lines that coincide as one): computed from either of two coinciding lines
+            // it is one place, not two a float step apart
+            var crossings   = new UnsafeHashMap<int3, int>(points.Length + 1, Allocator.Temp);
             var onSupport   = new UnsafeParallelMultiHashMap<int, int>(points.Length * 2 + starts.Length * 2, Allocator.Temp);
             var entityID    = selectVertices[indices[0]].entityID;
             int VertexOf(in CutPoint point, int startTriangle)
             {
+                var crossing = point.kind == 1 ? new int3(1, point.a, same[point.b])
+                             : point.kind == 2 ? new int3(2, math.min(same[point.a], same[point.b]), math.max(same[point.a], same[point.b]))
+                             : default;
+                if (point.kind != 0 && crossings.TryGetValue(crossing, out var known))
+                    return known;
                 var key = (point.kind == 0 ? colliderVertices[point.a] : (float3)point.p3) + 0.0f;
                 if (lookup.TryGetValue(key, out var index))
+                {
+                    if (point.kind != 0)
+                        crossings.TryAdd(crossing, index);
                     return index;
+                }
                 index = newCollider.Length;
                 lookup.Add(key, index);
+                if (point.kind != 0)
+                    crossings.TryAdd(crossing, index);
                 where.Add(point.kind == 0 ? frame[point.a] : point.p2);
                 if (point.kind == 0)
                 {
@@ -378,7 +400,7 @@ namespace Chisel.Core
                 for (int i = 0; i < piece.y; i++)
                     Along(pointVertex[piece.x + i], pointVertex[piece.x + (i + 1) % piece.y], points[piece.x + i].support);
                 CloseRing();
-                complete &= EarClip(ring, ringP, orientation < 0, newIndices);
+                complete &= EarClip(ring, ringP, orientation < 0, newIndices, onLine);
             }
 
             // what no bounded section took: each start's outline less its pieces, edges both ways round cancelling
@@ -445,7 +467,7 @@ namespace Chisel.Core
                             area += Cross(ringP[i], ringP[(i + 1) % ringP.Length]);
                         // a hole in what is left: cut triangle by triangle instead
                         if (!(area > 0)) { complete = false; break; }
-                        complete &= EarClip(ring, ringP, orientation < 0, newIndices);
+                        complete &= EarClip(ring, ringP, orientation < 0, newIndices, onLine);
                     }
                 }
                 traced.Dispose(); next.Dispose(); directed.Dispose();
@@ -461,7 +483,7 @@ namespace Chisel.Core
             }
 
             between.Dispose(); ring.Dispose(); ringP.Dispose();
-            startVertex.Dispose(); pointVertex.Dispose(); onSupport.Dispose(); lookup.Dispose(); where.Dispose();
+            startVertex.Dispose(); pointVertex.Dispose(); onSupport.Dispose(); lookup.Dispose(); crossings.Dispose(); where.Dispose();
             pieces.Dispose(); points.Dispose(); edges.Dispose(); edgeIds.Dispose();
             startRanges.Dispose(); starts.Dispose(); same.Dispose(); rep.Dispose(); frame.Dispose();
             if (complete)
@@ -544,9 +566,11 @@ namespace Chisel.Core
         }
 
         // A simple polygon, counter-clockwise (points on its straight edges included), into triangles that use every
-        // point: an ear is a corner with area whose triangle holds no other point. Wound as the surface's triangles were
+        // point but those of flat slivers: an ear is a corner with area whose triangle holds no other point. Wound as the surface's triangles were
         // (reversed: they were clockwise in the frame). False when the triangles do not cover it.
-        static bool EarClip(NativeList<int> ring, NativeList<double2> points, bool reversed, NativeList<int> output)
+        // An ear or what is left at the end no higher than flat is no triangle: its points are on one line, as far as the
+        // positions' precision tells (flat, what CutOnce counts as on a line); left over at the end, it counts as covered.
+        static bool EarClip(NativeList<int> ring, NativeList<double2> points, bool reversed, NativeList<int> output, double flat)
         {
             var polygonArea = 0.0;
             for (int i = 0; i < points.Length; i++)
@@ -565,8 +589,8 @@ namespace Chisel.Core
                     var prev = left[(i + left.Length - 1) % left.Length]; var here = left[i]; var next = left[(i + 1) % left.Length];
                     var a = points[prev]; var b = points[here]; var c = points[next];
                     var area = Cross(b - a, c - a);
-                    var scale = math.max(math.lengthsq(b - a), math.lengthsq(c - a));
-                    if (!(area > 1e-12 * scale))
+                    var scale = math.max(math.lengthsq(b - a), math.max(math.lengthsq(c - a), math.lengthsq(c - b)));
+                    if (!(area > 1e-12 * scale) || !(area > flat * math.sqrt(scale)))
                         continue;
                     var clear = true;
                     for (int j = 0; j < left.Length && clear; j++)
@@ -589,11 +613,36 @@ namespace Chisel.Core
             if (left.Length == 3)
             {
                 var a = points[left[0]]; var b = points[left[1]]; var c = points[left[2]];
-                if (Cross(b - a, c - a) > 0)
+                var area = Cross(b - a, c - a);
+                var scale = math.max(math.lengthsq(b - a), math.max(math.lengthsq(c - a), math.lengthsq(c - b)));
+                if (area > flat * math.sqrt(scale))
                 {
                     Emit(ring[left[0]], ring[left[1]], ring[left[2]]);
-                    triangleArea += Cross(b - a, c - a) * 0.5;
+                    triangleArea += area * 0.5;
+                    left.Clear();
                 }
+            }
+            // what is left is covered when it is flat: no point of it further from the line through its two furthest
+            // apart points than flat
+            if (left.Length >= 3)
+            {
+                var restArea = 0.0;
+                var from = 0; var to = 1; var longest = -1.0;
+                for (int i = 0; i < left.Length; i++)
+                {
+                    restArea += Cross(points[left[i]], points[left[(i + 1) % left.Length]]);
+                    for (int j = i + 1; j < left.Length; j++)
+                    {
+                        var d = math.distancesq(points[left[i]], points[left[j]]);
+                        if (d > longest) { longest = d; from = i; to = j; }
+                    }
+                }
+                var axis = math.normalizesafe(points[left[to]] - points[left[from]]);
+                var isFlat = true;
+                for (int i = 0; i < left.Length && isFlat; i++)
+                    isFlat = math.abs(Cross(axis, points[left[i]] - points[left[from]])) <= flat;
+                if (isFlat)
+                    triangleArea += restArea * 0.5;
             }
             left.Dispose();
             return math.abs(triangleArea - polygonArea) <= 1e-9 * math.max(1, math.abs(polygonArea));
