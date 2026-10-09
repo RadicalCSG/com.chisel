@@ -439,10 +439,7 @@ namespace Chisel.Editors
 		{
 			var newPreviewDir = Drag2D(s_PreviewDir, region);
 			if (newPreviewDir != s_PreviewDir)
-			{
 				s_PreviewDir = newPreviewDir;
-				PreviewTextureManager.Clear();
-			}
 
 			var texture = PreviewTextureManager.GetPreviewTexture(region, s_PreviewDir, material);
 			if (!texture)

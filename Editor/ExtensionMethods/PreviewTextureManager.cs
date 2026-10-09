@@ -21,6 +21,11 @@ namespace Chisel.Editors
 
         public static void Clear()
         {
+            foreach (var preview in s_MaterialTextures.Values)
+            {
+                if (preview.texture)
+                    UnityEngine.Object.DestroyImmediate(preview.texture);
+            }
             s_MaterialTextures.Clear();
         }
 
@@ -40,8 +45,14 @@ namespace Chisel.Editors
             public Vector3  size;
         }
 
-        // TODO: should lookup using PreviewRequest like structure so size could be taken into account
-        readonly static Dictionary<Material, Texture2D>  s_MaterialTextures   = new Dictionary<Material, Texture2D>();
+        struct Preview
+        {
+            public Texture2D texture;
+            public Vector3   direction;
+            public Vector2   size;
+        }
+
+        readonly static Dictionary<Material, Preview>    s_MaterialTextures   = new Dictionary<Material, Preview>();
         readonly static List<PreviewRequest>             s_Requests           = new List<PreviewRequest>();
 
 
@@ -91,17 +102,37 @@ namespace Chisel.Editors
             return previewUtility.EndStaticPreview();
         }
 
+        // Returns the material's last preview, rendered again on a repaint when its direction or size changed; until
+        // then the old one is shown, so dragging the preview around keeps it on screen
         public static Texture2D GetPreviewTexture(Rect region, Vector3 direction, Material material)
         {
             if (!material)
                 return null;
 
-            Texture2D texture;
-            if (s_MaterialTextures.TryGetValue(material, out texture))
-                return texture;
+            s_MaterialTextures.TryGetValue(material, out var preview);
+            if (preview.texture && preview.direction == direction && preview.size == region.size)
+                return preview.texture;
+
+            if (Event.current != null && Event.current.type == EventType.Repaint)
+            {
+                Render(material, direction, region.size);
+                s_MaterialTextures.TryGetValue(material, out preview);
+                return preview.texture;
+            }
 
             s_Requests.Add(new PreviewRequest() { direction = direction, size = region.size, material = material });
-            return texture;
+            return preview.texture;
+        }
+
+        static void Render(Material material, Vector3 direction, Vector2 size)
+        {
+            Init();
+            var texture = GetPreviewTexture(previewUtility, direction, new Rect(Vector2.zero, size), material) as Texture2D;
+            if (!texture)
+                return;
+            if (s_MaterialTextures.TryGetValue(material, out var old) && old.texture)
+                UnityEngine.Object.DestroyImmediate(old.texture);
+            s_MaterialTextures[material] = new Preview { texture = texture, direction = direction, size = size };
         }
 
         public static bool Update()
@@ -111,21 +142,19 @@ namespace Chisel.Editors
             bool needRepaint = s_Requests.Count > 0;
             if (Event.current.type == EventType.Repaint)
             { 
+                // the newest request for a material wins
                 for (int i = s_Requests.Count - 1; i >= 0; i--)
                 {
                     var request  = s_Requests[i];
                     var material = request.material;
-                    if (!s_MaterialTextures.ContainsKey(material))
-                    { 
-                        var region  = new Rect(Vector2.zero, request.size);
-                        var texture = GetPreviewTexture(previewUtility, request.direction, region, material) as Texture2D;
-                        if (!texture)
-                            continue;
-
-                        s_MaterialTextures[material] = texture; 
+                    if (material)
+                    {
+                        s_MaterialTextures.TryGetValue(material, out var preview);
+                        if (!preview.texture || preview.direction != request.direction || preview.size != (Vector2)request.size)
+                            Render(material, request.direction, request.size);
                     }
-                    s_Requests.RemoveAt(i);
                 }
+                s_Requests.Clear();
             }
             return needRepaint;
         }
