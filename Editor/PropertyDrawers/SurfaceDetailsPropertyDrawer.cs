@@ -14,6 +14,16 @@ namespace Chisel.Editors
         public readonly static GUIContent	kSurfaceFlagsContents   = new("Surface Flags");
         public readonly static GUIContent	kSmoothingGroupContents = new("Smoothing Groups");
 
+        // The material beside these details (the first selected surface's)
+        static Material MaterialOf(SerializedProperty property)
+        {
+            var path = property.propertyPath;
+            var dot = path.LastIndexOf('.');
+            var parent = dot < 0 ? string.Empty : path.Substring(0, dot + 1);
+            var materialProp = property.serializedObject.FindProperty(parent + ChiselSurface.kChiselMaterialName + "." + ChiselMaterial.kMaterialFieldName);
+            return materialProp != null ? materialProp.objectReferenceValue as Material : null;
+        }
+
         // The hotspot layout of the material beside these details (the first selected surface's), null for none
         static ChiselHotspotLayout LayoutOf(SerializedProperty property)
         {
@@ -99,8 +109,12 @@ namespace Chisel.Editors
                     if (layout != null)
                     {
                         position.height = HotspotTransformGUI.Height;
+                        var surfaces = SurfacesOf(property);
+                        var material = MaterialOf(property);
                         HotspotTransformGUI.OnGUI(position, property.FindPropertyRelative(nameof(SurfaceDetails.hotspot)), layout, hasLabel,
-                                                  ChiselHotspotGroupEdit.MostVariations(SurfacesOf(property)));
+                                                  ChiselHotspotGroupEdit.MostVariations(surfaces),
+                                                  () => HotspotTransformGUI.TexturesOf(material, layout),
+                                                  () => surfaces.Count > 0 ? ChiselHotspotGroupEdit.FitsOf(surfaces[0], layout) : null);
                     } else
                     {
                         position.height = UVMatrixPropertyDrawer.DefaultHeight;

@@ -357,6 +357,14 @@ namespace Chisel.Core
         static float Key(in HotspotChoice choice, in HotspotTileData tile) => tile.shaped ? choice.score : choice.score + kUnshaped;
         const float kUnshaped = 1e6f;
 
+        // Whether matching would consider a tile for a surface of this shape (a radial tile for a round one), its flags
+        // aside: a disabled or alternate tile can still be pinned
+        public static bool Fits(HotspotTileData tile, in HotspotShape shape, bool radial)
+        {
+            tile.flags &= ~(HotspotTileFlags.Disabled | HotspotTileFlags.Alternate);
+            return Candidate(tile, shape, radial);
+        }
+
         static bool Candidate(in HotspotTileData tile, in HotspotShape shape, bool radial)
         {
             if ((tile.flags & (HotspotTileFlags.Disabled | HotspotTileFlags.Alternate)) != 0)

@@ -54,6 +54,66 @@ namespace Chisel.Editors
             return info.group > 0 ? info.groupVariations : info.variations;
         }
 
+        // The ids of a layout's tiles a surface could take, by its shape when it was last mapped; null when not known
+        public static HashSet<int> FitsOf(SurfaceReference surface, ChiselHotspotLayout layout)
+        {
+            if (surface == null || !surface.node || !surface.brush.Valid || layout == null)
+                return null;
+            var model = surface.node.hierarchyItem.Model;
+            if (!model || !model.Node.Valid)
+                return null;
+            var lookups = ChiselTreeLookup.Value;
+            if (!lookups.HasTree(model.Node))
+                return null;
+            var data = lookups[model.Node];
+            data.lastJobHandle.Complete();
+            if (!data.brushRenderBufferLookup.IsCreated ||
+                !data.brushRenderBufferLookup.TryGetValue(CompactHierarchyManager.GetCompactNodeID(surface.brush), out var buffer) || !buffer.IsCreated)
+                return null;
+            ref var surfaces = ref buffer.Value.surfaces;
+            if (surface.surfaceIndex < 0 || surface.surfaceIndex >= surfaces.Length)
+                return null;
+            ref var drawn = ref surfaces[surface.surfaceIndex];
+            var source = drawn.hotspotSource;
+            if (source.layout == 0 || drawn.colliderVertices.Length == 0)
+                return null;
+            var positions = new Unity.Collections.NativeArray<Unity.Mathematics.float3>(drawn.colliderVertices.Length, Unity.Collections.Allocator.Temp);
+            var indices   = new Unity.Collections.NativeArray<int>(drawn.indices.Length, Unity.Collections.Allocator.Temp);
+            HotspotShape shape;
+            try
+            {
+                for (int i = 0; i < positions.Length; i++)
+                    positions[i] = drawn.colliderVertices[i];
+                for (int i = 0; i < indices.Length; i++)
+                    indices[i] = drawn.indices[i];
+                shape = HotspotMatcher.ShapeOf(positions, source.right, source.up);
+                HotspotMatcher.MaskOf(ref shape, positions, indices, source.right, source.up);
+            }
+            finally
+            {
+                positions.Dispose();
+                indices.Dispose();
+            }
+            using var tiles = new Unity.Collections.NativeList<HotspotTileData>(Unity.Collections.Allocator.Temp);
+            HotspotMatcher.AddTiles(layout, tiles, out _);
+            var fits = new HashSet<int>();
+            for (int t = 0; t < tiles.Length; t++)
+            {
+                if (HotspotMatcher.Fits(tiles[t], shape, shape.radial))
+                    fits.Add(tiles[t].id);
+            }
+            // a round surface takes the other tiles when the layout has no radial one for it
+            if (fits.Count == 0 && shape.radial)
+            {
+                for (int t = 0; t < tiles.Length; t++)
+                {
+                    if (HotspotMatcher.Fits(tiles[t], shape, false))
+                        fits.Add(tiles[t].id);
+                }
+            }
+            return fits;
+        }
+
         // The most variations of these surfaces, -1 when none is known
         public static int MostVariations(IReadOnlyList<SurfaceReference> surfaces)
         {

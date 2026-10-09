@@ -686,7 +686,7 @@ namespace Chisel.Editors
         internal static bool IsShaped(in HotspotTile tile) => ChiselHotspotLayout.IsShaped(tile);
 
         // A polygon filled: as it is when convex, otherwise by its ears (its holes not left out)
-        static void Fill(Vector3[] points, bool shaped)
+        internal static void Fill(Vector3[] points, bool shaped)
         {
             if (!shaped)
             {

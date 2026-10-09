@@ -520,7 +520,9 @@ namespace Chisel.Editors
                     var references = new List<SurfaceReference>(surfaces.Length);
                     foreach (var item in surfaces)
                         references.Add(item.SurfaceReference);
-                    HotspotTransformGUI.OnGUI(position, hotspotProp, layout, true, ChiselHotspotGroupEdit.MostVariations(references));
+                    var material = surfaces[0].Surface.RenderMaterial;
+                    HotspotTransformGUI.OnGUI(position, hotspotProp, layout, true, ChiselHotspotGroupEdit.MostVariations(references),
+                                              () => HotspotTransformGUI.TexturesOf(material, layout), () => ChiselHotspotGroupEdit.FitsOf(references[0], layout));
                     ConnectionGUI();
                 } else
                 {

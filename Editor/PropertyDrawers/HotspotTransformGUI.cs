@@ -1,6 +1,8 @@
+using System.Collections.Generic;
 using Chisel.Components;
 using Chisel.Core;
 using UnityEditor;
+using UnityEditorInternal;
 using UnityEngine;
 
 namespace Chisel.Editors
@@ -59,7 +61,35 @@ namespace Chisel.Editors
 
         // variations: how many the surfaces have (ChiselHotspotGroupEdit.MostVariations); Next Variation is off at 1, and
         // for a pinned tile when it is not known (-1)
-        public static void OnGUI(Rect position, SerializedProperty hotspotProp, ChiselHotspotLayout layout, bool hasLabel = true, int variations = -1)
+        // the tile a picker chose (HotspotTilePicker), applied to its property on its next draw
+        static (string path, Object target, int id)? s_Picked;
+
+        // The textures a material and its variants are drawn with, for the tile picker
+        public static List<Texture> TexturesOf(Material material, ChiselHotspotLayout layout)
+        {
+            var textures = new List<Texture>();
+            void Add(Material m)
+            {
+                var texture = m != null && m.mainTexture != null ? m.mainTexture : null;
+                if (texture != null && !textures.Contains(texture))
+                    textures.Add(texture);
+            }
+            Add(material);
+            var metadata = material != null ? material.GetMetadataOfType<ChiselSurfaceMetadata>() : null;
+            if (metadata != null && metadata.hotspotVariants != null)
+            {
+                foreach (var variant in metadata.hotspotVariants)
+                    Add(variant);
+            }
+            if (textures.Count == 0 && layout.texture != null)
+                textures.Add(layout.texture);
+            return textures;
+        }
+
+        // fits: the ids of the tiles the surface can take (ChiselHotspotGroupEdit.FitsOf), the others greyed out in the
+        // picker; textures: what it shows (TexturesOf); both asked for when the picker opens
+        public static void OnGUI(Rect position, SerializedProperty hotspotProp, ChiselHotspotLayout layout, bool hasLabel = true, int variations = -1,
+                                 System.Func<IReadOnlyList<Texture>> textures = null, System.Func<HashSet<int>> fits = null)
         {
             var offsetX  = hotspotProp.FindPropertyRelative(nameof(HotspotSurface.offset) + ".x");
             var offsetY  = hotspotProp.FindPropertyRelative(nameof(HotspotSurface.offset) + ".y");
@@ -123,13 +153,21 @@ namespace Chisel.Editors
                 }
                 field = Row(ref position, kTileContents, hasLabel);
                 EditorGUI.indentLevel = 0;
-                EditorGUI.showMixedValue = pinned.hasMultipleDifferentValues;
+                if (s_Picked.HasValue && s_Picked.Value.path == pinned.propertyPath && s_Picked.Value.target == pinned.serializedObject.targetObject)
+                {
+                    pinned.intValue = s_Picked.Value.id;
+                    s_Picked = null;
+                    GUI.changed = true;
+                }
                 var current = System.Array.IndexOf(ids, pinned.intValue);
-                EditorGUI.BeginChangeCheck();
-                var chosen = EditorGUI.Popup(field, Mathf.Max(0, current), names);
-                if (EditorGUI.EndChangeCheck() && chosen >= 0)
-                    pinned.intValue = ids[chosen];
-                EditorGUI.showMixedValue = false;
+                var shown = pinned.hasMultipleDifferentValues ? new GUIContent("\u2014") : names[Mathf.Max(0, current)];
+                if (EditorGUI.DropdownButton(field, shown, FocusType.Keyboard))
+                {
+                    var path = pinned.propertyPath; var target = pinned.serializedObject.targetObject;
+                    PopupWindow.Show(field, new HotspotTilePicker(layout, textures?.Invoke() ?? new List<Texture> { layout.texture }, fits?.Invoke(),
+                                                                  pinned.hasMultipleDifferentValues ? -1 : pinned.intValue,
+                                                                  id => { s_Picked = (path, target, id); InternalEditorUtility.RepaintAllViews(); }));
+                }
 
                 var button = new Rect(field.x, position.y, field.width, EditorGUIUtility.singleLineHeight);
                 using (new EditorGUI.DisabledScope(variations >= 0 ? variations <= 1 : (pinned.intValue != 0 || pinned.hasMultipleDifferentValues)))
