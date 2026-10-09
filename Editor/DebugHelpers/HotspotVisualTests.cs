@@ -110,7 +110,7 @@ namespace Chisel.Editors
         // The generators of each station of the test scene, in its order
         static IEnumerable<(string station, ChiselGeneratorComponent generator)> Cases()
         {
-            var model = Object.FindFirstObjectByType<ChiselModelComponent>();
+            var model = Object.FindAnyObjectByType<ChiselModelComponent>();
             if (model == null)
                 yield break;
             foreach (Transform station in model.transform)
