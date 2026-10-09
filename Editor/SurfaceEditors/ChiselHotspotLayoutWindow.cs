@@ -12,7 +12,9 @@ namespace Chisel.Editors
     // on the right.
     public sealed class ChiselHotspotLayoutWindow : EditorWindow
     {
-        const float kPanelWidth  = 280;
+        const float kMinPanelWidth = 200;
+        const float kSplitterGrab  = 4;
+        static readonly int kSplitterHash = nameof(ChiselHotspotLayoutWindow).GetHashCode();
         const float kLineGrab    = 6;
         static readonly int[]      kSnaps     = { 1, 2, 4, 8, 16, 32, 64 };
         static readonly string[]   kSnapNames = { "1 px", "2 px", "4 px", "8 px", "16 px", "32 px", "64 px" };
@@ -28,6 +30,7 @@ namespace Chisel.Editors
         [SerializeField] float   zoom = 1;
         [SerializeField] Vector2 pan;
         [SerializeField] int     snapIndex = 3;
+        [SerializeField] float   panelWidth = 280;
 
         enum Drawing { None, Shape, Hole }
 
@@ -117,13 +120,42 @@ namespace Chisel.Editors
                 EditorUtility.SetDirty(layout);
             }
             var area = new Rect(0, EditorGUIUtility.singleLineHeight + 4, position.width, position.height - EditorGUIUtility.singleLineHeight - 4);
-            canvas = new Rect(area.x, area.y, Mathf.Max(64, area.width - kPanelWidth), area.height);
+            panelWidth = Mathf.Clamp(panelWidth, kMinPanelWidth, Mathf.Max(kMinPanelWidth, area.width - 64));
+            canvas = new Rect(area.x, area.y, Mathf.Max(64, area.width - panelWidth), area.height);
+            Splitter(new Rect(canvas.xMax - kSplitterGrab, area.y, kSplitterGrab * 2, area.height), area.width);
             Canvas();
             GUILayout.BeginArea(new Rect(canvas.xMax, area.y, area.width - canvas.width, area.height));
             panelScroll = EditorGUILayout.BeginScrollView(panelScroll);
             Panel();
             EditorGUILayout.EndScrollView();
             GUILayout.EndArea();
+        }
+
+        // The edge between the canvas and the panel, dragged to size the panel
+        void Splitter(Rect grab, float width)
+        {
+            var id = GUIUtility.GetControlID(kSplitterHash, FocusType.Passive);
+            EditorGUIUtility.AddCursorRect(grab, MouseCursor.ResizeHorizontal);
+            var current = Event.current;
+            switch (current.GetTypeForControl(id))
+            {
+                case EventType.MouseDown when current.button == 0 && grab.Contains(current.mousePosition):
+                    GUIUtility.hotControl = id;
+                    current.Use();
+                    break;
+                case EventType.MouseDrag when GUIUtility.hotControl == id:
+                    panelWidth = Mathf.Clamp(width - current.mousePosition.x, kMinPanelWidth, Mathf.Max(kMinPanelWidth, width - 64));
+                    current.Use();
+                    Repaint();
+                    break;
+                case EventType.MouseUp when GUIUtility.hotControl == id:
+                    GUIUtility.hotControl = 0;
+                    current.Use();
+                    break;
+                case EventType.Repaint:
+                    EditorGUI.DrawRect(new Rect(grab.center.x - 0.5f, grab.y, 1, grab.height), new Color(0, 0, 0, 0.5f));
+                    break;
+            }
         }
 
         void Toolbar()
