@@ -46,6 +46,8 @@ namespace Chisel.Core
 		public float density;
 		// The texture mirrored left to right
 		public bool  mirror;
+		// The texture mirrored top to bottom
+		public bool  mirrorY;
 		// How far a repeating tile's repeats move along the texture's right and up, in repeats
 		public float2 offset;
 

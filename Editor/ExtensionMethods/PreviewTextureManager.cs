@@ -50,8 +50,11 @@ namespace Chisel.Editors
 
         private static void Init()
         {
-            if (previewUtility == null)
-                previewUtility = new PreviewRenderUtility();
+            if (previewUtility != null)
+                return;
+            previewUtility = new PreviewRenderUtility();
+            AssemblyReloadEvents.beforeAssemblyReload -= CleanUp;
+            AssemblyReloadEvents.beforeAssemblyReload += CleanUp;
         }
 
         class Styles { public readonly GUIStyle background = new GUIStyle("CurveEditorBackground"); };

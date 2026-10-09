@@ -298,9 +298,10 @@ namespace Chisel.Core
                     hotspotLayout         = polygon.surface.hotspotLayout,
                     hotspotPinned         = polygon.surface.details.hotspot.pinnedTile,
                     hotspotSeed           = polygon.surface.details.hotspot.seed,
-                    hotspotRotation       = polygon.surface.details.hotspot.rotation,
+                    // mirrored top to bottom is mirrored left to right and turned half way round
+                    hotspotRotation       = polygon.surface.details.hotspot.rotation + (polygon.surface.details.hotspot.mirrorY ? 180 : 0),
                     hotspotDensity        = polygon.surface.details.hotspot.Density,
-                    hotspotMirror         = polygon.surface.details.hotspot.mirror,
+                    hotspotMirror         = polygon.surface.details.hotspot.mirror != polygon.surface.details.hotspot.mirrorY,
                     hotspotOffset         = polygon.surface.details.hotspot.offset
                 };
             }

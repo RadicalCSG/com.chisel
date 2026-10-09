@@ -614,7 +614,7 @@ namespace Chisel.Editors
         void Panel()
         {
             EditorGUILayout.LabelField("Layout", EditorStyles.boldLabel);
-            if (LayoutFields(layout))
+            if (LayoutFields(layout, withPadding: true))
                 Repaint();
             using (new EditorGUILayout.HorizontalScope())
             {
@@ -661,14 +661,15 @@ namespace Chisel.Editors
         static readonly GUIContent kMaxTrianglesContents = new("Max triangles", "The most triangles a surface's cut may draw; more and its interior's repeats are left out, then the cut. 0: the project's (Project Settings > Chisel)");
         static readonly GUIContent kPaddingContents = new("Padding", "Pixels left out along every tile's edges, so a filtered (or mipmapped) texture never shows a neighbouring tile: a gutter. A tile's border keeps its inner edge and narrows by as much");
 
-        internal static bool LayoutFields(ChiselHotspotLayout layout)
+        // padding only in the window, beside the tiles it changes
+        internal static bool LayoutFields(ChiselHotspotLayout layout, bool withPadding = false)
         {
             EditorGUI.BeginChangeCheck();
             var texture       = (Texture2D)EditorGUILayout.ObjectField("Texture", layout.texture, typeof(Texture2D), false);
             // the tiles' pixels: the texture's, or given when there is none
             var size          = layout.texture != null ? layout.size : EditorGUILayout.Vector2IntField("Size in pixels", layout.size);
             var pixelsPerUnit = EditorGUILayout.FloatField(kPixelsPerUnitContents, layout.pixelsPerUnit);
-            var padding       = EditorGUILayout.FloatField(kPaddingContents, layout.padding);
+            var padding       = withPadding ? EditorGUILayout.FloatField(kPaddingContents, layout.padding) : layout.padding;
             var maxRepeats    = EditorGUILayout.IntField(kMaxRepeatsContents, layout.maxRepeats);
             var maxTriangles  = EditorGUILayout.IntField(kMaxTrianglesContents, layout.maxTriangles);
             if (!EditorGUI.EndChangeCheck())

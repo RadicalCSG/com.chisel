@@ -13,13 +13,23 @@ namespace Chisel.Editors
         public readonly static GUIContent	kSurfaceFlagsContents   = new("Surface Flags");
         public readonly static GUIContent	kSmoothingGroupContents = new("Smoothing Groups");
 
+        // The hotspot layout of the material beside these details (the first selected surface's), null for none
+        static ChiselHotspotLayout LayoutOf(SerializedProperty property)
+        {
+            var path = property.propertyPath;
+            var dot = path.LastIndexOf('.');
+            var parent = dot < 0 ? string.Empty : path.Substring(0, dot + 1);
+            var materialProp = property.serializedObject.FindProperty(parent + ChiselSurface.kChiselMaterialName + "." + ChiselMaterial.kMaterialFieldName);
+            return materialProp != null ? HotspotTransformGUI.LayoutOf(materialProp.objectReferenceValue as Material) : null;
+        }
+
         public override float GetPropertyHeight(SerializedProperty property, GUIContent label)
         {
             if (ChiselNodeEditorBase.InSceneSettingsContext)
                 return 0;
 
             var smoothingGroupProp   = property.FindPropertyRelative(nameof(SurfaceDetails.smoothingGroup));
-            return  UVMatrixPropertyDrawer.DefaultHeight +
+            return  (LayoutOf(property) != null ? HotspotTransformGUI.Height : UVMatrixPropertyDrawer.DefaultHeight) +
                     kSpacing + 
                     SurfaceFlagsPropertyDrawer.DefaultHeight +
                     kSpacing + 
@@ -51,8 +61,16 @@ namespace Chisel.Editors
                     EditorGUI.PropertyField(position, detailFlagsProp, !hasLabel ? GUIContent.none : kSurfaceFlagsContents, false);
                     position.y += position.height + kSpacing;
 
-                    position.height = UVMatrixPropertyDrawer.DefaultHeight;
-                    EditorGUI.PropertyField(position, uv0Prop, !hasLabel ? GUIContent.none : kUV0Contents, false);
+                    var layout = LayoutOf(property);
+                    if (layout != null)
+                    {
+                        position.height = HotspotTransformGUI.Height;
+                        HotspotTransformGUI.OnGUI(position, property.FindPropertyRelative(nameof(SurfaceDetails.hotspot)), layout, hasLabel);
+                    } else
+                    {
+                        position.height = UVMatrixPropertyDrawer.DefaultHeight;
+                        EditorGUI.PropertyField(position, uv0Prop, !hasLabel ? GUIContent.none : kUV0Contents, false);
+                    }
                     position.y += position.height + kSpacing;
 
                     position.height = SmoothingGroupPropertyDrawer.GetDefaultHeight(smoothingGroupProp.propertyPath, true);

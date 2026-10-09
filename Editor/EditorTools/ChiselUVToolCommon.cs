@@ -91,7 +91,7 @@ namespace Chisel.Editors
             }
 			surfaceFlagsProp = null;
 			UV0Prop = null;
-			pinnedTileProp = null;
+			hotspotProp = null;
 			initialized = false;
         }
 
@@ -126,12 +126,7 @@ namespace Chisel.Editors
             {
                 surfaceFlagsProp     = surfaceDetailsProp.FindPropertyRelative(SurfaceDetails.kDetailFlagsName);
                 UV0Prop              = surfaceDetailsProp.FindPropertyRelative(SurfaceDetails.kUV0Name);
-                var hotspotProp      = surfaceDetailsProp.FindPropertyRelative(nameof(SurfaceDetails.hotspot));
-                pinnedTileProp       = hotspotProp?.FindPropertyRelative(nameof(HotspotSurface.pinnedTile));
-                hotspotRotationProp  = hotspotProp?.FindPropertyRelative(nameof(HotspotSurface.rotation));
-                hotspotDensityProp   = hotspotProp?.FindPropertyRelative(nameof(HotspotSurface.density));
-                hotspotMirrorProp    = hotspotProp?.FindPropertyRelative(nameof(HotspotSurface.mirror));
-                hotspotOffsetProp    = hotspotProp?.FindPropertyRelative(nameof(HotspotSurface.offset));
+                hotspotProp          = surfaceDetailsProp.FindPropertyRelative(nameof(SurfaceDetails.hotspot));
 			}
 			chiselMaterialProp = surfaceProp.FindPropertyRelative(ChiselSurface.kChiselMaterialName);
             initialized = true;
@@ -151,11 +146,7 @@ namespace Chisel.Editors
 
 		SerializedProperty surfaceFlagsProp;
         SerializedProperty UV0Prop;
-        SerializedProperty pinnedTileProp;
-        SerializedProperty hotspotRotationProp;
-        SerializedProperty hotspotDensityProp;
-        SerializedProperty hotspotMirrorProp;
-        SerializedProperty hotspotOffsetProp;
+        SerializedProperty hotspotProp;
         [SerializeField] UnityEngine.Object[]    undoableObjects = Array.Empty<UnityEngine.Object>();
         [SerializeField] ChiselSelectedSurface[] surfaces        = Array.Empty<ChiselSelectedSurface>();
 
@@ -521,11 +512,19 @@ namespace Chisel.Editors
                 if (surfaceFlagsProp != null)
                     EditorGUI.PropertyField(position, surfaceFlagsProp, SurfaceDetailsPropertyDrawer.kSurfaceFlagsContents, true);
 
-                position = EditorGUILayout.GetControlRect(true, UVMatrixPropertyDrawer.DefaultHeight);
-                if (UV0Prop != null)
-                    EditorGUI.PropertyField(position, UV0Prop, SurfaceDetailsPropertyDrawer.kUV0Contents, true);
-
-                HotspotGUI();
+                // a hotspot material's placement in the rows a planar mapping has
+                var layout = HotspotTransformGUI.LayoutOf(surfaces[0].Surface.RenderMaterial);
+                if (layout != null && hotspotProp != null)
+                {
+                    position = EditorGUILayout.GetControlRect(true, HotspotTransformGUI.Height);
+                    HotspotTransformGUI.OnGUI(position, hotspotProp, layout);
+                    ConnectionGUI();
+                } else
+                {
+                    position = EditorGUILayout.GetControlRect(true, UVMatrixPropertyDrawer.DefaultHeight);
+                    if (UV0Prop != null)
+                        EditorGUI.PropertyField(position, UV0Prop, SurfaceDetailsPropertyDrawer.kUV0Contents, true);
+                }
 
                 EditorGUIUtility.labelWidth = prevLabelWidth;
             }
@@ -536,84 +535,6 @@ namespace Chisel.Editors
                 foreach (var item in surfaces)
                     item.Store();
             }
-        }
-
-        static readonly GUIContent kHotspotTileContents      = new("Hotspot Tile", "The tile of the material's hotspot layout this surface keeps; Automatic lets matching choose");
-        static readonly GUIContent kHotspotVariationContents = new("Next Variation", "Another of the tiles that fit this surface equally well");
-        static readonly GUIContent kHotspotRotationContents  = new("Rotation", "Degrees the texture turns around the surface's normal, counter-clockwise seen from in front");
-        static readonly GUIContent kHotspotLeftContents      = new("-90", "A quarter turn clockwise");
-        static readonly GUIContent kHotspotRightContents     = new("+90", "A quarter turn counter-clockwise");
-        static readonly GUIContent kHotspotDensityContents   = new("Density", "How many times the tile's pixels a unit the surface takes: 2 makes the texture half as large");
-        static readonly GUIContent kHotspotMirrorContents    = new("Mirror", "The texture mirrored left to right");
-        static readonly GUIContent kHotspotOffsetContents    = new("Offset", "How far a repeating tile's repeats move along the texture's right and up, in repeats");
-
-        // With a hotspot material: the tile the surfaces keep, and another variation of the automatic choice
-        void HotspotGUI()
-        {
-            if (pinnedTileProp == null || surfaces.Length == 0)
-                return;
-            var metadata = surfaces[0].Surface.RenderMaterial != null ? surfaces[0].Surface.RenderMaterial.GetMetadataOfType<ChiselSurfaceMetadata>() : null;
-            var layout   = metadata != null ? metadata.hotspotLayout : null;
-            if (layout == null)
-                return;
-            var names = new List<GUIContent> { new("Automatic") };
-            var ids   = new List<int> { 0 };
-            foreach (var tile in layout.tiles)
-            {
-                names.Add(new GUIContent(string.IsNullOrEmpty(tile.name) ? "Tile " + tile.id : tile.name));
-                ids.Add(tile.id);
-            }
-            var current = ids.IndexOf(pinnedTileProp.intValue);
-            EditorGUI.showMixedValue = pinnedTileProp.hasMultipleDifferentValues;
-            var chosen = EditorGUILayout.Popup(kHotspotTileContents, Mathf.Max(0, current), names.ToArray());
-            EditorGUI.showMixedValue = false;
-            if (chosen != current && chosen >= 0)
-                pinnedTileProp.intValue = ids[chosen];
-            using (new EditorGUI.DisabledScope(pinnedTileProp.intValue != 0 || pinnedTileProp.hasMultipleDifferentValues))
-            {
-                if (GUILayout.Button(kHotspotVariationContents) && undoableObjects.Length > 0)
-                {
-                    Undo.RegisterCompleteObjectUndo(undoableObjects, "Next Hotspot Variation");
-                    foreach (var item in surfaces)
-                    {
-                        var details = item.Surface.surfaceDetails;
-                        details.hotspot.seed = NextSeed(details.hotspot.seed);
-                        item.Surface.surfaceDetails = details;
-                        item.Store();
-                    }
-                    serializedObject.Update();
-                    GUIUtility.ExitGUI();
-                }
-            }
-
-            if (hotspotRotationProp != null)
-            {
-                using (new EditorGUILayout.HorizontalScope())
-                {
-                    EditorGUI.showMixedValue = hotspotRotationProp.hasMultipleDifferentValues;
-                    var rotation = EditorGUILayout.FloatField(kHotspotRotationContents, hotspotRotationProp.floatValue);
-                    EditorGUI.showMixedValue = false;
-                    if (GUILayout.Button(kHotspotLeftContents, EditorStyles.miniButtonLeft, GUILayout.Width(34)))  rotation -= 90;
-                    if (GUILayout.Button(kHotspotRightContents, EditorStyles.miniButtonRight, GUILayout.Width(34))) rotation += 90;
-                    rotation = Mathf.Repeat(rotation, 360);
-                    if (rotation != hotspotRotationProp.floatValue)
-                        hotspotRotationProp.floatValue = rotation;
-                }
-            }
-            if (hotspotDensityProp != null)
-            {
-                EditorGUI.showMixedValue = hotspotDensityProp.hasMultipleDifferentValues;
-                var density = EditorGUILayout.FloatField(kHotspotDensityContents, hotspotDensityProp.floatValue > 0 ? hotspotDensityProp.floatValue : 1);
-                EditorGUI.showMixedValue = false;
-                density = Mathf.Max(0.01f, density);
-                if (density != (hotspotDensityProp.floatValue > 0 ? hotspotDensityProp.floatValue : 1))
-                    hotspotDensityProp.floatValue = density;
-            }
-            if (hotspotMirrorProp != null)
-                EditorGUILayout.PropertyField(hotspotMirrorProp, kHotspotMirrorContents);
-            if (hotspotOffsetProp != null)
-                EditorGUILayout.PropertyField(hotspotOffsetProp, kHotspotOffsetContents);
-            ConnectionGUI();
         }
 
         static readonly GUIContent kHotspotConnectionContents = new("Connection", "How the two selected surfaces are mapped where they touch: as one surface (Connected), apart (Disconnected), or as touching coplanar surfaces are by themselves (Automatic)");
@@ -1409,6 +1330,9 @@ namespace Chisel.Editors
             // counter-clockwise seen from in front is a negative turn about the surface's normal
             var plane   = surface.WorldPlane;
             var facing  = plane.HasValue && Vector3.Dot(plane.Value.normal, worldNormal) < 0 ? -1 : 1;
+            // a mirrored texture turns the other way
+            if (start.mirror != start.mirrorY)
+                facing = -facing;
             var rotation = start.rotation - degrees * facing;
             details.hotspot.rotation = rotation - 360 * Mathf.Floor(rotation / 360);
             surface.SurfaceDetails = details;
