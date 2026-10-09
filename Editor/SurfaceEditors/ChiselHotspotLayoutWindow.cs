@@ -21,6 +21,7 @@ namespace Chisel.Editors
         static readonly Color      kSelected  = new(0.2f, 0.6f, 1, 0.35f);
         static readonly Color      kDisabled  = new(0, 0, 0, 0.55f);
         static readonly Color      kBorder    = new(1, 0.3f, 0.3f, 0.9f);
+        static readonly Color      kPadding   = new(0.3f, 0.9f, 1, 0.9f);
 
         [SerializeField] ChiselHotspotLayout layout;
         [SerializeField] int     selectedTile;
@@ -432,6 +433,19 @@ namespace Chisel.Editors
                         }
                     }
                 }
+                // what the tile samples: its outline less the layout's padding
+                if (layout.padding > 0 && !shaped)
+                {
+                    var padded = Inset(tile.points, layout.padding);
+                    if (padded != null)
+                    {
+                        var drawn = new Vector3[padded.Length + 1];
+                        for (int i = 0; i <= padded.Length; i++)
+                            drawn[i] = ToCanvas(padded[i % padded.Length]);
+                        Handles.color = kPadding;
+                        Handles.DrawAAPolyLine(1.5f, drawn);
+                    }
+                }
                 if (tile.border > 0 && !shaped)
                 {
                     var inset = Inset(tile.points, tile.border);
@@ -501,7 +515,7 @@ namespace Chisel.Editors
         }
 
         // The outline a border of this width leaves inside a tile: every edge moved inward; null when it does not fit
-        static Vector2[] Inset(Vector2Int[] points, int border)
+        static Vector2[] Inset(Vector2Int[] points, float border)
         {
             var count = points.Length;
             var area = 0.0f;
