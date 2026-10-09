@@ -53,6 +53,14 @@ namespace Chisel.Core
         // of all of it, which changes when a layout does.
         public static uint Gather(NativeList<HotspotTileData> tiles, NativeList<HotspotLayoutData> layouts)
         {
+            return Gather(tiles, layouts, default);
+        }
+
+        // The same, and the sides of the shaped tiles (HotspotTileData.sideStart)
+        public static uint Gather(NativeList<HotspotTileData> tiles, NativeList<HotspotLayoutData> layouts, NativeList<float4> sides)
+        {
+            if (sides.IsCreated)
+                sides.Clear();
             tiles.Clear();
             layouts.Clear();
             foreach (var layout in s_Layouts)
@@ -62,10 +70,10 @@ namespace Chisel.Core
                     layouts.Add(new HotspotLayoutData { tileStart = tiles.Length });
                     continue;
                 }
-                HotspotMatcher.AddTiles(layout, tiles, out var data);
+                HotspotMatcher.AddTiles(layout, tiles, out var data, sides);
                 layouts.Add(data);
             }
-            return math.hash(new uint2(tiles.Hash(), layouts.Hash()));
+            return math.hash(new uint3(tiles.Hash(), layouts.Hash(), sides.IsCreated ? sides.Hash() : 0));
         }
     }
 }

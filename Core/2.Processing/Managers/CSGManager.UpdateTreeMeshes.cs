@@ -310,6 +310,7 @@ namespace Chisel.Core
                 // Hotspot layouts (ChiselHotspotStore), as they are this update
                 public NativeArray<HotspotTileData>         hotspotTiles;
                 public NativeArray<HotspotLayoutData>       hotspotLayouts;
+                public NativeArray<float4>                  hotspotTileSides;
                 // and the surfaces connected or disconnected by hand (ChiselHotspotLinkStore)
                 public NativeArray<HotspotLink>             hotspotLinks;
             } 
@@ -591,14 +592,16 @@ namespace Chisel.Core
 
                 // The hotspot layouts; when one changed every surface is mapped again
                 {
-                    using var hotspotTiles   = new NativeList<HotspotTileData>(Allocator.Temp);
-                    using var hotspotLayouts = new NativeList<HotspotLayoutData>(Allocator.Temp);
-                    var hotspotHash = ChiselHotspotStore.Gather(hotspotTiles, hotspotLayouts);
+                    using var hotspotTiles     = new NativeList<HotspotTileData>(Allocator.Temp);
+                    using var hotspotLayouts   = new NativeList<HotspotLayoutData>(Allocator.Temp);
+                    using var hotspotTileSides = new NativeList<float4>(Allocator.Temp);
+                    var hotspotHash = ChiselHotspotStore.Gather(hotspotTiles, hotspotLayouts, hotspotTileSides);
                     if (hotspotHash != chiselLookupValues.hotspotHash)
                         this.rebuildAllBrushes = true;
                     chiselLookupValues.hotspotHash = hotspotHash;
                     Temporaries.hotspotTiles   = new NativeArray<HotspotTileData>(hotspotTiles.AsArray(), defaultAllocator);
                     Temporaries.hotspotLayouts = new NativeArray<HotspotLayoutData>(hotspotLayouts.AsArray(), defaultAllocator);
+                    Temporaries.hotspotTileSides = new NativeArray<float4>(hotspotTileSides.AsArray(), defaultAllocator);
                     Temporaries.hotspotLinks   = new NativeArray<HotspotLink>(chiselLookupValues.hotspotLinks.AsArray(), defaultAllocator);
                 }
 
@@ -2392,6 +2395,7 @@ namespace Chisel.Core
                         hotspotTiles            = Temporaries.hotspotTiles,
                         hotspotLayouts          = Temporaries.hotspotLayouts,
                         hotspotLinks            = Temporaries.hotspotLinks,
+                        hotspotTileSides        = Temporaries.hotspotTileSides,
 
                         // Write
                         brushRenderData      = Temporaries.brushRenderData,
@@ -2877,6 +2881,7 @@ namespace Chisel.Core
                 lastJobHandle.AddDependency(Temporaries.hotspotTiles                 .SafeDispose(JobHandles[JobHandleType.decalVolumesJobHandle].readWriteBarrier));
                 lastJobHandle.AddDependency(Temporaries.hotspotLayouts               .SafeDispose(JobHandles[JobHandleType.decalVolumesJobHandle].readWriteBarrier));
                 lastJobHandle.AddDependency(Temporaries.hotspotLinks                 .SafeDispose(JobHandles[JobHandleType.decalVolumesJobHandle].readWriteBarrier));
+                lastJobHandle.AddDependency(Temporaries.hotspotTileSides             .SafeDispose(JobHandles[JobHandleType.decalVolumesJobHandle].readWriteBarrier));
                 
                 
                 // Note: cannot use "IsCreated" on this job, for some reason it won't be scheduled and then complain that it's leaking? Bug in IsCreated?

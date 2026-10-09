@@ -121,7 +121,112 @@ namespace Chisel.Core
             return tokens;
         }
 
-        // SVG: every rect, and every polygon of 3 points or of 4 that is an upright rectangle, in user units as pixels;
+        // An SVG path's loops of straight lines (absolute and relative M, L, H, V, Z), in pixels
+        static bool TryReadPath(string d, Vector2 origin, out List<Vector2Int[]> loops, out string error)
+        {
+            var found = new List<Vector2Int[]>();
+            loops = found;
+            error = null;
+            var loop = new List<Vector2Int>();
+            var current = Vector2.zero; var start = Vector2.zero;
+            var command = ' ';
+            var i = 0;
+            void Close()
+            {
+                if (loop.Count >= 3)
+                {
+                    if (loop[0] == loop[loop.Count - 1])
+                        loop.RemoveAt(loop.Count - 1);
+                    if (loop.Count >= 3)
+                        found.Add(loop.ToArray());
+                }
+                loop.Clear();
+            }
+            bool Number(out float value)
+            {
+                value = 0;
+                while (i < d.Length && (char.IsWhiteSpace(d[i]) || d[i] == ','))
+                    i++;
+                var begin = i;
+                if (i < d.Length && (d[i] == '-' || d[i] == '+')) i++;
+                while (i < d.Length && (char.IsDigit(d[i]) || d[i] == '.')) i++;
+                if (i < d.Length && (d[i] == 'e' || d[i] == 'E'))
+                {
+                    i++;
+                    if (i < d.Length && (d[i] == '-' || d[i] == '+')) i++;
+                    while (i < d.Length && char.IsDigit(d[i])) i++;
+                }
+                return i > begin && float.TryParse(d.Substring(begin, i - begin), NumberStyles.Float, CultureInfo.InvariantCulture, out value);
+            }
+            void Add(Vector2 point)
+            {
+                current = point;
+                loop.Add(Vector2Int.RoundToInt(point - origin));
+            }
+            while (true)
+            {
+                while (i < d.Length && (char.IsWhiteSpace(d[i]) || d[i] == ','))
+                    i++;
+                if (i >= d.Length)
+                    break;
+                if (char.IsLetter(d[i]))
+                {
+                    command = d[i++];
+                    if (command == 'Z' || command == 'z')
+                    {
+                        Close();
+                        current = start;
+                        continue;
+                    }
+                    if ("MmLlHhVv".IndexOf(command) < 0)
+                    {
+                        error = $"has '{command}': only straight lines (M, L, H, V, Z) are read";
+                        return false;
+                    }
+                }
+                var relative = char.IsLower(command);
+                switch (char.ToUpperInvariant(command))
+                {
+                    case 'M':
+                    {
+                        if (!Number(out var x) || !Number(out var y)) { error = "has a broken M"; return false; }
+                        Close();
+                        start = relative ? current + new Vector2(x, y) : new Vector2(x, y);
+                        Add(start);
+                        command = relative ? 'l' : 'L';  // further pairs are lines
+                        break;
+                    }
+                    case 'L':
+                    {
+                        if (!Number(out var x) || !Number(out var y)) { error = "has a broken L"; return false; }
+                        Add(relative ? current + new Vector2(x, y) : new Vector2(x, y));
+                        break;
+                    }
+                    case 'H':
+                    {
+                        if (!Number(out var x)) { error = "has a broken H"; return false; }
+                        Add(new Vector2(relative ? current.x + x : x, current.y));
+                        break;
+                    }
+                    case 'V':
+                    {
+                        if (!Number(out var y)) { error = "has a broken V"; return false; }
+                        Add(new Vector2(current.x, relative ? current.y + y : y));
+                        break;
+                    }
+                    default:
+                        error = "does not start with M";
+                        return false;
+                }
+            }
+            Close();
+            if (loops.Count == 0) { error = "has no closed loop of three points or more"; return false; }
+            return true;
+        }
+
+        // SVG: every rect, every polygon (one that is not a triangle or an upright rectangle a shaped tile), and every path
+        // of straight lines (M, L, H, V, Z; its first loop the outline, the others holes: a shaped tile), in user units as
+        // pixels;
         // the size from the viewBox, or width and height. A tile's name is its id (or inkscape:label), its tags its
         // class (or data-tags); "border-N" in them is its border. Elements under a transform are refused.
         public static bool TryReadSvg(string text, ChiselHotspotLayout layout, out string error)
@@ -144,7 +249,7 @@ namespace Chisel.Core
             var tiles = new List<HotspotTile>();
             foreach (XmlNode node in root.SelectNodes("//*"))
             {
-                if (node is not XmlElement element || (element.LocalName != "rect" && element.LocalName != "polygon"))
+                if (node is not XmlElement element || (element.LocalName != "rect" && element.LocalName != "polygon" && element.LocalName != "path"))
                     continue;
                 for (var parent = element; parent != null; parent = parent.ParentNode as XmlElement)
                 {
@@ -155,7 +260,22 @@ namespace Chisel.Core
                     }
                 }
                 Vector2Int[] points;
-                if (element.LocalName == "rect")
+                HotspotTileHole[] holes = null;
+                if (element.LocalName == "path")
+                {
+                    if (!TryReadPath(element.GetAttribute("d"), origin, out var loops, out var pathError))
+                    {
+                        error = $"<path {NameOf(element)}> {pathError}";
+                        return false;
+                    }
+                    points = loops[0];
+                    if (loops.Count > 1)
+                    {
+                        holes = new HotspotTileHole[loops.Count - 1];
+                        for (int i = 1; i < loops.Count; i++)
+                            holes[i - 1] = new HotspotTileHole { points = loops[i] };
+                    }
+                } else if (element.LocalName == "rect")
                 {
                     if (!TryLength(element.GetAttribute("width"), out var w) || !TryLength(element.GetAttribute("height"), out var h) || w <= 0 || h <= 0)
                         continue;
@@ -169,9 +289,9 @@ namespace Chisel.Core
                     var numbers = Numbers(element.GetAttribute("points"));
                     if (numbers.Count >= 2 && numbers[0] == numbers[numbers.Count - 2] && numbers[1] == numbers[numbers.Count - 1])
                         numbers.RemoveRange(numbers.Count - 2, 2);
-                    if (numbers.Count != 6 && numbers.Count != 8)
+                    if (numbers.Count < 6 || numbers.Count % 2 != 0)
                     {
-                        error = $"<polygon {NameOf(element)}> is not a triangle or a rectangle";
+                        error = $"<polygon {NameOf(element)}> has fewer than three points";
                         return false;
                     }
                     points = new Vector2Int[numbers.Count / 2];
@@ -179,16 +299,13 @@ namespace Chisel.Core
                         points[i] = Vector2Int.RoundToInt(new Vector2(numbers[i * 2], numbers[i * 2 + 1]) - origin);
                     if (points.Length == 4)
                     {
+                        // an upright rectangle as a rectangle; any other quadrilateral a shaped tile
                         var bounds = BoundsOf(points);
+                        var upright = true;
                         foreach (var p in points)
-                        {
-                            if ((p.x != bounds.xMin && p.x != bounds.xMax) || (p.y != bounds.yMin && p.y != bounds.yMax))
-                            {
-                                error = $"<polygon {NameOf(element)}> is not an upright rectangle";
-                                return false;
-                            }
-                        }
-                        points = RectanglePoints(bounds);
+                            upright &= (p.x == bounds.xMin || p.x == bounds.xMax) && (p.y == bounds.yMin || p.y == bounds.yMax);
+                        if (upright)
+                            points = RectanglePoints(bounds);
                     }
                 }
                 var tags = (element.GetAttribute("class") + " " + element.GetAttribute("data-tags")).Split(new[] { ' ', ',' }, StringSplitOptions.RemoveEmptyEntries);
@@ -200,9 +317,9 @@ namespace Chisel.Core
                 }
                 var id = tiles.Count + 1;
                 var name = NameOf(element);
-                tiles.Add(new HotspotTile { id = id, name = string.IsNullOrEmpty(name) ? "S" + id : name, points = points, flags = FlagsOf(tags), border = Math.Max(0, border) });
+                tiles.Add(new HotspotTile { id = id, name = string.IsNullOrEmpty(name) ? "S" + id : name, points = points, holes = holes, flags = FlagsOf(tags), border = Math.Max(0, border) });
             }
-            if (tiles.Count == 0) { error = "no rect or polygon elements"; return false; }
+            if (tiles.Count == 0) { error = "no rect, polygon or path elements"; return false; }
             layout.size  = size;
             layout.tiles = tiles;
             layout.BuildCuts(out _);

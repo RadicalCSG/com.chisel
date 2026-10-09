@@ -274,25 +274,36 @@ namespace Chisel.Editors
                 var points = new Vector3[tile.points.Length];
                 for (int i = 0; i < points.Length; i++)
                     points[i] = ToCanvas(tile.points[i]);
+                var shaped = IsShaped(tile);
                 if ((tile.flags & HotspotTileFlags.Disabled) != 0)
                 {
                     Handles.color = kDisabled;
-                    Handles.DrawAAConvexPolygon(points);
+                    Fill(points, shaped);
                 }
                 if (tile.id == selectedTile)
                 {
                     Handles.color = kSelected;
-                    Handles.DrawAAConvexPolygon(points);
+                    Fill(points, shaped);
                 }
-                if (!layout.HasCuts)
+                // its outline where no line of the cuts draws it: a shaped tile's always, and its holes
+                if (!layout.HasCuts || shaped)
                 {
-                    var outline = new Vector3[points.Length + 1];
-                    points.CopyTo(outline, 0);
-                    outline[points.Length] = points[0];
                     Handles.color = kLine;
-                    Handles.DrawAAPolyLine(2, outline);
+                    DrawLoop(points);
+                    if (tile.holes != null)
+                    {
+                        foreach (var hole in tile.holes)
+                        {
+                            if (hole.points == null || hole.points.Length < 3)
+                                continue;
+                            var drawn = new Vector3[hole.points.Length];
+                            for (int i = 0; i < drawn.Length; i++)
+                                drawn[i] = ToCanvas(hole.points[i]);
+                            DrawLoop(drawn);
+                        }
+                    }
                 }
-                if (tile.border > 0)
+                if (tile.border > 0 && !shaped)
                 {
                     var inset = Inset(tile.points, tile.border);
                     if (inset != null)
@@ -315,6 +326,64 @@ namespace Chisel.Editors
                     GUI.Label(new Rect(center - labelSize * 0.5f, labelSize), label, EditorStyles.whiteMiniLabel);
                 }
             }
+        }
+
+        static void DrawLoop(Vector3[] points)
+        {
+            var outline = new Vector3[points.Length + 1];
+            points.CopyTo(outline, 0);
+            outline[points.Length] = points[0];
+            Handles.DrawAAPolyLine(2, outline);
+        }
+
+        // Not a rectangle with upright sides or a triangle: drawn by its outline, filled triangle by triangle
+        internal static bool IsShaped(in HotspotTile tile)
+        {
+            if (tile.holes != null && tile.holes.Length > 0)
+                return true;
+            if (tile.points == null || tile.points.Length == 3)
+                return false;
+            if (tile.points.Length > 4)
+                return true;
+            for (int i = 0; i < 4; i++)
+            {
+                var a = tile.points[i]; var b = tile.points[(i + 1) % 4];
+                if (a.x != b.x && a.y != b.y)
+                    return true;
+            }
+            return false;
+        }
+
+        // A polygon filled: as it is when convex, otherwise by its ears (its holes not left out)
+        static void Fill(Vector3[] points, bool shaped)
+        {
+            if (!shaped)
+            {
+                Handles.DrawAAConvexPolygon(points);
+                return;
+            }
+            var left = new List<int>();
+            for (int i = 0; i < points.Length; i++)
+                left.Add(i);
+            var area = 0.0f;
+            for (int i = 0; i < points.Length; i++)
+                area += points[i].x * points[(i + 1) % points.Length].y - points[(i + 1) % points.Length].x * points[i].y;
+            var turn = area > 0 ? 1 : -1;
+            var guard = points.Length * points.Length;
+            while (left.Count > 3 && guard-- > 0)
+            {
+                for (int i = 0; i < left.Count; i++)
+                {
+                    Vector3 a = points[left[(i + left.Count - 1) % left.Count]], b = points[left[i]], c = points[left[(i + 1) % left.Count]];
+                    if (turn * ((b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x)) <= 0)
+                        continue;
+                    Handles.DrawAAConvexPolygon(a, b, c);
+                    left.RemoveAt(i);
+                    break;
+                }
+            }
+            if (left.Count == 3)
+                Handles.DrawAAConvexPolygon(points[left[0]], points[left[1]], points[left[2]]);
         }
 
         // The outline a border of this width leaves inside a tile: every edge moved inward; null when it does not fit
@@ -501,8 +570,9 @@ namespace Chisel.Editors
                 int x0 = int.MaxValue, y0 = int.MaxValue, x1 = int.MinValue, y1 = int.MinValue;
                 foreach (var p in tile.points) { x0 = Mathf.Min(x0, p.x); y0 = Mathf.Min(y0, p.y); x1 = Mathf.Max(x1, p.x); y1 = Mathf.Max(y1, p.y); }
                 var ppu = tile.pixelsPerUnit > 0 ? tile.pixelsPerUnit : layout.pixelsPerUnit;
-                EditorGUILayout.LabelField(tile.points.Length == 3 ? "Triangle" : "Rectangle",
-                                           $"{x1 - x0} x {y1 - y0} px, {(x1 - x0) / ppu:0.##} x {(y1 - y0) / ppu:0.##} units");
+                var kind = IsShaped(tile) ? $"Shape ({tile.points.Length} corners" + (tile.holes != null && tile.holes.Length > 0 ? $", {tile.holes.Length} holes)" : ")")
+                                          : (tile.points.Length == 3 ? "Triangle" : "Rectangle");
+                EditorGUILayout.LabelField(kind, $"{x1 - x0} x {y1 - y0} px, {(x1 - x0) / ppu:0.##} x {(y1 - y0) / ppu:0.##} units");
             }
             EditorGUI.BeginChangeCheck();
             tile.name = EditorGUILayout.TextField("Name", tile.name);
@@ -517,7 +587,7 @@ namespace Chisel.Editors
             tile.flags = Flag(tile.flags, HotspotTileFlags.PartialRepeats, "Repeats cut off", "Repeats keep their exact size and the last one is cut off, instead of all stretching to fit");
             tile.border = Mathf.Max(0, EditorGUILayout.IntField(new GUIContent("Border (px)", "The width of the tile's border, a band along its outline (0 for none)"), tile.border));
             tile.pixelsPerUnit = Mathf.Max(0, EditorGUILayout.FloatField(new GUIContent("Pixels per unit", "The texture density this tile is meant for; 0 takes the layout's"), tile.pixelsPerUnit));
-            if (tile.border > 0 && tile.points != null && tile.points.Length >= 3)
+            if (tile.border > 0 && tile.points != null && tile.points.Length >= 3 && !IsShaped(tile))
                 SideFields(ref tile);
             if (!EditorGUI.EndChangeCheck())
                 return false;

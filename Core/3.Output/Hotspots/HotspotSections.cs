@@ -41,6 +41,8 @@ namespace Chisel.Core
         public float4           sideStretch;
         // the layout's budgets for one surface (0: the hard limits)
         public int              maxRepeats, maxTriangles;
+        // a shaped tile's own sides (HotspotTileData.sideStart, sideCount), its border measured from them
+        public int              sideStart, sideCount;
 
         public readonly int MaxRepeats   => maxRepeats > 0 ? math.min(maxRepeats, HotspotSections.kMaxRepeats) : HotspotSections.kMaxRepeats;
         public readonly int MaxTriangles => maxTriangles > 0 ? maxTriangles : int.MaxValue;
@@ -105,11 +107,12 @@ namespace Chisel.Core
                 repeatX = choice.repeatX, repeatY = choice.repeatY, lastRepeat = choice.lastRepeat, right = right, up = up,
                 offset = new float2(across ? shift.x : 0, along ? shift.y : 0),
                 interiorOffset = count == 4 ? shift : float2.zero,
-                maxRepeats = layout.maxRepeats, maxTriangles = layout.maxTriangles
+                maxRepeats = layout.maxRepeats, maxTriangles = layout.maxTriangles,
+                sideStart = tile.sideStart, sideCount = tile.sideCount
             };
             // each side as the sections lay it takes the rule of the tile's side with the same ends (turned or mirrored)
             var corners = count == 4 ? new float2x4(t0, t1, t1 + t2 - t0, t2) : new float2x4(t0, t1, t2, t2);
-            for (int j = 0; j < count; j++)
+            for (int j = 0; j < count && !tile.shaped; j++)
             {
                 var a = corners[j]; var b = corners[(j + 1) % count];
                 for (int k = 0; k < tile.cornerCount; k++)

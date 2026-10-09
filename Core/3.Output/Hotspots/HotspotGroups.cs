@@ -131,7 +131,7 @@ namespace Chisel.Core
         // first plane is unfolded into it) and their sections, flat; bordersOf: where links put or leave out a border (Borders)
         public static void Find(NativeList<BrushData> brushes, NativeArray<HotspotTileData> tiles, NativeArray<HotspotLayoutData> layouts, NativeArray<HotspotLink> links,
                                 in UnsafeParallelMultiHashMap<int2, HotspotBorderCorner> bordersOf, ref UnsafeHashMap<int2, int> groupOf, ref UnsafeHashMap<int2, float4x4> unfoldOf, NativeList<Group> groups, NativeList<HotspotSectionLine> lines,
-                                NativeList<HotspotSectionHalfPlane> halfPlanes, NativeList<HotspotSectionCell> cells)
+                                NativeList<HotspotSectionHalfPlane> halfPlanes, NativeList<HotspotSectionCell> cells, NativeArray<float4> tileSides = default)
         {
             groupOf.Clear();
             unfoldOf.Clear();
@@ -384,6 +384,7 @@ namespace Chisel.Core
                 var layout  = layouts[source.layout - 1];
                 var density = source.density > 0 ? source.density : 1;
                 var shape   = HotspotMatcher.ShapeOf(positions.AsArray(), source.right, source.up);
+                HotspotMatcher.MaskOf(ref shape, positions.AsArray(), indices.AsArray(), source.right, source.up);
                 var choice  = HotspotMatcher.Choose(tiles, layout, shape, source.seed, source.pinned, density: density);
                 if (choice.tile < 0)
                     continue;
@@ -402,7 +403,7 @@ namespace Chisel.Core
                     // built once from what the group draws together, so the border runs only along its outline
                     var sections = HotspotSections.Create(Allocator.Temp);
                     var built = group.input.count == 4 && !group.input.Repeated
-                              ? sections.BuildConforming(group.input, indices, positions, rules.AsArray())
+                              ? sections.BuildConforming(group.input, indices, positions, rules.AsArray(), tileSides)
                               : sections.Build(group.input);
                     if (built)
                     {

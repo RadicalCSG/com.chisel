@@ -10,7 +10,8 @@ namespace Chisel.Core
     internal static class OutputHotspotSections
     {
         public static void CutModel(NativeList<BrushData> brushes, NativeList<BlobAssetReference<ChiselBrushRenderBuffer>> patched,
-                                    NativeArray<HotspotTileData> tiles, NativeArray<HotspotLayoutData> layouts, NativeArray<HotspotLink> links)
+                                    NativeArray<HotspotTileData> tiles, NativeArray<HotspotLayoutData> layouts, NativeArray<HotspotLink> links,
+                                    NativeArray<float4> tileSides = default)
         {
             // coplanar neighbours, of any brush, mapped as one surface (HotspotGroups)
             var groupOf    = new UnsafeHashMap<int2, int>(64, Allocator.Temp);
@@ -22,13 +23,13 @@ namespace Chisel.Core
             // and the edges given a border or none by hand
             var bordersOf  = new UnsafeParallelMultiHashMap<int2, HotspotBorderCorner>(8, Allocator.Temp);
             HotspotGroups.Borders(brushes, links, ref bordersOf);
-            HotspotGroups.Find(brushes, tiles, layouts, links, bordersOf, ref groupOf, ref unfoldOf, groups, lines, halfPlanes, cells);
+            HotspotGroups.Find(brushes, tiles, layouts, links, bordersOf, ref groupOf, ref unfoldOf, groups, lines, halfPlanes, cells, tileSides);
             for (int b = 0; b < brushes.Length; b++)
             {
                 if (!brushes[b].brushRenderBuffer.IsCreated ||
                     (!HasSections(ref brushes[b].brushRenderBuffer.Value) && !InGroup(ref brushes[b].brushRenderBuffer.Value, b, groupOf)))
                     continue;
-                var copy = Cut(brushes[b].brushRenderBuffer, b, groupOf, unfoldOf, bordersOf, groups, lines, halfPlanes, cells);
+                var copy = Cut(brushes[b].brushRenderBuffer, b, groupOf, unfoldOf, bordersOf, groups, lines, halfPlanes, cells, tileSides);
                 patched.Add(copy);
                 var data = brushes[b];
                 data.brushRenderBuffer = copy;
@@ -60,7 +61,8 @@ namespace Chisel.Core
         static BlobAssetReference<ChiselBrushRenderBuffer> Cut(BlobAssetReference<ChiselBrushRenderBuffer> source, int brush, UnsafeHashMap<int2, int> groupOf,
                                                                UnsafeHashMap<int2, float4x4> unfoldOf, in UnsafeParallelMultiHashMap<int2, HotspotBorderCorner> bordersOf,
                                                                NativeList<HotspotGroups.Group> groups, NativeList<HotspotSectionLine> groupLines,
-                                                               NativeList<HotspotSectionHalfPlane> groupHalfPlanes, NativeList<HotspotSectionCell> groupCells)
+                                                               NativeList<HotspotSectionHalfPlane> groupHalfPlanes, NativeList<HotspotSectionCell> groupCells,
+                                                               NativeArray<float4> tileSides)
         {
             var builder = new BlobBuilder(Allocator.Temp);
             try
@@ -103,7 +105,7 @@ namespace Chisel.Core
                     // around what the surface draws (its border, its interior), unless it is a triangle (exact already) or
                     // repeats
                     var built = input.count == 4 && !input.Repeated
-                              ? sections.BuildConforming(input, indices, collider, rules.AsArray())
+                              ? sections.BuildConforming(input, indices, collider, rules.AsArray(), tileSides)
                               : sections.Build(input);
                     if (!built)
                     {

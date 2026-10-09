@@ -18,6 +18,12 @@ namespace Chisel.Core
         // The border along each side (from corner i to the next, HotspotBorderMode, maximum stretch)
         public int4             sideMode;
         public float4           sideStretch;
+        // A shaped tile (not a rectangle or a triangle; with holes): taken for surfaces whose outline is like its own
+        // (mask, kMaskSize x kMaskSize cells over its bounds), mapped by its bounds (its corners), its border measured
+        // from its own sides (sideStart, sideCount: in the layouts' sides, ChiselHotspotStore.Gather)
+        public bool             shaped;
+        public uint4            mask0, mask1;
+        public int              sideStart, sideCount;
 
         public readonly float2 Corner(int index)
         {
@@ -50,6 +56,9 @@ namespace Chisel.Core
         public float2 c0, c1, c2;
         // Round: at least kRadialCorners corners, all about as far from the middle of its bounds, which are square
         public bool   radial;
+        // What it draws over its bounds, kMaskSize x kMaskSize cells (MaskOf), for shaped tiles
+        public bool   masked;
+        public uint4  mask0, mask1;
 
         public readonly float2 Corner(int index) { return index == 0 ? c0 : (index == 1 ? c1 : c2); }
     }
@@ -294,8 +303,10 @@ namespace Chisel.Core
                 if (!Candidate(tiles[t], shape, radial))
                     continue;
                 var choice = Score(tiles[t], shape, density, false, lastResort);
-                if (choice.score < best.score) { best = choice; best.tile = t; ties = 1; }
-                else if (choice.score == best.score) ties++;
+                // a shaped tile that fits before any other
+                var key = Key(choice, tiles[t]); var bestKey = best.tile < 0 ? float.PositiveInfinity : Key(best, tiles[best.tile]);
+                if (key < bestKey) { best = choice; best.tile = t; ties = 1; }
+                else if (key == bestKey) ties++;
             }
             if (ties <= 1)
                 return best;
@@ -307,12 +318,15 @@ namespace Chisel.Core
                 if (!Candidate(tiles[t], shape, radial))
                     continue;
                 var choice = Score(tiles[t], shape, density, false, lastResort);
-                if (choice.score != best.score)
+                if (Key(choice, tiles[t]) != Key(best, tiles[best.tile]))
                     continue;
                 if (pick-- == 0) { choice.tile = t; return choice; }
             }
             return best;
         }
+
+        static float Key(in HotspotChoice choice, in HotspotTileData tile) => tile.shaped ? choice.score : choice.score + kUnshaped;
+        const float kUnshaped = 1e6f;
 
         static bool Candidate(in HotspotTileData tile, in HotspotShape shape, bool radial)
         {
@@ -320,7 +334,94 @@ namespace Chisel.Core
                 return false;
             if (((tile.flags & HotspotTileFlags.Radial) != 0) != radial)
                 return false;
+            // a shaped tile only for a surface shaped like it
+            if (tile.shaped)
+                return shape.cornerCount != 3 && Overlap(shape, tile) >= kShapeMatch;
             return (shape.cornerCount == 3) == (tile.cornerCount == 3);
+        }
+
+        // Cells of a surface's or a shaped tile's bounds, across and up, that its mask tells apart
+        public const int   kMaskSize  = 16;
+        // How much a surface's mask and a shaped tile's must have in common (in common over in either) for it to take it
+        public const float kShapeMatch = 0.85f;
+
+        static void SetCell(ref uint4 mask0, ref uint4 mask1, int cell)
+        {
+            var word = cell >> 5; var bit = 1u << (cell & 31);
+            if (word < 4) mask0[word] |= bit; else mask1[word - 4] |= bit;
+        }
+
+        // In common over in either, of a surface's mask and a shaped tile's
+        public static float Overlap(in HotspotShape shape, in HotspotTileData tile)
+        {
+            if (!shape.masked)
+                return 0;
+            var both   = math.csum(math.countbits(shape.mask0 & tile.mask0)) + math.csum(math.countbits(shape.mask1 & tile.mask1));
+            var either = math.csum(math.countbits(shape.mask0 | tile.mask0)) + math.csum(math.countbits(shape.mask1 | tile.mask1));
+            return either > 0 ? (float)both / either : 0;
+        }
+
+        // Which cells of its bounds what a surface draws (triangles in its frame) covers, by their centres
+        public static void MaskOf(ref HotspotShape shape, NativeArray<float3> positions, NativeArray<int> indices, float3 right, float3 up)
+        {
+            shape.mask0 = shape.mask1 = uint4.zero;
+            shape.masked = false;
+            var size = shape.max - shape.min;
+            if (!(size.x > 0) || !(size.y > 0) || indices.Length < 3)
+                return;
+            for (int t = 0; t + 2 < indices.Length; t += 3)
+            {
+                var a = new float2(math.dot(positions[indices[t]], right), math.dot(positions[indices[t]], up));
+                var b = new float2(math.dot(positions[indices[t + 1]], right), math.dot(positions[indices[t + 1]], up));
+                var c = new float2(math.dot(positions[indices[t + 2]], right), math.dot(positions[indices[t + 2]], up));
+                var lo = math.min(a, math.min(b, c)); var hi = math.max(a, math.max(b, c));
+                var i0 = math.max(0, (int)math.floor((lo.x - shape.min.x) / size.x * kMaskSize - 0.5f));
+                var i1 = math.min(kMaskSize - 1, (int)math.ceil((hi.x - shape.min.x) / size.x * kMaskSize - 0.5f));
+                var j0 = math.max(0, (int)math.floor((lo.y - shape.min.y) / size.y * kMaskSize - 0.5f));
+                var j1 = math.min(kMaskSize - 1, (int)math.ceil((hi.y - shape.min.y) / size.y * kMaskSize - 0.5f));
+                var area = Cross(b - a, c - a);
+                if (area == 0)
+                    continue;
+                for (int j = j0; j <= j1; j++)
+                {
+                    for (int i = i0; i <= i1; i++)
+                    {
+                        var p = shape.min + size * new float2((i + 0.5f) / kMaskSize, (j + 0.5f) / kMaskSize);
+                        var w0 = Cross(b - a, p - a) * area; var w1 = Cross(c - b, p - b) * area; var w2 = Cross(a - c, p - c) * area;
+                        if (w0 >= 0 && w1 >= 0 && w2 >= 0)
+                            SetCell(ref shape.mask0, ref shape.mask1, j * kMaskSize + i);
+                    }
+                }
+            }
+            shape.masked = true;
+        }
+
+        static float Cross(float2 a, float2 b) => a.x * b.y - a.y * b.x;
+
+        // A shaped tile's mask: which cells of its bounds its outline (less its holes) covers, by their centres
+        static void TileMask(ref HotspotTileData tile, NativeList<float2> loopPoints, NativeList<int2> loops)
+        {
+            tile.mask0 = tile.mask1 = uint4.zero;
+            var size = tile.max - tile.min;
+            for (int j = 0; j < kMaskSize; j++)
+            {
+                for (int i = 0; i < kMaskSize; i++)
+                {
+                    var p = tile.min + size * new float2((i + 0.5f) / kMaskSize, (j + 0.5f) / kMaskSize);
+                    var inside = false;
+                    for (int l = 0; l < loops.Length; l++)
+                    {
+                        for (int k = 0; k < loops[l].y; k++)
+                        {
+                            var a = loopPoints[loops[l].x + k]; var b = loopPoints[loops[l].x + (k + 1) % loops[l].y];
+                            if ((a.y > p.y) != (b.y > p.y) && p.x < a.x + (b.x - a.x) * (p.y - a.y) / (b.y - a.y))
+                                inside = !inside;
+                        }
+                    }
+                    if (inside)
+                        SetCell(ref tile.mask0, ref tile.mask1, j * kMaskSize + i);
+                }
+            }
         }
 
         // Distortion of the best way to put the surface on the tile: 2 |ln(s1 / s2)| + |ln(s1 s2)| / 2 for the scale
@@ -330,8 +431,8 @@ namespace Chisel.Core
         {
             var pixelsPerUnit = tile.pixelsPerUnit * density;
             var best = new HotspotChoice { tile = -1, score = float.PositiveInfinity };
-            var rotate = any || (tile.flags & HotspotTileFlags.AllowRotation) != 0;
-            var mirror = any || (tile.flags & HotspotTileFlags.AllowMirror) != 0;
+            var rotate = !tile.shaped && (any || (tile.flags & HotspotTileFlags.AllowRotation) != 0);
+            var mirror = !tile.shaped && (any || (tile.flags & HotspotTileFlags.AllowMirror) != 0);
             if (shape.cornerCount != 3 || tile.cornerCount != 3)
             {
                 // the surface's bounds onto the tile's bounds, or onto as many repeats of it as fit best
@@ -479,6 +580,12 @@ namespace Chisel.Core
         // A layout's tiles as matching sees them
         public static void AddTiles(ChiselHotspotLayout layout, NativeList<HotspotTileData> tiles, out HotspotLayoutData data)
         {
+            AddTiles(layout, tiles, out data, default);
+        }
+
+        // The same, and the sides of its shaped tiles (from, to in pixels, y up, the tile on their left) added to sides
+        public static void AddTiles(ChiselHotspotLayout layout, NativeList<HotspotTileData> tiles, out HotspotLayoutData data, NativeList<float4> sides)
+        {
             data = new HotspotLayoutData
             {
                 textureSize   = new float2(layout.size.x, layout.size.y),
@@ -489,8 +596,13 @@ namespace Chisel.Core
             };
             foreach (var tile in layout.tiles)
             {
-                if (tile.points == null || (tile.points.Length != 3 && tile.points.Length != 4))
+                if (tile.points == null || tile.points.Length < 3)
                     continue;
+                if (IsShaped(tile))
+                {
+                    AddShapedTile(layout, tile, tiles, sides);
+                    continue;
+                }
                 var t = new HotspotTileData { id = tile.id, cornerCount = tile.points.Length, flags = tile.flags,
                                               pixelsPerUnit = tile.pixelsPerUnit > 0 ? tile.pixelsPerUnit : layout.pixelsPerUnit,
                                               border = math.max(0, tile.border),
@@ -526,6 +638,83 @@ namespace Chisel.Core
                 tiles.Add(t);
             }
             data.tileCount = tiles.Length - data.tileStart;
+        }
+
+        // Not a rectangle with upright sides or a triangle: an outline of more corners, or with holes
+        static bool IsShaped(in HotspotTile tile)
+        {
+            if (tile.holes != null && tile.holes.Length > 0)
+                return true;
+            if (tile.points.Length == 3)
+                return false;
+            if (tile.points.Length > 4)
+                return true;
+            for (int i = 0; i < 4; i++)
+            {
+                var a = tile.points[i]; var b = tile.points[(i + 1) % 4];
+                if (a.x != b.x && a.y != b.y)
+                    return true;
+            }
+            return false;
+        }
+
+        static void AddShapedTile(ChiselHotspotLayout layout, in HotspotTile tile, NativeList<HotspotTileData> tiles, NativeList<float4> sides)
+        {
+            var t = new HotspotTileData { id = tile.id, cornerCount = 4, flags = tile.flags, shaped = true,
+                                          pixelsPerUnit = tile.pixelsPerUnit > 0 ? tile.pixelsPerUnit : layout.pixelsPerUnit,
+                                          border = math.max(0, tile.border),
+                                          min = new float2(float.PositiveInfinity), max = new float2(float.NegativeInfinity) };
+            // its loops, y up: the outline counter-clockwise, its holes clockwise, so the tile is on the left of each side
+            var points = new NativeList<float2>(32, Allocator.Temp);
+            var loops  = new NativeList<int2>(4, Allocator.Temp);
+            void AddLoop(UnityEngine.Vector2Int[] loop, bool outline)
+            {
+                if (loop == null || loop.Length < 3)
+                    return;
+                var start = points.Length;
+                var area = 0.0f;
+                for (int i = 0; i < loop.Length; i++)
+                {
+                    var a = new float2(loop[i].x, layout.size.y - loop[i].y); var b = new float2(loop[(i + 1) % loop.Length].x, layout.size.y - loop[(i + 1) % loop.Length].y);
+                    area += a.x * b.y - b.x * a.y;
+                }
+                var reverse = outline ? area < 0 : area > 0;
+                for (int i = 0; i < loop.Length; i++)
+                {
+                    var point = loop[reverse ? loop.Length - 1 - i : i];
+                    points.Add(new float2(point.x, layout.size.y - point.y));
+                }
+                loops.Add(new int2(start, loop.Length));
+            }
+            AddLoop(tile.points, true);
+            if (tile.holes != null)
+            {
+                foreach (var hole in tile.holes)
+                    AddLoop(hole.points, false);
+            }
+            for (int i = 0; i < loops[0].y; i++)
+            {
+                t.min = math.min(t.min, points[i]);
+                t.max = math.max(t.max, points[i]);
+            }
+            // mapped by its bounds, as a rectangle is
+            t.p0 = t.min; t.p1 = new float2(t.max.x, t.min.y); t.p2 = t.max; t.p3 = new float2(t.min.x, t.max.y);
+            TileMask(ref t, points, loops);
+            if (sides.IsCreated)
+            {
+                t.sideStart = sides.Length;
+                for (int l = 0; l < loops.Length; l++)
+                {
+                    for (int k = 0; k < loops[l].y; k++)
+                        sides.Add(new float4(points[loops[l].x + k], points[loops[l].x + (k + 1) % loops[l].y]));
+                }
+                t.sideCount = sides.Length - t.sideStart;
+            }
+            if (layout.padding > 0)
+                Pad(ref t, layout.padding);
+            points.Dispose();
+            loops.Dispose();
+            tiles.Add(t);
         }
 
         // A tile without the padding along its edges (counter-clockwise, y up): each edge moved in, the corners where the

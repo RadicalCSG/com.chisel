@@ -270,23 +270,89 @@ namespace Chisel.Core
             public readonly int Compare(int2 a, int2 b) => a.x != b.x ? a.x.CompareTo(b.x) : a.y.CompareTo(b.y);
         }
 
-        // A tile's side (of t) whose outside faces this way in the tile
-        static int SideFacing(in Outline t, double2 direction)
+        // The sides of a tile a border strip measures its depth from (pixels): its bounds' (an Outline, inset), or a shaped
+        // tile's own (HotspotTileData.sideStart), the tile on their left. footStart, footEnd: on the side, the band in from
+        // its ends; innerStart, innerEnd: the band inside those.
+        struct TileSides : System.IDisposable
+        {
+            public NativeList<double2> corner, along, inward, footStart, footEnd, innerStart, innerEnd;
+            public readonly int Count => corner.Length;
+
+            static TileSides Create(int count)
+            {
+                return new TileSides
+                {
+                    corner     = new NativeList<double2>(count, Allocator.Temp), along    = new NativeList<double2>(count, Allocator.Temp),
+                    inward     = new NativeList<double2>(count, Allocator.Temp), footStart = new NativeList<double2>(count, Allocator.Temp),
+                    footEnd    = new NativeList<double2>(count, Allocator.Temp), innerStart = new NativeList<double2>(count, Allocator.Temp),
+                    innerEnd   = new NativeList<double2>(count, Allocator.Temp)
+                };
+            }
+
+            public static TileSides FromOutline(in Outline t)
+            {
+                var sides = Create(t.count);
+                for (int j = 0; j < t.count; j++)
+                {
+                    var next = (j + 1) % t.count;
+                    sides.corner.Add(t.corner[j]); sides.along.Add(t.along[j]); sides.inward.Add(t.inward[j]);
+                    sides.footStart.Add(t.footNext[j]); sides.footEnd.Add(t.footPrevious[next]);
+                    sides.innerStart.Add(t.inner[j]); sides.innerEnd.Add(t.inner[next]);
+                }
+                return sides;
+            }
+
+            public static TileSides FromShape(NativeArray<float4> tileSides, int start, int count, double band)
+            {
+                var sides = Create(count);
+                for (int j = start; j < start + count; j++)
+                {
+                    var a = (double2)tileSides[j].xy; var b = (double2)tileSides[j].zw;
+                    var d = math.normalizesafe(b - a); var n = new double2(-d.y, d.x);
+                    var inset = math.min(band, 0.5 * math.length(b - a));
+                    sides.corner.Add(a); sides.along.Add(d); sides.inward.Add(n);
+                    sides.footStart.Add(a + d * inset); sides.footEnd.Add(b - d * inset);
+                    sides.innerStart.Add(a + d * inset + n * band); sides.innerEnd.Add(b - d * inset + n * band);
+                }
+                return sides;
+            }
+
+            public void Dispose()
+            {
+                corner.Dispose(); along.Dispose(); inward.Dispose(); footStart.Dispose(); footEnd.Dispose(); innerStart.Dispose(); innerEnd.Dispose();
+            }
+        }
+
+        // A tile's side whose outside faces this way in the tile; of a shaped tile's, of those facing nearly that way the
+        // one nearest to where the surface's edge maps (at)
+        static int SideFacing(in TileSides sides, double2 direction, double2 at, bool shaped)
         {
             var best = 0; var bestDot = double.NegativeInfinity;
             direction = math.normalizesafe(direction);
-            for (int j = 0; j < t.count; j++)
+            for (int j = 0; j < sides.Count; j++)
             {
-                var facing = -math.dot(direction, t.inward[j]);
+                var facing = -math.dot(direction, sides.inward[j]);
                 if (facing > bestDot) { bestDot = facing; best = j; }
             }
-            return best;
+            if (!shaped)
+                return best;
+            var chosen = best; var nearest = double.PositiveInfinity;
+            for (int j = 0; j < sides.Count; j++)
+            {
+                var facing = -math.dot(direction, sides.inward[j]);
+                if (j != best && facing < 0.9)
+                    continue;
+                var end = sides.corner[j] + sides.along[j] * math.dot(sides.footEnd[j] - sides.corner[j], sides.along[j]);
+                var distance = Deviation(sides.corner[j], at, end + sides.along[j] * math.length(sides.footStart[j] - sides.corner[j]));
+                if (distance < nearest) { nearest = distance; chosen = j; }
+            }
+            return chosen;
         }
 
         // The pixel a point of the band takes: the interior's, with its depth below side j of the tile replaced by depth
-        static double2 WithDepth(double2 pixel, in Outline t, int j, double depth)
+        static double2 WithDepth(double2 pixel, in TileSides sides, int j, double depth)
         {
-            return pixel - t.inward[j] * math.dot(t.inward[j], pixel - t.corner[j]) + t.inward[j] * depth;
+            return pixel - sides.inward[j] * math.dot(sides.inward[j], pixel - sides.corner[j]) + sides.inward[j] * depth;
         }
 
         // The border along the outline of what the surface draws (indices, positions); false when it has none
@@ -298,6 +364,13 @@ namespace Chisel.Core
         // The same, with the border put along an edge or left out by hand (rules, OutlineOf): where an edge has none the
         // strips beside it run on to it, and the interior reaches it
         public bool BuildConforming(in HotspotSectionInput input, NativeList<int> indices, NativeList<float3> positions, NativeArray<HotspotBorderCorner> rules)
+        {
+            return BuildConforming(input, indices, positions, rules, default);
+        }
+
+        // The same, a shaped tile's border measured from its own sides (tileSides, the layouts' sides; input.sideStart)
+        public bool BuildConforming(in HotspotSectionInput input, NativeList<int> indices, NativeList<float3> positions, NativeArray<HotspotBorderCorner> rules,
+                                    NativeArray<float4> tileSides)
         {
             lines.Clear();
             halfPlanes.Clear();
@@ -325,6 +398,8 @@ namespace Chisel.Core
 
             s.Inset(surfaceBand, openSides);
             t.Inset(tileBand);
+            var shaped = input.sideCount > 0 && tileSides.IsCreated && input.sideStart + input.sideCount <= tileSides.Length;
+            using var sides = shaped ? TileSides.FromShape(tileSides, input.sideStart, input.sideCount, tileBand) : TileSides.FromOutline(t);
             var size = (double2)input.textureSize;
             var depthScale = tileBand / surfaceBand;
 
@@ -363,7 +438,7 @@ namespace Chisel.Core
                     inward.Add(n);
                     outer.Add(AddLine(n, corners[At(k)]));
                     inset.Add(AddLine(n, corners[At(k)] + n * Band(k)));
-                    side.Add(SideFacing(t, math.mul(linear, -n)));
+                    side.Add(SideFacing(sides, math.mul(linear, -n), Interior((corners[At(k)] + corners[At(k + 1)]) * 0.5), shaped));
                     starts.Add(default);
                     ends.Add(default);
                 }
@@ -428,12 +503,12 @@ namespace Chisel.Core
                     var b = corners[At(k + 1)];
                     var d = along[k]; var n = inward[k]; var j = side[k];
                     var depthEdge = k;
-                    double2 Strip(double2 p) => WithDepth(Interior(p), t, side[depthEdge], math.dot(inward[depthEdge], p - corners[At(depthEdge)]) * depthScale);
+                    double2 Strip(double2 p) => WithDepth(Interior(p), sides, side[depthEdge], math.dot(inward[depthEdge], p - corners[At(depthEdge)]) * depthScale);
 
                     // where along the edge the strip runs, between its corners' sections
                     var from = convex[k] ? math.dot(d, inner[k] - a) : 0;
                     var to   = convex[(k + 1) % count] ? math.dot(d, inner[(k + 1) % count] - a) : math.length(b - a);
-                    var period  = math.length(t.footPrevious[(j + 1) % t.count] - t.footNext[j]) / depthScale;
+                    var period  = math.length(sides.footEnd[j] - sides.footStart[j]) / depthScale;
                     var repeats = StripRepeats(input, j, to - from, period, out var step);
                     var previousCut = starts[k];
                     for (int rep = 0; rep < repeats; rep++)
@@ -449,12 +524,11 @@ namespace Chisel.Core
                         else
                         {
                             // each repeat is the tile's whole strip on that side, which way round its edge runs
-                            var nextSide = (j + 1) % t.count;
-                            var forward = math.dot(math.mul(linear, d), t.along[j]) >= 0;
+                            var forward = math.dot(math.mul(linear, d), sides.along[j]) >= 0;
                             var p0 = a + d * (from + step * rep);
                             AddCell(start, p0, p0 + d * step, p0 + n * surfaceBand,
-                                    forward ? t.footNext[j] : t.footPrevious[nextSide], forward ? t.footPrevious[nextSide] : t.footNext[j],
-                                    forward ? t.inner[j] : t.inner[nextSide], size);
+                                    forward ? sides.footStart[j] : sides.footEnd[j], forward ? sides.footEnd[j] : sides.footStart[j],
+                                    forward ? sides.innerStart[j] : sides.innerEnd[j], size);
                         }
                         previousCut = new int2(cut.x, -cut.y);
                     }
@@ -470,9 +544,9 @@ namespace Chisel.Core
                     var hEdge = h; var kEdge = k;
                     double Depth(double2 p, int edge) => math.dot(inward[edge], p - corners[At(edge)]) * depthScale;
                     var jh = side[h]; var jk = side[k];
-                    if (jh != jk && math.abs(math.dot(t.inward[jh], t.inward[jk])) < 1e-9)
+                    if (jh != jk && math.abs(math.dot(sides.inward[jh], sides.inward[jk])) < 1e-9)
                     {
-                        double2 Corner(double2 p) => WithDepth(WithDepth(Interior(p), t, jh, Depth(p, hEdge)), t, jk, Depth(p, kEdge));
+                        double2 Corner(double2 p) => WithDepth(WithDepth(Interior(p), sides, jh, Depth(p, hEdge)), sides, jk, Depth(p, kEdge));
                         var start = halfPlanes.Length;
                         Half(outer[h], 1);
                         Half(outer[k], 1);
@@ -487,7 +561,7 @@ namespace Chisel.Core
                         var towardK = lines[diagonal].Value(c + along[k]) > 0 ? 1 : -1;
                         var start = halfPlanes.Length;
                         Half(outer[h], 1); Half(outer[k], 1); Half(ends[h].x, -ends[h].y); Half(starts[k].x, -starts[k].y); Half(diagonal, towardK);
-                        double2 StripOf(double2 p, int edge) => WithDepth(Interior(p), t, side[edge], Depth(p, edge));
+                        double2 StripOf(double2 p, int edge) => WithDepth(Interior(p), sides, side[edge], Depth(p, edge));
                         AddCell(start, c, c + along[k], c + inward[k], StripOf(c, kEdge), StripOf(c + along[k], kEdge), StripOf(c + inward[k], kEdge), size);
                         start = halfPlanes.Length;
                         Half(outer[h], 1); Half(outer[k], 1); Half(ends[h].x, -ends[h].y); Half(starts[k].x, -starts[k].y); Half(diagonal, -towardK);

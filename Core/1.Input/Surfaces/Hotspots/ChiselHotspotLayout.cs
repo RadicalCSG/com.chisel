@@ -47,7 +47,14 @@ namespace Chisel.Core
         public float             maxStretch;
     }
 
-    // One region of a hotspot texture: a rectangle or a triangle
+    // A hole in a tile: its corners in pixels, origin at the top left of the texture
+    [Serializable]
+    public struct HotspotTileHole
+    {
+        public Vector2Int[] points;
+    }
+
+    // One region of a hotspot texture: a rectangle, a triangle, or any other outline (with holes), a shaped tile
     [Serializable]
     public struct HotspotTile
     {
@@ -64,6 +71,8 @@ namespace Chisel.Core
         // The border along each side, in the order of the points (side i from point i to the next); empty: as the flags
         // say along every side
         public HotspotBorderSide[] sides;
+        // Holes in it (a shaped tile)
+        public HotspotTileHole[] holes;
     }
 
     public enum HotspotCutKind : byte
@@ -143,10 +152,25 @@ namespace Chisel.Core
         [Serializable]
         sealed class JsonTile
         {
-            public string   name;
-            public int[]    points;
-            public string[] tags;
-            public int      border;
+            public string     name;
+            public int[]      points;
+            public string[]   tags;
+            public int        border;
+            public JsonHole[] holes;
+        }
+
+        [Serializable]
+        sealed class JsonHole
+        {
+            public int[] points;
+        }
+
+        static Vector2Int[] PointsOf(int[] numbers)
+        {
+            var points = new Vector2Int[numbers.Length / 2];
+            for (int i = 0; i < points.Length; i++)
+                points[i] = new Vector2Int(numbers[i * 2], numbers[i * 2 + 1]);
+            return points;
         }
 
         [Serializable]
@@ -162,8 +186,9 @@ namespace Chisel.Core
         public const string kJsonFormat = "chisel-hotspot-layout";
 
         // Reads a layout written as JSON; tile tags
-        // "disabled", "radial", "repeat-u", "repeat-v", "rotate" and "mirror" set the tile's flags. The cuts are found
-        // from the tiles when they form a grid (BuildCuts).
+        // "disabled", "radial", "repeat-u", "repeat-v", "rotate" and "mirror" set the tile's flags. A tile's points may
+        // be any outline, with "holes" (each its own points): a shaped tile. The cuts are found from the tiles when they
+        // form a grid (BuildCuts).
         public static bool TryReadJson(string json, ChiselHotspotLayout layout, out string error)
         {
             JsonLayout read;
@@ -176,15 +201,26 @@ namespace Chisel.Core
             var tiles = new List<HotspotTile>();
             foreach (var tile in read.tiles ?? Array.Empty<JsonTile>())
             {
-                if (tile.points == null || (tile.points.Length != 6 && tile.points.Length != 8))
+                if (tile.points == null || tile.points.Length < 6 || tile.points.Length % 2 != 0)
                 {
-                    error = $"tile '{tile.name}' is not a triangle or a rectangle";
+                    error = $"tile '{tile.name}' has fewer than three points";
                     return false;
                 }
-                var points = new Vector2Int[tile.points.Length / 2];
-                for (int i = 0; i < points.Length; i++)
-                    points[i] = new Vector2Int(tile.points[i * 2], tile.points[i * 2 + 1]);
-                tiles.Add(new HotspotTile { id = tiles.Count + 1, name = tile.name, points = points, flags = FlagsOf(tile.tags), border = Math.Max(0, tile.border) });
+                HotspotTileHole[] holes = null;
+                if (tile.holes != null && tile.holes.Length > 0)
+                {
+                    holes = new HotspotTileHole[tile.holes.Length];
+                    for (int h = 0; h < tile.holes.Length; h++)
+                    {
+                        if (tile.holes[h].points == null || tile.holes[h].points.Length < 6 || tile.holes[h].points.Length % 2 != 0)
+                        {
+                            error = $"a hole of tile '{tile.name}' has fewer than three points";
+                            return false;
+                        }
+                        holes[h] = new HotspotTileHole { points = PointsOf(tile.holes[h].points) };
+                    }
+                }
+                tiles.Add(new HotspotTile { id = tiles.Count + 1, name = tile.name, points = PointsOf(tile.points), holes = holes, flags = FlagsOf(tile.tags), border = Math.Max(0, tile.border) });
             }
             layout.size  = new Vector2Int(read.width, read.height);
             layout.tiles = tiles;
