@@ -671,8 +671,6 @@ namespace Chisel.Editors
         static readonly GUIContent kPixelsPerUnitContents = new("Pixels per unit", "How many of the texture's pixels cover one unit of a surface (one unit in the scene): a 1024 pixel tile at 256 covers 4 units. Matching, the border's width and the repeats go by it; a tile can have its own");
 
         // The layout's own settings, as the window and the inspectors show them; true when they changed
-        static readonly GUIContent kMaxRepeatsContents   = new("Max repeats", "The most repeats a border strip, a repeating tile or a bordered tile's interior lays on one surface; more and it stretches instead. 0: the project's (Project Settings > Chisel)");
-        static readonly GUIContent kMaxTrianglesContents = new("Max triangles", "The most triangles a surface's cut may draw; more and its interior's repeats are left out, then the cut. 0: the project's (Project Settings > Chisel)");
         static readonly GUIContent kPaddingContents = new("Padding", "Pixels left out along every tile's edges, so a filtered (or mipmapped) texture never shows a neighbouring tile: a gutter. A tile's border keeps its inner edge and narrows by as much");
 
         // padding only in the window, beside the tiles it changes
@@ -684,8 +682,6 @@ namespace Chisel.Editors
             var size          = layout.texture != null ? layout.size : EditorGUILayout.Vector2IntField("Size in pixels", layout.size);
             var pixelsPerUnit = EditorGUILayout.FloatField(kPixelsPerUnitContents, layout.pixelsPerUnit);
             var padding       = withPadding ? EditorGUILayout.FloatField(kPaddingContents, layout.padding) : layout.padding;
-            var maxRepeats    = EditorGUILayout.IntField(kMaxRepeatsContents, layout.maxRepeats);
-            var maxTriangles  = EditorGUILayout.IntField(kMaxTrianglesContents, layout.maxTriangles);
             if (!EditorGUI.EndChangeCheck())
                 return false;
             EditLayout(layout, "Change Hotspot Layout", () =>
@@ -695,8 +691,6 @@ namespace Chisel.Editors
                 layout.texture = texture;
                 layout.pixelsPerUnit = Mathf.Max(0.001f, pixelsPerUnit);
                 layout.padding = Mathf.Max(0, padding);
-                layout.maxRepeats = Mathf.Max(0, maxRepeats);
-                layout.maxTriangles = Mathf.Max(0, maxTriangles);
                 layout.Resize(size);
             });
             return true;
