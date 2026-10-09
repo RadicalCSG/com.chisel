@@ -421,7 +421,6 @@ namespace Chisel.Editors
 						scrollPosition -= evt.delta * (evt.shift ? 3 : 1) / Mathf.Min(position.width, position.height) * 140.0f;
 						scrollPosition.y = Mathf.Clamp(scrollPosition.y, -90, 90);
 						evt.Use();
-						GUI.changed = true;
 						break;
 					}
 				case EventType.MouseUp:
