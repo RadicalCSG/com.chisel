@@ -13,7 +13,8 @@ namespace Chisel.Core
         // surfaces was mapped with, which the editor reads (the patched copies are gone after the meshes are made)
         public static void CutModel(NativeList<BrushData> brushes, NativeList<BlobAssetReference<ChiselBrushRenderBuffer>> patched,
                                     NativeArray<HotspotTileData> tiles, NativeArray<HotspotLayoutData> layouts, NativeArray<HotspotLink> links,
-                                    NativeArray<float4> tileSides = default, NativeArray<BlobAssetReference<ChiselBrushRenderBuffer>> kept = default)
+                                    NativeArray<float4> tileSides = default, NativeArray<BlobAssetReference<ChiselBrushRenderBuffer>> kept = default,
+                                    NativeArray<ulong> variants = default)
         {
             // coplanar neighbours, of any brush, mapped as one surface (HotspotGroups)
             var groupOf    = new UnsafeHashMap<int2, int>(64, Allocator.Temp);
@@ -32,14 +33,18 @@ namespace Chisel.Core
                     continue;
                 ref var surfaces = ref kept[b].Value.surfaces;
                 for (int s = 0; s < surfaces.Length; s++)
-                    surfaces[s].hotspot.group = groupOf.TryGetValue(new int2(b, s), out var g) ? g + 1 : 0;
+                {
+                    var grouped = groupOf.TryGetValue(new int2(b, s), out var g);
+                    surfaces[s].hotspot.group           = grouped ? g + 1 : 0;
+                    surfaces[s].hotspot.groupVariations = grouped ? groups[g].info.variations : 0;
+                }
             }
             for (int b = 0; b < brushes.Length; b++)
             {
                 if (!brushes[b].brushRenderBuffer.IsCreated ||
                     (!HasSections(ref brushes[b].brushRenderBuffer.Value) && !InGroup(ref brushes[b].brushRenderBuffer.Value, b, groupOf)))
                     continue;
-                var copy = Cut(brushes[b].brushRenderBuffer, b, groupOf, unfoldOf, bordersOf, groups, lines, halfPlanes, cells, tileSides);
+                var copy = Cut(brushes[b].brushRenderBuffer, b, groupOf, unfoldOf, bordersOf, groups, lines, halfPlanes, cells, tileSides, layouts, variants);
                 patched.Add(copy);
                 var data = brushes[b];
                 data.brushRenderBuffer = copy;
@@ -72,7 +77,7 @@ namespace Chisel.Core
                                                                UnsafeHashMap<int2, float4x4> unfoldOf, in UnsafeParallelMultiHashMap<int2, HotspotBorderCorner> bordersOf,
                                                                NativeList<HotspotGroups.Group> groups, NativeList<HotspotSectionLine> groupLines,
                                                                NativeList<HotspotSectionHalfPlane> groupHalfPlanes, NativeList<HotspotSectionCell> groupCells,
-                                                               NativeArray<float4> tileSides)
+                                                               NativeArray<float4> tileSides, NativeArray<HotspotLayoutData> layouts, NativeArray<ulong> variants)
         {
             var builder = new BlobBuilder(Allocator.Temp);
             try
@@ -93,6 +98,14 @@ namespace Chisel.Core
                     if (from.indices.Length > 0 && groupOf.TryGetValue(new int2(brush, s), out var g))
                     {
                         var unfolded = unfoldOf.TryGetValue(new int2(brush, s), out var unfold);
+                        // the group's material, when its layout has more than one
+                        var group = groups[g];
+                        if (variants.IsCreated && group.layout >= 0 && group.layout < layouts.Length)
+                        {
+                            var layout = layouts[group.layout];
+                            if (layout.variantCount > 1 && layout.variantStart + group.variant < variants.Length)
+                                to.destinationParameters.parameter1 = variants[layout.variantStart + group.variant];
+                        }
                         MapInGroup(builder, ref from, ref to, groups[g], g, unfolded ? unfold : float4x4.identity, unfolded, groupLines, groupHalfPlanes, groupCells);
                         continue;
                     }

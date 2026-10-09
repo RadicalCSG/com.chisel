@@ -21,6 +21,8 @@ namespace Chisel.Editors
 		SerializedProperty outputFlagsProp;
 		SerializedProperty physicsMaterialProp;
 		SerializedProperty hotspotLayoutProp;
+		SerializedProperty hotspotVariantsProp;
+		static readonly GUIContent kHotspotVariantsContents = new("Variants", "Other materials drawn on the same layout (another texture of the same tiles): a surface is given this material or one of them, as a variation; Next Variation goes through them too");
 
 		static readonly GUIContent kHotspotContents = new("Hotspot Layout", "Surfaces with this material take their uvs from the tile of this layout that fits them best");
 
@@ -39,6 +41,7 @@ namespace Chisel.Editors
 			outputFlagsProp = serializedObject.FindProperty(ChiselSurfaceMetadata.kOutputFlagsName);
 			physicsMaterialProp = serializedObject.FindProperty(ChiselSurfaceMetadata.kPhysicsMaterialFieldName);
 			hotspotLayoutProp = serializedObject.FindProperty(ChiselSurfaceMetadata.kHotspotLayoutFieldName);
+			hotspotVariantsProp = serializedObject.FindProperty(ChiselSurfaceMetadata.kHotspotVariantsFieldName);
 		}
 
 		internal void OnDisable()
@@ -47,6 +50,7 @@ namespace Chisel.Editors
 			outputFlagsProp = null;
 			physicsMaterialProp = null;
 			hotspotLayoutProp = null;
+			hotspotVariantsProp = null;
 		}
 
 		void OnDestroy() { OnDisable(); }
@@ -117,6 +121,12 @@ namespace Chisel.Editors
 					}
 				} else if (GUILayout.Button("Edit Layout", EditorStyles.miniButton))
 					ChiselHotspotLayoutWindow.Open((ChiselHotspotLayout)hotspotLayoutProp.objectReferenceValue, MaterialOf(target));
+			}
+			if (hotspotVariantsProp != null && (hotspotLayoutProp.objectReferenceValue != null || hotspotLayoutProp.hasMultipleDifferentValues))
+			{
+				EditorGUI.BeginChangeCheck();
+				EditorGUILayout.PropertyField(hotspotVariantsProp, kHotspotVariantsContents, true);
+				changed |= EditorGUI.EndChangeCheck();
 			}
 			if (!changed)
 				return;

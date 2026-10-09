@@ -36,7 +36,7 @@ namespace Chisel.Core
 				},
 				destinationFlags = surface.DestinationFlags,
 				outputFlags	     = surface.OutputFlags,
-				hotspotLayout    = ChiselHotspotStore.Register(surface.HotspotLayout),
+				hotspotLayout    = ChiselHotspotStore.Register(surface.HotspotLayout, surface.RenderMaterial, surface.HotspotVariants),
             };
 		}
 	}

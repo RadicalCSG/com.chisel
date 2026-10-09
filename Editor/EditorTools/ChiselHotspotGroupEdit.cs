@@ -30,6 +30,39 @@ namespace Chisel.Editors
             return surface.surfaceIndex >= 0 && surface.surfaceIndex < surfaces.Length ? surfaces[surface.surfaceIndex].hotspot.group : 0;
         }
 
+        // How many variations a surface had when it was last mapped (its group's when it has one): the tiles that tie times
+        // the materials drawn on the layout; -1 when it is not known
+        public static int VariationsOf(SurfaceReference surface)
+        {
+            if (surface == null || !surface.node || !surface.brush.Valid)
+                return -1;
+            var model = surface.node.hierarchyItem.Model;
+            if (!model || !model.Node.Valid)
+                return -1;
+            var lookups = ChiselTreeLookup.Value;
+            if (!lookups.HasTree(model.Node))
+                return -1;
+            var data = lookups[model.Node];
+            data.lastJobHandle.Complete();
+            if (!data.brushRenderBufferLookup.IsCreated ||
+                !data.brushRenderBufferLookup.TryGetValue(CompactHierarchyManager.GetCompactNodeID(surface.brush), out var buffer) || !buffer.IsCreated)
+                return -1;
+            ref var surfaces = ref buffer.Value.surfaces;
+            if (surface.surfaceIndex < 0 || surface.surfaceIndex >= surfaces.Length || !surfaces[surface.surfaceIndex].hotspot.IsMapped)
+                return -1;
+            var info = surfaces[surface.surfaceIndex].hotspot;
+            return info.group > 0 ? info.groupVariations : info.variations;
+        }
+
+        // The most variations of these surfaces, -1 when none is known
+        public static int MostVariations(IReadOnlyList<SurfaceReference> surfaces)
+        {
+            var most = -1;
+            foreach (var surface in surfaces)
+                most = System.Math.Max(most, VariationsOf(surface));
+            return most;
+        }
+
         // Gives every surface connected to an edited one the edited one's hotspot settings; true when any changed
         public static bool Spread(IReadOnlyList<SurfaceReference> edited, string undoName = null)
         {

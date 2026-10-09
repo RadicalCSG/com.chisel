@@ -30,6 +30,8 @@ namespace Chisel.Core
         public int                 group;
         // how many repeats its interior was laid in (HotspotSections.BuildInteriorRepeats)
         public int                 repeats;
+        // how many variations it has (HotspotChoice.variations), and its group's (written with the group)
+        public int                 variations, groupVariations;
 
         public readonly bool IsMapped => pixelsPerUnit > 0;
     }
@@ -54,7 +56,8 @@ namespace Chisel.Core
                 textureSize   = layout.textureSize,
                 pixelsPerUnit = tile.pixelsPerUnit * density,
                 scale         = choice.scale,
-                flags         = flags
+                flags         = flags,
+                variations    = choice.variations
             };
         }
 

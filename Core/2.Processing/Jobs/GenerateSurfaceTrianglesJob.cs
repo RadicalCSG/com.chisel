@@ -44,6 +44,8 @@ namespace Chisel.Core
 		// Hotspot layouts (ChiselHotspotStore.Gather): every layout's tiles, and where a layout's are (by id - 1)
 		[NoAlias, ReadOnly] public NativeArray<HotspotTileData>   hotspotTiles;
 		[NoAlias, ReadOnly] public NativeArray<HotspotLayoutData> hotspotLayouts;
+		// the materials layouts with variants are drawn with (HotspotLayoutData.variantStart)
+		[NoAlias, ReadOnly] public NativeArray<ulong>             hotspotVariants;
 
 		// Write
 		[NativeDisableParallelForRestriction]
@@ -884,6 +886,9 @@ namespace Chisel.Core
 					var pinnedId = baseSurfaces[lead].hotspotPinned;
 					hotspotInfo = HotspotDiagnostics.Info(hotspotTiles[choice.tile], layout, choice, sectionInput,
 														  pinnedId != 0 && hotspotTiles[choice.tile].id == pinnedId, density);
+					// one of the materials drawn on the layout, as the seed picked it
+					if (layout.variantCount > 1 && layout.variantStart + choice.variant < hotspotVariants.Length)
+						parms.parameter1 = hotspotVariants[layout.variantStart + choice.variant];
 				}
 			}
 			

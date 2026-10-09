@@ -517,7 +517,10 @@ namespace Chisel.Editors
                 if (layout != null && hotspotProp != null)
                 {
                     position = EditorGUILayout.GetControlRect(true, HotspotTransformGUI.Height);
-                    HotspotTransformGUI.OnGUI(position, hotspotProp, layout);
+                    var references = new List<SurfaceReference>(surfaces.Length);
+                    foreach (var item in surfaces)
+                        references.Add(item.SurfaceReference);
+                    HotspotTransformGUI.OnGUI(position, hotspotProp, layout, true, ChiselHotspotGroupEdit.MostVariations(references));
                     ConnectionGUI();
                 } else
                 {
@@ -1245,7 +1248,8 @@ namespace Chisel.Editors
                 if (!IsHotspotMapped(surface))
                     continue;
                 var details = surface.SurfaceDetails;
-                if (details.hotspot.pinnedTile != 0)
+                var variations = ChiselHotspotGroupEdit.VariationsOf(surface);
+                if (variations >= 0 ? variations <= 1 : details.hotspot.pinnedTile != 0)
                     continue;
                 details.hotspot.seed = NextSeed(details.hotspot.seed);
                 surface.SurfaceDetails = details;

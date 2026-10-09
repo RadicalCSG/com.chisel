@@ -57,7 +57,9 @@ namespace Chisel.Editors
             return field;
         }
 
-        public static void OnGUI(Rect position, SerializedProperty hotspotProp, ChiselHotspotLayout layout, bool hasLabel = true)
+        // variations: how many the surfaces have (ChiselHotspotGroupEdit.MostVariations); Next Variation is off at 1, and
+        // for a pinned tile when it is not known (-1)
+        public static void OnGUI(Rect position, SerializedProperty hotspotProp, ChiselHotspotLayout layout, bool hasLabel = true, int variations = -1)
         {
             var offsetX  = hotspotProp.FindPropertyRelative(nameof(HotspotSurface.offset) + ".x");
             var offsetY  = hotspotProp.FindPropertyRelative(nameof(HotspotSurface.offset) + ".y");
@@ -130,7 +132,7 @@ namespace Chisel.Editors
                 EditorGUI.showMixedValue = false;
 
                 var button = new Rect(field.x, position.y, field.width, EditorGUIUtility.singleLineHeight);
-                using (new EditorGUI.DisabledScope(pinned.intValue != 0 || pinned.hasMultipleDifferentValues))
+                using (new EditorGUI.DisabledScope(variations >= 0 ? variations <= 1 : (pinned.intValue != 0 || pinned.hasMultipleDifferentValues)))
                 {
                     if (GUI.Button(button, kVariationContents))
                     {

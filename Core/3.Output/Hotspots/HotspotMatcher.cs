@@ -47,6 +47,8 @@ namespace Chisel.Core
         public int    maxRepeats, maxTriangles;
         // pixels left out along the tiles' edges (ChiselHotspotLayout.padding), and along a bordered tile's interior
         public float  padding;
+        // the materials drawn on it, a surface given one of them (ChiselHotspotStore.Gather's variants); 0: its own only
+        public int    variantStart, variantCount;
     }
 
     // A surface as matching sees it, in its frame (HotspotMatcher.Frame), in the units of the tree
@@ -80,6 +82,8 @@ namespace Chisel.Core
         public readonly bool Repeated => repeatX > 1 || repeatY > 1 || (lastRepeat.x > 0 && lastRepeat.x < 1) || (lastRepeat.y > 0 && lastRepeat.y < 1);
         public float scale;     // how many texture pixels a pixel of the surface (at the tile's density) takes
         public bool  lastResort; // repeated because no tile was large enough
+        public int   variant;    // which of the layout's materials (HotspotLayoutData.variantCount), when it has more than one
+        public int   variations; // how many choices the seed had: the tiles that tie times the materials
     }
 
     public static class HotspotMatcher
@@ -275,6 +279,7 @@ namespace Chisel.Core
                         continue;
                     var pinned = Score(tiles[t], shape, density, true);
                     pinned.tile = t;
+                    Pick(ref pinned, layout, seed, 1);
                     return pinned;
                 }
             }
@@ -311,10 +316,14 @@ namespace Chisel.Core
                 else if (key == bestKey) ties++;
             }
             if (ties <= 1)
+            {
+                Pick(ref best, layout, seed, 1);
                 return best;
+            }
 
-            // the seed picks one of the tiles that tie
-            var pick = (int)(math.hash(new uint2(seed, 0x9E3779B9u)) % (uint)ties);
+            // the seed picks one of the tiles that tie (and a material)
+            var pick = Pick(ref best, layout, seed, ties);
+            var variant = best.variant;
             for (int t = layout.tileStart; t < layout.tileStart + layout.tileCount; t++)
             {
                 if (!Candidate(tiles[t], shape, radial))
@@ -322,9 +331,27 @@ namespace Chisel.Core
                 var choice = Score(tiles[t], shape, density, false, lastResort);
                 if (Key(choice, tiles[t]) != Key(best, tiles[best.tile]))
                     continue;
-                if (pick-- == 0) { choice.tile = t; return choice; }
+                if (pick-- == 0)
+                {
+                    choice.tile = t;
+                    choice.variant = variant;
+                    choice.variations = best.variations;
+                    return choice;
+                }
             }
             return best;
+        }
+
+        // The seed's choice among ties tiles times the layout's materials: the tile (returned, of the ties) and the
+        // material (choice.variant). With one material the tile is as the seed alone picks it.
+        static int Pick(ref HotspotChoice choice, in HotspotLayoutData layout, uint seed, int ties)
+        {
+            var materials = math.max(1, layout.variantCount);
+            var all = (uint)(ties * materials);
+            var pick = (int)(math.hash(new uint2(seed, 0x9E3779B9u)) % all);
+            choice.variant    = pick / ties;
+            choice.variations = (int)all;
+            return pick % ties;
         }
 
         static float Key(in HotspotChoice choice, in HotspotTileData tile) => tile.shaped ? choice.score : choice.score + kUnshaped;

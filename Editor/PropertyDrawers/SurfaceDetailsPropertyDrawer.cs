@@ -30,11 +30,17 @@ namespace Chisel.Editors
         // The surfaces connected to the edited one take its hotspot settings (ChiselHotspotGroupEdit)
         static void SpreadToConnected(SerializedProperty property)
         {
+            ChiselHotspotGroupEdit.Spread(SurfacesOf(property), "Modified surface");
+        }
+
+        // The surfaces these details are, in every selected generator
+        static System.Collections.Generic.List<SurfaceReference> SurfacesOf(SerializedProperty property)
+        {
+            var edited = new System.Collections.Generic.List<SurfaceReference>();
             var match = kDescriptionIndex.Match(property.propertyPath);
             if (!match.Success)
-                return;
+                return edited;
             var descriptionIndex = int.Parse(match.Groups[1].Value);
-            var edited = new System.Collections.Generic.List<SurfaceReference>();
             foreach (var target in property.serializedObject.targetObjects)
             {
                 s_Surfaces.Clear();
@@ -48,7 +54,7 @@ namespace Chisel.Editors
                     }
                 }
             }
-            ChiselHotspotGroupEdit.Spread(edited, "Modified surface");
+            return edited;
         }
 
         public override float GetPropertyHeight(SerializedProperty property, GUIContent label)
@@ -93,7 +99,8 @@ namespace Chisel.Editors
                     if (layout != null)
                     {
                         position.height = HotspotTransformGUI.Height;
-                        HotspotTransformGUI.OnGUI(position, property.FindPropertyRelative(nameof(SurfaceDetails.hotspot)), layout, hasLabel);
+                        HotspotTransformGUI.OnGUI(position, property.FindPropertyRelative(nameof(SurfaceDetails.hotspot)), layout, hasLabel,
+                                                  ChiselHotspotGroupEdit.MostVariations(SurfacesOf(property)));
                     } else
                     {
                         position.height = UVMatrixPropertyDrawer.DefaultHeight;
