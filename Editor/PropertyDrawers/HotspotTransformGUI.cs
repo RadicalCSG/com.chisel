@@ -18,7 +18,9 @@ namespace Chisel.Editors
         static readonly GUIContent kScaleContents       = new("Scale", "How many of the tile's pixels a unit of the surface takes, as the tile's pixels per unit times this: 2 draws the texture half as large. A negative X mirrors it left to right, a negative Y top to bottom");
         static readonly GUIContent kRotationContents    = new("Rotation", "Degrees the texture turns around the surface's normal, counter-clockwise seen from in front");
         static readonly GUIContent kTileContents        = new("Hotspot Tile", "The tile of the material's hotspot layout this surface keeps; Automatic lets matching choose");
-        static readonly GUIContent kVariationContents   = new("Next Variation", "Another of the tiles that fit this surface equally well");
+        static readonly GUIContent kPreviousContents    = new("<", "The previous variation: another of the tiles that fit this surface equally well, or another of the material's variants");
+        static readonly GUIContent kNextContents        = new(">", "The next variation: another of the tiles that fit this surface equally well, or another of the material's variants");
+        const float kStepWidth = 22;
         internal static readonly GUIContent kLeftContents  = new("-90", "A quarter turn clockwise");
         internal static readonly GUIContent kRightContents = new("+90", "A quarter turn counter-clockwise");
 
@@ -30,7 +32,7 @@ namespace Chisel.Editors
             return metadata != null ? metadata.hotspotLayout : null;
         }
 
-        public static float Height => 5 * EditorGUIUtility.singleLineHeight + 4 * kSpacing;
+        public static float Height => 4 * EditorGUIUtility.singleLineHeight + 3 * kSpacing;
 
         // A rotation field with quarter turns beside it; the angle kept within 0 to 360 when a button turned it
         internal static float RotationField(Rect position, float rotation)
@@ -88,8 +90,9 @@ namespace Chisel.Editors
 
         // fits: the ids of the tiles the surface can take (ChiselHotspotGroupEdit.FitsOf), the others greyed out in the
         // picker; textures: what it shows (TexturesOf); both asked for when the picker opens
+        // descriptionIndex: the surface's, which the seed is hashed with (the variation the arrows step from)
         public static void OnGUI(Rect position, SerializedProperty hotspotProp, ChiselHotspotLayout layout, bool hasLabel = true, int variations = -1,
-                                 System.Func<IReadOnlyList<Texture>> textures = null, System.Func<HashSet<int>> fits = null)
+                                 System.Func<IReadOnlyList<Texture>> textures = null, System.Func<HashSet<int>> fits = null, int descriptionIndex = 0)
         {
             var offsetX  = hotspotProp.FindPropertyRelative(nameof(HotspotSurface.offset) + ".x");
             var offsetY  = hotspotProp.FindPropertyRelative(nameof(HotspotSurface.offset) + ".y");
@@ -153,6 +156,20 @@ namespace Chisel.Editors
                 }
                 field = Row(ref position, kTileContents, hasLabel);
                 EditorGUI.indentLevel = 0;
+                var previous = new Rect(field.xMax - 2 * kStepWidth, field.y, kStepWidth, field.height);
+                var next     = new Rect(field.xMax - kStepWidth, field.y, kStepWidth, field.height);
+                field.width -= 2 * kStepWidth + 2;
+                using (new EditorGUI.DisabledScope(variations >= 0 ? variations <= 1 : (pinned.intValue != 0 || pinned.hasMultipleDifferentValues)))
+                {
+                    var step = 0;
+                    if (GUI.Button(previous, kPreviousContents, EditorStyles.miniButtonLeft)) step = -1;
+                    if (GUI.Button(next, kNextContents, EditorStyles.miniButtonRight))         step = 1;
+                    if (step != 0)
+                    {
+                        seed.uintValue = StepSeed(seed.uintValue, descriptionIndex, variations, step);
+                        GUI.changed = true;
+                    }
+                }
                 if (s_Picked.HasValue && s_Picked.Value.path == pinned.propertyPath && s_Picked.Value.target == pinned.serializedObject.targetObject)
                 {
                     pinned.intValue = s_Picked.Value.id;
@@ -169,15 +186,6 @@ namespace Chisel.Editors
                                                                   id => { s_Picked = (path, target, id); InternalEditorUtility.RepaintAllViews(); }));
                 }
 
-                var button = new Rect(field.x, position.y, field.width, EditorGUIUtility.singleLineHeight);
-                using (new EditorGUI.DisabledScope(variations >= 0 ? variations <= 1 : (pinned.intValue != 0 || pinned.hasMultipleDifferentValues)))
-                {
-                    if (GUI.Button(button, kVariationContents))
-                    {
-                        seed.uintValue = NextSeed(seed.uintValue);
-                        GUI.changed = true;
-                    }
-                }
             }
             finally
             {
@@ -186,6 +194,32 @@ namespace Chisel.Editors
             }
         }
 
-        internal static uint NextSeed(uint seed) => seed * 1664525u + 1013904223u;
+        internal static uint NextSeed(uint seed)     => seed * 1664525u + 1013904223u;
+        internal static uint PreviousSeed(uint seed) => (seed - 1013904223u) * 4276115653u;
+
+        // The variation a surface's seed picks, as matching does (HotspotMatcher.Pick, the job hashing the seed with the
+        // surface's description index), of variations
+        static uint VariationOf(uint seed, int descriptionIndex, int variations)
+        {
+            var hashed = Unity.Mathematics.math.hash(new Unity.Mathematics.uint2(seed, (uint)descriptionIndex));
+            return Unity.Mathematics.math.hash(new Unity.Mathematics.uint2(hashed, 0x9E3779B9u)) % (uint)variations;
+        }
+
+        // The seed of the next (step 1) or previous (-1) variation, so the arrows go through them in order; when the
+        // number of variations is not known, just the next or previous seed
+        internal static uint StepSeed(uint seed, int descriptionIndex, int variations, int step)
+        {
+            if (variations <= 1)
+                return step > 0 ? NextSeed(seed) : PreviousSeed(seed);
+            var target = (uint)((VariationOf(seed, descriptionIndex, variations) + variations + step) % variations);
+            var start = seed;
+            for (int i = 0; i < 1 << 16; i++)
+            {
+                seed = step > 0 ? NextSeed(seed) : PreviousSeed(seed);
+                if (VariationOf(seed, descriptionIndex, variations) == target)
+                    return seed;
+            }
+            return step > 0 ? NextSeed(start) : PreviousSeed(start);
+        }
     }
 }

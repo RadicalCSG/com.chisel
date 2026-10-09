@@ -522,7 +522,8 @@ namespace Chisel.Editors
                         references.Add(item.SurfaceReference);
                     var material = surfaces[0].Surface.RenderMaterial;
                     HotspotTransformGUI.OnGUI(position, hotspotProp, layout, true, ChiselHotspotGroupEdit.MostVariations(references),
-                                              () => HotspotTransformGUI.TexturesOf(material, layout), () => ChiselHotspotGroupEdit.FitsOf(references[0], layout));
+                                              () => HotspotTransformGUI.TexturesOf(material, layout), () => ChiselHotspotGroupEdit.FitsOf(references[0], layout),
+                                              references[0].descriptionIndex);
                     ConnectionGUI();
                 } else
                 {
@@ -1233,18 +1234,22 @@ namespace Chisel.Editors
         // The surface the drag started on
         internal static SurfaceReference StartSurfaceReference => s_StartSurfaceReference;
 
-        static uint NextSeed(uint seed) => seed * 1664525u + 1013904223u;
-
-        // Next Variation for every selected hotspot surface that keeps no tile of its own, from the keyboard
+        // The next or previous variation for every selected hotspot surface that has another, from the keyboard
         // (editor workflow: cycle through the candidates)
-        const string kNextVariationShortcutName = "Next Hotspot Variation";
+        const string kNextVariationShortcutName     = "Next Hotspot Variation";
+        const string kPreviousVariationShortcutName = "Previous Hotspot Variation";
         [Shortcut(ChiselKeyboardDefaults.ShortCutEditModeBase + kNextVariationShortcutName, typeof(SceneView), KeyCode.N, ShortcutModifiers.Alt, displayName = kNextVariationShortcutName)]
-        static void NextHotspotVariation()
+        static void NextHotspotVariation() { StepHotspotVariation(1, kNextVariationShortcutName); }
+
+        [Shortcut(ChiselKeyboardDefaults.ShortCutEditModeBase + kPreviousVariationShortcutName, typeof(SceneView), KeyCode.N, ShortcutModifiers.Alt | ShortcutModifiers.Shift, displayName = kPreviousVariationShortcutName)]
+        static void PreviousHotspotVariation() { StepHotspotVariation(-1, kPreviousVariationShortcutName); }
+
+        static void StepHotspotVariation(int step, string undoName)
         {
             var selected = ChiselSurfaceSelectionManager.Selection;
             if (selected == null || selected.Count == 0)
                 return;
-            Undo.RecordObjects(ChiselSurfaceSelectionManager.SelectedNodes.ToArray(), kNextVariationShortcutName);
+            Undo.RecordObjects(ChiselSurfaceSelectionManager.SelectedNodes.ToArray(), undoName);
             foreach (var surface in selected)
             {
                 if (!IsHotspotMapped(surface))
@@ -1253,10 +1258,10 @@ namespace Chisel.Editors
                 var variations = ChiselHotspotGroupEdit.VariationsOf(surface);
                 if (variations >= 0 ? variations <= 1 : details.hotspot.pinnedTile != 0)
                     continue;
-                details.hotspot.seed = NextSeed(details.hotspot.seed);
+                details.hotspot.seed = HotspotTransformGUI.StepSeed(details.hotspot.seed, surface.descriptionIndex, variations, step);
                 surface.SurfaceDetails = details;
             }
-            ChiselHotspotGroupEdit.Spread(selected.ToList(), kNextVariationShortcutName);
+            ChiselHotspotGroupEdit.Spread(selected.ToList(), undoName);
             if (s_Instance)
                 s_Instance.UpdateAllSurfaces();
         }
