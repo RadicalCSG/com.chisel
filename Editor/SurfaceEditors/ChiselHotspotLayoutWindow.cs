@@ -8,7 +8,8 @@ using UnityEngine;
 namespace Chisel.Editors
 {
     // Draws a hotspot layout over its texture: lines are dragged, added (right click, or V / H at the cursor) and removed
-    // (Delete over a line); the selected tile's properties are on the right.
+    // (Delete over a line); shapes are drawn over them corner by corner, with holes; the selected tile's properties are
+    // on the right.
     public sealed class ChiselHotspotLayoutWindow : EditorWindow
     {
         const float kPanelWidth  = 280;
@@ -27,7 +28,11 @@ namespace Chisel.Editors
         [SerializeField] Vector2 pan;
         [SerializeField] int     snapIndex = 3;
 
+        enum Drawing { None, Shape, Hole }
+
         readonly List<HotspotLine> lines = new();
+        readonly List<Vector2Int>  drawn = new();
+        Drawing drawing;
         int     hoverLine = -1;
         int     dragNode  = -1;
         bool    dragged;
@@ -67,6 +72,7 @@ namespace Chisel.Editors
             layout = newLayout;
             selectedTile = 0;
             hoverLine = dragNode = -1;
+            StopDrawing();
             Repaint();
         }
 
@@ -129,6 +135,17 @@ namespace Chisel.Editors
                 GUILayout.Space(8);
                 GUILayout.Label("Snap", EditorStyles.miniLabel, GUILayout.ExpandWidth(false));
                 snapIndex = EditorGUILayout.Popup(snapIndex, kSnapNames, EditorStyles.toolbarPopup, GUILayout.Width(60));
+                GUILayout.Space(8);
+                using (new EditorGUI.DisabledScope(layout == null))
+                {
+                    if (GUILayout.Toggle(drawing == Drawing.Shape, kDrawShapeContents, EditorStyles.toolbarButton, GUILayout.Width(80)) != (drawing == Drawing.Shape))
+                        StartDrawing(drawing == Drawing.Shape ? Drawing.None : Drawing.Shape);
+                    using (new EditorGUI.DisabledScope(drawing != Drawing.Hole && (layout == null || !layout.IsDrawn(selectedTile))))
+                    {
+                        if (GUILayout.Toggle(drawing == Drawing.Hole, kDrawHoleContents, EditorStyles.toolbarButton, GUILayout.Width(70)) != (drawing == Drawing.Hole))
+                            StartDrawing(drawing == Drawing.Hole ? Drawing.None : Drawing.Hole);
+                    }
+                }
                 GUILayout.FlexibleSpace();
                 if (GUILayout.Button("Fit", EditorStyles.toolbarButton, GUILayout.Width(40)))
                 {
@@ -136,6 +153,111 @@ namespace Chisel.Editors
                     pan = Vector2.zero;
                 }
             }
+        }
+
+        static readonly GUIContent kDrawShapeContents = new("Draw Shape", "Click the corners of a new tile of any shape, over the others; click its first corner or press Enter to finish, Backspace takes back a corner, Escape stops");
+        static readonly GUIContent kDrawHoleContents  = new("Draw Hole", "Click the corners of a hole in the selected shape; click its first corner or press Enter to finish");
+
+        void StartDrawing(Drawing mode)
+        {
+            drawing = mode;
+            drawn.Clear();
+            Repaint();
+        }
+
+        void StopDrawing()
+        {
+            drawing = Drawing.None;
+            drawn.Clear();
+        }
+
+        void FinishDrawing()
+        {
+            if (drawn.Count < 3)
+                return;
+            var points = drawn.ToArray();
+            if (drawing == Drawing.Shape)
+            {
+                var id = 0;
+                Edit("Draw Hotspot Shape", () => id = layout.AddShape(points));
+                if (id != 0)
+                    selectedTile = id;
+            } else
+            {
+                var tile = selectedTile;
+                Edit("Draw Hotspot Hole", () => layout.AddHole(tile, points));
+            }
+            StopDrawing();
+        }
+
+        Vector2Int SnappedPixel(Vector2 local)
+        {
+            var pixel = ToPixel(local);
+            return new Vector2Int(Mathf.Clamp(Snap(pixel.x), 0, layout.size.x), Mathf.Clamp(Snap(pixel.y), 0, layout.size.y));
+        }
+
+        // While drawing: clicks add corners, the first corner or Enter finishes; true when the event was the drawing's
+        bool DrawingEvents(Event current, Vector2 local, bool inside)
+        {
+            if (drawing == Drawing.None)
+                return false;
+            switch (current.type)
+            {
+                case EventType.MouseMove:
+                    Repaint();
+                    return false;
+                case EventType.MouseDown when inside && current.button == 0 && !current.alt:
+                {
+                    if (drawn.Count >= 3 && Vector2.Distance(local, ToCanvas(drawn[0])) <= kLineGrab * 1.5f)
+                        FinishDrawing();
+                    else
+                    {
+                        var corner = SnappedPixel(local);
+                        if (drawn.Count == 0 || drawn[^1] != corner)
+                            drawn.Add(corner);
+                    }
+                    current.Use();
+                    Repaint();
+                    return true;
+                }
+                case EventType.KeyDown:
+                {
+                    switch (current.keyCode)
+                    {
+                        case KeyCode.Return:
+                        case KeyCode.KeypadEnter: FinishDrawing(); break;
+                        case KeyCode.Escape:      StopDrawing(); break;
+                        case KeyCode.Backspace:
+                        case KeyCode.Delete:      if (drawn.Count > 0) drawn.RemoveAt(drawn.Count - 1); break;
+                        default: return false;
+                    }
+                    current.Use();
+                    Repaint();
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        void DrawDrawing(Vector2 local)
+        {
+            if (drawing == Drawing.None)
+                return;
+            var points = new Vector3[drawn.Count + 1];
+            for (int i = 0; i < drawn.Count; i++)
+                points[i] = ToCanvas(drawn[i]);
+            var cursor = SnappedPixel(local);
+            points[drawn.Count] = ToCanvas(cursor);
+            Handles.color = kHover;
+            if (points.Length > 1)
+                Handles.DrawAAPolyLine(2, points);
+            foreach (var p in points)
+                Handles.DrawSolidDisc(p, Vector3.forward, 3);
+            if (drawn.Count >= 3 && Vector2.Distance(local, ToCanvas(drawn[0])) <= kLineGrab * 1.5f)
+                Handles.DrawWireDisc(points[0], Vector3.forward, kLineGrab * 1.5f);
+            var label = new GUIContent($"{cursor.x}, {cursor.y}");
+            var size = EditorStyles.whiteMiniLabel.CalcSize(label);
+            GUI.Label(new Rect(local + new Vector2(12, 8), size), label, EditorStyles.whiteMiniLabel);
         }
 
         // Pixels (origin top left) to and from the canvas
@@ -192,9 +314,15 @@ namespace Chisel.Editors
                 }
                 Handles.color = kLine;
                 Handles.DrawAAPolyLine(2, sheet.min, new Vector2(sheet.xMax, sheet.yMin), sheet.max, new Vector2(sheet.xMin, sheet.yMax), sheet.min);
+                DrawDrawing(local);
             }
 
             var inside = new Rect(0, 0, canvas.width, canvas.height).Contains(local);
+            if (DrawingEvents(current, local, inside))
+            {
+                GUI.EndClip();
+                return;
+            }
             switch (current.type)
             {
                 case EventType.MouseMove:
@@ -267,6 +395,7 @@ namespace Chisel.Editors
 
         void DrawTiles()
         {
+            var ofCuts = layout.TilesOfCuts();
             foreach (var tile in layout.tiles)
             {
                 if (tile.points == null || tile.points.Length < 3)
@@ -285,8 +414,8 @@ namespace Chisel.Editors
                     Handles.color = kSelected;
                     Fill(points, shaped);
                 }
-                // its outline where no line of the cuts draws it: a shaped tile's always, and its holes
-                if (!layout.HasCuts || shaped)
+                // its outline where no line of the cuts draws it, and its holes
+                if (!ofCuts.Contains(tile.id))
                 {
                     Handles.color = kLine;
                     DrawLoop(points);
@@ -337,22 +466,7 @@ namespace Chisel.Editors
         }
 
         // Not a rectangle with upright sides or a triangle: drawn by its outline, filled triangle by triangle
-        internal static bool IsShaped(in HotspotTile tile)
-        {
-            if (tile.holes != null && tile.holes.Length > 0)
-                return true;
-            if (tile.points == null || tile.points.Length == 3)
-                return false;
-            if (tile.points.Length > 4)
-                return true;
-            for (int i = 0; i < 4; i++)
-            {
-                var a = tile.points[i]; var b = tile.points[(i + 1) % 4];
-                if (a.x != b.x && a.y != b.y)
-                    return true;
-            }
-            return false;
-        }
+        internal static bool IsShaped(in HotspotTile tile) => ChiselHotspotLayout.IsShaped(tile);
 
         // A polygon filled: as it is when convex, otherwise by its ears (its holes not left out)
         static void Fill(Vector3[] points, bool shaped)
@@ -434,7 +548,7 @@ namespace Chisel.Editors
             var tile = layout.TileAt(pixel);
             var menu = new GenericMenu();
             var line = LineAt(local);
-            if (tile != 0 && layout.HasCuts)
+            if (tile != 0 && layout.HasCuts && !layout.IsDrawn(tile))
             {
                 selectedTile = tile;
                 menu.AddItem(new GUIContent($"Split vertically at x {x}"),   false, () => Edit("Split Hotspot Tile", () => layout.Split(tile, HotspotCutKind.Vertical, x)));
@@ -449,23 +563,30 @@ namespace Chisel.Editors
                 menu.AddSeparator(string.Empty);
                 menu.AddItem(new GUIContent("Remove this line"), false, () => Edit("Remove Hotspot Line", () => layout.RemoveCut(node)));
             }
+            menu.AddSeparator(string.Empty);
+            menu.AddItem(new GUIContent("Draw a shape"), false, () => StartDrawing(Drawing.Shape));
+            if (tile != 0 && layout.IsDrawn(tile))
+            {
+                selectedTile = tile;
+                menu.AddItem(new GUIContent("Draw a hole in this shape"), false, () => StartDrawing(Drawing.Hole));
+                menu.AddItem(new GUIContent("Remove this shape"), false, () => Edit("Remove Hotspot Shape", () => layout.RemoveShape(tile)));
+            }
             if (menu.GetItemCount() > 0)
                 menu.ShowAsContext();
         }
 
         void Keys(Event current, Vector2 local)
         {
-            if (!layout.HasCuts)
-                return;
             var pixel = ToPixel(local);
             var tile = layout.TileAt(pixel);
+            var drawnTile = tile != 0 && layout.IsDrawn(tile);
             switch (current.keyCode)
             {
-                case KeyCode.V when tile != 0:
+                case KeyCode.V when tile != 0 && !drawnTile && layout.HasCuts:
                     Edit("Split Hotspot Tile", () => layout.Split(tile, HotspotCutKind.Vertical, Snap(pixel.x)));
                     current.Use();
                     break;
-                case KeyCode.H when tile != 0:
+                case KeyCode.H when tile != 0 && !drawnTile && layout.HasCuts:
                     Edit("Split Hotspot Tile", () => layout.Split(tile, HotspotCutKind.Horizontal, Snap(pixel.y)));
                     current.Use();
                     break;
@@ -474,7 +595,13 @@ namespace Chisel.Editors
                 {
                     var line = LineAt(local);
                     if (line < 0)
+                    {
+                        if (!drawnTile)
+                            break;
+                        Edit("Remove Hotspot Shape", () => layout.RemoveShape(tile));
+                        current.Use();
                         break;
+                    }
                     var node = lines[line].node;
                     Edit("Remove Hotspot Line", () => layout.RemoveCut(node));
                     hoverLine = -1;
@@ -508,7 +635,7 @@ namespace Chisel.Editors
                         EditorUtility.DisplayDialog("Find lines", error, "OK");
                 }
             }
-            EditorGUILayout.HelpBox("Drag a line to move it. Right click a tile to split it; V or H splits it at the cursor. Delete removes the line under the cursor. Middle drag or Alt drag pans, the wheel zooms.", MessageType.None);
+            EditorGUILayout.HelpBox("Drag a line to move it. Right click a tile to split it; V or H splits it at the cursor. Delete removes the line, or the drawn shape, under the cursor. Draw Shape adds a tile of any shape over the others, Draw Hole a hole in the selected shape. Middle drag or Alt drag pans, the wheel zooms.", MessageType.None);
 
             EditorGUILayout.Space();
             var index = layout.IndexOfTile(selectedTile);

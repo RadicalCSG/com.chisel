@@ -12,7 +12,7 @@ namespace Chisel.Core
     }
 
     // Editing the layout as lines: tiles are split by new lines, lines move and are removed again. The tiles' points
-    // follow from the cuts (UpdateTiles).
+    // follow from the cuts (UpdateTiles). Tiles no line makes (shapes drawn or imported over them) keep their points.
     public sealed partial class ChiselHotspotLayout
     {
         public bool HasCuts => cuts.Count > 0;
@@ -108,7 +108,7 @@ namespace Chisel.Core
             return node == parent.first ? 0 : (node == parent.second ? 1 : 2);
         }
 
-        // The tiles' points from the cuts; a tile node without a tile gets a new one, a tile no node has is removed
+        // The tiles' points from the cuts; a tile node without a tile gets a new one
         public void UpdateTiles()
         {
             if (cuts.Count == 0)
@@ -139,7 +139,80 @@ namespace Chisel.Core
                             : RectanglePoints(regions[node]);
                 tiles[index] = tile;
             }
-            tiles.RemoveAll(t => !used.Contains(t.id));
+        }
+
+        // Not a rectangle with upright sides or a triangle: an outline of more corners, or with holes
+        public static bool IsShaped(in HotspotTile tile)
+        {
+            if (tile.holes != null && tile.holes.Length > 0)
+                return true;
+            if (tile.points == null || tile.points.Length == 3)
+                return false;
+            if (tile.points.Length > 4)
+                return true;
+            for (int i = 0; i < 4; i++)
+            {
+                var a = tile.points[i]; var b = tile.points[(i + 1) % 4];
+                if (a.x != b.x && a.y != b.y)
+                    return true;
+            }
+            return false;
+        }
+
+        // The tiles the cuts make
+        public HashSet<int> TilesOfCuts()
+        {
+            var owned = new HashSet<int>();
+            if (cuts.Count == 0)
+                return owned;
+            var regions = new List<RectInt>();
+            var parents = new List<int>();
+            GetRegions(regions, parents);
+            for (int node = 0; node < cuts.Count; node++)
+            {
+                if (cuts[node].kind == HotspotCutKind.Tile && (node == 0 || parents[node] >= 0))
+                    owned.Add(cuts[node].tile);
+            }
+            return owned;
+        }
+
+        // A tile drawn by its outline: no line of the cuts makes it
+        public bool IsDrawn(int id)
+        {
+            return IndexOfTile(id) >= 0 && !TilesOfCuts().Contains(id);
+        }
+
+        // A new tile of this outline (pixels, any winding) over the others; its id, 0 when it has fewer than 3 corners
+        public int AddShape(Vector2Int[] points)
+        {
+            if (points == null || points.Length < 3 || DoubledArea(points) == 0)
+                return 0;
+            var id = NextTileId();
+            tiles.Add(new HotspotTile { id = id, name = "S" + id, points = (Vector2Int[])points.Clone() });
+            return id;
+        }
+
+        // A hole in a drawn tile
+        public bool AddHole(int id, Vector2Int[] points)
+        {
+            var index = IndexOfTile(id);
+            if (index < 0 || !IsDrawn(id) || points == null || points.Length < 3 || DoubledArea(points) == 0)
+                return false;
+            var tile = tiles[index];
+            var holes = new List<HotspotTileHole>(tile.holes ?? Array.Empty<HotspotTileHole>());
+            holes.Add(new HotspotTileHole { points = (Vector2Int[])points.Clone() });
+            tile.holes = holes.ToArray();
+            tiles[index] = tile;
+            return true;
+        }
+
+        // Removes a drawn tile; the cuts' tiles go with their lines
+        public bool RemoveShape(int id)
+        {
+            if (!IsDrawn(id))
+                return false;
+            tiles.RemoveAt(IndexOfTile(id));
+            return true;
         }
 
         // A new texture size; the lines and tiles keep where they are on the texture
@@ -150,6 +223,14 @@ namespace Chisel.Core
             var old = size;
             int X(int x) => (int)Math.Round((double)x * newSize.x / old.x);
             int Y(int y) => (int)Math.Round((double)y * newSize.y / old.y);
+            Vector2Int[] Points(Vector2Int[] points) => points == null ? null : Array.ConvertAll(points, p => new Vector2Int(X(p.x), Y(p.y)));
+            HotspotTile Scaled(HotspotTile tile)
+            {
+                tile.points = Points(tile.points);
+                if (tile.holes != null)
+                    tile.holes = Array.ConvertAll(tile.holes, h => new HotspotTileHole { points = Points(h.points) });
+                return tile;
+            }
             size = newSize;
             if (cuts.Count == 0)
             {
@@ -158,10 +239,15 @@ namespace Chisel.Core
                     var tile = tiles[i];
                     if (tile.points == null)
                         continue;
-                    tile.points = Array.ConvertAll(tile.points, p => new Vector2Int(X(p.x), Y(p.y)));
-                    tiles[i] = tile;
+                    tiles[i] = Scaled(tile);
                 }
                 return;
+            }
+            var owned = TilesOfCuts();
+            for (int i = 0; i < tiles.Count; i++)
+            {
+                if (tiles[i].points != null && !owned.Contains(tiles[i].id))
+                    tiles[i] = Scaled(tiles[i]);
             }
             for (int i = 0; i < cuts.Count; i++)
             {
@@ -373,22 +459,50 @@ namespace Chisel.Core
             return true;
         }
 
-        // The tile at a pixel position, 0 for none
+        // Inside a loop of any shape (even-odd)
+        static bool InsideLoop(Vector2Int[] loop, Vector2 p)
+        {
+            var inside = false;
+            for (int i = 0, j = loop.Length - 1; i < loop.Length; j = i++)
+            {
+                Vector2 a = loop[i], b = loop[j];
+                if ((a.y > p.y) != (b.y > p.y) && p.x < a.x + (p.y - a.y) * (b.x - a.x) / (b.y - a.y))
+                    inside = !inside;
+            }
+            return inside;
+        }
+
+        static bool InsideShape(in HotspotTile tile, Vector2 p)
+        {
+            if (!InsideLoop(tile.points, p))
+                return false;
+            if (tile.holes != null)
+            {
+                foreach (var hole in tile.holes)
+                {
+                    if (hole.points != null && hole.points.Length >= 3 && InsideLoop(hole.points, p))
+                        return false;
+                }
+            }
+            return true;
+        }
+
+        // The tile at a pixel position, 0 for none: a drawn tile over the cuts' (the last drawn on top)
         public int TileAt(Vector2 pixel)
         {
-            if (cuts.Count == 0)
+            var owned = TilesOfCuts();
+            for (int i = tiles.Count - 1; i >= 0; i--)
             {
-                foreach (var tile in tiles)
-                {
-                    if (tile.points == null)
-                        continue;
-                    var b = BoundsOf(tile.points);
-                    if (tile.points.Length == 3 ? Inside(tile.points, pixel)
-                                                : (pixel.x >= b.xMin && pixel.x <= b.xMax && pixel.y >= b.yMin && pixel.y <= b.yMax))
-                        return tile.id;
-                }
-                return 0;
+                var tile = tiles[i];
+                if (tile.points == null || tile.points.Length < 3 || owned.Contains(tile.id))
+                    continue;
+                var b = BoundsOf(tile.points);
+                if (IsShaped(tile) || tile.points.Length == 3 ? InsideShape(tile, pixel)
+                                                              : (pixel.x >= b.xMin && pixel.x <= b.xMax && pixel.y >= b.yMin && pixel.y <= b.yMax))
+                    return tile.id;
             }
+            if (cuts.Count == 0)
+                return 0;
             if (pixel.x < 0 || pixel.y < 0 || pixel.x > size.x || pixel.y > size.y)
                 return 0;
             var regions = new List<RectInt>();
@@ -579,14 +693,20 @@ namespace Chisel.Core
                 return -1;
             }
 
+            // shaped tiles are not part of the grid: they stay over it as they are
             var everything = new List<int>();
+            var shapes = 0;
             for (int i = 0; i < tiles.Count; i++)
             {
-                if (tiles[i].points != null && (tiles[i].points.Length == 3 || tiles[i].points.Length == 4))
+                if (tiles[i].points != null && tiles[i].points.Length >= 3 && IsShaped(tiles[i]))
+                    shapes++;
+                else if (tiles[i].points != null && (tiles[i].points.Length == 3 || tiles[i].points.Length == 4))
                     everything.Add(i);
             }
-            if (everything.Count != tiles.Count)
+            if (everything.Count + shapes != tiles.Count)
                 failed = "a tile is not a triangle or a rectangle";
+            else if (everything.Count == 0)
+                failed = "there are no rectangles or triangles to find lines between";
             else if (Build(new RectInt(0, 0, size.x, size.y), everything) >= 0)
             {
                 tiles.AddRange(added);

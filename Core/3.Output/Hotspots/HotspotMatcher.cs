@@ -598,7 +598,7 @@ namespace Chisel.Core
             {
                 if (tile.points == null || tile.points.Length < 3)
                     continue;
-                if (IsShaped(tile))
+                if (ChiselHotspotLayout.IsShaped(tile))
                 {
                     AddShapedTile(layout, tile, tiles, sides);
                     continue;
@@ -638,24 +638,6 @@ namespace Chisel.Core
                 tiles.Add(t);
             }
             data.tileCount = tiles.Length - data.tileStart;
-        }
-
-        // Not a rectangle with upright sides or a triangle: an outline of more corners, or with holes
-        static bool IsShaped(in HotspotTile tile)
-        {
-            if (tile.holes != null && tile.holes.Length > 0)
-                return true;
-            if (tile.points.Length == 3)
-                return false;
-            if (tile.points.Length > 4)
-                return true;
-            for (int i = 0; i < 4; i++)
-            {
-                var a = tile.points[i]; var b = tile.points[(i + 1) % 4];
-                if (a.x != b.x && a.y != b.y)
-                    return true;
-            }
-            return false;
         }
 
         static void AddShapedTile(ChiselHotspotLayout layout, in HotspotTile tile, NativeList<HotspotTileData> tiles, NativeList<float4> sides)
