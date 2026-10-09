@@ -351,6 +351,20 @@ namespace Chisel.Editors
             }
 
             var inside = new Rect(0, 0, canvas.width, canvas.height).Contains(local);
+            // a line that moves shows which way it goes, under the mouse and while dragged
+            if (drawing == Drawing.None && inside)
+            {
+                var node = dragNode;
+                if (node < 0)
+                {
+                    var line = LineAt(local);
+                    if (line >= 0 && layout.MoveRange(lines[line].node, out _, out _))
+                        node = lines[line].node;
+                }
+                if (node >= 0)
+                    EditorGUIUtility.AddCursorRect(new Rect(0, 0, canvas.width, canvas.height),
+                                                   layout.cuts[node].kind == HotspotCutKind.Horizontal ? MouseCursor.ResizeVertical : MouseCursor.ResizeHorizontal);
+            }
             if (DrawingEvents(current, local, inside))
             {
                 GUI.EndClip();
