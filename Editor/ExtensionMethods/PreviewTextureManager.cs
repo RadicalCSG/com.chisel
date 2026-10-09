@@ -4,8 +4,27 @@ using UnityEditor;
 
 namespace Chisel.Editors
 {
+    public enum PreviewMesh { Sphere, Cube, Plane, Cylinder, Capsule }
+
     public static class PreviewTextureManager
     {
+        const string kPreviewMeshKey = "Chisel.MaterialPreviewMesh";
+        static readonly string[] kMeshNames = { "New-Sphere.fbx", "Cube.fbx", "Quad.fbx", "New-Cylinder.fbx", "New-Capsule.fbx" };
+
+        // The shape every material preview shows, remembered across sessions
+        public static PreviewMesh Mesh
+        {
+            get => (PreviewMesh)Mathf.Clamp(EditorPrefs.GetInt(kPreviewMeshKey, 0), 0, kMeshNames.Length - 1);
+            set
+            {
+                if (value == Mesh)
+                    return;
+                EditorPrefs.SetInt(kPreviewMeshKey, (int)value);
+                Clear();
+                UnityEditorInternal.InternalEditorUtility.RepaintAllViews();
+            }
+        }
+
         static PreviewRenderUtility previewUtility;
 
         public static void CleanUp()
@@ -56,19 +75,20 @@ namespace Chisel.Editors
         readonly static List<PreviewRequest>             s_Requests           = new List<PreviewRequest>();
 
 
-        static Mesh sphereMesh;
-        internal static Mesh GetPreviewSphere()
+        static readonly Mesh[] s_Meshes = new Mesh[kMeshNames.Length];
+        static Mesh GetPreviewMesh()
         {
-            if (!sphereMesh)
-                sphereMesh = Resources.GetBuiltinResource<Mesh>("New-Sphere.fbx");
-            return sphereMesh;
+            var index = (int)Mesh;
+            if (!s_Meshes[index])
+                s_Meshes[index] = Resources.GetBuiltinResource<Mesh>(kMeshNames[index]);
+            return s_Meshes[index];
         }
 
         static Texture GetPreviewTexture(PreviewRenderUtility previewUtility, Vector2 previewDir, Rect region, Material material)
         {
             s_Styles ??= new Styles();
 
-            var mesh        = GetPreviewSphere();
+            var mesh        = GetPreviewMesh();
             var camera      = previewUtility.camera;
 
             var bounds      = mesh.bounds;
@@ -94,7 +114,9 @@ namespace Chisel.Editors
             camera.Render();
             Unsupported.SetRenderSettingsUseFogNoDirty(fog);
 
-            var rot = Quaternion.Euler(previewDir.y, 0, 0) * Quaternion.Euler(0, previewDir.x, 0);
+            // a plane faces the camera: it turns in place and tilts, never showing its back
+            var rot = Mesh == PreviewMesh.Plane ? Quaternion.Euler(previewDir.y, 0, 0) * Quaternion.Euler(0, 0, previewDir.x)
+                                                : Quaternion.Euler(previewDir.y, 0, 0) * Quaternion.Euler(0, previewDir.x, 0);
             var pos = rot * (-bounds.center);
 
             previewUtility.DrawMesh(mesh, pos, rot, material, 0);

@@ -434,8 +434,45 @@ namespace Chisel.Editors
 			return scrollPosition;
 		}
 
+		// Clicked as the material's field is: once pings the material, twice opens it; a right click picks the preview's shape
+		static bool PreviewClicks(Rect region, Material material)
+		{
+			var evt = Event.current;
+			if (!region.Contains(evt.mousePosition))
+				return false;
+			if (evt.type == EventType.MouseDown && evt.button == 0 && evt.clickCount == 2 && material)
+			{
+				AssetDatabase.OpenAsset(material);
+				evt.Use();
+				GUIUtility.ExitGUI();
+			}
+			if (evt.type == EventType.MouseDown && evt.button == 0 && evt.clickCount == 1)
+				s_PreviewClick = evt.mousePosition;
+			if (evt.type == EventType.MouseUp && evt.button == 0 && s_PreviewClick.HasValue &&
+				(evt.mousePosition - s_PreviewClick.Value).sqrMagnitude < 9 && material)
+				EditorGUIUtility.PingObject(material);
+			if (evt.type == EventType.MouseUp)
+				s_PreviewClick = null;
+			if (evt.type == EventType.ContextClick)
+			{
+				var menu = new GenericMenu();
+				foreach (PreviewMesh mesh in System.Enum.GetValues(typeof(PreviewMesh)))
+				{
+					var chosen = mesh;
+					menu.AddItem(new GUIContent(ObjectNames.NicifyVariableName(mesh.ToString())), PreviewTextureManager.Mesh == mesh, () => PreviewTextureManager.Mesh = chosen);
+				}
+				menu.ShowAsContext();
+				evt.Use();
+				return true;
+			}
+			return false;
+		}
+
+		static Vector2? s_PreviewClick;
+
 		public static bool OnPreviewGUI(Rect region, GUIStyle background, Material material)
 		{
+			PreviewClicks(region, material);
 			var newPreviewDir = Drag2D(s_PreviewDir, region);
 			if (newPreviewDir != s_PreviewDir)
 				s_PreviewDir = newPreviewDir;
