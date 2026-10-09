@@ -45,6 +45,8 @@ namespace Chisel.Core
         public int    tileCount;
         // budgets for one surface, the layout's or the project's (ChiselHotspotLayout.maxRepeats, maxTriangles)
         public int    maxRepeats, maxTriangles;
+        // pixels left out along the tiles' edges (ChiselHotspotLayout.padding), and along a bordered tile's interior
+        public float  padding;
     }
 
     // A surface as matching sees it, in its frame (HotspotMatcher.Frame), in the units of the tree
@@ -592,7 +594,8 @@ namespace Chisel.Core
                 pixelsPerUnit = layout.pixelsPerUnit,
                 tileStart     = tiles.Length,
                 maxRepeats    = layout.maxRepeats   > 0 ? layout.maxRepeats   : ChiselProjectSettings.HotspotMaxRepeats,
-                maxTriangles  = layout.maxTriangles > 0 ? layout.maxTriangles : ChiselProjectSettings.HotspotMaxTriangles
+                maxTriangles  = layout.maxTriangles > 0 ? layout.maxTriangles : ChiselProjectSettings.HotspotMaxTriangles,
+                padding       = math.max(0, layout.padding)
             };
             foreach (var tile in layout.tiles)
             {

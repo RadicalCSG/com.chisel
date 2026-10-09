@@ -583,7 +583,8 @@ namespace Chisel.Core
                         Half(inset[k], 1);
                 }
                 interiorCell = cells.Length;
-                AddCell(start, s.inner[0], s.inner[1], s.inner[3], t.inner[0], t.inner[1], t.inner[3], size);
+                PaddedInner(t, input.padding, out var i0, out var i1, out var i3);
+                AddCell(start, s.inner[0], s.inner[1], s.inner[3], i0, i1, i3, size);
             }
             return true;
         }
@@ -608,7 +609,8 @@ namespace Chisel.Core
                 return false;
             s.Inset(surfaceBand, openSides);
             t.Inset(tileBand);
-            var period = new double2(math.length(t.inner[1] - t.inner[0]), math.length(t.inner[3] - t.inner[0])) / input.pixelsPerUnit;
+            PaddedInner(t, input.padding, out var i0, out var i1, out var i3);
+            var period = new double2(math.length(i1 - i0), math.length(i3 - i0)) / input.pixelsPerUnit;
             if (!(period.x > 0) || !(period.y > 0))
                 return false;
             var shift  = period * (double2)input.interiorOffset;
@@ -639,10 +641,22 @@ namespace Chisel.Core
                     if (j > y0)     Half(firstY + j, 1);
                     if (j < y1 - 1) Half(firstY + j + 1, -1);
                     var corner = origin + new double2(i * period.x, j * period.y);
-                    AddCell(start, corner, corner + new double2(period.x, 0), corner + new double2(0, period.y), t.inner[0], t.inner[1], t.inner[3], size);
+                    AddCell(start, corner, corner + new double2(period.x, 0), corner + new double2(0, period.y), i0, i1, i3, size);
                 }
             }
             return true;
+        }
+
+        // The tile's inner rectangle less the padding along each side (as it is when that leaves nothing)
+        static void PaddedInner(in Outline t, double padding, out double2 i0, out double2 i1, out double2 i3)
+        {
+            i0 = t.inner[0]; i1 = t.inner[1]; i3 = t.inner[3];
+            var u = i1 - i0; var v = i3 - i0;
+            var lu = math.length(u); var lv = math.length(v);
+            if (!(padding > 0) || lu <= 2 * padding || lv <= 2 * padding)
+                return;
+            var du = u * (padding / lu); var dv = v * (padding / lv);
+            i0 += du + dv; i1 += dv - du; i3 += du - dv;
         }
 
         // The sides of the bounds (s, a bit each) the outline runs along only where it has no border; toEdges: some edge

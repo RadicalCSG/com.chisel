@@ -43,6 +43,9 @@ namespace Chisel.Core
         public int              maxRepeats, maxTriangles;
         // a shaped tile's own sides (HotspotTileData.sideStart, sideCount), its border measured from them
         public int              sideStart, sideCount;
+        // the layout's padding: the interior samples its rectangle less this along every side, so filtering at its seams
+        // never reaches the border
+        public float            padding;
 
         public readonly int MaxRepeats   => maxRepeats > 0 ? math.min(maxRepeats, HotspotSections.kMaxRepeats) : HotspotSections.kMaxRepeats;
         public readonly int MaxTriangles => maxTriangles > 0 ? maxTriangles : int.MaxValue;
@@ -108,7 +111,7 @@ namespace Chisel.Core
                 offset = new float2(across ? shift.x : 0, along ? shift.y : 0),
                 interiorOffset = count == 4 ? shift : float2.zero,
                 maxRepeats = layout.maxRepeats, maxTriangles = layout.maxTriangles,
-                sideStart = tile.sideStart, sideCount = tile.sideCount
+                sideStart = tile.sideStart, sideCount = tile.sideCount, padding = layout.padding
             };
             // each side as the sections lay it takes the rule of the tile's side with the same ends (turned or mirrored)
             var corners = count == 4 ? new float2x4(t0, t1, t1 + t2 - t0, t2) : new float2x4(t0, t1, t2, t2);
