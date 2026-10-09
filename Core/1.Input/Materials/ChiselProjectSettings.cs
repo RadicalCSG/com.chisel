@@ -23,6 +23,23 @@ namespace Chisel.Core
 		// The project's contents list asset. This settings object only exists in the editor; a player gets the
 		// list from its preloaded assets instead (see ChiselContentsList.Instance).
 		[SerializeField] private ChiselContentsList contentsList;
+
+		// Hotspot mapping's budgets for one surface, where its layout has none of its own (ChiselHotspotLayout.maxRepeats,
+		// maxTriangles). A player has no project settings: it takes these defaults.
+		public const int kDefaultHotspotMaxRepeats   = 4096;
+		public const int kDefaultHotspotMaxTriangles = 65536;
+		[SerializeField] private int hotspotMaxRepeats   = kDefaultHotspotMaxRepeats;
+		[SerializeField] private int hotspotMaxTriangles = kDefaultHotspotMaxTriangles;
+		public static int HotspotMaxRepeats
+		{
+			get { return instance.hotspotMaxRepeats > 0 ? instance.hotspotMaxRepeats : kDefaultHotspotMaxRepeats; }
+			set { instance.hotspotMaxRepeats = Math.Max(1, value); }
+		}
+		public static int HotspotMaxTriangles
+		{
+			get { return instance.hotspotMaxTriangles > 0 ? instance.hotspotMaxTriangles : kDefaultHotspotMaxTriangles; }
+			set { instance.hotspotMaxTriangles = Math.Max(1, value); }
+		}
 		public static ChiselContentsList ContentsList
 		{
 			get { return instance.contentsList; }

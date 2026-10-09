@@ -546,7 +546,7 @@ namespace Chisel.Core
             var y0 = (int)math.floor((shift.y - band) / period.y + 1e-9);
             var x1 = math.max(x0 + 1, (int)math.ceil((extent.x + band + shift.x) / period.x - 1e-9));
             var y1 = math.max(y0 + 1, (int)math.ceil((extent.y + band + shift.y) / period.y - 1e-9));
-            if ((long)(x1 - x0) * (y1 - y0) > kMaxRepeats)
+            if ((long)(x1 - x0) * (y1 - y0) > input.MaxRepeats)
                 return false;
             var firstX = lines.Length - x0 - 1;
             for (int i = x0 + 1; i < x1; i++)

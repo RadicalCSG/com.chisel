@@ -13,6 +13,9 @@ namespace Chisel.Core
         // too small for its border to leave an interior
         AllBorder  = 4,
         Pinned     = 8,
+        // drawn with fewer sections than its tile asks for: its cut would have drawn more triangles than its layout's
+        // budget (ChiselHotspotLayout.maxTriangles)
+        BudgetLimited = 16,
     }
 
     // What hotspot mapping chose for a surface, for the diagnostic view; all zero when it is not hotspot mapped
@@ -25,6 +28,8 @@ namespace Chisel.Core
         public HotspotSurfaceFlags flags;
         // the connected group it was mapped with (HotspotGroups, its index in the model + 1); 0: by itself
         public int                 group;
+        // how many repeats its interior was laid in (HotspotSections.BuildInteriorRepeats)
+        public int                 repeats;
 
         public readonly bool IsMapped => pixelsPerUnit > 0;
     }

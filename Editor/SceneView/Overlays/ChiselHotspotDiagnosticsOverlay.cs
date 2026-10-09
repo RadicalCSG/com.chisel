@@ -72,6 +72,7 @@ namespace Chisel.Editors
             Legend(ChiselHotspotDiagnosticsView.kMirroredColor,   "mirrored against the rest of its surface");
             Legend(ChiselHotspotDiagnosticsView.kLastResortColor, "outline: repeated, no tile large enough");
             Legend(ChiselHotspotDiagnosticsView.kAllBorderColor,  "outline: too small for its border, all border");
+            Legend(ChiselHotspotDiagnosticsView.kBudgetColor,     "outline: over its budget, fewer sections drawn");
             if (ChiselHotspotDiagnosticsView.ShowGroups)
                 Legend(ChiselHotspotDiagnosticsView.kGroupColor,  "outline: a group of surfaces mapped as one");
 
@@ -84,6 +85,9 @@ namespace Chisel.Editors
                 EditorGUILayout.LabelField($"energy up to {summary.mostEnergy:0.00}, {summary.mirrored} mirrored", EditorStyles.miniLabel);
                 EditorGUILayout.LabelField($"{summary.lastResort} repeated as a last resort, {summary.allBorder} all border, {summary.pinned} pinned", EditorStyles.miniLabel);
                 EditorGUILayout.LabelField($"{summary.grouped} in {summary.groups} groups mapped as one", EditorStyles.miniLabel);
+                EditorGUILayout.LabelField($"{summary.triangles} triangles drawn for {summary.uncutTriangles} uncut, {summary.repeats} repeats, {summary.seams} seam edges", EditorStyles.miniLabel);
+                if (summary.budgetLimited > 0)
+                    EditorGUILayout.LabelField($"{summary.budgetLimited} over their budget (Max triangles)", EditorStyles.miniLabel);
             }
             if (summary.withoutData > 0 || summary.withoutLookup > 0)
                 EditorGUILayout.HelpBox($"{summary.withoutData} drawn surfaces and {summary.withoutLookup} meshes have no data to show: rebuild the models to see them.", MessageType.Info);

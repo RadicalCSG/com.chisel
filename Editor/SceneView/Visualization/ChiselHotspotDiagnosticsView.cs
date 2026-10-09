@@ -29,6 +29,9 @@ namespace Chisel.Editors
         public struct Summary
         {
             public int    models, surfaces, triangles, lastResort, allBorder, pinned, mirrored, grouped, groups;
+            // what mapping cost and gave up: the interior's repeats laid, the seams where the uvs jump, the triangles of
+            // what the surfaces are without hotspot cuts (their colliders'), the surfaces over their budget
+            public int    repeats, seams, uncutTriangles, budgetLimited;
             // drawn surfaces left out: without render data (not built since), not hotspot mapped, decals; triangles
             // without area; drawn meshes without triangle lookups
             public int    withoutData, notMapped, decals, unmeasured, withoutLookup;
@@ -41,6 +44,7 @@ namespace Chisel.Editors
         public static readonly Color kEdgeColor       = new(0, 0, 0, 0.6f);
         public static readonly Color kMirroredColor   = new(1, 0, 1, 0.75f);
         public static readonly Color kGroupColor      = new(0.25f, 0.45f, 1.0f, 1);
+        public static readonly Color kBudgetColor     = new(0.85f, 0.1f, 0.55f, 1);
         public static readonly Color kConnectedColor  = new(0.2f, 1.0f, 0.2f, 1);
         public static readonly Color kApartColor      = new(1.0f, 0.25f, 0.2f, 1);
         public static readonly Color kBorderOnlyColor = new(1.0f, 1.0f, 1.0f, 1);
@@ -288,6 +292,7 @@ namespace Chisel.Editors
                     index = infos.Count;
                     infos.Add(info);
                     keys.Add(key, index);
+                    summary.uncutTriangles += surfaces[description.surfaceIndex].physicsIndices.Length / 3;
                 }
                 surfaceOf[d] = index;
             }
@@ -379,16 +384,22 @@ namespace Chisel.Editors
                     summary.grouped++;
                     groups.Add((model, infos[s].group));
                 }
+                summary.repeats += infos[s].repeats;
+                if ((infos[s].flags & HotspotSurfaceFlags.BudgetLimited) != 0) summary.budgetLimited++;
             }
 
             var showEdges = ShowEdges; var showSeams = ShowSeams; var showGroups = ShowGroups;
             foreach (var (key, edge) in edges)
             {
+                if (edge.seam)
+                    summary.seams++;
                 Color color;
                 if (edge.uses == 1 && edge.surface >= 0 && (infos[edge.surface].flags & HotspotSurfaceFlags.LastResort) != 0)
                     color = kLastResortColor;
                 else if (edge.uses == 1 && edge.surface >= 0 && (infos[edge.surface].flags & HotspotSurfaceFlags.AllBorder) != 0)
                     color = kAllBorderColor;
+                else if (edge.uses == 1 && edge.surface >= 0 && (infos[edge.surface].flags & HotspotSurfaceFlags.BudgetLimited) != 0)
+                    color = kBudgetColor;
                 else if (showGroups && edge.group > 0 && (edge.uses == 1 || edge.groupEdge))
                     color = kGroupColor;
                 else if (showSeams && edge.seam)

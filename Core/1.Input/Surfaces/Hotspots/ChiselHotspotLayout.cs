@@ -102,6 +102,11 @@ namespace Chisel.Core
         // Pixels left out along every tile's edges (a gutter), so filtering never reaches a neighbouring tile; a tile's
         // border keeps its inner edge, so it narrows by as much
         public float             padding       = 0;
+        // Budgets for one surface (0: the project's, ChiselProjectSettings): the most repeats a strip, a repeating tile
+        // or an interior lays (more: stretched instead), and the most triangles its cut may draw (more: the interior's
+        // repeats left out, then the cut)
+        public int               maxRepeats    = 0;
+        public int               maxTriangles  = 0;
         public List<HotspotTile> tiles         = new();
         // Empty when the tiles were given without them (an import that is not a grid)
         public List<HotspotCut>  cuts          = new();

@@ -39,6 +39,11 @@ namespace Chisel.Core
         // HotspotBorderMode and maximum stretch, from the tile's side with the same ends
         public int4             sideMode;
         public float4           sideStretch;
+        // the layout's budgets for one surface (0: the hard limits)
+        public int              maxRepeats, maxTriangles;
+
+        public readonly int MaxRepeats   => maxRepeats > 0 ? math.min(maxRepeats, HotspotSections.kMaxRepeats) : HotspotSections.kMaxRepeats;
+        public readonly int MaxTriangles => maxTriangles > 0 ? maxTriangles : int.MaxValue;
         public float3           right, up;
 
         public readonly bool Repeated => repeatX > 1 || repeatY > 1 || (lastRepeat.x > 0 && lastRepeat.x < 1) || (lastRepeat.y > 0 && lastRepeat.y < 1) ||
@@ -99,7 +104,8 @@ namespace Chisel.Core
                 textureSize = layout.textureSize, border = tile.border, pixelsPerUnit = tile.pixelsPerUnit * density, flags = tile.flags,
                 repeatX = choice.repeatX, repeatY = choice.repeatY, lastRepeat = choice.lastRepeat, right = right, up = up,
                 offset = new float2(across ? shift.x : 0, along ? shift.y : 0),
-                interiorOffset = count == 4 ? shift : float2.zero
+                interiorOffset = count == 4 ? shift : float2.zero,
+                maxRepeats = layout.maxRepeats, maxTriangles = layout.maxTriangles
             };
             // each side as the sections lay it takes the rule of the tile's side with the same ends (turned or mirrored)
             var corners = count == 4 ? new float2x4(t0, t1, t1 + t2 - t0, t2) : new float2x4(t0, t1, t2, t2);
@@ -317,10 +323,14 @@ namespace Chisel.Core
                 if (partial)
                 {
                     var count = math.max(1, PartialRepeats(length, period, out var last));
+                    if (count > input.MaxRepeats)
+                        return 1;
                     if (count > 1 || last < 1) step = period;
                     return count;
                 }
                 var whole = math.max(1, Repeats(length, period));
+                if (whole > input.MaxRepeats)
+                    return 1;
                 step = length / whole;
                 return whole;
             }
@@ -328,7 +338,7 @@ namespace Chisel.Core
             if (limit > 1 && length / period > limit)
             {
                 var count = (int)math.ceil(length / period / limit - 1e-9);
-                if (count > 1 && count <= kMaxRepeats)
+                if (count > 1 && count <= input.MaxRepeats)
                 {
                     step = length / count;
                     return count;
@@ -377,7 +387,7 @@ namespace Chisel.Core
             if (input.Repeated)
                 return BuildRepeats(math.max(1, input.repeatX), math.max(1, input.repeatY),
                                     input.lastRepeat.x > 0 ? input.lastRepeat.x : 1, input.lastRepeat.y > 0 ? input.lastRepeat.y : 1,
-                                    input.offset, f0, f1, f2, t0, t1, t2, input.textureSize);
+                                    input.offset, f0, f1, f2, t0, t1, t2, input.textureSize, input.MaxRepeats);
             var s = new Outline(count, f0, f1, f2);
             var t = new Outline(count, t0, t1, t2);
             if (!Bands(input, s, t, out var surfaceBand, out var tileBand))
@@ -461,7 +471,7 @@ namespace Chisel.Core
         // A rectangle repeatX by repeatY times the tile, each repeat (f0', f1', f2') to (t0, t1, t2); of the last repeat
         // across and up only lastX and lastY are used. Moved along by shift (a part of a repeat), the first repeat is cut
         // off and the rest reach one further.
-        bool BuildRepeats(int repeatX, int repeatY, double lastX, double lastY, float2 shift, float2 f0, float2 f1, float2 f2, float2 t0, float2 t1, float2 t2, float2 textureSize)
+        bool BuildRepeats(int repeatX, int repeatY, double lastX, double lastY, float2 shift, float2 f0, float2 f1, float2 f2, float2 t0, float2 t1, float2 t2, float2 textureSize, int maxRepeats)
         {
             var across = ((double2)f1 - (double2)f0) / (repeatX - 1 + lastX);
             var up     = ((double2)f2 - (double2)f0) / (repeatY - 1 + lastY);
@@ -470,7 +480,7 @@ namespace Chisel.Core
             var origin = (double2)f0 - across * shift.x - up * shift.y;
             repeatX = (int)math.ceil(repeatX - 1 + lastX + shift.x - 1e-9);
             repeatY = (int)math.ceil(repeatY - 1 + lastY + shift.y - 1e-9);
-            if (repeatX > kMaxRepeats + 1 || repeatY > kMaxRepeats + 1)
+            if (repeatX > kMaxRepeats + 1 || repeatY > kMaxRepeats + 1 || (long)repeatX * repeatY > maxRepeats)
                 return false;
             var linesX = lines.Length;
             for (int i = 1; i < repeatX; i++)

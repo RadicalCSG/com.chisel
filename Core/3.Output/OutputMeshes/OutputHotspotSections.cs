@@ -96,6 +96,7 @@ namespace Chisel.Core
                     using var select   = ToList(ref from.selectVertices);
                     using var render   = ToList(ref from.renderVertices);
                     var input    = from.sectionInput;
+                    var budget   = input.MaxTriangles;
                     var sections = HotspotSections.Create(Allocator.Temp);
                     using var rules = new NativeList<HotspotBorderCorner>(4, Allocator.Temp);
                     HotspotGroups.BordersOf(new int2(brush, s), bordersOf, rules);
@@ -111,16 +112,22 @@ namespace Chisel.Core
                         to.CopyHotspot(builder, ref from);
                         continue;
                     }
-                    var right  = input.right;
-                    var up     = input.up;
-                    var normal = math.normalizesafe(math.cross(up, right));
-                    // cut once where the sections meet; triangle by triangle when that would not cover it once
-                    if (!sections.CutOnce(right, up, normal, indices, collider, select, render))
-                        sections.Split(right, up, normal, indices, collider, select, render);
-                    var repeats = InteriorRepeats(sections, input, right, up, normal, indices, collider, select, render);
-                    sections.AssignUVs(indices, collider, select, render, right, up, repeats);
-                    repeats.Dispose();
+                    var laid = CutAndMap(sections, input, input.right, input.up, true, indices, collider, select, render);
+                    // over its budget: without the interior's repeats; still over: drawn as it was, uncut
+                    var limited = indices.Length / 3 > budget;
+                    if (limited)
+                    {
+                        Load(ref from, indices, collider, select, render);
+                        laid = CutAndMap(sections, input, input.right, input.up, false, indices, collider, select, render);
+                    }
                     sections.Dispose();
+                    if (indices.Length / 3 > budget)
+                    {
+                        to.CopyGeometry(builder, ref from);
+                        to.CopyHotspot(builder, ref from);
+                        to.hotspot.flags |= HotspotSurfaceFlags.BudgetLimited;
+                        continue;
+                    }
                     // a surface whose cut went wrong is drawn uncut: one bad point would hide the whole model (its
                     // bounds)
                     if (!Finite(collider, render))
@@ -134,6 +141,9 @@ namespace Chisel.Core
                     builder.Construct(ref to.physicsIndices,  ref from.indices);
                     builder.Construct(ref to.physicsVertices, ref from.colliderVertices);
                     to.CopySections(builder, ref from);
+                    to.hotspot.repeats = laid;
+                    if (limited)
+                        to.hotspot.flags |= HotspotSurfaceFlags.BudgetLimited;
                 }
 
                 // The mesh queries' lists, with the cut surfaces' counts and hashes
@@ -180,29 +190,45 @@ namespace Chisel.Core
             var select   = ToList(ref from.selectVertices);
             var render   = ToList(ref from.renderVertices);
             var original = new UnsafeHashMap<float3, float3>(unfolded ? collider.Length : 1, Allocator.Temp);
-            if (unfolded)
+            var budget   = group.input.MaxTriangles;
+            var laid     = 0;
+            var limited  = false;
+            // with the interior's repeats; over the budget without them; still over, uncut on the group's bounds map
+            for (int attempt = 0; attempt < 3; attempt++)
             {
-                for (int v = 0; v < collider.Length; v++)
+                if (attempt > 0)
                 {
-                    var p = math.mul(unfold, new float4(collider[v], 1)).xyz;
-                    original.TryAdd(p, collider[v]);
-                    collider[v] = p;
-                    var s = select[v]; s.position = p; select[v] = s;
-                    var r = render[v]; r.position = p; render[v] = r;
+                    Load(ref from, indices, collider, select, render);
+                    original.Clear();
                 }
+                if (unfolded)
+                {
+                    for (int v = 0; v < collider.Length; v++)
+                    {
+                        var p = math.mul(unfold, new float4(collider[v], 1)).xyz;
+                        original.TryAdd(p, collider[v]);
+                        collider[v] = p;
+                        var s = select[v]; s.position = p; select[v] = s;
+                        var r = render[v]; r.position = p; render[v] = r;
+                    }
+                }
+                if (group.sectionCount.z > 0 && attempt < 2)
+                {
+                    var sections = HotspotGroups.Sections(group, lines, halfPlanes, cells, Allocator.Temp);
+                    laid = CutAndMap(sections, group.input, group.right, group.up, attempt == 0, indices, collider, select, render);
+                    sections.Dispose();
+                    if (indices.Length / 3 > budget)
+                    {
+                        limited = true;
+                        continue;
+                    }
+                } else
+                {
+                    laid = 0;
+                    MeshAlgorithms.ComputeUVs(render, group.uvMatrix);
+                }
+                break;
             }
-            if (group.sectionCount.z > 0)
-            {
-                var sections = HotspotGroups.Sections(group, lines, halfPlanes, cells, Allocator.Temp);
-                var normal = math.normalizesafe(math.cross(group.up, group.right));
-                if (!sections.CutOnce(group.right, group.up, normal, indices, collider, select, render))
-                    sections.Split(group.right, group.up, normal, indices, collider, select, render);
-                var repeats = InteriorRepeats(sections, group.input, group.right, group.up, normal, indices, collider, select, render);
-                sections.AssignUVs(indices, collider, select, render, group.right, group.up, repeats);
-                repeats.Dispose();
-                sections.Dispose();
-            } else
-                MeshAlgorithms.ComputeUVs(render, group.uvMatrix);
             if (unfolded)
             {
                 var back = math.inverse(unfold);
@@ -229,8 +255,36 @@ namespace Chisel.Core
                 to.sectionInput = group.input;
                 to.hotspot      = group.info;
                 to.hotspot.group = groupIndex + 1;
+                to.hotspot.repeats = laid;
+                if (limited)
+                    to.hotspot.flags |= HotspotSurfaceFlags.BudgetLimited;
             }
             indices.Dispose(); collider.Dispose(); select.Dispose(); render.Dispose();
+        }
+
+        // What a surface draws cut where its sections meet (once; triangle by triangle when that would not cover it once),
+        // and again where its interior's repeats meet (withRepeats), and given its uvs; how many repeats were laid
+        static int CutAndMap(in HotspotSections sections, in HotspotSectionInput input, float3 right, float3 up, bool withRepeats,
+                             NativeList<int> indices, NativeList<float3> collider, NativeList<SelectVertex> select, NativeList<RenderVertex> render)
+        {
+            var normal = math.normalizesafe(math.cross(up, right));
+            if (!sections.CutOnce(right, up, normal, indices, collider, select, render))
+                sections.Split(right, up, normal, indices, collider, select, render);
+            var repeats = withRepeats ? InteriorRepeats(sections, input, right, up, normal, indices, collider, select, render) : HotspotSections.Create(Allocator.Temp);
+            sections.AssignUVs(indices, collider, select, render, right, up, repeats);
+            var laid = repeats.cells.IsCreated ? repeats.cells.Length : 0;
+            repeats.Dispose();
+            return laid;
+        }
+
+        // A surface's lists as the weld left them, again
+        static void Load(ref ChiselSurfaceRenderBuffer from, NativeList<int> indices, NativeList<float3> collider, NativeList<SelectVertex> select, NativeList<RenderVertex> render)
+        {
+            indices.Clear(); collider.Clear(); select.Clear(); render.Clear();
+            for (int i = 0; i < from.indices.Length; i++)          indices.Add(from.indices[i]);
+            for (int i = 0; i < from.colliderVertices.Length; i++) collider.Add(from.colliderVertices[i]);
+            for (int i = 0; i < from.selectVertices.Length; i++)   select.Add(from.selectVertices[i]);
+            for (int i = 0; i < from.renderVertices.Length; i++)   render.Add(from.renderVertices[i]);
         }
 
         // A bordered tile's interior repeated at the tile's density (BuildInteriorRepeats): what is drawn cut again, triangle
