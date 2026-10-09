@@ -120,10 +120,14 @@ namespace Chisel.Core
             if (surfaceCountRef.Value < totalSurfaceCount)
                 surfaceCountRef.Value = totalSurfaceCount;
 
+            // each brush's own buffer, before the weld patches any: told the hotspot group each surface was mapped with
+            var kept = new NativeArray<BlobAssetReference<ChiselBrushRenderBuffer>>(brushRenderData.Length, Allocator.Temp);
+            for (int i = 0; i < kept.Length; i++)
+                kept[i] = brushRenderData[i].brushRenderBuffer;
             // The weld at the very end across the whole model: needles that close a seam go with the triangle across them
             OutputModelWeld.WeldModel(brushRenderData, patchedRenderBuffers);
             // Then what is drawn of hotspot surfaces is cut into its sections; the collider stays as welded
-            OutputHotspotSections.CutModel(brushRenderData, patchedRenderBuffers, hotspotTiles, hotspotLayouts, hotspotLinks, hotspotTileSides);
+            OutputHotspotSections.CutModel(brushRenderData, patchedRenderBuffers, hotspotTiles, hotspotLayouts, hotspotLinks, hotspotTileSides, kept);
         }
     }
 

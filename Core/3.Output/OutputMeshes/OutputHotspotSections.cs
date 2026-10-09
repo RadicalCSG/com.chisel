@@ -9,9 +9,11 @@ namespace Chisel.Core
     // Only what is drawn is cut; the collider keeps the welded triangles (ChiselSurfaceRenderBuffer.physicsIndices).
     internal static class OutputHotspotSections
     {
+        // kept: each brush's own buffer, as the tree keeps it (before the weld patched any); it is told the group each of its
+        // surfaces was mapped with, which the editor reads (the patched copies are gone after the meshes are made)
         public static void CutModel(NativeList<BrushData> brushes, NativeList<BlobAssetReference<ChiselBrushRenderBuffer>> patched,
                                     NativeArray<HotspotTileData> tiles, NativeArray<HotspotLayoutData> layouts, NativeArray<HotspotLink> links,
-                                    NativeArray<float4> tileSides = default)
+                                    NativeArray<float4> tileSides = default, NativeArray<BlobAssetReference<ChiselBrushRenderBuffer>> kept = default)
         {
             // coplanar neighbours, of any brush, mapped as one surface (HotspotGroups)
             var groupOf    = new UnsafeHashMap<int2, int>(64, Allocator.Temp);
@@ -24,6 +26,14 @@ namespace Chisel.Core
             var bordersOf  = new UnsafeParallelMultiHashMap<int2, HotspotBorderCorner>(8, Allocator.Temp);
             HotspotGroups.Borders(brushes, links, ref bordersOf);
             HotspotGroups.Find(brushes, tiles, layouts, links, bordersOf, ref groupOf, ref unfoldOf, groups, lines, halfPlanes, cells, tileSides);
+            for (int b = 0; kept.IsCreated && b < kept.Length && b < brushes.Length; b++)
+            {
+                if (!kept[b].IsCreated)
+                    continue;
+                ref var surfaces = ref kept[b].Value.surfaces;
+                for (int s = 0; s < surfaces.Length; s++)
+                    surfaces[s].hotspot.group = groupOf.TryGetValue(new int2(b, s), out var g) ? g + 1 : 0;
+            }
             for (int b = 0; b < brushes.Length; b++)
             {
                 if (!brushes[b].brushRenderBuffer.IsCreated ||
