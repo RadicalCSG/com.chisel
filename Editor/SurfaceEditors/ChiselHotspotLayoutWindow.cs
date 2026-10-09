@@ -40,6 +40,10 @@ namespace Chisel.Editors
         int     hoverLine = -1;
         int     dragNode  = -1;
         bool    dragged;
+        // the selected drawn shape: a corner dragged (its loop, -1 the outline), or the whole shape from a pixel
+        int        dragLoop, dragCorner = -1;
+        bool       dragShape;
+        Vector2Int dragFrom;
         Vector2 panelScroll;
         Rect    canvas;
 
@@ -75,7 +79,8 @@ namespace Chisel.Editors
                 return;
             layout = newLayout;
             selectedTile = 0;
-            hoverLine = dragNode = -1;
+            hoverLine = dragNode = dragCorner = -1;
+            dragShape = false;
             StopDrawing();
             Repaint();
         }
@@ -272,6 +277,153 @@ namespace Chisel.Editors
             return false;
         }
 
+        // A corner of the selected drawn shape near the mouse: its loop (-1 the outline) and index
+        bool CornerAt(Vector2 local, out int loop, out int corner)
+        {
+            loop = -1; corner = -1;
+            if (selectedTile == 0 || !layout.IsDrawn(selectedTile))
+                return false;
+            var best = kLineGrab * 1.5f;
+            for (int l = -1; ; l++)
+            {
+                var points = layout.ShapeLoop(selectedTile, l);
+                if (points == null)
+                    break;
+                for (int i = 0; i < points.Length; i++)
+                {
+                    var distance = Vector2.Distance(local, ToCanvas(points[i]));
+                    if (distance < best) { best = distance; loop = l; corner = i; }
+                }
+            }
+            return corner >= 0;
+        }
+
+        // An edge of the selected drawn shape near the mouse: its loop and the corner it starts at
+        bool EdgeAt(Vector2 local, out int loop, out int after)
+        {
+            loop = -1; after = -1;
+            if (selectedTile == 0 || !layout.IsDrawn(selectedTile))
+                return false;
+            var best = kLineGrab;
+            for (int l = -1; ; l++)
+            {
+                var points = layout.ShapeLoop(selectedTile, l);
+                if (points == null)
+                    break;
+                for (int i = 0; i < points.Length; i++)
+                {
+                    var distance = DistanceToSegment(local, ToCanvas(points[i]), ToCanvas(points[(i + 1) % points.Length]));
+                    if (distance < best) { best = distance; loop = l; after = i; }
+                }
+            }
+            return after >= 0;
+        }
+
+        // Editing the selected drawn shape: its corners are dragged, a double click on an edge adds one, and the shape is
+        // dragged by its inside; true when the event was the shape's
+        bool ShapeEvents(Event current, Vector2 local, bool inside)
+        {
+            if (drawing != Drawing.None)
+                return false;
+            switch (current.type)
+            {
+                case EventType.MouseDown when inside && current.button == 0 && !current.alt:
+                {
+                    if (current.clickCount == 2 && EdgeAt(local, out var edgeLoop, out var after) && !CornerAt(local, out _, out _))
+                    {
+                        var tile = selectedTile; var at = SnappedPixel(local);
+                        Edit("Add Hotspot Shape Corner", () => layout.InsertShapePoint(tile, edgeLoop, after, at));
+                        current.Use();
+                        return true;
+                    }
+                    if (CornerAt(local, out dragLoop, out dragCorner))
+                    {
+                        Undo.RecordObject(layout, "Move Hotspot Shape Corner");
+                        dragged = false;
+                        current.Use();
+                        return true;
+                    }
+                    if (LineAt(local) < 0 && layout.IsDrawn(selectedTile) && layout.TileAt(ToPixel(local)) == selectedTile)
+                    {
+                        Undo.RecordObject(layout, "Move Hotspot Shape");
+                        dragShape = true;
+                        dragged = false;
+                        dragFrom = SnappedPixel(local);
+                        GUI.FocusControl(null);
+                        current.Use();
+                        return true;
+                    }
+                    return false;
+                }
+                case EventType.MouseDrag when dragCorner >= 0:
+                    if (layout.MoveShapePoint(selectedTile, dragLoop, dragCorner, SnappedPixel(local)))
+                    {
+                        dragged = true;
+                        EditorUtility.SetDirty(layout);
+                    }
+                    current.Use();
+                    Repaint();
+                    return true;
+                case EventType.MouseDrag when dragShape:
+                {
+                    var to = SnappedPixel(local);
+                    if (to != dragFrom && layout.MoveShape(selectedTile, to - dragFrom))
+                    {
+                        dragFrom = to;
+                        dragged = true;
+                        EditorUtility.SetDirty(layout);
+                    }
+                    current.Use();
+                    Repaint();
+                    return true;
+                }
+                case EventType.MouseUp when dragCorner >= 0 || dragShape:
+                    dragCorner = -1;
+                    dragShape = false;
+                    if (dragged)
+                        layout.NotifyChanged();
+                    current.Use();
+                    return true;
+                case EventType.KeyDown when inside && (current.keyCode == KeyCode.Delete || current.keyCode == KeyCode.Backspace):
+                {
+                    if (!CornerAt(local, out var loop, out var corner))
+                        return false;
+                    var tile = selectedTile;
+                    // a hole down to its last three corners goes as a whole
+                    if (loop >= 0 && layout.ShapeLoop(tile, loop).Length <= 3)
+                        Edit("Remove Hotspot Shape Hole", () => layout.RemoveShapeHole(tile, loop));
+                    else
+                        Edit("Remove Hotspot Shape Corner", () => layout.RemoveShapePoint(tile, loop, corner));
+                    current.Use();
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        // The selected drawn shape's corners, to drag
+        void DrawShapeHandles(Vector2 local)
+        {
+            if (drawing != Drawing.None || selectedTile == 0 || !layout.IsDrawn(selectedTile))
+                return;
+            CornerAt(local, out var hoverLoop, out var hoverCorner);
+            for (int l = -1; ; l++)
+            {
+                var points = layout.ShapeLoop(selectedTile, l);
+                if (points == null)
+                    break;
+                for (int i = 0; i < points.Length; i++)
+                {
+                    var hot = (l == hoverLoop && i == hoverCorner) || (l == dragLoop && i == dragCorner);
+                    Handles.color = hot ? kHover : kLine;
+                    var p = ToCanvas(points[i]);
+                    Handles.DrawSolidDisc(p, Vector3.forward, hot ? 5 : 4);
+                    Handles.color = new Color(0, 0, 0, 0.8f);
+                    Handles.DrawWireDisc(p, Vector3.forward, hot ? 5 : 4);
+                }
+            }
+        }
+
         void DrawDrawing(Vector2 local)
         {
             if (drawing == Drawing.None)
@@ -348,11 +500,16 @@ namespace Chisel.Editors
                 Handles.color = kLine;
                 Handles.DrawAAPolyLine(2, sheet.min, new Vector2(sheet.xMax, sheet.yMin), sheet.max, new Vector2(sheet.xMin, sheet.yMax), sheet.min);
                 DrawDrawing(local);
+                DrawShapeHandles(local);
             }
 
             var inside = new Rect(0, 0, canvas.width, canvas.height).Contains(local);
+            // a drawn shape's corners and the shape itself move
+            if (drawing == Drawing.None && inside && (dragCorner >= 0 || dragShape || CornerAt(local, out _, out _) ||
+                                                      (dragNode < 0 && LineAt(local) < 0 && layout.IsDrawn(selectedTile) && layout.TileAt(ToPixel(local)) == selectedTile)))
+                EditorGUIUtility.AddCursorRect(new Rect(0, 0, canvas.width, canvas.height), MouseCursor.MoveArrow);
             // a line that moves shows which way it goes, under the mouse and while dragged
-            if (drawing == Drawing.None && inside)
+            else if (drawing == Drawing.None && inside)
             {
                 var node = dragNode;
                 if (node < 0)
@@ -365,7 +522,7 @@ namespace Chisel.Editors
                     EditorGUIUtility.AddCursorRect(new Rect(0, 0, canvas.width, canvas.height),
                                                    layout.cuts[node].kind == HotspotCutKind.Horizontal ? MouseCursor.ResizeVertical : MouseCursor.ResizeHorizontal);
             }
-            if (DrawingEvents(current, local, inside))
+            if (DrawingEvents(current, local, inside) || ShapeEvents(current, local, inside))
             {
                 GUI.EndClip();
                 return;
@@ -695,7 +852,7 @@ namespace Chisel.Editors
                         EditorUtility.DisplayDialog("Find lines", error, "OK");
                 }
             }
-            EditorGUILayout.HelpBox("Drag a line to move it. Right click a tile to split it; V or H splits it at the cursor. Delete removes the line, or the drawn shape, under the cursor. Draw Shape adds a tile of any shape over the others, Draw Hole a hole in the selected shape. Middle drag or Alt drag pans, the wheel zooms.", MessageType.None);
+            EditorGUILayout.HelpBox("Drag a line to move it. Right click a tile to split it; V or H splits it at the cursor. Delete removes the line, or the drawn shape, under the cursor. Draw Shape adds a tile of any shape over the others, Draw Hole a hole in the selected shape. A selected shape's corners drag; a double click on its edge adds one, Delete over one removes it, and dragging inside it moves the shape. Middle drag or Alt drag pans, the wheel zooms.", MessageType.None);
 
             EditorGUILayout.Space();
             var index = layout.IndexOfTile(selectedTile);

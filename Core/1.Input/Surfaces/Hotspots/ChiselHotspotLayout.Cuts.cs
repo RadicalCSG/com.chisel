@@ -215,6 +215,102 @@ namespace Chisel.Core
             return true;
         }
 
+        // A drawn tile's loop: its outline (loop -1) or one of its holes; null when it has none such
+        public Vector2Int[] ShapeLoop(int id, int loop)
+        {
+            var index = IndexOfTile(id);
+            if (index < 0)
+                return null;
+            var tile = tiles[index];
+            if (loop < 0)
+                return tile.points;
+            return tile.holes != null && loop < tile.holes.Length ? tile.holes[loop].points : null;
+        }
+
+        // A drawn tile's loop given new points, unless they leave it without area
+        bool SetShapeLoop(int id, int loop, Vector2Int[] points)
+        {
+            if (!IsDrawn(id) || points == null || points.Length < 3 || DoubledArea(points) == 0)
+                return false;
+            var index = IndexOfTile(id);
+            var tile = tiles[index];
+            if (loop < 0)
+                tile.points = points;
+            else
+            {
+                if (tile.holes == null || loop >= tile.holes.Length)
+                    return false;
+                tile.holes = (HotspotTileHole[])tile.holes.Clone();
+                tile.holes[loop] = new HotspotTileHole { points = points };
+            }
+            tiles[index] = tile;
+            return true;
+        }
+
+        // A corner of a drawn tile moved
+        public bool MoveShapePoint(int id, int loop, int corner, Vector2Int to)
+        {
+            var points = ShapeLoop(id, loop);
+            if (points == null || corner < 0 || corner >= points.Length)
+                return false;
+            points = (Vector2Int[])points.Clone();
+            points[corner] = to;
+            return SetShapeLoop(id, loop, points);
+        }
+
+        // A corner added to a drawn tile, after the given one
+        public bool InsertShapePoint(int id, int loop, int after, Vector2Int at)
+        {
+            var points = ShapeLoop(id, loop);
+            if (points == null || after < 0 || after >= points.Length)
+                return false;
+            var list = new List<Vector2Int>(points);
+            list.Insert(after + 1, at);
+            return SetShapeLoop(id, loop, list.ToArray());
+        }
+
+        // A corner taken from a drawn tile; a loop keeps at least 3
+        public bool RemoveShapePoint(int id, int loop, int corner)
+        {
+            var points = ShapeLoop(id, loop);
+            if (points == null || points.Length <= 3 || corner < 0 || corner >= points.Length)
+                return false;
+            var list = new List<Vector2Int>(points);
+            list.RemoveAt(corner);
+            return SetShapeLoop(id, loop, list.ToArray());
+        }
+
+        // A hole taken from a drawn tile
+        public bool RemoveShapeHole(int id, int hole)
+        {
+            var index = IndexOfTile(id);
+            if (index < 0 || !IsDrawn(id))
+                return false;
+            var tile = tiles[index];
+            if (tile.holes == null || hole < 0 || hole >= tile.holes.Length)
+                return false;
+            var holes = new List<HotspotTileHole>(tile.holes);
+            holes.RemoveAt(hole);
+            tile.holes = holes.Count > 0 ? holes.ToArray() : null;
+            tiles[index] = tile;
+            return true;
+        }
+
+        // A drawn tile moved as a whole, its holes with it
+        public bool MoveShape(int id, Vector2Int by)
+        {
+            var index = IndexOfTile(id);
+            if (index < 0 || !IsDrawn(id))
+                return false;
+            var tile = tiles[index];
+            Vector2Int[] Moved(Vector2Int[] points) => points == null ? null : Array.ConvertAll(points, p => p + by);
+            tile.points = Moved(tile.points);
+            if (tile.holes != null)
+                tile.holes = Array.ConvertAll(tile.holes, h => new HotspotTileHole { points = Moved(h.points) });
+            tiles[index] = tile;
+            return true;
+        }
+
         // A new texture size; the lines and tiles keep where they are on the texture
         public void Resize(Vector2Int newSize)
         {
