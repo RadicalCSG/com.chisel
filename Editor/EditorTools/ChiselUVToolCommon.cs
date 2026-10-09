@@ -534,6 +534,10 @@ namespace Chisel.Editors
                 serializedObject.ApplyModifiedProperties();
                 foreach (var item in surfaces)
                     item.Store();
+                var edited = new List<SurfaceReference>(surfaces.Length);
+                foreach (var item in surfaces)
+                    edited.Add(item.SurfaceReference);
+                ChiselHotspotGroupEdit.Spread(edited, undoableObjects.Length > 1 ? "Modified materials" : "Modified material");
             }
         }
 
@@ -1246,6 +1250,7 @@ namespace Chisel.Editors
                 details.hotspot.seed = NextSeed(details.hotspot.seed);
                 surface.SurfaceDetails = details;
             }
+            ChiselHotspotGroupEdit.Spread(selected.ToList(), kNextVariationShortcutName);
             if (s_Instance)
                 s_Instance.UpdateAllSurfaces();
         }
@@ -1320,6 +1325,7 @@ namespace Chisel.Editors
                 offset = math.round(offset * (float2)pixels) / (float2)pixels;
             details.hotspot.offset = offset - math.floor(offset);
             surface.SurfaceDetails = details;
+            ChiselHotspotGroupEdit.Spread(new[] { surface }, "Move Hotspot");
         }
 
         // A hotspot surface's texture turned along with the mouse (degrees, about the drag plane's normal)
@@ -1336,6 +1342,7 @@ namespace Chisel.Editors
             var rotation = start.rotation - degrees * facing;
             details.hotspot.rotation = rotation - 360 * Mathf.Floor(rotation / 360);
             surface.SurfaceDetails = details;
+            ChiselHotspotGroupEdit.Spread(new[] { surface }, "Rotate Hotspot");
         }
 
         // A hotspot surface's texture scaled along with the mouse (its density the other way round), to powers of two
@@ -1352,6 +1359,7 @@ namespace Chisel.Editors
                 density = Mathf.Pow(2, Mathf.Round(Mathf.Log(density, 2)));
             details.hotspot.density = density;
             surface.SurfaceDetails = details;
+            ChiselHotspotGroupEdit.Spread(new[] { surface }, "Scale Hotspot");
         }
 
         internal static Plane       s_WorldDragPlane;

@@ -1,4 +1,5 @@
 ﻿using System;
+using Chisel.Components;
 using Chisel.Core;
 using UnityEngine;
 using UnityEditor;
@@ -21,6 +22,33 @@ namespace Chisel.Editors
             var parent = dot < 0 ? string.Empty : path.Substring(0, dot + 1);
             var materialProp = property.serializedObject.FindProperty(parent + ChiselSurface.kChiselMaterialName + "." + ChiselMaterial.kMaterialFieldName);
             return materialProp != null ? HotspotTransformGUI.LayoutOf(materialProp.objectReferenceValue as Material) : null;
+        }
+
+        static readonly System.Text.RegularExpressions.Regex kDescriptionIndex = new(@"data\[(\d+)\]\.[^.\[]+$");
+        static readonly System.Collections.Generic.List<SurfaceReference> s_Surfaces = new();
+
+        // The surfaces connected to the edited one take its hotspot settings (ChiselHotspotGroupEdit)
+        static void SpreadToConnected(SerializedProperty property)
+        {
+            var match = kDescriptionIndex.Match(property.propertyPath);
+            if (!match.Success)
+                return;
+            var descriptionIndex = int.Parse(match.Groups[1].Value);
+            var edited = new System.Collections.Generic.List<SurfaceReference>();
+            foreach (var target in property.serializedObject.targetObjects)
+            {
+                s_Surfaces.Clear();
+                if (target is Chisel.Components.ChiselGeneratorComponent generator &&
+                    ChiselSurfaceSelectionManager.GetAllSurfaceReferences(generator, s_Surfaces))
+                {
+                    foreach (var surface in s_Surfaces)
+                    {
+                        if (surface.descriptionIndex == descriptionIndex)
+                            edited.Add(surface);
+                    }
+                }
+            }
+            ChiselHotspotGroupEdit.Spread(edited, "Modified surface");
         }
 
         public override float GetPropertyHeight(SerializedProperty property, GUIContent label)
@@ -79,6 +107,7 @@ namespace Chisel.Editors
                 if (EditorGUI.EndChangeCheck())
                 {
                     property.serializedObject.ApplyModifiedProperties();
+                    SpreadToConnected(property);
                 }
             }
             catch (ExitGUIException) { }
