@@ -87,7 +87,7 @@ namespace Chisel.Editors
             var pos = rot * (-bounds.center);
 
             previewUtility.DrawMesh(mesh, pos, rot, material, 0);
-            previewUtility.Render(false, false);
+            previewUtility.Render(true, false);
             return previewUtility.EndStaticPreview();
         }
 
