@@ -433,22 +433,8 @@ namespace Chisel.Core
                     // where along the edge the strip runs, between its corners' sections
                     var from = convex[k] ? math.dot(d, inner[k] - a) : 0;
                     var to   = convex[(k + 1) % count] ? math.dot(d, inner[(k + 1) % count] - a) : math.length(b - a);
-                    var repeats = 1;
-                    var step = to - from;
-                    if ((input.flags & HotspotTileFlags.RepeatBorder) != 0 && step > 0)
-                    {
-                        var nextSide = (j + 1) % t.count;
-                        var period = math.length(t.footPrevious[nextSide] - t.footNext[j]) / depthScale;
-                        if ((input.flags & HotspotTileFlags.PartialRepeats) != 0)
-                        {
-                            repeats = math.max(1, PartialRepeats(step, period, out var last));
-                            if (repeats > 1 || last < 1) step = period;
-                        } else
-                        {
-                            repeats = math.max(1, Repeats(step, period));
-                            step /= repeats;
-                        }
-                    }
+                    var period  = math.length(t.footPrevious[(j + 1) % t.count] - t.footNext[j]) / depthScale;
+                    var repeats = StripRepeats(input, j, to - from, period, out var step);
                     var previousCut = starts[k];
                     for (int rep = 0; rep < repeats; rep++)
                     {

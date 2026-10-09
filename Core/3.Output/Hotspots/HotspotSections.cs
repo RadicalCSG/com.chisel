@@ -35,6 +35,10 @@ namespace Chisel.Core
         public float2           offset;
         // how far a bordered tile's interior repeats are moved along, a part of one (BuildInteriorRepeats)
         public float2           interiorOffset;
+        // the border along each side of the tile as the sections lay it (t0, t1, t1 + t2 - t0, t2; or the triangle's):
+        // HotspotBorderMode and maximum stretch, from the tile's side with the same ends
+        public int4             sideMode;
+        public float4           sideStretch;
         public float3           right, up;
 
         public readonly bool Repeated => repeatX > 1 || repeatY > 1 || (lastRepeat.x > 0 && lastRepeat.x < 1) || (lastRepeat.y > 0 && lastRepeat.y < 1) ||
@@ -89,7 +93,7 @@ namespace Chisel.Core
             var across  = count == 4 && (choice.rotated ? repeatV : repeatU);
             var along   = count == 4 && (choice.rotated ? repeatU : repeatV);
             var shift   = offset - math.floor(offset);
-            return new HotspotSectionInput
+            var input = new HotspotSectionInput
             {
                 count = count, f0 = f0, f1 = f1, f2 = f2, t0 = t0, t1 = t1, t2 = t2,
                 textureSize = layout.textureSize, border = tile.border, pixelsPerUnit = tile.pixelsPerUnit * density, flags = tile.flags,
@@ -97,6 +101,23 @@ namespace Chisel.Core
                 offset = new float2(across ? shift.x : 0, along ? shift.y : 0),
                 interiorOffset = count == 4 ? shift : float2.zero
             };
+            // each side as the sections lay it takes the rule of the tile's side with the same ends (turned or mirrored)
+            var corners = count == 4 ? new float2x4(t0, t1, t1 + t2 - t0, t2) : new float2x4(t0, t1, t2, t2);
+            for (int j = 0; j < count; j++)
+            {
+                var a = corners[j]; var b = corners[(j + 1) % count];
+                for (int k = 0; k < tile.cornerCount; k++)
+                {
+                    var pa = tile.Corner(k); var pb = tile.Corner((k + 1) % tile.cornerCount);
+                    if (math.distance(a, pa) + math.distance(b, pb) < 0.5f || math.distance(a, pb) + math.distance(b, pa) < 0.5f)
+                    {
+                        input.sideMode[j]    = tile.sideMode[k];
+                        input.sideStretch[j] = tile.sideStretch[k];
+                        break;
+                    }
+                }
+            }
+            return input;
         }
 
         public static HotspotSections Create(Allocator allocator)
@@ -277,6 +298,45 @@ namespace Chisel.Core
             return count > kMaxRepeats ? 0 : (int)count;
         }
 
+        // How a border strip along an edge of the given length takes its tile side's strip (period, in the same units), by
+        // that side's rule (HotspotBorderMode) or the tile's flags: how many repeats, each step long (with partial
+        // repeats the last one cut off where the edge ends). A stretching side with a limit repeats, the fewest times
+        // that keep within it, when it would stretch further.
+        internal static int StripRepeats(in HotspotSectionInput input, int side, double length, double period, out double step)
+        {
+            step = length;
+            if (!(length > 0) || !(period > 0))
+                return 1;
+            var mode    = side >= 0 && side < 4 ? (HotspotBorderMode)input.sideMode[side] : HotspotBorderMode.Tile;
+            var repeat  = mode == HotspotBorderMode.Repeat || mode == HotspotBorderMode.RepeatPartial ||
+                          (mode == HotspotBorderMode.Tile && (input.flags & HotspotTileFlags.RepeatBorder) != 0);
+            var partial = mode == HotspotBorderMode.RepeatPartial ||
+                          (mode == HotspotBorderMode.Tile && (input.flags & HotspotTileFlags.PartialRepeats) != 0);
+            if (repeat)
+            {
+                if (partial)
+                {
+                    var count = math.max(1, PartialRepeats(length, period, out var last));
+                    if (count > 1 || last < 1) step = period;
+                    return count;
+                }
+                var whole = math.max(1, Repeats(length, period));
+                step = length / whole;
+                return whole;
+            }
+            var limit = side >= 0 && side < 4 ? (double)input.sideStretch[side] : 0;
+            if (limit > 1 && length / period > limit)
+            {
+                var count = (int)math.ceil(length / period / limit - 1e-9);
+                if (count > 1 && count <= kMaxRepeats)
+                {
+                    step = length / count;
+                    return count;
+                }
+            }
+            return 1;
+        }
+
         // How many repeats of a period it takes to cover a length, the last cut off (last: how much of it is used, 1 for
         // all); 0 when that is more than kMaxRepeats. A length within a millionth of a whole number of periods is that.
         public static int PartialRepeats(double length, double period, out double last)
@@ -362,20 +422,7 @@ namespace Chisel.Core
                 }
                 var length = math.length(s.footPrevious[next] - s.footNext[i]);
                 var period = math.length(t.footPrevious[next] - t.footNext[i]) * surfaceBand / tileBand;
-                var repeats = 1;
-                var step = length;
-                if ((input.flags & HotspotTileFlags.RepeatBorder) != 0)
-                {
-                    if ((input.flags & HotspotTileFlags.PartialRepeats) != 0)
-                    {
-                        repeats = math.max(1, PartialRepeats(length, period, out var last));
-                        step = repeats > 1 || last < 1 ? period : length;
-                    } else
-                    {
-                        repeats = math.max(1, Repeats(length, period));
-                        step = length / repeats;
-                    }
-                }
+                var repeats = StripRepeats(input, i, length, period, out var step);
                 // the strip, or its repeats: each from the tile's whole strip, cut square to the edge
                 var previousCut = squareNext[i];
                 for (int r = 0; r < repeats; r++)

@@ -15,6 +15,9 @@ namespace Chisel.Core
         public float            pixelsPerUnit;
         // Width of its border in pixels, 0 for none
         public float            border;
+        // The border along each side (from corner i to the next, HotspotBorderMode, maximum stretch)
+        public int4             sideMode;
+        public float4           sideStretch;
 
         public readonly float2 Corner(int index)
         {
@@ -501,6 +504,13 @@ namespace Chisel.Core
                     var point = tile.points[area >= 0 ? i : count - 1 - i];
                     var p = new float2(point.x, layout.size.y - point.y);
                     switch (i) { case 0: t.p0 = p; break; case 1: t.p1 = p; break; case 2: t.p2 = p; break; default: t.p3 = p; break; }
+                    // the side from here to the next corner: the same side of the points, the other way round when reversed
+                    var side = area >= 0 ? i : (2 * count - 2 - i) % count;
+                    if (tile.sides != null && side < tile.sides.Length)
+                    {
+                        t.sideMode[i]    = (int)tile.sides[side].mode;
+                        t.sideStretch[i] = math.max(0, tile.sides[side].maxStretch);
+                    }
                 }
                 if (layout.padding > 0)
                     Pad(ref t, layout.padding);

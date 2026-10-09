@@ -511,10 +511,52 @@ namespace Chisel.Editors
             tile.flags = Flag(tile.flags, HotspotTileFlags.PartialRepeats, "Repeats cut off", "Repeats keep their exact size and the last one is cut off, instead of all stretching to fit");
             tile.border = Mathf.Max(0, EditorGUILayout.IntField(new GUIContent("Border (px)", "The width of the tile's border, a band along its outline (0 for none)"), tile.border));
             tile.pixelsPerUnit = Mathf.Max(0, EditorGUILayout.FloatField(new GUIContent("Pixels per unit", "The texture density this tile is meant for; 0 takes the layout's"), tile.pixelsPerUnit));
+            if (tile.border > 0 && tile.points != null && tile.points.Length >= 3)
+                SideFields(ref tile);
             if (!EditorGUI.EndChangeCheck())
                 return false;
             EditLayout(layout, "Change Hotspot Tile", () => layout.tiles[index] = tile);
             return true;
+        }
+
+        static readonly GUIContent kSideModeContents    = new("", "How its border strip takes a surface's edge: as the tile's flags say, stretched, repeated (stretched to fit), or repeated at its exact size with the last one cut off");
+        static readonly GUIContent kSideStretchContents = new("Max stretch", "Stretching: the most the strip may stretch (2: twice its length in the tile) before it repeats instead, the fewest times that keep within it; 0 for no limit");
+
+        // The border along each side of a tile, each named by where it faces in the texture
+        static void SideFields(ref HotspotTile tile)
+        {
+            var count = tile.points.Length;
+            var sides = tile.sides != null && tile.sides.Length == count ? (HotspotBorderSide[])tile.sides.Clone() : new HotspotBorderSide[count];
+            var centre = Vector2.zero;
+            foreach (var point in tile.points)
+                centre += point;
+            centre /= count;
+            EditorGUILayout.LabelField("Border along each side");
+            EditorGUI.indentLevel++;
+            var changed = false;
+            for (int i = 0; i < count; i++)
+            {
+                // the texture's y goes down
+                var middle = ((Vector2)tile.points[i] + tile.points[(i + 1) % count]) * 0.5f - centre;
+                var name = Mathf.Abs(middle.x) > Mathf.Abs(middle.y) ? (middle.x > 0 ? "Right" : "Left") : (middle.y > 0 ? "Bottom" : "Top");
+                using (new EditorGUILayout.HorizontalScope())
+                {
+                    EditorGUI.BeginChangeCheck();
+                    var mode = (HotspotBorderMode)EditorGUILayout.EnumPopup(new GUIContent(name, kSideModeContents.tooltip), sides[i].mode);
+                    float maxStretch;
+                    using (new EditorGUI.DisabledScope(mode != HotspotBorderMode.Stretch && mode != HotspotBorderMode.Tile))
+                        maxStretch = Mathf.Max(0, EditorGUILayout.FloatField(kSideStretchContents, sides[i].maxStretch));
+                    if (EditorGUI.EndChangeCheck())
+                    {
+                        sides[i].mode = mode;
+                        sides[i].maxStretch = maxStretch;
+                        changed = true;
+                    }
+                }
+            }
+            EditorGUI.indentLevel--;
+            if (changed)
+                tile.sides = sides;
         }
 
         static HotspotTileFlags Flag(HotspotTileFlags flags, HotspotTileFlags flag, string label, string tooltip)

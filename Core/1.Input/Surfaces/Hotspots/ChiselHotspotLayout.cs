@@ -26,6 +26,27 @@ namespace Chisel.Core
         PartialRepeats = 1 << 8,
     }
 
+    // How a border strip along one side of a tile takes the length of a surface's edge
+    public enum HotspotBorderMode : int
+    {
+        // as the tile's flags say (RepeatBorder, PartialRepeats)
+        Tile          = 0,
+        Stretch       = 1,
+        Repeat        = 2,
+        // repeats of their exact size, the last one cut off
+        RepeatPartial = 3,
+    }
+
+    // The border along one side of a tile (from its corner to the next, in the order of its points)
+    [Serializable]
+    public struct HotspotBorderSide
+    {
+        public HotspotBorderMode mode;
+        // Stretching: the most a strip may stretch (2: twice its length in the tile) before it repeats instead, the
+        // fewest repeats that keep within it; 0 for no limit
+        public float             maxStretch;
+    }
+
     // One region of a hotspot texture: a rectangle or a triangle
     [Serializable]
     public struct HotspotTile
@@ -40,6 +61,9 @@ namespace Chisel.Core
         public int              border;
         // Overrides the layout's pixels per unit when above 0
         public float            pixelsPerUnit;
+        // The border along each side, in the order of the points (side i from point i to the next); empty: as the flags
+        // say along every side
+        public HotspotBorderSide[] sides;
     }
 
     public enum HotspotCutKind : byte
