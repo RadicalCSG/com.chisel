@@ -99,6 +99,8 @@ namespace Chisel.Editors
             try
             {
                 property.serializedObject.Update();
+                var surfaces = SurfacesOf(property);
+                var wasWorld = ChiselTextureLockEdit.WorldSpaceOf(surfaces);
                 EditorGUI.BeginChangeCheck();
                 {
                     position.height = SurfaceFlagsPropertyDrawer.DefaultHeight;
@@ -109,7 +111,6 @@ namespace Chisel.Editors
                     if (layout != null)
                     {
                         position.height = HotspotTransformGUI.Height;
-                        var surfaces = SurfacesOf(property);
                         var material = MaterialOf(property);
                         HotspotTransformGUI.OnGUI(position, property.FindPropertyRelative(nameof(SurfaceDetails.hotspot)), layout, hasLabel,
                                                   ChiselHotspotGroupEdit.MostVariations(surfaces),
@@ -129,6 +130,9 @@ namespace Chisel.Editors
                 if (EditorGUI.EndChangeCheck())
                 {
                     property.serializedObject.ApplyModifiedProperties();
+                    // Lock texture to object toggled: the texture stays where it is
+                    if (ChiselTextureLockEdit.KeepLook(surfaces, wasWorld, "Modified surface"))
+                        property.serializedObject.Update();
                     SpreadToConnected(property);
                 }
             }

@@ -383,7 +383,7 @@ namespace Chisel.Editors
         // World size follows the transform: scaled brushes take tiles by their scaled size
         static void ScaledTransforms()
         {
-            var s = Station("10 scaled transforms (texel density in world units)");
+            var s = Station("10 scaled transforms (the texture scales with a locked brush)");
             Box(s, "cube 1 scaled (2,1,1)", new Vector3(1, 0, 0), new Vector3(1, 1, 1), default, new Vector3(2, 1, 1));
             Box(s, "cube 2 scaled 0.5", new Vector3(5, 0, 0), new Vector3(2, 2, 2), default, new Vector3(0.5f, 0.5f, 0.5f));
             Box(s, "cube 1 unscaled (reference)", new Vector3(8, 0, 0), new Vector3(1, 1, 1));

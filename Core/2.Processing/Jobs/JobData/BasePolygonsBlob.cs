@@ -43,6 +43,9 @@ namespace Chisel.Core
         public float    hotspotDensity;
         public bool     hotspotMirror;
         public float2   hotspotOffset;
+        // the texture is not locked to the object (SurfaceDetailFlags.TextureIsInWorldSpace): a hotspot surface's frame
+        // comes from the tree's axes and its repeats lie on a grid fixed in the tree
+        public bool     textureInWorld;
     }
 
     struct BasePolygonsBlob

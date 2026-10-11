@@ -46,6 +46,9 @@ namespace Chisel.Core
         // the layout's padding: the interior samples its rectangle less this along every side, so filtering at its seams
         // never reaches the border
         public float            padding;
+        // the texture is not locked to the object: repeats that keep their size lie on a grid fixed in the frame's
+        // origin (the tree's), so moving the object moves it over them
+        public bool             world;
 
         public readonly int MaxRepeats   => maxRepeats > 0 ? math.min(maxRepeats, HotspotSections.kMaxRepeats) : HotspotSections.kMaxRepeats;
         public readonly int MaxTriangles => maxTriangles > 0 ? maxTriangles : int.MaxValue;
@@ -94,7 +97,7 @@ namespace Chisel.Core
         // In the frame the shape was found in (HotspotMatcher.ShapeOf), at density times the tile's pixels a unit, its
         // repeats moved along by offset (in repeats, along the texture's right and up)
         public static HotspotSectionInput Input(in HotspotTileData tile, in HotspotLayoutData layout, in HotspotShape shape, in HotspotChoice choice, float3 right, float3 up, float density,
-                                                float2 offset = default)
+                                                float2 offset = default, bool world = false)
         {
             HotspotMatcher.Corners(tile, shape, choice, out var count, out var f0, out var f1, out var f2, out var t0, out var t1, out var t2);
             // the axes along which the tile repeats, in the surface's frame
@@ -111,8 +114,24 @@ namespace Chisel.Core
                 offset = new float2(across ? shift.x : 0, along ? shift.y : 0),
                 interiorOffset = count == 4 ? shift : float2.zero,
                 maxRepeats = layout.maxRepeats, maxTriangles = layout.maxTriangles,
-                sideStart = tile.sideStart, sideCount = tile.sideCount, padding = layout.padding
+                sideStart = tile.sideStart, sideCount = tile.sideCount, padding = layout.padding, world = world
             };
+            // repeats of their exact size, in the world: moved along so a seam falls on the frame's origin
+            if (world && count == 4 && (tile.flags & HotspotTileFlags.PartialRepeats) != 0)
+            {
+                var acrossLength = math.length(f1 - f0) / (choice.repeatX - 1 + (choice.lastRepeat.x > 0 ? choice.lastRepeat.x : 1));
+                var upLength     = math.length(f2 - f0) / (choice.repeatY - 1 + (choice.lastRepeat.y > 0 ? choice.lastRepeat.y : 1));
+                if (across && acrossLength > 0)
+                {
+                    var at = input.offset.x + math.dot(f0, math.normalize(f1 - f0)) / acrossLength;
+                    input.offset.x = at - math.floor(at);
+                }
+                if (along && upLength > 0)
+                {
+                    var at = input.offset.y + math.dot(f0, math.normalize(f2 - f0)) / upLength;
+                    input.offset.y = at - math.floor(at);
+                }
+            }
             // each side as the sections lay it takes the rule of the tile's side with the same ends (turned or mirrored)
             var corners = count == 4 ? new float2x4(t0, t1, t1 + t2 - t0, t2) : new float2x4(t0, t1, t2, t2);
             for (int j = 0; j < count && !tile.shaped; j++)

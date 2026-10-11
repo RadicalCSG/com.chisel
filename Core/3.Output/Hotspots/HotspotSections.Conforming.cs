@@ -614,6 +614,12 @@ namespace Chisel.Core
             if (!(period.x > 0) || !(period.y > 0))
                 return false;
             var shift  = period * (double2)input.interiorOffset;
+            // in the world, the repeats on a grid from the frame's origin rather than from the inset bounds' corner
+            if (input.world)
+            {
+                shift += s.inner[0];
+                shift -= period * math.floor(shift / period);
+            }
             var origin = s.inner[0] - shift;
             var extent = new double2(math.length(s.inner[1] - s.inner[0]), math.length(s.inner[3] - s.inner[0]));
             var band   = toEdges ? (double)surfaceBand : 0;
@@ -644,6 +650,41 @@ namespace Chisel.Core
                     AddCell(start, corner, corner + new double2(period.x, 0), corner + new double2(0, period.y), i0, i1, i3, size);
                 }
             }
+            return true;
+        }
+
+        // Where a bordered tile's interior repeats start (the inset bounds' first corner, in the frame) and their size, as
+        // BuildInteriorRepeats lays them on a surface with a border along all its edges; false when it lays none
+        public static bool InteriorRepeatStart(in HotspotSectionInput input, out double2 corner, out double2 period)
+        {
+            corner = period = default;
+            if (input.count != 4 || !(input.pixelsPerUnit > 0) || input.Repeated)
+                return false;
+            var s = new Outline(4, input.f0, input.f1, input.f2);
+            var t = new Outline(4, input.t0, input.t1, input.t2);
+            if (!Bands(input, s, t, out var surfaceBand, out var tileBand) || surfaceBand >= s.MaxBand())
+                return false;
+            s.Inset(surfaceBand, 0);
+            t.Inset(tileBand);
+            PaddedInner(t, input.padding, out var i0, out var i1, out var i3);
+            period = new double2(math.length(i1 - i0), math.length(i3 - i0)) / input.pixelsPerUnit;
+            corner = s.inner[0];
+            return period.x > 0 && period.y > 0;
+        }
+
+        // Where a tile's repeats of their exact size (PartialRepeats) start along the frame's axes they repeat along,
+        // over their size; false when it has none
+        public static bool PartialRepeatStart(in HotspotSectionInput input, out double2 start, out double2 size)
+        {
+            start = size = default;
+            if (input.count != 4 || (input.flags & HotspotTileFlags.PartialRepeats) == 0 || !input.Repeated)
+                return false;
+            var across = math.length(input.f1 - input.f0) / (input.repeatX - 1 + (input.lastRepeat.x > 0 ? input.lastRepeat.x : 1));
+            var up     = math.length(input.f2 - input.f0) / (input.repeatY - 1 + (input.lastRepeat.y > 0 ? input.lastRepeat.y : 1));
+            if (!(across > 0) || !(up > 0))
+                return false;
+            start = new double2(math.dot(input.f0, math.normalize(input.f1 - input.f0)), math.dot(input.f0, math.normalize(input.f2 - input.f0)));
+            size  = new double2(across, up);
             return true;
         }
 

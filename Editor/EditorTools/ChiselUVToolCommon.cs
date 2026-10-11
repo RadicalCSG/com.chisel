@@ -498,6 +498,10 @@ namespace Chisel.Editors
                 return;
 
 			serializedObject.UpdateIfRequiredOrScript();
+            var selectedReferences = new List<SurfaceReference>(surfaces.Length);
+            foreach (var item in surfaces)
+                selectedReferences.Add(item.SurfaceReference);
+            var wasWorld = ChiselTextureLockEdit.WorldSpaceOf(selectedReferences);
             EditorGUI.BeginChangeCheck();
 			{
 				UpdateChiselMaterials(chiselMaterialProp);
@@ -543,6 +547,13 @@ namespace Chisel.Editors
                 var edited = new List<SurfaceReference>(surfaces.Length);
                 foreach (var item in surfaces)
                     edited.Add(item.SurfaceReference);
+                // Lock texture to object toggled: the texture stays where it is
+                if (ChiselTextureLockEdit.KeepLook(edited, wasWorld, undoableObjects.Length > 1 ? "Modified materials" : "Modified material"))
+                {
+                    foreach (var item in surfaces)
+                        item.Load();
+                    serializedObject.Update();
+                }
                 ChiselHotspotGroupEdit.Spread(edited, undoableObjects.Length > 1 ? "Modified materials" : "Modified material");
             }
         }

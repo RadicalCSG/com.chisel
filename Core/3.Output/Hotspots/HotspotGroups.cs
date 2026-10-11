@@ -13,6 +13,7 @@ namespace Chisel.Core
         public int    pinned;
         public float  density;
         public float2 offset;
+        public bool   world;        // repeats on a grid fixed in the tree (the texture not locked to the object)
     }
 
     // Coplanar neighbouring surfaces, of any brush in the model, with the same hotspot layout and frame are connected
@@ -255,7 +256,8 @@ namespace Chisel.Core
                     var a = SourceOf(brushes, candidates[pairs[i].x]);
                     var b = SourceOf(brushes, candidates[pairs[i].y]);
                     var coplanar  = a.layout == b.layout && math.dot(a.normal, b.normal) >= kSameDirection;
-                    var sameFrame = math.dot(a.right, b.right) >= kSameDirection && math.dot(a.up, b.up) >= kSameDirection;
+                    // the same directions and the same units (a frame measures in its brush's own)
+                    var sameFrame = SameAxis(a.right, b.right) && SameAxis(a.up, b.up);
                     var together  = coplanar && sameFrame;
                     var priority  = int.MaxValue;
                     if (linked.TryGetValue(pairs[i], out var link) && link.y != 0)
@@ -400,7 +402,7 @@ namespace Chisel.Core
                     variant  = choice.variant
                 };
                 if (tile.border > 0 || choice.Repeated || math.any(source.offset != 0))
-                    group.input = HotspotSections.Input(tile, layout, shape, choice, source.right, source.up, density, source.offset);
+                    group.input = HotspotSections.Input(tile, layout, shape, choice, source.right, source.up, density, source.offset, source.world);
                 group.info = HotspotDiagnostics.Info(tile, layout, choice, group.input, source.pinned != 0 && tile.id == source.pinned, density);
                 if (group.input.count > 0)
                 {
@@ -494,6 +496,12 @@ namespace Chisel.Core
             var axis  = math.normalize(q1 - q0);
             var angle = math.atan2(math.dot(axis, math.cross(nTo, nFrom)), math.dot(nTo, nFrom));
             return math.mul(float4x4.Translate(q0), math.mul(float4x4.AxisAngle(axis, angle), float4x4.Translate(-q0)));
+        }
+
+        static bool SameAxis(float3 a, float3 b)
+        {
+            var la = math.length(a); var lb = math.length(b);
+            return la > 0 && lb > 0 && math.dot(a, b) >= kSameDirection * la * lb && math.abs(la - lb) <= (1 - kSameDirection) * la;
         }
 
         static HotspotSurfaceSource SourceOf(NativeList<BrushData> brushes, int2 at)

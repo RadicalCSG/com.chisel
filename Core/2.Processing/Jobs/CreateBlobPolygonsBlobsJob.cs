@@ -302,7 +302,8 @@ namespace Chisel.Core
                     hotspotRotation       = polygon.surface.details.hotspot.rotation + (polygon.surface.details.hotspot.mirrorY ? 180 : 0),
                     hotspotDensity        = polygon.surface.details.hotspot.Density,
                     hotspotMirror         = polygon.surface.details.hotspot.mirror != polygon.surface.details.hotspot.mirrorY,
-                    hotspotOffset         = polygon.surface.details.hotspot.offset
+                    hotspotOffset         = polygon.surface.details.hotspot.offset,
+                    textureInWorld        = (polygon.surface.details.detailFlags & SurfaceDetailFlags.TextureIsInWorldSpace) != 0
                 };
             }
             var basePolygonsBlob = builder.CreateBlobAssetReference<BasePolygonsBlob>(Allocator.Persistent); // Confirmed to be disposed

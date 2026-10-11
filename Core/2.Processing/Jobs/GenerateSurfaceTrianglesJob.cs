@@ -591,6 +591,9 @@ namespace Chisel.Core
 						var localToPlane = MathExtensions.GenerateLocalToPlaneSpaceMatrix(plane);
 						var treeToPlane = math.mul(localToPlane, treeToNode);
 						var planeNormalMap = math.mul(nodeToTreeInvTrans, plane);
+						// uvs relative to the world instead of the object (as SurfaceFrame)
+						if (baseSurfaces[surf].textureInWorld)
+							treeToPlane = MathExtensions.GenerateLocalToPlaneSpaceMatrix(planeNormalMap / math.length(planeNormalMap.xyz));
 						var map3DTo2D = new Map3DTo2D(planeNormalMap.xyz);
 
 						// Normal flip logic preparation
@@ -851,29 +854,51 @@ namespace Chisel.Core
 				var cap  = HotspotCaps.Find(ref basePolygonCache[brushNodeOrder].Value, surf, capFaces, capCorners, out var capNormal);
 				var lead = cap ? capFaces[0] : surf;
 				var hotspotRight = float3.zero; var hotspotUp = float3.zero; var shape = default(HotspotShape);
+				// locked to the object, its units: how many of the brush's own units a unit of the tree is (its scale)
+				var ownUnits = 1.0f;
 				if (cap)
 				{
 					if (math.dot(capNormal, finalFaceNormal) < 0)
 						capNormal = -capNormal;
 					var localNormal = math.mul(math.transpose(new float3x3(nodeToTree)), capNormal);
-					HotspotMatcher.Frame(capNormal, localNormal, nodeToTree, baseSurfaces[lead].hotspotRotation, baseSurfaces[lead].hotspotMirror, out hotspotRight, out hotspotUp);
+					// locked to the object, in the brush's own space and units; otherwise the tree's
+					if (baseSurfaces[lead].textureInWorld)
+						HotspotMatcher.Frame(capNormal, baseSurfaces[lead].hotspotRotation, baseSurfaces[lead].hotspotMirror, out hotspotRight, out hotspotUp);
+					else
+					{
+						HotspotMatcher.Frame(capNormal, localNormal, nodeToTree, baseSurfaces[lead].hotspotRotation, baseSurfaces[lead].hotspotMirror, out hotspotRight, out hotspotUp);
+						ownUnits = HotspotMatcher.OwnUnits(capNormal, math.normalizesafe(localNormal), math.inverse(nodeToTree), baseSurfaces[lead].hotspotRotation, baseSurfaces[lead].hotspotMirror);
+					}
 					shape = HotspotMatcher.ShapeOf(capCorners.AsArray(), hotspotRight, hotspotUp);
 					cap = shape.radial;
 				}
 				if (!cap)
 				{
 					lead = surf;
-					HotspotMatcher.Frame(finalFaceNormal, baseSurfaces[surf].localPlane.xyz, nodeToTree, baseSurfaces[surf].hotspotRotation, baseSurfaces[surf].hotspotMirror, out hotspotRight, out hotspotUp);
+					if (baseSurfaces[surf].textureInWorld)
+						HotspotMatcher.Frame(finalFaceNormal, baseSurfaces[surf].hotspotRotation, baseSurfaces[surf].hotspotMirror, out hotspotRight, out hotspotUp);
+					else
+					{
+						// the brush's own normal, facing as the drawn face does (inwards in the subtractive workflow)
+						var ownNormal = math.normalizesafe(baseSurfaces[surf].localPlane.xyz);
+						var toTree = math.transpose(math.inverse(nodeToTree));
+						if (math.dot(math.mul(toTree, new float4(ownNormal, 0)).xyz, finalFaceNormal) < 0)
+							ownNormal = -ownNormal;
+						HotspotMatcher.Frame(finalFaceNormal, baseSurfaces[surf].localPlane.xyz, nodeToTree, baseSurfaces[surf].hotspotRotation, baseSurfaces[surf].hotspotMirror, out hotspotRight, out hotspotUp);
+						ownUnits = HotspotMatcher.OwnUnits(finalFaceNormal, ownNormal, math.inverse(nodeToTree), baseSurfaces[surf].hotspotRotation, baseSurfaces[surf].hotspotMirror);
+					}
 					shape = HotspotMatcher.ShapeOf(uniqueVertexMapper.surfaceColliderVertices.AsArray(), hotspotRight, hotspotUp);
 					HotspotMatcher.MaskOf(ref shape, uniqueVertexMapper.surfaceColliderVertices.AsArray(), surfaceIndexList.AsArray(), hotspotRight, hotspotUp);
 				}
-				var density = baseSurfaces[lead].hotspotDensity > 0 ? baseSurfaces[lead].hotspotDensity : 1;
+				// measured in the brush's own units when locked: a scaled brush's texture scales with it
+				var density = (baseSurfaces[lead].hotspotDensity > 0 ? baseSurfaces[lead].hotspotDensity : 1) * ownUnits;
 				var seed   = math.hash(new uint2(baseSurfaces[lead].hotspotSeed, (uint)baseSurfaces[lead].descriptionIndex));
 				var choice = HotspotMatcher.Choose(hotspotTiles, layout, shape, seed, baseSurfaces[lead].hotspotPinned, density: density);
 				// coplanar neighbours with this layout and frame, of any brush, are matched again together (HotspotGroups)
 				if (!cap)
 					hotspotSource = new HotspotSurfaceSource { layout = hotspot, right = hotspotRight, up = hotspotUp, normal = finalFaceNormal, seed = seed,
-															   pinned = baseSurfaces[surf].hotspotPinned, density = density, offset = baseSurfaces[surf].hotspotOffset };
+															   pinned = baseSurfaces[surf].hotspotPinned, density = density, offset = baseSurfaces[surf].hotspotOffset,
+															   world = baseSurfaces[surf].textureInWorld };
 				if (choice.tile >= 0)
 				{
 					uvMat = HotspotMatcher.Mapping(hotspotTiles[choice.tile], layout, shape, choice, hotspotRight, hotspotUp);
@@ -881,8 +906,10 @@ namespace Chisel.Core
 					// model's weld (OutputHotspotSections)
 					// or whose repeats are moved along
 					// (a cap is mapped whole)
-					if (!cap && (hotspotTiles[choice.tile].border > 0 || choice.Repeated || math.any(baseSurfaces[surf].hotspotOffset != 0)))
-						sectionInput = HotspotSections.Input(hotspotTiles[choice.tile], layout, shape, choice, hotspotRight, hotspotUp, density, baseSurfaces[surf].hotspotOffset);
+					if (!cap && (hotspotTiles[choice.tile].border > 0 || choice.Repeated || math.any(baseSurfaces[surf].hotspotOffset != 0) ||
+								 (baseSurfaces[surf].textureInWorld && (hotspotTiles[choice.tile].flags & HotspotTileFlags.PartialRepeats) != 0)))
+						sectionInput = HotspotSections.Input(hotspotTiles[choice.tile], layout, shape, choice, hotspotRight, hotspotUp, density, baseSurfaces[surf].hotspotOffset,
+															 baseSurfaces[surf].textureInWorld);
 					var pinnedId = baseSurfaces[lead].hotspotPinned;
 					hotspotInfo = HotspotDiagnostics.Info(hotspotTiles[choice.tile], layout, choice, sectionInput,
 														  pinnedId != 0 && hotspotTiles[choice.tile].id == pinnedId, density);
@@ -1022,9 +1049,17 @@ namespace Chisel.Core
 						  out float4x4 treeToPlane, out float3 finalFaceNormal)
 		{
 			var plane = baseSurfaces[surf].localPlane;
-			var localToPlane = MathExtensions.GenerateLocalToPlaneSpaceMatrix(plane);
-			treeToPlane = math.mul(localToPlane, treeToNode);
 			var planeNormalMap = math.mul(nodeToTreeInvTrans, plane);
+			// uvs relative to the object (locked), or to the world: from the plane as it lies in the tree
+			if (baseSurfaces[surf].textureInWorld)
+			{
+				var treePlane = planeNormalMap / math.length(planeNormalMap.xyz);
+				treeToPlane = MathExtensions.GenerateLocalToPlaneSpaceMatrix(treePlane);
+			} else
+			{
+				var localToPlane = MathExtensions.GenerateLocalToPlaneSpaceMatrix(plane);
+				treeToPlane = math.mul(localToPlane, treeToNode);
+			}
 			var map3DTo2D = new Map3DTo2D(planeNormalMap.xyz);
 			finalFaceNormal = map3DTo2D.normal;
 			if (subtractiveWorkflow)

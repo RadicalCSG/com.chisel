@@ -133,6 +133,29 @@ namespace Chisel.Core
             Frame(normal, math.mul(nodeToTree, new float4(localUp, 0)).xyz, rotation, mirror, out right, out up);
         }
 
+        // Locked to the object, measured in the brush's own units: how many of them a unit of the tree is along the frame
+        // (the geometric mean across and up; 1 on a brush that is not scaled), which multiplies the surface's density so
+        // a scaled brush's texture scales with it
+        public static float OwnUnits(float3 normal, float3 localNormal, float4x4 treeToNode, float rotation, bool mirror)
+        {
+            LocalFrame(normal, localNormal, treeToNode, rotation, mirror, out var right, out var up);
+            var units = math.sqrt(math.length(right) * math.length(up));
+            return units > 0 && math.isfinite(units) ? units : 1;
+        }
+
+        // The frame in the brush's own space (localNormal), turned and mirrored there, as what a tree position is dotted
+        // with to give the brush's coordinates along it (treeToNode's transpose carries it), less its part along the normal
+        static void LocalFrame(float3 normal, float3 localNormal, float4x4 treeToNode, float rotation, bool mirror, out float3 right, out float3 up)
+        {
+            Frame(localNormal, rotation, mirror, out var localRight, out var localUp);
+            var carry = math.transpose(new float3x3(treeToNode));
+            right = math.mul(carry, localRight);
+            up    = math.mul(carry, localUp);
+            var n = math.normalizesafe(normal);
+            right -= n * math.dot(n, right);
+            up    -= n * math.dot(n, up);
+        }
+
         // The frame turned around the normal (degrees, counter-clockwise seen from in front), and mirrored left to right
         public static void Frame(float3 normal, float rotation, bool mirror, out float3 right, out float3 up)
         {
