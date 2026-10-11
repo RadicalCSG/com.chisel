@@ -312,6 +312,8 @@ namespace Chisel.Core
                 public NativeArray<HotspotLayoutData>       hotspotLayouts;
                 public NativeArray<float4>                  hotspotTileSides;
                 public NativeArray<ulong>                   hotspotVariants;
+                // the layouts (by id) edited since the tree's last update
+                public NativeArray<bool>                    changedHotspotLayouts;
                 // and the surfaces connected or disconnected by hand (ChiselHotspotLinkStore)
                 public NativeArray<HotspotLink>             hotspotLinks;
             } 
@@ -591,16 +593,22 @@ namespace Chisel.Core
                 Temporaries.changedDecalBounds              = new NativeArray<MinMaxAABB>(chiselLookupValues.changedDecalBounds.AsArray(), defaultAllocator);
                 chiselLookupValues.changedDecalBounds.Clear();
 
-                // The hotspot layouts; when one changed every surface is mapped again
+                // The hotspot layouts; the brushes drawn on one edited since the last update are mapped again
+                // (FindHotspotAffectedBrushesJob)
                 {
                     using var hotspotTiles     = new NativeList<HotspotTileData>(Allocator.Temp);
                     using var hotspotLayouts   = new NativeList<HotspotLayoutData>(Allocator.Temp);
                     using var hotspotTileSides = new NativeList<float4>(Allocator.Temp);
                     using var hotspotVariants  = new NativeList<ulong>(Allocator.Temp);
-                    var hotspotHash = ChiselHotspotStore.Gather(hotspotTiles, hotspotLayouts, hotspotTileSides, hotspotVariants);
-                    if (hotspotHash != chiselLookupValues.hotspotHash)
-                        this.rebuildAllBrushes = true;
-                    chiselLookupValues.hotspotHash = hotspotHash;
+                    using var layoutHashes     = new NativeList<uint>(Allocator.Temp);
+                    ChiselHotspotStore.Gather(hotspotTiles, hotspotLayouts, hotspotTileSides, hotspotVariants);
+                    ChiselHotspotStore.LayoutHashes(layoutHashes);
+                    var previous = chiselLookupValues.hotspotLayoutHashes;
+                    Temporaries.changedHotspotLayouts = new NativeArray<bool>(layoutHashes.Length + 1, defaultAllocator);
+                    for (int i = 0; i < layoutHashes.Length; i++)
+                        Temporaries.changedHotspotLayouts[i + 1] = i >= previous.Length || previous[i] != layoutHashes[i];
+                    previous.Clear();
+                    previous.AddRange(layoutHashes.AsArray());
                     Temporaries.hotspotTiles   = new NativeArray<HotspotTileData>(hotspotTiles.AsArray(), defaultAllocator);
                     Temporaries.hotspotLayouts = new NativeArray<HotspotLayoutData>(hotspotLayouts.AsArray(), defaultAllocator);
                     Temporaries.hotspotTileSides = new NativeArray<float4>(hotspotTileSides.AsArray(), defaultAllocator);
@@ -699,6 +707,7 @@ namespace Chisel.Core
 			readonly static ProfilerMarker kJobFindModifiedBrushesJobProfilerMarker = new("Job_FindModifiedBrushesJob");
 			readonly static ProfilerMarker kJobInvalidateBrushesJobProfilerMarker = new("Job_InvalidateBrushesJob");
 			readonly static ProfilerMarker kJobFindDecalAffectedBrushesJobProfilerMarker = new("Job_FindDecalAffectedBrushesJob");
+			readonly static ProfilerMarker kJobFindHotspotAffectedBrushesJobProfilerMarker = new("Job_FindHotspotAffectedBrushesJob");
 			readonly static ProfilerMarker kJobUpdateBrushMeshIDsJobProfilerMarker = new("Job_UpdateBrushMeshIDsJob");
 			readonly static ProfilerMarker kJob_UpdateTransformationsJobProfilerMarker = new("Job_UpdateTransformationsJob");
 			readonly static ProfilerMarker kJob_BuildCompactTreeJobProfilerMarker = new("Job_BuildCompactTreeJob");
@@ -1224,6 +1233,31 @@ namespace Chisel.Core
                             JobHandles.Read(
                                 JobHandleType.decalVolumesJobHandle,
                                 JobHandleType.brushTreeSpaceBoundCacheJobHandle,
+                                JobHandleType.allTreeBrushIndexOrdersJobHandle),
+                            JobHandles.Write(
+                                JobHandleType.rebuildTreeBrushIndexOrdersJobHandle));
+                    }
+                    #endregion
+
+                    #region Find Hotspot Affected Brushes
+                    using (kJobFindHotspotAffectedBrushesJobProfilerMarker.Auto())
+                    {
+                        const bool runInParallel = runInParallelDefault;
+                        var findHotspotAffectedBrushesJob = new FindHotspotAffectedBrushesJob
+                        {
+                            // Read
+                            changedLayouts              = Temporaries.changedHotspotLayouts,
+                            basePolygonCache            = chiselLookupValues.basePolygonCache,
+                            allTreeBrushIndexOrders     = Temporaries.allTreeBrushIndexOrders,
+                            brushCount                  = this.brushCount,
+
+                            // Read/Write
+                            rebuildTreeBrushIndexOrders = Temporaries.rebuildTreeBrushIndexOrders
+                        };
+                        findHotspotAffectedBrushesJob.Schedule(runInParallel,
+                            JobHandles.Read(
+                                JobHandleType.decalVolumesJobHandle,
+                                JobHandleType.basePolygonCacheJobHandle,
                                 JobHandleType.allTreeBrushIndexOrdersJobHandle),
                             JobHandles.Write(
                                 JobHandleType.rebuildTreeBrushIndexOrdersJobHandle));
@@ -2888,6 +2922,7 @@ namespace Chisel.Core
                 lastJobHandle.AddDependency(Temporaries.hotspotLinks                 .SafeDispose(JobHandles[JobHandleType.decalVolumesJobHandle].readWriteBarrier));
                 lastJobHandle.AddDependency(Temporaries.hotspotTileSides             .SafeDispose(JobHandles[JobHandleType.decalVolumesJobHandle].readWriteBarrier));
                 lastJobHandle.AddDependency(Temporaries.hotspotVariants              .SafeDispose(JobHandles[JobHandleType.decalVolumesJobHandle].readWriteBarrier));
+                lastJobHandle.AddDependency(Temporaries.changedHotspotLayouts        .SafeDispose(JobHandles[JobHandleType.decalVolumesJobHandle].readWriteBarrier));
                 
                 
                 // Note: cannot use "IsCreated" on this job, for some reason it won't be scheduled and then complain that it's leaking? Bug in IsCreated?

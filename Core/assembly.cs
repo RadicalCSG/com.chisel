@@ -60,3 +60,4 @@ using System.Runtime.CompilerServices;
 [assembly: InternalsVisibleTo("com.chisel.unity.editor", AllInternalsVisible = true)]
 [assembly: InternalsVisibleTo("com.chisel.unity.components", AllInternalsVisible = true)]
 [assembly: InternalsVisibleTo("com.chisel.core.tests", AllInternalsVisible = true)]
+[assembly: InternalsVisibleTo("com.chisel.unity.components.tests", AllInternalsVisible = true)]

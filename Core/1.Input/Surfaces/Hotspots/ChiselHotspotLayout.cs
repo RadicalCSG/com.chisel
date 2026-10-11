@@ -142,6 +142,51 @@ namespace Chisel.Core
         // To call after an edit
         public void NotifyChanged() { OnValidate(); }
 
+        // What mapping takes from the layout, the same in every session: its settings and its tiles (not their names,
+        // the texture or the cuts)
+        public void AppendContentHash(ref Hash128 hash)
+        {
+            var settings = new Unity.Mathematics.float4(pixelsPerUnit, padding, interiorPadding, 0);
+            var sizeAndBudgets = new Unity.Mathematics.int4(size.x, size.y, maxRepeats, maxTriangles);
+            hash.Append(ref settings);
+            hash.Append(ref sizeAndBudgets);
+            var count = tiles?.Count ?? 0;
+            hash.Append(ref count);
+            for (int i = 0; i < count; i++)
+            {
+                var tile = tiles[i];
+                var header = new Unity.Mathematics.int4(tile.id, (int)tile.flags, tile.border, tile.insideCorners);
+                var density = tile.pixelsPerUnit;
+                hash.Append(ref header);
+                hash.Append(ref density);
+                AppendPoints(ref hash, tile.points);
+                var sideCount = tile.sides?.Length ?? 0;
+                hash.Append(ref sideCount);
+                for (int j = 0; j < sideCount; j++)
+                {
+                    var mode = (int)tile.sides[j].mode;
+                    var stretch = tile.sides[j].maxStretch;
+                    hash.Append(ref mode);
+                    hash.Append(ref stretch);
+                }
+                var holeCount = tile.holes?.Length ?? 0;
+                hash.Append(ref holeCount);
+                for (int j = 0; j < holeCount; j++)
+                    AppendPoints(ref hash, tile.holes[j].points);
+            }
+        }
+
+        static void AppendPoints(ref Hash128 hash, Vector2Int[] points)
+        {
+            var count = points?.Length ?? 0;
+            hash.Append(ref count);
+            for (int i = 0; i < count; i++)
+            {
+                var point = points[i];
+                hash.Append(ref point);
+            }
+        }
+
         public int NextTileId()
         {
             var next = 1;

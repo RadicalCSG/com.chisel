@@ -53,7 +53,38 @@ namespace Chisel.Core
             return index;
         }
 
-        // An edited layout that surfaces use: every tree updates, and the changed hash maps every surface again
+        // Each registered layout's hash (by id - 1): its tiles, settings and materials as they are now, apart from where
+        // they lie among the other layouts', so an edit to one layout changes its own only (0: none)
+        public static void LayoutHashes(NativeList<uint> hashes)
+        {
+            hashes.Clear();
+            using var tiles = new NativeList<HotspotTileData>(16, Allocator.Temp);
+            using var sides = new NativeList<float4>(16, Allocator.Temp);
+            for (int i = 0; i < s_Layouts.Count; i++)
+            {
+                var layout = s_Layouts[i];
+                if (layout == null)
+                {
+                    hashes.Add(0);
+                    continue;
+                }
+                tiles.Clear();
+                sides.Clear();
+                HotspotMatcher.AddTiles(layout, tiles, out var data, sides);
+                var settings = math.hash(new float4(data.textureSize, data.pixelsPerUnit, data.padding)) ^
+                               math.hash(new float4(data.interiorPadding, data.maxRepeats, data.maxTriangles, s_Materials[i]?.Length ?? 0));
+                var materials = 0u;
+                if (s_Materials[i] != null)
+                {
+                    foreach (var id in s_Materials[i])
+                        materials = math.hash(new uint3(materials, (uint)id, (uint)(id >> 32)));
+                }
+                hashes.Add(math.hash(new uint4(tiles.Hash(), sides.Hash(), settings, materials)) | 1);
+            }
+        }
+
+        // An edited layout that surfaces use: every tree updates, and only the brushes drawn on it are mapped again
+        // (LayoutHashes)
         public static void LayoutChanged(ChiselHotspotLayout layout)
         {
             if (layout == null || !s_Layouts.Contains(layout))
@@ -67,7 +98,8 @@ namespace Chisel.Core
             }
         }
 
-        // The project's hotspot budgets changed: every tree updates (the changed hash maps every surface again)
+        // The project's hotspot budgets changed: every tree updates, and the brushes drawn on layouts without budgets of
+        // their own are mapped again (LayoutHashes)
         public static void SettingsChanged()
         {
             using var trees = new NativeList<CSGTree>(Allocator.Temp);

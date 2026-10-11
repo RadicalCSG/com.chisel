@@ -47,8 +47,8 @@ namespace Chisel.Core
             // Whether the tree's output was last built by the exact CSG (TreeUpdate.kExactCSG). An update by the other
             // algorithm rebuilds every brush of the tree, so the two never mix in one tree's output.
             public bool                                                         builtExact;
-            // What the hotspot layouts were at the last update (ChiselHotspotStore.Gather)
-            public uint                                                         hotspotHash;
+            // What each hotspot layout was at the last update (ChiselHotspotStore.LayoutHashes, by id - 1)
+            public NativeList<uint>                                             hotspotLayoutHashes;
 
 			internal void Initialize()
             {
@@ -73,6 +73,7 @@ namespace Chisel.Core
 				decalBounds                 = new NativeList<MinMaxAABB>(16, Allocator.Persistent);
 				decalVolumes                = new NativeList<DecalVolume>(16, Allocator.Persistent);
 				hotspotLinks                = new NativeList<HotspotLink>(4, Allocator.Persistent);
+				hotspotLayoutHashes         = new NativeList<uint>(4, Allocator.Persistent);
 				decalTargets                = new NativeList<ChiselDecalTarget>(16, Allocator.Persistent);
 				decalVolumeTargets          = new NativeList<ChiselDecalTarget>(16, Allocator.Persistent);
 				changedDecalBounds          = new NativeList<MinMaxAABB>(16, Allocator.Persistent);
@@ -265,6 +266,8 @@ namespace Chisel.Core
                 if (changedDecalBounds.IsCreated) changedDecalBounds.Dispose();
                 if (hotspotLinks.IsCreated)       hotspotLinks.Dispose();
                 hotspotLinks = default;
+                if (hotspotLayoutHashes.IsCreated) hotspotLayoutHashes.Dispose();
+                hotspotLayoutHashes = default;
                 decalInstances = default;
                 decalBounds = default;
                 decalVolumes = default;
