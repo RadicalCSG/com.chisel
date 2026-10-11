@@ -169,8 +169,10 @@ namespace Chisel.Editors
 				}
 				if (EditorGUI.EndChangeCheck())
 				{
-					// TODO: rebuild models if material is used within a model
 					serializedObject.ApplyModifiedProperties();
+					// the surfaces drawn with the material take its settings again; nothing else is rebuilt
+					foreach (var metadata in targets)
+						ChiselHotspotLayoutWindow.RefreshSurfacesUsing(MaterialOf(metadata));
 				}
 			}
 			catch (ExitGUIException) { }
