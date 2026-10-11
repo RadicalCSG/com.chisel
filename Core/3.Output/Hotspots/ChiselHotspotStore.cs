@@ -13,13 +13,41 @@ namespace Chisel.Core
         static readonly List<ulong[]>                                s_Materials = new();
         static readonly Dictionary<(ChiselHotspotLayout, ulong), int> s_Ids      = new();
         static readonly List<ulong>                                  s_Scratch   = new();
+        // the other sheets each layout is drawn with: their layouts and materials
+        static readonly List<(ChiselHotspotLayout layout, ulong material)[]> s_Sheets = new();
 
         public static int Register(ChiselHotspotLayout layout) { return Register(layout, null, null); }
 
         public static int Register(ChiselHotspotLayout layout, UnityEngine.Material material, List<UnityEngine.Material> variants)
         {
+            return Register(layout, material, variants, null);
+        }
+
+        // The same, and the other sheets drawn with it (ChiselSurfaceMetadata.hotspotSheets): materials with a layout of
+        // their own, whose tiles matching picks from too
+        public static int Register(ChiselHotspotLayout layout, UnityEngine.Material material, List<UnityEngine.Material> variants, List<UnityEngine.Material> sheets)
+        {
             if (layout == null)
                 return 0;
+            (ChiselHotspotLayout layout, ulong material)[] sheetList = null;
+            ulong sheetKey = 0;
+            if (sheets != null && sheets.Count > 0)
+            {
+                var found = new List<(ChiselHotspotLayout, ulong)>(sheets.Count);
+                foreach (var sheet in sheets)
+                {
+                    if (sheet == null || sheet == material)
+                        continue;
+                    var sheetLayout = sheet.GetMetadataOfType<ChiselSurfaceMetadata>()?.hotspotLayout;
+                    var id = UnityEngine.EntityId.ToULong(sheet.GetEntityId());
+                    if (sheetLayout == null || found.Exists(f => f.Item2 == id))
+                        continue;
+                    found.Add((sheetLayout, id));
+                    sheetKey = (sheetKey ^ id ^ (ulong)(uint)sheetLayout.GetEntityId().GetHashCode() << 1) * 1099511628211UL + 1;
+                }
+                if (found.Count > 0)
+                    sheetList = found.ToArray();
+            }
             ulong key = 0;
             ulong[] materials = null;
             if (material != null && variants != null && variants.Count > 0)
@@ -41,12 +69,15 @@ namespace Chisel.Core
                         key = (key ^ id) * 1099511628211UL;
                 }
             }
+            var variantKey = key;
+            key ^= sheetKey * 0x9E3779B97F4A7C15UL;
             if (!s_Ids.TryGetValue((layout, key), out var index))
             {
-                if (key != 0)
+                if (variantKey != 0)
                     materials = s_Scratch.ToArray();
                 s_Layouts.Add(layout);
                 s_Materials.Add(materials);
+                s_Sheets.Add(sheetList);
                 index = s_Layouts.Count;
                 s_Ids[(layout, key)] = index;
             }
@@ -71,6 +102,18 @@ namespace Chisel.Core
                 tiles.Clear();
                 sides.Clear();
                 HotspotMatcher.AddTiles(layout, tiles, out var data, sides);
+                var sheetHash = 0u;
+                if (s_Sheets[i] != null)
+                {
+                    foreach (var sheet in s_Sheets[i])
+                    {
+                        if (sheet.layout == null)
+                            continue;
+                        HotspotMatcher.AddTiles(sheet.layout, tiles, out var sheetData, sides);
+                        sheetHash = math.hash(new uint4(sheetHash, (uint)sheet.material, (uint)(sheet.material >> 32),
+                                                        math.hash(new float4(sheetData.textureSize, sheetData.pixelsPerUnit, sheetData.interiorPadding))));
+                    }
+                }
                 var settings = math.hash(new float4(data.textureSize, data.pixelsPerUnit, data.padding)) ^
                                math.hash(new float4(data.interiorPadding, data.maxRepeats, data.maxTriangles, s_Materials[i]?.Length ?? 0));
                 var materials = 0u;
@@ -79,7 +122,7 @@ namespace Chisel.Core
                     foreach (var id in s_Materials[i])
                         materials = math.hash(new uint3(materials, (uint)id, (uint)(id >> 32)));
                 }
-                hashes.Add(math.hash(new uint4(tiles.Hash(), sides.Hash(), settings, materials)) | 1);
+                hashes.Add(math.hash(new uint4(tiles.Hash(), sides.Hash(), settings, materials ^ sheetHash)) | 1);
             }
         }
 
@@ -87,7 +130,7 @@ namespace Chisel.Core
         // (LayoutHashes)
         public static void LayoutChanged(ChiselHotspotLayout layout)
         {
-            if (layout == null || !s_Layouts.Contains(layout))
+            if (layout == null || (!s_Layouts.Contains(layout) && !s_Sheets.Exists(sheets => sheets != null && System.Array.Exists(sheets, sheet => sheet.layout == layout))))
                 return;
             using var trees = new NativeList<CSGTree>(Allocator.Temp);
             CompactHierarchyManager.GetAllTrees(trees);
@@ -133,6 +176,8 @@ namespace Chisel.Core
                 variants.Clear();
             tiles.Clear();
             layouts.Clear();
+            // the other sheets' own entries, after the registered layouts' (HotspotTileData.sheet)
+            var sheetEntries = new List<HotspotLayoutData>();
             for (int i = 0; i < s_Layouts.Count; i++)
             {
                 var layout = s_Layouts[i];
@@ -142,6 +187,26 @@ namespace Chisel.Core
                     continue;
                 }
                 HotspotMatcher.AddTiles(layout, tiles, out var data, sides);
+                // the other sheets' tiles right after its own, matched with them
+                if (s_Sheets[i] != null)
+                {
+                    foreach (var sheet in s_Sheets[i])
+                    {
+                        if (sheet.layout == null)
+                            continue;
+                        HotspotMatcher.AddTiles(sheet.layout, tiles, out var sheetData, sides);
+                        sheetData.material = sheet.material;
+                        var entry = s_Layouts.Count + sheetEntries.Count + 1;
+                        for (int t = sheetData.tileStart; t < tiles.Length; t++)
+                        {
+                            var tile = tiles[t];
+                            tile.sheet = entry;
+                            tiles[t] = tile;
+                        }
+                        sheetEntries.Add(sheetData);
+                    }
+                    data.tileCount = tiles.Length - data.tileStart;
+                }
                 if (variants.IsCreated && s_Materials[i] != null)
                 {
                     data.variantStart = variants.Length;
@@ -151,6 +216,8 @@ namespace Chisel.Core
                 }
                 layouts.Add(data);
             }
+            foreach (var entry in sheetEntries)
+                layouts.Add(entry);
             return math.hash(new uint4(tiles.Hash(), layouts.Hash(), sides.IsCreated ? sides.Hash() : 0, variants.IsCreated ? variants.Hash() : 0));
         }
     }

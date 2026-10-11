@@ -100,7 +100,9 @@ namespace Chisel.Core
                         var unfolded = unfoldOf.TryGetValue(new int2(brush, s), out var unfold);
                         // the group's material, when its layout has more than one
                         var group = groups[g];
-                        if (variants.IsCreated && group.layout >= 0 && group.layout < layouts.Length)
+                        if (group.sheetMaterial != 0)
+                            to.destinationParameters.parameter1 = group.sheetMaterial;
+                        else if (variants.IsCreated && group.layout >= 0 && group.layout < layouts.Length)
                         {
                             var layout = layouts[group.layout];
                             if (layout.variantCount > 1 && layout.variantStart + group.variant < variants.Length)

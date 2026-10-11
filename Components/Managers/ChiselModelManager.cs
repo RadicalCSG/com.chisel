@@ -894,6 +894,16 @@ namespace Chisel.Components
 					hash.Append(ref count);
 					for (int i = 0; i < count; i++)
 						AppendMaterialIdentity(ref hash, variants[i]);
+					var sheets = surface.HotspotSheets;
+					var sheetCount = sheets?.Count ?? 0;
+					hash.Append(ref sheetCount);
+					for (int i = 0; i < sheetCount; i++)
+					{
+						AppendMaterialIdentity(ref hash, sheets[i]);
+						var sheetLayout = sheets[i] ? sheets[i].GetMetadataOfType<ChiselSurfaceMetadata>()?.hotspotLayout : null;
+						if (sheetLayout)
+							sheetLayout.AppendContentHash(ref hash);
+					}
 				}
 			}
 			var links = model.hotspotLinks;

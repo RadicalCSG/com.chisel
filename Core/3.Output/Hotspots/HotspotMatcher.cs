@@ -28,6 +28,9 @@ namespace Chisel.Core
         // whether that is one piece turned (InsideCornerTurned) rather than four
         public float2           insideMin, insideMax;
         public bool             insideOne;
+        // The sheet it is on (ChiselHotspotStore.Gather): 0, the layout's own; otherwise the layouts' entry (index + 1) of
+        // another sheet drawn with it, whose texture size, padding and material it takes (SheetOf)
+        public int              sheet;
 
         public readonly float2 Corner(int index)
         {
@@ -54,6 +57,8 @@ namespace Chisel.Core
         public float  padding, interiorPadding;
         // the materials drawn on it, a surface given one of them (ChiselHotspotStore.Gather's variants); 0: its own only
         public int    variantStart, variantCount;
+        // a sheet's own material (render material id), given to a surface that takes one of its tiles; 0: the surface's own
+        public ulong  material;
     }
 
     // A surface as matching sees it, in its frame (HotspotMatcher.Frame), in the units of the tree
@@ -643,6 +648,12 @@ namespace Chisel.Core
         }
 
         // A layout's tiles as matching sees them
+        // The layout a tile is drawn with: its own sheet's (HotspotTileData.sheet), or the one it was matched in
+        public static HotspotLayoutData SheetOf(in HotspotTileData tile, NativeArray<HotspotLayoutData> layouts, in HotspotLayoutData layout)
+        {
+            return tile.sheet > 0 && layouts.IsCreated && tile.sheet <= layouts.Length ? layouts[tile.sheet - 1] : layout;
+        }
+
         public static void AddTiles(ChiselHotspotLayout layout, NativeList<HotspotTileData> tiles, out HotspotLayoutData data)
         {
             AddTiles(layout, tiles, out data, default);

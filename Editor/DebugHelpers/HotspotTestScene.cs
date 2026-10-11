@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using Chisel.Components;
 using Chisel.Core;
 using Unity.Mathematics;
@@ -12,10 +13,6 @@ namespace Chisel.Editors
     static class HotspotTestScene
     {
         const string kFolder   = "Assets/HotspotTest";
-        const string kTexture  = kFolder + "/HotspotTest.png";
-        const string kMaterial = kFolder + "/HotspotTest.mat";
-        const string kJson     = kFolder + "/HotspotTest.layout.json";
-        const string kLayout   = kFolder + "/HotspotTest.asset";
         const string kScene    = kFolder + "/HotspotTest.unity";
         const float  kRowSpacing = 14;
 
@@ -73,60 +70,71 @@ namespace Chisel.Editors
             return EditorSceneManager.SaveScene(EditorSceneManager.GetActiveScene(), kScene);
         }
 
+        // The sheet's material, its trim sheet drawn with it (ChiselSurfaceMetadata.hotspotSheets)
         static Material CreateMaterial()
         {
-            var texture = AssetDatabase.LoadAssetAtPath<Texture2D>(kTexture);
-            if (texture == null)
-            {
-                Debug.LogError($"No hotspot test texture at {kTexture}");
-                return null;
-            }
-            var material = AssetDatabase.LoadAssetAtPath<Material>(kMaterial);
-            if (material == null)
-            {
-                material = new Material(Shader.Find("Universal Render Pipeline/Lit"));
-                AssetDatabase.CreateAsset(material, kMaterial);
-            }
-            material.SetTexture("_BaseMap", texture);
-            material.SetColor("_BaseColor", Color.white);
-            EditorUtility.SetDirty(material);
-
-            var layout = CreateLayout();
-            if (layout == null)
+            var material = CreateSheet("HotspotTest", out var layout);
+            var trim     = CreateSheet("HotspotTrim", out _);
+            if (material == null || trim == null)
                 return null;
             s_Layout = layout;
-            layout.texture = texture;
-            var metadata = material.HasMetadataOfType<ChiselSurfaceMetadata>()
-                         ? material.GetMetadataOfType<ChiselSurfaceMetadata>()
-                         : material.AddMetadataOfType<ChiselSurfaceMetadata>();
-            metadata.hotspotLayout = layout;
+            var metadata = material.GetMetadataOfType<ChiselSurfaceMetadata>();
+            metadata.hotspotSheets = new List<Material> { trim };
             EditorUtility.SetDirty(metadata);
             AssetDatabase.SaveAssets();
             return material;
         }
 
-        // The layout asset, read again from the sheet's json every build
-        static ChiselHotspotLayout CreateLayout()
+        // A sheet's material and layout (<name>.png, .mat, .layout.json, .asset in the folder); the layout read again from
+        // the json every build
+        static Material CreateSheet(string name, out ChiselHotspotLayout layout)
         {
-            var json = AssetDatabase.LoadAssetAtPath<TextAsset>(kJson);
-            if (json == null)
+            layout = null;
+            var texturePath = $"{kFolder}/{name}.png";
+            var texture = AssetDatabase.LoadAssetAtPath<Texture2D>(texturePath);
+            if (texture == null)
             {
-                Debug.LogError($"No hotspot test layout at {kJson}");
+                Debug.LogError($"No hotspot test texture at {texturePath}");
                 return null;
             }
-            var layout = AssetDatabase.LoadAssetAtPath<ChiselHotspotLayout>(kLayout);
+            var materialPath = $"{kFolder}/{name}.mat";
+            var material = AssetDatabase.LoadAssetAtPath<Material>(materialPath);
+            if (material == null)
+            {
+                material = new Material(Shader.Find("Universal Render Pipeline/Lit"));
+                AssetDatabase.CreateAsset(material, materialPath);
+            }
+            material.SetTexture("_BaseMap", texture);
+            material.SetColor("_BaseColor", Color.white);
+            EditorUtility.SetDirty(material);
+
+            var jsonPath = $"{kFolder}/{name}.layout.json";
+            var json = AssetDatabase.LoadAssetAtPath<TextAsset>(jsonPath);
+            if (json == null)
+            {
+                Debug.LogError($"No hotspot test layout at {jsonPath}");
+                return null;
+            }
+            var layoutPath = $"{kFolder}/{name}.asset";
+            layout = AssetDatabase.LoadAssetAtPath<ChiselHotspotLayout>(layoutPath);
             if (layout == null)
             {
                 layout = ScriptableObject.CreateInstance<ChiselHotspotLayout>();
-                AssetDatabase.CreateAsset(layout, kLayout);
+                AssetDatabase.CreateAsset(layout, layoutPath);
             }
             if (!ChiselHotspotLayout.TryReadJson(json.text, layout, out var error))
             {
-                Debug.LogError($"{kJson}: {error}");
+                Debug.LogError($"{jsonPath}: {error}");
                 return null;
             }
+            layout.texture = texture;
             EditorUtility.SetDirty(layout);
-            return layout;
+            var metadata = material.HasMetadataOfType<ChiselSurfaceMetadata>()
+                         ? material.GetMetadataOfType<ChiselSurfaceMetadata>()
+                         : material.AddMetadataOfType<ChiselSurfaceMetadata>();
+            metadata.hotspotLayout = layout;
+            EditorUtility.SetDirty(metadata);
+            return material;
         }
 
         static void AssignMaterial(ChiselGeneratorComponent generator)

@@ -901,6 +901,10 @@ namespace Chisel.Core
 															   world = baseSurfaces[surf].textureInWorld };
 				if (choice.tile >= 0)
 				{
+					// the tile's own sheet (another sheet drawn with the layout, its own texture and material)
+					var sheet = HotspotMatcher.SheetOf(hotspotTiles[choice.tile], hotspotLayouts, layout);
+					var onOtherSheet = hotspotTiles[choice.tile].sheet > 0;
+					layout = sheet;
 					uvMat = HotspotMatcher.Mapping(hotspotTiles[choice.tile], layout, shape, choice, hotspotRight, hotspotUp);
 					// a tile that repeats or has a border: what is drawn is cut where its sections meet, after the
 					// model's weld (OutputHotspotSections)
@@ -913,8 +917,12 @@ namespace Chisel.Core
 					var pinnedId = baseSurfaces[lead].hotspotPinned;
 					hotspotInfo = HotspotDiagnostics.Info(hotspotTiles[choice.tile], layout, choice, sectionInput,
 														  pinnedId != 0 && hotspotTiles[choice.tile].id == pinnedId, density);
-					// one of the materials drawn on the layout, as the seed picked it
-					if (layout.variantCount > 1 && layout.variantStart + choice.variant < hotspotVariants.Length)
+					// the other sheet's material, or one of the materials drawn on the layout, as the seed picked it
+					if (onOtherSheet)
+					{
+						if (layout.material != 0)
+							parms.parameter1 = layout.material;
+					} else if (layout.variantCount > 1 && layout.variantStart + choice.variant < hotspotVariants.Length)
 						parms.parameter1 = hotspotVariants[layout.variantStart + choice.variant];
 				}
 			}

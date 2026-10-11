@@ -46,6 +46,8 @@ namespace Chisel.Core
             public int                 openSides;
             // its layout (index into the layouts) and which of its materials the seed picked (HotspotChoice.variant)
             public int                 layout, variant;
+            // the material of the other sheet its tile is on (HotspotTileData.sheet); 0: its own
+            public ulong               sheetMaterial;
         }
 
         // The corners two surfaces share where the newest link between them puts a border along their edge or leaves it
@@ -436,13 +438,20 @@ namespace Chisel.Core
                 if (choice.tile < 0)
                     continue;
                 var tile  = tiles[choice.tile];
+                var sheetMaterial = 0UL;
+                if (tile.sheet > 0)
+                {
+                    layout = HotspotMatcher.SheetOf(tile, layouts, layout);
+                    sheetMaterial = layout.material;
+                }
                 var group = new Group
                 {
                     uvMatrix = HotspotMatcher.Mapping(tile, layout, shape, choice, source.right, source.up),
                     right    = source.right,
                     up       = source.up,
                     layout   = source.layout - 1,
-                    variant  = choice.variant
+                    variant  = choice.variant,
+                    sheetMaterial = sheetMaterial
                 };
                 if (tile.border > 0 || choice.Repeated || math.any(source.offset != 0))
                     group.input = HotspotSections.Input(tile, layout, shape, choice, source.right, source.up, density, source.offset, source.world);
