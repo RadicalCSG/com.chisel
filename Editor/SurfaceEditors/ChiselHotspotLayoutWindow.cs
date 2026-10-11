@@ -877,6 +877,8 @@ namespace Chisel.Editors
         static readonly GUIContent kPaddingContents = new("Padding", "Pixels left out along every tile's edges, so a filtered (or mipmapped) texture never shows a neighbouring tile: a gutter. A tile's border keeps its inner edge and narrows by as much");
 
         // padding only in the window, beside the tiles it changes
+        static readonly GUIContent kInteriorPaddingContents = new("Interior padding", "Pixels a bordered tile's interior leaves out where it meets the border (0 for none), so filtering at the interior's repeat seams never shows the border");
+
         internal static bool LayoutFields(ChiselHotspotLayout layout, bool withPadding = false)
         {
             EditorGUI.BeginChangeCheck();
@@ -885,6 +887,7 @@ namespace Chisel.Editors
             var size          = layout.texture != null ? layout.size : EditorGUILayout.Vector2IntField("Size in pixels", layout.size);
             var pixelsPerUnit = EditorGUILayout.FloatField(kPixelsPerUnitContents, layout.pixelsPerUnit);
             var padding       = withPadding ? EditorGUILayout.FloatField(kPaddingContents, layout.padding) : layout.padding;
+            var interior      = withPadding ? EditorGUILayout.FloatField(kInteriorPaddingContents, layout.interiorPadding) : layout.interiorPadding;
             if (!EditorGUI.EndChangeCheck())
                 return false;
             EditLayout(layout, "Change Hotspot Layout", () =>
@@ -894,6 +897,7 @@ namespace Chisel.Editors
                 layout.texture = texture;
                 layout.pixelsPerUnit = Mathf.Max(0.001f, pixelsPerUnit);
                 layout.padding = Mathf.Max(0, padding);
+                layout.interiorPadding = Mathf.Max(0, interior);
                 layout.Resize(size);
             });
             return true;

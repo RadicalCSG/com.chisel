@@ -45,8 +45,9 @@ namespace Chisel.Core
         public int    tileCount;
         // budgets for one surface, the layout's or the project's (ChiselHotspotLayout.maxRepeats, maxTriangles)
         public int    maxRepeats, maxTriangles;
-        // pixels left out along the tiles' edges (ChiselHotspotLayout.padding), and along a bordered tile's interior
-        public float  padding;
+        // pixels left out along the tiles' edges (ChiselHotspotLayout.padding), and along a bordered tile's interior where
+        // it meets the border (interiorPadding)
+        public float  padding, interiorPadding;
         // the materials drawn on it, a surface given one of them (ChiselHotspotStore.Gather's variants); 0: its own only
         public int    variantStart, variantCount;
     }
@@ -653,7 +654,8 @@ namespace Chisel.Core
                 tileStart     = tiles.Length,
                 maxRepeats    = layout.maxRepeats   > 0 ? layout.maxRepeats   : ChiselProjectSettings.HotspotMaxRepeats,
                 maxTriangles  = layout.maxTriangles > 0 ? layout.maxTriangles : ChiselProjectSettings.HotspotMaxTriangles,
-                padding       = math.max(0, layout.padding)
+                padding       = math.max(0, layout.padding),
+                interiorPadding = math.max(0, layout.interiorPadding)
             };
             foreach (var tile in layout.tiles)
             {

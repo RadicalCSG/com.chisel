@@ -43,8 +43,8 @@ namespace Chisel.Core
         public int              maxRepeats, maxTriangles;
         // a shaped tile's own sides (HotspotTileData.sideStart, sideCount), its border measured from them
         public int              sideStart, sideCount;
-        // the layout's padding: the interior samples its rectangle less this along every side, so filtering at its seams
-        // never reaches the border
+        // the layout's interior padding: the interior samples its rectangle less this along every side, so filtering at
+        // its seams never reaches the border
         public float            padding;
         // the texture is not locked to the object: repeats that keep their size lie on a grid fixed in the frame's
         // origin (the tree's), so moving the object moves it over them
@@ -114,7 +114,7 @@ namespace Chisel.Core
                 offset = new float2(across ? shift.x : 0, along ? shift.y : 0),
                 interiorOffset = count == 4 ? shift : float2.zero,
                 maxRepeats = layout.maxRepeats, maxTriangles = layout.maxTriangles,
-                sideStart = tile.sideStart, sideCount = tile.sideCount, padding = layout.padding, world = world
+                sideStart = tile.sideStart, sideCount = tile.sideCount, padding = layout.interiorPadding, world = world
             };
             // repeats of their exact size, in the world: moved along so a seam falls on the frame's origin
             if (world && count == 4 && (tile.flags & HotspotTileFlags.PartialRepeats) != 0)
