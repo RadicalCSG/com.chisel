@@ -236,9 +236,22 @@ namespace Chisel.Core
                 }
                 tiles.Add(new HotspotTile { id = tiles.Count + 1, name = tile.name, points = PointsOf(tile.points), holes = holes, flags = FlagsOf(tile.tags), border = Math.Max(0, tile.border) });
             }
+            if (!LinkInsideCorners(tiles, Array.ConvertAll(read.tiles, tile => tile.insideCorners), out error))
+                return false;
+            layout.size  = new Vector2Int(read.width, read.height);
+            layout.tiles = tiles;
+            layout.BuildCuts(out _);
+            error = null;
+            return true;
+        }
+
+        // Each tile's inside corner pieces, by the name of their tile (links, one a tile; empty for none)
+        static bool LinkInsideCorners(List<HotspotTile> tiles, IReadOnlyList<string> links, out string error)
+        {
+            error = null;
             for (int i = 0; i < tiles.Count; i++)
             {
-                var link = read.tiles[i].insideCorners;
+                var link = links[i];
                 if (string.IsNullOrEmpty(link))
                     continue;
                 var linked = tiles.FindIndex(other => other.name == link);
@@ -247,10 +260,6 @@ namespace Chisel.Core
                 tile.insideCorners = tiles[linked].id;
                 tiles[i] = tile;
             }
-            layout.size  = new Vector2Int(read.width, read.height);
-            layout.tiles = tiles;
-            layout.BuildCuts(out _);
-            error = null;
             return true;
         }
 

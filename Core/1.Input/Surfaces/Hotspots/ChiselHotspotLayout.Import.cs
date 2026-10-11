@@ -228,7 +228,8 @@ namespace Chisel.Core
         // of straight lines (M, L, H, V, Z; its first loop the outline, the others holes: a shaped tile), in user units as
         // pixels;
         // the size from the viewBox, or width and height. A tile's name is its id (or inkscape:label), its tags its
-        // class (or data-tags); "border-N" in them is its border. Elements under a transform are refused.
+        // class (or data-tags); "border-N" in them is its border; data-inside-corners names the tile with its inside corner
+        // pieces. Elements under a transform are refused.
         public static bool TryReadSvg(string text, ChiselHotspotLayout layout, out string error)
         {
             var document = new XmlDocument { XmlResolver = null };
@@ -247,6 +248,7 @@ namespace Chisel.Core
             var origin = viewBox.Count == 4 ? new Vector2(viewBox[0], viewBox[1]) : Vector2.zero;
 
             var tiles = new List<HotspotTile>();
+            var links = new List<string>();
             foreach (XmlNode node in root.SelectNodes("//*"))
             {
                 if (node is not XmlElement element || (element.LocalName != "rect" && element.LocalName != "polygon" && element.LocalName != "path"))
@@ -318,8 +320,11 @@ namespace Chisel.Core
                 var id = tiles.Count + 1;
                 var name = NameOf(element);
                 tiles.Add(new HotspotTile { id = id, name = string.IsNullOrEmpty(name) ? "S" + id : name, points = points, holes = holes, flags = FlagsOf(tags), border = Math.Max(0, border) });
+                links.Add(element.GetAttribute("data-inside-corners"));
             }
             if (tiles.Count == 0) { error = "no rect, polygon or path elements"; return false; }
+            if (!LinkInsideCorners(tiles, links, out error))
+                return false;
             layout.size  = size;
             layout.tiles = tiles;
             layout.BuildCuts(out _);

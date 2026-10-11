@@ -55,7 +55,7 @@ namespace Chisel.Editors
                 if (GUI.Button(new Rect(header.x, header.y, 90, header.height), automatic, EditorStyles.miniButton))
                     Choose(0);
             }
-            var label = hover != 0 ? NameOf(hover) + (fits != null && !fits.Contains(hover) ? " (does not fit this surface)" : string.Empty) : "Click a tile to keep it";
+            var label = hover != 0 ? NameOf(hover) + (IsPieces(hover) ? " (inside corner pieces)" : fits != null && !fits.Contains(hover) ? " (does not fit this surface)" : string.Empty) : "Click a tile to keep it";
             GUI.Label(new Rect(header.x + 96, header.y, header.width - 96, header.height), label, EditorStyles.miniLabel);
 
             var y = rect.y + kHeader;
@@ -88,7 +88,7 @@ namespace Chisel.Editors
             {
                 var pixel = (current.mousePosition - sheet.position) / scale;
                 var at = sheet.Contains(current.mousePosition) ? layout.TileAt(pixel) : 0;
-                if (current.type == EventType.MouseDown && current.button == 0 && at != 0)
+                if (current.type == EventType.MouseDown && current.button == 0 && at != 0 && !IsPieces(at))
                 {
                     Choose(at);
                     current.Use();
@@ -116,7 +116,7 @@ namespace Chisel.Editors
                 for (int i = 0; i < points.Length; i++)
                     points[i] = ToSheet(tile.points[i]);
                 var shaped = ChiselHotspotLayout.IsShaped(tile);
-                if (fits != null && !fits.Contains(tile.id))
+                if ((fits != null && !fits.Contains(tile.id)) || IsPieces(tile.id))
                 {
                     Handles.color = kUnfit;
                     ChiselHotspotLayoutWindow.Fill(points, shaped);
@@ -149,6 +149,13 @@ namespace Chisel.Editors
                     }
                 }
             }
+        }
+
+        // a tile of inside corner pieces, which no surface takes
+        bool IsPieces(int id)
+        {
+            var index = layout.IndexOfTile(id);
+            return index >= 0 && (layout.tiles[index].flags & (HotspotTileFlags.InsideCorners | HotspotTileFlags.InsideCornerTurned)) != 0;
         }
 
         string NameOf(int id)

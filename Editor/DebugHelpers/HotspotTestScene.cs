@@ -20,6 +20,7 @@ namespace Chisel.Editors
         const float  kRowSpacing = 14;
 
         static Material s_Material;
+        static ChiselHotspotLayout s_Layout;
         static Transform s_Model;
         static int s_Row;
 
@@ -51,6 +52,7 @@ namespace Chisel.Editors
             ScaledTransforms();
             Triangles();
             Connections();
+            InsideCorners();
 
             ChiselNodeHierarchyManager.Update();
             ChiselModelManager.Instance.UpdateModels();
@@ -92,6 +94,7 @@ namespace Chisel.Editors
             var layout = CreateLayout();
             if (layout == null)
                 return null;
+            s_Layout = layout;
             layout.texture = texture;
             var metadata = material.HasMetadataOfType<ChiselSurfaceMetadata>()
                          ? material.GetMetadataOfType<ChiselSurfaceMetadata>()
@@ -134,8 +137,18 @@ namespace Chisel.Editors
             // "default N ...": its first N surfaces keep the default material
             var parts = generator.name.Split(' ');
             var keep  = parts.Length > 1 && parts[0] == "default" && int.TryParse(parts[1], out var count) ? count : 0;
+            // "pin NAME ...": its surfaces keep that tile
+            var pin   = parts.Length > 1 && parts[0] == "pin" && s_Layout ? s_Layout.tiles.FindIndex(tile => tile.name == parts[1]) : -1;
             for (int i = keep; i < surfaces.Length; i++)
+            {
                 surfaces[i].RenderMaterial = s_Material;
+                if (pin >= 0)
+                {
+                    var details = surfaces[i].surfaceDetails;
+                    details.hotspot.pinnedTile = s_Layout.tiles[pin].id;
+                    surfaces[i].surfaceDetails = details;
+                }
+            }
             generator.OnValidate();
         }
 
@@ -358,6 +371,24 @@ namespace Chisel.Editors
             s_ShownRight = Box(s, "two walls, the border shown where they meet, right", new Vector3(22, 0, 0), new Vector3(2, 2, 0.25f));
             s_Slab = Box(s, "slab", new Vector3(28, 0, 0), new Vector3(5, 0.5f, 2));
             s_Foot = Box(s, "wall on the slab, no border along its foot", new Vector3(28, 0.5f, 0), new Vector3(4, 2, 0.25f));
+        }
+
+        // Doorways and windows on tiles with inside corner pieces: B1 four, A2 one turned (the sheet's IC1, IC2)
+        static void InsideCorners()
+        {
+            var s = Station("13 inside corners (B1: four pieces, A2: one turned; doorways, windows)");
+            float x = 0;
+            foreach (var (tile, width) in new[] { ("B1", 6f), ("A2", 3f) })
+            {
+                var door = x;
+                Wall(s, $"pin {tile} wall with door", ref x, width, 3, 0);
+                Subtract(Box(s, "door", new Vector3(door + width / 2, -0.1f, 0), new Vector3(1.2f, 2.3f, 1)));
+                x += 1;
+                var window = x;
+                Wall(s, $"pin {tile} wall with window", ref x, width, 3, 0);
+                Subtract(Box(s, "window", new Vector3(window + width / 2, 1, 0), new Vector3(1.5f, 1, 1)));
+                x += 1;
+            }
         }
 
         // The face of a generator's first brush whose corners score highest on average
