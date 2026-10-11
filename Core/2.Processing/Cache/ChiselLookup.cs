@@ -49,6 +49,8 @@ namespace Chisel.Core
             public bool                                                         builtExact;
             // What each hotspot layout was at the last update (ChiselHotspotStore.LayoutHashes, by id - 1)
             public NativeList<uint>                                             hotspotLayoutHashes;
+            // Where the weld's last step moved the corners it moved at the last update (from, to; OutputModelWeld)
+            public NativeList<float3x2>                                         collapseMoves;
 
 			internal void Initialize()
             {
@@ -74,6 +76,7 @@ namespace Chisel.Core
 				decalVolumes                = new NativeList<DecalVolume>(16, Allocator.Persistent);
 				hotspotLinks                = new NativeList<HotspotLink>(4, Allocator.Persistent);
 				hotspotLayoutHashes         = new NativeList<uint>(4, Allocator.Persistent);
+				collapseMoves               = new NativeList<float3x2>(4, Allocator.Persistent);
 				decalTargets                = new NativeList<ChiselDecalTarget>(16, Allocator.Persistent);
 				decalVolumeTargets          = new NativeList<ChiselDecalTarget>(16, Allocator.Persistent);
 				changedDecalBounds          = new NativeList<MinMaxAABB>(16, Allocator.Persistent);
@@ -268,6 +271,8 @@ namespace Chisel.Core
                 hotspotLinks = default;
                 if (hotspotLayoutHashes.IsCreated) hotspotLayoutHashes.Dispose();
                 hotspotLayoutHashes = default;
+                if (collapseMoves.IsCreated) collapseMoves.Dispose();
+                collapseMoves = default;
                 decalInstances = default;
                 decalBounds = default;
                 decalVolumes = default;

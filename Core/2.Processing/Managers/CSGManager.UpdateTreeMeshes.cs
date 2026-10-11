@@ -2441,7 +2441,8 @@ namespace Chisel.Core
                         patchedRenderBuffers = Temporaries.patchedRenderBuffers,
 
                         // Read/Write
-                        surfaceCountRef = Temporaries.surfaceCountRef
+                        surfaceCountRef = Temporaries.surfaceCountRef,
+                        collapseMoves   = chiselLookupValues.collapseMoves
                     };
                     findBrushRenderBuffersJob.Schedule(runInParallel,
                         JobHandles.Read(

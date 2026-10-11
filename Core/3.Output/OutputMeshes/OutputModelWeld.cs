@@ -7,6 +7,10 @@ namespace Chisel.Core
 {
     internal static class OutputModelWeld
     {
+        // Edges shorter than this are collapsed, the last step across the model: where many planes
+        // meet (a sphere's pole) planes snapped one by one meet a fraction of a millimetre apart, which only slivers show
+        public const float kCollapseLength = 1e-3f;
+
         // A surface this weld changes: the triangles of one dropped are -1
         struct Working
         {
@@ -27,15 +31,31 @@ namespace Chisel.Core
 
         public static void WeldModel(NativeList<BrushData> brushes, NativeList<BlobAssetReference<ChiselBrushRenderBuffer>> patched)
         {
-            WeldModel(brushes, patched, out _, out _, out _);
+            WeldModel(brushes, patched, out _, out _, out _, out _);
+        }
+
+        // The same; moves: where the last step moved each corner it moved (from, to), what ExactJudge checks it by
+        public static void WeldModel(NativeList<BrushData> brushes, NativeList<BlobAssetReference<ChiselBrushRenderBuffer>> patched, NativeList<float3x2> moves)
+        {
+            WeldModel(brushes, patched, out _, out _, out _, out _, moves);
         }
 
         public static void WeldModel(NativeList<BrushData> brushes, NativeList<BlobAssetReference<ChiselBrushRenderBuffer>> patched,
                                      out int split, out int paired, out int cancelled)
         {
+            WeldModel(brushes, patched, out split, out paired, out cancelled, out _);
+        }
+
+        // The same; collapsed: the corners moved onto another by CollapseShortEdges
+        public static void WeldModel(NativeList<BrushData> brushes, NativeList<BlobAssetReference<ChiselBrushRenderBuffer>> patched,
+                                     out int split, out int paired, out int cancelled, out int collapsed, NativeList<float3x2> moves = default)
+        {
+            if (moves.IsCreated)
+                moves.Clear();
             split = 0;
             paired = 0;
             cancelled = 0;
+            collapsed = 0;
             var needles = new NativeList<Needle>(Allocator.Temp);
             for (int b = 0; b < brushes.Length; b++)
             {
@@ -85,6 +105,8 @@ namespace Chisel.Core
                     changed  = CancelOpposites(brushes, work, workIndex, ref opposites, from, ref cancelled);
                     changed |= WeldNeedles(brushes, bounds, needles, work, workIndex, fresh, ref split, ref paired);
                 }
+                // last, away from what the steps above changed
+                CollapseShortEdges(brushes, work, workIndex, ref collapsed, moves);
 
                 // The copies of the brushes it changed
                 for (int k = 0; k < work.Length; k++)
@@ -348,6 +370,221 @@ namespace Chisel.Core
                 } while (opposites.byKey.TryGetNextValue(out j, ref iterator));
             }
             return changed;
+        }
+
+        internal struct ShortEdge
+        {
+            public int   a, b;
+            public float length;
+        }
+
+        // Shortest first, then by the corners' positions, so the order is the same whatever order they were found in
+        struct ShortestFirst : System.Collections.Generic.IComparer<ShortEdge>
+        {
+            public NativeArray<float3> points;
+            public readonly int Compare(ShortEdge x, ShortEdge y)
+            {
+                if (x.length != y.length) return x.length.CompareTo(y.length);
+                var c = Less(points[x.a], points[y.a]); if (c != 0) return c;
+                return Less(points[x.b], points[y.b]);
+            }
+        }
+
+        static int Less(float3 x, float3 y) => x.x != y.x ? x.x.CompareTo(y.x) : (x.y != y.y ? x.y.CompareTo(y.y) : x.z.CompareTo(y.z));
+
+        // The short edges' corners made one, shortest edge first, as long as what becomes one fits within kCollapseLength
+        // (a chain of short edges never drags a corner further): where each point goes, its cluster's least corner by x, y,
+        // z. Edges of a and b in either order, a and b their points' indices. The same for the same edges in any order:
+        // what ExactJudge accounts for with it.
+        internal static void Cluster(NativeArray<float3> points, NativeList<ShortEdge> edges, NativeArray<float3> to)
+        {
+            for (int e = 0; e < edges.Length; e++)
+            {
+                var edge = edges[e];
+                if (Less(points[edge.a], points[edge.b]) > 0)
+                    (edge.a, edge.b) = (edge.b, edge.a);
+                edges[e] = edge;
+            }
+            edges.Sort(new ShortestFirst { points = points });
+            var parent = new NativeArray<int>(points.Length, Allocator.Temp);
+            var lo     = new NativeArray<float3>(points.Length, Allocator.Temp);
+            var hi     = new NativeArray<float3>(points.Length, Allocator.Temp);
+            var least  = new NativeArray<float3>(points.Length, Allocator.Temp);
+            for (int i = 0; i < points.Length; i++) { parent[i] = i; lo[i] = points[i]; hi[i] = points[i]; least[i] = points[i]; }
+            int Root(int i)
+            {
+                while (parent[i] != i) { parent[i] = parent[parent[i]]; i = parent[i]; }
+                return i;
+            }
+            for (int e = 0; e < edges.Length; e++)
+            {
+                int ra = Root(edges[e].a), rb = Root(edges[e].b);
+                if (ra == rb)
+                    continue;
+                var min = math.min(lo[ra], lo[rb]); var max = math.max(hi[ra], hi[rb]);
+                if (!(math.length(max - min) <= kCollapseLength))
+                    continue;
+                parent[rb] = ra;
+                lo[ra] = min; hi[ra] = max;
+                least[ra] = Less(least[ra], least[rb]) <= 0 ? least[ra] : least[rb];
+            }
+            for (int i = 0; i < points.Length; i++)
+                to[i] = least[Root(i)];
+            parent.Dispose(); lo.Dispose(); hi.Dispose(); least.Dispose();
+        }
+
+        // Collapses the model's edges shorter than kCollapseLength (Cluster): every surface of every brush with a corner
+        // there moves it, so the model stays closed, and a triangle left without area is dropped
+        static void CollapseShortEdges(NativeList<BrushData> brushes, NativeList<Working> work, NativeParallelHashMap<long, int> workIndex, ref int collapsed,
+                                       NativeList<float3x2> moves)
+        {
+            var limitSq = kCollapseLength * kCollapseLength;
+            var ids    = new UnsafeHashMap<float3, int>(64, Allocator.Temp);
+            var points = new NativeList<float3>(64, Allocator.Temp);
+            var edges  = new NativeList<ShortEdge>(64, Allocator.Temp);
+            var pairs  = new NativeList<float3x2>(64, Allocator.Temp);
+            var needlePoints = new UnsafeHashSet<float3>(64, Allocator.Temp);
+            int IdOf(float3 p)
+            {
+                p += 0.0f;
+                if (!ids.TryGetValue(p, out var id)) { id = points.Length; ids.Add(p, id); points.Add(p); }
+                return id;
+            }
+            try
+            {
+                for (int b = 0; b < brushes.Length; b++)
+                {
+                    if (!brushes[b].brushRenderBuffer.IsCreated)
+                        continue;
+                    var surfaceCount = brushes[b].brushRenderBuffer.Value.surfaces.Length;
+                    for (int s = 0; s < surfaceCount; s++)
+                    {
+                        var count = TriangleCount(brushes, work, workIndex, b, s);
+                        for (int t = 0; t < count; t++)
+                        {
+                            if (!Corners(brushes, work, workIndex, b, s, t, out var c0, out var c1, out var c2))
+                                continue;
+                            var q0 = Position(brushes, work, workIndex, b, s, c0);
+                            var q1 = Position(brushes, work, workIndex, b, s, c1);
+                            var q2 = Position(brushes, work, workIndex, b, s, c2);
+                            if (IsNeedle(q0, q1, q2) || Changed(brushes, work, workIndex, b, s, t))
+                            {
+                                needlePoints.Add(q0 + 0.0f); needlePoints.Add(q1 + 0.0f); needlePoints.Add(q2 + 0.0f);
+                                continue;
+                            }
+                            AddShort(q0, q1); AddShort(q1, q2); AddShort(q2, q0);
+                        }
+                    }
+                }
+                // a needle's corners stay, and those of what the steps above changed: those are theirs
+                for (int e = 0; e < pairs.Length; e++)
+                {
+                    var x = pairs[e].c0; var y = pairs[e].c1;
+                    if (needlePoints.Contains(x) || needlePoints.Contains(y))
+                        continue;
+                    int a = IdOf(x), c = IdOf(y);
+                    edges.Add(new ShortEdge { a = math.min(a, c), b = math.max(a, c), length = math.distance(x, y) });
+                }
+                if (edges.Length == 0)
+                    return;
+
+                void AddShort(float3 x, float3 y)
+                {
+                    var d = math.distancesq(x, y);
+                    if (!(d > 0) || !(d < limitSq))
+                        return;
+                    pairs.Add(new float3x2(x + 0.0f, y + 0.0f));
+                }
+
+                var to = new NativeArray<float3>(points.Length, Allocator.Temp);
+                Cluster(points.AsArray(), edges, to);
+
+                // every corner at a position that moves takes its cluster's
+                for (int b = 0; b < brushes.Length; b++)
+                {
+                    if (!brushes[b].brushRenderBuffer.IsCreated)
+                        continue;
+                    var surfaceCount = brushes[b].brushRenderBuffer.Value.surfaces.Length;
+                    for (int s = 0; s < surfaceCount; s++)
+                    {
+                        var count = TriangleCount(brushes, work, workIndex, b, s);
+                        for (int t = 0; t < count; t++)
+                        {
+                            if (!Corners(brushes, work, workIndex, b, s, t, out var c0, out var c1, out var c2))
+                                continue;
+                            var q0 = Position(brushes, work, workIndex, b, s, c0);
+                            var q1 = Position(brushes, work, workIndex, b, s, c1);
+                            var q2 = Position(brushes, work, workIndex, b, s, c2);
+                            // a corner moved before (by a triangle it shares) is already where its cluster is
+                            if (!ids.ContainsKey(q0 + 0.0f) && !ids.ContainsKey(q1 + 0.0f) && !ids.ContainsKey(q2 + 0.0f))
+                                continue;
+                            var m0 = Moved(q0, out var p0); var m1 = Moved(q1, out var p1); var m2 = Moved(q2, out var p2);
+                            if (p0.Equals(p1) || p1.Equals(p2) || p2.Equals(p0) || math.lengthsq(math.cross(p1 - p0, p2 - p0)) == 0)
+                            {
+                                Drop(brushes, work, workIndex, b, s, t);
+                                continue;
+                            }
+                            if (!m0 && !m1 && !m2)
+                                continue;
+                            var w = WorkOn(brushes, work, workIndex, b, s);
+                            ref var copy = ref work.ElementAt(w);
+                            if (m0) MoveCorner(ref copy, c0, p0);
+                            if (m1) MoveCorner(ref copy, c1, p1);
+                            if (m2) MoveCorner(ref copy, c2, p2);
+                        }
+                    }
+                }
+                for (int i = 0; i < points.Length; i++)
+                {
+                    if (to[i].Equals(points[i]))
+                        continue;
+                    collapsed++;
+                    if (moves.IsCreated)
+                        moves.Add(new float3x2(points[i], to[i]));
+                }
+                to.Dispose();
+
+                bool Moved(float3 q, out float3 at)
+                {
+                    at = q;
+                    if (!ids.TryGetValue(q + 0.0f, out var id) || to[id].Equals(points[id]))
+                        return false;
+                    at = to[id];
+                    return true;
+                }
+            }
+            finally
+            {
+                edges.Dispose(); points.Dispose(); ids.Dispose(); pairs.Dispose(); needlePoints.Dispose();
+            }
+        }
+
+        // Whether the steps before the collapse changed a triangle: added it, or rewrote it (a dropped one is not there)
+        static bool Changed(NativeList<BrushData> brushes, NativeList<Working> work, NativeParallelHashMap<long, int> workIndex, int brush, int surface, int triangle)
+        {
+            var w = Find(workIndex, brush, surface);
+            if (w < 0)
+                return false;
+            ref var source = ref brushes[brush].brushRenderBuffer.Value.surfaces[surface];
+            if (triangle * 3 + 2 >= source.indices.Length)
+                return true;
+            var indices = work[w].indices;
+            for (int k = 0; k < 3; k++)
+            {
+                if (indices[triangle * 3 + k] != source.indices[triangle * 3 + k])
+                    return true;
+            }
+            return false;
+        }
+
+        // A triangle whose corners lie on one line in float, none two at one position (OutputWeld.FindNeedles)
+        internal static bool IsNeedle(float3 a, float3 b, float3 c) => !OutputWeld.HasTwoCornersAtOnePosition(a, b, c) && OutputWeld.OnOneLine(a, b, c);
+
+        static void MoveCorner(ref Working copy, int vertex, float3 to)
+        {
+            copy.collider[vertex] = to;
+            var select = copy.select[vertex]; select.position = to; copy.select[vertex] = select;
+            var render = copy.render[vertex]; render.position = to; copy.render[vertex] = render;
         }
 
         static long Key(int brush, int surface) => ((long)brush << 32) | (uint)surface;
