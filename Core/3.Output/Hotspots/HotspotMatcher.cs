@@ -317,7 +317,7 @@ namespace Chisel.Core
                         continue;
                     var pinned = Score(tiles[t], shape, density, true);
                     pinned.tile = t;
-                    Pick(ref pinned, layout, seed, 1);
+                    Pick(ref pinned, layout, seed, tiles[t].sheet > 0 ? 0 : 1, tiles[t].sheet > 0 ? 1 : 0);
                     return pinned;
                 }
             }
@@ -342,7 +342,8 @@ namespace Chisel.Core
         static HotspotChoice Best(NativeArray<HotspotTileData> tiles, in HotspotLayoutData layout, in HotspotShape shape, uint seed, bool radial, bool lastResort, float density)
         {
             var best = new HotspotChoice { tile = -1, score = float.PositiveInfinity };
-            var ties = 0;
+            // the tiles that tie: the layout's own (each with each of its materials) and other sheets' (their own material)
+            int ownTies = 0, sheetTies = 0;
             for (int t = layout.tileStart; t < layout.tileStart + layout.tileCount; t++)
             {
                 if (!Candidate(tiles[t], shape, radial))
@@ -350,21 +351,30 @@ namespace Chisel.Core
                 var choice = Score(tiles[t], shape, density, false, lastResort);
                 // a shaped tile that fits before any other
                 var key = Key(choice, tiles[t]); var bestKey = best.tile < 0 ? float.PositiveInfinity : Key(best, tiles[best.tile]);
-                if (key < bestKey) { best = choice; best.tile = t; ties = 1; }
-                else if (key == bestKey) ties++;
+                if (key < bestKey) { best = choice; best.tile = t; ownTies = sheetTies = 0; }
+                if (key <= bestKey)
+                {
+                    if (tiles[t].sheet > 0) sheetTies++;
+                    else                    ownTies++;
+                }
             }
-            if (ties <= 1)
+            if (best.tile < 0)
+                return best;
+            if (ownTies + sheetTies <= 1)
             {
-                Pick(ref best, layout, seed, 1);
+                Pick(ref best, layout, seed, ownTies, sheetTies);
                 return best;
             }
 
             // the seed picks one of the tiles that tie (and a material)
-            var pick = Pick(ref best, layout, seed, ties);
+            var pick = Pick(ref best, layout, seed, ownTies, sheetTies);
             var variant = best.variant;
+            var onSheet = pick >= ownTies;
+            if (onSheet)
+                pick -= ownTies;
             for (int t = layout.tileStart; t < layout.tileStart + layout.tileCount; t++)
             {
-                if (!Candidate(tiles[t], shape, radial))
+                if (!Candidate(tiles[t], shape, radial) || (tiles[t].sheet > 0) != onSheet)
                     continue;
                 var choice = Score(tiles[t], shape, density, false, lastResort);
                 if (Key(choice, tiles[t]) != Key(best, tiles[best.tile]))
@@ -382,14 +392,22 @@ namespace Chisel.Core
 
         // The seed's choice among ties tiles times the layout's materials: the tile (returned, of the ties) and the
         // material (choice.variant). With one material the tile is as the seed alone picks it.
-        static int Pick(ref HotspotChoice choice, in HotspotLayoutData layout, uint seed, int ties)
+        // Of the tiles that tie, which the seed picks: the layout's own first (index < ownTies), each with each of the
+        // layout's materials (choice.variant), then other sheets' (index ownTies + i, their own material); variations: how
+        // many different choices that is
+        static int Pick(ref HotspotChoice choice, in HotspotLayoutData layout, uint seed, int ownTies, int sheetTies)
         {
             var materials = math.max(1, layout.variantCount);
-            var all = (uint)(ties * materials);
+            var all = (uint)math.max(1, ownTies * materials + sheetTies);
             var pick = (int)(math.hash(new uint2(seed, 0x9E3779B9u)) % all);
-            choice.variant    = pick / ties;
             choice.variations = (int)all;
-            return pick % ties;
+            if (pick < ownTies * materials)
+            {
+                choice.variant = pick / ownTies;
+                return pick % ownTies;
+            }
+            choice.variant = 0;
+            return ownTies + (pick - ownTies * materials);
         }
 
         static float Key(in HotspotChoice choice, in HotspotTileData tile) => tile.shaped ? choice.score : choice.score + kUnshaped;
