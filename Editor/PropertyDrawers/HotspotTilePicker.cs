@@ -23,6 +23,9 @@ namespace Chisel.Editors
         const float kWidth     = 520;
         const float kHeader    = 22;
         const float kThumbnail = 40;
+        // a page this low at the window's width (a trim sheet) is drawn this high instead, and scrolls across
+        const float kMinPageHeight = 128;
+        const float kScrollBar     = 14;
         static readonly Color kLine      = new(1, 1, 1, 0.6f);
         static readonly Color kHover     = new(1, 0.75f, 0.1f, 1);
         static readonly Color kSelected  = new(0.2f, 0.6f, 1, 0.35f);
@@ -35,6 +38,7 @@ namespace Chisel.Editors
         readonly Action<Vector2Int> pick;
         int shown;
         int hover;
+        Vector2 scroll;
 
         ChiselHotspotLayout Layout => pages[shown].layout;
         int Sheet => pages[shown].sheet;
@@ -54,10 +58,19 @@ namespace Chisel.Editors
 
         public override Vector2 GetWindowSize()
         {
-            var aspect = 0f;
+            var height = 0f;
             foreach (var page in pages)
-                aspect = Mathf.Max(aspect, Aspect(page.layout));
-            return new Vector2(kWidth, kHeader + Thumbnails + kWidth * aspect);
+                height = Mathf.Max(height, PageSize(page.layout, kWidth).y + (PageSize(page.layout, kWidth).x > kWidth ? kScrollBar : 0));
+            return new Vector2(kWidth, kHeader + Thumbnails + height);
+        }
+
+        // A page's size in the window: across its width, or at least kMinPageHeight high (then wider than the window)
+        static Vector2 PageSize(ChiselHotspotLayout layout, float width)
+        {
+            if (layout == null || layout.size.x <= 0 || layout.size.y <= 0)
+                return new Vector2(width, width);
+            var scale = Mathf.Max(width / layout.size.x, Mathf.Min(kMinPageHeight, width) / layout.size.y);
+            return new Vector2(layout.size.x * scale, layout.size.y * scale);
         }
 
         public override void OnOpen()
@@ -105,11 +118,32 @@ namespace Chisel.Editors
                 y += Thumbnails;
             }
 
-            // the page at its own aspect, along the top
+            // the page at its own aspect, along the top; a low one scrolls across
             var layout = Layout;
             if (layout == null)
                 return;
-            var sheet = new Rect(rect.x, y, rect.width, Mathf.Min(rect.yMax - y, rect.width * Aspect(layout)));
+            var pageSize = PageSize(layout, rect.width);
+            var scrolls  = pageSize.x > rect.width + 0.5f;
+            Rect sheet;
+            if (scrolls)
+            {
+                scroll = GUI.BeginScrollView(new Rect(rect.x, y, rect.width, pageSize.y + kScrollBar), scroll, new Rect(0, 0, pageSize.x, pageSize.y), true, false);
+                sheet = new Rect(0, 0, pageSize.x, pageSize.y);
+            } else
+                sheet = new Rect(rect.x, y, pageSize.x, pageSize.y);
+            try
+            {
+                DrawPage(current, layout, sheet);
+            }
+            finally
+            {
+                if (scrolls)
+                    GUI.EndScrollView();
+            }
+        }
+
+        void DrawPage(Event current, ChiselHotspotLayout layout, Rect sheet)
+        {
             var scale = new Vector2(sheet.width / Mathf.Max(1, layout.size.x), sheet.height / Mathf.Max(1, layout.size.y));
             Vector3 ToSheet(Vector2Int p) => new(sheet.x + p.x * scale.x, sheet.y + p.y * scale.y, 0);
 
