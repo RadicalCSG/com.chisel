@@ -90,6 +90,9 @@ namespace Chisel.Core
         // the sides of the bounds (a bit each) along which the outline has no border, where the interior starts
         public bool                                interiorToEdges;
         public int                                 openSides;
+        // A texel of the tile in the surface's units (0: unknown): a triangle less high than this shows no texture of its
+        // own, and takes its neighbour's section (AssignUVs)
+        public double                              texel;
 
         // What the sections of a surface on its tile are built from
         public static HotspotSectionInput Input(in HotspotTileData tile, in HotspotLayoutData layout, in HotspotShape shape, in HotspotChoice choice, float3 normal)
@@ -410,6 +413,7 @@ namespace Chisel.Core
             interiorCell = -1;
             interiorToEdges = false;
             openSides = 0;
+            texel = TexelOf(input);
             var count = input.count;
             if (count != 3 && count != 4)
                 return false;
@@ -574,9 +578,12 @@ namespace Chisel.Core
         // How far apart two uvs of one vertex may be and still be one vertex
         const float kSameUV = 1e-5f;
 
+        static double TexelOf(in HotspotSectionInput input) => input.pixelsPerUnit > 0 ? 1.0 / input.pixelsPerUnit : 0;
+
         // Each triangle's uvs from the section it is in, the interior's from its repeats when there are any
-        // (BuildInteriorRepeats). A
-        // vertex on a seam, where repeats meet, gets a vertex of its own for each side.
+        // (BuildInteriorRepeats); a sliver, less high than a texel, from the section of its neighbour across its longest
+        // edge (a sliver is textured with what is beside it). A vertex on a seam, where repeats meet,
+        // gets a vertex of its own for each side.
         public readonly void AssignUVs(NativeList<int> indices, NativeList<float3> colliderVertices, NativeList<SelectVertex> selectVertices,
                                        NativeList<RenderVertex> renderVertices, float3 right, float3 up)
         {
@@ -591,12 +598,14 @@ namespace Chisel.Core
             var assigned = new NativeList<bool>(renderVertices.Length, Allocator.Temp);
             assigned.Resize(renderVertices.Length, NativeArrayOptions.ClearMemory);
             var copies = new UnsafeHashMap<int2, int>(renderVertices.Length, Allocator.Temp);
-            for (int t = 0; t + 2 < indices.Length; t += 3)
+            var triangles = indices.Length / 3;
+            var cellOf    = new NativeArray<int2>(triangles, Allocator.Temp);   // cell, repeat
+            for (int t = 0; t < triangles; t++)
             {
                 var centroid = double2.zero;
                 for (int k = 0; k < 3; k++)
                 {
-                    var p = (double3)renderVertices[indices[t + k]].position;
+                    var p = (double3)renderVertices[indices[t * 3 + k]].position;
                     centroid += new double2(math.dot(r, p), math.dot(u, p));
                 }
                 var cell = Locate(centroid / 3);
@@ -607,6 +616,14 @@ namespace Chisel.Core
                     repeat = repeats.Locate(centroid / 3);
                     cell = cells.Length + repeat;
                 }
+                cellOf[t] = new int2(cell, repeat);
+            }
+            if (texel > 0)
+                FromNeighbours(indices, colliderVertices, cellOf, texel);
+            for (int t3 = 0; t3 + 2 < indices.Length; t3 += 3)
+            {
+                var t = t3;
+                var cell = cellOf[t3 / 3].x; var repeat = cellOf[t3 / 3].y;
                 for (int k = 0; k < 3; k++)
                 {
                     var index = indices[t + k];
@@ -641,8 +658,70 @@ namespace Chisel.Core
                     }
                 }
             }
+            cellOf.Dispose();
             assigned.Dispose();
             copies.Dispose();
+        }
+
+        // Each sliver (a triangle less high than texel) takes the section of the neighbour that has one (its own, or one it
+        // took) across the longest of its edges that has such a neighbour; a sliver with none keeps its own
+        static void FromNeighbours(NativeList<int> indices, NativeList<float3> positions, NativeArray<int2> cellOf, double texel)
+        {
+            var triangles = cellOf.Length;
+            var ids     = new UnsafeHashMap<float3, int>(positions.Length, Allocator.Temp);
+            var corner  = new NativeArray<int>(indices.Length, Allocator.Temp);
+            for (int i = 0; i < indices.Length; i++)
+            {
+                var p = positions[indices[i]] + 0.0f;
+                if (!ids.TryGetValue(p, out var id)) { id = ids.Count; ids.Add(p, id); }
+                corner[i] = id;
+            }
+            var byEdge  = new UnsafeParallelMultiHashMap<int2, int>(indices.Length, Allocator.Temp);
+            var length  = new NativeArray<double>(indices.Length, Allocator.Temp);   // of the edge from each corner to the next
+            var settled = new NativeArray<bool>(triangles, Allocator.Temp);
+            var any = false;
+            int2 Edge(int t, int k) { int a = corner[t * 3 + k], b = corner[t * 3 + (k + 1) % 3]; return new int2(math.min(a, b), math.max(a, b)); }
+            for (int t = 0; t < triangles; t++)
+            {
+                var longest = 0.0;
+                for (int k = 0; k < 3; k++)
+                {
+                    byEdge.Add(Edge(t, k), t);
+                    length[t * 3 + k] = math.distance((double3)positions[indices[t * 3 + k]], (double3)positions[indices[t * 3 + (k + 1) % 3]]);
+                    longest = math.max(longest, length[t * 3 + k]);
+                }
+                var p0 = (double3)positions[indices[t * 3]]; var p1 = (double3)positions[indices[t * 3 + 1]]; var p2 = (double3)positions[indices[t * 3 + 2]];
+                settled[t] = !(longest > 0) || math.length(math.cross(p1 - p0, p2 - p0)) >= texel * longest;
+                any |= !settled[t];
+            }
+            for (bool changed = any; changed;)
+            {
+                changed = false;
+                for (int t = 0; t < triangles; t++)
+                {
+                    if (settled[t])
+                        continue;
+                    var from = -1; var along = -1.0;
+                    for (int k = 0; k < 3; k++)
+                    {
+                        if (!(length[t * 3 + k] > along) || !byEdge.TryGetFirstValue(Edge(t, k), out var other, out var iterator))
+                            continue;
+                        do
+                        {
+                            if (other == t || !settled[other])
+                                continue;
+                            from = other; along = length[t * 3 + k];
+                            break;
+                        } while (byEdge.TryGetNextValue(out other, ref iterator));
+                    }
+                    if (from < 0)
+                        continue;
+                    cellOf[t] = cellOf[from];
+                    settled[t] = true;
+                    changed = true;
+                }
+            }
+            settled.Dispose(); length.Dispose(); byEdge.Dispose(); corner.Dispose(); ids.Dispose();
         }
 
         // A point of a piece of a surface triangle. kind 0: corner a of the triangle; 1: where triangle edge a crosses

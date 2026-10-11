@@ -1,5 +1,6 @@
 using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
+using Unity.Entities;
 using Unity.Mathematics;
 
 namespace Chisel.Core
@@ -21,13 +22,16 @@ namespace Chisel.Core
     // outline together. By hand (HotspotLink) two touching surfaces are connected whatever their frames, or kept apart;
     // the newest link counts. Connected surfaces that are not coplanar are unfolded about the edge they share into the
     // first one's plane (the texture wraps round), each by a rigid map (unfoldOf). A link can also put
-    // a border along the edge two surfaces share, or leave it out (Borders).
+    // a border along the edge two surfaces share, or leave it out (Borders). A sliver, narrower than a texel of its layout,
+    // shows no tile: it is mapped with the neighbour it shares its longest edge with.
     internal static class HotspotGroups
     {
         // Normals and frames agree this closely (the cosine), and the surfaces share at least two corners
         const float kSameDirection = 1 - 1e-6f;
         // A corner two members have, unfolded by each, is one point when they put it this close (squared)
         const float kSamePoint = 1e-10f;
+        // A surface narrower than this many texels of its layout (at its density) is a sliver
+        const float kSliverTexels = 1;
 
         public struct Group
         {
@@ -141,7 +145,9 @@ namespace Chisel.Core
             groups.Clear();
             if (!tiles.IsCreated || !layouts.IsCreated)
                 return;
+            // the slivers last, so a group always has a surface that shows its tile first
             var candidates = new NativeList<int2>(64, Allocator.Temp);
+            var slivers    = new NativeList<int2>(16, Allocator.Temp);
             for (int b = 0; b < brushes.Length; b++)
             {
                 if (!brushes[b].brushRenderBuffer.IsCreated)
@@ -152,9 +158,19 @@ namespace Chisel.Core
                     ref var surface = ref surfaces[s];
                     if (surface.hotspotSource.layout > 0 && surface.hotspotSource.layout <= layouts.Length &&
                         surface.indices.Length >= 3 && surface.decalEntityID == 0)
-                        candidates.Add(new int2(b, s));
+                    {
+                        var source  = surface.hotspotSource;
+                        var texels  = layouts[source.layout - 1].pixelsPerUnit * (source.density > 0 ? source.density : 1);
+                        if (Width(ref surface.colliderVertices, source) * texels < kSliverTexels)
+                            slivers.Add(new int2(b, s));
+                        else
+                            candidates.Add(new int2(b, s));
+                    }
                 }
             }
+            var firstSliver = candidates.Length;
+            candidates.AddRange(slivers.AsArray());
+            slivers.Dispose();
             if (candidates.Length < 2)
             {
                 candidates.Dispose();
@@ -247,6 +263,10 @@ namespace Chisel.Core
             }
             // (candidate, candidate, priority): the order of the link that connected them, or above every link by themselves
             var joined = new NativeList<int3>(candidates.Length, Allocator.Temp);
+            // each sliver's neighbour that shows a tile with the longest edge in common (candidate, the edge's length)
+            var sliverTo = new NativeArray<float2>(candidates.Length - firstSliver, Allocator.Temp);
+            for (int i = 0; i < sliverTo.Length; i++)
+                sliverTo[i] = new float2(-1, 0);
             using (var pairs = shared.GetKeyArray(Allocator.Temp))
             {
                 for (int i = 0; i < pairs.Length; i++)
@@ -260,10 +280,20 @@ namespace Chisel.Core
                     var sameFrame = SameAxis(a.right, b.right) && SameAxis(a.up, b.up);
                     var together  = coplanar && sameFrame;
                     var priority  = int.MaxValue;
-                    if (linked.TryGetValue(pairs[i], out var link) && link.y != 0)
+                    var byHand    = linked.TryGetValue(pairs[i], out var link) && link.y != 0;
+                    if (byHand)
                     {
                         together = a.layout == b.layout && link.y > 0;
                         priority = link.x;
+                    }
+                    // a sliver beside a surface that shows a tile: the longest edge they share counts
+                    if (!together && !byHand && a.layout == b.layout && (pairs[i].x < firstSliver) != (pairs[i].y < firstSliver))
+                    {
+                        var sliver = math.max(pairs[i].x, pairs[i].y); var other = math.min(pairs[i].x, pairs[i].y);
+                        var length = SharedEdge(brushes, candidates[sliver], candidates[other]);
+                        var best = sliverTo[sliver - firstSliver];
+                        if (length > best.y || (length == best.y && best.x >= 0 && other < best.x))
+                            sliverTo[sliver - firstSliver] = new float2(other, length);
                     }
                     if (!together)
                         continue;
@@ -275,6 +305,19 @@ namespace Chisel.Core
             }
             shared.Dispose();
             linked.Dispose();
+            // the slivers no surface that shows a tile took in: mapped with their neighbour
+            for (int i = 0; i < sliverTo.Length; i++)
+            {
+                var sliver = firstSliver + i;
+                var other  = (int)sliverTo[i].x;
+                if (other < 0 || !(sliverTo[i].y > 0) || Root(sliver) < firstSliver)
+                    continue;
+                joined.Add(new int3(other, sliver, int.MaxValue));
+                var ra = Root(other); var rb = Root(sliver);
+                if (ra != rb)
+                    parent[math.max(ra, rb)] = math.min(ra, rb);
+            }
+            sliverTo.Dispose();
 
             // each group of more than one: its members, matched as one surface on the first one's settings
             var size = new NativeArray<int>(candidates.Length, Allocator.Temp);
@@ -457,6 +500,7 @@ namespace Chisel.Core
             sections.halfPlanes.AddRange(halfPlanes.AsArray().GetSubArray(group.sectionStart.y, group.sectionCount.y));
             sections.cells.AddRange(cells.AsArray().GetSubArray(group.sectionStart.z, group.sectionCount.z));
             sections.interiorCell    = group.interiorCell;
+            sections.texel           = group.input.pixelsPerUnit > 0 ? 1.0 / group.input.pixelsPerUnit : 0;
             sections.interiorToEdges = group.interiorToEdges;
             sections.openSides       = group.openSides;
             return sections;
@@ -496,6 +540,65 @@ namespace Chisel.Core
             var axis  = math.normalize(q1 - q0);
             var angle = math.atan2(math.dot(axis, math.cross(nTo, nFrom)), math.dot(nTo, nFrom));
             return math.mul(float4x4.Translate(q0), math.mul(float4x4.AxisAngle(axis, angle), float4x4.Translate(-q0)));
+        }
+
+        // How long the edge two surfaces share is: the two shared corners furthest apart (0: none)
+        static float SharedEdge(NativeList<BrushData> brushes, int2 a, int2 b)
+        {
+            ref var first  = ref brushes[a.x].brushRenderBuffer.Value.surfaces[a.y];
+            ref var second = ref brushes[b.x].brushRenderBuffer.Value.surfaces[b.y];
+            var corners = new UnsafeHashSet<float3>(first.colliderVertices.Length, Allocator.Temp);
+            for (int v = 0; v < first.colliderVertices.Length; v++)
+                corners.Add(first.colliderVertices[v] + 0.0f);
+            var longest = 0f;
+            for (int i = 0; i < second.colliderVertices.Length; i++)
+            {
+                var p = second.colliderVertices[i] + 0.0f;
+                if (!corners.Contains(p))
+                    continue;
+                for (int k = i + 1; k < second.colliderVertices.Length; k++)
+                {
+                    var r = second.colliderVertices[k] + 0.0f;
+                    if (corners.Contains(r))
+                        longest = math.max(longest, math.distance(p, r));
+                }
+            }
+            corners.Dispose();
+            return longest;
+        }
+
+        // A surface's narrowest width in its plane: of every direction two of its corners give, the least extent across it
+        // (the narrowest width of a convex outline lies across one of its edges)
+        static float Width(ref BlobArray<float3> corners, in HotspotSurfaceSource source)
+        {
+            var right = math.normalizesafe(source.right); var up = math.normalizesafe(source.up);
+            var count = corners.Length;
+            if (count < 3)
+                return 0;
+            var points = new NativeArray<float2>(count, Allocator.Temp);
+            for (int v = 0; v < count; v++)
+                points[v] = new float2(math.dot(corners[v], right), math.dot(corners[v], up));
+            var width = float.PositiveInfinity;
+            for (int i = 0; i < count && width > 0; i++)
+            {
+                for (int j = i + 1; j < count; j++)
+                {
+                    var d = points[j] - points[i];
+                    var length = math.length(d);
+                    if (!(length > 0))
+                        continue;
+                    d /= length;
+                    float lo = float.PositiveInfinity, hi = float.NegativeInfinity;
+                    for (int k = 0; k < count; k++)
+                    {
+                        var across = d.x * (points[k].y - points[i].y) - d.y * (points[k].x - points[i].x);
+                        lo = math.min(lo, across); hi = math.max(hi, across);
+                    }
+                    width = math.min(width, hi - lo);
+                }
+            }
+            points.Dispose();
+            return float.IsPositiveInfinity(width) ? 0 : width;
         }
 
         static bool SameAxis(float3 a, float3 b)

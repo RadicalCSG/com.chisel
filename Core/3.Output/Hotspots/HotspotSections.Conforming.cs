@@ -379,6 +379,7 @@ namespace Chisel.Core
             interiorCell = -1;
             interiorToEdges = false;
             openSides = 0;
+            texel = TexelOf(input);
             if (input.count != 4 || !(input.pixelsPerUnit > 0) || input.Repeated)
                 return false;
             var s = new Outline(4, input.f0, input.f1, input.f2);
@@ -649,6 +650,7 @@ namespace Chisel.Core
             halfPlanes.Clear();
             cells.Clear();
             interiorCell = -1;
+            texel = TexelOf(input);
             if (input.count != 4 || !(input.pixelsPerUnit > 0) || input.Repeated)
                 return false;
             var s = new Outline(4, input.f0, input.f1, input.f2);
