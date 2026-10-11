@@ -33,8 +33,8 @@ namespace Chisel.Editors
             // what the surfaces are without hotspot cuts (their colliders'), the surfaces over their budget
             public int    repeats, seams, uncutTriangles, budgetLimited;
             // drawn surfaces left out: without render data (not built since), not hotspot mapped, decals; triangles
-            // without area; drawn meshes without triangle lookups
-            public int    withoutData, notMapped, decals, unmeasured, withoutLookup;
+            // without area; drawn meshes without triangle lookups; slivers, left out of the extremes below
+            public int    withoutData, notMapped, decals, unmeasured, withoutLookup, slivers;
             public double leastDensity, mostDensity, mostAnisotropy, mostEnergy;
         }
 
@@ -198,7 +198,12 @@ namespace Chisel.Editors
             public int    i0, i1, i2;  // mesh vertices
             public double s1, s2, area;
             public bool   mirrored;
+            // under a tenth of a millimetre high (the CSG leaves some on small curved faces): its uvs are float noise, so
+            // the summary's extremes leave it out
+            public bool   sliver;
         }
+
+        const double kSliverHeight = 1e-4;
 
         static void Rebuild()
         {
@@ -321,7 +326,9 @@ namespace Chisel.Editors
                         continue;
                     }
                     var area = 0.5 * math.length(math.cross((double3)(float3)(positions[i1] - positions[i0]), (double3)(float3)(positions[i2] - positions[i0])));
-                    triangles.Add(new Triangle { surface = surfaceOf[id], i0 = i0, i1 = i1, i2 = i2, s1 = s1, s2 = s2, area = area, mirrored = mirrored });
+                    var longest = math.max(math.distance((float3)positions[i0], positions[i1]), math.max(math.distance((float3)positions[i1], positions[i2]), math.distance((float3)positions[i2], positions[i0])));
+                    triangles.Add(new Triangle { surface = surfaceOf[id], i0 = i0, i1 = i1, i2 = i2, s1 = s1, s2 = s2, area = area, mirrored = mirrored,
+                                                 sliver = !(2 * area > kSliverHeight * longest) });
                 }
             }
             if (triangles.Count == 0)
@@ -349,11 +356,15 @@ namespace Chisel.Editors
                 colors.Add(color); colors.Add(color); colors.Add(color);
                 summary.triangles++;
                 summary.mirrored += flipped ? 1 : 0;
-                var density = math.sqrt(t.s1 * t.s2);
-                summary.leastDensity   = math.min(summary.leastDensity, density);
-                summary.mostDensity    = math.max(summary.mostDensity, density);
-                summary.mostAnisotropy = math.max(summary.mostAnisotropy, t.s2 > 0 ? t.s1 / t.s2 : double.PositiveInfinity);
-                summary.mostEnergy     = math.max(summary.mostEnergy, HotspotDiagnostics.Energy(t.s1, t.s2));
+                summary.slivers += t.sliver ? 1 : 0;
+                if (!t.sliver)
+                {
+                    var density = math.sqrt(t.s1 * t.s2);
+                    summary.leastDensity   = math.min(summary.leastDensity, density);
+                    summary.mostDensity    = math.max(summary.mostDensity, density);
+                    summary.mostAnisotropy = math.max(summary.mostAnisotropy, t.s2 > 0 ? t.s1 / t.s2 : double.PositiveInfinity);
+                    summary.mostEnergy     = math.max(summary.mostEnergy, HotspotDiagnostics.Energy(t.s1, t.s2));
+                }
                 AddEdge(t.i0, t.i1); AddEdge(t.i1, t.i2); AddEdge(t.i2, t.i0);
 
                 void AddEdge(int a, int b)

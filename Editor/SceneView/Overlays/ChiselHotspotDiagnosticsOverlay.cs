@@ -82,7 +82,8 @@ namespace Chisel.Editors
             if (summary.triangles > 0)
             {
                 EditorGUILayout.LabelField($"density {summary.leastDensity:0.00} .. {summary.mostDensity:0.00}, anisotropy up to {summary.mostAnisotropy:0.00}", EditorStyles.miniLabel);
-                EditorGUILayout.LabelField($"energy up to {summary.mostEnergy:0.00}, {summary.mirrored} mirrored", EditorStyles.miniLabel);
+                EditorGUILayout.LabelField($"energy up to {summary.mostEnergy:0.00}, {summary.mirrored} mirrored" +
+                                           (summary.slivers > 0 ? $" ({summary.slivers} slivers under 0.1 mm left out)" : string.Empty), EditorStyles.miniLabel);
                 EditorGUILayout.LabelField($"{summary.lastResort} repeated as a last resort, {summary.allBorder} all border, {summary.pinned} pinned", EditorStyles.miniLabel);
                 EditorGUILayout.LabelField($"{summary.grouped} in {summary.groups} groups mapped as one", EditorStyles.miniLabel);
                 EditorGUILayout.LabelField($"{summary.triangles} triangles drawn for {summary.uncutTriangles} uncut, {summary.repeats} repeats, {summary.seams} seam edges", EditorStyles.miniLabel);

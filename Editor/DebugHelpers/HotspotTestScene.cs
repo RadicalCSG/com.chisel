@@ -137,12 +137,13 @@ namespace Chisel.Editors
             // "default N ...": its first N surfaces keep the default material
             var parts = generator.name.Split(' ');
             var keep  = parts.Length > 1 && parts[0] == "default" && int.TryParse(parts[1], out var count) ? count : 0;
-            // "pin NAME ...": its surfaces keep that tile
+            // "pin NAME ...": its front (facing -z) keeps that tile
             var pin   = parts.Length > 1 && parts[0] == "pin" && s_Layout ? s_Layout.tiles.FindIndex(tile => tile.name == parts[1]) : -1;
+            var front = pin >= 0 ? Face(generator, p => -p.z) : null;
             for (int i = keep; i < surfaces.Length; i++)
             {
                 surfaces[i].RenderMaterial = s_Material;
-                if (pin >= 0)
+                if (front != null && i == front.descriptionIndex)
                 {
                     var details = surfaces[i].surfaceDetails;
                     details.hotspot.pinnedTile = s_Layout.tiles[pin].id;
