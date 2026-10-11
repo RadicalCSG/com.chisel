@@ -15,6 +15,9 @@ namespace Chisel.Core
         static readonly List<ulong>                                  s_Scratch   = new();
         // the other sheets each layout is drawn with: their layouts and materials
         static readonly List<(ChiselHotspotLayout layout, ulong material, int index)[]> s_Sheets = new();
+        // the material a layout with other sheets is registered for (a surface mapped on the layout's own tiles takes it
+        // back after its own match put another sheet's on it); 0 for one without
+        static readonly List<ulong>                                  s_Own    = new();
 
         public static int Register(ChiselHotspotLayout layout) { return Register(layout, null, null); }
 
@@ -71,7 +74,8 @@ namespace Chisel.Core
                 }
             }
             var variantKey = key;
-            key ^= sheetKey * 0x9E3779B97F4A7C15UL;
+            var own = sheetList != null && material != null ? UnityEngine.EntityId.ToULong(material.GetEntityId()) : 0UL;
+            key ^= sheetKey * 0x9E3779B97F4A7C15UL ^ own * 0xC2B2AE3D27D4EB4FUL;
             if (!s_Ids.TryGetValue((layout, key), out var index))
             {
                 if (variantKey != 0)
@@ -79,6 +83,7 @@ namespace Chisel.Core
                 s_Layouts.Add(layout);
                 s_Materials.Add(materials);
                 s_Sheets.Add(sheetList);
+                s_Own.Add(own);
                 index = s_Layouts.Count;
                 s_Ids[(layout, key)] = index;
             }
@@ -209,6 +214,7 @@ namespace Chisel.Core
                     }
                     data.tileCount = tiles.Length - data.tileStart;
                 }
+                data.material = s_Own[i];
                 if (variants.IsCreated && s_Materials[i] != null)
                 {
                     data.variantStart = variants.Length;

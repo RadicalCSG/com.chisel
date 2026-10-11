@@ -102,11 +102,15 @@ namespace Chisel.Core
                         var group = groups[g];
                         if (group.sheetMaterial != 0)
                             to.destinationParameters.parameter1 = group.sheetMaterial;
-                        else if (variants.IsCreated && group.layout >= 0 && group.layout < layouts.Length)
+                        else if (group.layout >= 0 && group.layout < layouts.Length)
                         {
+                            // on the layout's own tiles: one of its materials, or its own back (a member's own match may
+                            // have given it another sheet's)
                             var layout = layouts[group.layout];
-                            if (layout.variantCount > 1 && layout.variantStart + group.variant < variants.Length)
+                            if (variants.IsCreated && layout.variantCount > 1 && layout.variantStart + group.variant < variants.Length)
                                 to.destinationParameters.parameter1 = variants[layout.variantStart + group.variant];
+                            else if (layout.material != 0)
+                                to.destinationParameters.parameter1 = layout.material;
                         }
                         MapInGroup(builder, ref from, ref to, groups[g], g, unfolded ? unfold : float4x4.identity, unfolded, groupLines, groupHalfPlanes, groupCells);
                         continue;
@@ -186,6 +190,9 @@ namespace Chisel.Core
                         ref var stored = ref surfaces[entry.surfaceIndex];
                         if (stored.vertexCount == 0 || stored.indexCount == 0)
                             continue;
+                        // the render material the cut gave it (a group's sheet or variant), where the entry had the old one
+                        if (entry.surfaceParameter != 0 && entry.surfaceParameter == original.surfaces[entry.surfaceIndex].destinationParameters.parameter1)
+                            entry.surfaceParameter = stored.destinationParameters.parameter1;
                         entry.vertexCount       = stored.vertexCount;
                         entry.indexCount        = stored.indexCount;
                         entry.geometryHashValue = stored.geometryHashValue;

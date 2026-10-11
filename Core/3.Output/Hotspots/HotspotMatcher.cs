@@ -60,7 +60,8 @@ namespace Chisel.Core
         public float  padding, interiorPadding;
         // the materials drawn on it, a surface given one of them (ChiselHotspotStore.Gather's variants); 0: its own only
         public int    variantStart, variantCount;
-        // a sheet's own material (render material id), given to a surface that takes one of its tiles; 0: the surface's own
+        // a sheet's own material (render material id), given to a surface that takes one of its tiles; of a layout with
+        // other sheets, the material it is registered for (ChiselHotspotStore); 0: the surface's own
         public ulong  material;
     }
 
