@@ -24,6 +24,11 @@ namespace Chisel.Core
         RepeatBorder  = 1 << 7,
         // Repeats keep their exact size, and the last one is cut off, instead of all stretching to fit
         PartialRepeats = 1 << 8,
+        // Inside corner pieces for bordered tiles (HotspotTile.insideCorners), never matched: four, one for each way an
+        // inside corner turns, the corner where their outer edges meet in the middle
+        InsideCorners  = 1 << 9,
+        // One inside corner piece, drawn as the top left of the four, turned for the others
+        InsideCornerTurned = 1 << 10,
     }
 
     // How a border strip along one side of a tile takes the length of a surface's edge
@@ -73,6 +78,9 @@ namespace Chisel.Core
         public HotspotBorderSide[] sides;
         // Holes in it (a shaped tile)
         public HotspotTileHole[] holes;
+        // The tile (id) with the pieces for this tile's border at inside corners (InsideCorners, InsideCornerTurned);
+        // 0 for none, the strips meeting on a line through the corner
+        public int              insideCorners;
     }
 
     public enum HotspotCutKind : byte
@@ -160,6 +168,8 @@ namespace Chisel.Core
             public string[]   tags;
             public int        border;
             public JsonHole[] holes;
+            // the name of the tile with its inside corner pieces
+            public string     insideCorners;
         }
 
         [Serializable]
@@ -189,7 +199,8 @@ namespace Chisel.Core
         public const string kJsonFormat = "chisel-hotspot-layout";
 
         // Reads a layout written as JSON; tile tags
-        // "disabled", "radial", "repeat-u", "repeat-v", "rotate" and "mirror" set the tile's flags. A tile's points may
+        // "disabled", "radial", "repeat-u", "repeat-v", "rotate", "mirror", "inside-corners" and "inside-corner-turned"
+        // set the tile's flags; "insideCorners" names the tile with its inside corner pieces. A tile's points may
         // be any outline, with "holes" (each its own points): a shaped tile. The cuts are found from the tiles when they
         // form a grid (BuildCuts).
         public static bool TryReadJson(string json, ChiselHotspotLayout layout, out string error)
@@ -225,6 +236,17 @@ namespace Chisel.Core
                 }
                 tiles.Add(new HotspotTile { id = tiles.Count + 1, name = tile.name, points = PointsOf(tile.points), holes = holes, flags = FlagsOf(tile.tags), border = Math.Max(0, tile.border) });
             }
+            for (int i = 0; i < tiles.Count; i++)
+            {
+                var link = read.tiles[i].insideCorners;
+                if (string.IsNullOrEmpty(link))
+                    continue;
+                var linked = tiles.FindIndex(other => other.name == link);
+                if (linked < 0) { error = $"tile '{tiles[i].name}': no tile '{link}' for its inside corners"; return false; }
+                var tile = tiles[i];
+                tile.insideCorners = tiles[linked].id;
+                tiles[i] = tile;
+            }
             layout.size  = new Vector2Int(read.width, read.height);
             layout.tiles = tiles;
             layout.BuildCuts(out _);
@@ -249,6 +271,8 @@ namespace Chisel.Core
                     case "alternate": flags |= HotspotTileFlags.Alternate; break;
                     case "repeat-border": flags |= HotspotTileFlags.RepeatBorder; break;
                     case "repeat-partial": flags |= HotspotTileFlags.PartialRepeats; break;
+                    case "inside-corners": flags |= HotspotTileFlags.InsideCorners; break;
+                    case "inside-corner-turned": flags |= HotspotTileFlags.InsideCornerTurned; break;
                 }
             }
             return flags;

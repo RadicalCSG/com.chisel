@@ -24,6 +24,10 @@ namespace Chisel.Core
         public bool             shaped;
         public uint4            mask0, mask1;
         public int              sideStart, sideCount;
+        // The bounds in pixels of its inside corner pieces (HotspotTile.insideCorners; none when not above insideMin), and
+        // whether that is one piece turned (InsideCornerTurned) rather than four
+        public float2           insideMin, insideMax;
+        public bool             insideOne;
 
         public readonly float2 Corner(int index)
         {
@@ -391,7 +395,7 @@ namespace Chisel.Core
 
         static bool Candidate(in HotspotTileData tile, in HotspotShape shape, bool radial)
         {
-            if ((tile.flags & (HotspotTileFlags.Disabled | HotspotTileFlags.Alternate)) != 0)
+            if ((tile.flags & (HotspotTileFlags.Disabled | HotspotTileFlags.Alternate | HotspotTileFlags.InsideCorners | HotspotTileFlags.InsideCornerTurned)) != 0)
                 return false;
             if (((tile.flags & HotspotTileFlags.Radial) != 0) != radial)
                 return false;
@@ -701,6 +705,31 @@ namespace Chisel.Core
                 tiles.Add(t);
             }
             data.tileCount = tiles.Length - data.tileStart;
+            LinkInsideCorners(layout, tiles, data.tileStart);
+        }
+
+        // Each tile's inside corner pieces, from the tile it links to
+        static void LinkInsideCorners(ChiselHotspotLayout layout, NativeList<HotspotTileData> tiles, int tileStart)
+        {
+            const HotspotTileFlags kPieces = HotspotTileFlags.InsideCorners | HotspotTileFlags.InsideCornerTurned;
+            foreach (var tile in layout.tiles)
+            {
+                if (tile.insideCorners == 0 || tile.insideCorners == tile.id)
+                    continue;
+                int own = -1, pieces = -1;
+                for (int i = tileStart; i < tiles.Length; i++)
+                {
+                    if (tiles[i].id == tile.id) own = i;
+                    if (tiles[i].id == tile.insideCorners && (tiles[i].flags & kPieces) != 0) pieces = i;
+                }
+                if (own < 0 || pieces < 0)
+                    continue;
+                var t = tiles[own];
+                t.insideMin = tiles[pieces].min;
+                t.insideMax = tiles[pieces].max;
+                t.insideOne = (tiles[pieces].flags & HotspotTileFlags.InsideCorners) == 0;
+                tiles[own] = t;
+            }
         }
 
         static void AddShapedTile(ChiselHotspotLayout layout, in HotspotTile tile, NativeList<HotspotTileData> tiles, NativeList<float4> sides)

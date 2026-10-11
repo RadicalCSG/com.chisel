@@ -49,7 +49,11 @@ namespace Chisel.Core
         // the texture is not locked to the object: repeats that keep their size lie on a grid fixed in the frame's
         // origin (the tree's), so moving the object moves it over them
         public bool             world;
+        // the tile's inside corner pieces in pixels (HotspotTileData.insideMin), one turned or four
+        public float2           insideMin, insideMax;
+        public bool             insideOne;
 
+        public readonly bool HasInsideCorners => math.all(insideMax > insideMin);
         public readonly int MaxRepeats   => maxRepeats > 0 ? math.min(maxRepeats, HotspotSections.kMaxRepeats) : HotspotSections.kMaxRepeats;
         public readonly int MaxTriangles => maxTriangles > 0 ? maxTriangles : int.MaxValue;
         public float3           right, up;
@@ -114,7 +118,8 @@ namespace Chisel.Core
                 offset = new float2(across ? shift.x : 0, along ? shift.y : 0),
                 interiorOffset = count == 4 ? shift : float2.zero,
                 maxRepeats = layout.maxRepeats, maxTriangles = layout.maxTriangles,
-                sideStart = tile.sideStart, sideCount = tile.sideCount, padding = layout.interiorPadding, world = world
+                sideStart = tile.sideStart, sideCount = tile.sideCount, padding = layout.interiorPadding, world = world,
+                insideMin = tile.insideMin, insideMax = tile.insideMax, insideOne = tile.insideOne
             };
             // repeats of their exact size, in the world: moved along so a seam falls on the frame's origin
             if (world && count == 4 && (tile.flags & HotspotTileFlags.PartialRepeats) != 0)

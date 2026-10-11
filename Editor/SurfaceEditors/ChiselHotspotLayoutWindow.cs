@@ -928,10 +928,14 @@ namespace Chisel.Editors
             tile.flags = Flag(tile.flags, HotspotTileFlags.Alternate,     "Alternate",     "Only taken when a surface is pinned to it, like Valve's alt rectangles");
             tile.flags = Flag(tile.flags, HotspotTileFlags.RepeatBorder,  "Border repeats", "The border's strips repeat along the edges instead of stretching");
             tile.flags = Flag(tile.flags, HotspotTileFlags.PartialRepeats, "Repeats cut off", "Repeats keep their exact size and the last one is cut off, instead of all stretching to fit");
+            tile.flags = Flag(tile.flags, HotspotTileFlags.InsideCorners, "Inside corners", "Four inside corner pieces for bordered tiles, one for each way an inside corner turns, their outer edges meeting in the middle; never matched");
+            tile.flags = Flag(tile.flags, HotspotTileFlags.InsideCornerTurned, "Inside corner (turned)", "One inside corner piece, drawn as the top left of the four (its outer edges along its bottom and right), turned for the others; never matched");
             tile.border = Mathf.Max(0, EditorGUILayout.IntField(new GUIContent("Border (px)", "The width of the tile's border, a band along its outline (0 for none)"), tile.border));
             tile.pixelsPerUnit = Mathf.Max(0, EditorGUILayout.FloatField(new GUIContent("Pixels per unit", "The texture density this tile is meant for; 0 takes the layout's"), tile.pixelsPerUnit));
             if (tile.border > 0 && tile.points != null && tile.points.Length >= 3 && !IsShaped(tile))
                 SideFields(ref tile);
+            if (tile.border > 0)
+                tile.insideCorners = InsideCornersField(layout, tile);
             if (!EditorGUI.EndChangeCheck())
                 return false;
             EditLayout(layout, "Change Hotspot Tile", () => layout.tiles[index] = tile);
@@ -976,6 +980,33 @@ namespace Chisel.Editors
             EditorGUI.indentLevel--;
             if (changed)
                 tile.sides = sides;
+        }
+
+        static readonly GUIContent kInsideCornersContents = new("Inside corners", "The tile with the pieces this tile's border takes at inside corners (a tile marked Inside corners or Inside corner (turned)); none: the strips meet on a line through the corner");
+
+        // The tile with this tile's inside corner pieces: none, or one of the tiles marked for them
+        static int InsideCornersField(ChiselHotspotLayout layout, in HotspotTile tile)
+        {
+            var ids = new List<int> { 0 };
+            var names = new List<string> { "None" };
+            foreach (var other in layout.tiles)
+            {
+                if (other.id == tile.id || (other.flags & (HotspotTileFlags.InsideCorners | HotspotTileFlags.InsideCornerTurned)) == 0)
+                    continue;
+                ids.Add(other.id);
+                names.Add(string.IsNullOrEmpty(other.name) ? $"Tile {other.id}" : other.name);
+            }
+            var index = ids.IndexOf(tile.insideCorners);
+            if (index < 0)
+            {
+                ids.Add(tile.insideCorners);
+                names.Add($"Missing ({tile.insideCorners})");
+                index = ids.Count - 1;
+            }
+            var contents = new GUIContent[names.Count];
+            for (int i = 0; i < names.Count; i++)
+                contents[i] = new GUIContent(names[i]);
+            return ids[EditorGUILayout.Popup(kInsideCornersContents, index, contents)];
         }
 
         static HotspotTileFlags Flag(HotspotTileFlags flags, HotspotTileFlags flag, string label, string tooltip)

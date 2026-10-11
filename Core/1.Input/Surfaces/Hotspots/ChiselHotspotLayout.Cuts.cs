@@ -405,7 +405,8 @@ namespace Chisel.Core
             int Copy()
             {
                 var id = NextTileId();
-                tiles.Add(new HotspotTile { id = id, name = "T" + id, flags = original.flags, border = original.border, pixelsPerUnit = original.pixelsPerUnit });
+                tiles.Add(new HotspotTile { id = id, name = "T" + id, flags = original.flags, border = original.border, pixelsPerUnit = original.pixelsPerUnit,
+                                           insideCorners = original.insideCorners });
                 return Child(id);
             }
             var split = new HotspotCut { kind = kind, position = position, first = Child(tileId) };

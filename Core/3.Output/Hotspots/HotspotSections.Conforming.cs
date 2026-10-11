@@ -6,7 +6,8 @@ namespace Chisel.Core
 {
     // A border that follows what a surface draws: a strip along every edge of its outline (its holes too), each mapped to
     // a side of the tile, as deep into the tile as it is into the surface; a corner where two strips meet at a convex
-    // corner; at a reflex corner the strips meet on the line through it and its inner corner. The rest is the interior;
+    // corner; at a reflex corner the strips meet on the line through it and its inner corner, or, with inside corner
+    // pieces, stop at each other's edge and the square between them takes a piece. The rest is the interior;
     // a surface whose bounds are too small for the border to leave one is all border. The interior maps as the surface's
     // bounds do, undistorted, whatever its outline.
     public partial struct HotspotSections
@@ -482,6 +483,11 @@ namespace Chisel.Core
                         // square to each edge through the inner corner, the corner's side negative
                         ends[h]   = new int2(AddLine(-along[h], point), 1);
                         starts[k] = new int2(AddLine(along[k], point), 1);
+                    } else if (input.HasInsideCorners && math.abs(Cross(along[h], along[k])) > 1e-9)
+                    {
+                        // each strip stops at the other's edge; the square between them is the inside corner piece's
+                        ends[h]   = new int2(outer[k], -1);
+                        starts[k] = new int2(outer[h], -1);
                     } else
                     {
                         // on the line from the corner to its inner corner, the next edge's side positive
@@ -532,6 +538,22 @@ namespace Chisel.Core
                         }
                         previousCut = new int2(cut.x, -cut.y);
                     }
+                }
+
+                // the inside corners' pieces
+                for (int k = 0; k < count && input.HasInsideCorners; k++)
+                {
+                    var h = (k + count - 1) % count;
+                    if (convex[k] || !bordered[At(h)] || !bordered[At(k)] || !(math.abs(Cross(along[h], along[k])) > 1e-9))
+                        continue;
+                    var c = corners[At(k)];
+                    // the square's corners on each edge's line, past the corner
+                    var p1 = c + along[h] * (Band(k) / math.dot(inward[k], along[h]));
+                    var p2 = c + along[k] * (Band(h) / math.dot(inward[h], along[k]));
+                    InsidePiece(input, math.mul(linear, p1 - c), math.mul(linear, p2 - c), out var vertex, out var t1, out var t2);
+                    var start = halfPlanes.Length;
+                    Half(outer[h], 1); Half(outer[k], 1); Half(inset[h], -1); Half(inset[k], -1);
+                    AddCell(start, c, p1, p2, vertex, t1, t2, size);
                 }
 
                 // the corners
@@ -587,6 +609,32 @@ namespace Chisel.Core
                 AddCell(start, s.inner[0], s.inner[1], s.inner[3], i0, i1, i3, size);
             }
             return true;
+        }
+
+        // Where an inside corner's square goes in the tile (pixels): its corner to vertex, its corners along the edges'
+        // lines (e1, e2 from the corner, as the tile turns them) to t1, t2. Four pieces: the one on the side of the
+        // block's middle the square lies on, each edge along the axis it is nearest; one piece, drawn as the top left of
+        // the four: turned (never mirrored) to lie that way.
+        static void InsidePiece(in HotspotSectionInput input, double2 e1, double2 e2, out double2 vertex, out double2 t1, out double2 t2)
+        {
+            var min = (double2)input.insideMin; var max = (double2)input.insideMax;
+            if (input.insideOne)
+            {
+                vertex = new double2(max.x, min.y);
+                var firstLeft = Cross(e1, e2) < 0;
+                t1 = firstLeft ? min : max;
+                t2 = firstLeft ? max : min;
+                return;
+            }
+            vertex = (min + max) * 0.5;
+            var half = (max - min) * 0.5;
+            var sum = e1 + e2;
+            var quadrant = new double2(sum.x >= 0 ? 1 : -1, sum.y >= 0 ? 1 : -1);
+            var acrossX = vertex + new double2(quadrant.x * half.x, 0);
+            var acrossY = vertex + new double2(0, quadrant.y * half.y);
+            var firstAcross = math.abs(e1.x) * math.length(e2) >= math.abs(e2.x) * math.length(e1);
+            t1 = firstAcross ? acrossX : acrossY;
+            t2 = firstAcross ? acrossY : acrossX;
         }
 
         // The repeats of a bordered tile's interior (the interior repeats at the tile's density, the last
