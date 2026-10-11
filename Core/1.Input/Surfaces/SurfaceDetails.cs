@@ -38,6 +38,9 @@ namespace Chisel.Core
 	{
 		// The id of the tile kept on this surface; 0 lets matching choose
 		public int  pinnedTile;
+		// The sheet the pinned tile is on: 0, the layout's own; otherwise its place in the material's other sheets
+		// (ChiselSurfaceMetadata.hotspotSheets, index + 1)
+		public int  pinnedSheet;
 		// Tells identical tiles apart for this surface
 		public uint seed;
 		// Degrees the texture turns around the surface's normal, counter-clockwise seen from in front

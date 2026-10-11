@@ -893,11 +893,13 @@ namespace Chisel.Core
 				// measured in the brush's own units when locked: a scaled brush's texture scales with it
 				var density = (baseSurfaces[lead].hotspotDensity > 0 ? baseSurfaces[lead].hotspotDensity : 1) * ownUnits;
 				var seed   = math.hash(new uint2(baseSurfaces[lead].hotspotSeed, (uint)baseSurfaces[lead].descriptionIndex));
-				var choice = HotspotMatcher.Choose(hotspotTiles, layout, shape, seed, baseSurfaces[lead].hotspotPinned, density: density);
+				var choice = HotspotMatcher.Choose(hotspotTiles, layout, shape, seed, baseSurfaces[lead].hotspotPinned, density: density,
+													pinnedSheet: baseSurfaces[lead].hotspotPinnedSheet);
 				// coplanar neighbours with this layout and frame, of any brush, are matched again together (HotspotGroups)
 				if (!cap)
 					hotspotSource = new HotspotSurfaceSource { layout = hotspot, right = hotspotRight, up = hotspotUp, normal = finalFaceNormal, seed = seed,
-															   pinned = baseSurfaces[surf].hotspotPinned, density = density, offset = baseSurfaces[surf].hotspotOffset,
+															   pinned = baseSurfaces[surf].hotspotPinned, pinnedSheet = baseSurfaces[surf].hotspotPinnedSheet,
+															   density = density, offset = baseSurfaces[surf].hotspotOffset,
 															   world = baseSurfaces[surf].textureInWorld };
 				if (choice.tile >= 0)
 				{
@@ -916,7 +918,8 @@ namespace Chisel.Core
 															 baseSurfaces[surf].textureInWorld);
 					var pinnedId = baseSurfaces[lead].hotspotPinned;
 					hotspotInfo = HotspotDiagnostics.Info(hotspotTiles[choice.tile], layout, choice, sectionInput,
-														  pinnedId != 0 && hotspotTiles[choice.tile].id == pinnedId, density);
+														  pinnedId != 0 && hotspotTiles[choice.tile].id == pinnedId &&
+														  hotspotTiles[choice.tile].sheetIndex == baseSurfaces[lead].hotspotPinnedSheet, density);
 					// the other sheet's material, or one of the materials drawn on the layout, as the seed picked it
 					if (onOtherSheet)
 					{

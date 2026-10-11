@@ -31,6 +31,9 @@ namespace Chisel.Core
         // The sheet it is on (ChiselHotspotStore.Gather): 0, the layout's own; otherwise the layouts' entry (index + 1) of
         // another sheet drawn with it, whose texture size, padding and material it takes (SheetOf)
         public int              sheet;
+        // and its place in the material's other sheets (ChiselSurfaceMetadata.hotspotSheets, index + 1; 0: its own), what
+        // a pin names (HotspotSurface.pinnedSheet)
+        public int              sheetIndex;
 
         public readonly float2 Corner(int index)
         {
@@ -297,7 +300,8 @@ namespace Chisel.Core
         // rectangles otherwise; radial tiles for round surfaces, the others when there are none). Tiles that score
         // exactly the same - identical tiles - are told apart by the seed. A pinned tile (its id) is always the one.
         // density: how many times the tiles' pixels a unit the surface takes
-        public static HotspotChoice Choose(NativeArray<HotspotTileData> tiles, in HotspotLayoutData layout, in HotspotShape shape, uint seed, int pinnedId, bool radial = false, float density = 1)
+        public static HotspotChoice Choose(NativeArray<HotspotTileData> tiles, in HotspotLayoutData layout, in HotspotShape shape, uint seed, int pinnedId, bool radial = false, float density = 1,
+                                           int pinnedSheet = 0)
         {
             var best = new HotspotChoice { tile = -1, score = float.PositiveInfinity };
             var size = shape.max - shape.min;
@@ -308,7 +312,7 @@ namespace Chisel.Core
             {
                 for (int t = layout.tileStart; t < layout.tileStart + layout.tileCount; t++)
                 {
-                    if (tiles[t].id != pinnedId)
+                    if (tiles[t].id != pinnedId || tiles[t].sheetIndex != pinnedSheet)
                         continue;
                     var pinned = Score(tiles[t], shape, density, true);
                     pinned.tile = t;

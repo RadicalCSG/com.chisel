@@ -114,8 +114,8 @@ namespace Chisel.Editors
                         var material = MaterialOf(property);
                         HotspotTransformGUI.OnGUI(position, property.FindPropertyRelative(nameof(SurfaceDetails.hotspot)), layout, hasLabel,
                                                   ChiselHotspotGroupEdit.MostVariations(surfaces),
-                                                  () => HotspotTransformGUI.TexturesOf(material, layout),
-                                                  () => surfaces.Count > 0 ? ChiselHotspotGroupEdit.FitsOf(surfaces[0], layout) : null,
+                                                  () => HotspotTransformGUI.PagesOf(material, layout),
+                                                  () => surfaces.Count > 0 ? ChiselHotspotGroupEdit.FitsOf(surfaces[0], layout, material) : null,
                                                   surfaces.Count > 0 ? surfaces[0].descriptionIndex : 0);
                     } else
                     {

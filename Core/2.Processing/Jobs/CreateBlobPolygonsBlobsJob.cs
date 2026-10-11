@@ -297,6 +297,7 @@ namespace Chisel.Core
                     descriptionIndex      = polygon.descriptionIndex,
                     hotspotLayout         = polygon.surface.hotspotLayout,
                     hotspotPinned         = polygon.surface.details.hotspot.pinnedTile,
+                    hotspotPinnedSheet    = polygon.surface.details.hotspot.pinnedSheet,
                     hotspotSeed           = polygon.surface.details.hotspot.seed,
                     // mirrored top to bottom is mirrored left to right and turned half way round
                     hotspotRotation       = polygon.surface.details.hotspot.rotation + (polygon.surface.details.hotspot.mirrorY ? 180 : 0),

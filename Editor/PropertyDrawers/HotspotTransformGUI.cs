@@ -63,18 +63,19 @@ namespace Chisel.Editors
 
         // variations: how many the surfaces have (ChiselHotspotGroupEdit.MostVariations); Next Variation is off at 1, and
         // for a pinned tile when it is not known (-1)
-        // the tile a picker chose (HotspotTilePicker), applied to its property on its next draw
-        static (string path, Object target, int id)? s_Picked;
+        // the tile a picker chose (HotspotTilePicker: sheet, id), applied to its properties on its next draw
+        static (string path, Object target, Vector2Int tile)? s_Picked;
 
-        // The textures a material and its variants are drawn with, for the tile picker
-        public static List<Texture> TexturesOf(Material material, ChiselHotspotLayout layout)
+        // What the tile picker shows of a material: a page for each texture of its layout (its own and its variants'), and
+        // one for each other sheet drawn with it (ChiselSurfaceMetadata.hotspotSheets, by place)
+        internal static List<HotspotTilePicker.Page> PagesOf(Material material, ChiselHotspotLayout layout)
         {
-            var textures = new List<Texture>();
+            var pages = new List<HotspotTilePicker.Page>();
             void Add(Material m)
             {
                 var texture = m != null && m.mainTexture != null ? m.mainTexture : null;
-                if (texture != null && !textures.Contains(texture))
-                    textures.Add(texture);
+                if (texture != null && !pages.Exists(page => page.sheet == 0 && page.texture == texture))
+                    pages.Add(new HotspotTilePicker.Page { layout = layout, texture = texture });
             }
             Add(material);
             var metadata = material != null ? material.GetMetadataOfType<ChiselSurfaceMetadata>() : null;
@@ -83,16 +84,24 @@ namespace Chisel.Editors
                 foreach (var variant in metadata.hotspotVariants)
                     Add(variant);
             }
-            if (textures.Count == 0 && layout.texture != null)
-                textures.Add(layout.texture);
-            return textures;
+            if (pages.Count == 0)
+                pages.Add(new HotspotTilePicker.Page { layout = layout, texture = layout.texture });
+            for (int i = 0; metadata != null && metadata.hotspotSheets != null && i < metadata.hotspotSheets.Count; i++)
+            {
+                var sheet = metadata.hotspotSheets[i];
+                var sheetLayout = sheet != null ? sheet.GetMetadataOfType<ChiselSurfaceMetadata>()?.hotspotLayout : null;
+                if (sheetLayout == null || sheet == material)
+                    continue;
+                pages.Add(new HotspotTilePicker.Page { layout = sheetLayout, texture = sheet.mainTexture != null ? sheet.mainTexture : sheetLayout.texture, sheet = i + 1 });
+            }
+            return pages;
         }
 
-        // fits: the ids of the tiles the surface can take (ChiselHotspotGroupEdit.FitsOf), the others greyed out in the
-        // picker; textures: what it shows (TexturesOf); both asked for when the picker opens
+        // fits: (sheet, id) of the tiles the surface can take (ChiselHotspotGroupEdit.FitsOf), the others greyed out in
+        // the picker; pages: what it shows (PagesOf); fits asked for when the picker opens
         // descriptionIndex: the surface's, which the seed is hashed with (the variation the arrows step from)
-        public static void OnGUI(Rect position, SerializedProperty hotspotProp, ChiselHotspotLayout layout, bool hasLabel = true, int variations = -1,
-                                 System.Func<IReadOnlyList<Texture>> textures = null, System.Func<HashSet<int>> fits = null, int descriptionIndex = 0)
+        internal static void OnGUI(Rect position, SerializedProperty hotspotProp, ChiselHotspotLayout layout, bool hasLabel = true, int variations = -1,
+                                 System.Func<IReadOnlyList<HotspotTilePicker.Page>> pages = null, System.Func<HashSet<Vector2Int>> fits = null, int descriptionIndex = 0)
         {
             var offsetX  = hotspotProp.FindPropertyRelative(nameof(HotspotSurface.offset) + ".x");
             var offsetY  = hotspotProp.FindPropertyRelative(nameof(HotspotSurface.offset) + ".y");
@@ -101,6 +110,7 @@ namespace Chisel.Editors
             var mirrorY  = hotspotProp.FindPropertyRelative(nameof(HotspotSurface.mirrorY));
             var rotation = hotspotProp.FindPropertyRelative(nameof(HotspotSurface.rotation));
             var pinned   = hotspotProp.FindPropertyRelative(nameof(HotspotSurface.pinnedTile));
+            var pinnedSheet = hotspotProp.FindPropertyRelative(nameof(HotspotSurface.pinnedSheet));
             var seed     = hotspotProp.FindPropertyRelative(nameof(HotspotSurface.seed));
 
             var prevMixed  = EditorGUI.showMixedValue;
@@ -145,15 +155,7 @@ namespace Chisel.Editors
                     rotation.floatValue = newRotation;
                 EditorGUI.indentLevel = prevIndent;
 
-                var names = new GUIContent[layout.tiles.Count + 1];
-                var ids   = new int[layout.tiles.Count + 1];
-                names[0] = new GUIContent("Automatic");
-                for (int i = 0; i < layout.tiles.Count; i++)
-                {
-                    var tile = layout.tiles[i];
-                    names[i + 1] = new GUIContent(string.IsNullOrEmpty(tile.name) ? "Tile " + tile.id : tile.name);
-                    ids[i + 1]   = tile.id;
-                }
+                var allPages = pages?.Invoke() ?? new List<HotspotTilePicker.Page> { new() { layout = layout, texture = layout.texture } };
                 field = Row(ref position, kTileContents, hasLabel);
                 EditorGUI.indentLevel = 0;
                 var previous = new Rect(field.xMax - 2 * kStepWidth, field.y, kStepWidth, field.height);
@@ -172,18 +174,30 @@ namespace Chisel.Editors
                 }
                 if (s_Picked.HasValue && s_Picked.Value.path == pinned.propertyPath && s_Picked.Value.target == pinned.serializedObject.targetObject)
                 {
-                    pinned.intValue = s_Picked.Value.id;
+                    pinned.intValue      = s_Picked.Value.tile.y;
+                    pinnedSheet.intValue = s_Picked.Value.tile.x;
                     s_Picked = null;
                     GUI.changed = true;
                 }
-                var current = System.Array.IndexOf(ids, pinned.intValue);
-                var shown = pinned.hasMultipleDifferentValues ? new GUIContent("\u2014") : names[Mathf.Max(0, current)];
+                var mixed = pinned.hasMultipleDifferentValues || pinnedSheet.hasMultipleDifferentValues;
+                var name = "Automatic";
+                if (pinned.intValue != 0)
+                {
+                    var page = default(HotspotTilePicker.Page);
+                    foreach (var p in allPages) { if (p.sheet == pinnedSheet.intValue) { page = p; break; } }
+                    name = page.layout != null ? HotspotTilePicker.NameOf(page.layout, pinned.intValue) : string.Empty;
+                    if (string.IsNullOrEmpty(name))
+                        name = $"Missing ({pinned.intValue})";
+                    else if (pinnedSheet.intValue != 0 && page.layout != null)
+                        name = page.layout.name + " / " + name;
+                }
+                var shown = mixed ? new GUIContent("\u2014") : new GUIContent(name);
                 if (EditorGUI.DropdownButton(field, shown, FocusType.Keyboard))
                 {
                     var path = pinned.propertyPath; var target = pinned.serializedObject.targetObject;
-                    PopupWindow.Show(field, new HotspotTilePicker(layout, textures?.Invoke() ?? new List<Texture> { layout.texture }, fits?.Invoke(),
-                                                                  pinned.hasMultipleDifferentValues ? -1 : pinned.intValue,
-                                                                  id => { s_Picked = (path, target, id); InternalEditorUtility.RepaintAllViews(); }));
+                    PopupWindow.Show(field, new HotspotTilePicker(allPages, fits?.Invoke(),
+                                                                  mixed ? new Vector2Int(0, -1) : new Vector2Int(pinnedSheet.intValue, pinned.intValue),
+                                                                  tile => { s_Picked = (path, target, tile); InternalEditorUtility.RepaintAllViews(); }));
                 }
 
             }

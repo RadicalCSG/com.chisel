@@ -14,7 +14,7 @@ namespace Chisel.Core
         static readonly Dictionary<(ChiselHotspotLayout, ulong), int> s_Ids      = new();
         static readonly List<ulong>                                  s_Scratch   = new();
         // the other sheets each layout is drawn with: their layouts and materials
-        static readonly List<(ChiselHotspotLayout layout, ulong material)[]> s_Sheets = new();
+        static readonly List<(ChiselHotspotLayout layout, ulong material, int index)[]> s_Sheets = new();
 
         public static int Register(ChiselHotspotLayout layout) { return Register(layout, null, null); }
 
@@ -29,20 +29,21 @@ namespace Chisel.Core
         {
             if (layout == null)
                 return 0;
-            (ChiselHotspotLayout layout, ulong material)[] sheetList = null;
+            (ChiselHotspotLayout layout, ulong material, int index)[] sheetList = null;
             ulong sheetKey = 0;
             if (sheets != null && sheets.Count > 0)
             {
-                var found = new List<(ChiselHotspotLayout, ulong)>(sheets.Count);
-                foreach (var sheet in sheets)
+                var found = new List<(ChiselHotspotLayout, ulong, int)>(sheets.Count);
+                for (int place = 0; place < sheets.Count; place++)
                 {
+                    var sheet = sheets[place];
                     if (sheet == null || sheet == material)
                         continue;
                     var sheetLayout = sheet.GetMetadataOfType<ChiselSurfaceMetadata>()?.hotspotLayout;
                     var id = UnityEngine.EntityId.ToULong(sheet.GetEntityId());
                     if (sheetLayout == null || found.Exists(f => f.Item2 == id))
                         continue;
-                    found.Add((sheetLayout, id));
+                    found.Add((sheetLayout, id, place + 1));
                     sheetKey = (sheetKey ^ id ^ (ulong)(uint)sheetLayout.GetEntityId().GetHashCode() << 1) * 1099511628211UL + 1;
                 }
                 if (found.Count > 0)
@@ -201,6 +202,7 @@ namespace Chisel.Core
                         {
                             var tile = tiles[t];
                             tile.sheet = entry;
+                            tile.sheetIndex = sheet.index;
                             tiles[t] = tile;
                         }
                         sheetEntries.Add(sheetData);

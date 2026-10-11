@@ -55,7 +55,9 @@ namespace Chisel.Editors
         }
 
         // The ids of a layout's tiles a surface could take, by its shape when it was last mapped; null when not known
-        public static HashSet<int> FitsOf(SurfaceReference surface, ChiselHotspotLayout layout)
+        // (sheet, id) of the tiles the surface can take: its layout's (sheet 0) and those of the other sheets drawn with its
+        // material (ChiselSurfaceMetadata.hotspotSheets, by place)
+        public static HashSet<UnityEngine.Vector2Int> FitsOf(SurfaceReference surface, ChiselHotspotLayout layout, UnityEngine.Material material = null)
         {
             if (surface == null || !surface.node || !surface.brush.Valid || layout == null)
                 return null;
@@ -95,12 +97,24 @@ namespace Chisel.Editors
                 indices.Dispose();
             }
             using var tiles = new Unity.Collections.NativeList<HotspotTileData>(Unity.Collections.Allocator.Temp);
+            var sheetOf = new List<int>();
             HotspotMatcher.AddTiles(layout, tiles, out _);
-            var fits = new HashSet<int>();
+            while (sheetOf.Count < tiles.Length) sheetOf.Add(0);
+            var metadata = material != null ? material.GetMetadataOfType<ChiselSurfaceMetadata>() : null;
+            for (int i = 0; metadata != null && metadata.hotspotSheets != null && i < metadata.hotspotSheets.Count; i++)
+            {
+                var sheet = metadata.hotspotSheets[i];
+                var sheetLayout = sheet != null && sheet != material ? sheet.GetMetadataOfType<ChiselSurfaceMetadata>()?.hotspotLayout : null;
+                if (sheetLayout == null)
+                    continue;
+                HotspotMatcher.AddTiles(sheetLayout, tiles, out _);
+                while (sheetOf.Count < tiles.Length) sheetOf.Add(i + 1);
+            }
+            var fits = new HashSet<UnityEngine.Vector2Int>();
             for (int t = 0; t < tiles.Length; t++)
             {
                 if (HotspotMatcher.Fits(tiles[t], shape, shape.radial))
-                    fits.Add(tiles[t].id);
+                    fits.Add(new UnityEngine.Vector2Int(sheetOf[t], tiles[t].id));
             }
             // a round surface takes the other tiles when the layout has no radial one for it
             if (fits.Count == 0 && shape.radial)
@@ -108,7 +122,7 @@ namespace Chisel.Editors
                 for (int t = 0; t < tiles.Length; t++)
                 {
                     if (HotspotMatcher.Fits(tiles[t], shape, false))
-                        fits.Add(tiles[t].id);
+                        fits.Add(new UnityEngine.Vector2Int(sheetOf[t], tiles[t].id));
                 }
             }
             return fits;
@@ -164,7 +178,7 @@ namespace Chisel.Editors
 
         static bool Same(in HotspotSurface a, in HotspotSurface b)
         {
-            return a.pinnedTile == b.pinnedTile && a.seed == b.seed && a.rotation == b.rotation && a.density == b.density &&
+            return a.pinnedTile == b.pinnedTile && a.pinnedSheet == b.pinnedSheet && a.seed == b.seed && a.rotation == b.rotation && a.density == b.density &&
                    a.mirror == b.mirror && a.mirrorY == b.mirrorY && a.offset.x == b.offset.x && a.offset.y == b.offset.y;
         }
     }

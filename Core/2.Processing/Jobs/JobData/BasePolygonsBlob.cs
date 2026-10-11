@@ -36,7 +36,7 @@ namespace Chisel.Core
         public int      descriptionIndex;
         // Hotspot mapping: the layout (ChiselHotspotStore, 0 for none), the pinned tile and the seed
         public int      hotspotLayout;
-        public int      hotspotPinned;
+        public int      hotspotPinned, hotspotPinnedSheet;
         public uint     hotspotSeed;
         // and how the texture lies on it: turned (degrees), its density, mirrored (HotspotSurface)
         public float    hotspotRotation;

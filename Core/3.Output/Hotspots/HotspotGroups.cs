@@ -11,7 +11,7 @@ namespace Chisel.Core
         public int    layout;       // ChiselHotspotStore's id (index + 1); 0: never grouped
         public float3 right, up, normal;
         public uint   seed;         // hashed with the surface's own
-        public int    pinned;
+        public int    pinned, pinnedSheet;
         public float  density;
         public float2 offset;
         public bool   world;        // repeats on a grid fixed in the tree (the texture not locked to the object)
@@ -434,7 +434,7 @@ namespace Chisel.Core
                 var density = source.density > 0 ? source.density : 1;
                 var shape   = HotspotMatcher.ShapeOf(positions.AsArray(), source.right, source.up);
                 HotspotMatcher.MaskOf(ref shape, positions.AsArray(), indices.AsArray(), source.right, source.up);
-                var choice  = HotspotMatcher.Choose(tiles, layout, shape, source.seed, source.pinned, density: density);
+                var choice  = HotspotMatcher.Choose(tiles, layout, shape, source.seed, source.pinned, density: density, pinnedSheet: source.pinnedSheet);
                 if (choice.tile < 0)
                     continue;
                 var tile  = tiles[choice.tile];
@@ -455,7 +455,7 @@ namespace Chisel.Core
                 };
                 if (tile.border > 0 || choice.Repeated || math.any(source.offset != 0))
                     group.input = HotspotSections.Input(tile, layout, shape, choice, source.right, source.up, density, source.offset, source.world);
-                group.info = HotspotDiagnostics.Info(tile, layout, choice, group.input, source.pinned != 0 && tile.id == source.pinned, density);
+                group.info = HotspotDiagnostics.Info(tile, layout, choice, group.input, source.pinned != 0 && tile.id == source.pinned && tile.sheetIndex == source.pinnedSheet, density);
                 if (group.input.count > 0)
                 {
                     // built once from what the group draws together, so the border runs only along its outline
