@@ -380,7 +380,9 @@ namespace Chisel.Core
             Debug.Assert(vertexOffset == totalVertexCount);
 
             meshData.subMeshCount = 1;
-            ChiselOutputMeshValidation.ValidateSubMeshIndices(indices, 0, indexCount, colliderPositions.Length, 0);
+            // read here: an argument computed in the call is discarded with the call under Burst (BC1371)
+            var colliderVertexCount = colliderPositions.Length;
+            ChiselOutputMeshValidation.ValidateSubMeshIndices(indices, 0, indexCount, colliderVertexCount, 0);
             meshData.SetSubMesh(0, new SubMeshDescriptor
             {
                 baseVertex  = 0,
