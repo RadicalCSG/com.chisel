@@ -94,7 +94,7 @@ namespace Chisel.Editors
             var texture = AssetDatabase.LoadAssetAtPath<Texture2D>(texturePath);
             if (texture == null)
             {
-                Debug.LogError($"No hotspot test texture at {texturePath}");
+                Debug.LogError($"No hotspot test texture at {texturePath}; run SourceAssets~/HotspotTest/make_hotspot_test_texture.py {kFolder}");
                 return null;
             }
             var materialPath = $"{kFolder}/{name}.mat";
@@ -112,7 +112,7 @@ namespace Chisel.Editors
             var json = AssetDatabase.LoadAssetAtPath<TextAsset>(jsonPath);
             if (json == null)
             {
-                Debug.LogError($"No hotspot test layout at {jsonPath}");
+                Debug.LogError($"No hotspot test layout at {jsonPath}; run SourceAssets~/HotspotTest/make_hotspot_test_texture.py {kFolder}");
                 return null;
             }
             var layoutPath = $"{kFolder}/{name}.asset";

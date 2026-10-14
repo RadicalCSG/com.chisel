@@ -17,13 +17,13 @@ namespace Chisel.Core
         public bool   world;        // repeats on a grid fixed in the tree (the texture not locked to the object)
     }
 
-    // Coplanar neighbouring surfaces, of any brush in the model, with the same hotspot layout and frame are connected
-    //: mapped as one surface on one tile, with the first one's settings, the border only along their
-    // outline together. By hand (HotspotLink) two touching surfaces are connected whatever their frames, or kept apart;
-    // the newest link counts. Connected surfaces that are not coplanar are unfolded about the edge they share into the
-    // first one's plane (the texture wraps round), each by a rigid map (unfoldOf). A link can also put
-    // a border along the edge two surfaces share, or leave it out (Borders). A sliver, narrower than a texel of its layout,
-    // shows no tile: it is mapped with the neighbour it shares its longest edge with.
+    // Coplanar neighbouring surfaces, of any brush in the model, with the same hotspot layout and frame are connected:
+    // mapped as one surface on one tile, with the first one's settings, the border only along their outline together. By hand
+    // (HotspotLink) two touching surfaces are connected whatever their frames, or kept apart; the newest link counts.
+    // Connected surfaces that are not coplanar are unfolded about the edge they share into the first one's plane, so the
+    // texture wraps round, each by a rigid map (unfoldOf). A link can also put a border along the edge two surfaces share,
+    // or leave it out (Borders). A sliver, narrower than a texel of its layout, shows no tile: it is mapped with the
+    // neighbour it shares its longest edge with.
     internal static class HotspotGroups
     {
         // Normals and frames agree this closely (the cosine), and the surfaces share at least two corners
@@ -326,8 +326,8 @@ namespace Chisel.Core
             for (int c = 0; c < candidates.Length; c++)
                 size[Root(c)]++;
 
-            // where a ring of connected surfaces closes, one edge keeps a seam: the oldest link's (the design's newest-first
-            // priority), so the members are unfolded along the newest links that reach them all (a spanning tree)
+            // where a ring of connected surfaces closes, one edge keeps a seam: the oldest link's (the newest links have priority),
+            // so the members are unfolded along the newest links that reach them all (a spanning tree)
             joined.Sort(new NewestFirst());
             var tree       = new NativeList<int2>(joined.Length, Allocator.Temp);
             var treeParent = new NativeArray<int>(candidates.Length, Allocator.Temp);

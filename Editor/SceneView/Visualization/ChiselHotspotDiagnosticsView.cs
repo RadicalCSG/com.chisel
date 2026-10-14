@@ -19,11 +19,11 @@ namespace Chisel.Editors
         Distortion
     }
 
-    // The hotspot diagnostic view (diagnostics): every drawn triangle of
-    // a hotspot surface coloured by how its texture lies on it against its tile's density (HotspotDiagnostics.Measure),
-    // triangles mirrored against the rest of their surface in magenta; the outlines of surfaces repeated as a last resort
-    // and of surfaces that are all border; optionally the drawn triangles' edges, the seams where the uvs jump, the
-    // outlines of groups of surfaces mapped as one, and the links made by hand (with or without the rest).
+    // The hotspot diagnostic view: every drawn triangle of a hotspot surface coloured by how its texture lies on it against
+    // its tile's density (HotspotDiagnostics.Measure), triangles mirrored against the rest of their surface in magenta; the
+    // outlines of surfaces repeated as a last resort and of surfaces that are all border; optionally the drawn triangles'
+    // edges, the seams where the uvs jump, the outlines of groups of surfaces mapped as one, and the links made by hand
+    // (with or without the rest).
     public static class ChiselHotspotDiagnosticsView
     {
         public struct Summary

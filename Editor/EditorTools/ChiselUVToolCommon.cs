@@ -1246,7 +1246,6 @@ namespace Chisel.Editors
         internal static SurfaceReference StartSurfaceReference => s_StartSurfaceReference;
 
         // The next or previous variation for every selected hotspot surface that has another, from the keyboard
-        // (editor workflow: cycle through the candidates)
         const string kNextVariationShortcutName     = "Next Hotspot Variation";
         const string kPreviousVariationShortcutName = "Previous Hotspot Variation";
         [Shortcut(ChiselKeyboardDefaults.ShortCutEditModeBase + kNextVariationShortcutName, typeof(SceneView), KeyCode.N, ShortcutModifiers.Alt, displayName = kNextVariationShortcutName)]

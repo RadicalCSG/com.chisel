@@ -36,9 +36,9 @@ namespace Chisel.Core
         public readonly bool IsMapped => pixelsPerUnit > 0;
     }
 
-    // How a texture lies on drawn triangles, measured against the tile's own density (low distortion optimization): the singular values s1 >= s2 of the map from a triangle
-    // (units) to the texture (pixels / pixelsPerUnit). 1 and 1 is the tile at its density without distortion; above 1
-    // the texture is squeezed, below 1 stretched.
+    // How a texture lies on drawn triangles, measured against the tile's own density: the singular values s1 >= s2 of the
+    // map from a triangle (units) to the texture (pixels / pixelsPerUnit). 1 and 1 is the tile at its density without
+    // distortion; above 1 the texture is squeezed, below 1 stretched.
     public static class HotspotDiagnostics
     {
         // density: how many times the tile's pixels a unit the surface asked for

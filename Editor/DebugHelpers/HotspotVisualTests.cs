@@ -9,11 +9,10 @@ using UnityEngine;
 
 namespace Chisel.Editors
 {
-    // The visual inspection suite (automated and visual verification):
-    // every case of the hotspot test scene (HotspotTestScene) rendered as it is drawn and in the diagnostic view, into
-    // HotspotVisualTests beside Assets. An image is named after its station and case, as the test scene's code names
-    // them, so the case can be found from the image; each station also has one image of all its cases together (where
-    // cases belong together, as connected surfaces do). Nothing is compared: it is for a person to look at.
+    // The visual inspection suite: every case of the hotspot test scene (HotspotTestScene) rendered as it is drawn and in
+    // the diagnostic view, into HotspotVisualTests beside Assets. An image is named after its station and case, as the test
+    // scene's code names them, so the case can be found from the image; each station also has one image of all its cases
+    // together (where cases belong together, as connected surfaces do). Nothing is compared: it is for a person to look at.
     static class HotspotVisualTests
     {
         const string kFolderName = "HotspotVisualTests";

@@ -6,8 +6,8 @@ using UnityEngine;
 
 namespace Chisel.Core
 {
-    // Layouts written by other tools: Valve's .rect files (Hammer++, Strata Hammer, Source 2), SVG (drawing
-    // programs) and colour masks (one flat colour per tile). Each replaces the layout's tiles and finds their lines.
+    // Layouts written by other tools: Valve's .rect files (Hammer++, Strata Hammer, Source 2), SVG (drawing programs)
+    // and colour masks (one flat colour per tile). Each replaces the layout's tiles and finds their lines.
     public sealed partial class ChiselHotspotLayout
     {
         // Valve's .rect: "Rectangles" { "rectangle" { "min" "x y" "max" "x y" [rotate|reflect|alt|tile 1] } ... },
@@ -226,8 +226,7 @@ namespace Chisel.Core
 
         // SVG: every rect, every polygon (one that is not a triangle or an upright rectangle a shaped tile), and every path
         // of straight lines (M, L, H, V, Z; its first loop the outline, the others holes: a shaped tile), in user units as
-        // pixels;
-        // the size from the viewBox, or width and height. A tile's name is its id (or inkscape:label), its tags its
+        // pixels; the size from the viewBox, or width and height. A tile's name is its id (or inkscape:label), its tags its
         // class (or data-tags); "border-N" in them is its border; data-inside-corners names the tile with its inside corner
         // pieces. Elements under a transform are refused.
         public static bool TryReadSvg(string text, ChiselHotspotLayout layout, out string error)

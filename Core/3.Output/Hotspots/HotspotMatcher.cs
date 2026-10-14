@@ -109,9 +109,9 @@ namespace Chisel.Core
         public const int    kRadialCorners   = 8;
         public const double kRadialTolerance = 0.1;
         // A tile magnified more than this is too small for the surface: then, as a last resort, a tile repeats at its own
-        // density even when it is not meant to repeat (target capacity)
+        // density even when it is not meant to repeat
         public const float kLastResortScale = 1 / 3f;
-        // As a last resort, fewest repeats first, then least stretch (the design's repeat rule): each repeat costs more
+        // As a last resort, fewest repeats first, then least stretch: each repeat costs more
         // than any stretch the rounding of repeats leaves
         const float kLastResortRepeatCost = 100;
         // A surface tilted less than this (the square of the sine of its tilt) is level
@@ -390,11 +390,10 @@ namespace Chisel.Core
             return best;
         }
 
-        // The seed's choice among ties tiles times the layout's materials: the tile (returned, of the ties) and the
+        // The seed's choice among tied tiles times the layout's materials: the tile (returned, of the ties) and the
         // material (choice.variant). With one material the tile is as the seed alone picks it.
-        // Of the tiles that tie, which the seed picks: the layout's own first (index < ownTies), each with each of the
-        // layout's materials (choice.variant), then other sheets' (index ownTies + i, their own material); variations: how
-        // many different choices that is
+        // The layout's own tiles come first (index < ownTies), each with each of the layout's materials, then other sheets'
+        // (index ownTies + i, their own material); variations: how many different choices that is
         static int Pick(ref HotspotChoice choice, in HotspotLayoutData layout, uint seed, int ownTies, int sheetTies)
         {
             var materials = math.max(1, layout.variantCount);
@@ -670,7 +669,6 @@ namespace Chisel.Core
             }
         }
 
-        // A layout's tiles as matching sees them
         // The layout a tile is drawn with: its own sheet's (HotspotTileData.sheet), or the one it was matched in
         public static HotspotLayoutData SheetOf(in HotspotTileData tile, NativeArray<HotspotLayoutData> layouts, in HotspotLayoutData layout)
         {

@@ -3,10 +3,9 @@ using Unity.Mathematics;
 
 namespace Chisel.Core
 {
-    // What two surfaces were given by hand (surface connections):
-    // connected, they are mapped as one even when their frames differ; apart, never, however they lie. Along the edge they
-    // share a border can be put (where they are mapped as one) or left out (where each has its own). The newest link
-    // between two surfaces counts, and a link counts only while its surfaces touch.
+    // What two surfaces were given by hand: connected, they are mapped as one even when their frames differ; apart, never,
+    // however they lie. Along the edge they share a border can be put (where they are mapped as one) or left out (where
+    // each has its own). The newest link between two surfaces counts, and a link counts only while its surfaces touch.
     // A link of one surface by itself (surfaceB -1) puts or leaves out the border along one of its edges, from edgeFrom
     // to edgeTo (tree space): every part of its outline that lies along that edge.
     public struct HotspotLink : System.IEquatable<HotspotLink>

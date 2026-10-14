@@ -75,9 +75,9 @@ namespace Chisel.Core
     // A surface on its tile in sections, each mapped affinely:
     // - a tile that repeats: the surface is cut where the repeats meet, each repeat the whole tile;
     // - a tile with a border: a strip along each edge keeps the border's width in pixels at the tile's pixels per unit
-    //   and stretches (or repeats, RepeatBorder) along the edge, a corner where two strips meet, the interior takes the
-    //   rest. These sections meet without seams. A border keeps its width: a surface too small for it is all border,
-    //   its strips meeting in the middle and cut off there.
+    //  and stretches (or repeats, RepeatBorder) along the edge, a corner where two strips meet, the interior takes the
+    //  rest. These sections meet without seams. A border keeps its width: a surface too small for it is all border,
+    //  its strips meeting in the middle and cut off there.
     // A repeating tile's border is not drawn.
     public partial struct HotspotSections : IDisposable
     {

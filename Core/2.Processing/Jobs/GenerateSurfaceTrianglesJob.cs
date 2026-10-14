@@ -908,10 +908,8 @@ namespace Chisel.Core
 					var onOtherSheet = hotspotTiles[choice.tile].sheet > 0;
 					layout = sheet;
 					uvMat = HotspotMatcher.Mapping(hotspotTiles[choice.tile], layout, shape, choice, hotspotRight, hotspotUp);
-					// a tile that repeats or has a border: what is drawn is cut where its sections meet, after the
-					// model's weld (OutputHotspotSections)
-					// or whose repeats are moved along
-					// (a cap is mapped whole)
+					// a tile that repeats, has a border, or whose repeats are moved along (a cap is mapped whole): what is drawn is cut
+					// where its sections meet, after the model's weld (OutputHotspotSections)
 					if (!cap && (hotspotTiles[choice.tile].border > 0 || choice.Repeated || math.any(baseSurfaces[surf].hotspotOffset != 0) ||
 								 (baseSurfaces[surf].textureInWorld && (hotspotTiles[choice.tile].flags & HotspotTileFlags.PartialRepeats) != 0)))
 						sectionInput = HotspotSections.Input(hotspotTiles[choice.tile], layout, shape, choice, hotspotRight, hotspotUp, density, baseSurfaces[surf].hotspotOffset,

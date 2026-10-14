@@ -40,7 +40,7 @@ namespace Chisel.Core
 		// When what is drawn is cut into hotspot sections (after the model's weld): the collider's triangles, uncut
 		public BlobArray<Int32>		   physicsIndices;
 		public BlobArray<float3>	   physicsVertices;
-		// What the hotspot sections what is drawn is cut into after the model's weld are built from (count 0: not cut)
+		// The input the hotspot sections are built from after the model's weld (count 0: not cut)
 		public HotspotSectionInput     sectionInput;
 		// What hotspot mapping chose for the surface (the diagnostic view)
 		public HotspotSurfaceInfo      hotspot;
