@@ -575,7 +575,7 @@ namespace Chisel.Components
                 if (description.entityID != brushEntity)
                 {
                     entityIndices.Add(s);
-                    entities.Add(Resources.EntityIdToObject(UnityEngine.EntityId.FromULong(description.entityID)));
+                    entities.Add(Resources.EntityIdToObject(UnityEngine.EntityId.FromULong(ChiselTrimDecals.DecalEntityID(description.entityID))));
                 }
             }
             selectionOwners        = owners.ToArray();
@@ -1113,7 +1113,7 @@ namespace Chisel.Components
                 GameObject instanceGameObject = null;
                 if (!brushVisibilityLookup.IsBrushHidden(entityID))
                 {
-                    var instanceObj = Resources.EntityIdToObject(UnityEngine.EntityId.FromULong(entityID));
+                    var instanceObj = Resources.EntityIdToObject(UnityEngine.EntityId.FromULong(ChiselTrimDecals.DecalEntityID(entityID)));
                     if (instanceObj is MonoBehaviour component) instanceGameObject = component.gameObject;
                     else if (instanceObj is GameObject go) instanceGameObject = go;
                 }

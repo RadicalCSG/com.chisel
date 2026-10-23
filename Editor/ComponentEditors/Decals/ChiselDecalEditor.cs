@@ -26,6 +26,12 @@ namespace Chisel.Editors
         static readonly GUIContent kUVScaleContent       = new GUIContent("UV Scale", "The texture coordinates are UV Offset + UV Scale * p, where p runs from (0,0) at the image's lower left to (1,1) at its upper right.");
         static readonly GUIContent kUVOffsetContent      = new GUIContent("UV Offset");
         static readonly GUIContent kTargetsContent       = new GUIContent("Targets", "Limits the decal to these brush surfaces (surface index -1: all of the brush's surfaces). Empty: every surface it reaches.");
+        static readonly GUIContent kShapeContent         = new GUIContent("Shape", "Box: the image is projected through the box. Trim: the image lies on the edge between two surfaces, its lower half on the first, its upper half on the second.");
+        static readonly GUIContent kTrimRepeatContent    = new GUIContent("Along The Edge", "Stretch: one image over the whole edge. Repeat: the image repeated at its length, the last one cut short. Fit: the whole number of images nearest to what fits, stretched to fill the edge.");
+        static readonly GUIContent kTrimLengthContent    = new GUIContent("Length", "The image's length along the edge.");
+        static readonly GUIContent kTrimHeightContent    = new GUIContent("Height", "The image's height across both surfaces: each half reaches half of it into its surface.");
+        static readonly GUIContent kTrimSurfacesContent  = new GUIContent("Surfaces", "The two surfaces whose edge the trim lies on: the first takes the image's lower half, the second its upper half.");
+        const string kTrimNeedsTwoMessage = "A trim decal lies on the edge between two surfaces: give it two.";
         const string kNoMaterialMessage = "A decal without a material draws nothing.";
 
         [MenuItem(kCreateMenuPath, false, -2)]
@@ -51,28 +57,43 @@ namespace Chisel.Editors
                 EditorGUILayout.HelpBox(kNoMaterialMessage, MessageType.Info);
 
             var settings = serializedObject.FindProperty(ChiselDecalComponent.kSettingsName);
-            EditorGUILayout.PropertyField(settings.FindPropertyRelative(nameof(ChiselDecalSettings.center)), kCenterContent);
-            EditorGUILayout.PropertyField(settings.FindPropertyRelative(nameof(ChiselDecalSettings.size)), kSizeContent);
-
-            var projection = settings.FindPropertyRelative(nameof(ChiselDecalSettings.projection));
-            EditorGUILayout.PropertyField(projection, kProjectionContent);
-            if (projection.hasMultipleDifferentValues || projection.enumValueIndex == (int)ChiselDecalProjection.Perspective)
+            var shape    = serializedObject.FindProperty(ChiselDecalComponent.kShapeName);
+            EditorGUILayout.PropertyField(shape, kShapeContent);
+            var trim = !shape.hasMultipleDifferentValues && shape.enumValueIndex == (int)ChiselDecalShape.Trim;
+            if (trim)
             {
-                EditorGUILayout.Slider(settings.FindPropertyRelative(nameof(ChiselDecalSettings.fieldOfView)),
-                                       ChiselDecalSettings.kMinFieldOfView, ChiselDecalSettings.kMaxFieldOfView, kFieldOfViewContent);
+                EditorGUILayout.PropertyField(serializedObject.FindProperty(ChiselDecalComponent.kTrimRepeatName), kTrimRepeatContent);
+                var size = settings.FindPropertyRelative(nameof(ChiselDecalSettings.size));
+                EditorGUILayout.PropertyField(size.FindPropertyRelative("x"), kTrimLengthContent);
+                EditorGUILayout.PropertyField(size.FindPropertyRelative("y"), kTrimHeightContent);
+            } else
+            {
+                EditorGUILayout.PropertyField(settings.FindPropertyRelative(nameof(ChiselDecalSettings.center)), kCenterContent);
+                EditorGUILayout.PropertyField(settings.FindPropertyRelative(nameof(ChiselDecalSettings.size)), kSizeContent);
+
+                var projection = settings.FindPropertyRelative(nameof(ChiselDecalSettings.projection));
+                EditorGUILayout.PropertyField(projection, kProjectionContent);
+                if (projection.hasMultipleDifferentValues || projection.enumValueIndex == (int)ChiselDecalProjection.Perspective)
+                {
+                    EditorGUILayout.Slider(settings.FindPropertyRelative(nameof(ChiselDecalSettings.fieldOfView)),
+                                           ChiselDecalSettings.kMinFieldOfView, ChiselDecalSettings.kMaxFieldOfView, kFieldOfViewContent);
+                }
             }
 
             var transparent = settings.FindPropertyRelative(nameof(ChiselDecalSettings.transparent));
             EditorGUILayout.PropertyField(transparent, kTransparentContent);
             EditorGUILayout.PropertyField(settings.FindPropertyRelative(nameof(ChiselDecalSettings.order)), kOrderContent);
-            EditorGUILayout.Slider(settings.FindPropertyRelative(nameof(ChiselDecalSettings.maxAngle)), 0, 180, kMaxAngleContent);
+            if (!trim)
+                EditorGUILayout.Slider(settings.FindPropertyRelative(nameof(ChiselDecalSettings.maxAngle)), 0, 180, kMaxAngleContent);
             if (transparent.hasMultipleDifferentValues || transparent.boolValue)
                 EditorGUILayout.PropertyField(settings.FindPropertyRelative(nameof(ChiselDecalSettings.surfaceOffset)), kSurfaceOffsetContent);
 
             EditorGUILayout.PropertyField(settings.FindPropertyRelative(nameof(ChiselDecalSettings.uvScale)), kUVScaleContent);
             EditorGUILayout.PropertyField(settings.FindPropertyRelative(nameof(ChiselDecalSettings.uvOffset)), kUVOffsetContent);
 
-            EditorGUILayout.PropertyField(serializedObject.FindProperty(ChiselDecalComponent.kTargetsName), kTargetsContent, true);
+            EditorGUILayout.PropertyField(serializedObject.FindProperty(ChiselDecalComponent.kTargetsName), trim ? kTrimSurfacesContent : kTargetsContent, true);
+            if (trim && !serializedObject.isEditingMultipleObjects && ((ChiselDecalComponent)target).Targets.Count < 2)
+                EditorGUILayout.HelpBox(kTrimNeedsTwoMessage, MessageType.Info);
 
             serializedObject.ApplyModifiedProperties();
         }
@@ -83,6 +104,9 @@ namespace Chisel.Editors
             if (decal == null)
                 return;
 
+            // a trim decal follows its edge, not its transform
+            if (decal.Shape == ChiselDecalShape.Trim)
+                return;
             var settings = decal.Settings;
             using (new Handles.DrawingScope(kHandleColor, decal.transform.localToWorldMatrix))
             {
