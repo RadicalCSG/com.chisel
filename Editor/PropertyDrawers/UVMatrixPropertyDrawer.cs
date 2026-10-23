@@ -100,7 +100,7 @@ namespace Chisel.Editors
                 position.height = EditorGUI.GetPropertyHeight(SerializedPropertyType.Float, GUIContent.none);
                 fieldRect = EditorGUI.PrefixLabel(position, rotationID, !hasLabel ? GUIContent.none : rotationContent);
                 EditorGUI.indentLevel = 0;
-                state.rotation = EditorGUI.FloatField(fieldRect,       GUIContent.none,    state.rotation);
+                state.rotation = HotspotTransformGUI.RotationField(fieldRect, state.rotation);
                 EditorGUI.indentLevel = prevIndenLevel;
                 position.y += position.height + kSpacing;
 

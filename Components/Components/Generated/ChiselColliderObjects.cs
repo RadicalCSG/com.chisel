@@ -18,6 +18,7 @@ namespace Chisel.Components
     public class ChiselColliderObjects
     {
         public ulong            surfaceParameter;
+        public uint             chunk;
         public Mesh             sharedMesh;
         public MeshCollider     meshCollider;
         public PhysicsMaterial  physicsMaterial;
@@ -25,7 +26,7 @@ namespace Chisel.Components
         public uint             geometryHashValue;
 
         private ChiselColliderObjects() { }
-        public static ChiselColliderObjects Create(GameObject container, ulong surfaceParameter)
+        public static ChiselColliderObjects Create(GameObject container, ulong surfaceParameter, uint chunk)
         {
             var physicsMaterial = surfaceParameter == 0 ? null : Resources.EntityIdToObject(UnityEngine.EntityId.FromULong(surfaceParameter)) as PhysicsMaterial;
             var sharedMesh      = new Mesh { name = ChiselGeneratedObjects.kGeneratedMeshColliderName };
@@ -33,6 +34,7 @@ namespace Chisel.Components
             var colliderObjects = new ChiselColliderObjects
             {
                 surfaceParameter    = surfaceParameter,
+                chunk               = chunk,
                 meshCollider        = meshCollider,
                 physicsMaterial     = physicsMaterial,
                 sharedMesh          = sharedMesh
@@ -148,12 +150,18 @@ namespace Chisel.Components
         {
             if (DeferBaking)
             {
-                // Only the most recent state of a model matters; an earlier deferred bake for it is stale.
+                // The colliders of every update the bake stands for: an update bakes only the colliders it changed
                 for (int i = 0; i < s_DeferredBakes.Count; i++)
                 {
                     if (s_DeferredBakes[i].model != model)
                         continue;
-                    s_DeferredBakes[i] = new DeferredBake { model = model, colliders = colliders };
+                    var merged = new System.Collections.Generic.List<ChiselColliderObjects>(s_DeferredBakes[i].colliders);
+                    foreach (var collider in colliders)
+                    {
+                        if (!merged.Contains(collider))
+                            merged.Add(collider);
+                    }
+                    s_DeferredBakes[i] = new DeferredBake { model = model, colliders = merged.ToArray() };
                     return;
                 }
                 s_DeferredBakes.Add(new DeferredBake { model = model, colliders = colliders });

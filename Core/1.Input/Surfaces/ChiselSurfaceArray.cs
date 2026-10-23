@@ -67,6 +67,7 @@ namespace Chisel.Core
             for (int i = prevLength; i < newSurfaces.Length; i++)
             {
                 newSurfaces[i] = ChiselSurface.Create(ChiselProjectSettings.DefaultWallMaterial);
+                newSurfaces[i].surfaceDetails.hotspot.seed = (uint)Guid.NewGuid().GetHashCode();
             }
             surfaces = newSurfaces;
             return true;

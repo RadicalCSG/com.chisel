@@ -41,20 +41,37 @@ namespace Chisel.Components
             return LightmapUVSettings.kDefaultTexelsPerUnit;
         }
 
+        /// <summary>Returns the active scene's largest lightmap size, or Unity's default.</summary>
+        public static int LightmapAtlasSize()
+        {
+            if (Lightmapping.TryGetLightingSettings(out var settings) && settings != null)
+                return settings.lightmapMaxSize;
+            return 1024;
+        }
+
+        /// <summary>The largest lightmap a renderer of the model may ask for: the atlas size when it bakes lightmaps, else 0</summary>
+        public static int LightmapMaxSize(ChiselModelComponent model, int atlasSize)
+        {
+            return IsLightmapped(model, GameObjectUtility.GetStaticEditorFlags(model.gameObject)) ? atlasSize : 0;
+        }
+
         /// <summary>
-        /// Rebuilds model settings whose stored UV density no longer matches the active lighting settings.
+        /// Rebuilds model settings whose stored UV density or lightmap size no longer matches the active lighting settings
+        /// and the model's own.
         /// </summary>
         public static void UpdateLightmapResolution()
         {
             if (ChiselModelManager.Instance == null)
                 return;
             var resolution = LightmapResolution();
+            var atlasSize  = LightmapAtlasSize();
             List<ChiselModelComponent> outdated = null;
             foreach (var model in ChiselModelManager.Instance.Models)
             {
                 if (!model || model.RenderSettings == null)
                     continue;
-                if (model.RenderSettings.lightmapTexelsPerUnit != resolution * model.RenderSettings.scaleInLightmap)
+                if (model.RenderSettings.lightmapTexelsPerUnit != resolution * model.RenderSettings.scaleInLightmap ||
+                    model.RenderSettings.lightmapMaxSize != LightmapMaxSize(model, atlasSize))
                     (outdated ??= new List<ChiselModelComponent>()).Add(model);
             }
             // Syncing may mutate the model collection.

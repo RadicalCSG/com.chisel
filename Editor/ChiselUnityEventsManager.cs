@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using Chisel.Components;
+using Chisel.Core;
 using UnityEditor;
 using UnityEditor.EditorTools;
 using UnityEngine;
@@ -110,6 +111,7 @@ namespace Chisel.Editors
 		private static void OnHierarchyChanged()
         {
             ChiselNodeHierarchyManager.CheckOrderOfChildNodesModifiedOfNonNodeGameObject();
+            ChiselDecalManager.HierarchyChanged();
         }
 
         private static void OnPickingChanged()
@@ -279,6 +281,8 @@ namespace Chisel.Editors
 
             //ChiselNodeHierarchyManager.firstStart = false;
             ChiselNodeHierarchyManager.UpdateAllTransformations();
+            if (ChiselHotspotStore.CheckSettings())
+                ChiselProjectSettings.instance.Save();
             ChiselOutlineRenderer.Instance.OnTransformationChanged();
             ChiselOutlineRenderer.OnUndoRedoPerformed();
 

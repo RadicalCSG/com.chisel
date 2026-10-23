@@ -20,6 +20,8 @@ namespace Chisel.Core
 		public SurfaceDestinationParameters parameters;
 		public SurfaceDestinationFlags      destinationFlags;
 		public SurfaceOutputFlags           outputFlags;
+		// The hotspot layout the surface's material has (ChiselHotspotStore), 0 for none
+		public int                          hotspotLayout;
 		
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public static InternalChiselSurface Convert(ChiselSurface surface)
@@ -34,6 +36,7 @@ namespace Chisel.Core
 				},
 				destinationFlags = surface.DestinationFlags,
 				outputFlags	     = surface.OutputFlags,
+				hotspotLayout    = ChiselHotspotStore.Register(surface.HotspotLayout, surface.RenderMaterial, surface.HotspotVariants, surface.HotspotSheets),
             };
 		}
 	}

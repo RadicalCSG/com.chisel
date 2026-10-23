@@ -29,6 +29,10 @@ namespace Chisel.Editors
 			public readonly static GUIContent kShadowOnlySurfacesMaterial	   = EditorGUIUtility.TrTextContent("Shadow-Only");
 			public readonly static GUIContent kShadowReceivingSurfacesMaterial = EditorGUIUtility.TrTextContent("Shadow-Receiving");
 			public readonly static GUIContent kCollisionSurfacesMaterial	   = EditorGUIUtility.TrTextContent("Collision");
+
+			public readonly static GUIContent kHotspotSection      = EditorGUIUtility.TrTextContent("Hotspot Mapping");
+			public readonly static GUIContent kHotspotMaxRepeats   = EditorGUIUtility.TrTextContent("Max repeats", "The most repeats a border strip, a repeating tile or a bordered tile's interior lays on one surface; more and it stretches instead. A layout can have its own");
+			public readonly static GUIContent kHotspotMaxTriangles = EditorGUIUtility.TrTextContent("Max triangles", "The most triangles a surface's cut may draw; more and its interior's repeats are left out, then the cut. A layout can have its own");
 		};
 
 		SerializedProperty m_DefaultFloorMaterialProp;
@@ -110,6 +114,23 @@ namespace Chisel.Editors
 				if (GUILayout.Button("Reset materials to defaults"))
 				{
 					ChiselProjectSettings.instance.ResetMaterials();
+				}
+			}
+
+			EditorGUILayout.Space();
+			GUILayout.Label(SettingsContent.kHotspotSection, EditorStyles.boldLabel);
+			using (new EditorGUI.IndentLevelScope(1))
+			{
+				EditorGUI.BeginChangeCheck();
+				var maxRepeats   = EditorGUILayout.IntField(SettingsContent.kHotspotMaxRepeats,   ChiselProjectSettings.HotspotMaxRepeats);
+				var maxTriangles = EditorGUILayout.IntField(SettingsContent.kHotspotMaxTriangles, ChiselProjectSettings.HotspotMaxTriangles);
+				if (EditorGUI.EndChangeCheck())
+				{
+					Undo.RecordObject(ChiselProjectSettings.instance, "Hotspot Budgets");
+					ChiselProjectSettings.HotspotMaxRepeats   = maxRepeats;
+					ChiselProjectSettings.HotspotMaxTriangles = maxTriangles;
+					ChiselProjectSettings.instance.Save();
+					ChiselHotspotStore.SettingsChanged();
 				}
 			}
 

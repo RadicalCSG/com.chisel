@@ -14,18 +14,25 @@ namespace Chisel.Components
     public static class ChiselDecalManager
     {
         static readonly HashSet<ChiselDecalComponent> s_Decals = new();
+        // the decals in hierarchy order: how decals of one order stack (SetDecals), the same every time a scene is loaded
+        static readonly List<ChiselDecalComponent> s_Ordered = new();
+        static bool s_OrderDirty = true;
         // Last synchronized state for each model.
         static readonly Dictionary<ChiselModelComponent, ModelState> s_Models = new();
         static readonly List<ChiselModelComponent> s_ModelList = new();
+        static readonly HashSet<ChiselModelComponent> s_ModelSet = new();
         static readonly List<ChiselModelComponent> s_Stale = new();
         static readonly Dictionary<ulong, SurfaceDestinationFlags> s_MaterialFlags = new();
         // Cached until registration or material metadata changes.
         static readonly Dictionary<ChiselDecalComponent, DecalState> s_DecalStates = new();
         static bool s_Dirty = true;
 
-        struct DecalState
+        sealed class DecalState
         {
             public ChiselModelComponent    parentModel;
+            public Transform               transform;
+            // transform.localToWorldMatrix at the last update
+            public Matrix4x4               localToWorld;
             public ulong                   entityID;
             public ulong                   renderMaterial;
             public SurfaceDestinationFlags destinationFlags;
@@ -36,6 +43,8 @@ namespace Chisel.Components
         sealed class ModelState
         {
             public CSGTree tree;
+            // this update's model.transform.worldToLocalMatrix
+            public Matrix4x4 worldToLocal;
             public readonly List<ChiselDecalInstance> decals = new();
             public readonly List<ChiselDecalTarget>   targets = new();
             public readonly List<ChiselDecalInstance> previous = new();
@@ -45,14 +54,54 @@ namespace Chisel.Components
         public static void Register(ChiselDecalComponent decal)
         {
             if (decal != null && s_Decals.Add(decal))
-                s_Dirty = true;
+                s_Dirty = s_OrderDirty = true;
         }
 
         public static void Unregister(ChiselDecalComponent decal)
         {
             if (s_Decals.Remove(decal))
-                s_Dirty = true;
+                s_Dirty = s_OrderDirty = true;
+            // nothing keeps a removed decal (or its material) loaded
+            s_Ordered.Remove(decal);
             s_DecalStates.Remove(decal);
+        }
+
+        /// <summary>The hierarchy changed: the decals may be in another order.</summary>
+        public static void HierarchyChanged()
+        {
+            s_OrderDirty = true;
+        }
+
+        // Scene by scene, then by the sibling indices from the scene's root down
+        static void Order()
+        {
+            s_Ordered.Clear();
+            var keys = new List<(string scene, int[] path, ChiselDecalComponent decal)>(s_Decals.Count);
+            var path = new List<int>(16);
+            foreach (var decal in s_Decals)
+            {
+                if (decal == null)
+                    continue;
+                path.Clear();
+                for (var transform = decal.transform; transform != null; transform = transform.parent)
+                    path.Add(transform.GetSiblingIndex());
+                path.Reverse();
+                keys.Add((decal.gameObject.scene.path, path.ToArray(), decal));
+            }
+            keys.Sort((a, b) =>
+            {
+                var scene = string.CompareOrdinal(a.scene, b.scene);
+                if (scene != 0)
+                    return scene;
+                for (int i = 0; i < a.path.Length && i < b.path.Length; i++)
+                {
+                    if (a.path[i] != b.path[i])
+                        return a.path[i].CompareTo(b.path[i]);
+                }
+                return a.path.Length.CompareTo(b.path.Length);
+            });
+            foreach (var key in keys)
+                s_Ordered.Add(key.decal);
         }
 
         /// <summary>Makes the next update look at every decal again.</summary>
@@ -72,10 +121,13 @@ namespace Chisel.Components
             Profiler.BeginSample("ChiselDecalManager.Update");
             try
             {
+                // only a moved decal or model goes unannounced: anything else sets s_Dirty
+                var changed = false;
                 s_ModelList.Clear();
+                s_ModelSet.Clear();
                 foreach (var model in ChiselModelManager.Instance.Models)
                 {
-                    if (model != null && model.isActiveAndEnabled && model.Node.Valid)
+                    if (model != null && model.isActiveAndEnabled && model.Node.Valid && s_ModelSet.Add(model))
                         s_ModelList.Add(model);
                 }
 
@@ -83,7 +135,7 @@ namespace Chisel.Components
                 s_Stale.Clear();
                 foreach (var pair in s_Models)
                 {
-                    if (pair.Key == null || !s_ModelList.Contains(pair.Key))
+                    if (pair.Key == null || !s_ModelSet.Contains(pair.Key))
                         s_Stale.Add(pair.Key);
                 }
                 foreach (var model in s_Stale)
@@ -109,14 +161,25 @@ namespace Chisel.Components
                         state.previous.Clear();
                         s_Dirty = true;
                     }
-                    state.decals.Clear();
-                    state.targets.Clear();
+                    var worldToLocal = model.transform.worldToLocalMatrix;
+                    if (!worldToLocal.Equals(state.worldToLocal))
+                    {
+                        state.worldToLocal = worldToLocal;
+                        changed = true;
+                    }
+                }
+
+                if (s_Dirty || s_OrderDirty)
+                {
+                    Order();
+                    s_OrderDirty = false;
+                    changed = true;
                 }
 
                 if (s_Dirty)
                 {
                     s_DecalStates.Clear();
-                    foreach (var decal in s_Decals)
+                    foreach (var decal in s_Ordered)
                     {
                         if (decal == null || decal.Material == null)
                             continue;
@@ -142,6 +205,7 @@ namespace Chisel.Components
                         s_DecalStates[decal] = new DecalState
                         {
                             parentModel      = decal.GetComponentInParent<ChiselModelComponent>(),
+                            transform        = decal.transform,
                             entityID         = EntityId.ToULong(decal.GetEntityId()),
                             renderMaterial   = EntityId.ToULong(decal.Material.GetEntityId()),
                             destinationFlags = GetDestinationFlags(decal.Material),
@@ -150,7 +214,29 @@ namespace Chisel.Components
                     }
                 }
 
-                foreach (var decal in s_Decals)
+                foreach (var decalState in s_DecalStates.Values)
+                {
+                    if (decalState.transform == null)
+                        continue;
+                    var localToWorld = decalState.transform.localToWorldMatrix;
+                    if (!localToWorld.Equals(decalState.localToWorld))
+                    {
+                        decalState.localToWorld = localToWorld;
+                        changed = true;
+                    }
+                }
+
+                if (!changed && !s_Dirty)
+                    return;
+
+                foreach (var model in s_ModelList)
+                {
+                    var state = s_Models[model];
+                    state.decals.Clear();
+                    state.targets.Clear();
+                }
+
+                foreach (var decal in s_Ordered)
                 {
                     if (decal == null || !decal.isActiveAndEnabled ||
                         !s_DecalStates.TryGetValue(decal, out var decalState))
@@ -158,14 +244,17 @@ namespace Chisel.Components
                     if (decalState.parentModel != null)
                     {
                         if (s_Models.TryGetValue(decalState.parentModel, out var state))
-                            Add(state, Describe(decal, decalState, decalState.parentModel), decalState.targets);
+                            Add(state, Describe(decal, decalState, state.worldToLocal), decalState.targets);
                         continue;
                     }
                     var scene = decal.gameObject.scene;
                     foreach (var model in s_ModelList)
                     {
                         if (model.gameObject.scene == scene)
-                            Add(s_Models[model], Describe(decal, decalState, model), decalState.targets);
+                        {
+                            var state = s_Models[model];
+                            Add(state, Describe(decal, decalState, state.worldToLocal), decalState.targets);
+                        }
                     }
                 }
 
@@ -200,6 +289,7 @@ namespace Chisel.Components
             {
                 // Do not retain temporary model references between updates.
                 s_ModelList.Clear();
+                s_ModelSet.Clear();
                 s_Stale.Clear();
                 Profiler.EndSample();
             }
@@ -228,10 +318,10 @@ namespace Chisel.Components
             return true;
         }
 
-        static ChiselDecalInstance Describe(ChiselDecalComponent decal, in DecalState decalState, ChiselModelComponent model)
+        static ChiselDecalInstance Describe(ChiselDecalComponent decal, DecalState decalState, Matrix4x4 modelWorldToLocal)
         {
             // The tree's space is the model's own space
-            var decalToTree = model.transform.worldToLocalMatrix * decal.transform.localToWorldMatrix;
+            var decalToTree = modelWorldToLocal * decalState.localToWorld;
             return new ChiselDecalInstance
             {
                 entityID         = decalState.entityID,

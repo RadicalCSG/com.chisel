@@ -34,6 +34,18 @@ namespace Chisel.Core
         public float4   localPlane;
         // The brush's surface this polygon shows (its index in the generator's surface array)
         public int      descriptionIndex;
+        // Hotspot mapping: the layout (ChiselHotspotStore, 0 for none), the pinned tile and the seed
+        public int      hotspotLayout;
+        public int      hotspotPinned, hotspotPinnedSheet;
+        public uint     hotspotSeed;
+        // and how the texture lies on it: turned (degrees), its density, mirrored (HotspotSurface)
+        public float    hotspotRotation;
+        public float    hotspotDensity;
+        public bool     hotspotMirror;
+        public float2   hotspotOffset;
+        // the texture is not locked to the object (SurfaceDetailFlags.TextureIsInWorldSpace): a hotspot surface's frame
+        // comes from the tree's axes and its repeats lie on a grid fixed in the tree
+        public bool     textureInWorld;
     }
 
     struct BasePolygonsBlob

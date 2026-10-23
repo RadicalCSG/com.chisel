@@ -15,8 +15,6 @@ namespace Chisel.Core
             public JobHandle                            lastJobHandle;
 
             public NativeList<CompactNodeID>            brushIDValues;
-            public NativeArray<ChiselLayerParameters>   parameters; 
-            public NativeParallelHashSet<int>           allKnownBrushMeshIndices;
 
             public NativeList<BlobAssetReference<BasePolygonsBlob>>             basePolygonCache;
             public NativeList<BlobAssetReference<RoutingTable>>                 routingTableCache;
@@ -34,22 +32,41 @@ namespace Chisel.Core
             public NativeList<BlobAssetReference<ExactBrush>>                   exactBrushCache;
 
             public NativeList<ChiselDecalInstance>                              decalInstances;
+            // where each decal was in the list SetDecals was given (ChiselDecalStore)
+            public NativeList<int>                                              decalSequences;
             public NativeList<MinMaxAABB>                                       decalBounds;
             public NativeList<ChiselDecalTarget>                                decalTargets;
             public NativeList<DecalVolume>                                      decalVolumes;
             public NativeList<ChiselDecalTarget>                                decalVolumeTargets;
             public NativeList<MinMaxAABB>                                       changedDecalBounds;
+            // The surfaces connected or disconnected by hand (ChiselHotspotLinkStore)
+            public NativeList<HotspotLink>                                      hotspotLinks;
 
             public NativeParallelHashMap<CompactNodeID, BlobAssetReference<ChiselBrushRenderBuffer>> brushRenderBufferLookup;
 
             // Whether the tree's output was last built by the exact CSG (TreeUpdate.kExactCSG). An update by the other
             // algorithm rebuilds every brush of the tree, so the two never mix in one tree's output.
             public bool                                                         builtExact;
+            // What each hotspot layout was at the last update (ChiselHotspotStore.LayoutHashes, by id - 1)
+            public NativeList<uint>                                             hotspotLayoutHashes;
+            // Where the weld's last step moved the corners it moved at the last update (from, to; OutputModelWeld)
+            public NativeList<float3x2>                                         collapseMoves;
+            // What the hotspot cut made of each brush's surfaces, kept while its inputs stay the same (OutputHotspotSections.CutModel)
+            public NativeParallelHashMap<CompactNodeID, HotspotCutEntry>        hotspotCutCache;
+            // what the weld did at the last update (OutputModelWeld.PrepareIncremental)
+            public WeldMemory                                                   weldMemory;
+            // what the hotspot stage found for each brush (HotspotStageMemory.Prepare)
+            public HotspotStageMemory                                           hotspotStageMemory;
+            // what the last update's hotspot grouping found (HotspotGroups.PrepareIncremental)
+            public HotspotGroupMemory                                          hotspotGroupMemory;
+            // What each group of hotspot surfaces was matched with, by what it was made from (HotspotGroups.Match)
+            public NativeParallelHashMap<uint4, GroupMatchEntry>               hotspotMatchCache;
+            // What each render mesh was last made from, by (query, material): a mesh made from the same is kept
+            public NativeParallelHashMap<RenderMeshKey, uint4>                 renderMeshHashes;
 
 			internal void Initialize()
             {
                 brushIDValues               = new NativeList<CompactNodeID>(1000, Allocator.Persistent); // Confirmed to get disposed
-				allKnownBrushMeshIndices    = new NativeParallelHashSet<int>(1000, Allocator.Persistent); // Confirmed to get disposed
 
 				brushRenderBufferLookup     = new NativeParallelHashMap<CompactNodeID, BlobAssetReference<ChiselBrushRenderBuffer>>(1000, Allocator.Persistent); // Confirmed to get disposed
 
@@ -66,20 +83,21 @@ namespace Chisel.Core
 				exactBrushCache             = new NativeList<BlobAssetReference<ExactBrush>>(1000, Allocator.Persistent);
 
 				decalInstances              = new NativeList<ChiselDecalInstance>(16, Allocator.Persistent);
+				decalSequences              = new NativeList<int>(16, Allocator.Persistent);
 				decalBounds                 = new NativeList<MinMaxAABB>(16, Allocator.Persistent);
 				decalVolumes                = new NativeList<DecalVolume>(16, Allocator.Persistent);
+				hotspotLinks                = new NativeList<HotspotLink>(4, Allocator.Persistent);
+				hotspotLayoutHashes         = new NativeList<uint>(4, Allocator.Persistent);
+				collapseMoves               = new NativeList<float3x2>(4, Allocator.Persistent);
+				hotspotCutCache             = new NativeParallelHashMap<CompactNodeID, HotspotCutEntry>(16, Allocator.Persistent);
+				weldMemory                  = WeldMemory.Create(Allocator.Persistent);
+				hotspotStageMemory          = HotspotStageMemory.Create(Allocator.Persistent);
+				hotspotGroupMemory          = HotspotGroupMemory.Create(Allocator.Persistent);
+				hotspotMatchCache           = new NativeParallelHashMap<uint4, GroupMatchEntry>(16, Allocator.Persistent);
+				renderMeshHashes            = new NativeParallelHashMap<RenderMeshKey, uint4>(16, Allocator.Persistent);
 				decalTargets                = new NativeList<ChiselDecalTarget>(16, Allocator.Persistent);
 				decalVolumeTargets          = new NativeList<ChiselDecalTarget>(16, Allocator.Persistent);
 				changedDecalBounds          = new NativeList<MinMaxAABB>(16, Allocator.Persistent);
-
-				parameters = new NativeArray<ChiselLayerParameters>(SurfaceDestinationParameters.ParameterCount, Allocator.Persistent); // Confirmed to get disposed
-				for (int i = 0; i < parameters.Length; i++)
-                {
-                    var parameter = parameters[i];
-                    parameter.Initialize(); 
-                    Debug.Assert(parameter.IsCreated);
-                    parameters[i] = parameter;
-                }
             }
 
             internal void EnsureCapacity(int brushCount)
@@ -89,9 +107,6 @@ namespace Chisel.Core
 
                 if (brushIDValues.Capacity < brushCount)
                     brushIDValues.Capacity = brushCount;
-
-                if (allKnownBrushMeshIndices.Capacity < brushCount)
-                    allKnownBrushMeshIndices.Capacity = brushCount;
 
                 if (basePolygonCache.Capacity < brushCount)
                     basePolygonCache.Capacity = brushCount;
@@ -127,12 +142,6 @@ namespace Chisel.Core
             internal void Dispose()
             {
                 // Confirmed to be called
-                if (allKnownBrushMeshIndices.IsCreated)
-                {
-                    allKnownBrushMeshIndices.Clear();
-                    allKnownBrushMeshIndices.Dispose();
-                }
-                allKnownBrushMeshIndices = default;
                 if (brushIDValues.IsCreated)
                     brushIDValues.Dispose();
                 brushIDValues = default;
@@ -251,6 +260,7 @@ namespace Chisel.Core
                 }
                 exactBrushCache = default;
                 if (decalInstances.IsCreated)     decalInstances.Dispose();
+                if (decalSequences.IsCreated)     decalSequences.Dispose();
                 if (decalBounds.IsCreated)        decalBounds.Dispose();
                 if (decalVolumes.IsCreated)       decalVolumes.Dispose();
                 if (decalTargets.IsCreated)       decalTargets.Dispose();
@@ -258,7 +268,39 @@ namespace Chisel.Core
                 decalTargets = default;
                 decalVolumeTargets = default;
                 if (changedDecalBounds.IsCreated) changedDecalBounds.Dispose();
+                if (hotspotLinks.IsCreated)       hotspotLinks.Dispose();
+                hotspotLinks = default;
+                if (hotspotLayoutHashes.IsCreated) hotspotLayoutHashes.Dispose();
+                hotspotLayoutHashes = default;
+                if (collapseMoves.IsCreated) collapseMoves.Dispose();
+                collapseMoves = default;
+                if (hotspotCutCache.IsCreated)
+                {
+                    foreach (var entry in hotspotCutCache)
+                    {
+                        if (entry.Value.result.IsCreated)
+                            entry.Value.result.Dispose();
+                    }
+                    hotspotCutCache.Dispose();
+                }
+                hotspotCutCache = default;
+                weldMemory.Dispose();
+                weldMemory = default;
+                hotspotStageMemory.Dispose();
+                hotspotStageMemory = default;
+                hotspotGroupMemory.Dispose();
+                hotspotGroupMemory = default;
+                if (hotspotMatchCache.IsCreated)
+                {
+                    foreach (var entry in hotspotMatchCache)
+                        entry.Value.match.Dispose();
+                    hotspotMatchCache.Dispose();
+                }
+                hotspotMatchCache = default;
+                if (renderMeshHashes.IsCreated) renderMeshHashes.Dispose();
+                renderMeshHashes = default;
                 decalInstances = default;
+                decalSequences = default;
                 decalBounds = default;
                 decalVolumes = default;
                 changedDecalBounds = default;
@@ -266,18 +308,6 @@ namespace Chisel.Core
                     brushRenderBufferLookup.Dispose();
                 brushRenderBufferLookup = default;
                 builtExact = false;
-                if (parameters.IsCreated)
-				{
-					// Confirmed to be called
-					for (int i = 0; i < parameters.Length; i++)
-                    {
-                        if (parameters[i].IsCreated)
-							parameters[i].Dispose();
-                        parameters[i] = default;
-                    }
-                    parameters.Dispose();
-                }
-                parameters = default;
             }
         }
 

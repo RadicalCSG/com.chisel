@@ -294,6 +294,8 @@ namespace Chisel.Components
 
 			// The decals go to their models' trees first, so this update draws them
 			ChiselDecalManager.Update();
+			// and the surfaces connected or disconnected by hand
+			ChiselHotspotLinks.Update();
 
 			// Update the tree meshes
 			Profiler.BeginSample("Flush");
@@ -813,6 +815,7 @@ namespace Chisel.Components
 			if (!hash.isValid)
 				return default;
 			AppendEnvironment(ref hash);
+			AppendHotspotInputs(ref hash, model);
 			return hash;
 		}
 
@@ -829,6 +832,7 @@ namespace Chisel.Components
 			if (!hash.isValid)
 				return default;
 			AppendEnvironment(ref hash);
+			AppendHotspotInputs(ref hash, model);
 			return hash;
 		}
 
@@ -855,6 +859,68 @@ namespace Chisel.Components
 			var debugVisualizationMaterials = ChiselProjectSettings.DebugVisualizationMaterials;
 			for (int i = 0; debugVisualizationMaterials != null && i < debugVisualizationMaterials.Length; i++)
 				AppendMaterialIdentity(ref hash, debugVisualizationMaterials[i]);
+		}
+
+		static readonly List<ChiselGeneratorComponent> s_HotspotGenerators = new();
+		static readonly List<Material>                 s_HotspotMaterials  = new();
+
+		/// <summary>
+		/// What hotspot mapping takes besides each surface's own settings: the layouts its materials are drawn on (their
+		/// tiles as they are now, which no surface names), the materials drawn on them in turn, the surfaces connected by
+		/// hand, and the project's budgets.
+		/// </summary>
+		static void AppendHotspotInputs(ref Hash128 hash, ChiselModelComponent model)
+		{
+			var budgets = new Unity.Mathematics.int2(ChiselProjectSettings.HotspotMaxRepeats, ChiselProjectSettings.HotspotMaxTriangles);
+			hash.Append(ref budgets);
+			s_HotspotGenerators.Clear();
+			s_HotspotMaterials.Clear();
+			model.GetComponentsInChildren(true, s_HotspotGenerators);
+			foreach (var generator in s_HotspotGenerators)
+			{
+				var surfaces = generator.SurfaceDefinition?.surfaces;
+				if (surfaces == null)
+					continue;
+				foreach (var surface in surfaces)
+				{
+					var material = surface?.RenderMaterial;
+					if (!material || s_HotspotMaterials.Contains(material) || !surface.HotspotLayout)
+						continue;
+					s_HotspotMaterials.Add(material);
+					AppendMaterialIdentity(ref hash, material);
+					surface.HotspotLayout.AppendContentHash(ref hash);
+					var variants = surface.HotspotVariants;
+					var count = variants?.Count ?? 0;
+					hash.Append(ref count);
+					for (int i = 0; i < count; i++)
+						AppendMaterialIdentity(ref hash, variants[i]);
+					var sheets = surface.HotspotSheets;
+					var sheetCount = sheets?.Count ?? 0;
+					hash.Append(ref sheetCount);
+					for (int i = 0; i < sheetCount; i++)
+					{
+						AppendMaterialIdentity(ref hash, sheets[i]);
+						var sheetLayout = sheets[i] ? sheets[i].GetMetadataOfType<ChiselSurfaceMetadata>()?.hotspotLayout : null;
+						if (sheetLayout)
+							sheetLayout.AppendContentHash(ref hash);
+					}
+				}
+			}
+			var links = model.hotspotLinks;
+			var linkCount = links?.Count ?? 0;
+			hash.Append(ref linkCount);
+			for (int i = 0; i < linkCount; i++)
+			{
+				var link = links[i];
+				var where = new Unity.Mathematics.int4(s_HotspotGenerators.IndexOf(link.a), link.brushA, link.surfaceA, s_HotspotGenerators.IndexOf(link.b));
+				var other = new Unity.Mathematics.int4(link.brushB, link.surfaceB, link.edge, link.order);
+				var state = new Unity.Mathematics.int4(link.connect ? 1 : 0, link.automatic ? 1 : 0, link.single ? 1 : 0, (int)link.border);
+				hash.Append(ref where);
+				hash.Append(ref other);
+				hash.Append(ref state);
+			}
+			s_HotspotGenerators.Clear();
+			s_HotspotMaterials.Clear();
 		}
 
 		static void AppendMaterialIdentity(ref Hash128 hash, Material material)
@@ -884,6 +950,7 @@ namespace Chisel.Components
 				model.generated.inputHash          = settled ? GetInputHash(model) : default;
 				model.generated.componentInputHash = settled ? GetComponentInputHash(model) : default;
 			}
+			ChiselRenderObjects.StorePendingSelectionOwners();
 		}
 
 		[UnityEditor.InitializeOnLoadMethod]

@@ -11,6 +11,16 @@ using andywiecko.BurstTriangulator;
 
 namespace Chisel.Core
 {
+	// GenerateSurfaceTrianglesJob for the exact CSG's input (triangles already made), Burst compiled: the FIXME below is
+	// about the loops' triangulation, which this does not run
+	[BurstCompile(FloatPrecision.High, FloatMode.Strict, CompileSynchronously = true)]
+	struct GenerateExactSurfaceTrianglesJob : IJobParallelForDefer
+	{
+		public GenerateSurfaceTrianglesJob job;
+
+		public void Execute(int index) => job.ExecuteExact(index);
+	}
+
 	//[BurstCompile(CompileSynchronously = true)] // FIXME: If enabled, it causes more missing triangles in the mesh
 	struct GenerateSurfaceTrianglesJob : IJobParallelForDefer
 	{
@@ -41,6 +51,11 @@ namespace Chisel.Core
 		[NoAlias, ReadOnly] public NativeArray<DecalVolume> decalVolumes;
 		// The surfaces decals are limited to (DecalVolume.targetStart/targetCount)
 		[NoAlias, ReadOnly] public NativeArray<ChiselDecalTarget> decalTargets;
+		// Hotspot layouts (ChiselHotspotStore.Gather): every layout's tiles, and where a layout's are (by id - 1)
+		[NoAlias, ReadOnly] public NativeArray<HotspotTileData>   hotspotTiles;
+		[NoAlias, ReadOnly] public NativeArray<HotspotLayoutData> hotspotLayouts;
+		// the materials layouts with variants are drawn with (HotspotLayoutData.variantStart)
+		[NoAlias, ReadOnly] public NativeArray<ulong>             hotspotVariants;
 
 		// Write
 		[NativeDisableParallelForRestriction]
@@ -557,7 +572,7 @@ namespace Chisel.Core
 					using var builder = new BlobBuilder(Allocator.Temp, 4096);
 
 					ref var root = ref builder.ConstructRoot<ChiselBrushRenderBuffer>();
-					var surfaceBuffers = builder.Allocate(ref root.surfaces, baseSurfaceCount + decalCandidates.Length);
+					var surfaceBuffers = builder.Allocate(ref root.surfaces, SlotCount(baseSurfaceCount, decalCandidates.Length));
 
 					var triangulator = new UnsafeTriangulator<double2>();
 					for (int surf = 0; surf < surfaceLoopIndices.Length; surf++)
@@ -586,6 +601,9 @@ namespace Chisel.Core
 						var localToPlane = MathExtensions.GenerateLocalToPlaneSpaceMatrix(plane);
 						var treeToPlane = math.mul(localToPlane, treeToNode);
 						var planeNormalMap = math.mul(nodeToTreeInvTrans, plane);
+						// uvs relative to the world instead of the object (as SurfaceFrame)
+						if (baseSurfaces[surf].textureInWorld)
+							treeToPlane = MathExtensions.GenerateLocalToPlaneSpaceMatrix(planeNormalMap / math.length(planeNormalMap.xyz));
 						var map3DTo2D = new Map3DTo2D(planeNormalMap.xyz);
 
 						// Normal flip logic preparation
@@ -727,7 +745,7 @@ namespace Chisel.Core
 						}
 
 						if (surfaceIndexList.Length == 0) continue;
-						FinishSurface(surf, brushNodeOrder, ref baseSurfaces, treeToPlane, finalFaceNormal, surfaceIndexList, ref uniqueVertexMapper,
+						FinishSurface(surf, brushNodeOrder, ref baseSurfaces, treeToPlane, transform.nodeToTree, finalFaceNormal, surfaceIndexList, ref uniqueVertexMapper,
 						              builder, surfaceBuffers, ref decalBuilder, decalCandidates, decalTargeted, decalCandidateStart, baseSurfaceCount);
 					}
 
@@ -765,7 +783,7 @@ namespace Chisel.Core
 		}
 		// After a surface's triangles have been registered: normal smoothing, UVs, tangents, lightmap coordinates, the decals on
 		// it and its render buffer. Shared by both inputs.
-		unsafe void FinishSurface(int surf, int brushNodeOrder, ref BlobArray<BaseSurface> baseSurfaces, float4x4 treeToPlane, float3 finalFaceNormal,
+		unsafe void FinishSurface(int surf, int brushNodeOrder, ref BlobArray<BaseSurface> baseSurfaces, float4x4 treeToPlane, float4x4 nodeToTree, float3 finalFaceNormal,
 						   NativeList<int> surfaceIndexList, ref UniqueVertexMapper uniqueVertexMapper,
 						   BlobBuilder builder, BlobBuilderArray<ChiselSurfaceRenderBuffer> surfaceBuffers,
 						   ref DecalSurfaceBuilder decalBuilder, NativeList<int> decalCandidates, NativeList<byte> decalTargeted,
@@ -831,6 +849,94 @@ namespace Chisel.Core
 			var parms = baseSurfaces[surf].destinationParameters;
 			var UV0 = baseSurfaces[surf].UV0;
 			var uvMat = math.mul(UV0.ToFloat4x4(), treeToPlane);
+			// A surface whose material has a hotspot layout takes its uvs from the tile that fits what it draws
+			var hotspot = baseSurfaces[surf].hotspotLayout;
+			var sectionInput  = default(HotspotSectionInput);
+			var hotspotInfo   = default(HotspotSurfaceInfo);
+			var hotspotSource = default(HotspotSurfaceSource);
+			if (hotspot > 0 && hotspot <= hotspotLayouts.Length && hotspotLayouts[hotspot - 1].tileCount > 0)
+			{
+				var layout  = hotspotLayouts[hotspot - 1];
+				// the faces round a pole, close enough to a flat circle, take one radial tile together, as their first
+				// face's settings ask
+				using var capFaces   = new NativeList<int>(16, Allocator.Temp);
+				using var capCorners = new NativeList<float3>(64, Allocator.Temp);
+				var cap  = HotspotCaps.Find(ref basePolygonCache[brushNodeOrder].Value, surf, capFaces, capCorners, out var capNormal);
+				var lead = cap ? capFaces[0] : surf;
+				var hotspotRight = float3.zero; var hotspotUp = float3.zero; var shape = default(HotspotShape);
+				// locked to the object, its units: how many of the brush's own units a unit of the tree is (its scale)
+				var ownUnits = 1.0f;
+				if (cap)
+				{
+					if (math.dot(capNormal, finalFaceNormal) < 0)
+						capNormal = -capNormal;
+					var localNormal = math.mul(math.transpose(new float3x3(nodeToTree)), capNormal);
+					// locked to the object, in the brush's own space and units; otherwise the tree's
+					if (baseSurfaces[lead].textureInWorld)
+						HotspotMatcher.Frame(capNormal, baseSurfaces[lead].hotspotRotation, baseSurfaces[lead].hotspotMirror, out hotspotRight, out hotspotUp);
+					else
+					{
+						HotspotMatcher.Frame(capNormal, localNormal, nodeToTree, baseSurfaces[lead].hotspotRotation, baseSurfaces[lead].hotspotMirror, out hotspotRight, out hotspotUp);
+						ownUnits = HotspotMatcher.OwnUnits(capNormal, math.normalizesafe(localNormal), math.inverse(nodeToTree), baseSurfaces[lead].hotspotRotation, baseSurfaces[lead].hotspotMirror);
+					}
+					shape = HotspotMatcher.ShapeOf(capCorners.AsArray(), hotspotRight, hotspotUp);
+					cap = shape.radial;
+				}
+				if (!cap)
+				{
+					lead = surf;
+					if (baseSurfaces[surf].textureInWorld)
+						HotspotMatcher.Frame(finalFaceNormal, baseSurfaces[surf].hotspotRotation, baseSurfaces[surf].hotspotMirror, out hotspotRight, out hotspotUp);
+					else
+					{
+						// the brush's own normal, facing as the drawn face does (inwards in the subtractive workflow)
+						var ownNormal = math.normalizesafe(baseSurfaces[surf].localPlane.xyz);
+						var toTree = math.transpose(math.inverse(nodeToTree));
+						if (math.dot(math.mul(toTree, new float4(ownNormal, 0)).xyz, finalFaceNormal) < 0)
+							ownNormal = -ownNormal;
+						HotspotMatcher.Frame(finalFaceNormal, baseSurfaces[surf].localPlane.xyz, nodeToTree, baseSurfaces[surf].hotspotRotation, baseSurfaces[surf].hotspotMirror, out hotspotRight, out hotspotUp);
+						ownUnits = HotspotMatcher.OwnUnits(finalFaceNormal, ownNormal, math.inverse(nodeToTree), baseSurfaces[surf].hotspotRotation, baseSurfaces[surf].hotspotMirror);
+					}
+					shape = HotspotMatcher.ShapeOf(uniqueVertexMapper.surfaceColliderVertices.AsArray(), hotspotRight, hotspotUp);
+					HotspotMatcher.MaskOf(ref shape, uniqueVertexMapper.surfaceColliderVertices.AsArray(), surfaceIndexList.AsArray(), hotspotRight, hotspotUp);
+				}
+				// measured in the brush's own units when locked: a scaled brush's texture scales with it
+				var density = (baseSurfaces[lead].hotspotDensity > 0 ? baseSurfaces[lead].hotspotDensity : 1) * ownUnits;
+				var seed   = math.hash(new uint2(baseSurfaces[lead].hotspotSeed, (uint)baseSurfaces[lead].descriptionIndex));
+				var choice = HotspotMatcher.Choose(hotspotTiles, layout, shape, seed, baseSurfaces[lead].hotspotPinned, density: density,
+													pinnedSheet: baseSurfaces[lead].hotspotPinnedSheet);
+				// coplanar neighbours with this layout and frame, of any brush, are matched again together (HotspotGroups)
+				if (!cap)
+					hotspotSource = new HotspotSurfaceSource { layout = hotspot, right = hotspotRight, up = hotspotUp, normal = finalFaceNormal, seed = seed,
+															   pinned = baseSurfaces[surf].hotspotPinned, pinnedSheet = baseSurfaces[surf].hotspotPinnedSheet,
+															   density = density, offset = baseSurfaces[surf].hotspotOffset,
+															   world = baseSurfaces[surf].textureInWorld };
+				if (choice.tile >= 0)
+				{
+					// the tile's own sheet (another sheet drawn with the layout, its own texture and material)
+					var sheet = HotspotMatcher.SheetOf(hotspotTiles[choice.tile], hotspotLayouts, layout);
+					var onOtherSheet = hotspotTiles[choice.tile].sheet > 0;
+					layout = sheet;
+					uvMat = HotspotMatcher.Mapping(hotspotTiles[choice.tile], layout, shape, choice, hotspotRight, hotspotUp);
+					// a tile that repeats, has a border, or whose repeats are moved along (a cap is mapped whole): what is drawn is cut
+					// where its sections meet, after the model's weld (OutputHotspotSections)
+					if (!cap && (hotspotTiles[choice.tile].border > 0 || choice.Repeated || math.any(baseSurfaces[surf].hotspotOffset != 0) ||
+								 (baseSurfaces[surf].textureInWorld && (hotspotTiles[choice.tile].flags & HotspotTileFlags.PartialRepeats) != 0)))
+						sectionInput = HotspotSections.Input(hotspotTiles[choice.tile], layout, shape, choice, hotspotRight, hotspotUp, density, baseSurfaces[surf].hotspotOffset,
+															 baseSurfaces[surf].textureInWorld);
+					var pinnedId = baseSurfaces[lead].hotspotPinned;
+					hotspotInfo = HotspotDiagnostics.Info(hotspotTiles[choice.tile], layout, choice, sectionInput,
+														  pinnedId != 0 && hotspotTiles[choice.tile].id == pinnedId &&
+														  hotspotTiles[choice.tile].sheetIndex == baseSurfaces[lead].hotspotPinnedSheet, density);
+					// the other sheet's material, or one of the materials drawn on the layout, as the seed picked it
+					if (onOtherSheet)
+					{
+						if (layout.material != 0)
+							parms.parameter1 = layout.material;
+					} else if (layout.variantCount > 1 && layout.variantStart + choice.variant < hotspotVariants.Length)
+						parms.parameter1 = hotspotVariants[layout.variantStart + choice.variant];
+				}
+			}
 			
 			MeshAlgorithms.ComputeUVs(uniqueVertexMapper.surfaceRenderVertices, uvMat);
 			MeshAlgorithms.ComputeTangents(uniqueVertexMapper.surfaceRenderVertices, finalFaceNormal, uvMat);
@@ -876,13 +982,53 @@ namespace Chisel.Core
 				MeshAlgorithms.ComputeLightmapCoordinates(remaining.renderVertices, finalFaceNormal);
 				buf.Construct(builder, remaining.indices, remaining.colliderVertices,
 							  remaining.selectVertices, remaining.renderVertices,
-							  surf, surf, flags, parms, outputFlags);
+							  surf, surf, flags & ~SurfaceDestinationFlags.Collidable, parms, outputFlags);
+
+				// and the collider keeps the whole surface, which the weld moves as it moves a decal's pieces
+				if ((flags & SurfaceDestinationFlags.Collidable) != 0)
+				{
+					var copySlot = ColliderCopySlot(baseSurfaceCount, decalCandidateStart[baseSurfaceCount], surf);
+					ref var copy = ref surfaceBuffers[copySlot];
+					copy.Construct(builder, surfaceIndexList,
+								   uniqueVertexMapper.surfaceColliderVertices,
+								   uniqueVertexMapper.surfaceSelectVertices,
+								   uniqueVertexMapper.surfaceRenderVertices,
+								   copySlot, surf, SurfaceDestinationFlags.Collidable, parms, outputFlags);
+					copy.decalEntityID = CuttingDecal(decalCandidates, candidateStart, candidateCount);
+				}
 			} else
 			buf.Construct(builder, surfaceIndexList,
 						uniqueVertexMapper.surfaceColliderVertices,
 						uniqueVertexMapper.surfaceSelectVertices,
 						uniqueVertexMapper.surfaceRenderVertices,
 						surf, surf, flags, parms, outputFlags);
+			buf.sectionInput = sectionInput;
+			buf.hotspot       = hotspotInfo;
+			buf.hotspotSource = hotspotSource;
+		}
+
+		// A brush's slots: its surfaces, a slot per decal candidate, and when it has candidates, a slot per surface for
+		// the uncut collider copy of a surface an opaque decal cut
+		static int SlotCount(int baseSurfaceCount, int candidateCount)
+		{
+			return baseSurfaceCount + candidateCount + (candidateCount > 0 ? baseSurfaceCount : 0);
+		}
+
+		static int ColliderCopySlot(int baseSurfaceCount, int candidateCount, int surf)
+		{
+			return baseSurfaceCount + candidateCount + surf;
+		}
+
+		// The topmost opaque decal on the surface: the collider copy is marked as the decal's, like its pieces
+		ulong CuttingDecal(NativeList<int> decalCandidates, int candidateStart, int candidateCount)
+		{
+			for (int k = candidateCount - 1; k > 0; k--)
+			{
+				var volume = decalVolumes[decalCandidates[candidateStart + k]];
+				if (!volume.IsTransparent)
+					return volume.entityID;
+			}
+			return decalVolumes[decalCandidates[candidateStart]].entityID;
 		}
 
 		// After every surface: the empty decal slots, the mesh queries, and the brush's render buffer in the cache.
@@ -901,6 +1047,16 @@ namespace Chisel.Core
 					emptySlot.baseSurfaceIndex = s;
 				}
 			}
+			var candidateCount = decalCandidateStart[baseSurfaceCount];
+			var firstCopySlot  = candidateCount > 0 ? ColliderCopySlot(baseSurfaceCount, candidateCount, 0) : surfaceBuffers.Length;
+			for (int s = firstCopySlot; s < surfaceBuffers.Length; s++)
+			{
+				ref var emptySlot = ref surfaceBuffers[s];
+				if (emptySlot.vertexCount != 0)
+					continue;
+				emptySlot.surfaceIndex     = s;
+				emptySlot.baseSurfaceIndex = s - firstCopySlot;
+			}
 
 			using var queryList = new NativeList<ChiselQuerySurface>(surfaceBuffers.Length, Allocator.Temp);
 			var queryArr = builder.Allocate(ref root.querySurfaces, meshQueries.Length);
@@ -909,6 +1065,8 @@ namespace Chisel.Core
 				var meshQuery = meshQueries[t];
 				var layerQueryMask = meshQuery.LayerQueryMask;
 				var layerQuery = meshQuery.LayerQuery;
+				// a collider copy only goes to colliders, never to the hidden surfaces
+				var colliderQuery = (layerQuery & SurfaceDestinationFlags.Collidable) != 0;
 				var surfaceParameterIndex = (meshQuery.LayerParameterIndex >= SurfaceParameterIndex.Parameter1 &&
 												meshQuery.LayerParameterIndex <= SurfaceParameterIndex.MaxParameterIndex) ?
 												(int)meshQuery.LayerParameterIndex - 1 : -1;
@@ -923,6 +1081,8 @@ namespace Chisel.Core
 						continue;
 					var destinationFlags = buffer.destinationFlags;
 					if ((destinationFlags & layerQueryMask) != layerQuery)
+						continue;
+					if (s >= firstCopySlot && !colliderQuery)
 						continue;
 
 					queryList.AddNoResize(new ChiselQuerySurface
@@ -959,16 +1119,24 @@ namespace Chisel.Core
 						  out float4x4 treeToPlane, out float3 finalFaceNormal)
 		{
 			var plane = baseSurfaces[surf].localPlane;
-			var localToPlane = MathExtensions.GenerateLocalToPlaneSpaceMatrix(plane);
-			treeToPlane = math.mul(localToPlane, treeToNode);
 			var planeNormalMap = math.mul(nodeToTreeInvTrans, plane);
+			// uvs relative to the object (locked), or to the world: from the plane as it lies in the tree
+			if (baseSurfaces[surf].textureInWorld)
+			{
+				var treePlane = planeNormalMap / math.length(planeNormalMap.xyz);
+				treeToPlane = MathExtensions.GenerateLocalToPlaneSpaceMatrix(treePlane);
+			} else
+			{
+				var localToPlane = MathExtensions.GenerateLocalToPlaneSpaceMatrix(plane);
+				treeToPlane = math.mul(localToPlane, treeToNode);
+			}
 			var map3DTo2D = new Map3DTo2D(planeNormalMap.xyz);
 			finalFaceNormal = map3DTo2D.normal;
 			if (subtractiveWorkflow)
 				finalFaceNormal = -finalFaceNormal;   // lighting for the "inside"
 		}
 
-		unsafe void ExecuteExact(int index)
+		internal unsafe void ExecuteExact(int index)
 		{
 			var count = input.BeginForEachIndex(index);
 			if (count == 0)
@@ -1049,7 +1217,7 @@ namespace Chisel.Core
 
 				using var builder = new BlobBuilder(Allocator.Temp, 4096);
 				ref var root = ref builder.ConstructRoot<ChiselBrushRenderBuffer>();
-				var surfaceBuffers = builder.Allocate(ref root.surfaces, baseSurfaceCount + decalCandidates.Length);
+				var surfaceBuffers = builder.Allocate(ref root.surfaces, SlotCount(baseSurfaceCount, decalCandidates.Length));
 
 				for (int surf = 0; surf < baseSurfaceCount; surf++)
 				{
@@ -1074,7 +1242,7 @@ namespace Chisel.Core
 					}
 					if (surfaceIndexList.Length == 0)
 						continue;
-					FinishSurface(surf, brushNodeOrder, ref baseSurfaces, treeToPlane, finalFaceNormal, surfaceIndexList, ref uniqueVertexMapper,
+					FinishSurface(surf, brushNodeOrder, ref baseSurfaces, treeToPlane, transform.nodeToTree, finalFaceNormal, surfaceIndexList, ref uniqueVertexMapper,
 								  builder, surfaceBuffers, ref decalBuilder, decalCandidates, decalTargeted, decalCandidateStart, baseSurfaceCount);
 				}
 				FinishBrush(brushIndexOrder, brushNodeOrder, builder, ref root, surfaceBuffers, decalCandidateStart, baseSurfaceCount);

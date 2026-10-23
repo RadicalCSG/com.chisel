@@ -34,6 +34,9 @@ namespace Chisel.Core
         /// <remarks>A surface parameter can be used to, for example, differentiate between meshes that use a different [UnityEngine.Material](https://docs.unity3d.com/ScriptReference/Material.html).</remarks>
         public ulong		surfaceParameter;
 
+        /// <value>For a collider: the chunk of space it covers (a collider is a mesh per physics material and chunk).</value>
+        public UInt32		chunk;
+
         /// <value>An unique index for each found <paramref name="meshQuery"/>/<paramref name="surfaceParameter"/> pair.</value>
         public Int32		meshQueryIndex;
 

@@ -38,10 +38,21 @@ namespace Chisel.Core
 		public const string kDestinationFlagsFieldName = nameof(destinationFlags);
 		public const string kOutputFlagsName           = nameof(outputFlags);
 		public const string kPhysicsMaterialFieldName  = nameof(physicsMaterial);
+		public const string kHotspotLayoutFieldName    = nameof(hotspotLayout);
+		public const string kHotspotVariantsFieldName  = nameof(hotspotVariants);
+		public const string kHotspotSheetsFieldName    = nameof(hotspotSheets);
 
 		public SurfaceDestinationFlags destinationFlags = SurfaceDestinationFlags.Default;
 		public SurfaceOutputFlags	   outputFlags		= SurfaceOutputFlags.Default;
 		public PhysicsMaterial         physicsMaterial;
+		// Surfaces with this material take their uvs from a tile of this layout
+		public ChiselHotspotLayout     hotspotLayout;
+		// Other materials drawn on the same layout (another texture of the same tiles): a surface is given this material
+		// or one of them, as a variation (ChiselHotspotStore)
+		public System.Collections.Generic.List<Material> hotspotVariants = new();
+		// Other sheets drawn with it (materials whose metadata has a layout of its own, a trim sheet say): matching picks from
+		// their tiles too, and a surface given one of theirs is given that material (ChiselHotspotStore)
+		public System.Collections.Generic.List<Material> hotspotSheets = new();
 
 
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -50,7 +61,18 @@ namespace Chisel.Core
 			unchecked
 			{
 				uint physicsMaterialHashcode = (physicsMaterial != null) ? (uint)physicsMaterial.GetHashCode() : 0u;
-				var hash = math.hash(new uint3((uint)destinationFlags, (uint)outputFlags, physicsMaterialHashcode));
+				uint hotspotLayoutHashcode   = (hotspotLayout != null) ? (uint)hotspotLayout.GetHashCode() : 0u;
+				var hash = math.hash(new uint4((uint)destinationFlags, (uint)outputFlags, physicsMaterialHashcode, hotspotLayoutHashcode));
+				if (hotspotVariants != null)
+				{
+					foreach (var variant in hotspotVariants)
+						hash = math.hash(new uint2(hash, variant != null ? (uint)variant.GetHashCode() : 0u));
+				}
+				if (hotspotSheets != null)
+				{
+					foreach (var sheet in hotspotSheets)
+						hash = math.hash(new uint3(hash, sheet != null ? (uint)sheet.GetHashCode() : 0u, 1u));
+				}
 				return (int)hash;
 			}
 		}

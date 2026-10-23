@@ -152,6 +152,8 @@ namespace Chisel.Components
         [HideInInspector] public float          lightmapTexelsPerUnit           = 0.0f;
         /// <summary>The texels between lightmap charts they were laid out with (uvGenerationSettings.packMarginPixels in the editor)</summary>
         [HideInInspector] public float          lightmapPaddingTexels           = 0.0f;
+        /// <summary>The largest lightmap a renderer may ask for, in texels, when the model bakes lightmaps; else 0 (no lightmap split)</summary>
+        [HideInInspector] public int            lightmapMaxSize                 = 0;
 
 #if UNITY_EDITOR
         // SerializedObject access Only
@@ -255,6 +257,9 @@ namespace Chisel.Components
 		[HideInInspector] public ChiselGeneratedObjects generated;
 		[HideInInspector] public CSGTree Node;
 
+        // The surfaces of this model connected or disconnected by hand for hotspot mapping (ChiselHotspotLinks)
+        [SerializeField, HideInInspector] internal List<ChiselHotspotLink> hotspotLinks = new();
+
         public ChiselGeneratedColliderSettings colliderSettings;
         public ChiselGeneratedRenderSettings renderSettings;
 
@@ -343,12 +348,23 @@ namespace Chisel.Components
 
             // TODO: move out of here
 #if !UNITY_EDITOR
-            if (generated != null && generated.meshRenderers != null)
+            // A player has no editor drawing: the renderers draw themselves, debug visualizations never
+            if (generated != null && generated.renderables != null)
             {
-                foreach(var renderable in generated.renderables)
-                {                    
-                    renderable.meshRenderer.forceRenderingOff = true;
-                    renderable.meshRenderer.enabled = renderable.sharedMesh.vertexCount == 0;
+                foreach (var renderable in generated.renderables)
+                {
+                    if (renderable == null || !renderable.meshRenderer)
+                        continue;
+                    renderable.meshRenderer.forceRenderingOff = false;
+                    renderable.meshRenderer.enabled = renderable.sharedMesh && renderable.sharedMesh.vertexCount > 0;
+                }
+            }
+            if (generated != null && generated.debugVisualizationRenderables != null)
+            {
+                foreach (var renderable in generated.debugVisualizationRenderables)
+                {
+                    if (renderable != null && renderable.meshRenderer)
+                        renderable.meshRenderer.enabled = false;
                 }
             }
 #endif
@@ -400,6 +416,7 @@ namespace Chisel.Components
             // The texels its lightmap coordinates are laid out for (ChiselLightmapUVManager)
             renderSettings.lightmapTexelsPerUnit = ChiselLightmapUVManager.LightmapResolution() * renderSettings.scaleInLightmap;
             renderSettings.lightmapPaddingTexels = (renderSettings.uvGenerationSettings != null) ? renderSettings.uvGenerationSettings.packMarginPixels : LightmapUVSettings.kDefaultPaddingTexels;
+            renderSettings.lightmapMaxSize       = ChiselLightmapUVManager.LightmapMaxSize(this, ChiselLightmapUVManager.LightmapAtlasSize());
 #endif
             ModelSettingsStore.Set(UnityEngine.EntityId.ToULong(GetEntityId()), new ModelSettings
             {
@@ -407,7 +424,8 @@ namespace Chisel.Components
                 NormalSmoothing = renderSettings.normalSmoothing,
                 NormalSmoothingAngle = renderSettings.normalSmoothingAngle,
                 LightmapTexelsPerUnit = renderSettings.lightmapTexelsPerUnit,
-                LightmapPaddingTexels = renderSettings.lightmapPaddingTexels
+                LightmapPaddingTexels = renderSettings.lightmapPaddingTexels,
+                LightmapMaxSize       = renderSettings.lightmapMaxSize
             });
             SetDirty();
             MarkAllBrushesDirty();

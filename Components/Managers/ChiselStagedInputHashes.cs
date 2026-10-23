@@ -90,11 +90,13 @@ namespace Chisel.Components
             var normalSmoothingAngle  = settings.NormalSmoothingAngle;
             var lightmapTexelsPerUnit = settings.LightmapTexelsPerUnit;
             var lightmapPaddingTexels = settings.LightmapPaddingTexels;
+            var lightmapMaxSize       = settings.LightmapMaxSize;
             hash.Append(ref subtractiveWorkflow);
             hash.Append(ref normalSmoothing);
             hash.Append(ref normalSmoothingAngle);
             hash.Append(ref lightmapTexelsPerUnit);
             hash.Append(ref lightmapPaddingTexels);
+            hash.Append(ref lightmapMaxSize);
         }
 
         static void AppendChildren(ref Hash128 hash, Transform parent, SurfaceParameterIdentity surfaceParameterIdentity)

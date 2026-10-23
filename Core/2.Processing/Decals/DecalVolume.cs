@@ -64,6 +64,8 @@ namespace Chisel.Core
 
         public ulong                    entityID;
         public int                      order;
+        // where the decal was in the list given to SetDecals: what stacks decals of the same order
+        public int                      sequence;
         public DecalVolumeFlags         flags;
         public ulong                    renderMaterial;
         public SurfaceDestinationFlags  materialFlags;
@@ -316,7 +318,8 @@ namespace Chisel.Core
         public readonly SurfaceDestinationFlags GetDestinationFlags(SurfaceDestinationFlags surfaceFlags)
         {
             const SurfaceDestinationFlags kRendered = SurfaceDestinationFlags.Renderable | SurfaceDestinationFlags.ShadowReceiving;
-            const SurfaceDestinationFlags kKept     = SurfaceDestinationFlags.ShadowCasting | SurfaceDestinationFlags.Collidable |
+            // never Collidable: the collider keeps the uncut surface (GenerateSurfaceTrianglesJob.FinishSurface)
+            const SurfaceDestinationFlags kKept     = SurfaceDestinationFlags.ShadowCasting |
                                                      SurfaceDestinationFlags.ExcludedFromGlobalIllumination;
             var rendered = surfaceFlags & materialFlags & kRendered;
             if ((rendered & SurfaceDestinationFlags.Renderable) == 0)

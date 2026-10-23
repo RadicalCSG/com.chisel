@@ -25,6 +25,9 @@ namespace Chisel.Core
 
         public uint   geometryHashValue;
         public uint   surfaceHashValue;
+        // The geometry as the CSG and the weld made it, before a hotspot cut (geometryHashValue when it is not cut): what
+        // the collider and the lightmap layout follow
+        public uint   shapeHashValue;
 
         public MinMaxAABB aabb;  
         // The rectangle the surface's lightmap coordinates (RenderVertex.uv1) span in its plane: the lowest in xy, the highest in zw
@@ -37,6 +40,47 @@ namespace Chisel.Core
 		// The triangles of three distinct float positions on one line the weld left (OutputWeld.FindNeedles), by index:
 		// what the weld across a model starts from (OutputModelWeld)
 		public BlobArray<Int32>		   needles;
+		// When what is drawn is cut into hotspot sections (after the model's weld): the collider's triangles, uncut
+		public BlobArray<Int32>		   physicsIndices;
+		public BlobArray<float3>	   physicsVertices;
+		// The input the hotspot sections are built from after the model's weld (count 0: not cut)
+		public HotspotSectionInput     sectionInput;
+		// What hotspot mapping chose for the surface (the diagnostic view)
+		public HotspotSurfaceInfo      hotspot;
+		// What matching it again together with its coplanar neighbours takes (HotspotGroups)
+		public HotspotSurfaceSource    hotspotSource;
+
+		public void CopySections(BlobBuilder builder, ref ChiselSurfaceRenderBuffer from)
+		{
+			sectionInput  = from.sectionInput;
+			hotspot       = from.hotspot;
+			hotspotSource = from.hotspotSource;
+		}
+
+		// The sections and the uncut collider triangles, as they are
+		public void CopyHotspot(BlobBuilder builder, ref ChiselSurfaceRenderBuffer from)
+		{
+			CopySections(builder, ref from);
+			builder.Construct(ref physicsIndices,  ref from.physicsIndices);
+			builder.Construct(ref physicsVertices, ref from.physicsVertices);
+		}
+
+		// The triangles, vertices and what is derived from them, as they are
+		public void CopyGeometry(BlobBuilder builder, ref ChiselSurfaceRenderBuffer from)
+		{
+			vertexCount       = from.vertexCount;
+			indexCount        = from.indexCount;
+			geometryHashValue = from.geometryHashValue;
+			surfaceHashValue  = from.surfaceHashValue;
+			shapeHashValue    = from.shapeHashValue;
+			aabb              = from.aabb;
+			lightmapChart     = from.lightmapChart;
+			builder.Construct(ref indices,          ref from.indices);
+			builder.Construct(ref renderVertices,   ref from.renderVertices);
+			builder.Construct(ref selectVertices,   ref from.selectVertices);
+			builder.Construct(ref colliderVertices, ref from.colliderVertices);
+			builder.Construct(ref needles,          ref from.needles);
+		}
 		
 		public readonly void FixUpOrdering(NativeList<Int32>		indices,
 										   NativeList<float3>		colliderVertices,
@@ -211,6 +255,7 @@ namespace Chisel.Core
 			this.surfaceHashValue = surfaceHash;
 			this.lightmapChart = (renderVertices.Length > 0) ? new float4(chartMin, chartMax) : float4.zero;
 			this.geometryHashValue = geometryHashValue;
+			this.shapeHashValue    = geometryHashValue;
 
 			this.aabb = colliderVertices.GetMinMax();
 

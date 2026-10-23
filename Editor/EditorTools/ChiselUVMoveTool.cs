@@ -79,10 +79,17 @@ namespace Chisel.Editors
             Undo.RecordObjects(ChiselUVToolCommon.s_SelectedNodes, "Moved UV coordinates");
             for (int i = 0; i < ChiselUVToolCommon.s_SelectedSurfaceReferences.Length; i++)
             {
+                var surface = ChiselUVToolCommon.s_SelectedSurfaceReferences[i];
+                // a hotspot mapped surface's texture moves by its offset, in repeats (snapped to the tile's texels)
+                if (ChiselUVToolCommon.IsHotspotMapped(surface))
+                {
+                    ChiselUVToolCommon.MoveHotspot(surface, i, translation);
+                    continue;
+                }
                 // Translates the uv surfaces in a given direction. Since the z direction, relatively to the surface, 
                 // is basically removed in this calculation, it should behave well when we move multiple selected surfaces
                 // in any direction.
-                ChiselUVToolCommon.s_SelectedSurfaceReferences[i].WorldSpaceTransformUV(movementInWorldSpace, ChiselUVToolCommon.s_SelectedUVMatrices[i]);
+                surface.WorldSpaceTransformUV(movementInWorldSpace, ChiselUVToolCommon.s_SelectedUVMatrices[i]);
             }
         }
 
