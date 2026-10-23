@@ -63,6 +63,8 @@ namespace Chisel.Core
     public struct AssignMeshesJob : IJob
     {
         public const int kDebugVisualizationModeCount = 6;
+        // kGeneratedDebugRendererFlags' index of the surfaces the CSG removed
+        public const int kDiscardedVisualization = 5;
         public struct DebugRenderFlags { public SurfaceDestinationFlags Item1; public SurfaceDestinationFlags Item2; };
         public readonly static DebugRenderFlags[] kGeneratedDebugRendererFlags = new DebugRenderFlags[kDebugVisualizationModeCount]
         {

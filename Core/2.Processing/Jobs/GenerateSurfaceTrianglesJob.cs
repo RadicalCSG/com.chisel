@@ -572,7 +572,7 @@ namespace Chisel.Core
 					using var builder = new BlobBuilder(Allocator.Temp, 4096);
 
 					ref var root = ref builder.ConstructRoot<ChiselBrushRenderBuffer>();
-					var surfaceBuffers = builder.Allocate(ref root.surfaces, SlotCount(baseSurfaceCount, decalCandidates.Length));
+					var surfaceBuffers = builder.Allocate(ref root.surfaces, SlotCount(baseSurfaceCount, decalCandidates.Length, false));
 
 					var triangulator = new UnsafeTriangulator<double2>();
 					for (int surf = 0; surf < surfaceLoopIndices.Length; surf++)
@@ -1009,14 +1009,57 @@ namespace Chisel.Core
 
 		// A brush's slots: its surfaces, a slot per decal candidate, and when it has candidates, a slot per surface for
 		// the uncut collider copy of a surface an opaque decal cut
-		static int SlotCount(int baseSurfaceCount, int candidateCount)
+		static int SlotCount(int baseSurfaceCount, int candidateCount, bool discarded)
 		{
-			return baseSurfaceCount + candidateCount + (candidateCount > 0 ? baseSurfaceCount : 0);
+			return FirstDiscardedSlot(baseSurfaceCount, candidateCount) + (discarded ? baseSurfaceCount : 0);
 		}
 
 		static int ColliderCopySlot(int baseSurfaceCount, int candidateCount, int surf)
 		{
 			return baseSurfaceCount + candidateCount + surf;
+		}
+
+		// and, while the Discarded debug visualization is shown and the CSG removed something, a slot per surface for that
+		static int FirstDiscardedSlot(int baseSurfaceCount, int candidateCount)
+		{
+			return baseSurfaceCount + candidateCount + (candidateCount > 0 ? baseSurfaceCount : 0);
+		}
+
+		// The category ExactCSGJob writes the removed part of a face with
+		const CategoryIndex kDiscardedPart = CategoryIndex.Inside;
+
+		// What the CSG removed of a surface, in its own slot, only for the Discarded debug visualization. Marked with the
+		// brush's own entity: like a decal's pieces it is drawn over the output, so the weld and hotspot mapping leave it
+		// alone, and picking it picks the brush.
+		void FinishDiscarded(int surf, ref BlobArray<BaseSurface> baseSurfaces, NativeList<int4> parts, NativeList<int> partIndices,
+							 UnsafeList<float3> vertices, float3 finalFaceNormal, ulong entityID, NativeList<int> surfaceIndexList,
+							 ref UniqueVertexMapper uniqueVertexMapper, BlobBuilder builder,
+							 BlobBuilderArray<ChiselSurfaceRenderBuffer> surfaceBuffers, int candidateCount, int baseSurfaceCount)
+		{
+			for (int p = 0; p < parts.Length; p++)
+			{
+				var part = parts[p];
+				if (part.x != surf || part.w < 3 || part.y != (int)kDiscardedPart)
+					continue;
+				var prevCount = surfaceIndexList.Length;
+				for (int t = part.z; t + 2 < part.z + part.w; t += 3)
+				{
+					surfaceIndexList.Add(partIndices[t]);
+					surfaceIndexList.Add(subtractiveWorkflow ? partIndices[t + 2] : partIndices[t + 1]);
+					surfaceIndexList.Add(subtractiveWorkflow ? partIndices[t + 1] : partIndices[t + 2]);
+				}
+				uniqueVertexMapper.RegisterVertices(surfaceIndexList, prevCount, vertices, finalFaceNormal, entityID, CategoryIndex.ValidAligned);
+			}
+			if (surfaceIndexList.Length == 0)
+				return;
+			var slot = FirstDiscardedSlot(baseSurfaceCount, candidateCount) + surf;
+			ref var buffer = ref surfaceBuffers[slot];
+			buffer.Construct(builder, surfaceIndexList,
+							 uniqueVertexMapper.surfaceColliderVertices,
+							 uniqueVertexMapper.surfaceSelectVertices,
+							 uniqueVertexMapper.surfaceRenderVertices,
+							 slot, surf, SurfaceDestinationFlags.Discarded, baseSurfaces[surf].destinationParameters, baseSurfaces[surf].outputFlags);
+			buffer.decalEntityID = entityID;
 		}
 
 		// The topmost opaque decal on the surface: the collider copy is marked as the decal's, like its pieces
@@ -1049,13 +1092,14 @@ namespace Chisel.Core
 			}
 			var candidateCount = decalCandidateStart[baseSurfaceCount];
 			var firstCopySlot  = candidateCount > 0 ? ColliderCopySlot(baseSurfaceCount, candidateCount, 0) : surfaceBuffers.Length;
+			var firstDiscardedSlot = math.min(FirstDiscardedSlot(baseSurfaceCount, candidateCount), surfaceBuffers.Length);
 			for (int s = firstCopySlot; s < surfaceBuffers.Length; s++)
 			{
 				ref var emptySlot = ref surfaceBuffers[s];
 				if (emptySlot.vertexCount != 0)
 					continue;
 				emptySlot.surfaceIndex     = s;
-				emptySlot.baseSurfaceIndex = s - firstCopySlot;
+				emptySlot.baseSurfaceIndex = (s - firstCopySlot) % baseSurfaceCount;
 			}
 
 			using var queryList = new NativeList<ChiselQuerySurface>(surfaceBuffers.Length, Allocator.Temp);
@@ -1065,8 +1109,10 @@ namespace Chisel.Core
 				var meshQuery = meshQueries[t];
 				var layerQueryMask = meshQuery.LayerQueryMask;
 				var layerQuery = meshQuery.LayerQuery;
-				// a collider copy only goes to colliders, never to the hidden surfaces
-				var colliderQuery = (layerQuery & SurfaceDestinationFlags.Collidable) != 0;
+				// a collider copy only goes to colliders, and what the CSG removed only to the Discarded visualization, never
+				// to the hidden surfaces
+				var colliderQuery  = (layerQuery & SurfaceDestinationFlags.Collidable) != 0;
+				var discardedQuery = (layerQuery & SurfaceDestinationFlags.Discarded) != 0;
 				var surfaceParameterIndex = (meshQuery.LayerParameterIndex >= SurfaceParameterIndex.Parameter1 &&
 												meshQuery.LayerParameterIndex <= SurfaceParameterIndex.MaxParameterIndex) ?
 												(int)meshQuery.LayerParameterIndex - 1 : -1;
@@ -1082,7 +1128,7 @@ namespace Chisel.Core
 					var destinationFlags = buffer.destinationFlags;
 					if ((destinationFlags & layerQueryMask) != layerQuery)
 						continue;
-					if (s >= firstCopySlot && !colliderQuery)
+					if (s >= firstDiscardedSlot ? !discardedQuery : (s >= firstCopySlot && !colliderQuery))
 						continue;
 
 					queryList.AddNoResize(new ChiselQuerySurface
@@ -1217,17 +1263,27 @@ namespace Chisel.Core
 
 				using var builder = new BlobBuilder(Allocator.Temp, 4096);
 				ref var root = ref builder.ConstructRoot<ChiselBrushRenderBuffer>();
-				var surfaceBuffers = builder.Allocate(ref root.surfaces, SlotCount(baseSurfaceCount, decalCandidates.Length));
+				var anyDiscarded = false;
+				for (int p = 0; p < parts.Length && !anyDiscarded; p++)
+					anyDiscarded = parts[p].y == (int)kDiscardedPart;
+				var surfaceBuffers = builder.Allocate(ref root.surfaces, SlotCount(baseSurfaceCount, decalCandidates.Length, anyDiscarded));
 
 				for (int surf = 0; surf < baseSurfaceCount; surf++)
 				{
 					uniqueVertexMapper.Reset();
 					surfaceIndexList.Clear();
 					SurfaceFrame(ref baseSurfaces, surf, treeToNode, nodeToTreeInvTrans, out var treeToPlane, out var finalFaceNormal);
+					if (anyDiscarded)
+					{
+						FinishDiscarded(surf, ref baseSurfaces, parts, partIndices, vertices, finalFaceNormal, entityID, surfaceIndexList, ref uniqueVertexMapper,
+										builder, surfaceBuffers, decalCandidates.Length, baseSurfaceCount);
+						uniqueVertexMapper.Reset();
+						surfaceIndexList.Clear();
+					}
 					for (int p = 0; p < parts.Length; p++)
 					{
 						var part = parts[p];
-						if (part.x != surf || part.w < 3)
+						if (part.x != surf || part.w < 3 || part.y == (int)kDiscardedPart)
 							continue;
 						var interiorCat = (CategoryIndex)part.y;
 						bool flip = (interiorCat == CategoryIndex.ValidAligned) == subtractiveWorkflow;

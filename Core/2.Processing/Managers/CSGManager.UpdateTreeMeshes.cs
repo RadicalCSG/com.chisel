@@ -77,11 +77,18 @@ namespace Chisel.Core
             {
                 if ((value & ~s_DebugVisualizations) != 0)
                     s_RemakeMeshes = true;
+                // what the CSG removed is only kept while it is shown: every brush is built again
+                if (((value ^ s_DebugVisualizations) & (1 << AssignMeshesJob.kDiscardedVisualization)) != 0)
+                    s_RebuildBrushes = s_RemakeMeshes = true;
                 s_DebugVisualizations = value;
             }
         }
         static int  s_DebugVisualizations;
         static bool s_RemakeMeshes;
+        static bool s_RebuildBrushes;
+
+        // the Discarded debug visualization is shown (ExactCSGJob.collectDiscarded)
+        static bool CollectDiscarded => (s_DebugVisualizations & (1 << AssignMeshesJob.kDiscardedVisualization)) != 0;
 
         #region Update / Rebuild
 
@@ -105,6 +112,19 @@ namespace Chisel.Core
             instance.updatedTrees.Clear();
             TreeUpdate.s_RemakeAll = s_RemakeMeshes;
             s_RemakeMeshes = false;
+            if (s_RebuildBrushes)
+            {
+                s_RebuildBrushes = false;
+                for (int t = 0; t < instance.allTrees.Length; t++)
+                {
+                    var tree = instance.allTrees[t];
+                    if (!tree.Valid)
+                        continue;
+                    var treeCompactNodeID = CompactHierarchyManager.GetCompactNodeID(tree);
+                    ref var hierarchy = ref CompactHierarchyManager.GetHierarchy(treeCompactNodeID);
+                    hierarchy.SetBrushesDirty(treeCompactNodeID);
+                }
+            }
             for (int t = 0; t < instance.allTrees.Length; t++)
             {
                 var tree = instance.allTrees[t];
@@ -2348,6 +2368,7 @@ namespace Chisel.Core
                             routingTableCache           = chiselLookupValues.routingTableCache,
                             compactTreeRef              = Temporaries.compactTreeRef,
                             captureExact                = captureExact,
+                            collectDiscarded            = CollectDiscarded,
 
                             // Write
                             stats                       = Temporaries.exactCSGStats,

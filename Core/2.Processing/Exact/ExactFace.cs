@@ -119,6 +119,9 @@ namespace Chisel.Core
         public ExactList<ExactOutputVertex> vertices;
         public ExactList<ExactOutputEdge>   alignedEdges;       // SelfAligned
         public ExactList<ExactOutputEdge>   reverseAlignedEdges;// SelfReverseAligned
+        // what the CSG removed of the face, collected only for the Discarded debug visualization
+        public ExactList<ExactOutputEdge>   discardedEdges;
+        public bool collectDiscarded;
 
         public int  routingErrors;
 
@@ -142,6 +145,7 @@ namespace Chisel.Core
                 vertices            = new ExactList<ExactOutputVertex>(64),
                 alignedEdges        = new ExactList<ExactOutputEdge>(64),
                 reverseAlignedEdges = new ExactList<ExactOutputEdge>(16),
+                discardedEdges      = new ExactList<ExactOutputEdge>(16),
             };
         }
 
@@ -150,6 +154,7 @@ namespace Chisel.Core
             planes.Dispose(); polygonPool.Dispose(); signs.Dispose(); regions.Dispose(); lines.Dispose(); owners.Dispose();
             events.Dispose(); order.Dispose(); intervals.Dispose(); lookupRegion.Dispose(); regionOrientation.Dispose();
             leftInside.Dispose(); rightInside.Dispose(); vertices.Dispose(); alignedEdges.Dispose(); reverseAlignedEdges.Dispose();
+            discardedEdges.Dispose();
         }
 
         // ---- convex polygons --------------------------------------------------------------------------------------
@@ -268,7 +273,7 @@ namespace Chisel.Core
                                           ref ExactList<int> lookupBrush)
         {
             var failure = ExactFaceFailure.None;
-            vertices.Clear(); alignedEdges.Clear(); reverseAlignedEdges.Clear();
+            vertices.Clear(); alignedEdges.Clear(); reverseAlignedEdges.Clear(); discardedEdges.Clear();
             regions.Clear(); lines.Clear(); owners.Clear(); polygonPool.Clear();
 
             var face = planes[faceId];
@@ -626,6 +631,8 @@ namespace Chisel.Core
                     continue;
                 Emit(leftCategory, rightCategory, (int)CategoryIndex.SelfAligned,        a, b, lineIndex, ref alignedEdges);
                 Emit(leftCategory, rightCategory, (int)CategoryIndex.SelfReverseAligned, a, b, lineIndex, ref reverseAlignedEdges);
+                if (collectDiscarded)
+                    EmitDiscarded(leftCategory, rightCategory, a, b, lineIndex);
             }
             return failure;
         }
@@ -652,6 +659,25 @@ namespace Chisel.Core
                 edges.Add(new ExactOutputEdge { from = from, to = to, line = line, forward = 1 });
             else
                 edges.Add(new ExactOutputEdge { from = to, to = from, line = line, forward = 0 });
+        }
+
+        // The same for the face's parts that are not drawn (a category, but neither drawn one)
+        void EmitDiscarded(int leftCategory, int rightCategory, int a, int b, int line)
+        {
+            bool left = IsDiscarded(leftCategory), right = IsDiscarded(rightCategory);
+            if (left == right)
+                return;
+            int from = VertexOf(a), to = VertexOf(b);
+            if (left)
+                discardedEdges.Add(new ExactOutputEdge { from = from, to = to, line = line, forward = 1 });
+            else
+                discardedEdges.Add(new ExactOutputEdge { from = to, to = from, line = line, forward = 0 });
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        static bool IsDiscarded(int category)
+        {
+            return category >= 0 && category != (int)CategoryIndex.SelfAligned && category != (int)CategoryIndex.SelfReverseAligned;
         }
 
         int VertexOf(int eventIndex)

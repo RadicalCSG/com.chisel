@@ -27,9 +27,6 @@ namespace Chisel.Components
     // 2. Do the same for the rendering equivalent.
     // 3. Separate building/updating the components from building a combined (physics) materials/mesh/render setting.
     // 4. Move the colliders to a single GameObject.
-    // 5. Build meshes with submeshes, with a fixed number of meshes: one per rendering setting type (shadow-only etc.).
-    // 6. Keep a secondary set of those meshes with partial meshes, and use those for rendering in the model.
-    // 7. Identify which triangles belong to which brush, so partial meshes can be built.
     [Serializable]
     public class ChiselGeneratedObjects
     {
