@@ -33,6 +33,7 @@ Features (incomplete)
 * Normal smoothing
 * Decals: boxes that project a material onto the surfaces they reach, drawn over them or replacing them
 * Hotspot mapping: surfaces take their texture coordinates from the best matching tile of a layout (borders, repeats, shaped tiles and trim sheets), with a layout editor
+* Chunking: a model's output is split into a mesh per material and 32 m chunk of space (smaller for models whose lightmap would be too large), so it can be culled and occluded piece by piece, and an edit only rebuilds the chunks it touches
 
 Planned Features (incomplete, and in random order):
 * [Debug Visualizations](https://github.com/RadicalCSG/Chisel.Prototype/issues/118) to see shadow only surfaces, collider surfaces etc.  (partially implemented)
@@ -41,7 +42,6 @@ Planned Features (incomplete, and in random order):
 * [Clip Tool](https://github.com/RadicalCSG/Chisel.Prototype/issues/15)
 * [Node Based Generators](https://github.com/RadicalCSG/Chisel.Prototype/issues/94) for easy procedural content generation
 * [2D shape editor](https://github.com/RadicalCSG/Chisel.Prototype/issues/260)
-* [Sub-Models](https://github.com/RadicalCSG/Chisel.Prototype/issues/259)
 * [Trim Decals](https://github.com/RadicalCSG/Chisel.Prototype/issues/117) along edges (partially implemented: decals can be placed by hand, but nothing follows an edge or wraps a corner)
 * [Grid Objects](https://github.com/RadicalCSG/Chisel.Prototype/issues/121)
 
