@@ -13,9 +13,11 @@ namespace Chisel.Core
 	{
 		None = 0,
 
+		/// <summary>The surface is drawn from behind too: a back face, turned over, that is drawn but doesn't collide</summary>
+		DoubleSided		  = (int)((uint)1 << 1),
+
 		// TODO: implement this
 		// {{
-		DoubleSided		  = (int)((uint)1 << 1),
 		EnvironmentSkybox = (int)((uint)1 << 2), // <-- TODO: replace material with environment skybox, so we can define it in one place
 		Transparent		  = (int)((uint)1 << 4), // <-- TODO: as in, brush that has a transparent side will not remove it's contents? is this the best way to handle this?
 		// }}

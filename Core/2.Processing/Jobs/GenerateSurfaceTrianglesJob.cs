@@ -572,7 +572,9 @@ namespace Chisel.Core
 					using var builder = new BlobBuilder(Allocator.Temp, 4096);
 
 					ref var root = ref builder.ConstructRoot<ChiselBrushRenderBuffer>();
-					var surfaceBuffers = builder.Allocate(ref root.surfaces, SlotCount(baseSurfaceCount, decalCandidates.Length, false));
+					var layout = new SlotLayout { baseSurfaceCount = baseSurfaceCount, candidateCount = decalCandidates.Length,
+												  backFaces = AnyBackFaces(ref baseSurfaces, baseSurfaceCount) };
+					var surfaceBuffers = builder.Allocate(ref root.surfaces, layout.Count);
 
 					var triangulator = new UnsafeTriangulator<double2>();
 					for (int surf = 0; surf < surfaceLoopIndices.Length; surf++)
@@ -745,11 +747,11 @@ namespace Chisel.Core
 						}
 
 						if (surfaceIndexList.Length == 0) continue;
-						FinishSurface(surf, brushNodeOrder, ref baseSurfaces, treeToPlane, transform.nodeToTree, finalFaceNormal, surfaceIndexList, ref uniqueVertexMapper,
-						              builder, surfaceBuffers, ref decalBuilder, decalCandidates, decalTargeted, decalCandidateStart, baseSurfaceCount);
+						FinishSurface(surf, brushNodeOrder, entityID, ref baseSurfaces, treeToPlane, transform.nodeToTree, finalFaceNormal, surfaceIndexList, ref uniqueVertexMapper,
+						              builder, surfaceBuffers, ref decalBuilder, decalCandidates, decalTargeted, decalCandidateStart, layout);
 					}
 
-					FinishBrush(brushIndexOrder, brushNodeOrder, builder, ref root, surfaceBuffers, decalCandidateStart, baseSurfaceCount);
+					FinishBrush(brushIndexOrder, brushNodeOrder, builder, ref root, surfaceBuffers, decalCandidateStart, layout);
 				}
 				finally
 				{
@@ -783,12 +785,13 @@ namespace Chisel.Core
 		}
 		// After a surface's triangles have been registered: normal smoothing, UVs, tangents, lightmap coordinates, the decals on
 		// it and its render buffer. Shared by both inputs.
-		unsafe void FinishSurface(int surf, int brushNodeOrder, ref BlobArray<BaseSurface> baseSurfaces, float4x4 treeToPlane, float4x4 nodeToTree, float3 finalFaceNormal,
+		unsafe void FinishSurface(int surf, int brushNodeOrder, ulong entityID, ref BlobArray<BaseSurface> baseSurfaces, float4x4 treeToPlane, float4x4 nodeToTree, float3 finalFaceNormal,
 						   NativeList<int> surfaceIndexList, ref UniqueVertexMapper uniqueVertexMapper,
 						   BlobBuilder builder, BlobBuilderArray<ChiselSurfaceRenderBuffer> surfaceBuffers,
 						   ref DecalSurfaceBuilder decalBuilder, NativeList<int> decalCandidates, NativeList<byte> decalTargeted,
-						   NativeArray<int> decalCandidateStart, int baseSurfaceCount)
+						   NativeArray<int> decalCandidateStart, SlotLayout slots)
 		{
+			var baseSurfaceCount = slots.baseSurfaceCount;
 			if (normalSmoothingAngle > 0.0001f)
 			{
 				var renderVertices = uniqueVertexMapper.surfaceRenderVertices;
@@ -987,7 +990,7 @@ namespace Chisel.Core
 				// and the collider keeps the whole surface, which the weld moves as it moves a decal's pieces
 				if ((flags & SurfaceDestinationFlags.Collidable) != 0)
 				{
-					var copySlot = ColliderCopySlot(baseSurfaceCount, decalCandidateStart[baseSurfaceCount], surf);
+					var copySlot = slots.FirstCopySlot + surf;
 					ref var copy = ref surfaceBuffers[copySlot];
 					copy.Construct(builder, surfaceIndexList,
 								   uniqueVertexMapper.surfaceColliderVertices,
@@ -1005,24 +1008,77 @@ namespace Chisel.Core
 			buf.sectionInput = sectionInput;
 			buf.hotspot       = hotspotInfo;
 			buf.hotspotSource = hotspotSource;
+
+			if (HasBackFace(flags, outputFlags))
+				FinishBackFace(surf, entityID, flags, parms, outputFlags, surfaceIndexList, ref uniqueVertexMapper, builder, surfaceBuffers, slots);
+		}
+
+		// A double sided surface that is drawn: its back is drawn too (SurfaceOutputFlags.DoubleSided)
+		static bool HasBackFace(SurfaceDestinationFlags flags, SurfaceOutputFlags outputFlags)
+		{
+			return (outputFlags & SurfaceOutputFlags.DoubleSided) != 0 && (flags & SurfaceDestinationFlags.Renderable) != 0;
+		}
+
+		static bool AnyBackFaces(ref BlobArray<BaseSurface> baseSurfaces, int baseSurfaceCount)
+		{
+			for (int s = 0; s < baseSurfaceCount; s++)
+			{
+				if (HasBackFace(baseSurfaces[s].destinationFlags, baseSurfaces[s].outputFlags))
+					return true;
+			}
+			return false;
+		}
+
+		// The back of a double sided surface, in its own slot: its triangles turned over, normal and tangent the other way.
+		// It is only drawn, never collides. Marked with the brush's entity: like a decal's pieces it follows the surface
+		// through the weld, and picking it picks the brush. It is drawn with the surface's own uvs (no decals, no hotspot).
+		void FinishBackFace(int surf, ulong entityID, SurfaceDestinationFlags flags, SurfaceDestinationParameters parms, SurfaceOutputFlags outputFlags,
+							NativeList<int> surfaceIndexList, ref UniqueVertexMapper uniqueVertexMapper, BlobBuilder builder,
+							BlobBuilderArray<ChiselSurfaceRenderBuffer> surfaceBuffers, SlotLayout layout)
+		{
+			if (surfaceIndexList.Length < 3)
+				return;
+			using var indices          = new NativeList<int>(surfaceIndexList.Length, Allocator.Temp);
+			using var colliderVertices = new NativeList<float3>(uniqueVertexMapper.surfaceColliderVertices.Length, Allocator.Temp);
+			using var selectVertices   = new NativeList<SelectVertex>(uniqueVertexMapper.surfaceSelectVertices.Length, Allocator.Temp);
+			using var renderVertices   = new NativeList<RenderVertex>(uniqueVertexMapper.surfaceRenderVertices.Length, Allocator.Temp);
+			for (int i = 0; i + 2 < surfaceIndexList.Length; i += 3)
+			{
+				indices.Add(surfaceIndexList[i]);
+				indices.Add(surfaceIndexList[i + 2]);
+				indices.Add(surfaceIndexList[i + 1]);
+			}
+			colliderVertices.AddRange(uniqueVertexMapper.surfaceColliderVertices.AsArray());
+			selectVertices.AddRange(uniqueVertexMapper.surfaceSelectVertices.AsArray());
+			for (int v = 0; v < uniqueVertexMapper.surfaceRenderVertices.Length; v++)
+			{
+				var vertex = uniqueVertexMapper.surfaceRenderVertices[v];
+				vertex.normal  = -vertex.normal;
+				vertex.tangent = new float4(vertex.tangent.xyz, -vertex.tangent.w);
+				renderVertices.Add(vertex);
+			}
+			var slot = layout.FirstBackSlot + surf;
+			ref var back = ref surfaceBuffers[slot];
+			back.Construct(builder, indices, colliderVertices, selectVertices, renderVertices,
+						   slot, surf, flags & ~SurfaceDestinationFlags.Collidable, parms, outputFlags & ~SurfaceOutputFlags.DoubleSided);
+			back.decalEntityID = entityID;
 		}
 
 		// A brush's slots: its surfaces, a slot per decal candidate, and when it has candidates, a slot per surface for
 		// the uncut collider copy of a surface an opaque decal cut
-		static int SlotCount(int baseSurfaceCount, int candidateCount, bool discarded)
+		// and, while the Discarded debug visualization is shown and the CSG removed something, a slot per surface for that;
+		// and with a double sided surface, a slot per surface for the back faces
+		struct SlotLayout
 		{
-			return FirstDiscardedSlot(baseSurfaceCount, candidateCount) + (discarded ? baseSurfaceCount : 0);
-		}
+			public int  baseSurfaceCount;
+			public int  candidateCount;
+			public bool discarded;
+			public bool backFaces;
 
-		static int ColliderCopySlot(int baseSurfaceCount, int candidateCount, int surf)
-		{
-			return baseSurfaceCount + candidateCount + surf;
-		}
-
-		// and, while the Discarded debug visualization is shown and the CSG removed something, a slot per surface for that
-		static int FirstDiscardedSlot(int baseSurfaceCount, int candidateCount)
-		{
-			return baseSurfaceCount + candidateCount + (candidateCount > 0 ? baseSurfaceCount : 0);
+			public readonly int FirstCopySlot      => baseSurfaceCount + candidateCount;
+			public readonly int FirstDiscardedSlot => FirstCopySlot + (candidateCount > 0 ? baseSurfaceCount : 0);
+			public readonly int FirstBackSlot      => FirstDiscardedSlot + (discarded ? baseSurfaceCount : 0);
+			public readonly int Count              => FirstBackSlot + (backFaces ? baseSurfaceCount : 0);
 		}
 
 		// The category ExactCSGJob writes the removed part of a face with
@@ -1034,7 +1090,7 @@ namespace Chisel.Core
 		void FinishDiscarded(int surf, ref BlobArray<BaseSurface> baseSurfaces, NativeList<int4> parts, NativeList<int> partIndices,
 							 UnsafeList<float3> vertices, float3 finalFaceNormal, ulong entityID, NativeList<int> surfaceIndexList,
 							 ref UniqueVertexMapper uniqueVertexMapper, BlobBuilder builder,
-							 BlobBuilderArray<ChiselSurfaceRenderBuffer> surfaceBuffers, int candidateCount, int baseSurfaceCount)
+							 BlobBuilderArray<ChiselSurfaceRenderBuffer> surfaceBuffers, SlotLayout layout)
 		{
 			for (int p = 0; p < parts.Length; p++)
 			{
@@ -1052,7 +1108,7 @@ namespace Chisel.Core
 			}
 			if (surfaceIndexList.Length == 0)
 				return;
-			var slot = FirstDiscardedSlot(baseSurfaceCount, candidateCount) + surf;
+			var slot = layout.FirstDiscardedSlot + surf;
 			ref var buffer = ref surfaceBuffers[slot];
 			buffer.Construct(builder, surfaceIndexList,
 							 uniqueVertexMapper.surfaceColliderVertices,
@@ -1076,8 +1132,9 @@ namespace Chisel.Core
 
 		// After every surface: the empty decal slots, the mesh queries, and the brush's render buffer in the cache.
 		void FinishBrush(IndexOrder brushIndexOrder, int brushNodeOrder, BlobBuilder builder, ref ChiselBrushRenderBuffer root,
-						 BlobBuilderArray<ChiselSurfaceRenderBuffer> surfaceBuffers, NativeArray<int> decalCandidateStart, int baseSurfaceCount)
+						 BlobBuilderArray<ChiselSurfaceRenderBuffer> surfaceBuffers, NativeArray<int> decalCandidateStart, SlotLayout layout)
 		{
+			var baseSurfaceCount = layout.baseSurfaceCount;
 			// Decal slots nothing was drawn in still say which surface they belong to
 			for (int s = 0; s < baseSurfaceCount; s++)
 			{
@@ -1090,9 +1147,9 @@ namespace Chisel.Core
 					emptySlot.baseSurfaceIndex = s;
 				}
 			}
-			var candidateCount = decalCandidateStart[baseSurfaceCount];
-			var firstCopySlot  = candidateCount > 0 ? ColliderCopySlot(baseSurfaceCount, candidateCount, 0) : surfaceBuffers.Length;
-			var firstDiscardedSlot = math.min(FirstDiscardedSlot(baseSurfaceCount, candidateCount), surfaceBuffers.Length);
+			var firstCopySlot      = layout.FirstCopySlot;
+			var firstDiscardedSlot = layout.FirstDiscardedSlot;
+			var firstBackSlot      = layout.FirstBackSlot;
 			for (int s = firstCopySlot; s < surfaceBuffers.Length; s++)
 			{
 				ref var emptySlot = ref surfaceBuffers[s];
@@ -1128,7 +1185,9 @@ namespace Chisel.Core
 					var destinationFlags = buffer.destinationFlags;
 					if ((destinationFlags & layerQueryMask) != layerQuery)
 						continue;
-					if (s >= firstDiscardedSlot ? !discardedQuery : (s >= firstCopySlot && !colliderQuery))
+					if (s >= firstCopySlot && s < firstDiscardedSlot && !colliderQuery)
+						continue;
+					if (s >= firstDiscardedSlot && s < firstBackSlot && !discardedQuery)
 						continue;
 
 					queryList.AddNoResize(new ChiselQuerySurface
@@ -1266,7 +1325,9 @@ namespace Chisel.Core
 				var anyDiscarded = false;
 				for (int p = 0; p < parts.Length && !anyDiscarded; p++)
 					anyDiscarded = parts[p].y == (int)kDiscardedPart;
-				var surfaceBuffers = builder.Allocate(ref root.surfaces, SlotCount(baseSurfaceCount, decalCandidates.Length, anyDiscarded));
+				var layout = new SlotLayout { baseSurfaceCount = baseSurfaceCount, candidateCount = decalCandidates.Length, discarded = anyDiscarded,
+											  backFaces = AnyBackFaces(ref baseSurfaces, baseSurfaceCount) };
+				var surfaceBuffers = builder.Allocate(ref root.surfaces, layout.Count);
 
 				for (int surf = 0; surf < baseSurfaceCount; surf++)
 				{
@@ -1276,7 +1337,7 @@ namespace Chisel.Core
 					if (anyDiscarded)
 					{
 						FinishDiscarded(surf, ref baseSurfaces, parts, partIndices, vertices, finalFaceNormal, entityID, surfaceIndexList, ref uniqueVertexMapper,
-										builder, surfaceBuffers, decalCandidates.Length, baseSurfaceCount);
+										builder, surfaceBuffers, layout);
 						uniqueVertexMapper.Reset();
 						surfaceIndexList.Clear();
 					}
@@ -1298,10 +1359,10 @@ namespace Chisel.Core
 					}
 					if (surfaceIndexList.Length == 0)
 						continue;
-					FinishSurface(surf, brushNodeOrder, ref baseSurfaces, treeToPlane, transform.nodeToTree, finalFaceNormal, surfaceIndexList, ref uniqueVertexMapper,
-								  builder, surfaceBuffers, ref decalBuilder, decalCandidates, decalTargeted, decalCandidateStart, baseSurfaceCount);
+					FinishSurface(surf, brushNodeOrder, entityID, ref baseSurfaces, treeToPlane, transform.nodeToTree, finalFaceNormal, surfaceIndexList, ref uniqueVertexMapper,
+								  builder, surfaceBuffers, ref decalBuilder, decalCandidates, decalTargeted, decalCandidateStart, layout);
 				}
-				FinishBrush(brushIndexOrder, brushNodeOrder, builder, ref root, surfaceBuffers, decalCandidateStart, baseSurfaceCount);
+				FinishBrush(brushIndexOrder, brushNodeOrder, builder, ref root, surfaceBuffers, decalCandidateStart, layout);
 			}
 			finally
 			{
