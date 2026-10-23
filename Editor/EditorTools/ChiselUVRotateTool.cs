@@ -93,6 +93,12 @@ namespace Chisel.Editors
             Undo.RecordObjects(ChiselUVToolCommon.s_SelectedNodes, "Rotate UV coordinates");
             for (int i = 0; i < ChiselUVToolCommon.s_SelectedSurfaceReferences.Length; i++)
             {
+                // a hotspot mapped surface's texture turns by its rotation (the uv rotation is the other way round)
+                if (ChiselUVToolCommon.IsHotspotMapped(ChiselUVToolCommon.s_SelectedSurfaceReferences[i]))
+                {
+                    ChiselUVToolCommon.RotateHotspot(ChiselUVToolCommon.s_SelectedSurfaceReferences[i], i, normal, -rotateAngle);
+                    continue;
+                }
                 var rotationInPlaneSpace = ChiselUVToolCommon.s_SelectedSurfaceReferences[i].WorldSpaceToPlaneSpace(worldspaceRotation);
 
                 // TODO: Finish this. If we have multiple surfaces selected, we want other non-aligned surfaces to move/rotate in a nice way

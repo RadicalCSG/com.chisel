@@ -29,15 +29,21 @@ namespace Chisel.Core
 		}
 	} 
 
-	// TODO: actually use this
+	// The triangles of one surface in a mesh: what each of them is (SubMeshTriangleLookup)
+	public struct SubMeshTriangleRun
+	{
+		public int start, count;
+		public CompactNodeID nodeID;
+		public int surfaceIndex;
+		public int selectionID;
+	}
+
+	// What each triangle of a mesh is, a run per surface (CopyTo spells it out per triangle)
 	public struct SubMeshTriangleLookup
 	{
-		public BlobArray<int> perTriangleSelectionIDLookup;
+		public BlobArray<SubMeshTriangleRun> runs;
 		public BlobArray<SelectionDescription> selectionIndexDescriptions;
-
-		// TODO: use this for surface selection
-		public BlobArray<int> perTriangleSurfaceIndexLookup;
-		public BlobArray<CompactNodeID> perTriangleNodeIDLookup;
+		public int triangleCount;
 
 		public int hashCode;
 
@@ -60,11 +66,9 @@ namespace Chisel.Core
 
 			using var builder = new BlobBuilder(Allocator.Temp);
 			ref var root = ref builder.ConstructRoot<SubMeshTriangleLookup>();
+			root.triangleCount = triangleCount;
 
-			var perTriangleSurfaceIndexLookup = builder.Allocate(ref root.perTriangleSurfaceIndexLookup, triangleCount);
-			var perTriangleSelectionIDLookup = builder.Allocate(ref root.perTriangleSelectionIDLookup, triangleCount);
-			var perTriangleNodeIDLookup = builder.Allocate(ref root.perTriangleNodeIDLookup, triangleCount);
-
+			using var runs = new NativeList<SubMeshTriangleRun>(Allocator.Temp);
 			using var selectionIndexDescriptions = new NativeList<SelectionDescription>(triangleCount, Allocator.Temp);
 
 			var lastBrushNodeID = CompactNodeID.Invalid;
@@ -114,12 +118,7 @@ namespace Chisel.Core
 						brushTriangleCount = triangleCount - brushIDIndexOffset;
 					if (brushTriangleCount <= 0)
 						break;
-					for (int n = 0; n < brushTriangleCount; n++)
-					{
-						perTriangleNodeIDLookup[n + brushIDIndexOffset] = brushNodeID;
-						perTriangleSurfaceIndexLookup[n + brushIDIndexOffset] = surfaceIndex;
-						perTriangleSelectionIDLookup[n + brushIDIndexOffset] = selectionID;
-					}
+					runs.Add(new SubMeshTriangleRun { start = brushIDIndexOffset, count = brushTriangleCount, nodeID = brushNodeID, surfaceIndex = surfaceIndex, selectionID = selectionID });
 					brushIDIndexOffset += brushTriangleCount;
 				}
 				currentBaseIndex += indexCount;
@@ -129,6 +128,7 @@ namespace Chisel.Core
 
 			root.hashCode = (int)hashCode;
 			builder.Construct(ref root.selectionIndexDescriptions, selectionIndexDescriptions);
+			builder.Construct(ref root.runs, runs);
 
 			return builder.CreateBlobAssetReference<SubMeshTriangleLookup>(allocator);//Allocator.Persistent / Confirmed to be disposed
 		}
@@ -136,19 +136,15 @@ namespace Chisel.Core
 		public void CopyTo(ManagedSubMeshTriangleLookup managedSubMeshTriangleLookup)
 		{
 			if (managedSubMeshTriangleLookup.perTriangleSurfaceIndexLookup == null ||
-				managedSubMeshTriangleLookup.perTriangleSurfaceIndexLookup.Length < perTriangleSurfaceIndexLookup.Length)
-				managedSubMeshTriangleLookup.perTriangleSurfaceIndexLookup = new int[perTriangleSurfaceIndexLookup.Length];
-			if (managedSubMeshTriangleLookup.perTriangleSurfaceIndexLookup.Length > 0)
-				perTriangleSurfaceIndexLookup.CopyTo(managedSubMeshTriangleLookup.perTriangleSurfaceIndexLookup, perTriangleSurfaceIndexLookup.Length);
-			else
+				managedSubMeshTriangleLookup.perTriangleSurfaceIndexLookup.Length < triangleCount)
+				managedSubMeshTriangleLookup.perTriangleSurfaceIndexLookup = new int[triangleCount];
+			if (managedSubMeshTriangleLookup.perTriangleSurfaceIndexLookup.Length == 0)
 				managedSubMeshTriangleLookup.perTriangleSurfaceIndexLookup = Array.Empty<int>();
 
 			if (managedSubMeshTriangleLookup.perTriangleSelectionIDLookup == null ||
-				managedSubMeshTriangleLookup.perTriangleSelectionIDLookup.Length < perTriangleSelectionIDLookup.Length)
-				managedSubMeshTriangleLookup.perTriangleSelectionIDLookup = new int[perTriangleSelectionIDLookup.Length];
-			if (managedSubMeshTriangleLookup.perTriangleSelectionIDLookup.Length > 0)
-				perTriangleSelectionIDLookup.CopyTo(managedSubMeshTriangleLookup.perTriangleSelectionIDLookup, perTriangleSelectionIDLookup.Length);
-			else
+				managedSubMeshTriangleLookup.perTriangleSelectionIDLookup.Length < triangleCount)
+				managedSubMeshTriangleLookup.perTriangleSelectionIDLookup = new int[triangleCount];
+			if (managedSubMeshTriangleLookup.perTriangleSelectionIDLookup.Length == 0)
 				managedSubMeshTriangleLookup.perTriangleSelectionIDLookup = Array.Empty<int>();
 
 			if (managedSubMeshTriangleLookup.selectionIndexDescriptions == null ||
@@ -160,14 +156,68 @@ namespace Chisel.Core
 				managedSubMeshTriangleLookup.selectionIndexDescriptions = Array.Empty<SelectionDescription>();
 
 			if (managedSubMeshTriangleLookup.perTriangleNodeIDLookup == null ||
-				managedSubMeshTriangleLookup.perTriangleNodeIDLookup.Length < perTriangleNodeIDLookup.Length)
-				managedSubMeshTriangleLookup.perTriangleNodeIDLookup = new CompactNodeID[perTriangleNodeIDLookup.Length];
-			if (managedSubMeshTriangleLookup.perTriangleNodeIDLookup.Length > 0)
-				perTriangleNodeIDLookup.CopyTo(managedSubMeshTriangleLookup.perTriangleNodeIDLookup, perTriangleNodeIDLookup.Length);
-			else
+				managedSubMeshTriangleLookup.perTriangleNodeIDLookup.Length < triangleCount)
+				managedSubMeshTriangleLookup.perTriangleNodeIDLookup = new CompactNodeID[triangleCount];
+			if (managedSubMeshTriangleLookup.perTriangleNodeIDLookup.Length == 0)
 				managedSubMeshTriangleLookup.perTriangleNodeIDLookup = Array.Empty<CompactNodeID>();
+			if (triangleCount > 0)
+			{
+				unsafe
+				{
+					fixed (int* surfaces = managedSubMeshTriangleLookup.perTriangleSurfaceIndexLookup, selections = managedSubMeshTriangleLookup.perTriangleSelectionIDLookup)
+					fixed (CompactNodeID* nodes = managedSubMeshTriangleLookup.perTriangleNodeIDLookup)
+						SubMeshTriangleRuns.Spell((SubMeshTriangleRun*)runs.GetUnsafePtr(), runs.Length, triangleCount, surfaces, selections, nodes);
+				}
+			}
 			managedSubMeshTriangleLookup.hashCode = hashCode;
-			managedSubMeshTriangleLookup.validTriangleCount = perTriangleSelectionIDLookup.Length;
+			managedSubMeshTriangleLookup.validTriangleCount = triangleCount;
+		}
+
+		// The run that holds a triangle (default: one no run holds)
+		public SubMeshTriangleRun RunAt(int triangle)
+		{
+			int lo = 0, hi = runs.Length - 1;
+			while (lo <= hi)
+			{
+				var mid = (lo + hi) >> 1;
+				var run = runs[mid];
+				if (triangle < run.start) hi = mid - 1;
+				else if (triangle >= run.start + run.count) lo = mid + 1;
+				else return run;
+			}
+			return default;
+		}
+	}
+
+	// SubMeshTriangleLookup.CopyTo, compiled by Burst: the first triangleCount entries of each lookup, run by run; a
+	// triangle no run holds is 0
+	[Unity.Burst.BurstCompile]
+	internal static class SubMeshTriangleRuns
+	{
+		[Unity.Burst.BurstCompile]
+		public static unsafe void Spell(SubMeshTriangleRun* runs, int runCount, int triangleCount, int* surfaces, int* selections, CompactNodeID* nodes)
+		{
+			var at = 0;
+			for (int r = 0; r <= runCount; r++)
+			{
+				var start = r < runCount ? runs[r].start : triangleCount;
+				for (int t = at; t < start; t++)
+				{
+					surfaces[t] = 0;
+					selections[t] = 0;
+					nodes[t] = default;
+				}
+				if (r == runCount)
+					break;
+				var run = runs[r];
+				for (int t = run.start, end = run.start + run.count; t < end; t++)
+				{
+					surfaces[t] = run.surfaceIndex;
+					selections[t] = run.selectionID;
+					nodes[t] = run.nodeID;
+				}
+				at = run.start + run.count;
+			}
 		}
 	}
 

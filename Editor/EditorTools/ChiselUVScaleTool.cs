@@ -95,6 +95,12 @@ namespace Chisel.Editors
             Undo.RecordObjects(ChiselUVToolCommon.s_SelectedNodes, "Scale UV coordinates");
             for (int i = 0; i < ChiselUVToolCommon.s_SelectedSurfaceReferences.Length; i++)
             {
+                // a hotspot mapped surface's texture scales by its density
+                if (ChiselUVToolCommon.IsHotspotMapped(ChiselUVToolCommon.s_SelectedSurfaceReferences[i]))
+                {
+                    ChiselUVToolCommon.ScaleHotspot(ChiselUVToolCommon.s_SelectedSurfaceReferences[i], i, scale);
+                    continue;
+                }
                 var rotationInPlaneSpace = ChiselUVToolCommon.s_SelectedSurfaceReferences[i].WorldSpaceToPlaneSpace(worldspaceRotation);
 
                 // TODO: Finish this. If we have multiple surfaces selected, we want other non-aligned surfaces to move/rotate in a nice way

@@ -1669,4 +1669,15 @@ namespace Chisel.Core
             return CompactNodeID.Invalid;
         }
     }
+
+    // CompactHierarchy.GetTreeNodes, Burst compiled (called on the main thread at the start of every update)
+    [BurstCompile]
+    static class CompactHierarchyTreeNodes
+    {
+        [BurstCompile]
+        public static unsafe void Get(CompactHierarchy* hierarchy, NativeList<CompactNodeID>* nodes, NativeList<CompactNodeID>* brushes)
+        {
+            hierarchy->GetTreeNodes(*nodes, *brushes);
+        }
+    }
 }

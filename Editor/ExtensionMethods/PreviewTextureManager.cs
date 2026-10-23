@@ -4,8 +4,27 @@ using UnityEditor;
 
 namespace Chisel.Editors
 {
+    public enum PreviewMesh { Sphere, Cube, Plane, Cylinder, Capsule }
+
     public static class PreviewTextureManager
     {
+        const string kPreviewMeshKey = "Chisel.MaterialPreviewMesh";
+        static readonly string[] kMeshNames = { "New-Sphere.fbx", "Cube.fbx", "Quad.fbx", "New-Cylinder.fbx", "New-Capsule.fbx" };
+
+        // The shape every material preview shows, remembered across sessions
+        public static PreviewMesh Mesh
+        {
+            get => (PreviewMesh)Mathf.Clamp(EditorPrefs.GetInt(kPreviewMeshKey, 0), 0, kMeshNames.Length - 1);
+            set
+            {
+                if (value == Mesh)
+                    return;
+                EditorPrefs.SetInt(kPreviewMeshKey, (int)value);
+                Clear();
+                UnityEditorInternal.InternalEditorUtility.RepaintAllViews();
+            }
+        }
+
         static PreviewRenderUtility previewUtility;
 
         public static void CleanUp()
@@ -21,13 +40,21 @@ namespace Chisel.Editors
 
         public static void Clear()
         {
+            foreach (var preview in s_MaterialTextures.Values)
+            {
+                if (preview.texture)
+                    UnityEngine.Object.DestroyImmediate(preview.texture);
+            }
             s_MaterialTextures.Clear();
         }
 
         private static void Init()
         {
-            if (previewUtility == null)
-                previewUtility = new PreviewRenderUtility();
+            if (previewUtility != null)
+                return;
+            previewUtility = new PreviewRenderUtility();
+            AssemblyReloadEvents.beforeAssemblyReload -= CleanUp;
+            AssemblyReloadEvents.beforeAssemblyReload += CleanUp;
         }
 
         class Styles { public readonly GUIStyle background = new GUIStyle("CurveEditorBackground"); };
@@ -40,24 +67,31 @@ namespace Chisel.Editors
             public Vector3  size;
         }
 
-        // TODO: should lookup using PreviewRequest like structure so size could be taken into account
-        readonly static Dictionary<Material, Texture2D>  s_MaterialTextures   = new Dictionary<Material, Texture2D>();
+        struct Preview
+        {
+            public Texture2D texture;
+            public Vector3   direction;
+            public Vector2   size;
+        }
+
+        readonly static Dictionary<Material, Preview>    s_MaterialTextures   = new Dictionary<Material, Preview>();
         readonly static List<PreviewRequest>             s_Requests           = new List<PreviewRequest>();
 
 
-        static Mesh sphereMesh;
-        internal static Mesh GetPreviewSphere()
+        static readonly Mesh[] s_Meshes = new Mesh[kMeshNames.Length];
+        static Mesh GetPreviewMesh()
         {
-            if (!sphereMesh)
-                sphereMesh = Resources.GetBuiltinResource<Mesh>("New-Sphere.fbx");
-            return sphereMesh;
+            var index = (int)Mesh;
+            if (!s_Meshes[index])
+                s_Meshes[index] = Resources.GetBuiltinResource<Mesh>(kMeshNames[index]);
+            return s_Meshes[index];
         }
 
         static Texture GetPreviewTexture(PreviewRenderUtility previewUtility, Vector2 previewDir, Rect region, Material material)
         {
             s_Styles ??= new Styles();
 
-            var mesh        = GetPreviewSphere();
+            var mesh        = GetPreviewMesh();
             var camera      = previewUtility.camera;
 
             var bounds      = mesh.bounds;
@@ -83,25 +117,47 @@ namespace Chisel.Editors
             camera.Render();
             Unsupported.SetRenderSettingsUseFogNoDirty(fog);
 
-            var rot = Quaternion.Euler(previewDir.y, 0, 0) * Quaternion.Euler(0, previewDir.x, 0);
+            // a plane faces the camera: it turns in place and tilts, never showing its back
+            var rot = Mesh == PreviewMesh.Plane ? Quaternion.Euler(previewDir.y, 0, 0) * Quaternion.Euler(0, 0, previewDir.x)
+                                                : Quaternion.Euler(previewDir.y, 0, 0) * Quaternion.Euler(0, previewDir.x, 0);
             var pos = rot * (-bounds.center);
 
             previewUtility.DrawMesh(mesh, pos, rot, material, 0);
-            previewUtility.Render(false, false);
+            previewUtility.Render(true, false);
             return previewUtility.EndStaticPreview();
         }
 
+        // Returns the material's last preview, rendered again on a repaint when its direction or size changed; until
+        // then the old one is shown, so dragging the preview around keeps it on screen
         public static Texture2D GetPreviewTexture(Rect region, Vector3 direction, Material material)
         {
             if (!material)
                 return null;
 
-            Texture2D texture;
-            if (s_MaterialTextures.TryGetValue(material, out texture))
-                return texture;
+            s_MaterialTextures.TryGetValue(material, out var preview);
+            if (preview.texture && preview.direction == direction && preview.size == region.size)
+                return preview.texture;
+
+            if (Event.current != null && Event.current.type == EventType.Repaint)
+            {
+                Render(material, direction, region.size);
+                s_MaterialTextures.TryGetValue(material, out preview);
+                return preview.texture;
+            }
 
             s_Requests.Add(new PreviewRequest() { direction = direction, size = region.size, material = material });
-            return texture;
+            return preview.texture;
+        }
+
+        static void Render(Material material, Vector3 direction, Vector2 size)
+        {
+            Init();
+            var texture = GetPreviewTexture(previewUtility, direction, new Rect(Vector2.zero, size), material) as Texture2D;
+            if (!texture)
+                return;
+            if (s_MaterialTextures.TryGetValue(material, out var old) && old.texture)
+                UnityEngine.Object.DestroyImmediate(old.texture);
+            s_MaterialTextures[material] = new Preview { texture = texture, direction = direction, size = size };
         }
 
         public static bool Update()
@@ -111,21 +167,19 @@ namespace Chisel.Editors
             bool needRepaint = s_Requests.Count > 0;
             if (Event.current.type == EventType.Repaint)
             { 
+                // the newest request for a material wins
                 for (int i = s_Requests.Count - 1; i >= 0; i--)
                 {
                     var request  = s_Requests[i];
                     var material = request.material;
-                    if (!s_MaterialTextures.ContainsKey(material))
-                    { 
-                        var region  = new Rect(Vector2.zero, request.size);
-                        var texture = GetPreviewTexture(previewUtility, request.direction, region, material) as Texture2D;
-                        if (!texture)
-                            continue;
-
-                        s_MaterialTextures[material] = texture; 
+                    if (material)
+                    {
+                        s_MaterialTextures.TryGetValue(material, out var preview);
+                        if (!preview.texture || preview.direction != request.direction || preview.size != (Vector2)request.size)
+                            Render(material, request.direction, request.size);
                     }
-                    s_Requests.RemoveAt(i);
                 }
+                s_Requests.Clear();
             }
             return needRepaint;
         }

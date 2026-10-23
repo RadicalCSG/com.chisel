@@ -294,7 +294,17 @@ namespace Chisel.Core
                     outputFlags           = polygon.surface.outputFlags,
                     UV0                   = polygon.surface.details.UV0,
                     localPlane            = localPlane,
-                    descriptionIndex      = polygon.descriptionIndex
+                    descriptionIndex      = polygon.descriptionIndex,
+                    hotspotLayout         = polygon.surface.hotspotLayout,
+                    hotspotPinned         = polygon.surface.details.hotspot.pinnedTile,
+                    hotspotPinnedSheet    = polygon.surface.details.hotspot.pinnedSheet,
+                    hotspotSeed           = polygon.surface.details.hotspot.seed,
+                    // mirrored top to bottom is mirrored left to right and turned half way round
+                    hotspotRotation       = polygon.surface.details.hotspot.rotation + (polygon.surface.details.hotspot.mirrorY ? 180 : 0),
+                    hotspotDensity        = polygon.surface.details.hotspot.Density,
+                    hotspotMirror         = polygon.surface.details.hotspot.mirror != polygon.surface.details.hotspot.mirrorY,
+                    hotspotOffset         = polygon.surface.details.hotspot.offset,
+                    textureInWorld        = (polygon.surface.details.detailFlags & SurfaceDetailFlags.TextureIsInWorldSpace) != 0
                 };
             }
             var basePolygonsBlob = builder.CreateBlobAssetReference<BasePolygonsBlob>(Allocator.Persistent); // Confirmed to be disposed

@@ -98,6 +98,7 @@ namespace Chisel.Core
                     buffer.Add(settings.NormalSmoothingAngle);
                     buffer.Add(settings.LightmapTexelsPerUnit);
                     buffer.Add(settings.LightmapPaddingTexels);
+                    buffer.Add(settings.LightmapMaxSize);
                 } else
                     buffer.Add(0);
 

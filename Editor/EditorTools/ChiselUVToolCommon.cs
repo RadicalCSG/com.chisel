@@ -3,7 +3,9 @@ using System.Collections.Generic;
 using System.Linq;
 using Chisel.Core;
 using Chisel.Components;
+using Unity.Mathematics;
 using UnityEditor;
+using UnityEditor.ShortcutManagement;
 using UnityEngine;
 using System.Buffers;
 using UnityEngine.Pool;
@@ -89,6 +91,7 @@ namespace Chisel.Editors
             }
 			surfaceFlagsProp = null;
 			UV0Prop = null;
+			hotspotProp = null;
 			initialized = false;
         }
 
@@ -123,6 +126,7 @@ namespace Chisel.Editors
             {
                 surfaceFlagsProp     = surfaceDetailsProp.FindPropertyRelative(SurfaceDetails.kDetailFlagsName);
                 UV0Prop              = surfaceDetailsProp.FindPropertyRelative(SurfaceDetails.kUV0Name);
+                hotspotProp          = surfaceDetailsProp.FindPropertyRelative(nameof(SurfaceDetails.hotspot));
 			}
 			chiselMaterialProp = surfaceProp.FindPropertyRelative(ChiselSurface.kChiselMaterialName);
             initialized = true;
@@ -142,6 +146,7 @@ namespace Chisel.Editors
 
 		SerializedProperty surfaceFlagsProp;
         SerializedProperty UV0Prop;
+        SerializedProperty hotspotProp;
         [SerializeField] UnityEngine.Object[]    undoableObjects = Array.Empty<UnityEngine.Object>();
         [SerializeField] ChiselSelectedSurface[] surfaces        = Array.Empty<ChiselSelectedSurface>();
 
@@ -407,7 +412,6 @@ namespace Chisel.Editors
 						scrollPosition -= evt.delta * (evt.shift ? 3 : 1) / Mathf.Min(position.width, position.height) * 140.0f;
 						scrollPosition.y = Mathf.Clamp(scrollPosition.y, -90, 90);
 						evt.Use();
-						GUI.changed = true;
 						break;
 					}
 				case EventType.MouseUp:
@@ -421,14 +425,48 @@ namespace Chisel.Editors
 			return scrollPosition;
 		}
 
+		// Clicked as the material's field is: once pings the material, twice opens it; a right click picks the preview's shape
+		static bool PreviewClicks(Rect region, Material material)
+		{
+			var evt = Event.current;
+			if (!region.Contains(evt.mousePosition))
+				return false;
+			if (evt.type == EventType.MouseDown && evt.button == 0 && evt.clickCount == 2 && material)
+			{
+				AssetDatabase.OpenAsset(material);
+				evt.Use();
+				GUIUtility.ExitGUI();
+			}
+			if (evt.type == EventType.MouseDown && evt.button == 0 && evt.clickCount == 1)
+				s_PreviewClick = evt.mousePosition;
+			if (evt.type == EventType.MouseUp && evt.button == 0 && s_PreviewClick.HasValue &&
+				(evt.mousePosition - s_PreviewClick.Value).sqrMagnitude < 9 && material)
+				EditorGUIUtility.PingObject(material);
+			if (evt.type == EventType.MouseUp)
+				s_PreviewClick = null;
+			if (evt.type == EventType.ContextClick)
+			{
+				var menu = new GenericMenu();
+				foreach (PreviewMesh mesh in System.Enum.GetValues(typeof(PreviewMesh)))
+				{
+					var chosen = mesh;
+					menu.AddItem(new GUIContent(ObjectNames.NicifyVariableName(mesh.ToString())), PreviewTextureManager.Mesh == mesh, () => PreviewTextureManager.Mesh = chosen);
+				}
+				menu.ShowAsContext();
+				evt.Use();
+				return true;
+			}
+			return false;
+		}
+
+		static Vector2? s_PreviewClick;
+
 		public static bool OnPreviewGUI(Rect region, GUIStyle background, Material material)
 		{
+			PreviewClicks(region, material);
 			var newPreviewDir = Drag2D(s_PreviewDir, region);
 			if (newPreviewDir != s_PreviewDir)
-			{
 				s_PreviewDir = newPreviewDir;
-				PreviewTextureManager.Clear();
-			}
 
 			var texture = PreviewTextureManager.GetPreviewTexture(region, s_PreviewDir, material);
 			if (!texture)
@@ -460,6 +498,10 @@ namespace Chisel.Editors
                 return;
 
 			serializedObject.UpdateIfRequiredOrScript();
+            var selectedReferences = new List<SurfaceReference>(surfaces.Length);
+            foreach (var item in surfaces)
+                selectedReferences.Add(item.SurfaceReference);
+            var wasWorld = ChiselTextureLockEdit.WorldSpaceOf(selectedReferences);
             EditorGUI.BeginChangeCheck();
 			{
 				UpdateChiselMaterials(chiselMaterialProp);
@@ -474,9 +516,25 @@ namespace Chisel.Editors
                 if (surfaceFlagsProp != null)
                     EditorGUI.PropertyField(position, surfaceFlagsProp, SurfaceDetailsPropertyDrawer.kSurfaceFlagsContents, true);
 
-                position = EditorGUILayout.GetControlRect(true, UVMatrixPropertyDrawer.DefaultHeight);
-                if (UV0Prop != null)
-                    EditorGUI.PropertyField(position, UV0Prop, SurfaceDetailsPropertyDrawer.kUV0Contents, true);
+                // a hotspot material's placement in the rows a planar mapping has
+                var layout = HotspotTransformGUI.LayoutOf(surfaces[0].Surface.RenderMaterial);
+                if (layout != null && hotspotProp != null)
+                {
+                    position = EditorGUILayout.GetControlRect(true, HotspotTransformGUI.Height);
+                    var references = new List<SurfaceReference>(surfaces.Length);
+                    foreach (var item in surfaces)
+                        references.Add(item.SurfaceReference);
+                    var material = surfaces[0].Surface.RenderMaterial;
+                    HotspotTransformGUI.OnGUI(position, hotspotProp, layout, true, ChiselHotspotGroupEdit.MostVariations(references),
+                                              () => HotspotTransformGUI.PagesOf(material, layout), () => ChiselHotspotGroupEdit.FitsOf(references[0], layout, material),
+                                              references[0].descriptionIndex);
+                    ConnectionGUI();
+                } else
+                {
+                    position = EditorGUILayout.GetControlRect(true, UVMatrixPropertyDrawer.DefaultHeight);
+                    if (UV0Prop != null)
+                        EditorGUI.PropertyField(position, UV0Prop, SurfaceDetailsPropertyDrawer.kUV0Contents, true);
+                }
 
                 EditorGUIUtility.labelWidth = prevLabelWidth;
             }
@@ -486,6 +544,49 @@ namespace Chisel.Editors
                 serializedObject.ApplyModifiedProperties();
                 foreach (var item in surfaces)
                     item.Store();
+                var edited = new List<SurfaceReference>(surfaces.Length);
+                foreach (var item in surfaces)
+                    edited.Add(item.SurfaceReference);
+                // Lock texture to object toggled: the texture stays where it is
+                if (ChiselTextureLockEdit.KeepLook(edited, wasWorld, undoableObjects.Length > 1 ? "Modified materials" : "Modified material"))
+                {
+                    foreach (var item in surfaces)
+                        item.Load();
+                    serializedObject.Update();
+                }
+                ChiselHotspotGroupEdit.Spread(edited, undoableObjects.Length > 1 ? "Modified materials" : "Modified material");
+            }
+        }
+
+        static readonly GUIContent kHotspotConnectionContents = new("Connection", "How the two selected surfaces are mapped where they touch: as one surface (Connected), apart (Disconnected), or as touching coplanar surfaces are by themselves (Automatic)");
+        static readonly string[]   kHotspotConnectionNames    = { "Automatic", "Connected", "Disconnected" };
+        static readonly GUIContent kHotspotBorderContents     = new("Border", "The border along the edge the two selected surfaces share: none where they are mapped as one and a border where each has its own (Automatic), a border (Shown), or none (Hidden)");
+        static readonly string[]   kHotspotBorderNames        = { "Automatic", "Shown", "Hidden" };
+
+        // With two surfaces selected: whether they are mapped as one where they touch
+        void ConnectionGUI()
+        {
+            if (surfaces.Length != 2)
+                return;
+            var a = surfaces[0].SurfaceReference; var b = surfaces[1].SurfaceReference;
+            var model = ChiselHotspotLinks.ModelOfSurfaces(a, b);
+            if (!model)
+                return;
+            var state  = ChiselHotspotLinks.StateOf(a, b);
+            var chosen = (ChiselHotspotLinkState)EditorGUILayout.Popup(kHotspotConnectionContents, (int)state, kHotspotConnectionNames);
+            if (chosen != state)
+            {
+                Undo.RecordObject(model, "Hotspot Connection");
+                ChiselHotspotLinks.SetConnection(a, b, chosen);
+                EditorUtility.SetDirty(model);
+            }
+            var border       = ChiselHotspotLinks.BorderOf(a, b);
+            var chosenBorder = (ChiselHotspotBorderState)EditorGUILayout.Popup(kHotspotBorderContents, (int)border, kHotspotBorderNames);
+            if (chosenBorder != border)
+            {
+                Undo.RecordObject(model, "Hotspot Border");
+                ChiselHotspotLinks.SetBorder(a, b, chosenBorder);
+                EditorUtility.SetDirty(model);
             }
         }
 
@@ -1141,6 +1242,147 @@ namespace Chisel.Editors
         static SurfaceReference     s_StartSurfaceReference;
         static Vector2              s_JumpedMousePosition;
 
+        // The surface the drag started on
+        internal static SurfaceReference StartSurfaceReference => s_StartSurfaceReference;
+
+        // The next or previous variation for every selected hotspot surface that has another, from the keyboard
+        const string kNextVariationShortcutName     = "Next Hotspot Variation";
+        const string kPreviousVariationShortcutName = "Previous Hotspot Variation";
+        [Shortcut(ChiselKeyboardDefaults.ShortCutEditModeBase + kNextVariationShortcutName, typeof(SceneView), KeyCode.N, ShortcutModifiers.Alt, displayName = kNextVariationShortcutName)]
+        static void NextHotspotVariation() { StepHotspotVariation(1, kNextVariationShortcutName); }
+
+        [Shortcut(ChiselKeyboardDefaults.ShortCutEditModeBase + kPreviousVariationShortcutName, typeof(SceneView), KeyCode.N, ShortcutModifiers.Alt | ShortcutModifiers.Shift, displayName = kPreviousVariationShortcutName)]
+        static void PreviousHotspotVariation() { StepHotspotVariation(-1, kPreviousVariationShortcutName); }
+
+        static void StepHotspotVariation(int step, string undoName)
+        {
+            var selected = ChiselSurfaceSelectionManager.Selection;
+            if (selected == null || selected.Count == 0)
+                return;
+            Undo.RecordObjects(ChiselSurfaceSelectionManager.SelectedNodes.ToArray(), undoName);
+            foreach (var surface in selected)
+            {
+                if (!IsHotspotMapped(surface))
+                    continue;
+                var details = surface.SurfaceDetails;
+                var variations = ChiselHotspotGroupEdit.VariationsOf(surface);
+                if (variations >= 0 ? variations <= 1 : details.hotspot.pinnedTile != 0)
+                    continue;
+                details.hotspot.seed = HotspotTransformGUI.StepSeed(details.hotspot.seed, surface.descriptionIndex, variations, step);
+                surface.SurfaceDetails = details;
+            }
+            ChiselHotspotGroupEdit.Spread(selected.ToList(), undoName);
+            if (s_Instance)
+                s_Instance.UpdateAllSurfaces();
+        }
+
+        // Whether a surface's material maps it with a hotspot layout
+        internal static bool IsHotspotMapped(SurfaceReference surface)
+        {
+            var material = surface?.RenderMaterial;
+            var metadata = material != null ? material.GetMetadataOfType<ChiselSurfaceMetadata>() : null;
+            return metadata != null && metadata.hotspotLayout != null;
+        }
+
+        static bool GridSnapping => (CurrentSnapSettings & SnapSettings.UVGeometryGrid) != SnapSettings.None;
+
+        // How a hotspot mapped surface's repeats lie, as it was last built (its render buffer's section input): the
+        // texture's right and up in its model's space, one repeat along each in units, and its pixels; false when it has
+        // no repeats to move (a tile fitted once)
+        static bool HotspotRepeatsOf(SurfaceReference surface, out Matrix4x4 worldToModel, out Vector3 right, out Vector3 up, out Vector2 period, out Vector2 pixels)
+        {
+            worldToModel = Matrix4x4.identity; right = up = default; period = pixels = default;
+            if (surface == null || !surface.node || !surface.brush.Valid)
+                return false;
+            var model = surface.node.hierarchyItem.Model;
+            if (!model || !model.Node.Valid)
+                return false;
+            var lookups = ChiselTreeLookup.Value;
+            if (!lookups.HasTree(model.Node))
+                return false;
+            var data = lookups[model.Node];
+            data.lastJobHandle.Complete();
+            if (!data.brushRenderBufferLookup.IsCreated ||
+                !data.brushRenderBufferLookup.TryGetValue(CompactHierarchyManager.GetCompactNodeID(surface.brush), out var buffer) || !buffer.IsCreated)
+                return false;
+            ref var surfaces = ref buffer.Value.surfaces;
+            if (surface.surfaceIndex < 0 || surface.surfaceIndex >= surfaces.Length)
+                return false;
+            var input = surfaces[surface.surfaceIndex].sectionInput;
+            if (input.count != 4 || !(input.pixelsPerUnit > 0))
+                return false;
+            var across = math.length(input.t1 - input.t0); var along = math.length(input.t2 - input.t0);
+            if (input.Repeated)
+            {
+                // the whole tile a repeat, as many as fit (the last one in part)
+                var countX = math.max(1, input.repeatX - 1 + (input.lastRepeat.x > 0 ? input.lastRepeat.x : 1));
+                var countY = math.max(1, input.repeatY - 1 + (input.lastRepeat.y > 0 ? input.lastRepeat.y : 1));
+                period = new Vector2(math.length(input.f1 - input.f0) / countX, math.length(input.f2 - input.f0) / countY);
+                pixels = new Vector2(across, along);
+            } else
+            {
+                // a bordered tile's interior, repeated at the tile's density (HotspotSections.BuildInteriorRepeats)
+                if (!(input.border > 0))
+                    return false;
+                pixels = new Vector2(math.max(1, across - 2 * input.border), math.max(1, along - 2 * input.border));
+                period = pixels / input.pixelsPerUnit;
+            }
+            worldToModel = ChiselNodeHierarchyManager.FindModelTransformMatrixOfTransform(surface.node.transform).inverse;
+            right = (Vector3)input.right;
+            up    = (Vector3)input.up;
+            return period.x > 0 && period.y > 0;
+        }
+
+        // A hotspot surface's texture moved along with the mouse (its offset, in repeats), to whole texels when snapping
+        internal static void MoveHotspot(SurfaceReference surface, int index, Vector3 worldTranslation)
+        {
+            if (!HotspotRepeatsOf(surface, out var worldToModel, out var right, out var up, out var period, out var pixels))
+                return;
+            var translation = worldToModel.MultiplyVector(worldTranslation);
+            var start   = s_SelectedHotspots[index];
+            var details = surface.SurfaceDetails;
+            var offset  = start.offset - new float2(Vector3.Dot(translation, right) / period.x, Vector3.Dot(translation, up) / period.y);
+            if (GridSnapping)
+                offset = math.round(offset * (float2)pixels) / (float2)pixels;
+            details.hotspot.offset = offset - math.floor(offset);
+            surface.SurfaceDetails = details;
+            ChiselHotspotGroupEdit.Spread(new[] { surface }, "Move Hotspot");
+        }
+
+        // A hotspot surface's texture turned along with the mouse (degrees, about the drag plane's normal)
+        internal static void RotateHotspot(SurfaceReference surface, int index, Vector3 worldNormal, float degrees)
+        {
+            var start   = s_SelectedHotspots[index];
+            var details = surface.SurfaceDetails;
+            // counter-clockwise seen from in front is a negative turn about the surface's normal
+            var plane   = surface.WorldPlane;
+            var facing  = plane.HasValue && Vector3.Dot(plane.Value.normal, worldNormal) < 0 ? -1 : 1;
+            // a mirrored texture turns the other way
+            if (start.mirror != start.mirrorY)
+                facing = -facing;
+            var rotation = start.rotation - degrees * facing;
+            details.hotspot.rotation = rotation - 360 * Mathf.Floor(rotation / 360);
+            surface.SurfaceDetails = details;
+            ChiselHotspotGroupEdit.Spread(new[] { surface }, "Rotate Hotspot");
+        }
+
+        // A hotspot surface's texture scaled along with the mouse (its density the other way round), to powers of two
+        // when snapping. squaredScale: the start's distance from the centre over the mouse's, squared (as the UV Scale
+        // tool measures it)
+        internal static void ScaleHotspot(SurfaceReference surface, int index, float squaredScale)
+        {
+            if (!(squaredScale > 0) || float.IsInfinity(squaredScale))
+                return;
+            var start   = s_SelectedHotspots[index];
+            var details = surface.SurfaceDetails;
+            var density = Mathf.Clamp(start.Density * Mathf.Sqrt(squaredScale), 1.0f / 64, 64);
+            if (GridSnapping)
+                density = Mathf.Pow(2, Mathf.Round(Mathf.Log(density, 2)));
+            details.hotspot.density = density;
+            surface.SurfaceDetails = details;
+            ChiselHotspotGroupEdit.Spread(new[] { surface }, "Scale Hotspot");
+        }
+
         internal static Plane       s_WorldDragPlane;
         internal static Plane       s_WorldProjectionPlane;
         internal static Vector3		s_WorldStartPosition;
@@ -1150,6 +1392,7 @@ namespace Chisel.Editors
         internal static ChiselNodeComponent[]	s_SelectedNodes;
         internal static UVMatrix[]			    s_SelectedUVMatrices;
         internal static SurfaceReference[]	    s_SelectedSurfaceReferences;
+        internal static HotspotSurface[]        s_SelectedHotspots;     // the hotspot settings each had when the drag started
 
         internal static bool StartToolDragging()
         {
@@ -1175,9 +1418,11 @@ namespace Chisel.Editors
             // We copy all the original surface uvMatrices, so we always apply rotations and transformations relatively to the original
             // This makes it easier to recover from edge cases and makes it more accurate, floating point wise.
             s_SelectedUVMatrices	 = new UVMatrix[s_SelectedSurfaceReferences.Length];
+            s_SelectedHotspots   = new HotspotSurface[s_SelectedSurfaceReferences.Length];
             for (int i = 0; i < s_SelectedSurfaceReferences.Length; i++)
             {
                 s_SelectedUVMatrices[i] = s_SelectedSurfaceReferences[i].UV0;
+                s_SelectedHotspots[i]   = s_SelectedSurfaceReferences[i].SurfaceDetails.hotspot;
             }
             
             // Find the intersection point/plane in model space

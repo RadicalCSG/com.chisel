@@ -4,7 +4,9 @@ using System.Collections.Generic;
 using Chisel.Core;
 
 using UnityEngine;
+using Unity.Burst;
 using Unity.Collections;
+using Unity.Jobs;
 
 #if UNITY_EDITOR
 using UnityEditor;
@@ -22,6 +24,9 @@ namespace Chisel.Components
 		// per-renderable partial meshes) can tell whether their cached result is still current.
 		public int Version { get; private set; }
 
+		// How many entries of compactNodeIDVisibilityStateLookup are not AllVisible
+		int notAllVisibleCount;
+
 		public void Dispose()
 		{
 			// Confirmed to be called
@@ -32,19 +37,70 @@ namespace Chisel.Components
 			if (entityIDVisibilityStateLookup.IsCreated)
 				entityIDVisibilityStateLookup.Dispose();
 			entityIDVisibilityStateLookup = default;
+			notAllVisibleCount = 0;
 		}
 
         internal void Clear()
 		{
 			compactNodeIDVisibilityStateLookup.Clear();
 			entityIDVisibilityStateLookup.Clear();
+			notAllVisibleCount = 0;
 			Version++;
+		}
+
+		void SetState(CompactNodeID compactNodeID, VisibilityState state)
+		{
+			if (compactNodeIDVisibilityStateLookup.TryGetValue(compactNodeID, out var previous) && previous != VisibilityState.AllVisible)
+				notAllVisibleCount--;
+			if (state != VisibilityState.AllVisible)
+				notAllVisibleCount++;
+			compactNodeIDVisibilityStateLookup[compactNodeID] = state;
 		}
 
         [GenerateTestsForBurstCompatibility]
 		public bool IsBrushVisible(CompactNodeID brushID) 
         { 
             return compactNodeIDVisibilityStateLookup.TryGetValue(brushID, out VisibilityState state) && state == VisibilityState.AllVisible;
+		}
+
+		// Whether the brush of every description is visible (IsBrushVisible), under Burst
+		public bool AllBrushesVisible(SelectionDescription[] descriptions)
+		{
+			if (descriptions == null || descriptions.Length == 0 || !compactNodeIDVisibilityStateLookup.IsCreated)
+				return false;
+			// nothing is hidden: no need to look at the brushes
+			if (notAllVisibleCount == 0)
+				return true;
+			using var copy   = new NativeArray<SelectionDescription>(descriptions, Allocator.TempJob);
+			using var result = new NativeReference<bool>(Allocator.TempJob);
+			new AllBrushesVisibleJob { descriptions = copy, states = compactNodeIDVisibilityStateLookup, result = result }.Run();
+			return result.Value;
+		}
+
+		[BurstCompile]
+		struct AllBrushesVisibleJob : IJob
+		{
+			[ReadOnly] public NativeArray<SelectionDescription> descriptions;
+			[ReadOnly] public NativeHashMap<CompactNodeID, VisibilityState> states;
+			public NativeReference<bool> result;
+
+			public void Execute()
+			{
+				var last = CompactNodeID.Invalid;
+				for (int i = 0; i < descriptions.Length; i++)
+				{
+					var brush = descriptions[i].brushNodeID;
+					if (i > 0 && brush == last)
+						continue;
+					if (!states.TryGetValue(brush, out var state) || state != VisibilityState.AllVisible)
+					{
+						result.Value = false;
+						return;
+					}
+					last = brush;
+				}
+				result.Value = true;
+			}
 		}
 
 		[GenerateTestsForBurstCompatibility]
@@ -133,8 +189,8 @@ namespace Chisel.Components
             var state = GetVisibilityState(sceneVisibilityManager, node);
 
             foreach (var childCompactNodeID in CompactHierarchyManager.GetAllChildren(compactNodeID))
-                compactNodeIDVisibilityStateLookup[childCompactNodeID] = state;
-            compactNodeIDVisibilityStateLookup[modelCompactNodeID] = state | prevState;
+                SetState(childCompactNodeID, state);
+            SetState(modelCompactNodeID, state | prevState);
 			entityIDVisibilityStateLookup[UnityEngine.EntityId.ToULong(node.GetEntityId())] = state | prevState;
 		}
 
@@ -147,6 +203,7 @@ namespace Chisel.Components
             EnsureCreated();
 			compactNodeIDVisibilityStateLookup.Clear();
 			entityIDVisibilityStateLookup.Clear();
+			notAllVisibleCount = 0;
 			Version++;
 
 			var sceneVisibilityManager = SceneVisibilityManager.instance;
@@ -168,7 +225,7 @@ namespace Chisel.Components
                 var modelCompactNodeID  = CompactHierarchyManager.GetCompactNodeID(modelNode);
                 if (!compactNodeIDVisibilityStateLookup.TryGetValue(modelCompactNodeID, out VisibilityState state))
                 {
-                    compactNodeIDVisibilityStateLookup[modelCompactNodeID] = VisibilityState.AllVisible;
+                    SetState(modelCompactNodeID, VisibilityState.AllVisible);
                     entityIDVisibilityStateLookup[UnityEngine.EntityId.ToULong(model.GetEntityId())] = VisibilityState.AllVisible;
 					model.generated.visibilityState = VisibilityState.AllVisible;
                     continue; 

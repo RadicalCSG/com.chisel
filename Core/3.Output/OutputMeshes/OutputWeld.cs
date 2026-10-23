@@ -16,6 +16,12 @@ namespace Chisel.Core
             return SamePosition(a, b) || SamePosition(b, c) || SamePosition(c, a);
         }
 
+        // No area, decided exactly from the floats (a float cross product rounds, and how depends on the compiler)
+        public static bool WithoutArea(float3 a, float3 b, float3 c)
+        {
+            return HasTwoCornersAtOnePosition(a, b, c) || OnOneLine(a, b, c);
+        }
+
         public static int WeldSurface(NativeList<int>          indices,
                                       NativeList<float3>       colliderVertices,
                                       NativeList<SelectVertex> selectVertices,
