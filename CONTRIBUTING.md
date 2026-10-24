@@ -47,7 +47,11 @@ almost always belongs in the CSG, not in a special case in the generator.
 * New features should work for any level someone builds by hand, not only for one kind of content, and be reachable
   from the editor's UI.
 
-The automated test suites aren't part of this repository yet, so please describe how you checked your change.
+## Tests
+
+The tests are in `Core/Tests`, `Components/Tests` and `Editor/Tests`. With Chisel embedded in your project's
+`Packages` folder, run them from **Window > General > Test Runner** (EditMode), in a scene without a Chisel model.
+Please run them before opening a pull request, and add tests for what you fix or build.
 
 ## License
 
