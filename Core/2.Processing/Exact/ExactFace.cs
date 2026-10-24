@@ -723,7 +723,7 @@ namespace Chisel.Core
                 int row = lookupStart[k] + input;
                 if (row < lookupStart[k] || row >= lookupEnd[k])
                 {
-                    // the same as PerformCSGJob: a lookup without a row for this input leaves the input as it is
+                    // a lookup without a row for this input leaves the input as it is
                     routingErrors++;
                     continue;
                 }

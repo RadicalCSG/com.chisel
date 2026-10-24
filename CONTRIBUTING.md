@@ -24,7 +24,7 @@ Chisel is a Unity package. To work on it, put it in a Unity project as an embedd
    `git submodule update --init` in it.
 3. Open the project in Unity. The first time takes a while, because Burst compiles a lot of code.
 
-The package's dependencies, BurstTriangulator and CustomAssetMetadata, are git submodules in `Dependencies`.
+The package's dependency, CustomAssetMetadata, is a git submodule in `Dependencies`.
 
 ## Where things are
 

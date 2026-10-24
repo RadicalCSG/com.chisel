@@ -17,14 +17,11 @@ namespace Chisel.Core
     {
         // Read
         [NoAlias, ReadOnly] public NativeList<IndexOrder>                       allTreeBrushIndexOrders;
-        [NoAlias, ReadOnly] public NativeList<NodeTransformations>              transformationCache;
-        [NoAlias, ReadOnly] public NativeArray<BlobAssetReference<BrushMeshBlob>> brushMeshLookup;
         [NoAlias, ReadOnly] public NativeList<MinMaxAABB>                       brushTreeSpaceBounds;
         [NoAlias, ReadOnly] public NativeList<IndexOrder>                       rebuildTreeBrushIndexOrders;
         // Broad-phase over every brush in the tree (BuildBrushBoundsSweepJob): only brushes whose
         // bounds can overlap this brush's are tested, instead of all of them.
         [NoAlias, ReadOnly] public NativeList<BrushBoundsSweepEntry>            brushBoundsSweep;
-        [NoAlias, ReadOnly] public bool                                         exactCSG;
         [NoAlias, ReadOnly] public NativeList<BlobAssetReference<ExactBrush>>   exactBrushCache;
 
         // Read (Re-alloc) / Write
@@ -37,13 +34,11 @@ namespace Chisel.Core
 
         IntersectionType Intersect(int brush0NodeOrder, int brush1NodeOrder)
         {
-            if (exactCSG)
-                return IntersectionUtility.FindIntersectionExact(exactBrushCache[brush0NodeOrder], exactBrushCache[brush1NodeOrder]);
-            return IntersectionUtility.FindIntersection(brush0NodeOrder, brush1NodeOrder, ref brushMeshLookup, ref brushTreeSpaceBounds, ref transformationCache);
+            return IntersectionUtility.FindIntersectionExact(exactBrushCache[brush0NodeOrder], exactBrushCache[brush1NodeOrder]);
         }
 
-        // How far apart bounds may be and still be tested: none for the exact CSG, whose bounds contain its exact corners
-        double BoundsMargin => exactCSG ? 0 : IntersectionUtility.kBoundsDistanceEpsilon;
+        // Bounds contain the exact corners, so they are tested without a margin
+        const double BoundsMargin = 0;
 
         // Per thread scratch memory
         //[NativeDisableContainerSafetyRestriction] NativeArray<float4>   transformedPlanes0;
@@ -196,12 +191,9 @@ namespace Chisel.Core
     {
         // Read
         [NoAlias, ReadOnly] public NativeList<IndexOrder>                   allTreeBrushIndexOrders;
-        [NoAlias, ReadOnly] public NativeList<NodeTransformations>          transformationCache;
-        [NoAlias, ReadOnly] public NativeArray<BlobAssetReference<BrushMeshBlob>> brushMeshLookup;
         [NoAlias, ReadOnly] public NativeList<MinMaxAABB>                   brushTreeSpaceBounds;
         [NoAlias, ReadOnly] public NativeList<IndexOrder>                   brushesThatNeedIndirectUpdate;
         [NoAlias, ReadOnly] public NativeList<BrushBoundsSweepEntry>        brushBoundsSweep;
-        [NoAlias, ReadOnly] public bool                                     exactCSG;
         [NoAlias, ReadOnly] public NativeList<BlobAssetReference<ExactBrush>> exactBrushCache;
 
         // Read (Re-alloc) / Write
@@ -211,13 +203,11 @@ namespace Chisel.Core
 
         IntersectionType Intersect(int brush0NodeOrder, int brush1NodeOrder)
         {
-            if (exactCSG)
-                return IntersectionUtility.FindIntersectionExact(exactBrushCache[brush0NodeOrder], exactBrushCache[brush1NodeOrder]);
-            return IntersectionUtility.FindIntersection(brush0NodeOrder, brush1NodeOrder, ref brushMeshLookup, ref brushTreeSpaceBounds, ref transformationCache);
+            return IntersectionUtility.FindIntersectionExact(exactBrushCache[brush0NodeOrder], exactBrushCache[brush1NodeOrder]);
         }
 
-        // How far apart bounds may be and still be tested: none for the exact CSG, whose bounds contain its exact corners
-        double BoundsMargin => exactCSG ? 0 : IntersectionUtility.kBoundsDistanceEpsilon;
+        // Bounds contain the exact corners, so they are tested without a margin
+        const double BoundsMargin = 0;
 
         // Per thread scratch memory
         //[NativeDisableContainerSafetyRestriction] NativeArray<float4>       transformedPlanes0;
@@ -535,160 +525,12 @@ namespace Chisel.Core
 
     sealed class IntersectionUtility
     {
-        public const double kBoundsDistanceEpsilon = CSGConstants.kBoundsDistanceEpsilon;
-
-
         public struct IndexOrderComparer : System.Collections.Generic.IComparer<IndexOrder>
         {
             public int Compare(IndexOrder x, IndexOrder y)
             {
                 return x.nodeOrder.CompareTo(y.nodeOrder);
             }
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void TransformOtherIntoBrushSpace([NoAlias, ReadOnly] ref float4x4 treeToBrushSpaceMatrix, [NoAlias, ReadOnly] ref float4x4 brushToTreeSpaceMatrix, [NoAlias, ReadOnly] ref BlobArray<float4> srcPlanes, [NoAlias, WriteOnly] NativeArray<float4> dstPlanes)
-        {
-            var brush1ToBrush0LocalLocalSpace = math.transpose(math.mul(treeToBrushSpaceMatrix, brushToTreeSpaceMatrix));
-            for (int plane_index = 0; plane_index < srcPlanes.Length; plane_index++)
-            {
-                ref var srcPlane = ref srcPlanes[plane_index];
-                dstPlanes[plane_index] = math.mul(brush1ToBrush0LocalLocalSpace, srcPlane);
-            }
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static IntersectionType ConvexPolytopeTouching([NoAlias, ReadOnly] ref BrushMeshBlob       brushMesh0,
-                                                              [NoAlias, ReadOnly] ref float4x4            treeToNode0SpaceMatrix,
-                                                              [NoAlias, ReadOnly] ref float4x4            nodeToTree0SpaceMatrix,
-                                                              [NoAlias, ReadOnly] ref BrushMeshBlob       brushMesh1,
-                                                              [NoAlias, ReadOnly] ref float4x4            treeToNode1SpaceMatrix,
-                                                              [NoAlias, ReadOnly] ref float4x4            nodeToTree1SpaceMatrix//,
-                                                              //[NoAlias, ReadOnly] ref NativeArray<float4> transformedPlanes0,
-                                                              //[NoAlias, ReadOnly] ref NativeArray<float4> transformedPlanes1
-                                                              )
-        {
-            ref var brushPlanes0   = ref brushMesh0.localPlanes;
-
-            NativeArray<float4> transformedPlanes0;
-			using var _transformedPlanes0 = transformedPlanes0 = new NativeArray<float4>(brushPlanes0.Length, Allocator.Temp);
-
-            //NativeCollectionHelpers.EnsureMinimumSize(ref transformedPlanes0, brushPlanes0.Length);
-            TransformOtherIntoBrushSpace(ref treeToNode0SpaceMatrix, ref nodeToTree1SpaceMatrix, ref brushPlanes0, transformedPlanes0);
-
-            ref var brushVertices1 = ref brushMesh1.localVertices;
-            int negativeSides1 = 0;
-            for (var i = 0; i < brushPlanes0.Length; i++)
-            {
-                var plane0 = transformedPlanes0[i];
-                int side = WhichSide(ref brushVertices1, plane0, kBoundsDistanceEpsilon);
-                if (side < 0) negativeSides1++;
-                if (side > 0) return IntersectionType.NoIntersection;
-            }
-
-            //if (intersectingSides1 != transformedPlanes0.Length) return IntersectionType.Intersection;
-            //if (intersectingSides > 0) return IntersectionType.Intersection;
-            //if (positiveSides1 > 0) return IntersectionType.NoIntersection;
-            //if (negativeSides > 0 && positiveSides > 0) return IntersectionType.Intersection;
-            if (negativeSides1 == brushPlanes0.Length)
-                return IntersectionType.BInsideA;
-            
-            ref var brushPlanes1    = ref brushMesh1.localPlanes;
-			//*
-
-			NativeArray<float4> transformedPlanes1;
-			using var _transformedPlanes1 = transformedPlanes1 = new NativeArray<float4>(brushPlanes1.Length, Allocator.Temp);
-
-            //NativeCollectionHelpers.EnsureMinimumSize(ref transformedPlanes1, brushPlanes1.Length);
-            TransformOtherIntoBrushSpace(ref treeToNode1SpaceMatrix, ref nodeToTree0SpaceMatrix, ref brushPlanes1, transformedPlanes1);
-
-
-            ref var brushVertices0 = ref brushMesh0.localVertices;
-            int negativeSides2 = 0;
-            int intersectingSides2 = 0;
-            for (var i = 0; i < brushPlanes1.Length; i++)
-            {
-                var plane1 = transformedPlanes1[i];
-                int side = WhichSide(ref brushVertices0, plane1, kBoundsDistanceEpsilon);
-                if (side < 0) negativeSides2++;
-                if (side > 0) return IntersectionType.NoIntersection;
-                if (side == 0) intersectingSides2++;
-            }
-
-            if (intersectingSides2 > 0) return IntersectionType.Intersection;
-            //if (negativeSides > 0 && positiveSides > 0) return IntersectionType.Intersection;
-            if (negativeSides2 == brushPlanes1.Length)
-                return IntersectionType.AInsideB;
-            
-            return IntersectionType.Intersection;//*/
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        static int WhichSide([NoAlias,ReadOnly] ref BlobArray<float3> vertices, float4 plane, double epsilon)
-        {
-            {
-                var t = math.dot(plane, new float4(vertices[0], 1));
-                if (t >=  epsilon) goto HavePositive;
-                if (t <= -epsilon) goto HaveNegative;
-                return 0;
-            }
-        HaveNegative:
-            for (var i = 1; i < vertices.Length; i++)
-            {
-                var t = math.dot(plane, new float4(vertices[i], 1));
-                if (t > -epsilon)
-                    return 0;
-            }
-            return -1;
-        HavePositive:
-            for (var i = 1; i < vertices.Length; i++)
-            {
-                var t = math.dot(plane, new float4(vertices[i], 1));
-                if (t < epsilon)
-                    return 0;
-            }
-            return 1;
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static IntersectionType FindIntersection(int brush0NodeOrder, int brush1NodeOrder,
-                                                        [NoAlias, ReadOnly] ref NativeArray<BlobAssetReference<BrushMeshBlob>> brushMeshLookup,
-                                                        [NoAlias, ReadOnly] ref NativeList<MinMaxAABB>          brushTreeSpaceBounds,
-                                                        [NoAlias, ReadOnly] ref NativeList<NodeTransformations> transformations//,
-                                                        //[NoAlias, ReadOnly] ref NativeArray<float4>             transformedPlanes0,
-                                                        //[NoAlias, ReadOnly] ref NativeArray<float4>             transformedPlanes1
-                                                        )
-        {
-            var brushMesh0 = brushMeshLookup[brush0NodeOrder];
-            var brushMesh1 = brushMeshLookup[brush1NodeOrder];
-            if (!brushMesh0.IsCreated || !brushMesh1.IsCreated)
-                return IntersectionType.NoIntersection;
-
-            var bounds0 = brushTreeSpaceBounds[brush0NodeOrder];
-            var bounds1 = brushTreeSpaceBounds[brush1NodeOrder];
-
-            if (!bounds0.Intersects(bounds1, IntersectionUtility.kBoundsDistanceEpsilon))
-                return IntersectionType.NoIntersection;
-            
-            var transformation0 = transformations[brush0NodeOrder];
-            var transformation1 = transformations[brush1NodeOrder];
-
-            var treeToNode0SpaceMatrix = transformation0.treeToNode;
-            var nodeToTree0SpaceMatrix = transformation0.nodeToTree;
-            var treeToNode1SpaceMatrix = transformation1.treeToNode;
-            var nodeToTree1SpaceMatrix = transformation1.nodeToTree;
-
-            var result = IntersectionUtility.ConvexPolytopeTouching(ref brushMesh0.Value,
-                                                                    ref treeToNode0SpaceMatrix,
-                                                                    ref nodeToTree0SpaceMatrix,
-                                                                    ref brushMesh1.Value,
-                                                                    ref treeToNode1SpaceMatrix,
-                                                                    ref nodeToTree1SpaceMatrix//,
-                                                                    //ref transformedPlanes0,
-                                                                    //ref transformedPlanes1
-                                                                    );
-          
-            return result;
         }
 
         public static IntersectionType FindIntersectionExact(BlobAssetReference<ExactBrush> brush0, BlobAssetReference<ExactBrush> brush1)

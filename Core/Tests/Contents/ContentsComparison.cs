@@ -133,85 +133,9 @@ namespace Chisel.Core.Tests
 														 out List<string> facesWithoutSamples,
 														 float extent, int maxReported, bool budgeted = false)
 		{
-			if (CompactHierarchyManager.TreeUpdate.kExactCSG)
-			{
-				skipped = 0;
-				return ExactJudge.FindMismatches(harness, maxReported, out checkedSamples, out facesWithoutSamples,
-												 budgeted ? ExactJudge.SweepBudget : ExactJudge.WorkBudget.Unlimited);
-			}
-
-			var scene   = harness.Scene;
-			var oracle  = new ContentsOracle(scene);
-			var brushes = oracle.Brushes;
-
-			var failures = new List<Mismatch>();
-			facesWithoutSamples = new List<string>();
-			checkedSamples = 0;
 			skipped = 0;
-
-			var allBounds = new List<(float3 min, float3 max)>(brushes.Count);
-			foreach (var other in brushes)
-				allBounds.Add(ContentsFaceSampler.BrushBounds(oracle.TreePlanesOf(other), extent));
-
-			for (int b = 0; b < brushes.Count && failures.Count < maxReported; b++)
-			{
-				var brush  = brushes[b];
-				var planes = oracle.TreePlanesOf(brush);
-
-				var otherPlanes = new List<float4[]>();
-				var otherBounds = new List<(float3 min, float3 max)>();
-				for (int o = 0; o < brushes.Count; o++)
-				{
-					if (o == b)
-						continue;
-					otherPlanes.Add(oracle.TreePlanesOf(brushes[o]));
-					otherBounds.Add(allBounds[o]);
-				}
-
-				for (int p = 0; p < planes.Length && failures.Count < maxReported; p++)
-				{
-					// the grid, plus a point in every region the brushes reaching this face cut it into
-					var samples = ContentsFaceSampler.FaceSamples(planes, p, otherPlanes, otherBounds, extent, kInset, kSpacing,
-																  kCellClearance);
-
-					// A face nothing sampled has not passed - it has not been examined. Recorded so a sweep
-					// can tell the two apart instead of counting silence as agreement.
-					if (samples.Count == 0)
-						facesWithoutSamples.Add($"{brush.name ?? ("brush" + b)} face {p}");
-
-					foreach (var point in samples)
-					{
-						if (ContentsFaceSampler.NearACrossingPlane(otherPlanes, planes[p], point, kCrossingBand))
-						{
-							skipped++;
-							continue;
-						}
-						checkedSamples++;
-
-						var expected = ExpectedFaces(oracle, brushes, planes[p], point);
-						var found    = FoundFaces(harness, planes[p], point);
-
-						var problem = Compare(expected, found);
-						if (problem != null)
-						{
-							var nearest = NearestOtherPlaneDistance(otherPlanes, point);
-							failures.Add(new Mismatch
-							{
-								brush      = brush,
-								brushIndex = b,
-								face       = p,
-								point      = point,
-								problem    = problem,
-								nearest    = nearest
-							});
-							if (failures.Count >= maxReported)
-								break;
-						}
-					}
-				}
-			}
-
-			return failures;
+			return ExactJudge.FindMismatches(harness, maxReported, out checkedSamples, out facesWithoutSamples,
+											 budgeted ? ExactJudge.SweepBudget : ExactJudge.WorkBudget.Unlimited);
 		}
 
 		public static string MismatchAt(ContentsTreeHarness harness, ContentsOracle oracle, float4 plane, float3 point)

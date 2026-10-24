@@ -37,7 +37,6 @@ using System.Runtime.CompilerServices;
 [assembly: Unity.Jobs.RegisterGenericJobType(typeof(Chisel.Core.BranchAllocateBrushesJob<Chisel.Core.ChiselTorus>))]
 [assembly: Unity.Jobs.RegisterGenericJobType(typeof(Chisel.Core.BranchCreateBrushesJob<Chisel.Core.ChiselTorus>))]
 [assembly: Unity.Jobs.RegisterGenericJobType(typeof(Chisel.Core.GeneratorBranchJobPool<Chisel.Core.ChiselTorus>.InitializeArraysJob))]
-[assembly: Unity.Jobs.RegisterGenericJobType(typeof(Chisel.Core.EnsureCapacityListReferenceJob<Chisel.Core.BrushIntersectionLoop>))]
 [assembly: Unity.Jobs.RegisterGenericJobType(typeof(Chisel.Core.EnsureCapacityListForEachCountFromListJob<Chisel.Core.BrushData, Chisel.Core.IndexOrder>))]
 [assembly: Unity.Jobs.RegisterGenericJobType(typeof(Chisel.Core.DisposeReferenceChildBlobAssetReferenceJob<Chisel.Core.CompactTree>))]
 

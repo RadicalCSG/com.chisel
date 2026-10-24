@@ -81,75 +81,6 @@ namespace Chisel.Core
         #endregion
     }
 
-    struct BrushPair2 : System.IEquatable<BrushPair2>,
-                        System.IComparable<BrushPair2>,
-                        System.Collections.Generic.IEqualityComparer<BrushPair2>,
-                        System.Collections.Generic.IComparer<BrushPair2>
-    {
-        public IndexOrder       brushIndexOrder0;
-        public IndexOrder       brushIndexOrder1;
-        public IntersectionType type;
-
-        public void Flip()
-        {
-            if      (type == IntersectionType.AInsideB) type = IntersectionType.BInsideA;
-            else if (type == IntersectionType.BInsideA) type = IntersectionType.AInsideB;
-            { var t = brushIndexOrder0; brushIndexOrder0 = brushIndexOrder1; brushIndexOrder1 = t; }
-        }
-
-        #region Equals
-        public override bool Equals(object obj)
-        {
-            if (obj == null || !(obj is BrushPair2))
-                return false;
-
-            var other = (BrushPair2)obj;
-            return Equals(other);
-        }
-
-        public bool Equals(BrushPair2 x, BrushPair2 y) { return x.Equals(y); }
-
-        public bool Equals(BrushPair2 other)
-        {
-            return ((brushIndexOrder0.nodeOrder == other.brushIndexOrder0.nodeOrder) && 
-                    (brushIndexOrder1.nodeOrder == other.brushIndexOrder1.nodeOrder));
-        }
-        #endregion
-
-        #region Compare
-        public int Compare(BrushPair2 x, BrushPair2 y) { return x.CompareTo(y); }
-
-        public int CompareTo(BrushPair2 other)
-        {
-            if (brushIndexOrder0.nodeOrder < other.brushIndexOrder0.nodeOrder)
-                return -1;
-            if (brushIndexOrder0.nodeOrder > other.brushIndexOrder0.nodeOrder)
-                return 1;
-            if (brushIndexOrder1.nodeOrder < other.brushIndexOrder1.nodeOrder)
-                return -1;
-            if (brushIndexOrder1.nodeOrder > other.brushIndexOrder1.nodeOrder)
-                return 1;
-            if (type < other.type)
-                return -1;
-            if (type > other.type)
-                return 1;
-            return 0;
-        }
-        #endregion
-
-        #region GetHashCode
-        public override int GetHashCode()
-        {
-            return GetHashCode(this);
-        }
-
-        public int GetHashCode(BrushPair2 obj)
-        {
-            return ((ulong)obj.brushIndexOrder0.nodeOrder + ((ulong)obj.brushIndexOrder1.nodeOrder << 32)).GetHashCode();
-        }
-        #endregion
-    }
-
     enum IntersectionType : byte
     {
         NoIntersection,
@@ -172,15 +103,6 @@ namespace Chisel.Core
         public IndexOrder   brushIndexOrder;
         public ushort       basePlaneIndex;
         public ushort       interiorCategory;
-    }
-
-    struct BrushIntersectionLoop
-    {
-        public IndexOrder   indexOrder0;
-        public IndexOrder   indexOrder1;
-        public SurfaceInfo  surfaceInfo;
-        public int          loopVertexIndex;
-        public int          loopVertexCount;
     }
 
     struct BrushesTouchedByBrush

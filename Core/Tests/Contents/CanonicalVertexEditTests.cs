@@ -76,10 +76,7 @@ namespace Chisel.Core.Tests
 										   "the left box changed, so it was rebuilt: " + harness.LastUpdateReport);
 			AssertSeamMatches(harness, left, middle, 1, "after the edit");
 
-			if (CompactHierarchyManager.TreeUpdate.kExactCSG)
-				AssertStepIsClosed(harness, middle, right, 2);
-			else if (stage >= CanonicalVertexStage.Positions)
-				AssertSeamMatches(harness, middle, right, 2, "after the edit");
+			AssertStepIsClosed(harness, middle, right, 2);
 		}
 
 		static void AssertStepIsClosed(ContentsTreeHarness harness, ContentsSceneNode lower, ContentsSceneNode taller, float seamX)
