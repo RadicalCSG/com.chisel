@@ -210,8 +210,13 @@ namespace Chisel.Components
         static readonly Vector3[] s_Corners = new Vector3[8];
         static readonly Color kGizmoColor = new Color(1.0f, 0.6f, 0.1f, 1.0f);
 
-        // Only when selected: an imported map has thousands of decals
-        void OnDrawGizmosSelected() { DrawVolume(); }
+        // Only when selected: an imported map has thousands of decals. A trim decal's box means nothing: its editor
+        // draws its outline instead
+        void OnDrawGizmosSelected()
+        {
+            if (shape == ChiselDecalShape.Box)
+                DrawVolume();
+        }
 
         void DrawVolume()
         {
