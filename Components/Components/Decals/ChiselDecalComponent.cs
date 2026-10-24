@@ -19,6 +19,27 @@ namespace Chisel.Components
         public int surfaceIndex;
     }
 
+    /// <summary>What a decal covers: a box it projects through, or the edge where two surfaces meet</summary>
+    public enum ChiselDecalShape : byte
+    {
+        Box,
+        /// <summary>On the edge between its first and second target: the image's lower half on the first, its upper half on the second</summary>
+        Trim
+    }
+
+    /// <summary>How a trim decal fills its edge</summary>
+    public enum ChiselTrimFill : byte
+    {
+        /// <summary>One image over the whole edge</summary>
+        Stretch,
+        /// <summary>The image repeated at its length from the edge's start, the last one cut short</summary>
+        Repeat,
+        /// <summary>The whole number of images nearest to what fits, stretched to fill the edge</summary>
+        Fit,
+        /// <summary>One image at its length, round the decal's position on the edge</summary>
+        Single
+    }
+
     /// <summary>
     /// A decal: a box that draws its material onto every surface of a Chisel model it reaches, except surfaces that
     /// face away from the box's center. The image is projected along the box's forward (+Z) axis. A transparent
@@ -38,10 +59,29 @@ namespace Chisel.Components
         [SerializeField] ChiselDecalSettings settings = ChiselDecalSettings.Default;
         // Empty: every surface the decal reaches. Otherwise only these, and nothing when none of them exists.
         [SerializeField] List<ChiselDecalSurfaceTarget> targets = new();
+        [SerializeField] ChiselDecalShape shape = ChiselDecalShape.Box;
+        [SerializeField] ChiselTrimFill trimFill = ChiselTrimFill.Repeat;
 
         public const string kMaterialName = nameof(material);
         public const string kSettingsName = nameof(settings);
         public const string kTargetsName  = nameof(targets);
+        public const string kShapeName      = nameof(shape);
+        public const string kTrimFillName   = nameof(trimFill);
+
+        /// <summary>A box decal projects through its box; a trim decal lies on the edge between its first two targets
+        /// (size.x: the image's length along the edge, size.y: its height across both surfaces), and its transform isn't used.</summary>
+        public ChiselDecalShape Shape
+        {
+            get => shape;
+            set { if (shape == value) return; shape = value; ChiselDecalManager.SetDirty(); }
+        }
+
+        /// <summary>How a trim decal fills its edge: the whole edge (Stretch, Repeat, Fit), or one image at the decal (Single)</summary>
+        public ChiselTrimFill TrimFill
+        {
+            get => trimFill;
+            set { if (trimFill == value) return; trimFill = value; ChiselDecalManager.SetDirty(); }
+        }
 
         /// <summary>The surfaces the decal is limited to. Empty means every surface it reaches.</summary>
         public IReadOnlyList<ChiselDecalSurfaceTarget> Targets => targets;
@@ -97,12 +137,6 @@ namespace Chisel.Components
         {
             get => settings.transparent;
             set { var s = settings; s.transparent = value; Settings = s; }
-        }
-
-        public int Order
-        {
-            get => settings.order;
-            set { var s = settings; s.order = value; Settings = s; }
         }
 
         public float MaxAngle
@@ -173,8 +207,13 @@ namespace Chisel.Components
         static readonly Vector3[] s_Corners = new Vector3[8];
         static readonly Color kGizmoColor = new Color(1.0f, 0.6f, 0.1f, 1.0f);
 
-        // Only when selected: an imported map has thousands of decals
-        void OnDrawGizmosSelected() { DrawVolume(); }
+        // Only when selected: an imported map has thousands of decals. A trim decal's box means nothing: its editor
+        // draws its outline instead
+        void OnDrawGizmosSelected()
+        {
+            if (shape == ChiselDecalShape.Box)
+                DrawVolume();
+        }
 
         void DrawVolume()
         {

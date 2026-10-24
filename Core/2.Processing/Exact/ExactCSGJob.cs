@@ -38,6 +38,8 @@ namespace Chisel.Core
         [NoAlias, ReadOnly] public NativeList<BlobAssetReference<RoutingTable>>             routingTableCache;
         [NoAlias, ReadOnly] public NativeReference<BlobAssetReference<CompactTree>>         compactTreeRef;
         [NoAlias, ReadOnly] public bool                                                     captureExact;
+        // the Discarded debug visualization is shown: write what the CSG removed of each face too
+        [NoAlias, ReadOnly] public bool                                                     collectDiscarded;
 
         // Write
         [NativeDisableParallelForRestriction]
@@ -126,6 +128,7 @@ namespace Chisel.Core
             Count(ExactCSGStat.Brushes);
 
             var builder      = ExactFaceBuilder.Create();
+            builder.collectDiscarded = collectDiscarded;
             var triangulator = ExactTriangulator.Create();
             var touching     = new ExactList<ExactTouchingBrush>(16);
             var routingRows  = new ExactList<ushort>(64);
@@ -244,23 +247,25 @@ namespace Chisel.Core
                         continue;
                     }
 
-                    int partCount = (builder.alignedEdges.Length > 0 ? 1 : 0) + (builder.reverseAlignedEdges.Length > 0 ? 1 : 0);
+                    int partCount = (builder.alignedEdges.Length > 0 ? 1 : 0) + (builder.reverseAlignedEdges.Length > 0 ? 1 : 0) +
+                                    (builder.discardedEdges.Length > 0 ? 1 : 0);
                     Write(partCount);
-                    for (int pass = 0; pass < 2; pass++)
+                    for (int pass = 0; pass < 3; pass++)
                     {
-                        bool aligned = pass == 0;
-                        if ((aligned ? builder.alignedEdges.Length : builder.reverseAlignedEdges.Length) == 0)
+                        ref var edges = ref (pass == 0 ? ref builder.alignedEdges : ref (pass == 1 ? ref builder.reverseAlignedEdges : ref builder.discardedEdges));
+                        if (edges.Length == 0)
                             continue;
                         triangles.Clear();
-                        var result = aligned
-                            ? triangulator.Triangulate(builder.planes[surface], ref builder.vertices, ref builder.alignedEdges, ref builder.lines, ref triangles)
-                            : triangulator.Triangulate(builder.planes[surface], ref builder.vertices, ref builder.reverseAlignedEdges, ref builder.lines, ref triangles);
+                        var result = triangulator.Triangulate(builder.planes[surface], ref builder.vertices, ref edges, ref builder.lines, ref triangles);
+                        // what was removed is only looked at: a failure there is no failure of the CSG
                         if (result != ExactTriangulationFailure.None)
                         {
-                            CountFailure(result);
+                            if (pass < 2)
+                                CountFailure(result);
                             triangles.Clear();
                         }
-                        Write((int)(aligned ? CategoryIndex.SelfAligned : CategoryIndex.SelfReverseAligned));
+                        // the discarded part is written as Inside (GenerateSurfaceTrianglesJob.kDiscardedPart)
+                        Write((int)(pass == 0 ? CategoryIndex.SelfAligned : pass == 1 ? CategoryIndex.SelfReverseAligned : CategoryIndex.Inside));
                         Write(builder.vertices.Length);
                         for (int v = 0; v < builder.vertices.Length; v++)
                             WriteVertex(builder.vertices[v]);

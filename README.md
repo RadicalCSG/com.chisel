@@ -34,16 +34,26 @@ Features (incomplete)
 * Decals: boxes that project a material onto the surfaces they reach, drawn over them or replacing them
 * Hotspot mapping: surfaces take their texture coordinates from the best matching tile of a layout (borders, repeats, shaped tiles and trim sheets), with a layout editor
 * Chunking: a model's output is split into a mesh per material, and divided into chunks of space, for better occlusion and culling handling
+* Trim decals: a decal on the edge between two surfaces, the lower half of its image on one and the upper half on the other, stretched, repeated or fitted along the edge or one image placed on it, following the edge when either brush changes
+* [Debug visualizations](https://github.com/RadicalCSG/Chisel.Prototype/issues/188) of user-hidden, shadow-only, shadow-casting, shadow-receiving, collider and discarded (removed by the CSG) surfaces
+* [Double sided surfaces](https://github.com/RadicalCSG/Chisel.Prototype/issues/226): a material can make its surfaces drawn from behind too
 
 Planned Features (incomplete, and in random order):
-* [Debug Visualizations](https://github.com/RadicalCSG/Chisel.Prototype/issues/118) to see shadow only surfaces, collider surfaces etc.  (partially implemented)
-* [Double sided surfaces](https://github.com/RadicalCSG/Chisel.Prototype/issues/226)
+* Decals, still to do:
+  * [Trim decals](https://github.com/RadicalCSG/Chisel.Prototype/issues/117) that run round corners
+  * Placing a trim decal by picking an edge in the scene view
+  * Automatic placement by rule (e.g. where two materials meet)
+  * Trim decal images taken from a trim sheet
+  * Trim mirroring
+  * Omni directional decals
+  * Skewed decals
+  * Fade distances
+* Vertex Painting
 * [Extrusion from existing surface](https://github.com/RadicalCSG/Chisel.Prototype/issues/19)
+* [2D shape editor](https://github.com/RadicalCSG/Chisel.Prototype/issues/260)
+* [Grid Objects](https://github.com/RadicalCSG/Chisel.Prototype/issues/121)
 * [Clip Tool](https://github.com/RadicalCSG/Chisel.Prototype/issues/15)
 * [Node Based Generators](https://github.com/RadicalCSG/Chisel.Prototype/issues/94) for easy procedural content generation
-* [2D shape editor](https://github.com/RadicalCSG/Chisel.Prototype/issues/260)
-* [Trim Decals](https://github.com/RadicalCSG/Chisel.Prototype/issues/117) along edges (partially implemented: decals can be placed by hand, but nothing follows an edge or wraps a corner)
-* [Grid Objects](https://github.com/RadicalCSG/Chisel.Prototype/issues/121)
 
 ---
 Extensions:

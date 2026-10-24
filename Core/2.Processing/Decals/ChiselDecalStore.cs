@@ -24,8 +24,7 @@ namespace Chisel.Core
         {
             public int Compare(DecalVolume x, DecalVolume y)
             {
-                var order = x.order.CompareTo(y.order);
-                return order != 0 ? order : x.sequence.CompareTo(y.sequence);
+                return x.sequence.CompareTo(y.sequence);
             }
         }
 

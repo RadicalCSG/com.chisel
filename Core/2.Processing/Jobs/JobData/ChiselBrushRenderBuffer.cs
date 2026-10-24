@@ -15,6 +15,8 @@ namespace Chisel.Core
         public int                          baseSurfaceIndex;
         // The decal drawn in this surface, which clicking it selects; 0 for the brush's own surfaces
         public ulong                        decalEntityID;
+        // a transparent decal's piece: where its decal stacks (1 the lowest), which its mesh draws it in; 0 otherwise
+        public int                          decalStack;
 		public SurfaceDestinationFlags      destinationFlags;
 		public SurfaceDestinationParameters destinationParameters;
 		// How many lightmap texels the surface gets (SurfaceOutputFlags.NoLightmap, SingleLightmapTexel)
@@ -192,6 +194,7 @@ namespace Chisel.Core
 				this.surfaceIndex = surfaceIndex;
 				this.baseSurfaceIndex = baseSurfaceIndex;
 				this.decalEntityID = 0;
+				this.decalStack = 0;
 				this.destinationFlags = destinationFlags;
 				this.destinationParameters = destinationParameters;
 				this.outputFlags = outputFlags;
@@ -216,6 +219,7 @@ namespace Chisel.Core
 			this.surfaceIndex = surfaceIndex;
 			this.baseSurfaceIndex = baseSurfaceIndex;
 			this.decalEntityID = 0;
+			this.decalStack = 0;
 
 			this.destinationFlags = destinationFlags;
 			this.destinationParameters = destinationParameters;

@@ -283,7 +283,8 @@ namespace Chisel.Editors
 								descriptionIndex = localPickingIndex - selectionOffset.offset
 							};
 
-							var obj = Resources.EntityIdToObject(UnityEngine.EntityId.FromULong(extraPickingData.selectionDescription.entityID));
+							// a trim decal's second half carries the decal's id with a bit set
+							var obj = Resources.EntityIdToObject(UnityEngine.EntityId.FromULong(ChiselTrimDecals.DecalEntityID(extraPickingData.selectionDescription.entityID)));
                             if (obj is MonoBehaviour monoBehaviour)
 								extraPickingData.selectionGameObject = monoBehaviour.gameObject;
                             else

@@ -71,6 +71,19 @@ namespace Chisel.Editors
 			}
 		}
 
+		static readonly GUIContent kDoubleSidedContents = new("Double Sided", "The surfaces are drawn from behind too (a back face that is drawn but doesn't collide)");
+
+		void DoubleSidedGUI()
+		{
+			var flags = (SurfaceOutputFlags)outputFlagsProp.intValue;
+			EditorGUI.showMixedValue = outputFlagsProp.hasMultipleDifferentValues;
+			EditorGUI.BeginChangeCheck();
+			var doubleSided = EditorGUILayout.Toggle(kDoubleSidedContents, (flags & SurfaceOutputFlags.DoubleSided) != 0);
+			if (EditorGUI.EndChangeCheck())
+				outputFlagsProp.intValue = (int)(doubleSided ? flags | SurfaceOutputFlags.DoubleSided : flags & ~SurfaceOutputFlags.DoubleSided);
+			EditorGUI.showMixedValue = false;
+		}
+
 		// The lightmap texels the surfaces get (SurfaceOutputFlags.NoLightmap, SingleLightmapTexel), as one choice
 		void LightmapGUI()
 		{
@@ -156,6 +169,7 @@ namespace Chisel.Editors
 					GetSurfaceDestinationFlags(surfaceDestinationFlagsProp, out var isRenderable, out var isCollidable);
 					if (isRenderable && outputFlagsProp != null)
 					{
+						DoubleSidedGUI();
 						LightmapGUI();
 					}
 					if (isCollidable)

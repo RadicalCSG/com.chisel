@@ -18,7 +18,9 @@ namespace Chisel.Core
         public int subMeshQueryIndex;
         public ulong surfaceParameter;
         public uint  chunk;
-            
+        // a chunk's transparent decals (ChiselDecalMeshes.kTransparentDecals): its descriptions are one mesh's sub-meshes
+        public bool  transparentDecals;
+
         public int surfacesOffset;
         public int surfacesCount;
             
@@ -35,6 +37,8 @@ namespace Chisel.Core
 		public int surfaceIndex;
 		public ulong surfaceParameter;
 		public uint  chunk;
+		// a transparent decal's piece: where its decal stacks (ChiselSurfaceRenderBuffer.decalStack); 0 otherwise
+		public int   decalStack;
 
 		public int vertexCount;
 		public int indexCount;
@@ -271,6 +275,9 @@ namespace Chisel.Core
                     return;
                 // a collider's section is the one description it starts at
                 var description = descriptions[section.startIndex];
+                // transparent decals are made again with their tree's every update
+                if (description.transparentDecals)
+                    return;
                 buffer.Reset();
                 if (render || debug)
                 {
@@ -699,9 +706,11 @@ namespace Chisel.Core
         // The key a surface of a query is grouped by: its parameter, and its chunk
         public static SurfaceGroupKey KeyOf(ref ChiselBrushRenderBuffer buffer, ChiselQuerySurface surface, uint brushChunk, bool chunked, bool surfaceChunked, bool oneMaterial)
         {
+            // a render query's transparent decals are one mesh per chunk, whatever their material
+            var transparentDecal = surfaceChunked && !oneMaterial && buffer.surfaces[surface.surfaceIndex].decalStack > 0;
             return new SurfaceGroupKey
             {
-                parameter = oneMaterial ? 0 : surface.surfaceParameter,
+                parameter = oneMaterial ? 0 : transparentDecal ? ChiselDecalMeshes.kTransparentDecals : surface.surfaceParameter,
                 chunk     = chunked ? brushChunk : surfaceChunked ? CellOf(buffer.surfaces[surface.surfaceIndex].aabb) : 0
             };
         }
@@ -837,7 +846,8 @@ namespace Chisel.Core
                     {
                         SurfaceGroupKey key;
                         var cell = int3.zero;
-                        if (split[t])
+                        var splitHere = split[t] && buffer.surfaces[surfaces[s].surfaceIndex].decalStack == 0;
+                        if (splitHere)
                         {
                             cell = PrepareSubSections.FineCellOf(buffer.surfaces[surfaces[s].surfaceIndex].aabb);
                             key  = new SurfaceGroupKey { parameter = surfaces[s].surfaceParameter, chunk = PrepareSubSections.ChunkOfCell(cell, 2) };
@@ -1061,12 +1071,14 @@ namespace Chisel.Core
                         var group = query.finalOf.IsCreated ? query.finalOf[localGroup] : localGroup;
                         var key   = query.finalKeys[group];
                         var index = query.finalCounts[group]++;
+                        var decals = key.parameter == ChiselDecalMeshes.kTransparentDecals;
                         list[index] = new SubMeshSurface
                         {
                             brushNodeID       = brushNodeID,
                             surfaceIndex      = surfaces[s].surfaceIndex,
-                            surfaceParameter  = key.parameter,
+                            surfaceParameter  = decals ? surfaces[s].surfaceParameter : key.parameter,
                             chunk             = key.chunk,
+                            decalStack        = decals ? brushRenderBuffer.Value.surfaces[surfaces[s].surfaceIndex].decalStack : 0,
                             vertexCount       = surfaces[s].vertexCount,
                             indexCount        = surfaces[s].indexCount,
                             surfaceHashValue  = surfaces[s].surfaceHashValue,
@@ -1121,6 +1133,7 @@ namespace Chisel.Core
                 return;
 
             var meshQuery       = meshQueries[t];
+            SortTransparentDecals(subMeshSurfaceList);
 
 			NativeList<SubMeshDescriptions> sectionSubMeshCounts; 
 			using var _sectionSubMeshCounts = sectionSubMeshCounts = new NativeList<SubMeshDescriptions>(surfaceCount, Allocator.Temp);
@@ -1131,7 +1144,8 @@ namespace Chisel.Core
                 meshQuery           = meshQuery,
                 surfacesOffset      = 0,
                 surfaceParameter    = subMeshSurfaceList[0].surfaceParameter,
-                chunk               = subMeshSurfaceList[0].chunk
+                chunk               = subMeshSurfaceList[0].chunk,
+                transparentDecals   = subMeshSurfaceList[0].decalStack > 0
             };
             for (int b = 0; b < surfaceCount; b++)
             {
@@ -1140,7 +1154,9 @@ namespace Chisel.Core
                 var surfaceVertexCount          = subMeshSurface.vertexCount;
                 var surfaceIndexCount           = subMeshSurface.indexCount;
 
-                if (currentSubMesh.surfaceParameter != surfaceParameter || currentSubMesh.chunk != subMeshSurface.chunk)
+                var transparentDecals = subMeshSurface.decalStack > 0;
+                if (currentSubMesh.surfaceParameter != surfaceParameter || currentSubMesh.chunk != subMeshSurface.chunk ||
+                    currentSubMesh.transparentDecals != transparentDecals)
                 {
                     // Store the previous subMeshCount
                     if (currentSubMesh.indexCount > 0 && currentSubMesh.vertexCount > 0)
@@ -1157,6 +1173,7 @@ namespace Chisel.Core
 					currentSubMesh.surfacesCount = 0;
                     currentSubMesh.surfaceParameter = surfaceParameter;
                     currentSubMesh.chunk = subMeshSurface.chunk;
+                    currentSubMesh.transparentDecals = transparentDecals;
                     currentSubMesh.subMeshQueryIndex++;
                 } 
 
@@ -1173,6 +1190,42 @@ namespace Chisel.Core
 
             subMeshDescriptions.AddRangeNoResize(sectionSubMeshCounts);
 		}
+
+        // A chunk's transparent decals (one group, contiguous) in the order their decals stack, and in brush order within one
+        static void SortTransparentDecals(UnsafeList<SubMeshSurface> surfaces)
+        {
+            for (int start = 0; start < surfaces.Length; )
+            {
+                if (surfaces[start].decalStack == 0)
+                {
+                    start++;
+                    continue;
+                }
+                var end = start + 1;
+                while (end < surfaces.Length && surfaces[end].decalStack > 0 && surfaces[end].chunk == surfaces[start].chunk)
+                    end++;
+                if (end - start > 1)
+                {
+                    var order = new NativeArray<int2>(end - start, Allocator.Temp);
+                    for (int i = start; i < end; i++)
+                        order[i - start] = new int2(surfaces[i].decalStack, i);
+                    order.Sort(new ByStackThenIndex());
+                    var sorted = new NativeArray<SubMeshSurface>(end - start, Allocator.Temp);
+                    for (int i = 0; i < order.Length; i++)
+                        sorted[i] = surfaces[order[i].y];
+                    for (int i = 0; i < sorted.Length; i++)
+                        surfaces[start + i] = sorted[i];
+                    sorted.Dispose();
+                    order.Dispose();
+                }
+                start = end;
+            }
+        }
+
+        struct ByStackThenIndex : System.Collections.Generic.IComparer<int2>
+        {
+            public int Compare(int2 x, int2 y) => x.x != y.x ? x.x.CompareTo(y.x) : x.y.CompareTo(y.y);
+        }
     }
     
     [BurstCompile(CompileSynchronously = true)]
@@ -1217,7 +1270,9 @@ namespace Chisel.Core
                     // so does each chunk
                     var currQuery = subMeshCount.meshQuery;
                     if (descriptionIndex == startIndex ||
-                        (prevQuery == currQuery && !OneMeshPerMaterial(currQuery) && prevChunk == subMeshCount.chunk))
+                        (prevQuery == currQuery && !OneMeshPerMaterial(currQuery) && prevChunk == subMeshCount.chunk) ||
+                        (prevQuery == currQuery && prevChunk == subMeshCount.chunk &&
+                         subMeshCount.transparentDecals && subMeshDescriptions[descriptionIndex - 1].transparentDecals))
                     {
                         continue;
                     }
@@ -1315,6 +1370,7 @@ namespace Chisel.Core
                     meshQuery           = subMesh.meshQuery,
                     surfaceParameter    = subMesh.surfaceParameter,
                     chunk               = subMesh.chunk,
+                    transparentDecals   = subMesh.transparentDecals,
                     meshQueryIndex      = subMesh.meshQueryIndex,
                     subMeshQueryIndex   = subMesh.subMeshQueryIndex,
 

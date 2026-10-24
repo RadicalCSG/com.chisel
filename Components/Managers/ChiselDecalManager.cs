@@ -14,7 +14,7 @@ namespace Chisel.Components
     public static class ChiselDecalManager
     {
         static readonly HashSet<ChiselDecalComponent> s_Decals = new();
-        // the decals in hierarchy order: how decals of one order stack (SetDecals), the same every time a scene is loaded
+        // the decals in hierarchy order: how decals stack (SetDecals), the same every time a scene is loaded
         static readonly List<ChiselDecalComponent> s_Ordered = new();
         static bool s_OrderDirty = true;
         // Last synchronized state for each model.
@@ -38,6 +38,12 @@ namespace Chisel.Components
             public SurfaceDestinationFlags destinationFlags;
             // Null targets apply to every surface.
             public ChiselDecalTarget[]     targets;
+            // a trim decal (ChiselTrimDecals): its halves, worked out from its surfaces in every update
+            public ChiselDecalComponent    trimDecal;
+            public bool                    trimValid;
+            public ChiselModelComponent    trimModel;
+            public ChiselDecalInstance     trimA, trimB;
+            public ChiselDecalTarget[]     trimTargetA, trimTargetB;
         }
 
         sealed class ModelState
@@ -183,6 +189,20 @@ namespace Chisel.Components
                     {
                         if (decal == null || decal.Material == null)
                             continue;
+                        if (decal.Shape == ChiselDecalShape.Trim)
+                        {
+                            s_DecalStates[decal] = new DecalState
+                            {
+                                transform        = decal.transform,
+                                entityID         = EntityId.ToULong(decal.GetEntityId()),
+                                renderMaterial   = EntityId.ToULong(decal.Material.GetEntityId()),
+                                destinationFlags = GetDestinationFlags(decal.Material),
+                                trimDecal        = decal,
+                                trimTargetA      = new ChiselDecalTarget[1],
+                                trimTargetB      = new ChiselDecalTarget[1]
+                            };
+                            continue;
+                        }
                         ChiselDecalTarget[] targets = null;
                         if (decal.Targets.Count > 0)
                         {
@@ -216,6 +236,9 @@ namespace Chisel.Components
 
                 foreach (var decalState in s_DecalStates.Values)
                 {
+                    // a trim decal follows its surfaces, which nothing announces either
+                    if (decalState.trimDecal != null && UpdateTrim(decalState))
+                        changed = true;
                     if (decalState.transform == null)
                         continue;
                     var localToWorld = decalState.transform.localToWorldMatrix;
@@ -241,6 +264,15 @@ namespace Chisel.Components
                     if (decal == null || !decal.isActiveAndEnabled ||
                         !s_DecalStates.TryGetValue(decal, out var decalState))
                         continue;
+                    if (decalState.trimDecal != null)
+                    {
+                        if (decalState.trimValid && s_Models.TryGetValue(decalState.trimModel, out var trimModelState))
+                        {
+                            Add(trimModelState, decalState.trimA, decalState.trimTargetA);
+                            Add(trimModelState, decalState.trimB, decalState.trimTargetB);
+                        }
+                        continue;
+                    }
                     if (decalState.parentModel != null)
                     {
                         if (s_Models.TryGetValue(decalState.parentModel, out var state))
@@ -293,6 +325,57 @@ namespace Chisel.Components
                 s_Stale.Clear();
                 Profiler.EndSample();
             }
+        }
+
+        /// <summary>Whether a trim decal's halves are no longer what the last update gave its tree (its surfaces changed since)</summary>
+        public static bool TrimsChanged()
+        {
+            foreach (var state in s_DecalStates.Values)
+            {
+                if (state.trimDecal == null)
+                    continue;
+                var valid = ChiselTrimDecals.TryDescribe(state.trimDecal, state.entityID, state.renderMaterial, state.destinationFlags,
+                                                         out var model, out var a, out var b);
+                if (valid != state.trimValid ||
+                    (valid && (model != state.trimModel || !a.decal.Equals(state.trimA) || !b.decal.Equals(state.trimB))))
+                    return true;
+            }
+            return false;
+        }
+
+        // The trim decal's halves now; true when they are not what they were
+        static bool UpdateTrim(DecalState state)
+        {
+            var valid = ChiselTrimDecals.TryDescribe(state.trimDecal, state.entityID, state.renderMaterial, state.destinationFlags,
+                                                     out var model, out var a, out var b);
+            if (valid)
+                KeepOnEdge(state.trimDecal.transform, model, a.decal);
+            if (valid == state.trimValid &&
+                (!valid || (model == state.trimModel && a.decal.Equals(state.trimA) && b.decal.Equals(state.trimB) &&
+                            a.target.Equals(state.trimTargetA[0]) && b.target.Equals(state.trimTargetB[0]))))
+                return false;
+            state.trimValid      = valid;
+            state.trimModel      = model;
+            state.trimA          = a.decal;
+            state.trimB          = b.decal;
+            state.trimTargetA[0] = a.target;
+            state.trimTargetB[0] = b.target;
+            return true;
+        }
+
+        // A trim decal's transform stays on its edge, at the point nearest to where it is (it can slide along it)
+        static void KeepOnEdge(Transform transform, ChiselModelComponent model, in ChiselDecalInstance half)
+        {
+            var toWorld = model.transform.localToWorldMatrix * (Matrix4x4)half.decalToTree;
+            var halfLength = half.settings.size.x * 0.5f;
+            var start = toWorld.MultiplyPoint3x4(new Vector3(-halfLength, 0, 0));
+            var end   = toWorld.MultiplyPoint3x4(new Vector3( halfLength, 0, 0));
+            var edge  = end - start;
+            var position = transform.position;
+            var t = Mathf.Clamp01(Vector3.Dot(position - start, edge) / Mathf.Max(edge.sqrMagnitude, 1e-12f));
+            var onEdge = start + edge * t;
+            if ((onEdge - position).sqrMagnitude > 1e-10f)
+                transform.position = onEdge;
         }
 
         static void Add(ModelState state, ChiselDecalInstance decal, ChiselDecalTarget[] targets)

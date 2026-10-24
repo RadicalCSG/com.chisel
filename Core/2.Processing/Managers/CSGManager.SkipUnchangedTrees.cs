@@ -246,7 +246,6 @@ namespace Chisel.Core
                     decalBuffer.Add(settings.fieldOfView);
                     decalBuffer.Add(settings.maxAngle);
                     decalBuffer.Add(settings.transparent ? 1 : 0);
-                    decalBuffer.Add(settings.order);
                     decalBuffer.Add(settings.surfaceOffset);
                     decalBuffer.Add(settings.uvScale);
                     decalBuffer.Add(settings.uvOffset);

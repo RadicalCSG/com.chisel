@@ -63,6 +63,8 @@ namespace Chisel.Core
     public struct AssignMeshesJob : IJob
     {
         public const int kDebugVisualizationModeCount = 6;
+        // kGeneratedDebugRendererFlags' index of the surfaces the CSG removed
+        public const int kDiscardedVisualization = 5;
         public struct DebugRenderFlags { public SurfaceDestinationFlags Item1; public SurfaceDestinationFlags Item2; };
         public readonly static DebugRenderFlags[] kGeneratedDebugRendererFlags = new DebugRenderFlags[kDebugVisualizationModeCount]
         {
@@ -198,7 +200,8 @@ namespace Chisel.Core
                             contentsIndex    = i,
                             meshIndex        = meshIndex,
                             objectIndex      = (ulong)renderIndex,
-                            surfaceParameter = GatherSurfacesJob.OneMeshPerMaterial(subMeshSection.meshQuery) ? meshDescriptions[subMeshSection.startIndex].surfaceParameter : 0,
+                            surfaceParameter = meshDescriptions[subMeshSection.startIndex].transparentDecals ? ChiselDecalMeshes.kTransparentDecals :
+                                               GatherSurfacesJob.OneMeshPerMaterial(subMeshSection.meshQuery) ? meshDescriptions[subMeshSection.startIndex].surfaceParameter : 0,
                             chunk            = meshDescriptions[subMeshSection.startIndex].chunk,
                             lightmapHashValue = sectionLightmapHashes.IsCreated && i < sectionLightmapHashes.Length ? sectionLightmapHashes[i] : 0,
                             type             = ChiselMeshType.Render,
