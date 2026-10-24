@@ -24,4 +24,12 @@ needs to be installed and on your path.
 The first time you start up it might take some time, because Unity Burst compiles a lot of code.
 This should only happen once.
 
+### If the installation fails
+
+* **"Filename too long"** (Windows): git can't write the dependencies inside a deep project folder. Allow long
+  paths in git once, with `git config --global core.longpaths true`, or move the project to a shorter path, then
+  install again.
+* **"Cannot checkout repository"**: make sure git is installed and that `git` works in a command prompt; Unity uses
+  it to download Chisel and its dependencies.
+
 Then see [Getting Started](GETTING_STARTED.md).

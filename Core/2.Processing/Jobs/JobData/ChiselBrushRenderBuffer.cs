@@ -186,10 +186,10 @@ namespace Chisel.Core
 							  SurfaceDestinationParameters	destinationParameters,
 							  SurfaceOutputFlags				outputFlags)
 		{
-			if (colliderVertices.Length != renderVertices.Length ||
-				colliderVertices.Length != selectVertices.Length)
+			int colliderCount = colliderVertices.Length, selectCount = selectVertices.Length, renderCount = renderVertices.Length, indexCount = indices.Length;
+			if (colliderCount != renderCount || colliderCount != selectCount)
 			{
-				LogInconsistentVertexStreams(surfaceIndex, colliderVertices.Length, selectVertices.Length, renderVertices.Length, indices.Length);
+				LogInconsistentVertexStreams(surfaceIndex, colliderCount, selectCount, renderCount, indexCount);
 
 				this.surfaceIndex = surfaceIndex;
 				this.baseSurfaceIndex = baseSurfaceIndex;

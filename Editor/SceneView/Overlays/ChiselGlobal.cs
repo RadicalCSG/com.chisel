@@ -7,7 +7,6 @@ using UnityEditor.EditorTools;
 using UnityEditor.Overlays;
 using UnityEditor.Toolbars;
 using UnityEngine;
-using UnityEngine.UI;
 
 // Just a misc. collections of buttons we don't have a more sensible place for
 namespace Chisel.Editors
