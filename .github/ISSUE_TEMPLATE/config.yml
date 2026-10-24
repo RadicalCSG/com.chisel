@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Questions and help
+    url: https://discord.gg/zttNkPQ
+    about: Ask how to do something in the official Discord server.
+  - name: Documentation
+    url: https://github.com/RadicalCSG/com.chisel/wiki
+    about: Every feature, and how to use it, is explained on the wiki.

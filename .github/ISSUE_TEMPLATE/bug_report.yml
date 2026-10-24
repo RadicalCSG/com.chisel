@@ -1,0 +1,67 @@
+name: Bug report
+description: Something in Chisel doesn't work as it should
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a problem! A scene that shows it, or steps to make it happen, helps us fix it much faster.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happens
+      description: What goes wrong? Screenshots or a short video help.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected to happen
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: The steps that make it happen, starting from a new scene if you can. Attach a scene (zipped) if it only happens in yours.
+      placeholder: |
+        1. Create a linear stairs generator
+        2. Set its step height to ...
+        3. ...
+    validations:
+      required: true
+  - type: textarea
+    id: console
+    attributes:
+      label: Console errors
+      description: Any errors or warnings in the Unity console, with their stack traces.
+      render: text
+  - type: input
+    id: unity
+    attributes:
+      label: Unity version
+      placeholder: 6000.6.0f1
+    validations:
+      required: true
+  - type: input
+    id: chisel
+    attributes:
+      label: Chisel version
+      description: The version in the Package Manager, or the commit you installed.
+    validations:
+      required: true
+  - type: dropdown
+    id: pipeline
+    attributes:
+      label: Render pipeline
+      options:
+        - URP
+        - HDRP
+        - Built-in
+    validations:
+      required: true
+  - type: input
+    id: platform
+    attributes:
+      label: Operating system
+      placeholder: Windows 11, macOS 15 (M4), Ubuntu 24.04...
