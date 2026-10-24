@@ -257,8 +257,8 @@ namespace Chisel.Components
             edge.length = imageLength;
         }
 
-        // Edges that run past a corner (the surfaces of brushes overlapping there) or stop short of it end where their lines
-        // cross, when that is within reach of their ends
+        // Edges that run past a corner (the surfaces of brushes overlapping there, however far) or stop short of it (by
+        // no more than reach) end where their lines cross
         static void JoinCorners(ChainEdge[] edges, float reach)
         {
             var count = edges.Length;
@@ -281,7 +281,7 @@ namespace Chisel.Components
                 var t = (e - along * d) / denominator;
                 if (math.distance(edge.start + edge.direction * s, next.start + next.direction * t) > kMargin)
                     continue;
-                if (math.abs(s - edge.length) > reach || math.abs(t) > reach || s <= kMargin || t >= next.length - kMargin)
+                if (s <= kMargin || s > edge.length + reach || t < -reach || t >= next.length - kMargin)
                     continue;
                 edge.length  = s;
                 next.start  += next.direction * t;

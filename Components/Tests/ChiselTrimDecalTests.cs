@@ -555,13 +555,14 @@ namespace Chisel.Components.Tests
 
         // Two walls that overlap at a corner: each wall's foot runs past the corner, inside the other. A chain round the
         // corner ends both edges where they cross, and mitres them there
-        [Test]
-        public void AChainRoundACornerWhereWallsOverlap_EndsBothEdgesAtTheCorner()
+        [TestCase(1f, 1f)]
+        [TestCase(3f, 0.25f)]
+        public void AChainRoundACornerWhereWallsOverlap_EndsBothEdgesAtTheCorner(float thickness, float imageSize)
         {
             var model = Model();
-            var floor = Box(model, new float3(-5, -1, -5), new float3(5, 0, 5));
-            var wall1 = Box(model, new float3(-3, 0, 0), new float3(1, 2, 1));
-            var wall2 = Box(model, new float3(0, 0, -3), new float3(1, 2, 1));
+            var floor = Box(model, new float3(-8, -1, -8), new float3(8, 0, 8));
+            var wall1 = Box(model, new float3(-3, 0, 0), new float3(thickness, 2, thickness));
+            var wall2 = Box(model, new float3(0, 0, -3), new float3(thickness, 2, thickness));
             Update();
             var decal = Trim(model, floor, SurfaceFacing(floor, new float3(0, 1, 0)), wall1, SurfaceFacing(wall1, new float3(0, 0, -1)));
             decal.SetTargets(null);
@@ -570,6 +571,8 @@ namespace Chisel.Components.Tests
                               EdgeOf(wall1, new float3(0, 0, -1), v => math.abs(v.y) < 1e-4f));
             decal.AddTrimEdge(floorTop, new ChiselDecalSurfaceTarget { brush = wall2, surfaceIndex = SurfaceFacing(wall2, new float3(-1, 0, 0)) }, true,
                               EdgeOf(wall2, new float3(-1, 0, 0), v => math.abs(v.y) < 1e-4f));
+            decal.Size = new Vector3(imageSize, imageSize, 1);
+            decal.TrimFill = ChiselTrimFill.Stretch;
             Update();
             var halves = new List<ChiselTrimDecals.Half>();
             Assert.That(ChiselTrimDecals.TryDescribe(decal, 1, 1, SurfaceDestinationFlags.Default, out _, halves, out _, out _), Is.True);
