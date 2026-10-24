@@ -71,12 +71,15 @@ namespace Chisel.Editors
         {
             serializedObject.Update();
 
+            var settings = serializedObject.FindProperty(ChiselDecalComponent.kSettingsName);
             var material = serializedObject.FindProperty(ChiselDecalComponent.kMaterialName);
-            EditorGUILayout.PropertyField(material, kMaterialContent);
+            var transparent = settings.FindPropertyRelative(nameof(ChiselDecalSettings.transparent));
+            MaterialField(material, transparent);
             if (material.objectReferenceValue == null && !material.hasMultipleDifferentValues)
                 EditorGUILayout.HelpBox(kNoMaterialMessage, MessageType.Info);
+            if (transparent.hasMultipleDifferentValues || transparent.boolValue)
+                EditorGUILayout.PropertyField(settings.FindPropertyRelative(nameof(ChiselDecalSettings.surfaceOffset)), kSurfaceOffsetContent);
 
-            var settings = serializedObject.FindProperty(ChiselDecalComponent.kSettingsName);
             var shape    = serializedObject.FindProperty(ChiselDecalComponent.kShapeName);
             EditorGUI.BeginChangeCheck();
             EnumToggles(shape, kShapeContent, kShapeOptions, 2);
@@ -108,12 +111,8 @@ namespace Chisel.Editors
             }
             EditorGUILayout.PropertyField(serializedObject.FindProperty(ChiselDecalComponent.kImageRectName), kImageRectContent);
 
-            var transparent = settings.FindPropertyRelative(nameof(ChiselDecalSettings.transparent));
-            EditorGUILayout.PropertyField(transparent, kTransparentContent);
             if (!trim)
                 EditorGUILayout.Slider(settings.FindPropertyRelative(nameof(ChiselDecalSettings.maxAngle)), 0, 180, kMaxAngleContent);
-            if (transparent.hasMultipleDifferentValues || transparent.boolValue)
-                EditorGUILayout.PropertyField(settings.FindPropertyRelative(nameof(ChiselDecalSettings.surfaceOffset)), kSurfaceOffsetContent);
 
             EditorGUILayout.PropertyField(settings.FindPropertyRelative(nameof(ChiselDecalSettings.uvScale)), kUVScaleContent);
             EditorGUILayout.PropertyField(settings.FindPropertyRelative(nameof(ChiselDecalSettings.uvOffset)), kUVOffsetContent);
@@ -152,6 +151,28 @@ namespace Chisel.Editors
             }
 
             serializedObject.ApplyModifiedProperties();
+        }
+
+        // The material, and on its line whether the decal is transparent
+        static void MaterialField(SerializedProperty material, SerializedProperty transparent)
+        {
+            var rect = EditorGUILayout.GetControlRect();
+            var toggleWidth = EditorStyles.toggle.CalcSize(kTransparentContent).x + 4;
+            var materialRect = new Rect(rect.x, rect.y, rect.width - toggleWidth - 4, rect.height);
+            var toggleRect   = new Rect(rect.xMax - toggleWidth, rect.y, toggleWidth, rect.height);
+            EditorGUI.PropertyField(materialRect, material, kMaterialContent);
+            using (new EditorGUI.PropertyScope(toggleRect, kTransparentContent, transparent))
+            {
+                var indent = EditorGUI.indentLevel;
+                EditorGUI.indentLevel = 0;
+                EditorGUI.BeginChangeCheck();
+                EditorGUI.showMixedValue = transparent.hasMultipleDifferentValues;
+                var value = EditorGUI.ToggleLeft(toggleRect, kTransparentContent, transparent.boolValue);
+                EditorGUI.showMixedValue = false;
+                if (EditorGUI.EndChangeCheck())
+                    transparent.boolValue = value;
+                EditorGUI.indentLevel = indent;
+            }
         }
 
         // An enum as toggles, one of them on (none while the selection differs), perRow to a line
