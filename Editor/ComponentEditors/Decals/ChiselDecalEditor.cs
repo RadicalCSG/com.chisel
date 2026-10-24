@@ -25,7 +25,11 @@ namespace Chisel.Editors
         static readonly GUIContent kSurfaceOffsetContent = new GUIContent("Surface Offset", "How far a transparent decal is lifted off the surface, so it doesn't fight it for depth.");
         static readonly GUIContent kUVScaleContent       = new GUIContent("UV Scale", "The texture coordinates are UV Offset + UV Scale * p, where p runs from (0,0) at the image's lower left to (1,1) at its upper right.");
         static readonly GUIContent kUVOffsetContent      = new GUIContent("UV Offset");
-        static readonly GUIContent kTargetsContent       = new GUIContent("Targets", "Limits the decal to these brush surfaces (surface index -1: all of the brush's surfaces). Empty: every surface it reaches.");
+        static readonly GUIContent kTargetContent        = new GUIContent("Target", "Limits the decal to this brush's surface (surface index -1: all of the brush's surfaces). None: every surface it reaches.");
+        static readonly GUIContent kFirstSurfaceContent  = new GUIContent("First Surface", "The surface that takes the image's lower half.");
+        static readonly GUIContent kSecondSurfaceContent = new GUIContent("Second Surface", "The surface that takes the image's upper half (with Mirror, its lower half mirrored).");
+        static readonly GUIContent kSurfaceIndexContent  = new GUIContent("Surface Index", "The brush's surface, or -1 for all of them.");
+        static readonly GUIContent kClearChainContent    = new GUIContent("Clear Chain", "Keeps only the first edge.");
         static readonly GUIContent kShapeContent         = new GUIContent("Shape", "Box: the image is projected through the box. Trim: the image lies on the edge between two surfaces, its lower half on the first, its upper half on the second.");
         static readonly GUIContent kImageRectContent     = new GUIContent("Image Rect", "The part of the texture the image is, in texture coordinates (0 to 1): all of it, or an image in a trim sheet. An image in a trim sheet can't repeat by wrapping, so it is a piece of its own for every image it repeats.");
         static readonly GUIContent kRepeatContent        = new GUIContent("Repeat", "How many times the image repeats across the box, in x and y. A perspective decal shows a trim sheet's image once.");
@@ -33,11 +37,11 @@ namespace Chisel.Editors
         static readonly GUIContent kTrimFillContent       = new GUIContent("Fill", "Stretch: one image over the whole edge. Repeat: the image repeated at its length, the last one cut short. Fit: the whole number of images nearest to what fits, stretched to fill the edge. Single: one image at its length, round the decal's position (move the decal along the edge to place it).");
         static readonly GUIContent kTrimLengthContent    = new GUIContent("Length", "The image's length along the edge.");
         static readonly GUIContent kTrimHeightContent    = new GUIContent("Height", "The image's height across both surfaces: each half reaches half of it into its surface.");
-        static readonly GUIContent kTrimSurfacesContent  = new GUIContent("Surfaces", "Pairs of surfaces, an edge each, in order: the first of a pair takes the image's lower half, the second its upper half. Edges that meet are a chain round corners, mitred where they meet on one surface.");
         static readonly GUIContent kPickEdgeContent      = new GUIContent("Pick Edge", "Click a surface near one of its edges in the scene view: the trim goes on that edge, between the surface and the one that meets it there. Shift-click adds the edge to the trim's chain round corners, and goes on picking. Escape stops.");
         static readonly GUIContent kCancelPickContent    = new GUIContent("Cancel Picking");
         static readonly GUIContent kPlaceWhereMeetContent = new GUIContent("Place Where Materials Meet", "Puts a copy of this trim decal on every edge in its model where a surface with its first surface's material meets one with its second surface's material (edges within one brush).");
         const string kTrimNeedsTwoMessage = "A trim decal lies on the edge between two surfaces: give it two.";
+        const string kTrimChainMessage    = "Runs on round {0} more edge(s), added with Shift-click while picking.";
         const string kNoMaterialMessage = "A decal without a material draws nothing.";
 
         [MenuItem(kCreateMenuPath, false, -2)]
@@ -64,8 +68,13 @@ namespace Chisel.Editors
 
             var settings = serializedObject.FindProperty(ChiselDecalComponent.kSettingsName);
             var shape    = serializedObject.FindProperty(ChiselDecalComponent.kShapeName);
+            EditorGUI.BeginChangeCheck();
             EditorGUILayout.PropertyField(shape, kShapeContent);
             var trim = !shape.hasMultipleDifferentValues && shape.enumValueIndex == (int)ChiselDecalShape.Trim;
+            // a box decal has one target at most
+            var targetList = serializedObject.FindProperty(ChiselDecalComponent.kTargetsName);
+            if (EditorGUI.EndChangeCheck() && !trim && !shape.hasMultipleDifferentValues && targetList.arraySize > 1)
+                targetList.arraySize = 1;
             if (trim)
             {
                 EditorGUILayout.PropertyField(serializedObject.FindProperty(ChiselDecalComponent.kTrimFillName), kTrimFillContent);
@@ -99,12 +108,25 @@ namespace Chisel.Editors
             EditorGUILayout.PropertyField(settings.FindPropertyRelative(nameof(ChiselDecalSettings.uvScale)), kUVScaleContent);
             EditorGUILayout.PropertyField(settings.FindPropertyRelative(nameof(ChiselDecalSettings.uvOffset)), kUVOffsetContent);
 
-            EditorGUILayout.PropertyField(serializedObject.FindProperty(ChiselDecalComponent.kTargetsName), trim ? kTrimSurfacesContent : kTargetsContent, true);
+            var targets = serializedObject.FindProperty(ChiselDecalComponent.kTargetsName);
+            if (!trim)
+                TargetField(targets, 0, kTargetContent, single: true);
+            else
+            {
+                TargetField(targets, 0, kFirstSurfaceContent, single: false);
+                TargetField(targets, 1, kSecondSurfaceContent, single: false);
+            }
             if (trim && !serializedObject.isEditingMultipleObjects)
             {
                 var decal = (ChiselDecalComponent)target;
                 if (decal.Targets.Count < 2)
                     EditorGUILayout.HelpBox(kTrimNeedsTwoMessage, MessageType.Info);
+                if (decal.Targets.Count > 2)
+                {
+                    EditorGUILayout.HelpBox(string.Format(kTrimChainMessage, decal.Targets.Count / 2 - 1), MessageType.None);
+                    if (GUILayout.Button(kClearChainContent))
+                        targets.arraySize = 2;
+                }
                 var picking = s_PickingFor == decal;
                 if (GUILayout.Button(picking ? kCancelPickContent : kPickEdgeContent))
                 {
@@ -120,6 +142,44 @@ namespace Chisel.Editors
             }
 
             serializedObject.ApplyModifiedProperties();
+        }
+
+        // One target of the list: its brush, and once it has one, its surface. A box decal's target is its only one (none:
+        // every surface); a trim decal's first two are its first edge
+        static void TargetField(SerializedProperty targets, int index, GUIContent label, bool single)
+        {
+            var exists  = index < targets.arraySize;
+            var element = exists ? targets.GetArrayElementAtIndex(index) : null;
+            var brush   = exists ? element.FindPropertyRelative(nameof(ChiselDecalSurfaceTarget.brush)) : null;
+            EditorGUI.showMixedValue = targets.hasMultipleDifferentValues;
+            EditorGUI.BeginChangeCheck();
+            var newBrush = EditorGUILayout.ObjectField(label, brush?.objectReferenceValue, typeof(ChiselNodeComponent), true);
+            EditorGUI.showMixedValue = false;
+            if (EditorGUI.EndChangeCheck())
+            {
+                if (single && newBrush == null)
+                {
+                    targets.arraySize = 0;
+                    return;
+                }
+                if (single)
+                    targets.arraySize = 1;
+                while (targets.arraySize <= index)
+                {
+                    targets.arraySize++;
+                    var added = targets.GetArrayElementAtIndex(targets.arraySize - 1);
+                    added.FindPropertyRelative(nameof(ChiselDecalSurfaceTarget.brush)).objectReferenceValue = null;
+                    added.FindPropertyRelative(nameof(ChiselDecalSurfaceTarget.surfaceIndex)).intValue = ChiselDecalSurfaceTarget.kAllSurfaces;
+                }
+                element = targets.GetArrayElementAtIndex(index);
+                element.FindPropertyRelative(nameof(ChiselDecalSurfaceTarget.brush)).objectReferenceValue = newBrush;
+                exists = true;
+            }
+            if (!exists || element.FindPropertyRelative(nameof(ChiselDecalSurfaceTarget.brush)).objectReferenceValue == null)
+                return;
+            EditorGUI.indentLevel++;
+            EditorGUILayout.PropertyField(element.FindPropertyRelative(nameof(ChiselDecalSurfaceTarget.surfaceIndex)), kSurfaceIndexContent);
+            EditorGUI.indentLevel--;
         }
 
         void OnSceneGUI()
