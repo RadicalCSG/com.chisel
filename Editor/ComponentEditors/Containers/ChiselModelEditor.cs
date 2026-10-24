@@ -172,7 +172,6 @@ namespace Chisel.Editors
 
         readonly static ChiselComponentInspectorMessageHandler s_Messages = new();
         //private Vector2 modelMessagesScrollPosition = Vector2.zero;
-        Vector2 childMessagesScrollPosition = Vector2.zero;
 
 
         delegate float GetCachedMeshSurfaceAreaDelegate(MeshRenderer meshRenderer);
@@ -1033,9 +1032,9 @@ namespace Chisel.Editors
 
                 if (targets.Length == 1)
                 {
-                    s_Messages.StartWarnings(childMessagesScrollPosition);
+                    s_Messages.StartWarnings();
                     ChiselMessages.ShowMessages(childNodes, s_Messages);
-					childMessagesScrollPosition = s_Messages.EndWarnings();
+					s_Messages.EndWarnings();
                 }
 
 				EditorGUI.BeginChangeCheck();

@@ -181,7 +181,7 @@ namespace Chisel.Editors
                                                 handleMatrix.MultiplyPoint(handleOrigin),
                                                 handleMatrix.MultiplyVector(slideDirection), 
                                                 snappingStep, axis);
-                        s_Snapping1D.CalculateExtents(SceneHandles.InverseMatrix, s_StartPoints);
+                        s_Snapping1D.CalculateExtents(handleMatrix, s_StartPoints);
                         s_MovedMouse = false;
                         break;
                     }

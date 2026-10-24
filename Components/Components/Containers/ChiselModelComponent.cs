@@ -278,23 +278,20 @@ namespace Chisel.Components
         {
             // TODO: improve warning messages
             const string kModelHasNoChildrenMessage   = kNodeTypeName + " has no children and will not have an effect";
-            const string kFailedToGenerateNodeMessage = "Failed to generate internal representation of " + kNodeTypeName + "\nThe model might not have any (active) brushes inside it.";
+            const string kFailedToGenerateNodeMessage = "Failed to generate internal representation of " + kNodeTypeName + " (this should never happen)";
 		    //const string kChildNodesWithProblems    = kNodeTypeName + " has children with errors";
 
             if (!Node.Valid)
                 messages.Warning(kFailedToGenerateNodeMessage);
 
             // A model makes no sense without any children
-            if (transform.childCount == 0)
-            { 
-                messages.Warning(kModelHasNoChildrenMessage);
+            if (hierarchyItem != null && hierarchyItem.Registered)
+            {
+                if (hierarchyItem.Children.Count == 0)
+                    messages.Warning(kModelHasNoChildrenMessage);
             } else
-			{
-                if (transform.GetComponentInChildren<ChiselNodeComponent>() == null)
-				{
-					messages.Warning(kModelHasNoChildrenMessage);
-				}
-			}
+            if (transform.childCount == 0)
+                messages.Warning(kModelHasNoChildrenMessage);
 
             //if (invalidChildNodes.Count > 0)
 			//	messages.Warning(kChildNodesWithProblems);
