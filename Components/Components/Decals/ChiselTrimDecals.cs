@@ -71,21 +71,22 @@ namespace Chisel.Components
             if (!(size.x > kEpsilon) || !(size.y > kEpsilon))
                 return false;
 
-            // part of the edge: size.z of it, round the decal's position on the edge (moved to stay on the edge)
-            if (decal.TrimExtent == ChiselTrimExtent.Part && size.z > kEpsilon && size.z < to - from)
+            // one image round the decal's position on the edge (kept on the edge), its whole length near the ends
+            var fill = decal.TrimFill;
+            if (fill == ChiselTrimFill.Single && size.x < to - from)
             {
                 var position = (float3)model.transform.worldToLocalMatrix.MultiplyPoint3x4(decal.transform.position);
                 var at = math.clamp(math.dot(position - point, direction), from, to);
-                from = math.clamp(at - size.z * 0.5f, from, to - size.z);
-                to   = from + size.z;
+                from = math.clamp(at - size.x * 0.5f, from, to - size.x);
+                to   = from + size.x;
             }
             var start  = point + direction * from;
             var length = to - from;
-            float repeats = decal.TrimRepeat switch
+            float repeats = fill switch
             {
-                ChiselTrimRepeat.Stretch => 1,
-                ChiselTrimRepeat.Fit     => math.max(1, math.round(length / size.x)),
-                _                        => length / size.x
+                ChiselTrimFill.Repeat => length / size.x,
+                ChiselTrimFill.Fit    => math.max(1, math.round(length / size.x)),
+                _                     => 1
             };
             a = MakeHalf(decal, faceA, faceB.normal, targets[0], start, direction, length, repeats, settings, entityID,                renderMaterial, destinationFlags, lower: true);
             b = MakeHalf(decal, faceB, faceA.normal, targets[1], start, direction, length, repeats, settings, entityID | kSecondHalf, renderMaterial, destinationFlags, lower: false);
