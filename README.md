@@ -39,19 +39,21 @@ Features (incomplete)
 * [Double sided surfaces](https://github.com/RadicalCSG/Chisel.Prototype/issues/226): a material can make its surfaces drawn from behind too
 
 Planned Features (incomplete, and in random order):
-* [Extrusion from existing surface](https://github.com/RadicalCSG/Chisel.Prototype/issues/19)
-* [Clip Tool](https://github.com/RadicalCSG/Chisel.Prototype/issues/15)
-* [Node Based Generators](https://github.com/RadicalCSG/Chisel.Prototype/issues/94) for easy procedural content generation
-* [2D shape editor](https://github.com/RadicalCSG/Chisel.Prototype/issues/260)
 * Decals, still to do:
   * [Trim decals](https://github.com/RadicalCSG/Chisel.Prototype/issues/117) that run round corners
-  * Placing a trim decal by picking an edge in the scene view, and placing them automatically by rule (for example every edge where two materials meet)
-  * Trim decal images taken from a trim sheet, and mirroring (one image on both surfaces, mirrored across the edge)
-  * A mode where each surface takes the decal by its own orientation, so one decal can wrap round a corner
-  * Parallelogram image frames, and fade distances
-  * Transparent decals of different materials stacked by their order (now by material)
-  * Decals on meshes that aren't brushes, such as props
+  * Placing a trim decal by picking an edge in the scene view
+  * Automatic placement by rule (e.g. where two materials meet)
+  * Trim decal images taken from a trim sheet
+  * Trim mirroring
+  * Omni directional decals
+  * Skewed decals
+  * Fade distances
+* Vertex Painting
+* [Extrusion from existing surface](https://github.com/RadicalCSG/Chisel.Prototype/issues/19)
+* [2D shape editor](https://github.com/RadicalCSG/Chisel.Prototype/issues/260)
 * [Grid Objects](https://github.com/RadicalCSG/Chisel.Prototype/issues/121)
+* [Clip Tool](https://github.com/RadicalCSG/Chisel.Prototype/issues/15)
+* [Node Based Generators](https://github.com/RadicalCSG/Chisel.Prototype/issues/94) for easy procedural content generation
 
 ---
 Extensions:
