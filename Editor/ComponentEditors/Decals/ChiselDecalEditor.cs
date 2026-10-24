@@ -34,6 +34,7 @@ namespace Chisel.Editors
         static readonly GUIContent kTrimSurfacesContent  = new GUIContent("Surfaces", "The two surfaces whose edge the trim lies on: the first takes the image's lower half, the second its upper half.");
         static readonly GUIContent kPickEdgeContent      = new GUIContent("Pick Edge", "Click a surface near one of its edges in the scene view: the trim goes on that edge, between the surface and the one that meets it there. Escape cancels.");
         static readonly GUIContent kCancelPickContent    = new GUIContent("Cancel Picking");
+        static readonly GUIContent kPlaceWhereMeetContent = new GUIContent("Place Where Materials Meet", "Puts a copy of this trim decal on every edge in its model where a surface with its first surface's material meets one with its second surface's material (edges within one brush).");
         const string kTrimNeedsTwoMessage = "A trim decal lies on the edge between two surfaces: give it two.";
         const string kNoMaterialMessage = "A decal without a material draws nothing.";
 
@@ -107,6 +108,11 @@ namespace Chisel.Editors
                     s_Candidate  = default;
                     SceneView.RepaintAll();
                 }
+                using (new EditorGUI.DisabledScope(decal.Targets.Count < 2))
+                {
+                    if (GUILayout.Button(kPlaceWhereMeetContent))
+                        PlaceWhereMaterialsMeet(decal);
+                }
             }
 
             serializedObject.ApplyModifiedProperties();
@@ -144,6 +150,49 @@ namespace Chisel.Editors
         }
 
         // Each half's box where it lies on its surface, and the edge they share
+        // Copies of a trim decal on every edge where its two surfaces' materials meet, under a "Trim Decals" object next to
+        // it; an edge that already has a trim decal of these surfaces gets none
+        static void PlaceWhereMaterialsMeet(ChiselDecalComponent template)
+        {
+            var model = template.Targets[0].brush ? template.Targets[0].brush.hierarchyItem.Model : null;
+            var edges = new List<ChiselTrimDecals.Edge>();
+            ChiselTrimDecals.EdgesBetween(model, ChiselTrimDecals.MaterialOf(template.Targets[0]), ChiselTrimDecals.MaterialOf(template.Targets[1]), edges);
+            if (edges.Count == 0)
+                return;
+
+            var existing = new HashSet<(ChiselNodeComponent, int, int)>();
+            foreach (var decal in Object.FindObjectsByType<ChiselDecalComponent>(FindObjectsSortMode.None))
+            {
+                if (decal.Shape == ChiselDecalShape.Trim && decal.Targets.Count >= 2 && decal.Targets[0].brush == decal.Targets[1].brush)
+                    existing.Add((decal.Targets[0].brush, decal.Targets[0].surfaceIndex, decal.Targets[1].surfaceIndex));
+            }
+
+            Undo.SetCurrentGroupName("Place Trim Decals");
+            var undoGroup = Undo.GetCurrentGroup();
+            var parent = template.transform.parent;
+            var group  = parent ? parent.Find(kTrimGroupName) : null;
+            if (group == null)
+            {
+                group = new GameObject(kTrimGroupName).transform;
+                group.SetParent(parent, false);
+                Undo.RegisterCreatedObjectUndo(group.gameObject, "Place Trim Decals");
+            }
+            var modelToWorld = model.transform.localToWorldMatrix;
+            foreach (var edge in edges)
+            {
+                if (!existing.Add((edge.a.brush, edge.a.surfaceIndex, edge.b.surfaceIndex)))
+                    continue;
+                var copy = Object.Instantiate(template.gameObject, group);
+                copy.name = template.name;
+                Undo.RegisterCreatedObjectUndo(copy, "Place Trim Decals");
+                copy.transform.position = modelToWorld.MultiplyPoint3x4(edge.middle);
+                copy.GetComponent<ChiselDecalComponent>().SetTargets(new[] { edge.a, edge.b });
+            }
+            Undo.CollapseUndoOperations(undoGroup);
+        }
+
+        const string kTrimGroupName = "Trim Decals";
+
         // Picking a trim decal's edge in the scene view (Pick Edge)
         static ChiselDecalComponent s_PickingFor;
         static EdgeCandidate s_Candidate;

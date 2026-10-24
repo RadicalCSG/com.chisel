@@ -255,6 +255,99 @@ namespace Chisel.Components
             return math.abs(math.dot(plane.xyz, a) + plane.w) < kOnPlane && math.abs(math.dot(plane.xyz, b) + plane.w) < kOnPlane;
         }
 
+        /// <summary>An edge a trim decal can lie on: its two surfaces, and the edge's middle in the model's space</summary>
+        public struct Edge
+        {
+            public ChiselDecalSurfaceTarget a, b;
+            public float3 middle;
+        }
+
+        /// <summary>The render material of a target's surface (its id), 0 when it has none or doesn't exist</summary>
+        public static ulong MaterialOf(ChiselDecalSurfaceTarget target)
+        {
+            if (target.brush is not ChiselGeneratorComponent generator || target.surfaceIndex < 0 ||
+                !TryBrushOf(generator.TopTreeNode, target.surfaceIndex, out var brush, out var polygon))
+                return 0;
+            return BrushMeshManager.GetBrushMeshBlob(brush.BrushMesh).Value.polygons[polygon].surface.parameters.parameter1;
+        }
+
+        /// <summary>
+        /// Every edge in the model where a surface drawn with materialA meets one drawn with materialB, each once, the
+        /// materialA surface first. Only edges within one brush, of generators that make one brush.
+        /// </summary>
+        public static void EdgesBetween(ChiselModelComponent model, ulong materialA, ulong materialB, List<Edge> edges)
+        {
+            edges.Clear();
+            if (model == null || materialA == 0 || materialB == 0)
+                return;
+            var seen = new HashSet<(ulong, int, int)>();
+            foreach (var generator in model.GetComponentsInChildren<ChiselGeneratorComponent>())
+            {
+                if (generator.hierarchyItem.Model != model || !generator.TopTreeNode.Valid || generator.TopTreeNode.Type != CSGNodeType.Brush)
+                    continue;
+                var brush = (CSGTreeBrush)generator.TopTreeNode;
+                var blob  = BrushMeshManager.GetBrushMeshBlob(brush.BrushMesh);
+                if (!blob.IsCreated)
+                    continue;
+                ref var mesh = ref blob.Value;
+                var nodeToTree = brush.NodeToTreeSpaceMatrix;
+                var key = UnityEngine.EntityId.ToULong(generator.GetEntityId());
+                for (int p = 0; p < mesh.polygons.Length; p++)
+                {
+                    if (mesh.polygons[p].surface.parameters.parameter1 != materialA)
+                        continue;
+                    ref var polygon = ref mesh.polygons[p];
+                    for (int e = 0; e < polygon.edgeCount; e++)
+                    {
+                        var edge = polygon.firstEdge + e;
+                        var next = polygon.firstEdge + (e + 1) % polygon.edgeCount;
+                        var middle = (mesh.localVertices[mesh.halfEdges[edge].vertexIndex] + mesh.localVertices[mesh.halfEdges[next].vertexIndex]) * 0.5f;
+                        if (!NearestEdge(brush, p, math.transform(nodeToTree, middle), out _, out _, out var other) || other < 0 ||
+                            mesh.polygons[other].surface.parameters.parameter1 != materialB)
+                            continue;
+                        if (!seen.Add((key, math.min(p, other), math.max(p, other))))
+                            continue;
+                        edges.Add(new Edge
+                        {
+                            a      = new ChiselDecalSurfaceTarget { brush = generator, surfaceIndex = mesh.polygons[p].descriptionIndex },
+                            b      = new ChiselDecalSurfaceTarget { brush = generator, surfaceIndex = mesh.polygons[other].descriptionIndex },
+                            middle = math.transform(nodeToTree, middle)
+                        });
+                    }
+                }
+            }
+        }
+
+        static bool TryBrushOf(CSGTreeNode node, int surfaceIndex, out CSGTreeBrush brush, out int polygon)
+        {
+            brush = default;
+            polygon = -1;
+            if (!node.Valid)
+                return false;
+            if (node.Type == CSGNodeType.Brush)
+            {
+                brush = (CSGTreeBrush)node;
+                var blob = BrushMeshManager.GetBrushMeshBlob(brush.BrushMesh);
+                if (!blob.IsCreated)
+                    return false;
+                for (int p = 0; p < blob.Value.polygons.Length; p++)
+                {
+                    if (blob.Value.polygons[p].descriptionIndex == surfaceIndex)
+                    {
+                        polygon = p;
+                        return true;
+                    }
+                }
+                return false;
+            }
+            for (int i = 0; i < node.Count; i++)
+            {
+                if (TryBrushOf(node[i], surfaceIndex, out brush, out polygon))
+                    return true;
+            }
+            return false;
+        }
+
         // A target's surface, of the first brush of its component that has it (depth first)
         static bool TryFace(ChiselDecalSurfaceTarget target, out ChiselModelComponent model, out Face face)
         {
