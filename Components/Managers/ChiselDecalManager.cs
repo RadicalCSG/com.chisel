@@ -327,6 +327,22 @@ namespace Chisel.Components
             }
         }
 
+        /// <summary>Whether a trim decal's halves are no longer what the last update gave its tree (its surfaces changed since)</summary>
+        public static bool TrimsChanged()
+        {
+            foreach (var state in s_DecalStates.Values)
+            {
+                if (state.trimDecal == null)
+                    continue;
+                var valid = ChiselTrimDecals.TryDescribe(state.trimDecal, state.entityID, state.renderMaterial, state.destinationFlags,
+                                                         out var model, out var a, out var b);
+                if (valid != state.trimValid ||
+                    (valid && (model != state.trimModel || !a.decal.Equals(state.trimA) || !b.decal.Equals(state.trimB))))
+                    return true;
+            }
+            return false;
+        }
+
         // The trim decal's halves now; true when they are not what they were
         static bool UpdateTrim(DecalState state)
         {

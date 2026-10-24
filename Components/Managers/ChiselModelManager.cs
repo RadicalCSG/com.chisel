@@ -315,6 +315,16 @@ namespace Chisel.Components
 				Profiler.EndSample();
 			}
 
+			// A trim decal follows its surfaces, and the generators gave the brushes their shapes in the Flush only: a
+			// trim that changed with them is built again now, before anything is drawn with the old one
+			if (ChiselDecalManager.TrimsChanged())
+			{
+				ChiselDecalManager.Update();
+				Profiler.BeginSample("Flush (trim decals)");
+				CompactHierarchyManager.Flush(finishMeshUpdatesMethod, canSkipTreeUpdateMethod);
+				Profiler.EndSample();
+			}
+
 			// The models that kept their saved meshes get back what the scene doesn't keep of them
 			foreach (var model in s_SkippedModels)
 			{
