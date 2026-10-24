@@ -18,7 +18,6 @@ namespace Chisel.Core
         [NoAlias, ReadOnly] public NativeList<CompactNodeID>    brushes;
         [NoAlias, ReadOnly] public int                          brushCount;
         [NoAlias, ReadOnly] public NativeList<IndexOrder>       allTreeBrushIndexOrders;
-        [NoAlias, ReadOnly] public bool                         rebuildAll;     // every brush, flagged or not
 
         // Read/Write
         [NoAlias] public NativeList<IndexOrder>                 rebuildTreeBrushIndexOrders;
@@ -36,7 +35,7 @@ namespace Chisel.Core
 			for (int nodeOrder = 0; nodeOrder < brushes.Length; nodeOrder++)
 			{
 				var brushCompactNodeID = brushes[nodeOrder];
-				if (rebuildAll || compactHierarchy.IsAnyStatusFlagSet(brushCompactNodeID))
+				if (compactHierarchy.IsAnyStatusFlagSet(brushCompactNodeID))
 				{
 					var indexOrder = allTreeBrushIndexOrders[nodeOrder];
 					Debug.Assert(indexOrder.nodeOrder == nodeOrder);

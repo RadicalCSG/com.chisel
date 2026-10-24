@@ -345,7 +345,7 @@ namespace Chisel.Core.Tests
 						CollapseMoves.Add(move);
 				}
 			}
-			LastUpdateReport = $"updated={updated}, rounds={CompactHierarchyManager.LastUpdateRounds}, " +
+			LastUpdateReport = $"updated={updated}, " +
 							   $"brushes flagged={CompactHierarchyManager.LastUpdateModifiedBrushCount}; " +
 							   $"callbacks: mine={callbacksForThisTree}, other trees={callbacksForOtherTrees}; " +
 							   $"renderable sections={renderableSections}, of which with a lookup={sectionsWithLookup}" +
@@ -353,26 +353,24 @@ namespace Chisel.Core.Tests
 
 			// The exact CSG reports what it could not build instead of repairing it; under the harness any such report is
 			// an error of the CSG, never something to average away in a comparison.
-			if (CompactHierarchyManager.TreeUpdate.kExactCSG)
-			{
-				var failures = ExactCSGFailures();
-				LastUpdateReport += "; exact CSG: " + (failures ?? "no failures");
-				if (failures != null)
-					throw new InvalidOperationException("The exact CSG reported failures: " + failures + " (" + LastUpdateReport + ")");
+			var failures = ExactCSGFailures();
+			LastUpdateReport += "; exact CSG: " + (failures ?? "no failures");
+			if (failures != null)
+				throw new InvalidOperationException("The exact CSG reported failures: " + failures + " (" + LastUpdateReport + ")");
 
-				if (updated && JudgeEachUpdate)
+			if (updated && JudgeEachUpdate)
+			{
+				var mismatches = ExactJudge.FindMismatches(this, kMaxJudgeReports, out _, checkMesh: false);
+				if (mismatches.Count > 0)
 				{
-					var mismatches = ExactJudge.FindMismatches(this, kMaxJudgeReports, out _, checkMesh: false);
-					if (mismatches.Count > 0)
-					{
-						var report = new System.Text.StringBuilder("The exact judge disagrees with this update's output:");
-						foreach (var mismatch in mismatches)
-							report.Append(Environment.NewLine).Append("  ").Append(mismatch.Format("exact"));
-						report.Append(Environment.NewLine).Append("  (").Append(LastUpdateReport).Append(')');
-						throw new InvalidOperationException(report.ToString());
-					}
+					var report = new System.Text.StringBuilder("The exact judge disagrees with this update's output:");
+					foreach (var mismatch in mismatches)
+						report.Append(Environment.NewLine).Append("  ").Append(mismatch.Format("exact"));
+					report.Append(Environment.NewLine).Append("  (").Append(LastUpdateReport).Append(')');
+					throw new InvalidOperationException(report.ToString());
 				}
 			}
+		
 
 			// And every delivered update is checked for what the weld at the very end leaves (OutputWeld, ExactCSG.md step 6),
 			// whatever else the test checks, in both pipelines

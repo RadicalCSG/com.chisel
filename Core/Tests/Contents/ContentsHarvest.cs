@@ -330,17 +330,7 @@ namespace Chisel.Core.Tests
 					harness.JudgeEachUpdate = false;
 					if (!harness.Update())
 						return false;
-					if (CompactHierarchyManager.TreeUpdate.kExactCSG)
-						return FailsExactlyAt(harness, site);
-					var oracle = new ContentsOracle(harness.Scene);
-					var plane  = oracle.TreePlanesOf(brush)[site.face];
-					for (int i = 0; i < site.points.Count; i++)
-					{
-						var problem = ContentsComparison.MismatchAt(harness, oracle, plane, site.points[i]);
-						if (problem != null && ContentsComparison.KindOf(problem) == site.kinds[i])
-							return true;
-					}
-					return false;
+					return FailsExactlyAt(harness, site);
 				}
 			}
 			catch (Exception e) when (!IsHarnessRefusal(e))

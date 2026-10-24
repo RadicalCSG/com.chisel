@@ -42,8 +42,8 @@ namespace Chisel.Core
         public static double3 PlaneIntersection(double4 plane0, double4 plane1, double4 plane2)
             => PlaneExtensions.Intersection(plane0, plane1, plane2);
 
-        // One vertex-pair term of Newell's polygon-normal accumulation, in double. Matches
-        // CalculatePlaneNormal in PerformCSGJob. Accumulate over consecutive (prev,curr) verts, normalize.
+        // One vertex-pair term of Newell's polygon-normal accumulation, in double. Accumulate over consecutive
+        // (prev,curr) verts, normalize.
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static float3 NewellTerm(float3 prev, float3 curr)
         {

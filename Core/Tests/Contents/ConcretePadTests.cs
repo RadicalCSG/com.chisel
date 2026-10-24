@@ -739,16 +739,13 @@ namespace Chisel.Core.Tests
 			using (var harness = ContentsTreeHarness.Build(scene))
 			{
 				Assert.That(harness.Update(), Is.True, what + ": the CSG update did not run");
-				if (CompactHierarchyManager.TreeUpdate.kExactCSG)
-					ContentsComparison.AssertMatchesOracle(harness, what);
+				ContentsComparison.AssertMatchesOracle(harness, what);
 				return TopFaceArea(harness);
 			}
 		}
 
 		static void AssertArea(double area, double expected, double tolerance, string message)
 		{
-			if (CompactHierarchyManager.TreeUpdate.kExactCSG)
-				return;
 			Assert.That(area, Is.EqualTo(expected).Within(tolerance), message);
 		}
 

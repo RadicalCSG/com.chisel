@@ -26,9 +26,8 @@ namespace Chisel.Core
             public NativeList<MinMaxAABB>                                       brushTreeSpaceBoundCache;
             public NativeList<BlobAssetReference<BrushTreeSpacePlanes>>         brushTreeSpacePlaneCache;
             public NativeList<BlobAssetReference<BrushesTouchedByBrush>>        brushesTouchedByBrushCache;
-            public NativeList<UnsafeList<float3>>                               loopVerticesCache;
             // Each brush as the exact CSG sees it (ExactBrush: exact planes, corners, bounds), rebuilt when the brush
-            // changes (ExactInputJob). Only kept up to date while the tree is built exactly (builtExact).
+            // changes (ExactInputJob).
             public NativeList<BlobAssetReference<ExactBrush>>                   exactBrushCache;
 
             public NativeList<ChiselDecalInstance>                              decalInstances;
@@ -44,9 +43,6 @@ namespace Chisel.Core
 
             public NativeParallelHashMap<CompactNodeID, BlobAssetReference<ChiselBrushRenderBuffer>> brushRenderBufferLookup;
 
-            // Whether the tree's output was last built by the exact CSG (TreeUpdate.kExactCSG). An update by the other
-            // algorithm rebuilds every brush of the tree, so the two never mix in one tree's output.
-            public bool                                                         builtExact;
             // What each hotspot layout was at the last update (ChiselHotspotStore.LayoutHashes, by id - 1)
             public NativeList<uint>                                             hotspotLayoutHashes;
             // Where the weld's last step moved the corners it moved at the last update (from, to; OutputModelWeld)
@@ -79,7 +75,6 @@ namespace Chisel.Core
 				brushTreeSpacePlaneCache    = new NativeList<BlobAssetReference<BrushTreeSpacePlanes>>(1000, Allocator.Persistent); // Confirmed to get disposed
 				brushesTouchedByBrushCache  = new NativeList<BlobAssetReference<BrushesTouchedByBrush>>(1000, Allocator.Persistent); // Confirmed to get disposed
 				brushRenderBufferCache      = new NativeList<BlobAssetReference<ChiselBrushRenderBuffer>>(1000, Allocator.Persistent); // Confirmed to get disposed
-				loopVerticesCache           = new NativeList<UnsafeList<float3>>(1000, Allocator.Persistent); // Confirmed to get disposed
 				exactBrushCache             = new NativeList<BlobAssetReference<ExactBrush>>(1000, Allocator.Persistent);
 
 				decalInstances              = new NativeList<ChiselDecalInstance>(16, Allocator.Persistent);
@@ -131,9 +126,6 @@ namespace Chisel.Core
 
                 if (brushRenderBufferCache.Capacity < brushCount)
                     brushRenderBufferCache.Capacity = brushCount;
-
-                if (loopVerticesCache.Capacity < brushCount)
-                    loopVerticesCache.Capacity = brushCount;
 
                 if (exactBrushCache.Capacity < brushCount)
                     exactBrushCache.Capacity = brushCount;
@@ -235,18 +227,6 @@ namespace Chisel.Core
                     brushRenderBufferCache.Dispose();
                 }
                 brushRenderBufferCache = default;
-                if (loopVerticesCache.IsCreated)
-                {
-                    for (int i = 0; i < loopVerticesCache.Length; i++)
-                    {
-                        if (loopVerticesCache[i].IsCreated)
-                            loopVerticesCache[i].Dispose();
-                        loopVerticesCache[i] = default;
-                    }
-                    loopVerticesCache.Clear();
-                    loopVerticesCache.Dispose();
-                }
-                loopVerticesCache = default;
                 if (exactBrushCache.IsCreated)
                 {
                     for (int i = 0; i < exactBrushCache.Length; i++)
@@ -307,7 +287,6 @@ namespace Chisel.Core
                 if (brushRenderBufferLookup.IsCreated)
                     brushRenderBufferLookup.Dispose();
                 brushRenderBufferLookup = default;
-                builtExact = false;
             }
         }
 

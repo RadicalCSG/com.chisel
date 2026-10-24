@@ -21,8 +21,6 @@ namespace Chisel.Core.Tests
 
 		static ContentsTreeHarness BuildAndUpdate(ContentsScene scene)
 		{
-			if (!CompactHierarchyManager.TreeUpdate.kExactCSG)
-				Assert.Ignore("judges the exact CSG, which is off");
 			var harness = ContentsTreeHarness.Build(scene);
 			Assert.That(harness.Update(), Is.True, "the CSG update did not run");
 			return harness;

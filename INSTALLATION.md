@@ -18,7 +18,7 @@ And press enter. This installs Chisel and the packages it depends on.
 ![URL Textbox](Documentation~/Images/package_manager_url.png)
 ---
 
-Chisel's own dependencies (BurstTriangulator and CustomAssetMetadata) are git submodules of its repository, so git
+Chisel's own dependency (CustomAssetMetadata) is a git submodule of its repository, so git
 needs to be installed and on your path.
 
 The first time you start up it might take some time, because Unity Burst compiles a lot of code.

@@ -67,8 +67,6 @@ namespace Chisel.Core.Tests
 
 		static void AssertTheMeshIsWhatTheExactCSGMade(ContentsScene scene)
 		{
-			if (!CompactHierarchyManager.TreeUpdate.kExactCSG)
-				Assert.Ignore("judges the exact CSG, which is off");
 			using var harness = ContentsTreeHarness.Build(scene);
 			Assert.That(harness.Update(), Is.True, "the CSG update did not run");
 			var mismatches = ExactJudge.FindMismatches(harness, 100, out var judged);

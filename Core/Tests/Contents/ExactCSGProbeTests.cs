@@ -26,51 +26,42 @@ namespace Chisel.Core.Tests
 		[Test]
 		public void TraceFailingFixtures()
 		{
-			var saved = CompactHierarchyManager.TreeUpdate.kExactCSG;
 			var report = new StringBuilder();
-			CompactHierarchyManager.TreeUpdate.kExactCSG = true;
-			try
+			foreach (var (fixture, method) in kFixtures)
 			{
-				foreach (var (fixture, method) in kFixtures)
+				ContentsHarvest.TraceTo = "exact";
+				try
 				{
-					ContentsHarvest.TraceTo = "exact";
-					try
-					{
-						var instance = Activator.CreateInstance(fixture);
-						fixture.GetMethod(method, BindingFlags.Public | BindingFlags.Instance).Invoke(instance, null);
-						report.AppendLine($"{method}: PASS");
-					}
-					catch (TargetInvocationException e)
-					{
-						var message = e.InnerException?.Message ?? e.Message;
-						report.AppendLine($"{method}: FAIL {message.Split('\n')[0]}");
-					}
-					finally
-					{
-						ContentsHarvest.TraceTo = null;
-					}
+					var instance = Activator.CreateInstance(fixture);
+					fixture.GetMethod(method, BindingFlags.Public | BindingFlags.Instance).Invoke(instance, null);
+					report.AppendLine($"{method}: PASS");
 				}
-				foreach (var (what, scene) in kScenes)
+				catch (TargetInvocationException e)
 				{
-					ContentsHarvest.TraceTo = "exact";
-					try
-					{
-						ContentsHarvest.AssertMatchesOracle(scene(), what);
-						report.AppendLine($"{what}: PASS");
-					}
-					catch (Exception e)
-					{
-						report.AppendLine($"{what}: FAIL {e.Message.Split('\n')[0]}");
-					}
-					finally
-					{
-						ContentsHarvest.TraceTo = null;
-					}
+					var message = e.InnerException?.Message ?? e.Message;
+					report.AppendLine($"{method}: FAIL {message.Split('\n')[0]}");
+				}
+				finally
+				{
+					ContentsHarvest.TraceTo = null;
 				}
 			}
-			finally
+			foreach (var (what, scene) in kScenes)
 			{
-				CompactHierarchyManager.TreeUpdate.kExactCSG = saved;
+				ContentsHarvest.TraceTo = "exact";
+				try
+				{
+					ContentsHarvest.AssertMatchesOracle(scene(), what);
+					report.AppendLine($"{what}: PASS");
+				}
+				catch (Exception e)
+				{
+					report.AppendLine($"{what}: FAIL {e.Message.Split('\n')[0]}");
+				}
+				finally
+				{
+					ContentsHarvest.TraceTo = null;
+				}
 			}
 			Assert.Pass(report.ToString());
 		}
@@ -78,52 +69,40 @@ namespace Chisel.Core.Tests
 		[Test]
 		public void NestedSubtractionDepths()
 		{
-			var saved = CompactHierarchyManager.TreeUpdate.kExactCSG;
 			var report = new StringBuilder();
-			try
+			foreach (int depth in new[] { 4, 8, 10, 12, 13, 14, 15, 16 })
 			{
-				foreach (var exact in new[] { true, false })
+				using (var harness = ContentsTreeHarness.Build(NestedSubtractions(depth)))
 				{
-					CompactHierarchyManager.TreeUpdate.kExactCSG = exact;
-					foreach (int depth in new[] { 4, 8, 10, 12, 13, 14, 15, 16 })
+					harness.JudgeEachUpdate = false;
+					harness.Update();
+					var mismatches = ContentsComparison.FindMismatchRecords(harness, out int judged, out int skipped, out _, 64f, 3);
+					var data = ChiselTreeLookup.Value[harness.Tree];
+					int maxRows = 0, maxLookupRows = 0, maxDestination = 0, tables = 0;
+					for (int i = 0; i < data.routingTableCache.Length; i++)
 					{
-						using (var harness = ContentsTreeHarness.Build(NestedSubtractions(depth)))
+						var table = data.routingTableCache[i];
+						if (!table.IsCreated) continue;
+						tables++;
+						ref var rows = ref table.Value.routingRows;
+						maxRows = Math.Max(maxRows, rows.Length);
+						ref var lookups = ref table.Value.routingLookups;
+						for (int k = 0; k < lookups.Length; k++)
+							maxLookupRows = Math.Max(maxLookupRows, lookups[k].endIndex - lookups[k].startIndex);
+						for (int r = 0; r < rows.Length; r++)
 						{
-							harness.JudgeEachUpdate = false;
-							harness.Update();
-							var mismatches = ContentsComparison.FindMismatchRecords(harness, out int judged, out int skipped, out _, 64f, 3);
-							var data = ChiselTreeLookup.Value[harness.Tree];
-							int maxRows = 0, maxLookupRows = 0, maxDestination = 0, tables = 0;
-							for (int i = 0; i < data.routingTableCache.Length; i++)
-							{
-								var table = data.routingTableCache[i];
-								if (!table.IsCreated) continue;
-								tables++;
-								ref var rows = ref table.Value.routingRows;
-								maxRows = Math.Max(maxRows, rows.Length);
-								ref var lookups = ref table.Value.routingLookups;
-								for (int k = 0; k < lookups.Length; k++)
-									maxLookupRows = Math.Max(maxLookupRows, lookups[k].endIndex - lookups[k].startIndex);
-								for (int r = 0; r < rows.Length; r++)
-								{
-									var row = rows[r];
-									foreach (var destination in new[] { (int)row.inside, (int)row.aligned, (int)row.selfAligned,
-																		(int)row.selfReverseAligned, (int)row.reverseAligned, (int)row.outside })
-										maxDestination = Math.Max(maxDestination, destination);
-								}
-							}
-							report.Append($"{(exact ? "exact" : "loops")} depth {depth}: {mismatches.Count} mismatch(es) over {judged} judged ({skipped} skipped); ")
-								  .Append($"{tables} tables, rows max {maxRows}, rows per lookup max {maxLookupRows}, destination max {maxDestination}");
-							if (mismatches.Count > 0)
-								report.Append("; first: ").Append(mismatches[0].Format("n"));
-							report.AppendLine();
+							var row = rows[r];
+							foreach (var destination in new[] { (int)row.inside, (int)row.aligned, (int)row.selfAligned,
+																(int)row.selfReverseAligned, (int)row.reverseAligned, (int)row.outside })
+								maxDestination = Math.Max(maxDestination, destination);
 						}
 					}
+					report.Append($"depth {depth}: {mismatches.Count} mismatch(es) over {judged} judged ({skipped} skipped); ")
+						  .Append($"{tables} tables, rows max {maxRows}, rows per lookup max {maxLookupRows}, destination max {maxDestination}");
+					if (mismatches.Count > 0)
+						report.Append("; first: ").Append(mismatches[0].Format("n"));
+					report.AppendLine();
 				}
-			}
-			finally
-			{
-				CompactHierarchyManager.TreeUpdate.kExactCSG = saved;
 			}
 			// Also to the log: a script that runs this reads the numbers there, where a passed result carries no message
 			UnityEngine.Debug.Log("ExactCSGProbeTests.NestedSubtractionDepths\n" + report);
@@ -146,126 +125,52 @@ namespace Chisel.Core.Tests
 		}
 
 		// Does every output triangle lie on a face plane of the brush it is attributed to? Written to
-		// Library/ChiselHarvest/traces/attribution_*.txt for the exact CSG and for the loop pipeline.
+		// Library/ChiselHarvest/traces/attribution_model2f04.txt.
 		[Test]
 		public void CheckTriangleAttribution()
 		{
-			var saved = CompactHierarchyManager.TreeUpdate.kExactCSG;
 			var report = new StringBuilder();
-			try
-			{
-				foreach (var exact in new[] { true, false })
-				{
-					CompactHierarchyManager.TreeUpdate.kExactCSG = exact;
-					var text = new StringBuilder();
-					var scene = Model2F04Scene();
-					using (var harness = ContentsTreeHarness.Build(scene))
-					{
-						harness.Update();
-						var brushes = new System.Collections.Generic.List<ContentsSceneNode>();
-						foreach (var root in scene.roots) AddBrushes(root, brushes);
-						int wrong = 0, total = 0;
-						for (int t = 0; t < harness.Triangles.Count; t++)
-						{
-							var triangle = harness.Triangles[t];
-							var node = harness.NodeOf(triangle.brushID);
-							total++;
-							bool onOwn = node != null && OnAPlaneOf(node, triangle);
-							if (onOwn)
-								continue;
-							wrong++;
-							var owners = new StringBuilder();
-							foreach (var other in brushes)
-								if (OnAPlaneOf(other, triangle)) owners.Append(other.name).Append(' ');
-							text.AppendLine($"triangle {t} section {triangle.section} material {triangle.material} attributed to {node?.name ?? "nothing"} " +
-											$"({triangle.a}, {triangle.b}, {triangle.c}) lies on a plane of: {owners}");
-						}
-						// The failing sample point on Extruded Shape #172's bottom, and every triangle of Box (15)
-						var point = new Unity.Mathematics.float3(-11.988f, -1f, -13.033f);
-						var bottom = new Unity.Mathematics.float4(0, -1, 0, -1);
-						for (int t = 0; t < harness.Triangles.Count; t++)
-						{
-							var triangle = harness.Triangles[t];
-							var node = harness.NodeOf(triangle.brushID);
-							bool covers = ContentsComparison.Covers(triangle.a, triangle.b, triangle.c, bottom, point, out int facing);
-							if (covers || (node != null && node.name.StartsWith("Box (15)")))
-								text.AppendLine($"  {(covers ? "COVERS P " : "")}triangle {t} of {node?.name ?? "nothing"} facing {(covers ? facing : 0)}: {triangle.a} {triangle.b} {triangle.c}");
-						}
-						text.Insert(0, $"exact={exact}: {wrong} of {total} triangles are not on a plane of the brush they are attributed to\n");
-						report.AppendLine($"exact={exact}: {wrong} of {total} misattributed");
-					}
-					var directory = System.IO.Path.Combine("Library", "ChiselHarvest", "traces");
-					System.IO.Directory.CreateDirectory(directory);
-					System.IO.File.WriteAllText(System.IO.Path.Combine(directory, $"attribution_model2f04_{(exact ? "exact" : "loops")}.txt"), text.ToString());
-				}
-			}
-			finally
-			{
-				CompactHierarchyManager.TreeUpdate.kExactCSG = saved;
-			}
-			Assert.Pass(report.ToString());
-		}
-
-		[Test]
-		public void CheckLoopHoleCoverage()
-		{
-			var saved = CompactHierarchyManager.TreeUpdate.kExactCSG;
 			var text = new StringBuilder();
-			CompactHierarchyManager.TreeUpdate.kExactCSG = false;
-			try
+			var scene = Model2F04Scene();
+			using (var harness = ContentsTreeHarness.Build(scene))
 			{
-				var build = typeof(IntersectionLoopCapacityTests).GetMethod("MutuallyOverlappingBrushes", BindingFlags.NonPublic | BindingFlags.Static);
-				var scene = (ContentsScene)build.Invoke(null, new object[] { 10 });
+				harness.Update();
 				var brushes = new System.Collections.Generic.List<ContentsSceneNode>();
 				foreach (var root in scene.roots) AddBrushes(root, brushes);
-				var b7 = brushes[7];
-				var toTree = Unity.Mathematics.math.transpose(Unity.Mathematics.math.inverse(b7.localToTree));
-				var plane = Unity.Mathematics.math.mul(toTree, b7.localPlanes[1]);
-				plane /= Unity.Mathematics.math.length(plane.xyz);
-				var point = new Unity.Mathematics.float3(0.273f, -0.764f, -0.35f);
-				text.AppendLine($"b7 face 1 plane {plane}, point {point} is {Unity.Mathematics.math.dot(plane.xyz, point) + plane.w} off it");
-				using (var harness = ContentsTreeHarness.Build(scene))
+				int wrong = 0, total = 0;
+				for (int t = 0; t < harness.Triangles.Count; t++)
 				{
-					harness.Update();
-					for (int t = 0; t < harness.Triangles.Count; t++)
-					{
-						var triangle = harness.Triangles[t];
-						bool covers = ContentsComparison.Covers(triangle.a, triangle.b, triangle.c, plane, point, out _);
-						bool oldCovers = OldCoversPoint(triangle.a, triangle.b, triangle.c, plane, point, 0.02f, 0.001f);
-						if (!covers && !oldCovers)
-							continue;
-						var node = harness.NodeOf(triangle.brushID);
-						float longest = Unity.Mathematics.math.max(Unity.Mathematics.math.length(triangle.b - triangle.a),
-										Unity.Mathematics.math.max(Unity.Mathematics.math.length(triangle.c - triangle.b), Unity.Mathematics.math.length(triangle.a - triangle.c)));
-						var center = (triangle.a + triangle.b + triangle.c) / 3;
-						text.AppendLine($"triangle {t} of {node?.name ?? "nothing"}: covers now {covers}, under the old test {oldCovers}; longest edge {longest}, " +
-										$"centre {Unity.Mathematics.math.distance(center, point)} from the point: {triangle.a} {triangle.b} {triangle.c}");
-					}
+					var triangle = harness.Triangles[t];
+					var node = harness.NodeOf(triangle.brushID);
+					total++;
+					bool onOwn = node != null && OnAPlaneOf(node, triangle);
+					if (onOwn)
+						continue;
+					wrong++;
+					var owners = new StringBuilder();
+					foreach (var other in brushes)
+						if (OnAPlaneOf(other, triangle)) owners.Append(other.name).Append(' ');
+					text.AppendLine($"triangle {t} section {triangle.section} material {triangle.material} attributed to {node?.name ?? "nothing"} " +
+									$"({triangle.a}, {triangle.b}, {triangle.c}) lies on a plane of: {owners}");
 				}
-			}
-			finally
-			{
-				CompactHierarchyManager.TreeUpdate.kExactCSG = saved;
+				// The failing sample point on Extruded Shape #172's bottom, and every triangle of Box (15)
+				var point = new Unity.Mathematics.float3(-11.988f, -1f, -13.033f);
+				var bottom = new Unity.Mathematics.float4(0, -1, 0, -1);
+				for (int t = 0; t < harness.Triangles.Count; t++)
+				{
+					var triangle = harness.Triangles[t];
+					var node = harness.NodeOf(triangle.brushID);
+					bool covers = ContentsComparison.Covers(triangle.a, triangle.b, triangle.c, bottom, point, out int facing);
+					if (covers || (node != null && node.name.StartsWith("Box (15)")))
+						text.AppendLine($"  {(covers ? "COVERS P " : "")}triangle {t} of {node?.name ?? "nothing"} facing {(covers ? facing : 0)}: {triangle.a} {triangle.b} {triangle.c}");
+				}
+				text.Insert(0, $"{wrong} of {total} triangles are not on a plane of the brush they are attributed to\n");
+				report.AppendLine($"{wrong} of {total} misattributed");
 			}
 			var directory = System.IO.Path.Combine("Library", "ChiselHarvest", "traces");
 			System.IO.Directory.CreateDirectory(directory);
-			System.IO.File.WriteAllText(System.IO.Path.Combine(directory, "coverage_ten_overlapping_brushes.txt"), text.ToString());
-			Assert.Pass(text.ToString());
-		}
-
-		// ContentsFaceSampler.CoversPoint with exact edge tests instead of distances
-		static bool OldCoversPoint(Unity.Mathematics.float3 a, Unity.Mathematics.float3 b, Unity.Mathematics.float3 c,
-								   Unity.Mathematics.float4 plane, Unity.Mathematics.float3 point, float onPlaneEpsilon, float insideEpsilon)
-		{
-			if (Unity.Mathematics.math.abs(Unity.Mathematics.math.dot(plane.xyz, a) + plane.w) > onPlaneEpsilon) return false;
-			if (Unity.Mathematics.math.abs(Unity.Mathematics.math.dot(plane.xyz, b) + plane.w) > onPlaneEpsilon) return false;
-			if (Unity.Mathematics.math.abs(Unity.Mathematics.math.dot(plane.xyz, c) + plane.w) > onPlaneEpsilon) return false;
-			var normal = plane.xyz;
-			var d0 = Unity.Mathematics.math.dot(Unity.Mathematics.math.cross(b - a, point - a), normal);
-			var d1 = Unity.Mathematics.math.dot(Unity.Mathematics.math.cross(c - b, point - b), normal);
-			var d2 = Unity.Mathematics.math.dot(Unity.Mathematics.math.cross(a - c, point - c), normal);
-			return (d0 >= -insideEpsilon && d1 >= -insideEpsilon && d2 >= -insideEpsilon) ||
-				   (d0 <=  insideEpsilon && d1 <=  insideEpsilon && d2 <=  insideEpsilon);
+			System.IO.File.WriteAllText(System.IO.Path.Combine(directory, "attribution_model2f04.txt"), text.ToString());
+			Assert.Pass(report.ToString());
 		}
 
 		static void AddBrushes(ContentsSceneNode node, System.Collections.Generic.List<ContentsSceneNode> brushes)

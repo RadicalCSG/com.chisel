@@ -848,9 +848,8 @@ namespace Chisel.Components
 
 		/// <summary>
 		/// What both hashes have to cover and neither can see in the model: the version of the code that builds the
-		/// meshes, which of its two CSG algorithms builds them, and the helper materials <c>FinishMeshUpdates</c> hands
-		/// out, which no surface names. Without the code version a saved scene would keep meshes built by code that has
-		/// since changed, and without the algorithm meshes built by the other one.
+		/// meshes, and the helper materials <c>FinishMeshUpdates</c> hands out, which no surface names. Without the code
+		/// version a saved scene would keep meshes built by code that has since changed.
 		/// </summary>
 		static void AppendEnvironment(ref Hash128 hash)
 		{
@@ -860,9 +859,6 @@ namespace Chisel.Components
 				s_CodeVersion.Append(typeof(ChiselModelManager).Assembly.ManifestModule.ModuleVersionId.ToString());
 			}
 			hash.Append(ref s_CodeVersion);
-
-			int algorithm = CompactHierarchyManager.TreeUpdate.kExactCSG ? 1 : 0;
-			hash.Append(ref algorithm);
 
 			AppendMaterialIdentity(ref hash, ChiselProjectSettings.ForceShadowOnlySurfacesMaterial);
 			AppendMaterialIdentity(ref hash, ChiselProjectSettings.CollisionSurfacesMaterial);
