@@ -95,6 +95,19 @@ namespace Chisel.Components
                     decal.trimLineDirection = toWorld.MultiplyVector(edges[0].direction).normalized;
                 }
             }
+            // an edge on the line of an earlier one that overlaps it is that edge again (the same surface's edge picked on
+            // both brushes beside it): its halves would draw over the earlier ones
+            var pairOf = new List<int>(edgeCount);
+            var kept = new List<ChainEdge>(edgeCount);
+            for (int i = 0; i < edgeCount; i++)
+            {
+                if (kept.Exists(earlier => Overlaps(earlier, edges[i])))
+                    continue;
+                kept.Add(edges[i]);
+                pairOf.Add(i);
+            }
+            edges = kept.ToArray();
+            edgeCount = edges.Length;
             if (fill == ChiselTrimFill.Single)
                 PlaceSingle(decal, model, size.x, ref edges[0]);
             Orient(edges);
@@ -111,14 +124,23 @@ namespace Chisel.Components
                     break;
                 if (math.distance(edges[i].start + edges[i].direction * edges[i].length, edges[n].start) > kMargin)
                     continue;
-                // halves in one plane meet at the corner: on one surface, or on surfaces of brushes side by side
+                // a half meets the next edge's half in its plane (on one surface, or surfaces of brushes side by side) on
+                // the same side of the chain, left or right of the way it runs: with all four halves in one plane (a seam
+                // on a floor), not the one across the line from it
                 for (int h = 0; h < 2; h++)
                 {
-                    for (int k = 0; k < 2; k++)
+                    var face = h == 0 ? edges[i].faceA : edges[i].faceB;
+                    var side = math.dot(math.cross(edges[i].direction, h == 0 ? edges[i].acrossA : edges[i].acrossB), face.normal) > 0;
+                    var meets = -1;
+                    for (int k = 0; k < 2 && meets < 0; k++)
                     {
-                        if (InOnePlane(h == 0 ? edges[i].faceA : edges[i].faceB, k == 0 ? edges[n].faceA : edges[n].faceB))
-                            Mitre(ref edges[i], h, ref edges[n], k);
+                        var nextFace = k == 0 ? edges[n].faceA : edges[n].faceB;
+                        if (InOnePlane(face, nextFace) &&
+                            math.dot(math.cross(edges[n].direction, k == 0 ? edges[n].acrossA : edges[n].acrossB), nextFace.normal) > 0 == side)
+                            meets = k;
                     }
+                    if (meets >= 0)
+                        Mitre(ref edges[i], h, ref edges[n], meets);
                 }
             }
 
@@ -172,9 +194,9 @@ namespace Chisel.Components
                         uStart = uEnd - uStart;
                         shown  = -shown;
                     }
-                    halves.Add(MakeHalf(edge.faceA, edge.acrossA, targets[i * 2],     pieceStart, edge.direction, span, uStart, shown,
+                    halves.Add(MakeHalf(edge.faceA, edge.acrossA, targets[pairOf[i] * 2],     pieceStart, edge.direction, span, uStart, shown,
                                         first ? edge.slantStartA : 0, last ? edge.slantEndA : 0, rect, settings, id,               renderMaterial, destinationFlags, lower: true));
-                    halves.Add(MakeHalf(edge.faceB, edge.acrossB, targets[i * 2 + 1], pieceStart, edge.direction, span, uStart, shown,
+                    halves.Add(MakeHalf(edge.faceB, edge.acrossB, targets[pairOf[i] * 2 + 1], pieceStart, edge.direction, span, uStart, shown,
                                         first ? edge.slantStartB : 0, last ? edge.slantEndB : 0, rect, settings, id | kSecondHalf, renderMaterial, destinationFlags, lower: decal.TrimMirror));
                 }
                 along += edge.length;
@@ -255,6 +277,18 @@ namespace Chisel.Components
             var from = math.clamp(at - imageLength * 0.5f, 0, edge.length - imageLength);
             edge.start += edge.direction * from;
             edge.length = imageLength;
+        }
+
+        // Whether the edge lies on the line of the other and overlaps it
+        static bool Overlaps(in ChainEdge other, in ChainEdge edge)
+        {
+            var end = edge.start + edge.direction * edge.length;
+            if (math.length(math.cross(edge.start - other.start, other.direction)) >= kMargin ||
+                math.length(math.cross(end - other.start, other.direction)) >= kMargin)
+                return false;
+            var t0 = math.dot(edge.start - other.start, other.direction);
+            var t1 = math.dot(end - other.start, other.direction);
+            return math.min(other.length, math.max(t0, t1)) - math.max(0, math.min(t0, t1)) > kMargin;
         }
 
         // Edges that run past a corner (the surfaces of brushes overlapping there, however far) or stop short of it (by

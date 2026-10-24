@@ -583,6 +583,62 @@ namespace Chisel.Components.Tests
             Assert.That(math.abs(halves[2].decal.settings.endSlant.x), Is.GreaterThan(0.5f), "the floor half of the second edge mitred at the corner");
         }
 
+        // C overlapping both A and B: picking C's edge on A's stretch and again on B's gives the same edge twice. It is added
+        // once, and a chain that has it twice draws it once
+        [Test]
+        public void TheSameEdgeTwiceInAChain_IsDrawnOnce()
+        {
+            var model = Model();
+            var a = Box(model, new float3(-4, -1, -4), new float3(0, 0, 0));
+            var b = Box(model, new float3(0, -1, -4), new float3(4, 0, 0));
+            var c = Box(model, new float3(-4, -1, -1), new float3(4, 0, 4));
+            Update();
+            var cTop  = new ChiselDecalSurfaceTarget { brush = c, surfaceIndex = SurfaceFacing(c, new float3(0, 1, 0)) };
+            var edge  = EdgeOf(c, new float3(0, 1, 0), v => math.abs(v.z + 1) < 1e-4f);
+            var decal = Trim(model, c, SurfaceFacing(c, new float3(0, 1, 0)), a, SurfaceFacing(a, new float3(0, 1, 0)));
+            decal.SetTargets(null);
+            Assert.That(decal.AddTrimEdge(cTop, new ChiselDecalSurfaceTarget { brush = a, surfaceIndex = SurfaceFacing(a, new float3(0, 1, 0)) }, false, edge), Is.True);
+            Assert.That(decal.AddTrimEdge(cTop, new ChiselDecalSurfaceTarget { brush = b, surfaceIndex = SurfaceFacing(b, new float3(0, 1, 0)) }, false, edge), Is.False, "the same edge of C again");
+            Assert.That(decal.Targets.Count, Is.EqualTo(2));
+
+            // a chain saved with it twice
+            decal.SetTargets(null);
+            decal.AddTrimEdge(cTop, new ChiselDecalSurfaceTarget { brush = a, surfaceIndex = SurfaceFacing(a, new float3(0, 1, 0)) }, false, edge);
+            decal.AddTrimEdge(cTop, new ChiselDecalSurfaceTarget { brush = b, surfaceIndex = SurfaceFacing(b, new float3(0, 1, 0)) }, false, -1);
+            Update();
+            var halves = new List<ChiselTrimDecals.Half>();
+            Assert.That(ChiselTrimDecals.TryDescribe(decal, 1, 1, SurfaceDestinationFlags.Default, out _, halves, out _, out _), Is.True);
+            Assert.That(halves.Count, Is.EqualTo(2), "one edge, two halves");
+            Assert.That(halves[0].decal.settings.size.x, Is.EqualTo(8).Within(1e-4f), "C's whole edge, along A and B");
+        }
+
+        // A seam on a floor turning a corner (all four halves in one plane): each half is mitred with the next edge's half on
+        // its own side, so at a right angle every cut is 45 degrees and nothing overlaps
+        [Test]
+        public void AChainAlongAFloorSeam_MitresEachSideWithItsOwnSide()
+        {
+            var model = Model();
+            var floor = Box(model, new float3(-6, -1, -6), new float3(6, 0, 6));
+            var inset = Box(model, new float3(-2, -0.5f, -2), new float3(2, 0, 2));
+            Update();
+            var floorTop = new ChiselDecalSurfaceTarget { brush = floor, surfaceIndex = SurfaceFacing(floor, new float3(0, 1, 0)) };
+            var insetTop = new ChiselDecalSurfaceTarget { brush = inset, surfaceIndex = SurfaceFacing(inset, new float3(0, 1, 0)) };
+            var decal = Trim(model, floor, SurfaceFacing(floor, new float3(0, 1, 0)), inset, SurfaceFacing(inset, new float3(0, 1, 0)));
+            decal.SetTargets(null);
+            decal.AddTrimEdge(floorTop, insetTop, true, EdgeOf(inset, new float3(0, 1, 0), v => math.abs(v.z - 2) < 1e-4f));
+            decal.AddTrimEdge(floorTop, insetTop, true, EdgeOf(inset, new float3(0, 1, 0), v => math.abs(v.x - 2) < 1e-4f));
+            Update();
+            var halves = new List<ChiselTrimDecals.Half>();
+            Assert.That(ChiselTrimDecals.TryDescribe(decal, 1, 1, SurfaceDestinationFlags.Default, out _, halves, out _, out _), Is.True);
+            Assert.That(halves.Count, Is.EqualTo(4));
+            foreach (var half in halves)
+            {
+                var slant = half.decal.settings.endSlant;
+                var cut = math.abs(slant.x) > 1e-4f ? slant.x : slant.y;
+                Assert.That(math.abs(cut), Is.EqualTo(1).Within(1e-3f), "a 45 degree cut at the right angle, " + slant);
+            }
+        }
+
         // Two floor brushes side by side, their tops in one plane: a trim on the seam lies flat, half on each, along the seam
         [Test]
         public void ATrimOnTheSeamOfTwoFlushBrushes_LiesFlatAcrossIt()
