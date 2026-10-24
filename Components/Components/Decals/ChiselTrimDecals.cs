@@ -297,8 +297,9 @@ namespace Chisel.Components
 
             // the image's v is 0.5 on the edge: down to 0 across A, up to 1 across B; u runs along the edge from uStart; the
             // image is the rect of the texture
-            var trimScale  = new float2(shown, lower ? -0.5f : 0.5f) * (float2)rect.size;
-            var trimOffset = (float2)rect.position + new float2(uStart, 0.5f) * (float2)rect.size;
+            ChiselDecalSettings.TurnMapping(new float2(shown, lower ? -0.5f : 0.5f), new float2(uStart, 0.5f), settings.imageTurns, out var imageScale, out var imageOffset);
+            var trimScale  = imageScale * (float2)rect.size;
+            var trimOffset = (float2)rect.position + imageOffset * (float2)rect.size;
             var userScale  = math.all((float2)settings.uvScale == float2.zero) ? new float2(1) : (float2)settings.uvScale;
             var half = settings;
             half.center     = new float3(0, height * 0.25f, 0);

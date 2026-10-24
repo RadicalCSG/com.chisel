@@ -17,9 +17,9 @@ namespace Chisel.Editors
 
         static readonly GUIContent kMaterialContent      = new GUIContent("Material", "What the decal draws with. A decal without a material draws nothing.");
         static readonly GUIContent kCenterContent        = new GUIContent("Center", "The center of the box, in the decal's own space.");
-        static readonly GUIContent kRotateContent        = new GUIContent("Rotate", "Turns the decal a quarter turn about the direction it projects in.");
-        static readonly GUIContent kRotateLeftContent    = new GUIContent("Left", "A quarter turn counter-clockwise, as seen looking at the surface.");
-        static readonly GUIContent kRotateRightContent   = new GUIContent("Right", "A quarter turn clockwise, as seen looking at the surface.");
+        static readonly GUIContent kRotateContent        = new GUIContent("Rotate", "Turns the image a quarter turn. A box decal's width and height swap with it, so the image keeps its shape; on a trim decal what ran along the edge runs across it.");
+        static readonly GUIContent kRotateLeftContent    = new GUIContent("90° Left", "A quarter turn counter-clockwise, as seen looking at the surface.");
+        static readonly GUIContent kRotateRightContent   = new GUIContent("90° Right", "A quarter turn clockwise, as seen looking at the surface.");
         static readonly GUIContent kSizeContent           = new GUIContent("Size", "X and Y are the image's width and height (for a perspective decal: at the center of the box), Z is how deep the decal reaches.");
         static readonly GUIContent kProjectionContent    = new GUIContent("Projection", "Orthographic keeps the image's size at every depth; perspective projects it from a point behind the box, like a projector.");
         static readonly GUIContent kFieldOfViewContent   = new GUIContent("Field Of View", "The perspective projection's vertical angle, in degrees.");
@@ -106,12 +106,12 @@ namespace Chisel.Editors
 
                 EditorGUILayout.PropertyField(settings.FindPropertyRelative(nameof(ChiselDecalSettings.center)), kCenterContent);
                 EditorGUILayout.PropertyField(settings.FindPropertyRelative(nameof(ChiselDecalSettings.size)), kSizeContent);
-                RotateButtons();
                 EditorGUILayout.PropertyField(serializedObject.FindProperty(ChiselDecalComponent.kRepeatName), kRepeatContent);
             }
             ImageField(material, serializedObject.FindProperty(ChiselDecalComponent.kImageTileName));
 
 
+            RotateButtons(settings, trim);
             EditorGUILayout.PropertyField(settings.FindPropertyRelative(nameof(ChiselDecalSettings.uvScale)), kUVScaleContent);
             EditorGUILayout.PropertyField(settings.FindPropertyRelative(nameof(ChiselDecalSettings.uvOffset)), kUVOffsetContent);
 
@@ -184,8 +184,8 @@ namespace Chisel.Editors
             }
         }
 
-        // A quarter turn of every selected decal about its forward axis, the direction its image is projected in
-        void RotateButtons()
+        // A quarter turn of the image; a box decal's width and height (and repeats) swap, so the image keeps its shape
+        void RotateButtons(SerializedProperty settings, bool trim)
         {
             var rect = EditorGUILayout.GetControlRect();
             rect = EditorGUI.PrefixLabel(rect, kRotateContent);
@@ -193,18 +193,31 @@ namespace Chisel.Editors
             var right = new Rect(left.xMax, rect.y, rect.width - left.width, rect.height);
             var indent = EditorGUI.indentLevel;
             EditorGUI.indentLevel = 0;
-            var angle = 0f;
-            if (GUI.Button(left, kRotateLeftContent, EditorStyles.miniButtonLeft))   angle = 90;
-            if (GUI.Button(right, kRotateRightContent, EditorStyles.miniButtonRight)) angle = -90;
+            var turn = 0;
+            if (GUI.Button(left, kRotateLeftContent, EditorStyles.miniButtonLeft))   turn = 1;
+            if (GUI.Button(right, kRotateRightContent, EditorStyles.miniButtonRight)) turn = 3;
             EditorGUI.indentLevel = indent;
-            if (angle == 0)
+            if (turn == 0)
                 return;
-            foreach (var decal in targets)
+            serializedObject.ApplyModifiedProperties();
+            foreach (var decalObject in serializedObject.targetObjects)
             {
-                var transform = ((ChiselDecalComponent)decal).transform;
-                Undo.RecordObject(transform, "Rotate Decal");
-                transform.localRotation *= Quaternion.AngleAxis(angle, Vector3.forward);
+                using var decal = new SerializedObject(decalObject);
+                var decalSettings = decal.FindProperty(ChiselDecalComponent.kSettingsName);
+                var turns = decalSettings.FindPropertyRelative(nameof(ChiselDecalSettings.imageTurns));
+                turns.intValue = (turns.intValue + turn) & 3;
+                if (!trim)
+                {
+                    var size = decalSettings.FindPropertyRelative(nameof(ChiselDecalSettings.size));
+                    var sizeX = size.FindPropertyRelative("x");
+                    var sizeY = size.FindPropertyRelative("y");
+                    (sizeX.floatValue, sizeY.floatValue) = (sizeY.floatValue, sizeX.floatValue);
+                    var repeat = decal.FindProperty(ChiselDecalComponent.kRepeatName);
+                    repeat.vector2Value = new Vector2(repeat.vector2Value.y, repeat.vector2Value.x);
+                }
+                decal.ApplyModifiedProperties();
             }
+            serializedObject.Update();
         }
 
         // Under the material, on one line: Transparent, and for a trim decal Mirror

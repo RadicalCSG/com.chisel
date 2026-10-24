@@ -472,8 +472,9 @@ namespace Chisel.Components
                     var tile  = settings;
                     tile.center   = new float3((from + to) * 0.5f, settings.center.z);
                     tile.size     = new float3(to - from, size.z);
-                    tile.uvScale  = userScale * (float2)rect.size * shown;
-                    tile.uvOffset = (float2)settings.uvOffset + userScale * (float2)rect.position;
+                    ChiselDecalSettings.TurnMapping(shown, float2.zero, settings.imageTurns, out var imageScale, out var imageOffset);
+                    tile.uvScale  = userScale * (float2)rect.size * imageScale;
+                    tile.uvOffset = (float2)settings.uvOffset + userScale * ((float2)rect.position + (float2)rect.size * imageOffset);
                     instance.entityID = ChiselTrimDecals.PieceEntityID(decalState.entityID, piece);
                     instance.settings = tile;
                     tiles.Add(instance);
