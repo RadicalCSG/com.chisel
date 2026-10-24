@@ -274,7 +274,7 @@ namespace Chisel.Components
                     if (decalState.parentModel != null)
                     {
                         if (s_Models.TryGetValue(decalState.parentModel, out var state))
-                            Add(state, Describe(decal, decalState, state.worldToLocal), decalState.targets);
+                            AddBox(state, decal, decalState);
                         continue;
                     }
                     var scene = decal.gameObject.scene;
@@ -283,7 +283,7 @@ namespace Chisel.Components
                         if (model.gameObject.scene == scene)
                         {
                             var state = s_Models[model];
-                            Add(state, Describe(decal, decalState, state.worldToLocal), decalState.targets);
+                            AddBox(state, decal, decalState);
                         }
                     }
                 }
@@ -412,18 +412,72 @@ namespace Chisel.Components
             return true;
         }
 
-        static ChiselDecalInstance Describe(ChiselDecalComponent decal, DecalState decalState, Matrix4x4 modelWorldToLocal)
+        static readonly List<ChiselDecalInstance> s_Tiles = new();
+
+        static void AddBox(ModelState state, ChiselDecalComponent decal, DecalState decalState)
         {
+            Describe(decal, decalState, state.worldToLocal, s_Tiles);
+            foreach (var tile in s_Tiles)
+                Add(state, tile, decalState.targets);
+        }
+
+        /// <summary>
+        /// A box decal's instances in a model's space: one, its image repeated by wrapping the texture; or for an image in a
+        /// trim sheet, which can't wrap, a tile of the box for every image, the last row and column cut short (orthographic
+        /// only: a perspective decal draws a sheet's image once)
+        /// </summary>
+        static void Describe(ChiselDecalComponent decal, DecalState decalState, Matrix4x4 modelWorldToLocal, List<ChiselDecalInstance> tiles)
+        {
+            tiles.Clear();
             // The tree's space is the model's own space
-            var decalToTree = modelWorldToLocal * decalState.localToWorld;
-            return new ChiselDecalInstance
+            var decalToTree = (float4x4)(modelWorldToLocal * decalState.localToWorld);
+            var settings = decal.Settings;
+            var rect     = decal.ImageRect;
+            var repeat   = math.max((float2)(Vector2)decal.Repeat, new float2(1e-3f));
+            var sheet    = rect != new Rect(0, 0, 1, 1);
+            var userScale = math.all((float2)settings.uvScale == float2.zero) ? new float2(1) : (float2)settings.uvScale;
+            var instance = new ChiselDecalInstance
             {
                 entityID         = decalState.entityID,
-                decalToTree      = (float4x4)decalToTree,
-                settings         = decal.Settings,
+                decalToTree      = decalToTree,
                 renderMaterial   = decalState.renderMaterial,
                 destinationFlags = decalState.destinationFlags
             };
+            var perspective = settings.projection == ChiselDecalProjection.Perspective;
+            if (!sheet || perspective)
+            {
+                // uv = offset + scale * (rect.position + rect.size * repeat * p)
+                var tile = settings;
+                tile.uvScale  = userScale * (float2)rect.size * (sheet ? new float2(1) : repeat);
+                tile.uvOffset = (float2)settings.uvOffset + userScale * (float2)rect.position;
+                instance.settings = tile;
+                tiles.Add(instance);
+                return;
+            }
+
+            var size  = (float3)settings.size;
+            var count = (int2)math.ceil(repeat - 1e-4f);
+            if (count.x * count.y > ChiselTrimDecals.MaxPieces)
+                return;
+            var tileSize = size.xy / repeat;
+            var low      = ((float3)settings.center).xy - size.xy * 0.5f;
+            for (int y = 0, piece = 0; y < count.y; y++)
+            {
+                for (int x = 0; x < count.x; x++, piece++)
+                {
+                    var from  = low + tileSize * new float2(x, y);
+                    var to    = math.min(from + tileSize, low + size.xy);
+                    var shown = (to - from) / tileSize;
+                    var tile  = settings;
+                    tile.center   = new float3((from + to) * 0.5f, settings.center.z);
+                    tile.size     = new float3(to - from, size.z);
+                    tile.uvScale  = userScale * (float2)rect.size * shown;
+                    tile.uvOffset = (float2)settings.uvOffset + userScale * (float2)rect.position;
+                    instance.entityID = ChiselTrimDecals.PieceEntityID(decalState.entityID, piece);
+                    instance.settings = tile;
+                    tiles.Add(instance);
+                }
+            }
         }
 
         // Resolve the same destination flags used by a brush surface.

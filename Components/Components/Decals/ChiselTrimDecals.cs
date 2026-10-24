@@ -19,6 +19,12 @@ namespace Chisel.Components
         const ulong kPieceMask  = 0xFFFul << kPieceShift;
         const int   kMaxPieces  = (int)(kPieceMask >> kPieceShift) + 1;
 
+        /// <summary>The entity id of a decal's piece (a tile, an image along a trim's edge): the decal's, with its number</summary>
+        public static ulong PieceEntityID(ulong entityID, int piece) => entityID | ((ulong)piece << kPieceShift);
+
+        /// <summary>How many pieces a decal can be</summary>
+        public const int MaxPieces = kMaxPieces;
+
         /// <summary>The decal an entity id of a decal's piece belongs to</summary>
         public static ulong DecalEntityID(ulong entityID) => entityID & ~(kSecondHalf | kPieceMask);
 
@@ -113,7 +119,7 @@ namespace Chisel.Components
             if (fill == ChiselTrimFill.Single)
                 perMetre = 1 / edges[0].length;
 
-            var rect  = decal.TrimImageRect;
+            var rect  = decal.ImageRect;
             var sheet = rect != new Rect(0, 0, 1, 1);
             var piece = 0;
             var along = 0.0f;

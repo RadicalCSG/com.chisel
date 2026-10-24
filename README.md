@@ -31,7 +31,7 @@ Features (incomplete)
 * Rotatable & movable grid
 * Subtractive Workflow
 * Normal smoothing
-* Decals: boxes that project a material onto the surfaces they reach, drawn over them or replacing them
+* Decals: boxes that project a material onto the surfaces they reach, drawn over them or replacing them, their image repeated in x and y, from the whole texture or an image in a trim sheet
 * Hotspot mapping: surfaces take their texture coordinates from the best matching tile of a layout (borders, repeats, shaped tiles and trim sheets), with a layout editor
 * Chunking: a model's output is split into a mesh per material, and divided into chunks of space, for better occlusion and culling handling
 * [Trim decals](https://github.com/RadicalCSG/Chisel.Prototype/issues/117): a decal on the edge between two surfaces, the lower half of its image on one and the upper half on the other (or mirrored), stretched, repeated or fitted along the edge or one image placed on it, running round corners, its image from the whole texture or a trim sheet, following the edge when either brush changes; placed by picking an edge in the scene view, or on every edge where two materials meet

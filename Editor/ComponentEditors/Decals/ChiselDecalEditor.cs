@@ -27,7 +27,8 @@ namespace Chisel.Editors
         static readonly GUIContent kUVOffsetContent      = new GUIContent("UV Offset");
         static readonly GUIContent kTargetsContent       = new GUIContent("Targets", "Limits the decal to these brush surfaces (surface index -1: all of the brush's surfaces). Empty: every surface it reaches.");
         static readonly GUIContent kShapeContent         = new GUIContent("Shape", "Box: the image is projected through the box. Trim: the image lies on the edge between two surfaces, its lower half on the first, its upper half on the second.");
-        static readonly GUIContent kTrimImageRectContent = new GUIContent("Image Rect", "The part of the texture the image is, in texture coordinates (0 to 1): all of it, or an image in a trim sheet. An image in a trim sheet is a piece of its own for every image along the edge, as it can't repeat by wrapping.");
+        static readonly GUIContent kImageRectContent     = new GUIContent("Image Rect", "The part of the texture the image is, in texture coordinates (0 to 1): all of it, or an image in a trim sheet. An image in a trim sheet can't repeat by wrapping, so it is a piece of its own for every image it repeats.");
+        static readonly GUIContent kRepeatContent        = new GUIContent("Repeat", "How many times the image repeats across the box, in x and y. A perspective decal shows a trim sheet's image once.");
         static readonly GUIContent kTrimMirrorContent     = new GUIContent("Mirror", "The image's lower half on both surfaces, mirrored across the edge, so the trim is the same on either side of it.");
         static readonly GUIContent kTrimFillContent       = new GUIContent("Fill", "Stretch: one image over the whole edge. Repeat: the image repeated at its length, the last one cut short. Fit: the whole number of images nearest to what fits, stretched to fill the edge. Single: one image at its length, round the decal's position (move the decal along the edge to place it).");
         static readonly GUIContent kTrimLengthContent    = new GUIContent("Length", "The image's length along the edge.");
@@ -69,7 +70,6 @@ namespace Chisel.Editors
             {
                 EditorGUILayout.PropertyField(serializedObject.FindProperty(ChiselDecalComponent.kTrimFillName), kTrimFillContent);
                 EditorGUILayout.PropertyField(serializedObject.FindProperty(ChiselDecalComponent.kTrimMirrorName), kTrimMirrorContent);
-                EditorGUILayout.PropertyField(serializedObject.FindProperty(ChiselDecalComponent.kTrimImageRectName), kTrimImageRectContent);
                 var size = settings.FindPropertyRelative(nameof(ChiselDecalSettings.size));
                 EditorGUILayout.PropertyField(size.FindPropertyRelative("x"), kTrimLengthContent);
                 EditorGUILayout.PropertyField(size.FindPropertyRelative("y"), kTrimHeightContent);
@@ -85,7 +85,9 @@ namespace Chisel.Editors
                     EditorGUILayout.Slider(settings.FindPropertyRelative(nameof(ChiselDecalSettings.fieldOfView)),
                                            ChiselDecalSettings.kMinFieldOfView, ChiselDecalSettings.kMaxFieldOfView, kFieldOfViewContent);
                 }
+                EditorGUILayout.PropertyField(serializedObject.FindProperty(ChiselDecalComponent.kRepeatName), kRepeatContent);
             }
+            EditorGUILayout.PropertyField(serializedObject.FindProperty(ChiselDecalComponent.kImageRectName), kImageRectContent);
 
             var transparent = settings.FindPropertyRelative(nameof(ChiselDecalSettings.transparent));
             EditorGUILayout.PropertyField(transparent, kTransparentContent);
