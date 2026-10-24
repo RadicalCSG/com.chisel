@@ -65,6 +65,16 @@ namespace Chisel.Components
         [SerializeField] int imageTile = 0;
         [SerializeField] Vector2 repeat = Vector2.one;
 
+        // Which edge of its first surface (of its second, with trimEdgeOnSecond) a trim decal lies on: the edge's number
+        // along the surface's outline; -1 to find it from where the decal is
+        [SerializeField] int  trimEdge = -1;
+        [SerializeField] bool trimEdgeOnSecond;
+
+        // The line a trim decal's first edge lay on at its last update, in world space: of two surfaces' edges, the trim
+        // keeps to this one while the decal is on it (so dragging it past where another edge starts doesn't jump)
+        [NonSerialized] internal bool    hasTrimLine;
+        [NonSerialized] internal Vector3 trimLinePoint, trimLineDirection;
+
         public const string kMaterialName = nameof(material);
         public const string kSettingsName = nameof(settings);
         public const string kTargetsName  = nameof(targets);
@@ -147,6 +157,19 @@ namespace Chisel.Components
             targets.Clear();
             if (newTargets != null)
                 targets.AddRange(newTargets);
+            trimEdge = -1;
+            ChiselDecalManager.SetDirty();
+        }
+
+        /// <summary>A trim decal's edge: which edge of its first surface (or second) it lies on, its number along the
+        /// surface's outline; -1 to find it from where the decal is</summary>
+        public int  TrimEdge         => trimEdge;
+        public bool TrimEdgeOnSecond => trimEdgeOnSecond;
+
+        public void SetTrimEdge(bool onSecond, int edgeIndex)
+        {
+            trimEdge = edgeIndex;
+            trimEdgeOnSecond = onSecond;
             ChiselDecalManager.SetDirty();
         }
 

@@ -42,7 +42,7 @@ Surfaces and texturing
 * [Double sided surfaces](https://github.com/RadicalCSG/com.chisel/wiki/Double-Sided-Surfaces): a material can make its surfaces drawn from behind too
 * [Hotspot mapping](https://github.com/RadicalCSG/com.chisel/wiki/Hotspot-Mapping): surfaces take their texture coordinates from the best matching tile of a layout (borders, repeats, shaped tiles and trim sheets), with a layout editor
 * [Decals](https://github.com/RadicalCSG/com.chisel/wiki/Decals): boxes that project a material onto the surfaces they reach, drawn over them or replacing them, their image repeated in x and y, from the whole texture or an image in a trim sheet
-* [Trim decals](https://github.com/RadicalCSG/com.chisel/wiki/Trim-Decals): a decal on the edge between two surfaces, the lower half of its image on one and the upper half on the other (or mirrored), stretched, repeated or fitted along the edge or one image placed on it, running round corners, its image from the whole texture or a trim sheet, following the edge when either brush changes; placed by picking an edge in the scene view, or on every edge where two materials meet
+* [Trim decals](https://github.com/RadicalCSG/com.chisel/wiki/Trim-Decals): a decal on the edge between two surfaces, the lower half of its image on one and the upper half on the other (or mirrored), stretched, repeated or fitted along the edge or one image placed on it, its image from the whole texture or a trim sheet, following the edge when either brush changes; placed by picking an edge in the scene view, or on every edge where two materials meet
 
 Output
 * Ordinary Unity meshes and colliders, that work with Unity's lightmapping, occlusion culling and navigation meshes
@@ -53,6 +53,7 @@ Output
 
 See [the project](https://github.com/orgs/RadicalCSG/projects/1) for everything that is planned.
 * Decals, still to do:
+  * [Trim decals round corners](https://github.com/RadicalCSG/com.chisel/issues/53)
   * [Omni directional decals](https://github.com/RadicalCSG/com.chisel/issues/33)
   * [Skewed decals](https://github.com/RadicalCSG/com.chisel/issues/34)
   * [Fade distances](https://github.com/RadicalCSG/com.chisel/issues/35)

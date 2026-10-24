@@ -414,6 +414,80 @@ namespace Chisel.Components.Tests
             Assert.That(to.x, Is.EqualTo(x).Within(1e-4f));
         }
 
+        // Where two boxes touch, the CSG discards both faces: the edge picker never takes those, the tops are drawn
+        [Test]
+        public void TheFacesWhereTwoBoxesTouch_AreNotDrawn()
+        {
+            var model = Model();
+            var left  = Box(model, new float3(-4, -1, -4), new float3(0, 0, 4));
+            var right = Box(model, new float3(0, -1, -4), new float3(4, 0, 4));
+            Update();
+            int PolygonFacing(ChiselBoxComponent box, float3 normal)
+            {
+                ref var mesh = ref BrushMeshManager.GetBrushMeshBlob(((CSGTreeBrush)box.TopTreeNode).BrushMesh).Value;
+                for (int p = 0; p < mesh.polygons.Length; p++)
+                {
+                    if (math.dot(math.normalize(mesh.localPlanes[p].xyz), normal) > 0.999f)
+                        return p;
+                }
+                return -1;
+            }
+            Assert.That(ChiselTrimDecals.IsDrawn(model, (CSGTreeBrush)left.TopTreeNode,  PolygonFacing(left,  new float3(1, 0, 0))), Is.False, "the left box's face against the right");
+            Assert.That(ChiselTrimDecals.IsDrawn(model, (CSGTreeBrush)right.TopTreeNode, PolygonFacing(right, new float3(-1, 0, 0))), Is.False, "the right box's face against the left");
+            Assert.That(ChiselTrimDecals.IsDrawn(model, (CSGTreeBrush)left.TopTreeNode,  PolygonFacing(left,  new float3(0, 1, 0))), Is.True, "the left top");
+            Assert.That(ChiselTrimDecals.IsDrawn(model, (CSGTreeBrush)right.TopTreeNode, PolygonFacing(right, new float3(-0, 0, 1))), Is.True, "the right box's front");
+        }
+
+        // A trim given its edge keeps to it wherever the decal is, and so does one whose decal is dragged along its edge
+        // past where another seam between the same surfaces starts
+        [Test]
+        public void ATrimKeepsToItsEdge_WhereverTheDecalIs()
+        {
+            var model = Model();
+            var floor = Box(model, new float3(-4, -1, -4), new float3(0, 0, 4));
+            var inset = Box(model, new float3(-3, -0.5f, -4), new float3(-2, 0, 4));
+            var decal = Trim(model, floor, SurfaceFacing(floor, new float3(0, 1, 0)), inset, SurfaceFacing(inset, new float3(0, 1, 0)));
+
+            // the inset top's edge at x = -3, by its number along the outline
+            var brush = (CSGTreeBrush)inset.TopTreeNode;
+            ref var mesh = ref BrushMeshManager.GetBrushMeshBlob(brush.BrushMesh).Value;
+            var top = -1;
+            for (int p = 0; p < mesh.polygons.Length; p++)
+            {
+                if (mesh.polygons[p].descriptionIndex == SurfaceFacing(inset, new float3(0, 1, 0)))
+                    top = p;
+            }
+            var edgeIndex = -1;
+            var nodeToTree = brush.NodeToTreeSpaceMatrix;
+            for (int e = 0; e < mesh.polygons[top].edgeCount; e++)
+            {
+                var from = math.transform(nodeToTree, mesh.localVertices[mesh.halfEdges[mesh.polygons[top].firstEdge + e].vertexIndex]);
+                var to   = math.transform(nodeToTree, mesh.localVertices[mesh.halfEdges[mesh.polygons[top].firstEdge + (e + 1) % mesh.polygons[top].edgeCount].vertexIndex]);
+                if (math.abs(from.x + 3) < 1e-4f && math.abs(to.x + 3) < 1e-4f)
+                    edgeIndex = e;
+            }
+            Assert.That(edgeIndex, Is.GreaterThanOrEqualTo(0));
+
+            decal.SetTrimEdge(true, edgeIndex);
+            decal.transform.position = new Vector3(-2, 0, 1);
+            Update();
+            var halves = new List<ChiselTrimDecals.Half>();
+            Assert.That(ChiselTrimDecals.TryDescribe(decal, 1, 1, SurfaceDestinationFlags.Default, out _, halves, out var edgeFrom, out _), Is.True);
+            Assert.That(edgeFrom.x, Is.EqualTo(-3).Within(1e-4f), "on the edge it was given, not the seam the decal is nearest");
+
+            // without a given edge, dragged along x = -3 to where the floor's edge at z = 4 meets it, it stays on x = -3
+            decal.SetTargets(new[] { new ChiselDecalSurfaceTarget { brush = floor, surfaceIndex = SurfaceFacing(floor, new float3(0, 1, 0)) },
+                                     new ChiselDecalSurfaceTarget { brush = inset, surfaceIndex = SurfaceFacing(inset, new float3(0, 1, 0)) } });
+            decal.transform.position = new Vector3(-3, 0, 1);
+            Assert.That(ChiselTrimDecals.TryDescribe(decal, 1, 1, SurfaceDestinationFlags.Default, out _, halves, out edgeFrom, out _), Is.True);
+            Assert.That(edgeFrom.x, Is.EqualTo(-3).Within(1e-4f));
+            // at its end, where the shared edge along z = 4 starts too: both run through the decal, and it keeps its line
+            decal.transform.position = new Vector3(-3, 0, 4);
+            Assert.That(ChiselTrimDecals.TryDescribe(decal, 1, 1, SurfaceDestinationFlags.Default, out _, halves, out edgeFrom, out var edgeTo), Is.True);
+            Assert.That(edgeFrom.x, Is.EqualTo(-3).Within(1e-4f), "still on x = -3");
+            Assert.That(edgeTo.x, Is.EqualTo(-3).Within(1e-4f));
+        }
+
         // Two floor brushes side by side, their tops in one plane: a trim on the seam lies flat, half on each, along the seam
         [Test]
         public void ATrimOnTheSeamOfTwoFlushBrushes_LiesFlatAcrossIt()
@@ -541,7 +615,7 @@ namespace Chisel.Components.Tests
 
         // A 2 m box's top, framed half a metre deep: 4 m2 less the 1 m2 middle, each corner once (overlapping square ends
         // would draw 4 m2); each side half a metre down
-        [Test]
+        [Test, Ignore("Chains round corners are off until they are fixed (com.chisel#53)")]
         public void ATrimRoundCorners_IsMitredWhereItsEdgesMeet()
         {
             var model = Model();
@@ -553,7 +627,7 @@ namespace Chisel.Components.Tests
                 Assert.That(AreaFacing(triangles, side), Is.EqualTo(1.0).Within(kTolerance), $"the side facing {side}");
         }
 
-        [Test]
+        [Test, Ignore("Chains round corners are off until they are fixed (com.chisel#53)")]
         public void ATrimRoundCorners_RunsOnFromEdgeToEdge()
         {
             var model = Model();
