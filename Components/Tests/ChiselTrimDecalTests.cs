@@ -58,8 +58,10 @@ namespace Chisel.Components.Tests
             var go = new GameObject("Box");
             go.transform.SetParent(model.transform, false);
             var box = go.AddComponent<ChiselBoxComponent>();
-            if (math.any(min > box.Max)) { box.Max = max; box.Min = min; }
-            else                         { box.Min = min; box.Max = max; }
+            // Max far out first, so setting Min never has to move it
+            box.Max = new float3(1e4f);
+            box.Min = min;
+            box.Max = max;
             return box;
         }
 
@@ -304,11 +306,19 @@ namespace Chisel.Components.Tests
             Assert.That(math.min(from.x, to.x), Is.EqualTo(-1).Within(1e-4f), "from the wall's one end");
             Assert.That(math.max(from.x, to.x), Is.EqualTo(1).Within(1e-4f), "to its other end, over the other floor brush");
 
-            // the floor half draws on the other floor brush's top too, the wall half only on the wall
-            var rightTop = new ChiselDecalTarget { brushEntityID = UnityEngine.EntityId.ToULong(right.GetEntityId()), surfaceIndex = SurfaceFacing(right, new float3(0, 1, 0)) };
-            var leftTop  = new ChiselDecalTarget { brushEntityID = UnityEngine.EntityId.ToULong(left.GetEntityId()),  surfaceIndex = SurfaceFacing(left, new float3(0, 1, 0)) };
-            Assert.That(halves.Exists(h => h.targets[0].Equals(leftTop) && System.Array.IndexOf(h.targets, rightTop) > 0), Is.True, "the floor half reaches the right brush's top");
-            Assert.That(halves.TrueForAll(h => h.targets[0].Equals(leftTop) || h.targets.Length == 1), Is.True, "the wall half stays on the wall");
+            // the floor half draws on both floor brushes' tops in front of the wall, the wall half on the wall's front only
+            double leftFloor = 0, rightFloor = 0, wallFront = 0, other = 0;
+            foreach (var triangle in DecalTriangles(model))
+            {
+                var middle = (triangle.a + triangle.b + triangle.c) / 3;
+                if (triangle.normal.y > 0.9f)      { if (middle.x < 0) leftFloor += triangle.area; else rightFloor += triangle.area; }
+                else if (triangle.normal.z > 0.9f) wallFront += triangle.area;
+                else                               other += triangle.area;
+            }
+            Assert.That(leftFloor,  Is.EqualTo(0.5).Within(1e-3), "on the left floor brush");
+            Assert.That(rightFloor, Is.EqualTo(0.5).Within(1e-3), "on the right floor brush");
+            Assert.That(wallFront,  Is.EqualTo(1.0).Within(1e-3), "on the wall's front");
+            Assert.That(other,      Is.EqualTo(0).Within(1e-6), "nowhere else");
         }
 
         // Seen from its surface, every half's image runs left to right with its top up: not mirrored, whichever way the
@@ -361,6 +371,47 @@ namespace Chisel.Components.Tests
             Assert.That(math.abs(from.x), Is.LessThan(0.01f));
             Assert.That(math.abs(to.z - from.z), Is.EqualTo(8).Within(0.01f), "along the whole seam");
             Assert.That(model.Node.GetDecalCount(), Is.GreaterThan(0), "and it is drawn");
+        }
+
+        // A and B flush, C overlapping B by a metre with its top in the same plane: the seam is C's edge on B's top, and the
+        // trim lies across it, B's half on the part of B that shows
+        [Test]
+        public void ATrimOnTheSeamOfOverlappingBrushes_LiesAcrossIt()
+        {
+            var model = Model();
+            Box(model, new float3(-4, -1, -4), new float3(0, 0, 4));
+            var b = Box(model, new float3(0, -1, -4), new float3(4, 0, 4));
+            var c = Box(model, new float3(3, -1, -4), new float3(7, 0, 4));
+            var decal = Trim(model, b, SurfaceFacing(b, new float3(0, 1, 0)), c, SurfaceFacing(c, new float3(0, 1, 0)));
+            Update();
+            var halves = new List<ChiselTrimDecals.Half>();
+            Assert.That(ChiselTrimDecals.TryDescribe(decal, 1, 1, SurfaceDestinationFlags.Default, out _, halves, out var from, out var to), Is.True, "the seam is an edge");
+            Assert.That(from.x, Is.EqualTo(3).Within(1e-4f), "on C's edge");
+            Assert.That(math.abs(to.z - from.z), Is.EqualTo(8).Within(1e-4f), "along the whole seam");
+            for (int h = 0; h < halves.Count; h++)
+            {
+                var into = math.mul(halves[h].decal.decalToTree, new float4(0, 1, 0, 0)).x;
+                Assert.That(h % 2 == 0 ? into < -0.9f : into > 0.9f, Is.True, "B's half towards B, C's into C");
+            }
+            Assert.That(model.Node.GetDecalCount(), Is.GreaterThan(0), "and it is drawn");
+        }
+
+        // A box set into a floor, its top flush with the floor's: two seams between the same two surfaces, and the trim
+        // takes the one nearest to where the decal was put (where the edge was picked)
+        [TestCase(-3f)]
+        [TestCase(-2f)]
+        public void OfTwoSeamsBetweenTheSameSurfaces_TheTrimTakesTheOneItWasPutOn(float x)
+        {
+            var model = Model();
+            var floor = Box(model, new float3(-4, -1, -4), new float3(0, 0, 4));
+            var inset = Box(model, new float3(-3, -0.5f, -4), new float3(-2, 0, 4));
+            var decal = Trim(model, floor, SurfaceFacing(floor, new float3(0, 1, 0)), inset, SurfaceFacing(inset, new float3(0, 1, 0)));
+            decal.transform.position = new Vector3(x + 0.1f, 0, 1);
+            Update();
+            var halves = new List<ChiselTrimDecals.Half>();
+            Assert.That(ChiselTrimDecals.TryDescribe(decal, 1, 1, SurfaceDestinationFlags.Default, out _, halves, out var from, out var to), Is.True);
+            Assert.That(from.x, Is.EqualTo(x).Within(1e-4f), "on the seam the decal was put on");
+            Assert.That(to.x, Is.EqualTo(x).Within(1e-4f));
         }
 
         // Two floor brushes side by side, their tops in one plane: a trim on the seam lies flat, half on each, along the seam
@@ -421,7 +472,7 @@ namespace Chisel.Components.Tests
 
             var edges = new List<ChiselTrimDecals.Edge>();
             ChiselTrimDecals.EdgesBetween(model, UnityEngine.EntityId.ToULong(floorMaterial.GetEntityId()), UnityEngine.EntityId.ToULong(wallMaterial.GetEntityId()), edges);
-            Assert.That(edges.Count, Is.EqualTo(4), "the four sides of the wall's foot");
+            Assert.That(edges.Count, Is.EqualTo(4), "the four sides of the wall's foot: " + string.Join("; ", edges.ConvertAll(e => $"{e.a.brush.name}#{e.a.surfaceIndex}/{e.b.brush.name}#{e.b.surfaceIndex} at {e.middle}")));
             var top = SurfaceFacing(floor, new float3(0, 1, 0));
             foreach (var edge in edges)
             {

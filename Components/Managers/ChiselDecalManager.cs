@@ -357,6 +357,8 @@ namespace Chisel.Components
 
         static bool SameTargets(ChiselDecalTarget[] a, ChiselDecalTarget[] b)
         {
+            if (a == null || b == null)
+                return a == b;
             if (a.Length != b.Length)
                 return false;
             for (int i = 0; i < a.Length; i++)
