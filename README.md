@@ -7,8 +7,8 @@ Chisel is an extension for **Unity** that allows for _rapid_, iterative, **non d
 ---
 * You can find [installation instructions here](INSTALLATION.md)
 * [Click here for information on how to get started](GETTING_STARTED.md)
-* Want to help out? [We have some good first issues here](https://github.com/RadicalCSG/Chisel/labels/good%20first%20issue)
-* ![Discord](Documentation~/Images/discord-mark-blue-small.png) If you have questions be sure to ask in the discord! **[Click here for to join the official Discord server!](https://discord.gg/zttNkPQ)**
+* Want to help out? [We have some good first issues here](https://github.com/RadicalCSG/com.chisel/labels/good%20first%20issue)
+* ![Discord](Documentation~/Images/discord-mark-blue-small.png) If you have questions be sure to ask in the discord! **[Click here to join the official Discord server!](https://discord.gg/zttNkPQ)**
 
 ---
 
@@ -24,7 +24,7 @@ Features (incomplete, see [the wiki](https://github.com/RadicalCSG/com.chisel/wi
 * [Constructive Solid Geometry Algorithm](https://github.com/RadicalCSG/com.chisel/wiki/Real-time-CSG) that generates geometry in real-time
 * [Add and remove geometry](https://github.com/RadicalCSG/com.chisel/wiki/Operations) to your level using CSG allows for fluid, interactive, non destructive workflows
 * Higher level ["generators"](https://github.com/RadicalCSG/com.chisel/wiki/Generators) that create more complicated geometry to perform CSG with, while retaining context of what it is you're creating (if you create stairs, these will remain stairs that you can edit and tweak)
-* [Hierarchical Constructive Solid Geometry](https://github.com/RadicalCSG/com.chisel/wiki/Hierarchical-CSG), allows for generators and brushes to be act as if they're one whole (composite), to perform CSG on other objects with
+* [Hierarchical Constructive Solid Geometry](https://github.com/RadicalCSG/com.chisel/wiki/Hierarchical-CSG), allows for generators and brushes to act as if they're one whole (composite), to perform CSG on other objects with
 * Works well with [prefabs](https://github.com/RadicalCSG/com.chisel/wiki/Prefabs), drag and drop windows onto walls including their holes
 * [Draw 2D shapes](https://github.com/RadicalCSG/com.chisel/wiki/Drawing-2D-Shapes) (possible to turn straight lines into curves) on existing CSG surfaces and extrude them
 * [Snapping](https://github.com/RadicalCSG/com.chisel/wiki/Snapping) to grid lines, and of the pivot or bounds of what you move
