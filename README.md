@@ -20,36 +20,38 @@ Note:
 
 ---
 
-Features (incomplete)
-* [Constructive Solid Geometry Algorithm](http://www.youtube.com/watch?v=Iqmg4gblreo) that generates geometry in real-time
-* Add and remove geometry to your level using CSG allows for fluid, interactive, non destructive workflows
-* Higher level "generators" that create more complicated geometry to perform CSG with, while retaining context of what it is you're creating (if you create stairs, these will remain stairs that you can edit and tweak)
-* Hierarchical Constructive Solid Geometry, allows for generators and brushes to be act as if they're one whole (composite), to perform CSG on other objects with
-* Works well with prefabs, drag and drop windows onto walls including their holes
-* Draw 2D shapes (possible to turn straight lines into curves) on existing CSG surfaces and extrude them
-* Precise snapping to surfaces, edges, vertices and grid lines
-* Rotatable & movable grid
-* Subtractive Workflow
-* Normal smoothing
-* Decals: boxes that project a material onto the surfaces they reach, drawn over them or replacing them, their image repeated in x and y, from the whole texture or an image in a trim sheet
-* Hotspot mapping: surfaces take their texture coordinates from the best matching tile of a layout (borders, repeats, shaped tiles and trim sheets), with a layout editor
-* Chunking: a model's output is split into a mesh per material, and divided into chunks of space, for better occlusion and culling handling
-* [Trim decals](https://github.com/RadicalCSG/Chisel.Prototype/issues/117): a decal on the edge between two surfaces, the lower half of its image on one and the upper half on the other (or mirrored), stretched, repeated or fitted along the edge or one image placed on it, running round corners, its image from the whole texture or a trim sheet, following the edge when either brush changes; placed by picking an edge in the scene view, or on every edge where two materials meet
-* [Debug visualizations](https://github.com/RadicalCSG/Chisel.Prototype/issues/188) of user-hidden, shadow-only, shadow-casting, shadow-receiving, collider and discarded (removed by the CSG) surfaces
-* [Double sided surfaces](https://github.com/RadicalCSG/Chisel.Prototype/issues/226): a material can make its surfaces drawn from behind too
+Features (incomplete, see [the wiki](https://github.com/RadicalCSG/com.chisel/wiki) for more about each)
+* [Constructive Solid Geometry Algorithm](https://github.com/RadicalCSG/com.chisel/wiki/Real-time-CSG) that generates geometry in real-time
+* [Add and remove geometry](https://github.com/RadicalCSG/com.chisel/wiki/Operations) to your level using CSG allows for fluid, interactive, non destructive workflows
+* Higher level ["generators"](https://github.com/RadicalCSG/com.chisel/wiki/Generators) that create more complicated geometry to perform CSG with, while retaining context of what it is you're creating (if you create stairs, these will remain stairs that you can edit and tweak)
+* [Hierarchical Constructive Solid Geometry](https://github.com/RadicalCSG/com.chisel/wiki/Hierarchical-CSG), allows for generators and brushes to be act as if they're one whole (composite), to perform CSG on other objects with
+* Works well with [prefabs](https://github.com/RadicalCSG/com.chisel/wiki/Prefabs), drag and drop windows onto walls including their holes
+* [Draw 2D shapes](https://github.com/RadicalCSG/com.chisel/wiki/Drawing-2D-Shapes) (possible to turn straight lines into curves) on existing CSG surfaces and extrude them
+* [Snapping](https://github.com/RadicalCSG/com.chisel/wiki/Snapping) to grid lines, and of the pivot or bounds of what you move
+* [Rotatable & movable grid](https://github.com/RadicalCSG/com.chisel/wiki/Grid)
+* [Subtractive Workflow](https://github.com/RadicalCSG/com.chisel/wiki/Subtractive-Workflow)
+* [Brush contents](https://github.com/RadicalCSG/com.chisel/wiki/Brush-Contents): solid, glass, water; faces stay where different contents meet
+* [Normal smoothing](https://github.com/RadicalCSG/com.chisel/wiki/Normal-Smoothing)
+* [Decals](https://github.com/RadicalCSG/com.chisel/wiki/Decals): boxes that project a material onto the surfaces they reach, drawn over them or replacing them, their image repeated in x and y, from the whole texture or an image in a trim sheet
+* [Hotspot mapping](https://github.com/RadicalCSG/com.chisel/wiki/Hotspot-Mapping): surfaces take their texture coordinates from the best matching tile of a layout (borders, repeats, shaped tiles and trim sheets), with a layout editor
+* [Chunking](https://github.com/RadicalCSG/com.chisel/wiki/Chunking): a model's output is split into a mesh per material, and divided into chunks of space, for better occlusion and culling handling
+* [Trim decals](https://github.com/RadicalCSG/com.chisel/wiki/Trim-Decals): a decal on the edge between two surfaces, the lower half of its image on one and the upper half on the other (or mirrored), stretched, repeated or fitted along the edge or one image placed on it, running round corners, its image from the whole texture or a trim sheet, following the edge when either brush changes; placed by picking an edge in the scene view, or on every edge where two materials meet
+* [Debug visualizations](https://github.com/RadicalCSG/com.chisel/wiki/Debug-Visualizations) of user-hidden, shadow-only, shadow-casting, shadow-receiving, collider and discarded (removed by the CSG) surfaces
+* [Double sided surfaces](https://github.com/RadicalCSG/com.chisel/wiki/Double-Sided-Surfaces): a material can make its surfaces drawn from behind too
 
-Planned Features (incomplete, and in random order):
+Planned Features (incomplete, and in random order; see [the project](https://github.com/orgs/RadicalCSG/projects/1)):
 * Decals, still to do:
-  * Trim decals placed automatically where the materials of two brushes meet (now only within one brush)
-  * Omni directional decals
-  * Skewed decals
-  * Fade distances
-* Vertex Painting
-* [Extrusion from existing surface](https://github.com/RadicalCSG/Chisel.Prototype/issues/19)
-* [2D shape editor](https://github.com/RadicalCSG/Chisel.Prototype/issues/260)
-* [Grid Objects](https://github.com/RadicalCSG/Chisel.Prototype/issues/121)
-* [Clip Tool](https://github.com/RadicalCSG/Chisel.Prototype/issues/15)
-* [Node Based Generators](https://github.com/RadicalCSG/Chisel.Prototype/issues/94) for easy procedural content generation
+  * [Trim decals placed where the materials of two brushes meet](https://github.com/RadicalCSG/com.chisel/issues/32) (now only within one brush)
+  * [Omni directional decals](https://github.com/RadicalCSG/com.chisel/issues/33)
+  * [Skewed decals](https://github.com/RadicalCSG/com.chisel/issues/34)
+  * [Fade distances](https://github.com/RadicalCSG/com.chisel/issues/35)
+* [Snapping to vertices, edges and surfaces of other geometry](https://github.com/RadicalCSG/com.chisel/issues/42)
+* [Vertex Painting](https://github.com/RadicalCSG/com.chisel/issues/36)
+* [Extrusion from existing surface](https://github.com/RadicalCSG/com.chisel/issues/37)
+* [2D shape editor](https://github.com/RadicalCSG/com.chisel/issues/38)
+* [Grid Objects](https://github.com/RadicalCSG/com.chisel/issues/39)
+* [Clip Tool](https://github.com/RadicalCSG/com.chisel/issues/40)
+* [Node Based Generators](https://github.com/RadicalCSG/com.chisel/issues/41) for easy procedural content generation
 
 ---
 Extensions:
