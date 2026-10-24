@@ -406,7 +406,9 @@ namespace Chisel.Components.Tests
             var floor = Box(model, new float3(-4, -1, -4), new float3(0, 0, 4));
             var inset = Box(model, new float3(-3, -0.5f, -4), new float3(-2, 0, 4));
             var decal = Trim(model, floor, SurfaceFacing(floor, new float3(0, 1, 0)), inset, SurfaceFacing(inset, new float3(0, 1, 0)));
+            // its surfaces given again with the decal where the edge was picked
             decal.transform.position = new Vector3(x + 0.1f, 0, 1);
+            decal.SetTargets(new List<ChiselDecalSurfaceTarget>(decal.Targets));
             Update();
             var halves = new List<ChiselTrimDecals.Half>();
             Assert.That(ChiselTrimDecals.TryDescribe(decal, 1, 1, SurfaceDestinationFlags.Default, out _, halves, out var from, out var to), Is.True);
@@ -485,6 +487,12 @@ namespace Chisel.Components.Tests
             decal.transform.position = new Vector3(-3, 0, 4);
             Assert.That(ChiselTrimDecals.TryDescribe(decal, 1, 1, SurfaceDestinationFlags.Default, out _, halves, out edgeFrom, out var edgeTo), Is.True);
             Assert.That(edgeFrom.x, Is.EqualTo(-3).Within(1e-4f), "still on x = -3");
+            Assert.That(edgeTo.x, Is.EqualTo(-3).Within(1e-4f));
+
+            // dragged off its line, right up to the other seam: the trim stays on its line, only picking moves it
+            decal.transform.position = new Vector3(-2.05f, 0, 1);
+            Assert.That(ChiselTrimDecals.TryDescribe(decal, 1, 1, SurfaceDestinationFlags.Default, out _, halves, out edgeFrom, out edgeTo), Is.True);
+            Assert.That(edgeFrom.x, Is.EqualTo(-3).Within(1e-4f), "still on x = -3, though the decal is next to x = -2");
             Assert.That(edgeTo.x, Is.EqualTo(-3).Within(1e-4f));
         }
 

@@ -743,7 +743,7 @@ namespace Chisel.Components
             return -1;
         }
 
-        // A line to keep to: the one the trim lay on, while the reference point is still on it
+        // A line to keep to: the one the trim lay on
         struct KeptLine
         {
             public bool   keep;
@@ -807,8 +807,9 @@ namespace Chisel.Components
                     continue;
                 var t = math.clamp(math.dot(reference - from, along), 0, length);
                 var distance = math.distance(reference, from + along * t);
-                // the line the trim lay on wins while the reference point is on it
-                var isKept = distance < kMargin && kept.Holds(from, from + along * length);
+                // the line the trim lay on wins as long as it is still there: dragging the decal off it doesn't move the
+                // trim to another seam, only picking does
+                var isKept = kept.Holds(from, from + along * length);
                 if (onKept && !isKept)
                     continue;
                 if (distance >= best && !(isKept && !onKept))

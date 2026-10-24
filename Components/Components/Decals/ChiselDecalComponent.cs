@@ -157,6 +157,7 @@ namespace Chisel.Components
             if (newTargets != null)
                 targets.AddRange(newTargets);
             trimEdges.Clear();
+            hasTrimLine = false;
             ChiselDecalManager.SetDirty();
         }
 
