@@ -17,7 +17,10 @@ namespace Chisel.Editors
 
         static readonly GUIContent kMaterialContent      = new GUIContent("Material", "What the decal draws with. A decal without a material draws nothing.");
         static readonly GUIContent kCenterContent        = new GUIContent("Center", "The center of the box, in the decal's own space.");
-        static readonly GUIContent kSizeContent          = new GUIContent("Size", "X and Y are the image's width and height (for a perspective decal: at the center of the box), Z is how deep the decal reaches.");
+        static readonly GUIContent kRotateContent        = new GUIContent("Rotate", "Turns the decal a quarter turn about the direction it projects in.");
+        static readonly GUIContent kRotateLeftContent    = new GUIContent("Left", "A quarter turn counter-clockwise, as seen looking at the surface.");
+        static readonly GUIContent kRotateRightContent   = new GUIContent("Right", "A quarter turn clockwise, as seen looking at the surface.");
+        static readonly GUIContent kSizeContent           = new GUIContent("Size", "X and Y are the image's width and height (for a perspective decal: at the center of the box), Z is how deep the decal reaches.");
         static readonly GUIContent kProjectionContent    = new GUIContent("Projection", "Orthographic keeps the image's size at every depth; perspective projects it from a point behind the box, like a projector.");
         static readonly GUIContent kFieldOfViewContent   = new GUIContent("Field Of View", "The perspective projection's vertical angle, in degrees.");
         static readonly GUIContent kTransparentContent   = new GUIContent("Transparent", "A transparent decal is drawn over the surfaces it covers. An opaque decal replaces them in the rendered mesh; the collider keeps them.");
@@ -49,7 +52,7 @@ namespace Chisel.Editors
         static readonly GUIContent kTrimHeightContent    = new GUIContent("Size", "The image's size across the edge, over both surfaces: each half reaches half of it into its surface.");
         static readonly GUIContent kPickEdgeContent      = new GUIContent("Pick Edge", "Click a surface near one of its edges in the scene view: the trim goes on that edge, between the surface and the one that meets it there. Shift-click adds the edge to the trim's chain round corners, and goes on picking. Escape stops.");
         static readonly GUIContent kCancelPickContent    = new GUIContent("Cancel Picking");
-        static readonly GUIContent kPlaceWhereMeetContent = new GUIContent("Place Where Materials Meet", "Puts a copy of this trim decal on every edge in its model where a surface with its first surface's material meets one with its second surface's material (edges within one brush).");
+        static readonly GUIContent kPlaceWhereMeetContent = new GUIContent("Place Where Materials Meet", "Puts a copy of this trim decal on every edge in its model where a surface with its first surface's material meets one with its second surface's material, within a brush or between two.");
         const string kTrimNeedsTwoMessage = "A trim decal lies on the edge between two surfaces: give it two.";
         const string kTrimChainMessage    = "Runs on round {0} more edge(s), added with Shift-click while picking.";
         const string kNoMaterialMessage = "A decal without a material draws nothing.";
@@ -103,6 +106,7 @@ namespace Chisel.Editors
 
                 EditorGUILayout.PropertyField(settings.FindPropertyRelative(nameof(ChiselDecalSettings.center)), kCenterContent);
                 EditorGUILayout.PropertyField(settings.FindPropertyRelative(nameof(ChiselDecalSettings.size)), kSizeContent);
+                RotateButtons();
                 EditorGUILayout.PropertyField(serializedObject.FindProperty(ChiselDecalComponent.kRepeatName), kRepeatContent);
             }
             ImageField(material, serializedObject.FindProperty(ChiselDecalComponent.kImageTileName));
@@ -177,6 +181,29 @@ namespace Chisel.Editors
                         }
                     }
                 }, kWholeTextureContent));
+            }
+        }
+
+        // A quarter turn of every selected decal about its forward axis, the direction its image is projected in
+        void RotateButtons()
+        {
+            var rect = EditorGUILayout.GetControlRect();
+            rect = EditorGUI.PrefixLabel(rect, kRotateContent);
+            var left  = new Rect(rect.x, rect.y, rect.width * 0.5f, rect.height);
+            var right = new Rect(left.xMax, rect.y, rect.width - left.width, rect.height);
+            var indent = EditorGUI.indentLevel;
+            EditorGUI.indentLevel = 0;
+            var angle = 0f;
+            if (GUI.Button(left, kRotateLeftContent, EditorStyles.miniButtonLeft))   angle = 90;
+            if (GUI.Button(right, kRotateRightContent, EditorStyles.miniButtonRight)) angle = -90;
+            EditorGUI.indentLevel = indent;
+            if (angle == 0)
+                return;
+            foreach (var decal in targets)
+            {
+                var transform = ((ChiselDecalComponent)decal).transform;
+                Undo.RecordObject(transform, "Rotate Decal");
+                transform.localRotation *= Quaternion.AngleAxis(angle, Vector3.forward);
             }
         }
 
@@ -312,11 +339,11 @@ namespace Chisel.Editors
             if (edges.Count == 0)
                 return;
 
-            var existing = new HashSet<(ChiselNodeComponent, int, int)>();
+            var existing = new HashSet<(ChiselNodeComponent, int, ChiselNodeComponent, int)>();
             foreach (var decal in Object.FindObjectsByType<ChiselDecalComponent>(FindObjectsSortMode.None))
             {
-                if (decal.Shape == ChiselDecalShape.Trim && decal.Targets.Count >= 2 && decal.Targets[0].brush == decal.Targets[1].brush)
-                    existing.Add((decal.Targets[0].brush, decal.Targets[0].surfaceIndex, decal.Targets[1].surfaceIndex));
+                if (decal.Shape == ChiselDecalShape.Trim && decal.Targets.Count >= 2)
+                    existing.Add((decal.Targets[0].brush, decal.Targets[0].surfaceIndex, decal.Targets[1].brush, decal.Targets[1].surfaceIndex));
             }
 
             Undo.SetCurrentGroupName("Place Trim Decals");
@@ -332,7 +359,7 @@ namespace Chisel.Editors
             var modelToWorld = model.transform.localToWorldMatrix;
             foreach (var edge in edges)
             {
-                if (!existing.Add((edge.a.brush, edge.a.surfaceIndex, edge.b.surfaceIndex)))
+                if (!existing.Add((edge.a.brush, edge.a.surfaceIndex, edge.b.brush, edge.b.surfaceIndex)))
                     continue;
                 var copy = Object.Instantiate(template.gameObject, group);
                 copy.name = template.name;
