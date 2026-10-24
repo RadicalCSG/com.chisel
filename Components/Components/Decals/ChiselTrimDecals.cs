@@ -454,7 +454,8 @@ namespace Chisel.Components
 
         /// <summary>
         /// Every edge in the model where a surface drawn with materialA meets one drawn with materialB, each once, the
-        /// materialA surface first. Only edges within one brush, of generators that make one brush.
+        /// materialA surface first: edges of one brush, and where surfaces of two brushes meet (a wall standing on a floor).
+        /// Only generators that make one brush.
         /// </summary>
         public static void EdgesBetween(ChiselModelComponent model, ulong materialA, ulong materialB, List<Edge> edges)
         {
@@ -497,6 +498,118 @@ namespace Chisel.Components
                     }
                 }
             }
+            EdgesBetweenBrushes(model, materialA, materialB, edges);
+        }
+
+        // A surface of a generator's brush with one of the two materials, and its bounds
+        struct MaterialFace
+        {
+            public ChiselGeneratorComponent generator;
+            public int    surfaceIndex;
+            public bool   isA, isB;
+            public Face   face;
+            public float3 min, max;
+        }
+
+        // Where a materialA surface of one brush meets a materialB surface of another, along an edge of either
+        static void EdgesBetweenBrushes(ChiselModelComponent model, ulong materialA, ulong materialB, List<Edge> edges)
+        {
+            var faces = new List<MaterialFace>();
+            foreach (var generator in model.GetComponentsInChildren<ChiselGeneratorComponent>())
+            {
+                if (generator.hierarchyItem.Model != model || !generator.TopTreeNode.Valid || generator.TopTreeNode.Type != CSGNodeType.Brush)
+                    continue;
+                var brush = (CSGTreeBrush)generator.TopTreeNode;
+                var blob  = BrushMeshManager.GetBrushMeshBlob(brush.BrushMesh);
+                if (!blob.IsCreated)
+                    continue;
+                for (int p = 0; p < blob.Value.polygons.Length; p++)
+                {
+                    var material = blob.Value.polygons[p].surface.parameters.parameter1;
+                    if (material != materialA && material != materialB)
+                        continue;
+                    var surfaceIndex = blob.Value.polygons[p].descriptionIndex;
+                    if (!TryBrushFace(brush, surfaceIndex, out var face))
+                        continue;
+                    float3 min = face.outline[0], max = face.outline[0];
+                    foreach (var vertex in face.outline)
+                    {
+                        min = math.min(min, vertex);
+                        max = math.max(max, vertex);
+                    }
+                    faces.Add(new MaterialFace { generator = generator, surfaceIndex = surfaceIndex, isA = material == materialA, isB = material == materialB,
+                                                 face = face, min = min - kMargin, max = max + kMargin });
+                }
+            }
+
+            var seen = new HashSet<(ulong, int, ulong, int)>();
+            foreach (var a in faces)
+            {
+                if (!a.isA)
+                    continue;
+                var keyA = UnityEngine.EntityId.ToULong(a.generator.GetEntityId());
+                foreach (var b in faces)
+                {
+                    if (!b.isB || b.generator == a.generator || math.any(a.min > b.max) || math.any(b.min > a.max))
+                        continue;
+                    var keyB = UnityEngine.EntityId.ToULong(b.generator.GetEntityId());
+                    // each pair of surfaces once, also when both materials are the same
+                    var key = keyA < keyB ? (keyA, a.surfaceIndex, keyB, b.surfaceIndex) : (keyB, b.surfaceIndex, keyA, a.surfaceIndex);
+                    if (!Meet(a.face, b.face, out var middle) || !seen.Add(key))
+                        continue;
+                    edges.Add(new Edge
+                    {
+                        a      = new ChiselDecalSurfaceTarget { brush = a.generator, surfaceIndex = a.surfaceIndex },
+                        b      = new ChiselDecalSurfaceTarget { brush = b.generator, surfaceIndex = b.surfaceIndex },
+                        middle = middle
+                    });
+                }
+            }
+        }
+
+        // Two faces of different brushes that meet: their planes cross on a line along an edge of either, both reach a
+        // stretch of it, and each has some of itself in front of the other's plane (not all of it inside the other's brush)
+        static bool Meet(in Face a, in Face b, out float3 middle)
+        {
+            middle = default;
+            var direction = math.cross(a.normal, b.normal);
+            var lengthSq  = math.lengthsq(direction);
+            if (lengthSq < kEpsilon * kEpsilon)
+                return false;
+            var point = (math.cross(b.normal, direction) * a.distance + math.cross(direction, a.normal) * b.distance) / lengthSq;
+            direction = math.normalize(direction);
+            float from = float.NegativeInfinity, to = float.PositiveInfinity;
+            if (!Clip(a, point, direction, ref from, ref to) || !Clip(b, point, direction, ref from, ref to) || to - from <= kMargin)
+                return false;
+            if (!HasEdgeOn(a, point, direction) && !HasEdgeOn(b, point, direction))
+                return false;
+            if (!InFrontOf(a, b) || !InFrontOf(b, a))
+                return false;
+            middle = point + direction * ((from + to) * 0.5f);
+            return true;
+        }
+
+        static bool HasEdgeOn(in Face face, float3 point, float3 direction)
+        {
+            var outline = face.outline;
+            for (int i = 0; i < outline.Count; i++)
+            {
+                if (math.length(math.cross(outline[i] - point, direction)) < kMargin &&
+                    math.length(math.cross(outline[(i + 1) % outline.Count] - point, direction)) < kMargin)
+                    return true;
+            }
+            return false;
+        }
+
+        // Some of the face lies in front of the other face's plane
+        static bool InFrontOf(in Face face, in Face other)
+        {
+            foreach (var vertex in face.outline)
+            {
+                if (math.dot(other.normal, vertex) - other.distance > kMargin)
+                    return true;
+            }
+            return false;
         }
 
         static bool TryBrushOf(CSGTreeNode node, int surfaceIndex, out CSGTreeBrush brush, out int polygon)

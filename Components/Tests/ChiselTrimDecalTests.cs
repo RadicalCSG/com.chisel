@@ -280,6 +280,53 @@ namespace Chisel.Components.Tests
             Assert.That(edges.Count, Is.EqualTo(8), "the four vertical edges and the bottom's four (it has the side material too), each once");
         }
 
+        static void Paint(ChiselBoxComponent box, Material material)
+        {
+            var surfaces = box.SurfaceDefinition.surfaces;
+            for (int i = 0; i < surfaces.Length; i++)
+                surfaces[i].SetMaterial(material);
+            box.OnValidate();
+        }
+
+        // Where two brushes' materials meet: a wall standing on a floor meets it along the four sides of its foot; a wall
+        // sunk into the floor, and one that doesn't touch it, don't
+        [Test]
+        public void TheEdgesWhereTwoBrushesMaterialsMeet_AreFound()
+        {
+            var model = Model();
+            var floor   = Box(model, new float3(-4, -1, -4), new float3(4, 0, 4));
+            var wall    = Box(model, new float3(-1, 0, -1), new float3(1, 2, 1));
+            var sunk    = Box(model, new float3(2, -0.75f, 2), new float3(3, -0.25f, 3));
+            var floating = Box(model, new float3(-3, 1, 2), new float3(-2, 2, 3));
+            var floorMaterial = new Material(decalMaterial) { name = "Floor" };
+            var wallMaterial  = new Material(decalMaterial) { name = "Wall" };
+            created.Add(floorMaterial);
+            created.Add(wallMaterial);
+            Paint(floor, floorMaterial);
+            Paint(wall, wallMaterial);
+            Paint(sunk, wallMaterial);
+            Paint(floating, wallMaterial);
+            Update();
+
+            var edges = new List<ChiselTrimDecals.Edge>();
+            ChiselTrimDecals.EdgesBetween(model, UnityEngine.EntityId.ToULong(floorMaterial.GetEntityId()), UnityEngine.EntityId.ToULong(wallMaterial.GetEntityId()), edges);
+            Assert.That(edges.Count, Is.EqualTo(4), "the four sides of the wall's foot");
+            var top = SurfaceFacing(floor, new float3(0, 1, 0));
+            foreach (var edge in edges)
+            {
+                Assert.That(edge.a.brush, Is.SameAs(floor), "the first material's surface first");
+                Assert.That(edge.a.surfaceIndex, Is.EqualTo(top));
+                Assert.That(edge.b.brush, Is.SameAs(wall));
+                Assert.That(edge.middle.y, Is.EqualTo(0).Within(1e-5f), "on the floor");
+                Assert.That(math.max(math.abs(edge.middle.x), math.abs(edge.middle.z)), Is.EqualTo(1).Within(1e-5f), "along the wall's foot");
+            }
+
+            // and a trim on such an edge is drawn
+            var decal = Trim(model, floor, top, wall, edges[0].b.surfaceIndex);
+            Update();
+            Assert.That(model.Node.GetDecalCount(), Is.GreaterThan(0), "the trim between the two brushes is drawn");
+        }
+
         // An image in a trim sheet: a piece for every image along the edge, each inside its rect of the texture, the last
         // one cut short
         [Test]
