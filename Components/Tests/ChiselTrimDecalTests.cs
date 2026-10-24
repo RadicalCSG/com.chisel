@@ -288,6 +288,59 @@ namespace Chisel.Components.Tests
             box.OnValidate();
         }
 
+        // A wall standing across the seam of two floor brushes: its trim runs along the wall's whole foot, not only where
+        // the one floor brush it names reaches
+        [Test]
+        public void ATrimBetweenTwoBrushes_RunsAlongTheWholeEdgeOfTheOneThatHasIt()
+        {
+            var model = Model();
+            var left  = Box(model, new float3(-4, -1, -4), new float3(0, 0, 4));
+            Box(model, new float3(0, -1, -4), new float3(4, 0, 4));
+            var wall  = Box(model, new float3(-1, 0, -1), new float3(1, 2, 1));
+            var decal = Trim(model, left, SurfaceFacing(left, new float3(0, 1, 0)), wall, SurfaceFacing(wall, new float3(0, 0, 1)));
+            Update();
+            var halves = new List<ChiselTrimDecals.Half>();
+            Assert.That(ChiselTrimDecals.TryDescribe(decal, 1, 1, SurfaceDestinationFlags.Default, out _, halves, out var from, out var to), Is.True);
+            Assert.That(math.min(from.x, to.x), Is.EqualTo(-1).Within(1e-4f), "from the wall's one end");
+            Assert.That(math.max(from.x, to.x), Is.EqualTo(1).Within(1e-4f), "to its other end, over the other floor brush");
+        }
+
+        // Two floor brushes side by side, their tops in one plane: a trim on the seam lies flat, half on each, along the seam
+        [Test]
+        public void ATrimOnTheSeamOfTwoFlushBrushes_LiesFlatAcrossIt()
+        {
+            var model = Model();
+            var left  = Box(model, new float3(-4, -1, -4), new float3(0, 0, 4));
+            var right = Box(model, new float3(0, -1, -4), new float3(4, 0, 4));
+            var decal = Trim(model, left, SurfaceFacing(left, new float3(0, 1, 0)), right, SurfaceFacing(right, new float3(0, 1, 0)));
+            Update();
+            var halves = new List<ChiselTrimDecals.Half>();
+            Assert.That(ChiselTrimDecals.TryDescribe(decal, 1, 1, SurfaceDestinationFlags.Default, out _, halves, out var from, out var to), Is.True, "the seam is an edge");
+            Assert.That(from.x, Is.EqualTo(0).Within(1e-4f));
+            Assert.That(to.x, Is.EqualTo(0).Within(1e-4f));
+            Assert.That(math.abs(to.z - from.z), Is.EqualTo(8).Within(1e-4f), "along the whole seam");
+            var across = new List<float>();
+            foreach (var half in halves)
+                across.Add(math.mul(half.decal.decalToTree, new float4(0, 1, 0, 0)).x);
+            Assert.That(across, Has.Some.LessThan(-0.9f).And.Some.GreaterThan(0.9f), "one half into each brush's top, both flat");
+            foreach (var half in halves)
+                Assert.That(math.abs(math.mul(half.decal.decalToTree, new float4(0, 0, 1, 0)).y), Is.EqualTo(1).Within(1e-4f), "projected straight down");
+            Assert.That(model.Node.GetDecalCount(), Is.GreaterThan(0), "and it is drawn");
+
+            // and placing by rule finds the seam between two materials
+            var floorA = new Material(decalMaterial) { name = "A" };
+            var floorB = new Material(decalMaterial) { name = "B" };
+            created.Add(floorA);
+            created.Add(floorB);
+            Paint(left, floorA);
+            Paint(right, floorB);
+            Update();
+            var edges = new List<ChiselTrimDecals.Edge>();
+            ChiselTrimDecals.EdgesBetween(model, UnityEngine.EntityId.ToULong(floorA.GetEntityId()), UnityEngine.EntityId.ToULong(floorB.GetEntityId()), edges);
+            Assert.That(edges.Exists(e => e.a.brush == left && e.b.brush == right && math.abs(e.middle.x) < 1e-4f && math.abs(e.middle.y) < 1e-4f),
+                        Is.True, "the seam between the two tops");
+        }
+
         // Where two brushes' materials meet: a wall standing on a floor meets it along the four sides of its foot; a wall
         // sunk into the floor, and one that doesn't touch it, don't
         [Test]

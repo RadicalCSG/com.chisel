@@ -178,18 +178,21 @@ namespace Chisel.Components
                 return false;
             model = modelA;
 
-            // the line both planes lie on
-            var direction = math.cross(faceA.normal, faceB.normal);
-            var lengthSq  = math.lengthsq(direction);
-            if (lengthSq < kEpsilon * kEpsilon)
+            if (!LineOf(faceA, faceB, out var point, out var direction, out _))
                 return false;
-            var point = (math.cross(faceB.normal, direction) * faceA.distance + math.cross(direction, faceA.normal) * faceB.distance) / lengthSq;
-            direction = math.normalize(direction);
 
-            // where both surfaces reach it
-            float from = float.NegativeInfinity, to = float.PositiveInfinity;
-            if (!Clip(faceA, point, direction, ref from, ref to) || !Clip(faceB, point, direction, ref from, ref to) || to - from <= kEpsilon)
+            // where both surfaces reach it; when only one of them has an edge on the line (a wall standing on a floor),
+            // that whole edge, as the floor beside it may be another brush
+            float fromA = float.NegativeInfinity, toA = float.PositiveInfinity, fromB = float.NegativeInfinity, toB = float.PositiveInfinity;
+            if (!Clip(faceA, point, direction, ref fromA, ref toA) || !Clip(faceB, point, direction, ref fromB, ref toB) ||
+                math.min(toA, toB) - math.max(fromA, fromB) <= kEpsilon)
                 return false;
+            var edgeOnA = HasEdgeOn(faceA, point, direction);
+            var edgeOnB = HasEdgeOn(faceB, point, direction);
+            float from, to;
+            if (edgeOnA && !edgeOnB)      { from = fromA; to = toA; }
+            else if (edgeOnB && !edgeOnA) { from = fromB; to = toB; }
+            else                          { from = math.max(fromA, fromB); to = math.min(toA, toB); }
             var start = point + direction * from;
             edge = new ChainEdge
             {
@@ -572,21 +575,70 @@ namespace Chisel.Components
         static bool Meet(in Face a, in Face b, out float3 middle)
         {
             middle = default;
-            var direction = math.cross(a.normal, b.normal);
-            var lengthSq  = math.lengthsq(direction);
-            if (lengthSq < kEpsilon * kEpsilon)
+            if (!LineOf(a, b, out var point, out var direction, out var coplanar))
                 return false;
-            var point = (math.cross(b.normal, direction) * a.distance + math.cross(direction, a.normal) * b.distance) / lengthSq;
-            direction = math.normalize(direction);
             float from = float.NegativeInfinity, to = float.PositiveInfinity;
             if (!Clip(a, point, direction, ref from, ref to) || !Clip(b, point, direction, ref from, ref to) || to - from <= kMargin)
                 return false;
             if (!HasEdgeOn(a, point, direction) && !HasEdgeOn(b, point, direction))
                 return false;
-            if (!InFrontOf(a, b) || !InFrontOf(b, a))
+            if (!coplanar && (!InFrontOf(a, b) || !InFrontOf(b, a)))
                 return false;
             middle = point + direction * ((from + to) * 0.5f);
             return true;
+        }
+
+        // The line two faces meet on: where their planes cross, or for two faces in one plane (brushes side by side) the
+        // line an edge of the one lies on that an edge of the other lies on too
+        static bool LineOf(in Face a, in Face b, out float3 point, out float3 direction, out bool coplanar)
+        {
+            direction = math.cross(a.normal, b.normal);
+            var lengthSq = math.lengthsq(direction);
+            coplanar = lengthSq < kEpsilon * kEpsilon;
+            if (!coplanar)
+            {
+                point = (math.cross(b.normal, direction) * a.distance + math.cross(direction, a.normal) * b.distance) / lengthSq;
+                direction = math.normalize(direction);
+                return true;
+            }
+            point = default;
+            if (math.dot(a.normal, b.normal) < 0 || math.abs(a.distance - b.distance) > kMargin)
+                return false;
+            var outline = a.outline;
+            for (int i = 0; i < outline.Count; i++)
+            {
+                var from = outline[i];
+                var along = outline[(i + 1) % outline.Count] - from;
+                var length = math.length(along);
+                if (length < kEpsilon)
+                    continue;
+                along /= length;
+                if (SharesEdge(b, from, along, length))
+                {
+                    point = from;
+                    direction = along;
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        // Whether an edge of the face lies on the line and overlaps its stretch [0, length] by more than kMargin
+        static bool SharesEdge(in Face face, float3 point, float3 direction, float length)
+        {
+            var outline = face.outline;
+            for (int i = 0; i < outline.Count; i++)
+            {
+                var v0 = outline[i];
+                var v1 = outline[(i + 1) % outline.Count];
+                if (math.length(math.cross(v0 - point, direction)) >= kMargin || math.length(math.cross(v1 - point, direction)) >= kMargin)
+                    continue;
+                var t0 = math.dot(v0 - point, direction);
+                var t1 = math.dot(v1 - point, direction);
+                if (math.min(length, math.max(t0, t1)) - math.max(0, math.min(t0, t1)) > kMargin)
+                    return true;
+            }
+            return false;
         }
 
         static bool HasEdgeOn(in Face face, float3 point, float3 direction)
