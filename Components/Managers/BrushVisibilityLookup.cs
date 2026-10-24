@@ -42,8 +42,8 @@ namespace Chisel.Components
 
         internal void Clear()
 		{
-			compactNodeIDVisibilityStateLookup.Clear();
-			entityIDVisibilityStateLookup.Clear();
+			if (compactNodeIDVisibilityStateLookup.IsCreated) compactNodeIDVisibilityStateLookup.Clear(); // may be uncreated after a domain reload
+			if (entityIDVisibilityStateLookup.IsCreated) entityIDVisibilityStateLookup.Clear();
 			notAllVisibleCount = 0;
 			Version++;
 		}

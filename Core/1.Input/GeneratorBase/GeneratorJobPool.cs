@@ -59,9 +59,10 @@ namespace Chisel.Core
         {
             if (s_Instance == null)
                 return;
-            foreach (var pool in s_Instance.generatorPools)
+            foreach (var pool in s_Instance.generatorPools.ToArray())
             {
                 pool.Dispose();
+                Register(pool); // Dispose() unregistered it; without this I don't think the the pool ever runs again and its brushes get no mesh!
                 pool.AllocateOrClear();
             }
         }
