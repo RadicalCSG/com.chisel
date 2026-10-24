@@ -114,6 +114,39 @@ namespace Chisel.Components.Tests
             return names.ToString();
         }
 
+        class Messages : Chisel.Core.IChiselMessageHandler
+        {
+            public readonly List<string> warnings = new();
+            public Chisel.Core.MessageDestination Destination => Chisel.Core.MessageDestination.Inspector;
+            public void SetTitle(string name, Object reference) { }
+            public void Warning(string message, System.Action buttonAction, string buttonText) { warnings.Add(message); }
+            public void Warning(string message) { warnings.Add(message); }
+        }
+
+        [Test]
+        public void ANewEmptyModel_HasItsTree_AndSaysItHasNoChildren()
+        {
+            var model = Model("empty");
+            Update();
+            Assert.That(model.Node.Valid, Is.True);
+            var messages = new Messages();
+            model.GetMessages(messages);
+            Assert.That(messages.warnings, Has.Count.EqualTo(1));
+            Assert.That(messages.warnings[0], Does.Contain("has no children"));
+
+            var box = Box("box", model.transform, Vector3.zero);
+            Update();
+            messages.warnings.Clear();
+            model.GetMessages(messages);
+            Assert.That(messages.warnings, Is.Empty);
+
+            Object.DestroyImmediate(box);
+            Update();
+            model.GetMessages(messages);
+            Assert.That(messages.warnings, Has.Count.EqualTo(1), "its brush deleted");
+            Assert.That(messages.warnings[0], Does.Contain("has no children"));
+        }
+
         [Test]
         public void DeletingABrush_RebuildsTheBrushItTouched()
         {

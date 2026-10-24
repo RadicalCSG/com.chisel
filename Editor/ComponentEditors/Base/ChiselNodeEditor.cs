@@ -838,13 +838,11 @@ namespace Chisel.Editors
 
 		readonly static ChiselComponentInspectorMessageHandler s_Warnings = new();
 
-		Vector2 messagesScrollPosition = Vector2.zero;
-
 		protected virtual void OnInspector() 
         {
-            s_Warnings.StartWarnings(messagesScrollPosition);
+            s_Warnings.StartWarnings();
 			ChiselMessages.ShowMessages(targets, s_Warnings);
-			messagesScrollPosition = s_Warnings.EndWarnings();
+			s_Warnings.EndWarnings();
 
 			OnDefaultInspector(); 
         }

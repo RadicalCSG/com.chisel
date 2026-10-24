@@ -714,11 +714,11 @@ namespace Chisel.Editors
 
         public void Initialize(Vector2 currentMousePosition, Vector3 slideStart, Vector3 slideDirection, float snappingStep, Axis axis)
         {
-            this.slideDirection		= slideDirection;
+            this.slideDirection		= slideDirection.normalized;
             this.snappingStep		= snappingStep;
 
             this.slideStart         = slideStart;
-            this.slideOrigin		=  SceneHandleUtility.ProjectPointRay(Grid.ActiveGrid.Center, slideStart, slideDirection);
+            this.slideOrigin		=  SceneHandleUtility.ProjectPointRay(Grid.ActiveGrid.Center, slideStart, this.slideDirection);
             this.slideExtents.min	= 			
             this.slideExtents.max	= 0;
             
@@ -726,26 +726,24 @@ namespace Chisel.Editors
             
             this.slidePosition		= this.slideOrigin;
             this.slideOffset		= slideStart - this.slideOrigin;
-            this.startOffset		= SnappingUtility.WorldPointToDistance(slideStart - this.slidePosition, slideDirection);
+            this.startOffset		= SnappingUtility.WorldPointToDistance(slideStart - this.slidePosition, this.slideDirection);
 
             this.startMousePosition = currentMousePosition;
             this.slideAxis			= axis;
             
             this.snapResult			= SnapResult1D.None;
-            this.min = slideStart + SnappingUtility.DistanceToWorldPoint (slideExtents.min, slideDirection);
-            this.max = slideStart + SnappingUtility.DistanceToWorldPoint (slideExtents.max, slideDirection);
+            this.min = slideStart + SnappingUtility.DistanceToWorldPoint (slideExtents.min, this.slideDirection);
+            this.max = slideStart + SnappingUtility.DistanceToWorldPoint (slideExtents.max, this.slideDirection);
         }
         
-        static Extents1D GetExtentsOfPointArray(Matrix4x4 matrix, Vector3[] points, Vector3 slideOrigin, Vector3 slideDirection)
+        // Distances along the line in world space, so a scaled handle matrix doesn't scale them
+        static Extents1D GetExtentsOfPointArray(Matrix4x4 localToWorld, Vector3[] points, Vector3 slideOrigin, Vector3 slideDirection)
         {
-            var transformedDirection = matrix.MultiplyVector(slideDirection);
-            var transformedOrigin	 = matrix.MultiplyPoint(slideOrigin);
-
             var min = float.PositiveInfinity;
             var max = float.NegativeInfinity;
             for (var i = 0; i < points.Length; i++)
             {
-                var distance = SnappingUtility.WorldPointToDistance(points[i], transformedDirection, transformedOrigin);
+                var distance = SnappingUtility.WorldPointToDistance(localToWorld.MultiplyPoint(points[i]), slideDirection, slideOrigin);
                 min = Mathf.Min(min, distance);
                 max = Mathf.Max(max, distance);
             }

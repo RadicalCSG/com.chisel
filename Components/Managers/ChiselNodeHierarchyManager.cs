@@ -1476,8 +1476,12 @@ ForceRerun:
                             {
                                 sceneHierarchy.RootItems.Add(hierarchyItem);
                             }
-                        
+
                             sortChildrenQueue.Add(sceneHierarchy.RootItems);
+
+                            // a model without children gets its tree too, nothing else queues it
+                            if (hierarchyItem.Component.IsContainer)
+                                updateChildrenQueue.Add(hierarchyItem);
                         }
                     }
                     addToHierarchyQueue.Clear();
