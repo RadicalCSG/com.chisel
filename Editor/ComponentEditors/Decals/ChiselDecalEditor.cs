@@ -27,7 +27,8 @@ namespace Chisel.Editors
         static readonly GUIContent kUVOffsetContent      = new GUIContent("UV Offset");
         static readonly GUIContent kTargetsContent       = new GUIContent("Targets", "Limits the decal to these brush surfaces (surface index -1: all of the brush's surfaces). Empty: every surface it reaches.");
         static readonly GUIContent kShapeContent         = new GUIContent("Shape", "Box: the image is projected through the box. Trim: the image lies on the edge between two surfaces, its lower half on the first, its upper half on the second.");
-        static readonly GUIContent kTrimMirrorContent    = new GUIContent("Mirror", "The image's lower half on both surfaces, mirrored across the edge, so the trim is the same on either side of it.");
+        static readonly GUIContent kTrimImageRectContent = new GUIContent("Image Rect", "The part of the texture the image is, in texture coordinates (0 to 1): all of it, or an image in a trim sheet. An image in a trim sheet is a piece of its own for every image along the edge, as it can't repeat by wrapping.");
+        static readonly GUIContent kTrimMirrorContent     = new GUIContent("Mirror", "The image's lower half on both surfaces, mirrored across the edge, so the trim is the same on either side of it.");
         static readonly GUIContent kTrimFillContent       = new GUIContent("Fill", "Stretch: one image over the whole edge. Repeat: the image repeated at its length, the last one cut short. Fit: the whole number of images nearest to what fits, stretched to fill the edge. Single: one image at its length, round the decal's position (move the decal along the edge to place it).");
         static readonly GUIContent kTrimLengthContent    = new GUIContent("Length", "The image's length along the edge.");
         static readonly GUIContent kTrimHeightContent    = new GUIContent("Height", "The image's height across both surfaces: each half reaches half of it into its surface.");
@@ -68,6 +69,7 @@ namespace Chisel.Editors
             {
                 EditorGUILayout.PropertyField(serializedObject.FindProperty(ChiselDecalComponent.kTrimFillName), kTrimFillContent);
                 EditorGUILayout.PropertyField(serializedObject.FindProperty(ChiselDecalComponent.kTrimMirrorName), kTrimMirrorContent);
+                EditorGUILayout.PropertyField(serializedObject.FindProperty(ChiselDecalComponent.kTrimImageRectName), kTrimImageRectContent);
                 var size = settings.FindPropertyRelative(nameof(ChiselDecalSettings.size));
                 EditorGUILayout.PropertyField(size.FindPropertyRelative("x"), kTrimLengthContent);
                 EditorGUILayout.PropertyField(size.FindPropertyRelative("y"), kTrimHeightContent);
@@ -313,22 +315,21 @@ namespace Chisel.Editors
             };
         }
 
+        static readonly List<ChiselTrimDecals.Half> s_OutlineHalves = new();
+
         static void DrawTrimOutline(ChiselDecalComponent decal)
         {
-            if (!ChiselTrimDecals.TryDescribe(decal, 0, 0, SurfaceDestinationFlags.None, out var model, out var a, out var b) || model == null)
+            if (!ChiselTrimDecals.TryDescribe(decal, 0, 0, SurfaceDestinationFlags.None, out var model, s_OutlineHalves, out var edgeFrom, out var edgeTo) || model == null)
                 return;
             var modelToWorld = model.transform.localToWorldMatrix;
-            foreach (var half in new[] { a, b })
+            foreach (var half in s_OutlineHalves)
             {
                 var settings = half.decal.settings;
                 using (new Handles.DrawingScope(kHandleColor, modelToWorld * (Matrix4x4)half.decal.decalToTree))
                     Handles.DrawWireCube(settings.center, settings.size);
             }
-            // the edge: the first half's near side, along its length
-            var edge   = modelToWorld * (Matrix4x4)a.decal.decalToTree;
-            var length = a.decal.settings.size.x;
-            using (new Handles.DrawingScope(kHandleColor, edge))
-                Handles.DrawAAPolyLine(4.0f, new Vector3(-length * 0.5f, 0, 0), new Vector3(length * 0.5f, 0, 0));
+            using (new Handles.DrawingScope(kHandleColor, modelToWorld))
+                Handles.DrawAAPolyLine(4.0f, edgeFrom, edgeTo);
         }
     }
 }

@@ -14,9 +14,13 @@ namespace Chisel.Components
     {
         /// <summary>The second half's entity id: the decal's, with this bit (a decal is one entity per id)</summary>
         public const ulong kSecondHalf = 1ul << 62;
+        // a trim sheet's image is a piece of its own along the edge for every image: its number in these bits
+        const int   kPieceShift = 50;
+        const ulong kPieceMask  = 0xFFFul << kPieceShift;
+        const int   kMaxPieces  = (int)(kPieceMask >> kPieceShift) + 1;
 
         /// <summary>The decal an entity id of a decal's piece belongs to</summary>
-        public static ulong DecalEntityID(ulong entityID) => entityID & ~kSecondHalf;
+        public static ulong DecalEntityID(ulong entityID) => entityID & ~(kSecondHalf | kPieceMask);
 
         // how far the boxes reach either side of their surface
         const float kMargin = 0.01f;
@@ -40,13 +44,15 @@ namespace Chisel.Components
         static readonly HashSet<CSGTreeBrush> s_Brushes = new();
 
         /// <summary>
-        /// The two halves of a trim decal, in the space of the model its first surface is in (the model is returned too).
-        /// False when the two surfaces aren't in one model, don't meet in a line, or share no stretch of it.
+        /// A trim decal's pieces, in the space of the model its first surface is in (the model is returned too): its two
+        /// halves, or for an image in a trim sheet both halves of every image along the edge (A, B, A, B...); and the stretch
+        /// of the edge it lies on. False when the two surfaces aren't in one model, don't meet in a line, or share no stretch of it.
         /// </summary>
         public static bool TryDescribe(ChiselDecalComponent decal, ulong entityID, ulong renderMaterial, SurfaceDestinationFlags destinationFlags,
-                                       out ChiselModelComponent model, out Half a, out Half b)
+                                       out ChiselModelComponent model, List<Half> halves, out float3 edgeFrom, out float3 edgeTo)
         {
-            a = b = default;
+            halves.Clear();
+            edgeFrom = edgeTo = float3.zero;
             model = null;
             var targets = decal.Targets;
             if (targets.Count < 2 || !TryFace(targets[0], out var modelA, out var faceA) || !TryFace(targets[1], out var modelB, out var faceB) ||
@@ -82,19 +88,52 @@ namespace Chisel.Components
             }
             var start  = point + direction * from;
             var length = to - from;
-            float repeats = fill switch
+            edgeFrom = start;
+            edgeTo   = start + direction * length;
+
+            // the whole texture repeats by wrapping; an image in a trim sheet can't, so it is a piece for every image
+            var rect  = decal.TrimImageRect;
+            var sheet = rect != new Rect(0, 0, 1, 1);
+            int pieces = 1;
+            float pieceLength = length, repeats = 1;
+            switch (fill)
             {
-                ChiselTrimFill.Repeat => length / size.x,
-                ChiselTrimFill.Fit    => math.max(1, math.round(length / size.x)),
-                _                     => 1
-            };
-            a = MakeHalf(decal, faceA, faceB.normal, targets[0], start, direction, length, repeats, settings, entityID,                renderMaterial, destinationFlags, lower: true);
-            b = MakeHalf(decal, faceB, faceA.normal, targets[1], start, direction, length, repeats, settings, entityID | kSecondHalf, renderMaterial, destinationFlags, lower: decal.TrimMirror);
+                case ChiselTrimFill.Repeat:
+                    if (sheet)
+                    {
+                        pieces = (int)math.ceil(length / size.x - kEpsilon);
+                        pieceLength = size.x;
+                    } else
+                        repeats = length / size.x;
+                    break;
+                case ChiselTrimFill.Fit:
+                    var images = math.max(1, math.round(length / size.x));
+                    if (sheet)
+                    {
+                        pieces = (int)images;
+                        pieceLength = length / images;
+                    } else
+                        repeats = images;
+                    break;
+            }
+            if (pieces < 1 || pieces > kMaxPieces)
+                return false;
+            for (int i = 0; i < pieces; i++)
+            {
+                var offset = i * pieceLength;
+                var span   = math.min(pieceLength, length - offset);
+                // a piece cut short at the edge's end shows that much of its image
+                var shown  = sheet ? span / pieceLength : repeats;
+                var id     = entityID | ((ulong)i << kPieceShift);
+                var pieceStart = start + direction * offset;
+                halves.Add(MakeHalf(faceA, faceB.normal, targets[0], pieceStart, direction, span, shown, rect, settings, id,               renderMaterial, destinationFlags, lower: true));
+                halves.Add(MakeHalf(faceB, faceA.normal, targets[1], pieceStart, direction, span, shown, rect, settings, id | kSecondHalf, renderMaterial, destinationFlags, lower: decal.TrimMirror));
+            }
             return true;
         }
 
-        static Half MakeHalf(ChiselDecalComponent decal, Face face, float3 otherNormal, ChiselDecalSurfaceTarget surface, float3 start, float3 direction, float length,
-                             float repeats, ChiselDecalSettings settings, ulong entityID, ulong renderMaterial, SurfaceDestinationFlags destinationFlags, bool lower)
+        static Half MakeHalf(Face face, float3 otherNormal, ChiselDecalSurfaceTarget surface, float3 start, float3 direction, float length,
+                             float repeats, Rect rect, ChiselDecalSettings settings, ulong entityID, ulong renderMaterial, SurfaceDestinationFlags destinationFlags, bool lower)
         {
             // across the edge, into the surface: the side its outline is on, or where it lies on both (a wall standing on a
             // floor), the side the other surface faces, as the other side is under the other's brush
@@ -113,9 +152,10 @@ namespace Chisel.Components
             var origin = start + direction * (length * 0.5f);
             var decalToTree = new float4x4(new float4(direction, 0), new float4(across, 0), new float4(-face.normal, 0), new float4(origin, 1));
 
-            // the image's v is 0.5 on the edge: down to 0 across A, up to 1 across B; u runs along the edge
-            var trimScale  = new float2(repeats, lower ? -0.5f : 0.5f);
-            var trimOffset = new float2(0, 0.5f);
+            // the image's v is 0.5 on the edge: down to 0 across A, up to 1 across B; u runs along the edge; the image is
+            // the rect of the texture
+            var trimScale  = new float2(repeats, lower ? -0.5f : 0.5f) * (float2)rect.size;
+            var trimOffset = (float2)rect.position + new float2(0, 0.5f) * (float2)rect.size;
             var userScale  = math.all((float2)settings.uvScale == float2.zero) ? new float2(1) : (float2)settings.uvScale;
             var half = settings;
             half.center     = new float3(0, height * 0.25f, 0);

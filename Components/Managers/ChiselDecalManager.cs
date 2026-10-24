@@ -42,8 +42,8 @@ namespace Chisel.Components
             public ChiselDecalComponent    trimDecal;
             public bool                    trimValid;
             public ChiselModelComponent    trimModel;
-            public ChiselDecalInstance     trimA, trimB;
-            public ChiselDecalTarget[]     trimTargetA, trimTargetB;
+            public readonly List<ChiselDecalInstance> trimPieces = new();
+            public readonly List<ChiselDecalTarget[]> trimTargets = new();
         }
 
         sealed class ModelState
@@ -197,9 +197,7 @@ namespace Chisel.Components
                                 entityID         = EntityId.ToULong(decal.GetEntityId()),
                                 renderMaterial   = EntityId.ToULong(decal.Material.GetEntityId()),
                                 destinationFlags = GetDestinationFlags(decal.Material),
-                                trimDecal        = decal,
-                                trimTargetA      = new ChiselDecalTarget[1],
-                                trimTargetB      = new ChiselDecalTarget[1]
+                                trimDecal        = decal
                             };
                             continue;
                         }
@@ -268,8 +266,8 @@ namespace Chisel.Components
                     {
                         if (decalState.trimValid && s_Models.TryGetValue(decalState.trimModel, out var trimModelState))
                         {
-                            Add(trimModelState, decalState.trimA, decalState.trimTargetA);
-                            Add(trimModelState, decalState.trimB, decalState.trimTargetB);
+                            for (int p = 0; p < decalState.trimPieces.Count; p++)
+                                Add(trimModelState, decalState.trimPieces[p], decalState.trimTargets[p]);
                         }
                         continue;
                     }
@@ -335,41 +333,54 @@ namespace Chisel.Components
                 if (state.trimDecal == null)
                     continue;
                 var valid = ChiselTrimDecals.TryDescribe(state.trimDecal, state.entityID, state.renderMaterial, state.destinationFlags,
-                                                         out var model, out var a, out var b);
-                if (valid != state.trimValid ||
-                    (valid && (model != state.trimModel || !a.decal.Equals(state.trimA) || !b.decal.Equals(state.trimB))))
+                                                         out var model, s_TrimHalves, out _, out _);
+                if (valid != state.trimValid || (valid && !SameTrim(state, model)))
                     return true;
             }
             return false;
         }
 
-        // The trim decal's halves now; true when they are not what they were
+        static readonly List<ChiselTrimDecals.Half> s_TrimHalves = new();
+
+        static bool SameTrim(DecalState state, ChiselModelComponent model)
+        {
+            if (model != state.trimModel || s_TrimHalves.Count != state.trimPieces.Count)
+                return false;
+            for (int p = 0; p < s_TrimHalves.Count; p++)
+            {
+                if (!s_TrimHalves[p].decal.Equals(state.trimPieces[p]) || !s_TrimHalves[p].target.Equals(state.trimTargets[p][0]))
+                    return false;
+            }
+            return true;
+        }
+
+        // The trim decal's pieces now; true when they are not what they were
         static bool UpdateTrim(DecalState state)
         {
             var valid = ChiselTrimDecals.TryDescribe(state.trimDecal, state.entityID, state.renderMaterial, state.destinationFlags,
-                                                     out var model, out var a, out var b);
+                                                     out var model, s_TrimHalves, out var edgeFrom, out var edgeTo);
             if (valid)
-                KeepOnEdge(state.trimDecal.transform, model, a.decal);
-            if (valid == state.trimValid &&
-                (!valid || (model == state.trimModel && a.decal.Equals(state.trimA) && b.decal.Equals(state.trimB) &&
-                            a.target.Equals(state.trimTargetA[0]) && b.target.Equals(state.trimTargetB[0]))))
+                KeepOnEdge(state.trimDecal.transform, model, edgeFrom, edgeTo);
+            if (valid == state.trimValid && (!valid || SameTrim(state, model)))
                 return false;
-            state.trimValid      = valid;
-            state.trimModel      = model;
-            state.trimA          = a.decal;
-            state.trimB          = b.decal;
-            state.trimTargetA[0] = a.target;
-            state.trimTargetB[0] = b.target;
+            state.trimValid = valid;
+            state.trimModel = model;
+            state.trimPieces.Clear();
+            state.trimTargets.Clear();
+            foreach (var half in s_TrimHalves)
+            {
+                state.trimPieces.Add(half.decal);
+                state.trimTargets.Add(new[] { half.target });
+            }
             return true;
         }
 
         // A trim decal's transform stays on its edge, at the point nearest to where it is (it can slide along it)
-        static void KeepOnEdge(Transform transform, ChiselModelComponent model, in ChiselDecalInstance half)
+        static void KeepOnEdge(Transform transform, ChiselModelComponent model, Unity.Mathematics.float3 edgeFrom, Unity.Mathematics.float3 edgeTo)
         {
-            var toWorld = model.transform.localToWorldMatrix * (Matrix4x4)half.decalToTree;
-            var halfLength = half.settings.size.x * 0.5f;
-            var start = toWorld.MultiplyPoint3x4(new Vector3(-halfLength, 0, 0));
-            var end   = toWorld.MultiplyPoint3x4(new Vector3( halfLength, 0, 0));
+            var toWorld = model.transform.localToWorldMatrix;
+            var start = toWorld.MultiplyPoint3x4(edgeFrom);
+            var end   = toWorld.MultiplyPoint3x4(edgeTo);
             var edge  = end - start;
             var position = transform.position;
             var t = Mathf.Clamp01(Vector3.Dot(position - start, edge) / Mathf.Max(edge.sqrMagnitude, 1e-12f));

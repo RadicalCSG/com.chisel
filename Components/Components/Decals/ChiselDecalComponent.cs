@@ -62,6 +62,7 @@ namespace Chisel.Components
         [SerializeField] ChiselDecalShape shape = ChiselDecalShape.Box;
         [SerializeField] ChiselTrimFill trimFill = ChiselTrimFill.Repeat;
         [SerializeField] bool trimMirror = false;
+        [SerializeField] Rect trimImageRect = new Rect(0, 0, 1, 1);
 
         public const string kMaterialName = nameof(material);
         public const string kSettingsName = nameof(settings);
@@ -69,6 +70,7 @@ namespace Chisel.Components
         public const string kShapeName      = nameof(shape);
         public const string kTrimFillName   = nameof(trimFill);
         public const string kTrimMirrorName = nameof(trimMirror);
+        public const string kTrimImageRectName = nameof(trimImageRect);
 
         /// <summary>A box decal projects through its box; a trim decal lies on the edge between its first two targets
         /// (size.x: the image's length along the edge, size.y: its height across both surfaces), and its transform isn't used.</summary>
@@ -83,6 +85,13 @@ namespace Chisel.Components
         {
             get => trimFill;
             set { if (trimFill == value) return; trimFill = value; ChiselDecalManager.SetDirty(); }
+        }
+
+        /// <summary>The part of the texture a trim decal's image is, in texture coordinates: all of it, or an image in a trim sheet</summary>
+        public Rect TrimImageRect
+        {
+            get => trimImageRect;
+            set { if (trimImageRect == value) return; trimImageRect = value; ChiselDecalManager.SetDirty(); }
         }
 
         /// <summary>The image's lower half on both surfaces, mirrored across the edge, instead of its upper half on the second</summary>
