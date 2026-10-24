@@ -32,7 +32,15 @@ namespace Chisel.Editors
         static readonly GUIContent kClearChainContent    = new GUIContent("Clear Chain", "Keeps only the first edge.");
         static readonly GUIContent kBoxShapeContent      = new GUIContent("Box", "The image is projected through the box.");
         static readonly GUIContent kTrimShapeContent     = new GUIContent("Trim", "The image lies on the edge between two surfaces, its lower half on the first, its upper half on the second.");
-        static readonly GUIContent kShapeContent          = new GUIContent("Shape", "Box: the image is projected through the box. Trim: the image lies on the edge between two surfaces, its lower half on the first, its upper half on the second.");
+        static readonly GUIContent[] kShapeOptions       = { kBoxShapeContent, kTrimShapeContent };
+        static readonly GUIContent[] kTrimFillOptions    =
+        {
+            new GUIContent("Stretch", "One image over the whole edge."),
+            new GUIContent("Repeat",  "The image repeated at its length, the last one cut short."),
+            new GUIContent("Fit",     "The whole number of images nearest to what fits, stretched to fill the edge."),
+            new GUIContent("Single",  "One image at its length, round the decal's position (move the decal along the edge to place it).")
+        };
+        static readonly GUIContent kShapeContent           = new GUIContent("Shape", "Box: the image is projected through the box. Trim: the image lies on the edge between two surfaces, its lower half on the first, its upper half on the second.");
         static readonly GUIContent kImageRectContent     = new GUIContent("Image Rect", "The part of the texture the image is, in texture coordinates (0 to 1): all of it, or an image in a trim sheet. An image in a trim sheet can't repeat by wrapping, so it is a piece of its own for every image it repeats.");
         static readonly GUIContent kRepeatContent        = new GUIContent("Repeat", "How many times the image repeats across the box, in x and y. A perspective decal shows a trim sheet's image once.");
         static readonly GUIContent kTrimMirrorContent     = new GUIContent("Mirror", "The image's lower half on both surfaces, mirrored across the edge, so the trim is the same on either side of it.");
@@ -71,7 +79,7 @@ namespace Chisel.Editors
             var settings = serializedObject.FindProperty(ChiselDecalComponent.kSettingsName);
             var shape    = serializedObject.FindProperty(ChiselDecalComponent.kShapeName);
             EditorGUI.BeginChangeCheck();
-            ShapeToggles(shape);
+            EnumToggles(shape, kShapeContent, kShapeOptions, 2);
             var trim = !shape.hasMultipleDifferentValues && shape.enumValueIndex == (int)ChiselDecalShape.Trim;
             // a box decal has one target at most
             var targetList = serializedObject.FindProperty(ChiselDecalComponent.kTargetsName);
@@ -79,7 +87,7 @@ namespace Chisel.Editors
                 targetList.arraySize = 1;
             if (trim)
             {
-                EditorGUILayout.PropertyField(serializedObject.FindProperty(ChiselDecalComponent.kTrimFillName), kTrimFillContent);
+                EnumToggles(serializedObject.FindProperty(ChiselDecalComponent.kTrimFillName), kTrimFillContent, kTrimFillOptions, 2);
                 EditorGUILayout.PropertyField(serializedObject.FindProperty(ChiselDecalComponent.kTrimMirrorName), kTrimMirrorContent);
                 var size = settings.FindPropertyRelative(nameof(ChiselDecalSettings.size));
                 EditorGUILayout.PropertyField(size.FindPropertyRelative("x"), kTrimLengthContent);
@@ -146,23 +154,28 @@ namespace Chisel.Editors
             serializedObject.ApplyModifiedProperties();
         }
 
-        // The shape as two toggles, one of them on
-        static void ShapeToggles(SerializedProperty shape)
+        // An enum as toggles, one of them on (none while the selection differs), perRow to a line
+        static void EnumToggles(SerializedProperty property, GUIContent label, GUIContent[] options, int perRow)
         {
-            var mixed = shape.hasMultipleDifferentValues;
-            var rect = EditorGUILayout.GetControlRect();
-            using (new EditorGUI.PropertyScope(rect, kShapeContent, shape))
+            var mixed = property.hasMultipleDifferentValues;
+            var rows  = (options.Length + perRow - 1) / perRow;
+            var line  = EditorGUIUtility.singleLineHeight;
+            var rect  = EditorGUILayout.GetControlRect(true, rows * line + (rows - 1) * EditorGUIUtility.standardVerticalSpacing);
+            using (new EditorGUI.PropertyScope(rect, label, property))
             {
-                rect = EditorGUI.PrefixLabel(rect, kShapeContent);
-                var left  = new Rect(rect.x, rect.y, rect.width * 0.5f, rect.height);
-                var right = new Rect(left.xMax, rect.y, rect.width - left.width, rect.height);
-                var isTrim = shape.enumValueIndex == (int)ChiselDecalShape.Trim;
+                rect = EditorGUI.PrefixLabel(new Rect(rect.x, rect.y, rect.width, line), label);
                 var indent = EditorGUI.indentLevel;
                 EditorGUI.indentLevel = 0;
-                if (GUI.Toggle(left, !mixed && !isTrim, kBoxShapeContent, EditorStyles.miniButtonLeft) && (mixed || isTrim))
-                    shape.enumValueIndex = (int)ChiselDecalShape.Box;
-                if (GUI.Toggle(right, !mixed && isTrim, kTrimShapeContent, EditorStyles.miniButtonRight) && (mixed || !isTrim))
-                    shape.enumValueIndex = (int)ChiselDecalShape.Trim;
+                for (int i = 0; i < options.Length; i++)
+                {
+                    int row = i / perRow, column = i % perRow;
+                    var width  = rect.width / perRow;
+                    var button = new Rect(rect.x + column * width, rect.y + row * (line + EditorGUIUtility.standardVerticalSpacing), width, line);
+                    var style  = perRow == 1 ? EditorStyles.miniButton : column == 0 ? EditorStyles.miniButtonLeft : column == perRow - 1 ? EditorStyles.miniButtonRight : EditorStyles.miniButtonMid;
+                    var on     = !mixed && property.enumValueIndex == i;
+                    if (GUI.Toggle(button, on, options[i], style) && !on)
+                        property.enumValueIndex = i;
+                }
                 EditorGUI.indentLevel = indent;
             }
         }
