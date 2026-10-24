@@ -1,0 +1,25 @@
+name: Feature request
+description: Suggest something Chisel should be able to do
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please check [the planned features](https://github.com/orgs/RadicalCSG/projects/1) first: it may already be there.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What you want to do
+      description: What are you trying to build, and what makes it hard today?
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: How it could work
+      description: How you imagine it working in the editor. Examples from other level editors are welcome.
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: What you do now instead
+      description: Any workaround you use today.
