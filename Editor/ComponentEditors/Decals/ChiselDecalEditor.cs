@@ -32,8 +32,8 @@ namespace Chisel.Editors
         static readonly GUIContent kTrimFillContent       = new GUIContent("Fill", "Stretch: one image over the whole edge. Repeat: the image repeated at its length, the last one cut short. Fit: the whole number of images nearest to what fits, stretched to fill the edge. Single: one image at its length, round the decal's position (move the decal along the edge to place it).");
         static readonly GUIContent kTrimLengthContent    = new GUIContent("Length", "The image's length along the edge.");
         static readonly GUIContent kTrimHeightContent    = new GUIContent("Height", "The image's height across both surfaces: each half reaches half of it into its surface.");
-        static readonly GUIContent kTrimSurfacesContent  = new GUIContent("Surfaces", "The two surfaces whose edge the trim lies on: the first takes the image's lower half, the second its upper half.");
-        static readonly GUIContent kPickEdgeContent      = new GUIContent("Pick Edge", "Click a surface near one of its edges in the scene view: the trim goes on that edge, between the surface and the one that meets it there. Escape cancels.");
+        static readonly GUIContent kTrimSurfacesContent  = new GUIContent("Surfaces", "Pairs of surfaces, an edge each, in order: the first of a pair takes the image's lower half, the second its upper half. Edges that meet are a chain round corners, mitred where they meet on one surface.");
+        static readonly GUIContent kPickEdgeContent      = new GUIContent("Pick Edge", "Click a surface near one of its edges in the scene view: the trim goes on that edge, between the surface and the one that meets it there. Shift-click adds the edge to the trim's chain round corners, and goes on picking. Escape stops.");
         static readonly GUIContent kCancelPickContent    = new GUIContent("Cancel Picking");
         static readonly GUIContent kPlaceWhereMeetContent = new GUIContent("Place Where Materials Meet", "Puts a copy of this trim decal on every edge in its model where a surface with its first surface's material meets one with its second surface's material (edges within one brush).");
         const string kTrimNeedsTwoMessage = "A trim decal lies on the edge between two surfaces: give it two.";
@@ -225,14 +225,24 @@ namespace Chisel.Editors
                     if (evt.button != 0 || evt.alt)
                         break;
                     s_Candidate = FindEdge(evt.mousePosition);
+                    // shift adds the edge to the chain, and goes on picking
+                    var addToChain = evt.shift && decal.Targets.Count >= 2;
                     if (s_Candidate.valid)
                     {
                         Undo.RecordObjects(new Object[] { decal, decal.transform }, "Pick Trim Edge");
-                        decal.SetTargets(new[] { s_Candidate.a, s_Candidate.b });
-                        decal.transform.position = s_Candidate.at;
+                        if (addToChain)
+                        {
+                            var chain = new List<ChiselDecalSurfaceTarget>(decal.Targets) { s_Candidate.a, s_Candidate.b };
+                            decal.SetTargets(chain);
+                        } else
+                        {
+                            decal.SetTargets(new[] { s_Candidate.a, s_Candidate.b });
+                            decal.transform.position = s_Candidate.at;
+                        }
                         EditorUtility.SetDirty(decal);
                     }
-                    s_PickingFor = null;
+                    if (!addToChain)
+                        s_PickingFor = null;
                     s_Candidate  = default;
                     evt.Use();
                     break;

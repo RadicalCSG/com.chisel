@@ -249,6 +249,7 @@ namespace Chisel.Core
                     decalBuffer.Add(settings.surfaceOffset);
                     decalBuffer.Add(settings.uvScale);
                     decalBuffer.Add(settings.uvOffset);
+                    decalBuffer.Add(settings.endSlant);
                     decalBuffer.Add(GetIdentity(identities, surfaceParameterIdentity, decal.renderMaterial));
                     decalBuffer.Add((int)decal.destinationFlags);
                     decalBuffer.Add(decal.targetCount);
