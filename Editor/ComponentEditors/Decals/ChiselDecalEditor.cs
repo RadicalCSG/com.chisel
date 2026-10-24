@@ -31,6 +31,8 @@ namespace Chisel.Editors
         static readonly GUIContent kTrimLengthContent    = new GUIContent("Length", "The image's length along the edge.");
         static readonly GUIContent kTrimHeightContent    = new GUIContent("Height", "The image's height across both surfaces: each half reaches half of it into its surface.");
         static readonly GUIContent kTrimSurfacesContent  = new GUIContent("Surfaces", "The two surfaces whose edge the trim lies on: the first takes the image's lower half, the second its upper half.");
+        static readonly GUIContent kTrimExtentContent    = new GUIContent("Extent", "Edge: all of the edge where both surfaces reach it. Part: a stretch of it as long as Span, round the decal's position (move the decal along the edge to place it).");
+        static readonly GUIContent kTrimSpanContent      = new GUIContent("Span", "How much of the edge the trim covers.");
         const string kTrimNeedsTwoMessage = "A trim decal lies on the edge between two surfaces: give it two.";
         const string kNoMaterialMessage = "A decal without a material draws nothing.";
 
@@ -66,6 +68,10 @@ namespace Chisel.Editors
                 var size = settings.FindPropertyRelative(nameof(ChiselDecalSettings.size));
                 EditorGUILayout.PropertyField(size.FindPropertyRelative("x"), kTrimLengthContent);
                 EditorGUILayout.PropertyField(size.FindPropertyRelative("y"), kTrimHeightContent);
+                var extent = serializedObject.FindProperty(ChiselDecalComponent.kTrimExtentName);
+                EditorGUILayout.PropertyField(extent, kTrimExtentContent);
+                if (extent.hasMultipleDifferentValues || extent.enumValueIndex == (int)ChiselTrimExtent.Part)
+                    EditorGUILayout.PropertyField(size.FindPropertyRelative("z"), kTrimSpanContent);
             } else
             {
                 EditorGUILayout.PropertyField(settings.FindPropertyRelative(nameof(ChiselDecalSettings.center)), kCenterContent);

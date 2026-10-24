@@ -66,13 +66,21 @@ namespace Chisel.Components
             float from = float.NegativeInfinity, to = float.PositiveInfinity;
             if (!Clip(faceA, point, direction, ref from, ref to) || !Clip(faceB, point, direction, ref from, ref to) || to - from <= kEpsilon)
                 return false;
-            var start  = point + direction * from;
-            var length = to - from;
-
             var settings = decal.Settings;
             var size = math.abs((float3)settings.size);
             if (!(size.x > kEpsilon) || !(size.y > kEpsilon))
                 return false;
+
+            // part of the edge: size.z of it, round the decal's position on the edge (moved to stay on the edge)
+            if (decal.TrimExtent == ChiselTrimExtent.Part && size.z > kEpsilon && size.z < to - from)
+            {
+                var position = (float3)model.transform.worldToLocalMatrix.MultiplyPoint3x4(decal.transform.position);
+                var at = math.clamp(math.dot(position - point, direction), from, to);
+                from = math.clamp(at - size.z * 0.5f, from, to - size.z);
+                to   = from + size.z;
+            }
+            var start  = point + direction * from;
+            var length = to - from;
             float repeats = decal.TrimRepeat switch
             {
                 ChiselTrimRepeat.Stretch => 1,

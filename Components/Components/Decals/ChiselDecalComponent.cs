@@ -27,6 +27,15 @@ namespace Chisel.Components
         Trim
     }
 
+    /// <summary>How much of its edge a trim decal covers</summary>
+    public enum ChiselTrimExtent : byte
+    {
+        /// <summary>All of the edge where both surfaces reach it</summary>
+        Edge,
+        /// <summary>A stretch of it as long as size.z, round the decal's position on the edge</summary>
+        Part
+    }
+
     /// <summary>How a trim decal's image runs along its edge</summary>
     public enum ChiselTrimRepeat : byte
     {
@@ -59,12 +68,14 @@ namespace Chisel.Components
         [SerializeField] List<ChiselDecalSurfaceTarget> targets = new();
         [SerializeField] ChiselDecalShape shape = ChiselDecalShape.Box;
         [SerializeField] ChiselTrimRepeat trimRepeat = ChiselTrimRepeat.Repeat;
+        [SerializeField] ChiselTrimExtent trimExtent = ChiselTrimExtent.Edge;
 
         public const string kMaterialName = nameof(material);
         public const string kSettingsName = nameof(settings);
         public const string kTargetsName  = nameof(targets);
         public const string kShapeName      = nameof(shape);
         public const string kTrimRepeatName = nameof(trimRepeat);
+        public const string kTrimExtentName = nameof(trimExtent);
 
         /// <summary>A box decal projects through its box; a trim decal lies on the edge between its first two targets
         /// (size.x: the image's length along the edge, size.y: its height across both surfaces), and its transform isn't used.</summary>
@@ -78,6 +89,13 @@ namespace Chisel.Components
         {
             get => trimRepeat;
             set { if (trimRepeat == value) return; trimRepeat = value; ChiselDecalManager.SetDirty(); }
+        }
+
+        /// <summary>All of the edge, or a stretch of it as long as size.z round the decal's position</summary>
+        public ChiselTrimExtent TrimExtent
+        {
+            get => trimExtent;
+            set { if (trimExtent == value) return; trimExtent = value; ChiselDecalManager.SetDirty(); }
         }
 
         /// <summary>The surfaces the decal is limited to. Empty means every surface it reaches.</summary>
