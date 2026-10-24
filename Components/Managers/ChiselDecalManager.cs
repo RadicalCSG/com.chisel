@@ -42,8 +42,8 @@ namespace Chisel.Components
             public ChiselDecalComponent    trimDecal;
             public bool                    trimValid;
             public ChiselModelComponent    trimModel;
-            public ChiselDecalInstance     trimA, trimB;
-            public ChiselDecalTarget[]     trimTargetA, trimTargetB;
+            public readonly List<ChiselDecalInstance> trimPieces = new();
+            public readonly List<ChiselDecalTarget[]> trimTargets = new();
         }
 
         sealed class ModelState
@@ -56,6 +56,9 @@ namespace Chisel.Components
             public readonly List<ChiselDecalInstance> previous = new();
             public readonly List<ChiselDecalTarget>   previousTargets = new();
         }
+
+        // a decal's image can be a tile of its material's hotspot layout
+        static ChiselDecalManager() { ChiselHotspotLayout.AnyChanged += _ => SetDirty(); }
 
         public static void Register(ChiselDecalComponent decal)
         {
@@ -197,30 +200,26 @@ namespace Chisel.Components
                                 entityID         = EntityId.ToULong(decal.GetEntityId()),
                                 renderMaterial   = EntityId.ToULong(decal.Material.GetEntityId()),
                                 destinationFlags = GetDestinationFlags(decal.Material),
-                                trimDecal        = decal,
-                                trimTargetA      = new ChiselDecalTarget[1],
-                                trimTargetB      = new ChiselDecalTarget[1]
+                                trimDecal        = decal
                             };
                             continue;
                         }
+                        // A box decal's target is its first; the rest are a trim's, kept for switching back
                         ChiselDecalTarget[] targets = null;
                         if (decal.Targets.Count > 0)
                         {
-                            var resolved = new List<ChiselDecalTarget>(decal.Targets.Count);
-                            foreach (var target in decal.Targets)
+                            var target = decal.Targets[0];
+                            // Limited to a surface that is gone: it draws nothing
+                            if (target.brush == null)
+                                continue;
+                            targets = new[]
                             {
-                                if (target.brush == null)
-                                    continue;
-                                resolved.Add(new ChiselDecalTarget
+                                new ChiselDecalTarget
                                 {
                                     brushEntityID = EntityId.ToULong(target.brush.GetEntityId()),
                                     surfaceIndex  = target.surfaceIndex
-                                });
-                            }
-                            // Limited to surfaces that are all gone: it draws nothing
-                            if (resolved.Count == 0)
-                                continue;
-                            targets = resolved.ToArray();
+                                }
+                            };
                         }
                         s_DecalStates[decal] = new DecalState
                         {
@@ -268,15 +267,15 @@ namespace Chisel.Components
                     {
                         if (decalState.trimValid && s_Models.TryGetValue(decalState.trimModel, out var trimModelState))
                         {
-                            Add(trimModelState, decalState.trimA, decalState.trimTargetA);
-                            Add(trimModelState, decalState.trimB, decalState.trimTargetB);
+                            for (int p = 0; p < decalState.trimPieces.Count; p++)
+                                Add(trimModelState, decalState.trimPieces[p], decalState.trimTargets[p]);
                         }
                         continue;
                     }
                     if (decalState.parentModel != null)
                     {
                         if (s_Models.TryGetValue(decalState.parentModel, out var state))
-                            Add(state, Describe(decal, decalState, state.worldToLocal), decalState.targets);
+                            AddBox(state, decal, decalState);
                         continue;
                     }
                     var scene = decal.gameObject.scene;
@@ -285,7 +284,7 @@ namespace Chisel.Components
                         if (model.gameObject.scene == scene)
                         {
                             var state = s_Models[model];
-                            Add(state, Describe(decal, decalState, state.worldToLocal), decalState.targets);
+                            AddBox(state, decal, decalState);
                         }
                     }
                 }
@@ -335,41 +334,54 @@ namespace Chisel.Components
                 if (state.trimDecal == null)
                     continue;
                 var valid = ChiselTrimDecals.TryDescribe(state.trimDecal, state.entityID, state.renderMaterial, state.destinationFlags,
-                                                         out var model, out var a, out var b);
-                if (valid != state.trimValid ||
-                    (valid && (model != state.trimModel || !a.decal.Equals(state.trimA) || !b.decal.Equals(state.trimB))))
+                                                         out var model, s_TrimHalves, out _, out _);
+                if (valid != state.trimValid || (valid && !SameTrim(state, model)))
                     return true;
             }
             return false;
         }
 
-        // The trim decal's halves now; true when they are not what they were
+        static readonly List<ChiselTrimDecals.Half> s_TrimHalves = new();
+
+        static bool SameTrim(DecalState state, ChiselModelComponent model)
+        {
+            if (model != state.trimModel || s_TrimHalves.Count != state.trimPieces.Count)
+                return false;
+            for (int p = 0; p < s_TrimHalves.Count; p++)
+            {
+                if (!s_TrimHalves[p].decal.Equals(state.trimPieces[p]) || !s_TrimHalves[p].target.Equals(state.trimTargets[p][0]))
+                    return false;
+            }
+            return true;
+        }
+
+        // The trim decal's pieces now; true when they are not what they were
         static bool UpdateTrim(DecalState state)
         {
             var valid = ChiselTrimDecals.TryDescribe(state.trimDecal, state.entityID, state.renderMaterial, state.destinationFlags,
-                                                     out var model, out var a, out var b);
+                                                     out var model, s_TrimHalves, out var edgeFrom, out var edgeTo);
             if (valid)
-                KeepOnEdge(state.trimDecal.transform, model, a.decal);
-            if (valid == state.trimValid &&
-                (!valid || (model == state.trimModel && a.decal.Equals(state.trimA) && b.decal.Equals(state.trimB) &&
-                            a.target.Equals(state.trimTargetA[0]) && b.target.Equals(state.trimTargetB[0]))))
+                KeepOnEdge(state.trimDecal.transform, model, edgeFrom, edgeTo);
+            if (valid == state.trimValid && (!valid || SameTrim(state, model)))
                 return false;
-            state.trimValid      = valid;
-            state.trimModel      = model;
-            state.trimA          = a.decal;
-            state.trimB          = b.decal;
-            state.trimTargetA[0] = a.target;
-            state.trimTargetB[0] = b.target;
+            state.trimValid = valid;
+            state.trimModel = model;
+            state.trimPieces.Clear();
+            state.trimTargets.Clear();
+            foreach (var half in s_TrimHalves)
+            {
+                state.trimPieces.Add(half.decal);
+                state.trimTargets.Add(new[] { half.target });
+            }
             return true;
         }
 
         // A trim decal's transform stays on its edge, at the point nearest to where it is (it can slide along it)
-        static void KeepOnEdge(Transform transform, ChiselModelComponent model, in ChiselDecalInstance half)
+        static void KeepOnEdge(Transform transform, ChiselModelComponent model, Unity.Mathematics.float3 edgeFrom, Unity.Mathematics.float3 edgeTo)
         {
-            var toWorld = model.transform.localToWorldMatrix * (Matrix4x4)half.decalToTree;
-            var halfLength = half.settings.size.x * 0.5f;
-            var start = toWorld.MultiplyPoint3x4(new Vector3(-halfLength, 0, 0));
-            var end   = toWorld.MultiplyPoint3x4(new Vector3( halfLength, 0, 0));
+            var toWorld = model.transform.localToWorldMatrix;
+            var start = toWorld.MultiplyPoint3x4(edgeFrom);
+            var end   = toWorld.MultiplyPoint3x4(edgeTo);
             var edge  = end - start;
             var position = transform.position;
             var t = Mathf.Clamp01(Vector3.Dot(position - start, edge) / Mathf.Max(edge.sqrMagnitude, 1e-12f));
@@ -401,18 +413,72 @@ namespace Chisel.Components
             return true;
         }
 
-        static ChiselDecalInstance Describe(ChiselDecalComponent decal, DecalState decalState, Matrix4x4 modelWorldToLocal)
+        static readonly List<ChiselDecalInstance> s_Tiles = new();
+
+        static void AddBox(ModelState state, ChiselDecalComponent decal, DecalState decalState)
         {
+            Describe(decal, decalState, state.worldToLocal, s_Tiles);
+            foreach (var tile in s_Tiles)
+                Add(state, tile, decalState.targets);
+        }
+
+        /// <summary>
+        /// A box decal's instances in a model's space: one, its image repeated by wrapping the texture; or for an image in a
+        /// trim sheet, which can't wrap, a tile of the box for every image, the last row and column cut short (orthographic
+        /// only: a perspective decal draws a sheet's image once)
+        /// </summary>
+        static void Describe(ChiselDecalComponent decal, DecalState decalState, Matrix4x4 modelWorldToLocal, List<ChiselDecalInstance> tiles)
+        {
+            tiles.Clear();
             // The tree's space is the model's own space
-            var decalToTree = modelWorldToLocal * decalState.localToWorld;
-            return new ChiselDecalInstance
+            var decalToTree = (float4x4)(modelWorldToLocal * decalState.localToWorld);
+            var settings = decal.Settings;
+            var rect     = decal.ImageRect;
+            var repeat   = math.max((float2)(Vector2)decal.Repeat, new float2(1e-3f));
+            var sheet    = rect != new Rect(0, 0, 1, 1);
+            var userScale = math.all((float2)settings.uvScale == float2.zero) ? new float2(1) : (float2)settings.uvScale;
+            var instance = new ChiselDecalInstance
             {
                 entityID         = decalState.entityID,
-                decalToTree      = (float4x4)decalToTree,
-                settings         = decal.Settings,
+                decalToTree      = decalToTree,
                 renderMaterial   = decalState.renderMaterial,
                 destinationFlags = decalState.destinationFlags
             };
+            var perspective = settings.projection == ChiselDecalProjection.Perspective;
+            if (!sheet || perspective)
+            {
+                // uv = offset + scale * (rect.position + rect.size * repeat * p)
+                var tile = settings;
+                tile.uvScale  = userScale * (float2)rect.size * (sheet ? new float2(1) : repeat);
+                tile.uvOffset = (float2)settings.uvOffset + userScale * (float2)rect.position;
+                instance.settings = tile;
+                tiles.Add(instance);
+                return;
+            }
+
+            var size  = (float3)settings.size;
+            var count = (int2)math.ceil(repeat - 1e-4f);
+            if (count.x * count.y > ChiselTrimDecals.MaxPieces)
+                return;
+            var tileSize = size.xy / repeat;
+            var low      = ((float3)settings.center).xy - size.xy * 0.5f;
+            for (int y = 0, piece = 0; y < count.y; y++)
+            {
+                for (int x = 0; x < count.x; x++, piece++)
+                {
+                    var from  = low + tileSize * new float2(x, y);
+                    var to    = math.min(from + tileSize, low + size.xy);
+                    var shown = (to - from) / tileSize;
+                    var tile  = settings;
+                    tile.center   = new float3((from + to) * 0.5f, settings.center.z);
+                    tile.size     = new float3(to - from, size.z);
+                    tile.uvScale  = userScale * (float2)rect.size * shown;
+                    tile.uvOffset = (float2)settings.uvOffset + userScale * (float2)rect.position;
+                    instance.entityID = ChiselTrimDecals.PieceEntityID(decalState.entityID, piece);
+                    instance.settings = tile;
+                    tiles.Add(instance);
+                }
+            }
         }
 
         // Resolve the same destination flags used by a brush surface.

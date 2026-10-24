@@ -133,9 +133,13 @@ namespace Chisel.Core
 
         public event Action Changed;
 
+        /// <summary>Any layout changed</summary>
+        public static event Action<ChiselHotspotLayout> AnyChanged;
+
         void OnValidate()
         {
             Changed?.Invoke();
+            AnyChanged?.Invoke(this);
             ChiselHotspotStore.LayoutChanged(this);
         }
 

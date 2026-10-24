@@ -131,6 +131,7 @@ namespace Chisel.Core
                               settings.fieldOfView <= ChiselDecalSettings.kMaxFieldOfView;
             var nearZ = center.z - halfSize.z;
             var farZ  = center.z + halfSize.z;
+            var slant = math.all(math.isfinite(settings.endSlant)) ? (double2)settings.endSlant : double2.zero;
 
             var local = new DecalPlanes();
             double focal = 0, apexZ = 0, slopeX = 0, slopeY = 0;
@@ -149,8 +150,9 @@ namespace Chisel.Core
                 local.p3 = new double4( 0,-1, slopeY,  center.y - slopeY * apexZ);
             } else
             {
-                local.p0 = new double4( 1, 0, 0, -(center.x - halfSize.x));
-                local.p1 = new double4(-1, 0, 0,   center.x + halfSize.x);
+                // the ends lean by endSlant: x >= start + slant.x * y, x <= end + slant.y * y
+                local.p0 = new double4( 1, -slant.x, 0, -(center.x - halfSize.x));
+                local.p1 = new double4(-1,  slant.y, 0,   center.x + halfSize.x);
                 local.p2 = new double4( 0, 1, 0, -(center.y - halfSize.y));
                 local.p3 = new double4( 0,-1, 0,   center.y + halfSize.y);
             }
@@ -183,6 +185,9 @@ namespace Chisel.Core
                 {
                     var sign     = new double2((corner & 1) == 0 ? -1 : 1, (corner & 2) == 0 ? -1 : 1);
                     var point    = new double4(center.xy + sign * extent, z, 1);
+                    // a leaning end moves its corners along x
+                    if (!perspective)
+                        point.x += (sign.x < 0 ? slant.x : slant.y) * point.y;
                     var treeSide = math.mul(decalToTree, point).xyz;
                     boundsMin = math.min(boundsMin, treeSide);
                     boundsMax = math.max(boundsMax, treeSide);

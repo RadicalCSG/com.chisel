@@ -61,12 +61,18 @@ namespace Chisel.Components
         [SerializeField] List<ChiselDecalSurfaceTarget> targets = new();
         [SerializeField] ChiselDecalShape shape = ChiselDecalShape.Box;
         [SerializeField] ChiselTrimFill trimFill = ChiselTrimFill.Repeat;
+        [SerializeField] bool trimMirror = false;
+        [SerializeField] int imageTile = 0;
+        [SerializeField] Vector2 repeat = Vector2.one;
 
         public const string kMaterialName = nameof(material);
         public const string kSettingsName = nameof(settings);
         public const string kTargetsName  = nameof(targets);
         public const string kShapeName      = nameof(shape);
         public const string kTrimFillName   = nameof(trimFill);
+        public const string kTrimMirrorName = nameof(trimMirror);
+        public const string kImageTileName  = nameof(imageTile);
+        public const string kRepeatName     = nameof(repeat);
 
         /// <summary>A box decal projects through its box; a trim decal lies on the edge between its first two targets
         /// (size.x: the image's length along the edge, size.y: its height across both surfaces), and its transform isn't used.</summary>
@@ -83,7 +89,57 @@ namespace Chisel.Components
             set { if (trimFill == value) return; trimFill = value; ChiselDecalManager.SetDirty(); }
         }
 
-        /// <summary>The surfaces the decal is limited to. Empty means every surface it reaches.</summary>
+        /// <summary>The tile of the material's hotspot layout the image is (a trim sheet's image), 0 for the whole texture</summary>
+        public int ImageTile
+        {
+            get => imageTile;
+            set { if (imageTile == value) return; imageTile = value; ChiselDecalManager.SetDirty(); }
+        }
+
+        /// <summary>The part of the texture the image is, in texture coordinates: all of it, or its tile's bounds</summary>
+        public Rect ImageRect => ImageRectOf(material, imageTile);
+
+        /// <summary>A tile's bounds in a material's hotspot layout, in texture coordinates; the whole texture without one</summary>
+        public static Rect ImageRectOf(Material material, int tile)
+        {
+            var whole = new Rect(0, 0, 1, 1);
+            if (tile == 0 || material == null)
+                return whole;
+            var metadata = material.GetMetadataOfType<ChiselSurfaceMetadata>();
+            var layout   = metadata != null ? metadata.hotspotLayout : null;
+            if (layout == null || layout.size.x <= 0 || layout.size.y <= 0)
+                return whole;
+            var index = layout.IndexOfTile(tile);
+            var points = index >= 0 ? layout.tiles[index].points : null;
+            if (points == null || points.Length == 0)
+                return whole;
+            var min = points[0];
+            var max = points[0];
+            foreach (var point in points)
+            {
+                min = Vector2Int.Min(min, point);
+                max = Vector2Int.Max(max, point);
+            }
+            // the layout's rows run down from the top, texture coordinates up from the bottom
+            var size = (Vector2)layout.size;
+            return new Rect(min.x / size.x, (size.y - max.y) / size.y, (max.x - min.x) / size.x, (max.y - min.y) / size.y);
+        }
+
+        /// <summary>How many times a box decal's image repeats across its box, in x and y (an image in a trim sheet is a tile per image)</summary>
+        public Vector2 Repeat
+        {
+            get => repeat;
+            set { if (repeat == value) return; repeat = value; ChiselDecalManager.SetDirty(); }
+        }
+
+        /// <summary>The image's lower half on both surfaces, mirrored across the edge, instead of its upper half on the second</summary>
+        public bool TrimMirror
+        {
+            get => trimMirror;
+            set { if (trimMirror == value) return; trimMirror = value; ChiselDecalManager.SetDirty(); }
+        }
+
+        /// <summary>A box decal: the first is the surface it is limited to (none: every surface it reaches). A trim decal: pairs of surfaces, an edge each.</summary>
         public IReadOnlyList<ChiselDecalSurfaceTarget> Targets => targets;
 
         public void SetTargets(IEnumerable<ChiselDecalSurfaceTarget> newTargets)

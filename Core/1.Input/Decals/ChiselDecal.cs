@@ -57,6 +57,10 @@ namespace Chisel.Core
         public float2 uvScale;
         public float2 uvOffset;
 
+        /// <summary>How an orthographic box's start (x) and end (y) lean: x moved per unit of y in the decal's space, 0 for
+        /// square ends. A trim decal's pieces are cut this way where they meet round a corner.</summary>
+        public float2 endSlant;
+
         public static ChiselDecalSettings Default => new ChiselDecalSettings
         {
             center        = float3.zero,
@@ -80,7 +84,8 @@ namespace Chisel.Core
                    transparent == other.transparent &&
                    surfaceOffset == other.surfaceOffset &&
                    math.all(uvScale == other.uvScale) &&
-                   math.all(uvOffset == other.uvOffset);
+                   math.all(uvOffset == other.uvOffset) &&
+                   math.all(endSlant == other.endSlant);
         }
 
         public override readonly bool Equals(object obj) => obj is ChiselDecalSettings other && Equals(other);
@@ -92,6 +97,7 @@ namespace Chisel.Core
             hash = math.hash(new uint3(hash, (uint)projection, transparent ? 1u : 0u));
             hash = math.hash(new uint2(hash, math.hash(new float3(fieldOfView, maxAngle, surfaceOffset))));
             hash = math.hash(new uint3(hash, math.hash(uvScale), math.hash(uvOffset)));
+            hash = math.hash(new uint2(hash, math.hash(endSlant)));
             return (int)hash;
         }
     }

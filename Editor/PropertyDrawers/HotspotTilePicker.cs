@@ -43,9 +43,13 @@ namespace Chisel.Editors
         ChiselHotspotLayout Layout => pages[shown].layout;
         int Sheet => pages[shown].sheet;
 
-        public HotspotTilePicker(IReadOnlyList<Page> pages, HashSet<Vector2Int> fits, Vector2Int current, Action<Vector2Int> pick)
+        static readonly GUIContent kAutomatic = new GUIContent("Automatic", "Let matching choose the tile that fits best");
+        readonly GUIContent none;
+
+        // none: the button that picks no tile (id 0), Automatic by default
+        public HotspotTilePicker(IReadOnlyList<Page> pages, HashSet<Vector2Int> fits, Vector2Int current, Action<Vector2Int> pick, GUIContent none = null)
         {
-            this.pages = pages; this.fits = fits; this.current = current; this.pick = pick;
+            this.pages = pages; this.fits = fits; this.current = current; this.pick = pick; this.none = none ?? kAutomatic;
             for (int i = 0; i < pages.Count; i++)
             {
                 if (pages[i].sheet == current.x) { shown = i; break; }
@@ -84,10 +88,9 @@ namespace Chisel.Editors
         {
             var current = Event.current;
             var header = new Rect(rect.x + 2, rect.y + 2, rect.width - 4, kHeader - 4);
-            var automatic = new GUIContent("Automatic", "Let matching choose the tile that fits best");
             using (new EditorGUI.DisabledScope(this.current.y == 0))
             {
-                if (GUI.Button(new Rect(header.x, header.y, 90, header.height), automatic, EditorStyles.miniButton))
+                if (GUI.Button(new Rect(header.x, header.y, 90, header.height), none, EditorStyles.miniButton))
                     Choose(0);
             }
             var label = hover != 0 ? NameOf(hover) + (IsPieces(hover) ? " (inside corner pieces)" : !Fits(hover) ? " (does not fit this surface)" : string.Empty) : "Click a tile to keep it";
