@@ -68,7 +68,7 @@ See [the project](https://github.com/orgs/RadicalCSG/projects/1) for everything 
 
 ## Extensions
 * [Source Engine 2006 Map Importer for Chisel Editor](https://github.com/Henry00IS/Chisel.Import.Source)
-  * [Decal support for importer](https://github.com/Henry00IS/Chisel.Decals)
+  * [Decals on models that aren't Chisel geometry, for the importer](https://github.com/Henry00IS/Chisel.Decals)
   * [VPK import support for importer](https://github.com/nukeandbeans/com.chisel.import.source.vpktools)
 * [Quake1 Importer](https://github.com/Quixotic7/Chisel.Import.Quake1)
 
