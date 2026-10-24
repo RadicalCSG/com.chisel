@@ -201,24 +201,22 @@ namespace Chisel.Components
                             };
                             continue;
                         }
+                        // A box decal's target is its first; the rest are a trim's, kept for switching back
                         ChiselDecalTarget[] targets = null;
                         if (decal.Targets.Count > 0)
                         {
-                            var resolved = new List<ChiselDecalTarget>(decal.Targets.Count);
-                            foreach (var target in decal.Targets)
+                            var target = decal.Targets[0];
+                            // Limited to a surface that is gone: it draws nothing
+                            if (target.brush == null)
+                                continue;
+                            targets = new[]
                             {
-                                if (target.brush == null)
-                                    continue;
-                                resolved.Add(new ChiselDecalTarget
+                                new ChiselDecalTarget
                                 {
                                     brushEntityID = EntityId.ToULong(target.brush.GetEntityId()),
                                     surfaceIndex  = target.surfaceIndex
-                                });
-                            }
-                            // Limited to surfaces that are all gone: it draws nothing
-                            if (resolved.Count == 0)
-                                continue;
-                            targets = resolved.ToArray();
+                                }
+                            };
                         }
                         s_DecalStates[decal] = new DecalState
                         {

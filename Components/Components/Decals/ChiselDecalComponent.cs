@@ -110,7 +110,7 @@ namespace Chisel.Components
             set { if (trimMirror == value) return; trimMirror = value; ChiselDecalManager.SetDirty(); }
         }
 
-        /// <summary>The surfaces the decal is limited to. Empty means every surface it reaches.</summary>
+        /// <summary>A box decal: the first is the surface it is limited to (none: every surface it reaches). A trim decal: pairs of surfaces, an edge each.</summary>
         public IReadOnlyList<ChiselDecalSurfaceTarget> Targets => targets;
 
         public void SetTargets(IEnumerable<ChiselDecalSurfaceTarget> newTargets)

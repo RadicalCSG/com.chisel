@@ -81,13 +81,8 @@ namespace Chisel.Editors
                 EditorGUILayout.HelpBox(kNoMaterialMessage, MessageType.Info);
 
             var shape    = serializedObject.FindProperty(ChiselDecalComponent.kShapeName);
-            EditorGUI.BeginChangeCheck();
             EnumToggles(shape, kShapeContent, kShapeOptions, 2);
             var trim = !shape.hasMultipleDifferentValues && shape.enumValueIndex == (int)ChiselDecalShape.Trim;
-            // a box decal has one target at most
-            var targetList = serializedObject.FindProperty(ChiselDecalComponent.kTargetsName);
-            if (EditorGUI.EndChangeCheck() && !trim && !shape.hasMultipleDifferentValues && targetList.arraySize > 1)
-                targetList.arraySize = 1;
             if (trim)
             {
                 EnumToggles(serializedObject.FindProperty(ChiselDecalComponent.kTrimFillName), kTrimFillContent, kTrimFillOptions, 2);
@@ -217,13 +212,12 @@ namespace Chisel.Editors
             EditorGUI.showMixedValue = false;
             if (EditorGUI.EndChangeCheck())
             {
-                if (single && newBrush == null)
+                // none: every surface, unless there are more (a trim's, kept for switching back)
+                if (single && newBrush == null && targets.arraySize <= 1)
                 {
                     targets.arraySize = 0;
                     return;
                 }
-                if (single)
-                    targets.arraySize = 1;
                 while (targets.arraySize <= index)
                 {
                     targets.arraySize++;
