@@ -488,6 +488,63 @@ namespace Chisel.Components.Tests
             Assert.That(edgeTo.x, Is.EqualTo(-3).Within(1e-4f));
         }
 
+        // The edge of a box's surface whose two ends both pass the test, by its number along the surface's outline
+        static int EdgeOf(ChiselBoxComponent box, float3 normal, System.Func<float3, bool> onIt)
+        {
+            var brush = (CSGTreeBrush)box.TopTreeNode;
+            ref var mesh = ref BrushMeshManager.GetBrushMeshBlob(brush.BrushMesh).Value;
+            var nodeToTree = brush.NodeToTreeSpaceMatrix;
+            for (int p = 0; p < mesh.polygons.Length; p++)
+            {
+                if (math.dot(math.normalize(mesh.localPlanes[p].xyz), normal) < 0.999f)
+                    continue;
+                ref var polygon = ref mesh.polygons[p];
+                for (int e = 0; e < polygon.edgeCount; e++)
+                {
+                    var from = math.transform(nodeToTree, mesh.localVertices[mesh.halfEdges[polygon.firstEdge + e].vertexIndex]);
+                    var to   = math.transform(nodeToTree, mesh.localVertices[mesh.halfEdges[polygon.firstEdge + (e + 1) % polygon.edgeCount].vertexIndex]);
+                    if (onIt(from) && onIt(to))
+                        return e;
+                }
+            }
+            return -1;
+        }
+
+        // A chain round the foot of a wall that stands across the seam of two floor brushes, each edge given: the floor
+        // band is the 3 x 3 square less the wall's 2 x 2, once (the corners mitred, nothing drawn twice, nothing missing),
+        // and the wall band half a metre up all four sides
+        [Test]
+        public void AChainRoundAWallsFoot_AcrossTwoFloorBrushes_DrawsEachCornerOnce()
+        {
+            var model = Model();
+            var left  = Box(model, new float3(-4, -1, -4), new float3(0, 0, 4));
+            var right = Box(model, new float3(0, -1, -4), new float3(4, 0, 4));
+            var wall  = Box(model, new float3(-1, 0, -1), new float3(1, 2, 1));
+            Update();
+            var decal = Trim(model, left, SurfaceFacing(left, new float3(0, 1, 0)), wall, SurfaceFacing(wall, new float3(0, 0, 1)));
+            var sides = new[] { new float3(0, 0, 1), new float3(1, 0, 0), new float3(0, 0, -1), new float3(-1, 0, 0) };
+            var floors = new[] { left, right, right, left };
+            decal.SetTargets(null);
+            for (int s = 0; s < sides.Length; s++)
+            {
+                var side = sides[s];
+                var foot = EdgeOf(wall, side, v => math.abs(v.y) < 1e-4f);
+                Assert.That(foot, Is.GreaterThanOrEqualTo(0));
+                decal.AddTrimEdge(new ChiselDecalSurfaceTarget { brush = floors[s], surfaceIndex = SurfaceFacing(floors[s], new float3(0, 1, 0)) },
+                                  new ChiselDecalSurfaceTarget { brush = wall,      surfaceIndex = SurfaceFacing(wall, side) }, true, foot);
+            }
+            Update();
+
+            double floorArea = 0, wallArea = 0;
+            foreach (var triangle in DecalTriangles(model))
+            {
+                if (triangle.normal.y > 0.9f) floorArea += triangle.area;
+                else                          wallArea  += triangle.area;
+            }
+            Assert.That(floorArea, Is.EqualTo(5).Within(1e-3), "the floor band round the wall, each corner once");
+            Assert.That(wallArea,  Is.EqualTo(4).Within(1e-3), "half a metre up each of the wall's four sides");
+        }
+
         // Two floor brushes side by side, their tops in one plane: a trim on the seam lies flat, half on each, along the seam
         [Test]
         public void ATrimOnTheSeamOfTwoFlushBrushes_LiesFlatAcrossIt()
@@ -615,7 +672,7 @@ namespace Chisel.Components.Tests
 
         // A 2 m box's top, framed half a metre deep: 4 m2 less the 1 m2 middle, each corner once (overlapping square ends
         // would draw 4 m2); each side half a metre down
-        [Test, Ignore("Chains round corners are off until they are fixed (com.chisel#53)")]
+        [Test]
         public void ATrimRoundCorners_IsMitredWhereItsEdgesMeet()
         {
             var model = Model();
@@ -627,7 +684,7 @@ namespace Chisel.Components.Tests
                 Assert.That(AreaFacing(triangles, side), Is.EqualTo(1.0).Within(kTolerance), $"the side facing {side}");
         }
 
-        [Test, Ignore("Chains round corners are off until they are fixed (com.chisel#53)")]
+        [Test]
         public void ATrimRoundCorners_RunsOnFromEdgeToEdge()
         {
             var model = Model();

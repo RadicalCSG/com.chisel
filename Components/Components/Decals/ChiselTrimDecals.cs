@@ -63,8 +63,7 @@ namespace Chisel.Components
             edgeFrom = edgeTo = float3.zero;
             model = null;
             var targets = decal.Targets;
-            // only the first edge: chains round corners are off until they are fixed (com.chisel#53)
-            var edgeCount = math.min(1, targets.Count / 2);
+            var edgeCount = targets.Count / 2;
             if (edgeCount < 1)
                 return false;
             var settings = decal.Settings;
@@ -79,12 +78,12 @@ namespace Chisel.Components
             var edges = new ChainEdge[edgeCount];
             for (int i = 0; i < edgeCount; i++)
             {
-                // the first edge nearest to the decal (where it was picked), the others nearest to the edge before them
+                // the edge it was given; without one, the first edge nearest to the decal, the others to the edge before them
                 var reference = i == 0 ? (float3)decal.transform.position
-                                       : (float3)model.transform.localToWorldMatrix.MultiplyPoint3x4(edges[i - 1].start + edges[i - 1].direction * (edges[i - 1].length * 0.5f));
+                                       : (float3)model.transform.localToWorldMatrix.MultiplyPoint3x4(edges[i - 1].start + edges[i - 1].direction * edges[i - 1].length);
                 var keep = i == 0 && decal.hasTrimLine;
-                var edgeIndex = i == 0 ? decal.TrimEdge : -1;
-                if (!TryEdge(targets[i * 2], targets[i * 2 + 1], edgeIndex, decal.TrimEdgeOnSecond, reference, keep, decal.trimLinePoint, decal.trimLineDirection, out var edgeModel, out edges[i]) ||
+                var edgeIndex = decal.TrimEdgeOf(i, out var edgeOnSecond);
+                if (!TryEdge(targets[i * 2], targets[i * 2 + 1], edgeIndex, edgeOnSecond, reference, keep, decal.trimLinePoint, decal.trimLineDirection, out var edgeModel, out edges[i]) ||
                     (model != null && edgeModel != model))
                     return false;
                 model = edgeModel;
@@ -109,13 +108,14 @@ namespace Chisel.Components
                 var n = (i + 1) % edgeCount;
                 if (n == 0 && edgeCount < 3)
                     break;
-                if (math.distance(edges[i].start + edges[i].direction * edges[i].length, edges[n].start) > kCornerTolerance)
+                if (math.distance(edges[i].start + edges[i].direction * edges[i].length, edges[n].start) > kMargin)
                     continue;
+                // halves in one plane meet at the corner: on one surface, or on surfaces of brushes side by side
                 for (int h = 0; h < 2; h++)
                 {
                     for (int k = 0; k < 2; k++)
                     {
-                        if (SameSurface(targets[i * 2 + h], targets[n * 2 + k]))
+                        if (InOnePlane(h == 0 ? edges[i].faceA : edges[i].faceB, k == 0 ? edges[n].faceA : edges[n].faceB))
                             Mitre(ref edges[i], h, ref edges[n], k);
                     }
                 }
@@ -138,13 +138,13 @@ namespace Chisel.Components
             var sheet = rect != new Rect(0, 0, 1, 1);
             var piece = 0;
             var along = 0.0f;
+            // seen from the first surface, with the image's top towards the edge, the image reads along the chain only
+            // when it runs left to right; otherwise it runs from the far end (both halves, every edge alike)
+            var backwards = math.dot(math.cross(edges[0].direction, -edges[0].acrossA), edges[0].faceA.normal) > 0;
+            var uEnd = sheet ? 1 : total * perMetre;
             for (int i = 0; i < edgeCount; i++)
             {
                 ref var edge = ref edges[i];
-                // seen from the first surface, with the image's top towards the edge, the image reads along the edge's
-                // direction only when that runs left to right; otherwise it runs from the far end (both halves alike)
-                var backwards = math.dot(math.cross(edge.direction, -edge.acrossA), edge.faceA.normal) > 0;
-                var uEnd = sheet ? 1 : total * perMetre;
                 // the whole texture repeats by wrapping; an image in a trim sheet can't, so it is a piece for every image
                 int pieces = 1;
                 float pieceLength = edge.length;
@@ -181,7 +181,6 @@ namespace Chisel.Components
             return true;
         }
 
-        const float kCornerTolerance = 1e-3f;
 
         // One edge of a trim: its surfaces, the stretch both reach, and per half the direction into its surface and how its
         // ends lean (x per y in the half's box, 0: square; a corner's mitre)
@@ -305,7 +304,7 @@ namespace Chisel.Components
             if (k == 0) next.slantStartA = nextSlantStart; else next.slantStartB = nextSlantStart;
         }
 
-        static bool SameSurface(ChiselDecalSurfaceTarget a, ChiselDecalSurfaceTarget b) => a.brush == b.brush && a.surfaceIndex == b.surfaceIndex;
+        static bool InOnePlane(in Face a, in Face b) => math.dot(a.normal, b.normal) > kNearlyParallel && math.abs(a.distance - b.distance) <= kMargin;
 
         // Across the edge, into the surface: the side its outline is on, or where it lies on both (a wall standing on a
         // floor), the side the other surface faces, as the other side is under the other's brush
