@@ -6,6 +6,8 @@ body:
     attributes:
       value: |
         Thanks for reporting a problem! A scene that shows it, or steps to make it happen, helps us fix it much faster.
+
+        Chisel needs Unity 6.6 or newer and the Universal Render Pipeline (URP); other render pipelines aren't supported.
   - type: textarea
     id: what
     attributes:
@@ -48,16 +50,6 @@ body:
     attributes:
       label: Chisel version
       description: The version in the Package Manager, or the commit you installed.
-    validations:
-      required: true
-  - type: dropdown
-    id: pipeline
-    attributes:
-      label: Render pipeline
-      options:
-        - URP
-        - HDRP
-        - Built-in
     validations:
       required: true
   - type: input

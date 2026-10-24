@@ -24,18 +24,6 @@ namespace Chisel.Editors
             s_LineAlphaMultiplierId		= Shader.PropertyToID("_alphaMultiplier");
         }
         
-        static Material s_DefaultMaterial;
-        public static Material DefaultMaterial
-        {
-            get
-            {
-                // TODO: make this work with HDRP
-                if (!s_DefaultMaterial)
-                    s_DefaultMaterial = AssetDatabase.GetBuiltinExtraResource<Material>("Default-Diffuse.mat");
-                return s_DefaultMaterial;
-            }
-        }
-        
         public static void InitGenericLineMaterial(Material genericLineMaterial)
         {
             if (!genericLineMaterial)
