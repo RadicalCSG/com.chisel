@@ -295,7 +295,7 @@ namespace Chisel.Components.Tests
         {
             var model = Model();
             var left  = Box(model, new float3(-4, -1, -4), new float3(0, 0, 4));
-            Box(model, new float3(0, -1, -4), new float3(4, 0, 4));
+            var right = Box(model, new float3(0, -1, -4), new float3(4, 0, 4));
             var wall  = Box(model, new float3(-1, 0, -1), new float3(1, 2, 1));
             var decal = Trim(model, left, SurfaceFacing(left, new float3(0, 1, 0)), wall, SurfaceFacing(wall, new float3(0, 0, 1)));
             Update();
@@ -303,6 +303,64 @@ namespace Chisel.Components.Tests
             Assert.That(ChiselTrimDecals.TryDescribe(decal, 1, 1, SurfaceDestinationFlags.Default, out _, halves, out var from, out var to), Is.True);
             Assert.That(math.min(from.x, to.x), Is.EqualTo(-1).Within(1e-4f), "from the wall's one end");
             Assert.That(math.max(from.x, to.x), Is.EqualTo(1).Within(1e-4f), "to its other end, over the other floor brush");
+
+            // the floor half draws on the other floor brush's top too, the wall half only on the wall
+            var rightTop = new ChiselDecalTarget { brushEntityID = UnityEngine.EntityId.ToULong(right.GetEntityId()), surfaceIndex = SurfaceFacing(right, new float3(0, 1, 0)) };
+            var leftTop  = new ChiselDecalTarget { brushEntityID = UnityEngine.EntityId.ToULong(left.GetEntityId()),  surfaceIndex = SurfaceFacing(left, new float3(0, 1, 0)) };
+            Assert.That(halves.Exists(h => h.targets[0].Equals(leftTop) && System.Array.IndexOf(h.targets, rightTop) > 0), Is.True, "the floor half reaches the right brush's top");
+            Assert.That(halves.TrueForAll(h => h.targets[0].Equals(leftTop) || h.targets.Length == 1), Is.True, "the wall half stays on the wall");
+        }
+
+        // Seen from its surface, every half's image runs left to right with its top up: not mirrored, whichever way the
+        // line the two surfaces meet on happens to run
+        [Test]
+        public void TrimHalves_AreNotMirrored()
+        {
+            var model = Model();
+            var box   = Box(model, new float3(-6, -1, -1), new float3(-4, 1, 1));
+            var floor = Box(model, new float3(-4, -1, -4), new float3(4, 0, 4));
+            var wall  = Box(model, new float3(-1, 0, -1), new float3(1, 2, 1));
+            var trims = new[]
+            {
+                Trim(model, box, SurfaceFacing(box, new float3(0, 1, 0)), box, SurfaceFacing(box, new float3(1, 0, 0))),
+                Trim(model, box, SurfaceFacing(box, new float3(1, 0, 0)), box, SurfaceFacing(box, new float3(0, 1, 0))),
+                Trim(model, floor, SurfaceFacing(floor, new float3(0, 1, 0)), wall, SurfaceFacing(wall, new float3(0, 0, 1))),
+                Trim(model, wall, SurfaceFacing(wall, new float3(0, 0, -1)), floor, SurfaceFacing(floor, new float3(0, 1, 0))),
+            };
+            Update();
+            var halves = new List<ChiselTrimDecals.Half>();
+            foreach (var trim in trims)
+            {
+                Assert.That(ChiselTrimDecals.TryDescribe(trim, 1, 1, SurfaceDestinationFlags.Default, out _, halves, out _, out _), Is.True);
+                foreach (var half in halves)
+                {
+                    var toTree = half.decal.decalToTree;
+                    var right = math.mul(toTree, new float4(1, 0, 0, 0)).xyz * math.sign(half.decal.settings.uvScale.x);
+                    var up    = math.mul(toTree, new float4(0, 1, 0, 0)).xyz * math.sign(half.decal.settings.uvScale.y);
+                    var into  = math.mul(toTree, new float4(0, 0, 1, 0)).xyz;
+                    Assert.That(math.dot(math.cross(right, up), into), Is.GreaterThan(0), $"{trim.name}: a half is mirrored");
+                }
+            }
+        }
+
+        // Brushes side by side that are nearly flush (one a few millimetres higher, or tilted a fraction of a degree): the
+        // trim still lies across their seam
+        [TestCase(0.003f, 0f)]
+        [TestCase(0f, 0.2f)]
+        public void ATrimOnTheSeamOfNearlyFlushBrushes_LiesAcrossIt(float step, float tilt)
+        {
+            var model = Model();
+            var left  = Box(model, new float3(-4, -1, -4), new float3(0, 0, 4));
+            var right = Box(model, new float3(-2, -1, -4), new float3(2, step, 4));
+            right.transform.localPosition = new Vector3(2, 0, 0);
+            right.transform.localRotation = Quaternion.Euler(0, 0, tilt);
+            var decal = Trim(model, left, SurfaceFacing(left, new float3(0, 1, 0)), right, SurfaceFacing(right, new float3(0, 1, 0)));
+            Update();
+            var halves = new List<ChiselTrimDecals.Half>();
+            Assert.That(ChiselTrimDecals.TryDescribe(decal, 1, 1, SurfaceDestinationFlags.Default, out _, halves, out var from, out var to), Is.True, "the seam is an edge");
+            Assert.That(math.abs(from.x), Is.LessThan(0.01f));
+            Assert.That(math.abs(to.z - from.z), Is.EqualTo(8).Within(0.01f), "along the whole seam");
+            Assert.That(model.Node.GetDecalCount(), Is.GreaterThan(0), "and it is drawn");
         }
 
         // Two floor brushes side by side, their tops in one plane: a trim on the seam lies flat, half on each, along the seam

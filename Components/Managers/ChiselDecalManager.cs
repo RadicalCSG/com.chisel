@@ -349,7 +349,19 @@ namespace Chisel.Components
                 return false;
             for (int p = 0; p < s_TrimHalves.Count; p++)
             {
-                if (!s_TrimHalves[p].decal.Equals(state.trimPieces[p]) || !s_TrimHalves[p].target.Equals(state.trimTargets[p][0]))
+                if (!s_TrimHalves[p].decal.Equals(state.trimPieces[p]) || !SameTargets(s_TrimHalves[p].targets, state.trimTargets[p]))
+                    return false;
+            }
+            return true;
+        }
+
+        static bool SameTargets(ChiselDecalTarget[] a, ChiselDecalTarget[] b)
+        {
+            if (a.Length != b.Length)
+                return false;
+            for (int i = 0; i < a.Length; i++)
+            {
+                if (!a[i].Equals(b[i]))
                     return false;
             }
             return true;
@@ -371,7 +383,7 @@ namespace Chisel.Components
             foreach (var half in s_TrimHalves)
             {
                 state.trimPieces.Add(half.decal);
-                state.trimTargets.Add(new[] { half.target });
+                state.trimTargets.Add(half.targets);
             }
             return true;
         }
