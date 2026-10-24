@@ -172,6 +172,89 @@ namespace Chisel.Components
             return from < to;
         }
 
+        /// <summary>The surface (of its generator: the polygon's descriptionIndex) a decal target names for a brush's polygon</summary>
+        public static int SurfaceOf(CSGTreeBrush brush, int polygonIndex)
+        {
+            var blob = BrushMeshManager.GetBrushMeshBlob(brush.BrushMesh);
+            if (!blob.IsCreated || polygonIndex < 0 || polygonIndex >= blob.Value.polygons.Length)
+                return -1;
+            return blob.Value.polygons[polygonIndex].descriptionIndex;
+        }
+
+        /// <summary>
+        /// The edge of a brush's polygon nearest to a point (both in the tree's space): its ends, and the polygon of the
+        /// same brush on its other side
+        /// </summary>
+        public static bool NearestEdge(CSGTreeBrush brush, int polygonIndex, float3 treePoint, out float3 from, out float3 to, out int otherPolygon)
+        {
+            from = to = float3.zero;
+            otherPolygon = -1;
+            var blob = BrushMeshManager.GetBrushMeshBlob(brush.BrushMesh);
+            if (!blob.IsCreated || polygonIndex < 0 || polygonIndex >= blob.Value.polygons.Length)
+                return false;
+            ref var mesh = ref blob.Value;
+            ref var polygon = ref mesh.polygons[polygonIndex];
+            var nodeToTree = brush.NodeToTreeSpaceMatrix;
+            var nearest = float.PositiveInfinity;
+            for (int e = 0; e < polygon.edgeCount; e++)
+            {
+                var edge = polygon.firstEdge + e;
+                var next = polygon.firstEdge + (e + 1) % polygon.edgeCount;
+                var a = math.transform(nodeToTree, mesh.localVertices[mesh.halfEdges[edge].vertexIndex]);
+                var b = math.transform(nodeToTree, mesh.localVertices[mesh.halfEdges[next].vertexIndex]);
+                var ab = b - a;
+                var t = math.saturate(math.dot(treePoint - a, ab) / math.max(math.lengthsq(ab), 1e-12f));
+                var distance = math.distancesq(treePoint, a + ab * t);
+                if (distance >= nearest)
+                    continue;
+                nearest = distance;
+                from = a;
+                to = b;
+                // the polygon on the other side: the one across either half edge here that has both its vertices
+                var vertexA = mesh.halfEdges[edge].vertexIndex;
+                var vertexB = mesh.halfEdges[next].vertexIndex;
+                otherPolygon = -1;
+                for (int h = 0; h < 2 && otherPolygon < 0; h++)
+                {
+                    var twin = mesh.halfEdges[h == 0 ? edge : next].twinIndex;
+                    if (twin < 0 || twin >= mesh.halfEdgePolygonIndices.Length)
+                        continue;
+                    var across = mesh.halfEdgePolygonIndices[twin];
+                    if (across != polygonIndex && HasVertices(ref mesh, across, vertexA, vertexB))
+                        otherPolygon = across;
+                }
+            }
+            return nearest < float.PositiveInfinity;
+        }
+
+        static bool HasVertices(ref BrushMeshBlob mesh, int polygonIndex, int vertexA, int vertexB)
+        {
+            ref var polygon = ref mesh.polygons[polygonIndex];
+            bool foundA = false, foundB = false;
+            for (int e = 0; e < polygon.edgeCount; e++)
+            {
+                var vertex = mesh.halfEdges[polygon.firstEdge + e].vertexIndex;
+                foundA |= vertex == vertexA;
+                foundB |= vertex == vertexB;
+            }
+            return foundA && foundB;
+        }
+
+        /// <summary>Whether a brush's polygon's plane holds the line through these points (in the tree's space)</summary>
+        public static bool PlaneHolds(CSGTreeBrush brush, int polygonIndex, float3 a, float3 b)
+        {
+            var blob = BrushMeshManager.GetBrushMeshBlob(brush.BrushMesh);
+            if (!blob.IsCreated || polygonIndex < 0 || polygonIndex >= blob.Value.localPlanes.Length)
+                return false;
+            var plane = math.mul(math.transpose(math.inverse(brush.NodeToTreeSpaceMatrix)), blob.Value.localPlanes[polygonIndex]);
+            var length = math.length(plane.xyz);
+            if (!(length > kEpsilon))
+                return false;
+            plane /= length;
+            const float kOnPlane = 1e-3f;
+            return math.abs(math.dot(plane.xyz, a) + plane.w) < kOnPlane && math.abs(math.dot(plane.xyz, b) + plane.w) < kOnPlane;
+        }
+
         // A target's surface, of the first brush of its component that has it (depth first)
         static bool TryFace(ChiselDecalSurfaceTarget target, out ChiselModelComponent model, out Face face)
         {

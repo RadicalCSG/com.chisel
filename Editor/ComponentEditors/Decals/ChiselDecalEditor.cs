@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using Chisel.Components;
 using Chisel.Core;
 using UnityEditor;
@@ -31,6 +32,8 @@ namespace Chisel.Editors
         static readonly GUIContent kTrimLengthContent    = new GUIContent("Length", "The image's length along the edge.");
         static readonly GUIContent kTrimHeightContent    = new GUIContent("Height", "The image's height across both surfaces: each half reaches half of it into its surface.");
         static readonly GUIContent kTrimSurfacesContent  = new GUIContent("Surfaces", "The two surfaces whose edge the trim lies on: the first takes the image's lower half, the second its upper half.");
+        static readonly GUIContent kPickEdgeContent      = new GUIContent("Pick Edge", "Click a surface near one of its edges in the scene view: the trim goes on that edge, between the surface and the one that meets it there. Escape cancels.");
+        static readonly GUIContent kCancelPickContent    = new GUIContent("Cancel Picking");
         const string kTrimNeedsTwoMessage = "A trim decal lies on the edge between two surfaces: give it two.";
         const string kNoMaterialMessage = "A decal without a material draws nothing.";
 
@@ -92,8 +95,19 @@ namespace Chisel.Editors
             EditorGUILayout.PropertyField(settings.FindPropertyRelative(nameof(ChiselDecalSettings.uvOffset)), kUVOffsetContent);
 
             EditorGUILayout.PropertyField(serializedObject.FindProperty(ChiselDecalComponent.kTargetsName), trim ? kTrimSurfacesContent : kTargetsContent, true);
-            if (trim && !serializedObject.isEditingMultipleObjects && ((ChiselDecalComponent)target).Targets.Count < 2)
-                EditorGUILayout.HelpBox(kTrimNeedsTwoMessage, MessageType.Info);
+            if (trim && !serializedObject.isEditingMultipleObjects)
+            {
+                var decal = (ChiselDecalComponent)target;
+                if (decal.Targets.Count < 2)
+                    EditorGUILayout.HelpBox(kTrimNeedsTwoMessage, MessageType.Info);
+                var picking = s_PickingFor == decal;
+                if (GUILayout.Button(picking ? kCancelPickContent : kPickEdgeContent))
+                {
+                    s_PickingFor = picking ? null : decal;
+                    s_Candidate  = default;
+                    SceneView.RepaintAll();
+                }
+            }
 
             serializedObject.ApplyModifiedProperties();
         }
@@ -107,6 +121,8 @@ namespace Chisel.Editors
             // a trim decal follows its edge, not its transform: its outline shows where it lies
             if (decal.Shape == ChiselDecalShape.Trim)
             {
+                if (s_PickingFor == decal)
+                    PickEdge(decal);
                 DrawTrimOutline(decal);
                 return;
             }
@@ -128,6 +144,126 @@ namespace Chisel.Editors
         }
 
         // Each half's box where it lies on its surface, and the edge they share
+        // Picking a trim decal's edge in the scene view (Pick Edge)
+        static ChiselDecalComponent s_PickingFor;
+        static EdgeCandidate s_Candidate;
+        static readonly Color kCandidateColor = new Color(0.2f, 0.9f, 1.0f, 1.0f);
+
+        struct EdgeCandidate
+        {
+            public bool valid;
+            public ChiselDecalSurfaceTarget a, b;
+            public Vector3 from, to;    // the edge, in world space
+            public Vector3 at;          // the point on it nearest to where was clicked
+        }
+
+        static void PickEdge(ChiselDecalComponent decal)
+        {
+            var id  = GUIUtility.GetControlID(FocusType.Passive);
+            var evt = Event.current;
+            switch (evt.GetTypeForControl(id))
+            {
+                case EventType.Layout:
+                    HandleUtility.AddDefaultControl(id);
+                    break;
+                case EventType.MouseMove:
+                    s_Candidate = FindEdge(evt.mousePosition);
+                    HandleUtility.Repaint();
+                    break;
+                case EventType.MouseDown:
+                    if (evt.button != 0 || evt.alt)
+                        break;
+                    s_Candidate = FindEdge(evt.mousePosition);
+                    if (s_Candidate.valid)
+                    {
+                        Undo.RecordObjects(new Object[] { decal, decal.transform }, "Pick Trim Edge");
+                        decal.SetTargets(new[] { s_Candidate.a, s_Candidate.b });
+                        decal.transform.position = s_Candidate.at;
+                        EditorUtility.SetDirty(decal);
+                    }
+                    s_PickingFor = null;
+                    s_Candidate  = default;
+                    evt.Use();
+                    break;
+                case EventType.KeyDown:
+                    if (evt.keyCode != KeyCode.Escape)
+                        break;
+                    s_PickingFor = null;
+                    s_Candidate  = default;
+                    evt.Use();
+                    break;
+                case EventType.Repaint:
+                    if (s_Candidate.valid)
+                    {
+                        using (new Handles.DrawingScope(kCandidateColor))
+                            Handles.DrawAAPolyLine(6.0f, s_Candidate.from, s_Candidate.to);
+                    }
+                    break;
+            }
+        }
+
+        static readonly List<ChiselIntersection> s_Intersections = new();
+
+        // The nearest brush surface under a point of the scene view (a decal in front of it is passed by)
+        static bool PickSurface(Vector2 position, out ChiselIntersection surface)
+        {
+            surface = default;
+            ChiselSelectionManager.GetOverlappingObjects(position, s_Intersections);
+            foreach (var intersection in s_Intersections)
+            {
+                if (intersection.treeNode != null && intersection.model != null && intersection.brushIntersection.brush.Valid)
+                {
+                    surface = intersection;
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        // The edge of the clicked surface nearest to where it was clicked, and the surface that meets it there: the one
+        // just across the edge when it lies along it (a floor under a wall), else the same brush's surface on the edge's
+        // other side (a box's edge)
+        static EdgeCandidate FindEdge(Vector2 mousePosition)
+        {
+            if (!PickSurface(mousePosition, out var hit))
+                return default;
+            var brush   = hit.brushIntersection.brush;
+            var polygon = hit.brushIntersection.surfaceIndex;
+            var point   = (Unity.Mathematics.float3)hit.brushIntersection.surfaceIntersection.treePlaneIntersection;
+            if (!ChiselTrimDecals.NearestEdge(brush, polygon, point, out var from, out var to, out var otherPolygon))
+                return default;
+            var edge    = to - from;
+            var nearest = from + edge * Unity.Mathematics.math.saturate(Unity.Mathematics.math.dot(point - from, edge) / Unity.Mathematics.math.max(Unity.Mathematics.math.lengthsq(edge), 1e-12f));
+            var modelToWorld = hit.model.transform.localToWorldMatrix;
+            var worldNearest = modelToWorld.MultiplyPoint3x4(nearest);
+
+            var b = default(ChiselDecalSurfaceTarget);
+            var across = nearest - point;
+            var acrossLength = Unity.Mathematics.math.length(across);
+            if (acrossLength > 1e-5f)
+            {
+                var probe = nearest + across / acrossLength * (HandleUtility.GetHandleSize(worldNearest) * 0.05f);
+                if (PickSurface(HandleUtility.WorldToGUIPoint(modelToWorld.MultiplyPoint3x4(probe)), out var beyond) &&
+                    !(beyond.brushIntersection.brush == brush && beyond.brushIntersection.surfaceIndex == polygon) &&
+                    beyond.model == hit.model &&
+                    ChiselTrimDecals.PlaneHolds(beyond.brushIntersection.brush, beyond.brushIntersection.surfaceIndex, from, to))
+                    b = new ChiselDecalSurfaceTarget { brush = beyond.treeNode, surfaceIndex = ChiselTrimDecals.SurfaceOf(beyond.brushIntersection.brush, beyond.brushIntersection.surfaceIndex) };
+            }
+            if (b.brush == null && otherPolygon >= 0)
+                b = new ChiselDecalSurfaceTarget { brush = hit.treeNode, surfaceIndex = ChiselTrimDecals.SurfaceOf(brush, otherPolygon) };
+            if (b.brush == null || b.surfaceIndex < 0)
+                return default;
+            return new EdgeCandidate
+            {
+                valid = true,
+                a     = new ChiselDecalSurfaceTarget { brush = hit.treeNode, surfaceIndex = ChiselTrimDecals.SurfaceOf(brush, polygon) },
+                b     = b,
+                from  = modelToWorld.MultiplyPoint3x4(from),
+                to    = modelToWorld.MultiplyPoint3x4(to),
+                at    = worldNearest
+            };
+        }
+
         static void DrawTrimOutline(ChiselDecalComponent decal)
         {
             if (!ChiselTrimDecals.TryDescribe(decal, 0, 0, SurfaceDestinationFlags.None, out var model, out var a, out var b) || model == null)
