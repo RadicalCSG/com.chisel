@@ -62,7 +62,7 @@ namespace Chisel.Components
         [SerializeField] ChiselDecalShape shape = ChiselDecalShape.Box;
         [SerializeField] ChiselTrimFill trimFill = ChiselTrimFill.Repeat;
         [SerializeField] bool trimMirror = false;
-        [SerializeField] Rect imageRect = new Rect(0, 0, 1, 1);
+        [SerializeField] int imageTile = 0;
         [SerializeField] Vector2 repeat = Vector2.one;
 
         public const string kMaterialName = nameof(material);
@@ -71,7 +71,7 @@ namespace Chisel.Components
         public const string kShapeName      = nameof(shape);
         public const string kTrimFillName   = nameof(trimFill);
         public const string kTrimMirrorName = nameof(trimMirror);
-        public const string kImageRectName  = nameof(imageRect);
+        public const string kImageTileName  = nameof(imageTile);
         public const string kRepeatName     = nameof(repeat);
 
         /// <summary>A box decal projects through its box; a trim decal lies on the edge between its first two targets
@@ -89,11 +89,40 @@ namespace Chisel.Components
             set { if (trimFill == value) return; trimFill = value; ChiselDecalManager.SetDirty(); }
         }
 
-        /// <summary>The part of the texture the image is, in texture coordinates: all of it, or an image in a trim sheet</summary>
-        public Rect ImageRect
+        /// <summary>The tile of the material's hotspot layout the image is (a trim sheet's image), 0 for the whole texture</summary>
+        public int ImageTile
         {
-            get => imageRect;
-            set { if (imageRect == value) return; imageRect = value; ChiselDecalManager.SetDirty(); }
+            get => imageTile;
+            set { if (imageTile == value) return; imageTile = value; ChiselDecalManager.SetDirty(); }
+        }
+
+        /// <summary>The part of the texture the image is, in texture coordinates: all of it, or its tile's bounds</summary>
+        public Rect ImageRect => ImageRectOf(material, imageTile);
+
+        /// <summary>A tile's bounds in a material's hotspot layout, in texture coordinates; the whole texture without one</summary>
+        public static Rect ImageRectOf(Material material, int tile)
+        {
+            var whole = new Rect(0, 0, 1, 1);
+            if (tile == 0 || material == null)
+                return whole;
+            var metadata = material.GetMetadataOfType<ChiselSurfaceMetadata>();
+            var layout   = metadata != null ? metadata.hotspotLayout : null;
+            if (layout == null || layout.size.x <= 0 || layout.size.y <= 0)
+                return whole;
+            var index = layout.IndexOfTile(tile);
+            var points = index >= 0 ? layout.tiles[index].points : null;
+            if (points == null || points.Length == 0)
+                return whole;
+            var min = points[0];
+            var max = points[0];
+            foreach (var point in points)
+            {
+                min = Vector2Int.Min(min, point);
+                max = Vector2Int.Max(max, point);
+            }
+            // the layout's rows run down from the top, texture coordinates up from the bottom
+            var size = (Vector2)layout.size;
+            return new Rect(min.x / size.x, (size.y - max.y) / size.y, (max.x - min.x) / size.x, (max.y - min.y) / size.y);
         }
 
         /// <summary>How many times a box decal's image repeats across its box, in x and y (an image in a trim sheet is a tile per image)</summary>

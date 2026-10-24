@@ -40,7 +40,8 @@ namespace Chisel.Editors
             new GUIContent("Single",  "One image at its length, round the decal's position (move the decal along the edge to place it).")
         };
         static readonly GUIContent kShapeContent           = new GUIContent("Shape", "Box: the image is projected through the box. Trim: the image lies on the edge between two surfaces, its lower half on the first, its upper half on the second.");
-        static readonly GUIContent kImageRectContent     = new GUIContent("Image Rect", "The part of the texture the image is, in texture coordinates (0 to 1): all of it, or an image in a trim sheet. An image in a trim sheet can't repeat by wrapping, so it is a piece of its own for every image it repeats.");
+        static readonly GUIContent kImageContent         = new GUIContent("Image", "The whole texture, or a tile of the material's hotspot layout (an image in a trim sheet). A tile can't repeat by wrapping, so it is a piece of its own for every image it repeats.");
+        static readonly GUIContent kWholeTextureContent  = new GUIContent("Whole Texture", "The image is the whole texture");
         static readonly GUIContent kRepeatContent        = new GUIContent("Repeat", "How many times the image repeats across the box, in x and y. A perspective decal shows a trim sheet's image once.");
         static readonly GUIContent kTrimMirrorContent     = new GUIContent("Mirror", "The image's lower half on both surfaces, mirrored across the edge, so the trim is the same on either side of it.");
         static readonly GUIContent kTrimFillContent       = new GUIContent("Fill", "Stretch: one image over the whole edge. Repeat: the image repeated at its length, the last one cut short. Fit: the whole number of images nearest to what fits, stretched to fill the edge. Single: one image at its length, round the decal's position (move the decal along the edge to place it).");
@@ -104,7 +105,7 @@ namespace Chisel.Editors
                 EditorGUILayout.PropertyField(settings.FindPropertyRelative(nameof(ChiselDecalSettings.size)), kSizeContent);
                 EditorGUILayout.PropertyField(serializedObject.FindProperty(ChiselDecalComponent.kRepeatName), kRepeatContent);
             }
-            EditorGUILayout.PropertyField(serializedObject.FindProperty(ChiselDecalComponent.kImageRectName), kImageRectContent);
+            ImageField(material, serializedObject.FindProperty(ChiselDecalComponent.kImageTileName));
 
 
             EditorGUILayout.PropertyField(settings.FindPropertyRelative(nameof(ChiselDecalSettings.uvScale)), kUVScaleContent);
@@ -144,6 +145,39 @@ namespace Chisel.Editors
             }
 
             serializedObject.ApplyModifiedProperties();
+        }
+
+        // The image: the whole texture, or a tile picked from the material's hotspot layout (only with a layout)
+        void ImageField(SerializedProperty material, SerializedProperty tile)
+        {
+            var layout = material.hasMultipleDifferentValues ? null : HotspotTransformGUI.LayoutOf(material.objectReferenceValue as Material);
+            if (layout == null)
+                return;
+            var rect = EditorGUILayout.GetControlRect();
+            using (new EditorGUI.PropertyScope(rect, kImageContent, tile))
+            {
+                var field = EditorGUI.PrefixLabel(rect, kImageContent);
+                var name  = tile.hasMultipleDifferentValues ? "—" : tile.intValue == 0 ? kWholeTextureContent.text : HotspotTilePicker.NameOf(layout, tile.intValue);
+                if (string.IsNullOrEmpty(name))
+                    name = "Missing Tile " + tile.intValue;
+                if (!GUI.Button(field, name, EditorStyles.popup))
+                    return;
+                var pages = HotspotTransformGUI.PagesOf((Material)material.objectReferenceValue, layout).FindAll(page => page.sheet == 0);
+                var decals = targets;
+                var current = tile.hasMultipleDifferentValues ? -1 : tile.intValue;
+                PopupWindow.Show(field, new HotspotTilePicker(pages, null, new Vector2Int(0, current), picked =>
+                {
+                    Undo.RecordObjects(decals, "Decal Image");
+                    foreach (var decal in decals)
+                    {
+                        if (decal is ChiselDecalComponent component)
+                        {
+                            component.ImageTile = picked.y;
+                            EditorUtility.SetDirty(component);
+                        }
+                    }
+                }, kWholeTextureContent));
+            }
         }
 
         // Under the material, on one line: Transparent, and for a trim decal Mirror

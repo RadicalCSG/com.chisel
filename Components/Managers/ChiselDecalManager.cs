@@ -57,6 +57,9 @@ namespace Chisel.Components
             public readonly List<ChiselDecalTarget>   previousTargets = new();
         }
 
+        // a decal's image can be a tile of its material's hotspot layout
+        static ChiselDecalManager() { ChiselHotspotLayout.AnyChanged += _ => SetDirty(); }
+
         public static void Register(ChiselDecalComponent decal)
         {
             if (decal != null && s_Decals.Add(decal))
