@@ -104,9 +104,12 @@ namespace Chisel.Editors
             if (decal == null)
                 return;
 
-            // a trim decal follows its edge, not its transform
+            // a trim decal follows its edge, not its transform: its outline shows where it lies
             if (decal.Shape == ChiselDecalShape.Trim)
+            {
+                DrawTrimOutline(decal);
                 return;
+            }
             var settings = decal.Settings;
             using (new Handles.DrawingScope(kHandleColor, decal.transform.localToWorldMatrix))
             {
@@ -122,6 +125,25 @@ namespace Chisel.Editors
                     decal.Settings  = settings;
                 }
             }
+        }
+
+        // Each half's box where it lies on its surface, and the edge they share
+        static void DrawTrimOutline(ChiselDecalComponent decal)
+        {
+            if (!ChiselTrimDecals.TryDescribe(decal, 0, 0, SurfaceDestinationFlags.None, out var model, out var a, out var b) || model == null)
+                return;
+            var modelToWorld = model.transform.localToWorldMatrix;
+            foreach (var half in new[] { a, b })
+            {
+                var settings = half.decal.settings;
+                using (new Handles.DrawingScope(kHandleColor, modelToWorld * (Matrix4x4)half.decal.decalToTree))
+                    Handles.DrawWireCube(settings.center, settings.size);
+            }
+            // the edge: the first half's near side, along its length
+            var edge   = modelToWorld * (Matrix4x4)a.decal.decalToTree;
+            var length = a.decal.settings.size.x;
+            using (new Handles.DrawingScope(kHandleColor, edge))
+                Handles.DrawAAPolyLine(4.0f, new Vector3(-length * 0.5f, 0, 0), new Vector3(length * 0.5f, 0, 0));
         }
     }
 }
