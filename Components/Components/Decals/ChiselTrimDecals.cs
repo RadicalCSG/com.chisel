@@ -98,6 +98,7 @@ namespace Chisel.Components
             if (fill == ChiselTrimFill.Single)
                 PlaceSingle(decal, model, size.x, ref edges[0]);
             Orient(edges);
+            JoinCorners(edges, math.max(size.x, size.y));
             edgeFrom = edges[0].start;
             edgeTo   = edges[0].start + edges[0].direction * edges[0].length;
 
@@ -254,6 +255,38 @@ namespace Chisel.Components
             var from = math.clamp(at - imageLength * 0.5f, 0, edge.length - imageLength);
             edge.start += edge.direction * from;
             edge.length = imageLength;
+        }
+
+        // Edges that run past a corner (the surfaces of brushes overlapping there) or stop short of it end where their lines
+        // cross, when that is within reach of their ends
+        static void JoinCorners(ChainEdge[] edges, float reach)
+        {
+            var count = edges.Length;
+            for (int i = 0; i < count && count > 1; i++)
+            {
+                var n = (i + 1) % count;
+                if (n == 0 && count < 3)
+                    break;
+                ref var edge = ref edges[i];
+                ref var next = ref edges[n];
+                // the closest points of the two lines: edge.start + s along it, next.start + t along the next
+                var along = math.dot(edge.direction, next.direction);
+                var denominator = 1 - along * along;
+                if (denominator < 1e-6f)
+                    continue;
+                var offset = edge.start - next.start;
+                var d = math.dot(edge.direction, offset);
+                var e = math.dot(next.direction, offset);
+                var s = (along * e - d) / denominator;
+                var t = (e - along * d) / denominator;
+                if (math.distance(edge.start + edge.direction * s, next.start + next.direction * t) > kMargin)
+                    continue;
+                if (math.abs(s - edge.length) > reach || math.abs(t) > reach || s <= kMargin || t >= next.length - kMargin)
+                    continue;
+                edge.length  = s;
+                next.start  += next.direction * t;
+                next.length -= t;
+            }
         }
 
         // Each edge running on from the one before it: its start at the end it shares with its neighbour

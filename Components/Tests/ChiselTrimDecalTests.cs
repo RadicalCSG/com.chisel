@@ -553,6 +553,33 @@ namespace Chisel.Components.Tests
             Assert.That(wallArea,  Is.EqualTo(4).Within(1e-3), "half a metre up each of the wall's four sides");
         }
 
+        // Two walls that overlap at a corner: each wall's foot runs past the corner, inside the other. A chain round the
+        // corner ends both edges where they cross, and mitres them there
+        [Test]
+        public void AChainRoundACornerWhereWallsOverlap_EndsBothEdgesAtTheCorner()
+        {
+            var model = Model();
+            var floor = Box(model, new float3(-5, -1, -5), new float3(5, 0, 5));
+            var wall1 = Box(model, new float3(-3, 0, 0), new float3(1, 2, 1));
+            var wall2 = Box(model, new float3(0, 0, -3), new float3(1, 2, 1));
+            Update();
+            var decal = Trim(model, floor, SurfaceFacing(floor, new float3(0, 1, 0)), wall1, SurfaceFacing(wall1, new float3(0, 0, -1)));
+            decal.SetTargets(null);
+            var floorTop = new ChiselDecalSurfaceTarget { brush = floor, surfaceIndex = SurfaceFacing(floor, new float3(0, 1, 0)) };
+            decal.AddTrimEdge(floorTop, new ChiselDecalSurfaceTarget { brush = wall1, surfaceIndex = SurfaceFacing(wall1, new float3(0, 0, -1)) }, true,
+                              EdgeOf(wall1, new float3(0, 0, -1), v => math.abs(v.y) < 1e-4f));
+            decal.AddTrimEdge(floorTop, new ChiselDecalSurfaceTarget { brush = wall2, surfaceIndex = SurfaceFacing(wall2, new float3(-1, 0, 0)) }, true,
+                              EdgeOf(wall2, new float3(-1, 0, 0), v => math.abs(v.y) < 1e-4f));
+            Update();
+            var halves = new List<ChiselTrimDecals.Half>();
+            Assert.That(ChiselTrimDecals.TryDescribe(decal, 1, 1, SurfaceDestinationFlags.Default, out _, halves, out _, out _), Is.True);
+            Assert.That(halves.Count, Is.EqualTo(4), "two edges, two halves each");
+            Assert.That(halves[0].decal.settings.size.x, Is.EqualTo(3).Within(1e-4f), "the first wall's foot up to the corner, not into the other wall");
+            Assert.That(halves[2].decal.settings.size.x, Is.EqualTo(3).Within(1e-4f), "the second wall's foot from the corner");
+            Assert.That(math.abs(halves[0].decal.settings.endSlant.y), Is.GreaterThan(0.5f), "the floor half of the first edge mitred at the corner");
+            Assert.That(math.abs(halves[2].decal.settings.endSlant.x), Is.GreaterThan(0.5f), "the floor half of the second edge mitred at the corner");
+        }
+
         // Two floor brushes side by side, their tops in one plane: a trim on the seam lies flat, half on each, along the seam
         [Test]
         public void ATrimOnTheSeamOfTwoFlushBrushes_LiesFlatAcrossIt()
