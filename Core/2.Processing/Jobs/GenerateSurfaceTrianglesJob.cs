@@ -972,6 +972,9 @@ namespace Chisel.Core
 												   decalOutput.selectVertices, decalOutput.renderVertices,
 												   slot, surf, volume.GetDestinationFlags(flags), decalParms, outputFlags);
 					surfaceBuffers[slot].decalEntityID = volume.entityID;
+					// the volumes stack lowest first
+					if (volume.IsTransparent)
+						surfaceBuffers[slot].decalStack = decalCandidates[candidateStart + k] + 1;
 				}
 			}
 

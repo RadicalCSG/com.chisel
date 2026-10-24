@@ -200,7 +200,8 @@ namespace Chisel.Core
                             contentsIndex    = i,
                             meshIndex        = meshIndex,
                             objectIndex      = (ulong)renderIndex,
-                            surfaceParameter = GatherSurfacesJob.OneMeshPerMaterial(subMeshSection.meshQuery) ? meshDescriptions[subMeshSection.startIndex].surfaceParameter : 0,
+                            surfaceParameter = meshDescriptions[subMeshSection.startIndex].transparentDecals ? ChiselDecalMeshes.kTransparentDecals :
+                                               GatherSurfacesJob.OneMeshPerMaterial(subMeshSection.meshQuery) ? meshDescriptions[subMeshSection.startIndex].surfaceParameter : 0,
                             chunk            = meshDescriptions[subMeshSection.startIndex].chunk,
                             lightmapHashValue = sectionLightmapHashes.IsCreated && i < sectionLightmapHashes.Length ? sectionLightmapHashes[i] : 0,
                             type             = ChiselMeshType.Render,

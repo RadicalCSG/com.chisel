@@ -63,8 +63,7 @@ namespace Chisel.Core
         public const double kMinSize = 1e-4;
 
         public ulong                    entityID;
-        public int                      order;
-        // where the decal was in the list given to SetDecals: what stacks decals of the same order
+        // where the decal was in the list given to SetDecals: how decals stack
         public int                      sequence;
         public DecalVolumeFlags         flags;
         public ulong                    renderMaterial;
@@ -207,7 +206,6 @@ namespace Chisel.Core
             volume = new DecalVolume
             {
                 entityID        = instance.entityID,
-                order           = settings.order,
                 flags           = flags,
                 renderMaterial  = instance.renderMaterial,
                 materialFlags   = instance.destinationFlags,

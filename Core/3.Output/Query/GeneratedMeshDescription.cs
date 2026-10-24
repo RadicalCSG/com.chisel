@@ -37,6 +37,9 @@ namespace Chisel.Core
         /// <value>For a collider: the chunk of space it covers (a collider is a mesh per physics material and chunk).</value>
         public UInt32		chunk;
 
+        /// <value>A sub-mesh of a chunk's transparent decals' mesh (ChiselDecalMeshes.kTransparentDecals)</value>
+        public bool			transparentDecals;
+
         /// <value>An unique index for each found <paramref name="meshQuery"/>/<paramref name="surfaceParameter"/> pair.</value>
         public Int32		meshQueryIndex;
 

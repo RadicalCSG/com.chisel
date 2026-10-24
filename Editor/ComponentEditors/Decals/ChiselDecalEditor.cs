@@ -20,7 +20,6 @@ namespace Chisel.Editors
         static readonly GUIContent kProjectionContent    = new GUIContent("Projection", "Orthographic keeps the image's size at every depth; perspective projects it from a point behind the box, like a projector.");
         static readonly GUIContent kFieldOfViewContent   = new GUIContent("Field Of View", "The perspective projection's vertical angle, in degrees.");
         static readonly GUIContent kTransparentContent   = new GUIContent("Transparent", "A transparent decal is drawn over the surfaces it covers. An opaque decal replaces them in the rendered mesh; the collider keeps them.");
-        static readonly GUIContent kOrderContent         = new GUIContent("Order", "Decals with a higher order are drawn on top of those with a lower order.");
         static readonly GUIContent kMaxAngleContent      = new GUIContent("Max Angle", "Surfaces turned further than this from the direction the image comes from don't take the decal. 180 takes every surface that doesn't face away from the box's center.");
         static readonly GUIContent kSurfaceOffsetContent = new GUIContent("Surface Offset", "How far a transparent decal is lifted off the surface, so it doesn't fight it for depth.");
         static readonly GUIContent kUVScaleContent       = new GUIContent("UV Scale", "The texture coordinates are UV Offset + UV Scale * p, where p runs from (0,0) at the image's lower left to (1,1) at its upper right.");
@@ -82,7 +81,6 @@ namespace Chisel.Editors
 
             var transparent = settings.FindPropertyRelative(nameof(ChiselDecalSettings.transparent));
             EditorGUILayout.PropertyField(transparent, kTransparentContent);
-            EditorGUILayout.PropertyField(settings.FindPropertyRelative(nameof(ChiselDecalSettings.order)), kOrderContent);
             if (!trim)
                 EditorGUILayout.Slider(settings.FindPropertyRelative(nameof(ChiselDecalSettings.maxAngle)), 0, 180, kMaxAngleContent);
             if (transparent.hasMultipleDifferentValues || transparent.boolValue)

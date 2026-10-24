@@ -14,7 +14,7 @@ namespace Chisel.Components
     public static class ChiselDecalManager
     {
         static readonly HashSet<ChiselDecalComponent> s_Decals = new();
-        // the decals in hierarchy order: how decals of one order stack (SetDecals), the same every time a scene is loaded
+        // the decals in hierarchy order: how decals stack (SetDecals), the same every time a scene is loaded
         static readonly List<ChiselDecalComponent> s_Ordered = new();
         static bool s_OrderDirty = true;
         // Last synchronized state for each model.

@@ -48,9 +48,6 @@ namespace Chisel.Core
         /// surface below is removed from the rendered mesh where the decal covers it, but stays in the collider.</summary>
         public bool transparent;
 
-        /// <summary>Decals with a higher order are drawn on top of decals with a lower order.</summary>
-        public int order;
-
         /// <summary>How far a transparent decal is lifted off its surface, in the decal's model space units, so it
         /// doesn't fight the surface for depth. Opaque decals replace the surface and are never lifted.</summary>
         public float surfaceOffset;
@@ -68,7 +65,6 @@ namespace Chisel.Core
             fieldOfView   = 30.0f,
             maxAngle      = 180.0f,
             transparent   = true,
-            order         = 0,
             surfaceOffset = kDefaultSurfaceOffset,
             uvScale       = new float2(1, 1),
             uvOffset      = float2.zero
@@ -82,7 +78,6 @@ namespace Chisel.Core
                    fieldOfView == other.fieldOfView &&
                    maxAngle == other.maxAngle &&
                    transparent == other.transparent &&
-                   order == other.order &&
                    surfaceOffset == other.surfaceOffset &&
                    math.all(uvScale == other.uvScale) &&
                    math.all(uvOffset == other.uvOffset);
@@ -96,7 +91,6 @@ namespace Chisel.Core
             hash = math.hash(new uint2(hash, math.hash(size)));
             hash = math.hash(new uint3(hash, (uint)projection, transparent ? 1u : 0u));
             hash = math.hash(new uint2(hash, math.hash(new float3(fieldOfView, maxAngle, surfaceOffset))));
-            hash = math.hash(new uint2(hash, (uint)order));
             hash = math.hash(new uint3(hash, math.hash(uvScale), math.hash(uvOffset)));
             return (int)hash;
         }
@@ -180,11 +174,18 @@ namespace Chisel.Core
     }
 
     /// <summary>Decals of a <see cref="CSGTree"/>.</summary>
+    public static class ChiselDecalMeshes
+    {
+        /// <summary>The surface parameter of a chunk's transparent decals' mesh: all their materials, one sub-mesh per
+        /// material, in the order the decals stack, so that they draw in that order</summary>
+        public const ulong kTransparentDecals = ulong.MaxValue;
+    }
+
     public static class CSGTreeDecalExtensions
     {
         /// <summary>
-        /// Replaces all decals of the tree at once. Pass every decal the tree should have; decals of one
-        /// <see cref="ChiselDecalSettings.order"/> stack in the order they are given, the last on top. Only the brushes
+        /// Replaces all decals of the tree at once. Pass every decal the tree should have; they stack in
+        /// the order they are given, the last on top (ChiselDecalManager gives them in hierarchy order). Only the brushes
         /// near a decal that was added, removed, moved, changed or stacked otherwise are rebuilt, at the tree's next update.
         /// </summary>
         public static void SetDecals(this CSGTree tree, NativeArray<ChiselDecalInstance> decals)

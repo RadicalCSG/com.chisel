@@ -139,12 +139,6 @@ namespace Chisel.Components
             set { var s = settings; s.transparent = value; Settings = s; }
         }
 
-        public int Order
-        {
-            get => settings.order;
-            set { var s = settings; s.order = value; Settings = s; }
-        }
-
         public float MaxAngle
         {
             get => settings.maxAngle;

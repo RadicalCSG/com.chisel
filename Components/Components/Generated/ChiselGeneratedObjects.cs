@@ -555,6 +555,8 @@ namespace Chisel.Components
             var name = (index >= 0 && index < kGeneratedMeshRendererNames.Length ? kGeneratedMeshRendererNames[index] : null) ?? "‹[generated]›";
             if (surfaceParameter == 0)
                 return name;
+            if (surfaceParameter == ChiselDecalMeshes.kTransparentDecals)
+                return name + " transparent decals";
             var material = Resources.EntityIdToObject(UnityEngine.EntityId.FromULong(surfaceParameter)) as Material;
             return material ? $"{name} {material.name}" : name;
         }
