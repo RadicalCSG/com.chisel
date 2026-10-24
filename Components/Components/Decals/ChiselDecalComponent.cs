@@ -61,12 +61,14 @@ namespace Chisel.Components
         [SerializeField] List<ChiselDecalSurfaceTarget> targets = new();
         [SerializeField] ChiselDecalShape shape = ChiselDecalShape.Box;
         [SerializeField] ChiselTrimFill trimFill = ChiselTrimFill.Repeat;
+        [SerializeField] bool trimMirror = false;
 
         public const string kMaterialName = nameof(material);
         public const string kSettingsName = nameof(settings);
         public const string kTargetsName  = nameof(targets);
         public const string kShapeName      = nameof(shape);
         public const string kTrimFillName   = nameof(trimFill);
+        public const string kTrimMirrorName = nameof(trimMirror);
 
         /// <summary>A box decal projects through its box; a trim decal lies on the edge between its first two targets
         /// (size.x: the image's length along the edge, size.y: its height across both surfaces), and its transform isn't used.</summary>
@@ -81,6 +83,13 @@ namespace Chisel.Components
         {
             get => trimFill;
             set { if (trimFill == value) return; trimFill = value; ChiselDecalManager.SetDirty(); }
+        }
+
+        /// <summary>The image's lower half on both surfaces, mirrored across the edge, instead of its upper half on the second</summary>
+        public bool TrimMirror
+        {
+            get => trimMirror;
+            set { if (trimMirror == value) return; trimMirror = value; ChiselDecalManager.SetDirty(); }
         }
 
         /// <summary>The surfaces the decal is limited to. Empty means every surface it reaches.</summary>

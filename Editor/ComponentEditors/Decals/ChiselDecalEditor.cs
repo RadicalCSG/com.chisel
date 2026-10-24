@@ -26,7 +26,8 @@ namespace Chisel.Editors
         static readonly GUIContent kUVOffsetContent      = new GUIContent("UV Offset");
         static readonly GUIContent kTargetsContent       = new GUIContent("Targets", "Limits the decal to these brush surfaces (surface index -1: all of the brush's surfaces). Empty: every surface it reaches.");
         static readonly GUIContent kShapeContent         = new GUIContent("Shape", "Box: the image is projected through the box. Trim: the image lies on the edge between two surfaces, its lower half on the first, its upper half on the second.");
-        static readonly GUIContent kTrimFillContent      = new GUIContent("Fill", "Stretch: one image over the whole edge. Repeat: the image repeated at its length, the last one cut short. Fit: the whole number of images nearest to what fits, stretched to fill the edge. Single: one image at its length, round the decal's position (move the decal along the edge to place it).");
+        static readonly GUIContent kTrimMirrorContent    = new GUIContent("Mirror", "The image's lower half on both surfaces, mirrored across the edge, so the trim is the same on either side of it.");
+        static readonly GUIContent kTrimFillContent       = new GUIContent("Fill", "Stretch: one image over the whole edge. Repeat: the image repeated at its length, the last one cut short. Fit: the whole number of images nearest to what fits, stretched to fill the edge. Single: one image at its length, round the decal's position (move the decal along the edge to place it).");
         static readonly GUIContent kTrimLengthContent    = new GUIContent("Length", "The image's length along the edge.");
         static readonly GUIContent kTrimHeightContent    = new GUIContent("Height", "The image's height across both surfaces: each half reaches half of it into its surface.");
         static readonly GUIContent kTrimSurfacesContent  = new GUIContent("Surfaces", "The two surfaces whose edge the trim lies on: the first takes the image's lower half, the second its upper half.");
@@ -62,6 +63,7 @@ namespace Chisel.Editors
             if (trim)
             {
                 EditorGUILayout.PropertyField(serializedObject.FindProperty(ChiselDecalComponent.kTrimFillName), kTrimFillContent);
+                EditorGUILayout.PropertyField(serializedObject.FindProperty(ChiselDecalComponent.kTrimMirrorName), kTrimMirrorContent);
                 var size = settings.FindPropertyRelative(nameof(ChiselDecalSettings.size));
                 EditorGUILayout.PropertyField(size.FindPropertyRelative("x"), kTrimLengthContent);
                 EditorGUILayout.PropertyField(size.FindPropertyRelative("y"), kTrimHeightContent);

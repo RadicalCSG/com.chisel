@@ -89,7 +89,7 @@ namespace Chisel.Components
                 _                     => 1
             };
             a = MakeHalf(decal, faceA, faceB.normal, targets[0], start, direction, length, repeats, settings, entityID,                renderMaterial, destinationFlags, lower: true);
-            b = MakeHalf(decal, faceB, faceA.normal, targets[1], start, direction, length, repeats, settings, entityID | kSecondHalf, renderMaterial, destinationFlags, lower: false);
+            b = MakeHalf(decal, faceB, faceA.normal, targets[1], start, direction, length, repeats, settings, entityID | kSecondHalf, renderMaterial, destinationFlags, lower: decal.TrimMirror);
             return true;
         }
 
