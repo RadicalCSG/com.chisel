@@ -332,6 +332,8 @@ namespace Chisel.Components
         {
             var valid = ChiselTrimDecals.TryDescribe(state.trimDecal, state.entityID, state.renderMaterial, state.destinationFlags,
                                                      out var model, out var a, out var b);
+            if (valid)
+                KeepOnEdge(state.trimDecal.transform, model, a.decal);
             if (valid == state.trimValid &&
                 (!valid || (model == state.trimModel && a.decal.Equals(state.trimA) && b.decal.Equals(state.trimB) &&
                             a.target.Equals(state.trimTargetA[0]) && b.target.Equals(state.trimTargetB[0]))))
@@ -343,6 +345,21 @@ namespace Chisel.Components
             state.trimTargetA[0] = a.target;
             state.trimTargetB[0] = b.target;
             return true;
+        }
+
+        // A trim decal's transform stays on its edge, at the point nearest to where it is (it can slide along it)
+        static void KeepOnEdge(Transform transform, ChiselModelComponent model, in ChiselDecalInstance half)
+        {
+            var toWorld = model.transform.localToWorldMatrix * (Matrix4x4)half.decalToTree;
+            var halfLength = half.settings.size.x * 0.5f;
+            var start = toWorld.MultiplyPoint3x4(new Vector3(-halfLength, 0, 0));
+            var end   = toWorld.MultiplyPoint3x4(new Vector3( halfLength, 0, 0));
+            var edge  = end - start;
+            var position = transform.position;
+            var t = Mathf.Clamp01(Vector3.Dot(position - start, edge) / Mathf.Max(edge.sqrMagnitude, 1e-12f));
+            var onEdge = start + edge * t;
+            if ((onEdge - position).sqrMagnitude > 1e-10f)
+                transform.position = onEdge;
         }
 
         static void Add(ModelState state, ChiselDecalInstance decal, ChiselDecalTarget[] targets)
