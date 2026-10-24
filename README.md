@@ -53,7 +53,6 @@ Output
 
 See [the project](https://github.com/orgs/RadicalCSG/projects/1) for everything that is planned.
 * Decals, still to do:
-  * [Trim decals placed where the materials of two brushes meet](https://github.com/RadicalCSG/com.chisel/issues/32) (now only within one brush)
   * [Omni directional decals](https://github.com/RadicalCSG/com.chisel/issues/33)
   * [Skewed decals](https://github.com/RadicalCSG/com.chisel/issues/34)
   * [Fade distances](https://github.com/RadicalCSG/com.chisel/issues/35)

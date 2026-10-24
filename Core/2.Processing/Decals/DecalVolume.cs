@@ -71,6 +71,7 @@ namespace Chisel.Core
         public float                    surfaceOffset;
         public float2                   uvScale;
         public float2                   uvOffset;
+        public int                      imageTurns;
         public double                   cosMaxAngle;
 
         // The projection, in decal space
@@ -217,6 +218,7 @@ namespace Chisel.Core
                 surfaceOffset   = settings.transparent ? math.max(0, settings.surfaceOffset) : 0,
                 uvScale         = uvScale,
                 uvOffset        = settings.uvOffset,
+                imageTurns      = settings.imageTurns,
                 cosMaxAngle     = cosMaxAngle,
 
                 treeToDecal     = treeToDecal,
@@ -300,7 +302,7 @@ namespace Chisel.Core
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public readonly float2 ProjectUV(double3 treePosition)
         {
-            return uvOffset + uvScale * (float2)ProjectImage(treePosition);
+            return uvOffset + uvScale * ChiselDecalSettings.TurnImage((float2)ProjectImage(treePosition), imageTurns);
         }
 
         // Whether a surface takes this decal. surfaceNormal is the unit normal of its visible side, and

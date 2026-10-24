@@ -8,7 +8,7 @@ namespace Chisel.Components
     /// <summary>
     /// A trim decal lies on the edge where two surfaces meet (surface A and B), its image split along its centre line: the
     /// lower half on A, the upper half on B, each laid flat on its own surface (Documentation~/Design/Decals.md). Each half
-    /// is an orthographic box decal limited to its surface: a box in the surface's plane, one side on the edge.
+    /// is an orthographic box decal in the surface's plane, one side on the edge, drawn on every surface in its range.
     /// </summary>
     public static class ChiselTrimDecals
     {
@@ -35,7 +35,8 @@ namespace Chisel.Components
         public struct Half
         {
             public ChiselDecalInstance decal;
-            public ChiselDecalTarget   target;
+            // none: like a box decal, a half draws on every surface in its range that faces it
+            public ChiselDecalTarget[] targets;
         }
 
         // A surface of a brush, in the tree's space: its plane (unit normal, distance) and its outline
@@ -77,13 +78,40 @@ namespace Chisel.Components
             var edges = new ChainEdge[edgeCount];
             for (int i = 0; i < edgeCount; i++)
             {
-                if (!TryEdge(targets[i * 2], targets[i * 2 + 1], out var edgeModel, out edges[i]) || (model != null && edgeModel != model))
+                // the edge it was given; without one, the first edge nearest to the decal, the others to the edge before them
+                var reference = i == 0 ? (float3)decal.transform.position
+                                       : (float3)model.transform.localToWorldMatrix.MultiplyPoint3x4(edges[i - 1].start + edges[i - 1].direction * edges[i - 1].length);
+                var keep = i == 0 && decal.hasTrimLine;
+                var edgeIndex = decal.TrimEdgeOf(i, out var edgeOnSecond);
+                if (!TryEdge(targets[i * 2], targets[i * 2 + 1], edgeIndex, edgeOnSecond, reference, keep, decal.trimLinePoint, decal.trimLineDirection, out var edgeModel, out edges[i]) ||
+                    (model != null && edgeModel != model))
                     return false;
                 model = edgeModel;
+                if (i == 0)
+                {
+                    var toWorld = model.transform.localToWorldMatrix;
+                    decal.hasTrimLine       = true;
+                    decal.trimLinePoint     = toWorld.MultiplyPoint3x4(edges[0].start);
+                    decal.trimLineDirection = toWorld.MultiplyVector(edges[0].direction).normalized;
+                }
             }
+            // an edge on the line of an earlier one that overlaps it is that edge again (the same surface's edge picked on
+            // both brushes beside it): its halves would draw over the earlier ones
+            var pairOf = new List<int>(edgeCount);
+            var kept = new List<ChainEdge>(edgeCount);
+            for (int i = 0; i < edgeCount; i++)
+            {
+                if (kept.Exists(earlier => Overlaps(earlier, edges[i])))
+                    continue;
+                kept.Add(edges[i]);
+                pairOf.Add(i);
+            }
+            edges = kept.ToArray();
+            edgeCount = edges.Length;
             if (fill == ChiselTrimFill.Single)
                 PlaceSingle(decal, model, size.x, ref edges[0]);
             Orient(edges);
+            JoinCorners(edges, math.max(size.x, size.y));
             edgeFrom = edges[0].start;
             edgeTo   = edges[0].start + edges[0].direction * edges[0].length;
 
@@ -94,15 +122,25 @@ namespace Chisel.Components
                 var n = (i + 1) % edgeCount;
                 if (n == 0 && edgeCount < 3)
                     break;
-                if (math.distance(edges[i].start + edges[i].direction * edges[i].length, edges[n].start) > kCornerTolerance)
+                if (math.distance(edges[i].start + edges[i].direction * edges[i].length, edges[n].start) > kMargin)
                     continue;
+                // a half meets the next edge's half in its plane (on one surface, or surfaces of brushes side by side) on
+                // the same side of the chain, left or right of the way it runs: with all four halves in one plane (a seam
+                // on a floor), not the one across the line from it
                 for (int h = 0; h < 2; h++)
                 {
-                    for (int k = 0; k < 2; k++)
+                    var face = h == 0 ? edges[i].faceA : edges[i].faceB;
+                    var side = math.dot(math.cross(edges[i].direction, h == 0 ? edges[i].acrossA : edges[i].acrossB), face.normal) > 0;
+                    var meets = -1;
+                    for (int k = 0; k < 2 && meets < 0; k++)
                     {
-                        if (SameSurface(targets[i * 2 + h], targets[n * 2 + k]))
-                            Mitre(ref edges[i], h, ref edges[n], k);
+                        var nextFace = k == 0 ? edges[n].faceA : edges[n].faceB;
+                        if (InOnePlane(face, nextFace) &&
+                            math.dot(math.cross(edges[n].direction, k == 0 ? edges[n].acrossA : edges[n].acrossB), nextFace.normal) > 0 == side)
+                            meets = k;
                     }
+                    if (meets >= 0)
+                        Mitre(ref edges[i], h, ref edges[n], meets);
                 }
             }
 
@@ -123,6 +161,10 @@ namespace Chisel.Components
             var sheet = rect != new Rect(0, 0, 1, 1);
             var piece = 0;
             var along = 0.0f;
+            // seen from the first surface, with the image's top towards the edge, the image reads along the chain only
+            // when it runs left to right; otherwise it runs from the far end (both halves, every edge alike)
+            var backwards = math.dot(math.cross(edges[0].direction, -edges[0].acrossA), edges[0].faceA.normal) > 0;
+            var uEnd = sheet ? 1 : total * perMetre;
             for (int i = 0; i < edgeCount; i++)
             {
                 ref var edge = ref edges[i];
@@ -147,9 +189,14 @@ namespace Chisel.Components
                     var pieceStart = edge.start + edge.direction * offset;
                     var first  = p == 0;
                     var last   = p == pieces - 1;
-                    halves.Add(MakeHalf(edge.faceA, edge.acrossA, targets[i * 2],     pieceStart, edge.direction, span, uStart, shown,
+                    if (backwards)
+                    {
+                        uStart = uEnd - uStart;
+                        shown  = -shown;
+                    }
+                    halves.Add(MakeHalf(edge.faceA, edge.acrossA, targets[pairOf[i] * 2],     pieceStart, edge.direction, span, uStart, shown,
                                         first ? edge.slantStartA : 0, last ? edge.slantEndA : 0, rect, settings, id,               renderMaterial, destinationFlags, lower: true));
-                    halves.Add(MakeHalf(edge.faceB, edge.acrossB, targets[i * 2 + 1], pieceStart, edge.direction, span, uStart, shown,
+                    halves.Add(MakeHalf(edge.faceB, edge.acrossB, targets[pairOf[i] * 2 + 1], pieceStart, edge.direction, span, uStart, shown,
                                         first ? edge.slantStartB : 0, last ? edge.slantEndB : 0, rect, settings, id | kSecondHalf, renderMaterial, destinationFlags, lower: decal.TrimMirror));
                 }
                 along += edge.length;
@@ -157,7 +204,6 @@ namespace Chisel.Components
             return true;
         }
 
-        const float kCornerTolerance = 1e-3f;
 
         // One edge of a trim: its surfaces, the stretch both reach, and per half the direction into its surface and how its
         // ends lean (x per y in the half's box, 0: square; a corner's mitre)
@@ -170,7 +216,8 @@ namespace Chisel.Components
             public float  slantStartA, slantEndA, slantStartB, slantEndB;
         }
 
-        static bool TryEdge(ChiselDecalSurfaceTarget a, ChiselDecalSurfaceTarget b, out ChiselModelComponent model, out ChainEdge edge)
+        static bool TryEdge(ChiselDecalSurfaceTarget a, ChiselDecalSurfaceTarget b, int edgeIndex, bool edgeOfB, float3 worldReference, bool keep,
+                            float3 worldKeepPoint, float3 worldKeepDirection, out ChiselModelComponent model, out ChainEdge edge)
         {
             edge = default;
             model = null;
@@ -178,18 +225,34 @@ namespace Chisel.Components
                 return false;
             model = modelA;
 
-            // the line both planes lie on
-            var direction = math.cross(faceA.normal, faceB.normal);
-            var lengthSq  = math.lengthsq(direction);
-            if (lengthSq < kEpsilon * kEpsilon)
+            var toModel   = model.transform.worldToLocalMatrix;
+            var reference = (float3)toModel.MultiplyPoint3x4(worldReference);
+            var kept      = new KeptLine { keep = keep, point = toModel.MultiplyPoint3x4(worldKeepPoint), direction = math.normalizesafe((float3)toModel.MultiplyVector(worldKeepDirection)) };
+            float3 point, direction;
+            var owner = edgeOfB ? faceB : faceA;
+            if (edgeIndex >= 0 && edgeIndex < owner.outline.Count)
+            {
+                // the edge it was given
+                point = owner.outline[edgeIndex];
+                direction = owner.outline[(edgeIndex + 1) % owner.outline.Count] - point;
+                if (math.lengthsq(direction) < kEpsilon * kEpsilon)
+                    return false;
+                direction = math.normalize(direction);
+            } else if (!LineOf(faceA, faceB, reference, kept, out point, out direction, out _))
                 return false;
-            var point = (math.cross(faceB.normal, direction) * faceA.distance + math.cross(direction, faceA.normal) * faceB.distance) / lengthSq;
-            direction = math.normalize(direction);
 
-            // where both surfaces reach it
-            float from = float.NegativeInfinity, to = float.PositiveInfinity;
-            if (!Clip(faceA, point, direction, ref from, ref to) || !Clip(faceB, point, direction, ref from, ref to) || to - from <= kEpsilon)
+            // where both surfaces reach it; when only one of them has an edge on the line (a wall standing on a floor),
+            // that whole edge, as the floor beside it may be another brush
+            float fromA = float.NegativeInfinity, toA = float.PositiveInfinity, fromB = float.NegativeInfinity, toB = float.PositiveInfinity;
+            if (!Clip(faceA, point, direction, ref fromA, ref toA) || !Clip(faceB, point, direction, ref fromB, ref toB) ||
+                math.min(toA, toB) - math.max(fromA, fromB) <= kEpsilon)
                 return false;
+            var edgeOnA = HasEdgeOn(faceA, point, direction);
+            var edgeOnB = HasEdgeOn(faceB, point, direction);
+            float from, to;
+            if (edgeOnA && !edgeOnB)      { from = fromA; to = toA; }
+            else if (edgeOnB && !edgeOnA) { from = fromB; to = toB; }
+            else                          { from = math.max(fromA, fromB); to = math.min(toA, toB); }
             var start = point + direction * from;
             edge = new ChainEdge
             {
@@ -198,8 +261,8 @@ namespace Chisel.Components
                 start     = start,
                 direction = direction,
                 length    = to - from,
-                acrossA   = Across(faceA, faceB.normal, start, direction),
-                acrossB   = Across(faceB, faceA.normal, start, direction)
+                acrossA   = Across(faceA, faceB, start, direction),
+                acrossB   = Across(faceB, faceA, start, direction)
             };
             return true;
         }
@@ -214,6 +277,50 @@ namespace Chisel.Components
             var from = math.clamp(at - imageLength * 0.5f, 0, edge.length - imageLength);
             edge.start += edge.direction * from;
             edge.length = imageLength;
+        }
+
+        // Whether the edge lies on the line of the other and overlaps it
+        static bool Overlaps(in ChainEdge other, in ChainEdge edge)
+        {
+            var end = edge.start + edge.direction * edge.length;
+            if (math.length(math.cross(edge.start - other.start, other.direction)) >= kMargin ||
+                math.length(math.cross(end - other.start, other.direction)) >= kMargin)
+                return false;
+            var t0 = math.dot(edge.start - other.start, other.direction);
+            var t1 = math.dot(end - other.start, other.direction);
+            return math.min(other.length, math.max(t0, t1)) - math.max(0, math.min(t0, t1)) > kMargin;
+        }
+
+        // Edges that run past a corner (the surfaces of brushes overlapping there, however far) or stop short of it (by
+        // no more than reach) end where their lines cross
+        static void JoinCorners(ChainEdge[] edges, float reach)
+        {
+            var count = edges.Length;
+            for (int i = 0; i < count && count > 1; i++)
+            {
+                var n = (i + 1) % count;
+                if (n == 0 && count < 3)
+                    break;
+                ref var edge = ref edges[i];
+                ref var next = ref edges[n];
+                // the closest points of the two lines: edge.start + s along it, next.start + t along the next
+                var along = math.dot(edge.direction, next.direction);
+                var denominator = 1 - along * along;
+                if (denominator < 1e-6f)
+                    continue;
+                var offset = edge.start - next.start;
+                var d = math.dot(edge.direction, offset);
+                var e = math.dot(next.direction, offset);
+                var s = (along * e - d) / denominator;
+                var t = (e - along * d) / denominator;
+                if (math.distance(edge.start + edge.direction * s, next.start + next.direction * t) > kMargin)
+                    continue;
+                if (s <= kMargin || s > edge.length + reach || t < -reach || t >= next.length - kMargin)
+                    continue;
+                edge.length  = s;
+                next.start  += next.direction * t;
+                next.length -= t;
+            }
         }
 
         // Each edge running on from the one before it: its start at the end it shares with its neighbour
@@ -264,11 +371,11 @@ namespace Chisel.Components
             if (k == 0) next.slantStartA = nextSlantStart; else next.slantStartB = nextSlantStart;
         }
 
-        static bool SameSurface(ChiselDecalSurfaceTarget a, ChiselDecalSurfaceTarget b) => a.brush == b.brush && a.surfaceIndex == b.surfaceIndex;
+        static bool InOnePlane(in Face a, in Face b) => math.dot(a.normal, b.normal) > kNearlyParallel && math.abs(a.distance - b.distance) <= kMargin;
 
         // Across the edge, into the surface: the side its outline is on, or where it lies on both (a wall standing on a
         // floor), the side the other surface faces, as the other side is under the other's brush
-        static float3 Across(in Face face, float3 otherNormal, float3 start, float3 direction)
+        static float3 Across(in Face face, in Face other, float3 start, float3 direction)
         {
             var across = math.normalize(math.cross(face.normal, direction));
             float below = 0, above = 0;
@@ -279,7 +386,9 @@ namespace Chisel.Components
                 above = math.max(above, side);
             }
             var bothSides = below < -kEpsilon && above > kEpsilon;
-            if (bothSides ? math.dot(otherNormal, across) < 0 : -below > above)
+            // in one plane with the other face (which overlaps it), away from the other face, where this one shows
+            var coplanar = math.dot(face.normal, other.normal) > kNearlyParallel;
+            if (bothSides ? (coplanar ? math.dot(other.centroid - start, across) > 0 : math.dot(other.normal, across) < 0) : -below > above)
                 across = -across;
             return across;
         }
@@ -294,14 +403,17 @@ namespace Chisel.Components
 
             // the image's v is 0.5 on the edge: down to 0 across A, up to 1 across B; u runs along the edge from uStart; the
             // image is the rect of the texture
-            var trimScale  = new float2(shown, lower ? -0.5f : 0.5f) * (float2)rect.size;
-            var trimOffset = (float2)rect.position + new float2(uStart, 0.5f) * (float2)rect.size;
+            ChiselDecalSettings.TurnMapping(new float2(shown, lower ? -0.5f : 0.5f), new float2(uStart, 0.5f), settings.imageTurns, out var imageScale, out var imageOffset);
+            var trimScale  = imageScale * (float2)rect.size;
+            var trimOffset = (float2)rect.position + imageOffset * (float2)rect.size;
             var userScale  = math.all((float2)settings.uvScale == float2.zero) ? new float2(1) : (float2)settings.uvScale;
             var half = settings;
             half.center     = new float3(0, height * 0.25f, 0);
             half.size       = new float3(length, height * 0.5f, kMargin * 2);
             half.projection = ChiselDecalProjection.Orthographic;
             half.endSlant   = new float2(slantStart, slantEnd);
+            // only the surfaces that face it, not ones standing across its range (a wall on the floor it lies on)
+            half.maxAngle   = kHalfMaxAngle;
             half.uvScale    = userScale * trimScale;
             half.uvOffset   = (float2)settings.uvOffset + userScale * trimOffset;
             return new Half
@@ -314,13 +426,11 @@ namespace Chisel.Components
                     renderMaterial   = renderMaterial,
                     destinationFlags = destinationFlags
                 },
-                target = new ChiselDecalTarget
-                {
-                    brushEntityID = UnityEngine.EntityId.ToULong(surface.brush.GetEntityId()),
-                    surfaceIndex  = surface.surfaceIndex
-                }
+                targets = null
             };
         }
+
+        const float kHalfMaxAngle = 45;
 
         // The part of the line inside the face's outline, narrowing [from, to]
         static bool Clip(in Face face, float3 point, float3 direction, ref float from, ref float to)
@@ -342,7 +452,8 @@ namespace Chisel.Components
                 var offset = math.dot(point - v0, inward);
                 if (math.abs(slope) < kEpsilon)
                 {
-                    if (offset < -kEpsilon)
+                    // along an edge of the face: on it, up to kMargin outside (a neighbour nearly flush with it)
+                    if (offset < -kMargin)
                         return false;
                     continue;
                 }
@@ -368,8 +479,15 @@ namespace Chisel.Components
         /// </summary>
         public static bool NearestEdge(CSGTreeBrush brush, int polygonIndex, float3 treePoint, out float3 from, out float3 to, out int otherPolygon)
         {
+            return NearestEdge(brush, polygonIndex, treePoint, out from, out to, out otherPolygon, out _);
+        }
+
+        /// <summary>The same, with the edge's number along the polygon's outline</summary>
+        public static bool NearestEdge(CSGTreeBrush brush, int polygonIndex, float3 treePoint, out float3 from, out float3 to, out int otherPolygon, out int edgeIndex)
+        {
             from = to = float3.zero;
             otherPolygon = -1;
+            edgeIndex = -1;
             var blob = BrushMeshManager.GetBrushMeshBlob(brush.BrushMesh);
             if (!blob.IsCreated || polygonIndex < 0 || polygonIndex >= blob.Value.polygons.Length)
                 return false;
@@ -391,6 +509,7 @@ namespace Chisel.Components
                 nearest = distance;
                 from = a;
                 to = b;
+                edgeIndex = e;
                 // the polygon on the other side: the one across either half edge here that has both its vertices
                 var vertexA = mesh.halfEdges[edge].vertexIndex;
                 var vertexB = mesh.halfEdges[next].vertexIndex;
@@ -432,8 +551,87 @@ namespace Chisel.Components
             if (!(length > kEpsilon))
                 return false;
             plane /= length;
-            const float kOnPlane = 1e-3f;
+            const float kOnPlane = kMargin;
             return math.abs(math.dot(plane.xyz, a) + plane.w) < kOnPlane && math.abs(math.dot(plane.xyz, b) + plane.w) < kOnPlane;
+        }
+
+        /// <summary>
+        /// A surface of another brush in the model (of a generator that makes one brush) that lies along the edge from..to
+        /// and goes on past it to beyond, facing against viewDirection: the surface that shows across an edge of the clicked
+        /// brush. All in the model's space.
+        /// </summary>
+        public static bool SurfaceAcross(ChiselModelComponent model, ChiselNodeComponent clicked, float3 from, float3 to, float3 beyond,
+                                         float3 viewDirection, out ChiselDecalSurfaceTarget target)
+        {
+            target = default;
+            if (model == null)
+                return false;
+            var best = float.PositiveInfinity;
+            foreach (var generator in model.GetComponentsInChildren<ChiselGeneratorComponent>())
+            {
+                if (generator == clicked || generator.hierarchyItem.Model != model || !generator.TopTreeNode.Valid ||
+                    generator.TopTreeNode.Type != CSGNodeType.Brush)
+                    continue;
+                var brush = (CSGTreeBrush)generator.TopTreeNode;
+                var blob  = BrushMeshManager.GetBrushMeshBlob(brush.BrushMesh);
+                if (!blob.IsCreated)
+                    continue;
+                for (int p = 0; p < blob.Value.polygons.Length; p++)
+                {
+                    var surfaceIndex = blob.Value.polygons[p].descriptionIndex;
+                    if (!TryBrushFace(brush, surfaceIndex, out var face) || math.dot(face.normal, viewDirection) >= 0 || !IsDrawn(model, brush, p))
+                        continue;
+                    if (math.abs(math.dot(face.normal, from) - face.distance) > kMargin || math.abs(math.dot(face.normal, to) - face.distance) > kMargin)
+                        continue;
+                    var onFace = beyond - face.normal * (math.dot(face.normal, beyond) - face.distance);
+                    if (!Inside(face, onFace))
+                        continue;
+                    // of several, the one most in line with where the click went on to
+                    var distance = math.distance(onFace, beyond);
+                    if (distance >= best)
+                        continue;
+                    best = distance;
+                    target = new ChiselDecalSurfaceTarget { brush = generator, surfaceIndex = surfaceIndex };
+                }
+            }
+            return best < float.PositiveInfinity;
+        }
+
+        /// <summary>
+        /// Whether the CSG drew any of a brush's polygon at its last build: false for a surface it discarded (inside
+        /// another brush); true when the model hasn't been built
+        /// </summary>
+        public static bool IsDrawn(ChiselModelComponent model, CSGTreeBrush brush, int polygonIndex)
+        {
+            if (model == null || !model.Node.Valid || !brush.Valid)
+                return true;
+            var lookups = ChiselTreeLookup.Value;
+            if (!lookups.HasTree(model.Node))
+                return true;
+            var data = lookups[model.Node];
+            data.lastJobHandle.Complete();
+            if (!data.brushRenderBufferLookup.IsCreated ||
+                !data.brushRenderBufferLookup.TryGetValue(CompactHierarchyManager.GetCompactNodeID(brush), out var buffer) || !buffer.IsCreated)
+                return true;
+            ref var surfaces = ref buffer.Value.surfaces;
+            return polygonIndex < 0 || polygonIndex >= surfaces.Length || surfaces[polygonIndex].indexCount > 0;
+        }
+
+        static bool Inside(in Face face, float3 point)
+        {
+            var outline = face.outline;
+            for (int i = 0; i < outline.Count; i++)
+            {
+                var v0 = outline[i];
+                var inward = math.cross(face.normal, outline[(i + 1) % outline.Count] - v0);
+                if (math.lengthsq(inward) < kEpsilon * kEpsilon)
+                    continue;
+                if (math.dot(face.centroid - v0, inward) < 0)
+                    inward = -inward;
+                if (math.dot(point - v0, math.normalize(inward)) < -kEpsilon)
+                    return false;
+            }
+            return true;
         }
 
         /// <summary>An edge a trim decal can lie on: its two surfaces, and the edge's middle in the model's space</summary>
@@ -441,6 +639,9 @@ namespace Chisel.Components
         {
             public ChiselDecalSurfaceTarget a, b;
             public float3 middle;
+            // the edge: its number along a's outline, or b's with edgeOnB (ChiselDecalComponent.SetTrimEdge)
+            public int    edgeIndex;
+            public bool   edgeOnB;
         }
 
         /// <summary>The render material of a target's surface (its id), 0 when it has none or doesn't exist</summary>
@@ -454,7 +655,8 @@ namespace Chisel.Components
 
         /// <summary>
         /// Every edge in the model where a surface drawn with materialA meets one drawn with materialB, each once, the
-        /// materialA surface first. Only edges within one brush, of generators that make one brush.
+        /// materialA surface first: edges of one brush, and where surfaces of two brushes meet (a wall standing on a floor).
+        /// Only generators that make one brush.
         /// </summary>
         public static void EdgesBetween(ChiselModelComponent model, ulong materialA, ulong materialB, List<Edge> edges)
         {
@@ -490,13 +692,241 @@ namespace Chisel.Components
                             continue;
                         edges.Add(new Edge
                         {
-                            a      = new ChiselDecalSurfaceTarget { brush = generator, surfaceIndex = mesh.polygons[p].descriptionIndex },
-                            b      = new ChiselDecalSurfaceTarget { brush = generator, surfaceIndex = mesh.polygons[other].descriptionIndex },
-                            middle = math.transform(nodeToTree, middle)
+                            a         = new ChiselDecalSurfaceTarget { brush = generator, surfaceIndex = mesh.polygons[p].descriptionIndex },
+                            b         = new ChiselDecalSurfaceTarget { brush = generator, surfaceIndex = mesh.polygons[other].descriptionIndex },
+                            middle    = math.transform(nodeToTree, middle),
+                            edgeIndex = e
                         });
                     }
                 }
             }
+            EdgesBetweenBrushes(model, materialA, materialB, edges);
+        }
+
+        // A surface of a generator's brush with one of the two materials, and its bounds
+        struct MaterialFace
+        {
+            public ChiselGeneratorComponent generator;
+            public int    surfaceIndex;
+            public bool   isA, isB;
+            public Face   face;
+            public float3 min, max;
+        }
+
+        // Where a materialA surface of one brush meets a materialB surface of another, along an edge of either
+        static void EdgesBetweenBrushes(ChiselModelComponent model, ulong materialA, ulong materialB, List<Edge> edges)
+        {
+            var faces = new List<MaterialFace>();
+            foreach (var generator in model.GetComponentsInChildren<ChiselGeneratorComponent>())
+            {
+                if (generator.hierarchyItem.Model != model || !generator.TopTreeNode.Valid || generator.TopTreeNode.Type != CSGNodeType.Brush)
+                    continue;
+                var brush = (CSGTreeBrush)generator.TopTreeNode;
+                var blob  = BrushMeshManager.GetBrushMeshBlob(brush.BrushMesh);
+                if (!blob.IsCreated)
+                    continue;
+                for (int p = 0; p < blob.Value.polygons.Length; p++)
+                {
+                    var material = blob.Value.polygons[p].surface.parameters.parameter1;
+                    if (material != materialA && material != materialB)
+                        continue;
+                    var surfaceIndex = blob.Value.polygons[p].descriptionIndex;
+                    if (!TryBrushFace(brush, surfaceIndex, out var face))
+                        continue;
+                    float3 min = face.outline[0], max = face.outline[0];
+                    foreach (var vertex in face.outline)
+                    {
+                        min = math.min(min, vertex);
+                        max = math.max(max, vertex);
+                    }
+                    faces.Add(new MaterialFace { generator = generator, surfaceIndex = surfaceIndex, isA = material == materialA, isB = material == materialB,
+                                                 face = face, min = min - kMargin, max = max + kMargin });
+                }
+            }
+
+            var seen = new HashSet<(ulong, int, ulong, int)>();
+            foreach (var a in faces)
+            {
+                if (!a.isA)
+                    continue;
+                var keyA = UnityEngine.EntityId.ToULong(a.generator.GetEntityId());
+                foreach (var b in faces)
+                {
+                    if (!b.isB || b.generator == a.generator || math.any(a.min > b.max) || math.any(b.min > a.max))
+                        continue;
+                    var keyB = UnityEngine.EntityId.ToULong(b.generator.GetEntityId());
+                    // each pair of surfaces once, also when both materials are the same
+                    var key = keyA < keyB ? (keyA, a.surfaceIndex, keyB, b.surfaceIndex) : (keyB, b.surfaceIndex, keyA, a.surfaceIndex);
+                    if (!Meet(a.face, b.face, out var middle, out var edgeIndex, out var edgeOnB) || !seen.Add(key))
+                        continue;
+                    edges.Add(new Edge
+                    {
+                        a         = new ChiselDecalSurfaceTarget { brush = a.generator, surfaceIndex = a.surfaceIndex },
+                        b         = new ChiselDecalSurfaceTarget { brush = b.generator, surfaceIndex = b.surfaceIndex },
+                        middle    = middle,
+                        edgeIndex = edgeIndex,
+                        edgeOnB   = edgeOnB
+                    });
+                }
+            }
+        }
+
+        // Two faces of different brushes that meet: their planes cross on a line along an edge of either, both reach a
+        // stretch of it, and each has some of itself in front of the other's plane (not all of it inside the other's brush)
+        static bool Meet(in Face a, in Face b, out float3 middle, out int edgeIndex, out bool edgeOnB)
+        {
+            middle = default;
+            edgeIndex = -1;
+            edgeOnB = false;
+            if (!LineOf(a, b, (a.centroid + b.centroid) * 0.5f, default, out var point, out var direction, out var coplanar))
+                return false;
+            float from = float.NegativeInfinity, to = float.PositiveInfinity;
+            if (!Clip(a, point, direction, ref from, ref to) || !Clip(b, point, direction, ref from, ref to) || to - from <= kMargin)
+                return false;
+            if (!HasEdgeOn(a, point, direction) && !HasEdgeOn(b, point, direction))
+                return false;
+            if (!coplanar && (!InFrontOf(a, b) || !InFrontOf(b, a)))
+                return false;
+            middle = point + direction * ((from + to) * 0.5f);
+            edgeIndex = EdgeOn(a, point, direction);
+            if (edgeIndex < 0)
+            {
+                edgeIndex = EdgeOn(b, point, direction);
+                edgeOnB = true;
+            }
+            return edgeIndex >= 0;
+        }
+
+        // The number of the face's outline edge that lies on the line, -1 when none does
+        static int EdgeOn(in Face face, float3 point, float3 direction)
+        {
+            var outline = face.outline;
+            for (int i = 0; i < outline.Count; i++)
+            {
+                if (math.length(math.cross(outline[i] - point, direction)) < kMargin &&
+                    math.length(math.cross(outline[(i + 1) % outline.Count] - point, direction)) < kMargin)
+                    return i;
+            }
+            return -1;
+        }
+
+        // A line to keep to: the one the trim lay on
+        struct KeptLine
+        {
+            public bool   keep;
+            public float3 point, direction;
+
+            public readonly bool Holds(float3 from, float3 to)
+            {
+                return keep && math.length(math.cross(from - point, direction)) < kMargin && math.length(math.cross(to - point, direction)) < kMargin;
+            }
+        }
+
+        // The line two faces meet on, nearest to the reference point: an edge they share (up to kMargin apart), or for two
+        // faces in one plane (brushes side by side, or overlapping) an edge of the one that runs through the other; failing
+        // that, where their planes cross
+        static bool LineOf(in Face a, in Face b, float3 reference, KeptLine kept, out float3 point, out float3 direction, out bool coplanar)
+        {
+            coplanar = math.dot(a.normal, b.normal) > kNearlyParallel;
+            var inPlane = coplanar && math.abs(a.distance - b.distance) <= kMargin;
+            point = default;
+            direction = default;
+            var best = float.PositiveInfinity;
+            var onKept = false;
+            NearestSharedEdge(a, b, inPlane, reference, kept, ref onKept, ref best, ref point, ref direction);
+            NearestSharedEdge(b, a, inPlane, reference, kept, ref onKept, ref best, ref point, ref direction);
+            if (best < float.PositiveInfinity)
+                return true;
+            direction = math.cross(a.normal, b.normal);
+            var lengthSq = math.lengthsq(direction);
+            if (coplanar || lengthSq < kEpsilon * kEpsilon)
+                return false;
+            point = (math.cross(b.normal, direction) * a.distance + math.cross(direction, a.normal) * b.distance) / lengthSq;
+            direction = math.normalize(direction);
+            return true;
+        }
+
+        // Faces whose normals are closer than this (about 2.5 degrees) are nearly in one plane, where their planes cross is
+        // no use
+        const float kNearlyParallel = 0.999f;
+
+        // The edge of the face, nearest to the reference point, that the other face shares, or that runs through the other
+        // face when the two lie in one plane (not along its border)
+        static void NearestSharedEdge(in Face face, in Face other, bool inPlane, float3 reference, KeptLine kept, ref bool onKept, ref float best,
+                                      ref float3 point, ref float3 direction)
+        {
+            var outline = face.outline;
+            for (int i = 0; i < outline.Count; i++)
+            {
+                var from = outline[i];
+                var along = outline[(i + 1) % outline.Count] - from;
+                var length = math.length(along);
+                if (length < kEpsilon)
+                    continue;
+                along /= length;
+                var candidate = SharesEdge(other, from, along, length);
+                if (!candidate && inPlane && !HasEdgeOn(other, from, along))
+                {
+                    float start = 0, end = length;
+                    candidate = Clip(other, from, along, ref start, ref end) && end - start > kMargin;
+                }
+                if (!candidate)
+                    continue;
+                var t = math.clamp(math.dot(reference - from, along), 0, length);
+                var distance = math.distance(reference, from + along * t);
+                // the line the trim lay on wins as long as it is still there: dragging the decal off it doesn't move the
+                // trim to another seam, only picking does
+                var isKept = kept.Holds(from, from + along * length);
+                if (onKept && !isKept)
+                    continue;
+                if (distance >= best && !(isKept && !onKept))
+                    continue;
+                onKept |= isKept;
+                best = distance;
+                point = from;
+                direction = along;
+            }
+        }
+
+        // Whether an edge of the face lies on the line and overlaps its stretch [0, length] by more than kMargin
+        static bool SharesEdge(in Face face, float3 point, float3 direction, float length)
+        {
+            var outline = face.outline;
+            for (int i = 0; i < outline.Count; i++)
+            {
+                var v0 = outline[i];
+                var v1 = outline[(i + 1) % outline.Count];
+                if (math.length(math.cross(v0 - point, direction)) >= kMargin || math.length(math.cross(v1 - point, direction)) >= kMargin)
+                    continue;
+                var t0 = math.dot(v0 - point, direction);
+                var t1 = math.dot(v1 - point, direction);
+                if (math.min(length, math.max(t0, t1)) - math.max(0, math.min(t0, t1)) > kMargin)
+                    return true;
+            }
+            return false;
+        }
+
+        static bool HasEdgeOn(in Face face, float3 point, float3 direction)
+        {
+            var outline = face.outline;
+            for (int i = 0; i < outline.Count; i++)
+            {
+                if (math.length(math.cross(outline[i] - point, direction)) < kMargin &&
+                    math.length(math.cross(outline[(i + 1) % outline.Count] - point, direction)) < kMargin)
+                    return true;
+            }
+            return false;
+        }
+
+        // Some of the face lies in front of the other face's plane
+        static bool InFrontOf(in Face face, in Face other)
+        {
+            foreach (var vertex in face.outline)
+            {
+                if (math.dot(other.normal, vertex) - other.distance > kMargin)
+                    return true;
+            }
+            return false;
         }
 
         static bool TryBrushOf(CSGTreeNode node, int surfaceIndex, out CSGTreeBrush brush, out int polygon)

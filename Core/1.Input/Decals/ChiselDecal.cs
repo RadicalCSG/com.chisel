@@ -57,9 +57,36 @@ namespace Chisel.Core
         public float2 uvScale;
         public float2 uvOffset;
 
+        /// <summary>How many quarter turns counter-clockwise the image is turned, about its middle, before uvScale and
+        /// uvOffset: <c>uvOffset + uvScale * TurnImage(p, imageTurns)</c></summary>
+        public int imageTurns;
+
         /// <summary>How an orthographic box's start (x) and end (y) lean: x moved per unit of y in the decal's space, 0 for
         /// square ends. A trim decal's pieces are cut this way where they meet round a corner.</summary>
         public float2 endSlant;
+
+        /// <summary>Where in the image a point p of the decal (0 to 1 across it) looks, for an image turned this many quarter
+        /// turns counter-clockwise</summary>
+        public static float2 TurnImage(float2 p, int quarterTurns)
+        {
+            switch (quarterTurns & 3)
+            {
+                case 1:  return new float2(p.y, 1 - p.x);
+                case 2:  return 1 - p;
+                case 3:  return new float2(1 - p.y, p.x);
+                default: return p;
+            }
+        }
+
+        /// <summary>
+        /// For an image coordinate q = offset + scale * p, the scale and offset that give the same coordinate turned:
+        /// TurnImage(q, quarterTurns) = turnedOffset + turnedScale * TurnImage(p, quarterTurns)
+        /// </summary>
+        public static void TurnMapping(float2 scale, float2 offset, int quarterTurns, out float2 turnedScale, out float2 turnedOffset)
+        {
+            turnedScale  = (quarterTurns & 1) != 0 ? scale.yx : scale;
+            turnedOffset = TurnImage(offset, quarterTurns) - turnedScale * TurnImage(float2.zero, quarterTurns);
+        }
 
         public static ChiselDecalSettings Default => new ChiselDecalSettings
         {
@@ -85,6 +112,7 @@ namespace Chisel.Core
                    surfaceOffset == other.surfaceOffset &&
                    math.all(uvScale == other.uvScale) &&
                    math.all(uvOffset == other.uvOffset) &&
+                   (imageTurns & 3) == (other.imageTurns & 3) &&
                    math.all(endSlant == other.endSlant);
         }
 
@@ -97,7 +125,7 @@ namespace Chisel.Core
             hash = math.hash(new uint3(hash, (uint)projection, transparent ? 1u : 0u));
             hash = math.hash(new uint2(hash, math.hash(new float3(fieldOfView, maxAngle, surfaceOffset))));
             hash = math.hash(new uint3(hash, math.hash(uvScale), math.hash(uvOffset)));
-            hash = math.hash(new uint2(hash, math.hash(endSlant)));
+            hash = math.hash(new uint3(hash, math.hash(endSlant), (uint)(imageTurns & 3)));
             return (int)hash;
         }
     }

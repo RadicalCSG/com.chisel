@@ -65,6 +65,15 @@ namespace Chisel.Components
         [SerializeField] int imageTile = 0;
         [SerializeField] Vector2 repeat = Vector2.one;
 
+        // Per pair of targets, the edge a trim decal lies on: the edge's number along the first surface's outline, times
+        // two, plus one when it is the second surface's; -1 (or missing) to find it from where the decal is
+        [SerializeField] List<int> trimEdges = new();
+
+        // The line a trim decal's first edge lay on at its last update, in world space: of two surfaces' edges, the trim
+        // keeps to this one while the decal is on it (so dragging it past where another edge starts doesn't jump)
+        [NonSerialized] internal bool    hasTrimLine;
+        [NonSerialized] internal Vector3 trimLinePoint, trimLineDirection;
+
         public const string kMaterialName = nameof(material);
         public const string kSettingsName = nameof(settings);
         public const string kTargetsName  = nameof(targets);
@@ -147,7 +156,52 @@ namespace Chisel.Components
             targets.Clear();
             if (newTargets != null)
                 targets.AddRange(newTargets);
+            trimEdges.Clear();
+            hasTrimLine = false;
             ChiselDecalManager.SetDirty();
+        }
+
+        /// <summary>The edge a trim decal's pair of targets lies on: its number along the first surface's outline (the
+        /// second's, with onSecond); -1 when it is found from where the decal is</summary>
+        public int TrimEdgeOf(int pair, out bool onSecond)
+        {
+            var code = pair >= 0 && pair < trimEdges.Count ? trimEdges[pair] : -1;
+            onSecond = code >= 0 && (code & 1) != 0;
+            return code < 0 ? -1 : code >> 1;
+        }
+
+        /// <summary>The edge the first pair of targets lies on (see <see cref="TrimEdgeOf"/>)</summary>
+        public void SetTrimEdge(bool onSecond, int edgeIndex)
+        {
+            if (trimEdges.Count == 0)
+                trimEdges.Add(-1);
+            trimEdges[0] = edgeIndex < 0 ? -1 : edgeIndex * 2 + (onSecond ? 1 : 0);
+            ChiselDecalManager.SetDirty();
+        }
+
+        /// <summary>Adds an edge to a trim decal's chain: a pair of targets and the edge they lie on. False, and nothing
+        /// added, when the chain already has that edge of that surface.</summary>
+        public bool AddTrimEdge(ChiselDecalSurfaceTarget a, ChiselDecalSurfaceTarget b, bool onSecond, int edgeIndex)
+        {
+            var pair = targets.Count / 2;
+            var code = edgeIndex < 0 ? -1 : edgeIndex * 2 + (onSecond ? 1 : 0);
+            var owner = onSecond ? b : a;
+            for (int p = 0; p < pair && code >= 0; p++)
+            {
+                var existing = TrimEdgeOf(p, out var existingOnSecond);
+                var existingOwner = targets[p * 2 + (existingOnSecond ? 1 : 0)];
+                if (existing == edgeIndex && existingOwner.brush == owner.brush && existingOwner.surfaceIndex == owner.surfaceIndex)
+                    return false;
+            }
+            targets.RemoveRange(pair * 2, targets.Count - pair * 2);
+            targets.Add(a);
+            targets.Add(b);
+            while (trimEdges.Count < pair)
+                trimEdges.Add(-1);
+            trimEdges.RemoveRange(pair, trimEdges.Count - pair);
+            trimEdges.Add(code);
+            ChiselDecalManager.SetDirty();
+            return true;
         }
 
         public Material Material

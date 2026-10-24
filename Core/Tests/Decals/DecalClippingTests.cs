@@ -170,6 +170,40 @@ namespace Chisel.Core.Tests
             Assert.That(volume.ProjectUV(new double3(0.5, 0.5, 0)), Is.EqualTo(new float2(0, 2.5f)));
         }
 
+        // A quarter turn counter-clockwise: the image's lower left corner is at the decal's lower right, its lower right
+        // at the decal's upper right
+        [Test]
+        public void AnImageTurnedLeft_IsTurnedCounterClockwise()
+        {
+            var instance = Decal(new float3(1), float4x4.identity);
+            instance.settings.imageTurns = 1;
+            var volume = Volume(instance);
+            Assert.That(volume.ProjectUV(new double3(0.5, -0.5, 0)), Is.EqualTo(new float2(0, 0)));
+            Assert.That(volume.ProjectUV(new double3(0.5, 0.5, 0)), Is.EqualTo(new float2(1, 0)));
+            Assert.That(volume.ProjectUV(new double3(-0.5, 0.5, 0)), Is.EqualTo(new float2(1, 1)));
+
+            instance.settings.imageTurns = 3;
+            Assert.That(Volume(instance).ProjectUV(new double3(-0.5, 0.5, 0)), Is.EqualTo(new float2(0, 0)), "turned right, the lower left is at the upper left");
+        }
+
+        // A mapping turned with TurnMapping gives the same image coordinates as the mapping, turned
+        [Test]
+        public void ATurnedMapping_IsTheMappingTurned()
+        {
+            var random = new Random(7);
+            for (int i = 0; i < 100; i++)
+            {
+                var scale  = random.NextFloat2(-3, 3);
+                var offset = random.NextFloat2(-3, 3);
+                var turns  = random.NextInt(0, 4);
+                var p      = random.NextFloat2();
+                ChiselDecalSettings.TurnMapping(scale, offset, turns, out var turnedScale, out var turnedOffset);
+                var expected = ChiselDecalSettings.TurnImage(offset + scale * p, turns);
+                var actual   = turnedOffset + turnedScale * ChiselDecalSettings.TurnImage(p, turns);
+                Assert.That(math.distance(actual, expected), Is.LessThan(1e-5f), $"{turns} turns, {scale} {offset} at {p}");
+            }
+        }
+
         [Test]
         public void TransformedDecal_MatchesItsTransformation()
         {

@@ -349,7 +349,21 @@ namespace Chisel.Components
                 return false;
             for (int p = 0; p < s_TrimHalves.Count; p++)
             {
-                if (!s_TrimHalves[p].decal.Equals(state.trimPieces[p]) || !s_TrimHalves[p].target.Equals(state.trimTargets[p][0]))
+                if (!s_TrimHalves[p].decal.Equals(state.trimPieces[p]) || !SameTargets(s_TrimHalves[p].targets, state.trimTargets[p]))
+                    return false;
+            }
+            return true;
+        }
+
+        static bool SameTargets(ChiselDecalTarget[] a, ChiselDecalTarget[] b)
+        {
+            if (a == null || b == null)
+                return a == b;
+            if (a.Length != b.Length)
+                return false;
+            for (int i = 0; i < a.Length; i++)
+            {
+                if (!a[i].Equals(b[i]))
                     return false;
             }
             return true;
@@ -371,7 +385,7 @@ namespace Chisel.Components
             foreach (var half in s_TrimHalves)
             {
                 state.trimPieces.Add(half.decal);
-                state.trimTargets.Add(new[] { half.target });
+                state.trimTargets.Add(half.targets);
             }
             return true;
         }
@@ -472,8 +486,9 @@ namespace Chisel.Components
                     var tile  = settings;
                     tile.center   = new float3((from + to) * 0.5f, settings.center.z);
                     tile.size     = new float3(to - from, size.z);
-                    tile.uvScale  = userScale * (float2)rect.size * shown;
-                    tile.uvOffset = (float2)settings.uvOffset + userScale * (float2)rect.position;
+                    ChiselDecalSettings.TurnMapping(shown, float2.zero, settings.imageTurns, out var imageScale, out var imageOffset);
+                    tile.uvScale  = userScale * (float2)rect.size * imageScale;
+                    tile.uvOffset = (float2)settings.uvOffset + userScale * ((float2)rect.position + (float2)rect.size * imageOffset);
                     instance.entityID = ChiselTrimDecals.PieceEntityID(decalState.entityID, piece);
                     instance.settings = tile;
                     tiles.Add(instance);
