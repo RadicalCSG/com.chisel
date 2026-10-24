@@ -34,17 +34,13 @@ Features (incomplete)
 * Decals: boxes that project a material onto the surfaces they reach, drawn over them or replacing them
 * Hotspot mapping: surfaces take their texture coordinates from the best matching tile of a layout (borders, repeats, shaped tiles and trim sheets), with a layout editor
 * Chunking: a model's output is split into a mesh per material, and divided into chunks of space, for better occlusion and culling handling
-* Trim decals: a decal on the edge between two surfaces, the lower half of its image on one and the upper half on the other, stretched, repeated or fitted along the edge or one image placed on it, following the edge when either brush changes
+* [Trim decals](https://github.com/RadicalCSG/Chisel.Prototype/issues/117): a decal on the edge between two surfaces, the lower half of its image on one and the upper half on the other (or mirrored), stretched, repeated or fitted along the edge or one image placed on it, running round corners, its image from the whole texture or a trim sheet, following the edge when either brush changes; placed by picking an edge in the scene view, or on every edge where two materials meet
 * [Debug visualizations](https://github.com/RadicalCSG/Chisel.Prototype/issues/188) of user-hidden, shadow-only, shadow-casting, shadow-receiving, collider and discarded (removed by the CSG) surfaces
 * [Double sided surfaces](https://github.com/RadicalCSG/Chisel.Prototype/issues/226): a material can make its surfaces drawn from behind too
 
 Planned Features (incomplete, and in random order):
 * Decals, still to do:
-  * [Trim decals](https://github.com/RadicalCSG/Chisel.Prototype/issues/117) that run round corners
-  * Placing a trim decal by picking an edge in the scene view
-  * Automatic placement by rule (e.g. where two materials meet)
-  * Trim decal images taken from a trim sheet
-  * Trim mirroring
+  * Trim decals placed automatically where the materials of two brushes meet (now only within one brush)
   * Omni directional decals
   * Skewed decals
   * Fade distances
