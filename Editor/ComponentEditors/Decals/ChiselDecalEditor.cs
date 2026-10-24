@@ -30,7 +30,9 @@ namespace Chisel.Editors
         static readonly GUIContent kSecondSurfaceContent = new GUIContent("Second Surface", "The surface that takes the image's upper half (with Mirror, its lower half mirrored).");
         static readonly GUIContent kSurfaceIndexContent  = new GUIContent("Surface Index", "The brush's surface, or -1 for all of them.");
         static readonly GUIContent kClearChainContent    = new GUIContent("Clear Chain", "Keeps only the first edge.");
-        static readonly GUIContent kShapeContent         = new GUIContent("Shape", "Box: the image is projected through the box. Trim: the image lies on the edge between two surfaces, its lower half on the first, its upper half on the second.");
+        static readonly GUIContent kBoxShapeContent      = new GUIContent("Box", "The image is projected through the box.");
+        static readonly GUIContent kTrimShapeContent     = new GUIContent("Trim", "The image lies on the edge between two surfaces, its lower half on the first, its upper half on the second.");
+        static readonly GUIContent kShapeContent          = new GUIContent("Shape", "Box: the image is projected through the box. Trim: the image lies on the edge between two surfaces, its lower half on the first, its upper half on the second.");
         static readonly GUIContent kImageRectContent     = new GUIContent("Image Rect", "The part of the texture the image is, in texture coordinates (0 to 1): all of it, or an image in a trim sheet. An image in a trim sheet can't repeat by wrapping, so it is a piece of its own for every image it repeats.");
         static readonly GUIContent kRepeatContent        = new GUIContent("Repeat", "How many times the image repeats across the box, in x and y. A perspective decal shows a trim sheet's image once.");
         static readonly GUIContent kTrimMirrorContent     = new GUIContent("Mirror", "The image's lower half on both surfaces, mirrored across the edge, so the trim is the same on either side of it.");
@@ -69,7 +71,7 @@ namespace Chisel.Editors
             var settings = serializedObject.FindProperty(ChiselDecalComponent.kSettingsName);
             var shape    = serializedObject.FindProperty(ChiselDecalComponent.kShapeName);
             EditorGUI.BeginChangeCheck();
-            EditorGUILayout.PropertyField(shape, kShapeContent);
+            ShapeToggles(shape);
             var trim = !shape.hasMultipleDifferentValues && shape.enumValueIndex == (int)ChiselDecalShape.Trim;
             // a box decal has one target at most
             var targetList = serializedObject.FindProperty(ChiselDecalComponent.kTargetsName);
@@ -142,6 +144,27 @@ namespace Chisel.Editors
             }
 
             serializedObject.ApplyModifiedProperties();
+        }
+
+        // The shape as two toggles, one of them on
+        static void ShapeToggles(SerializedProperty shape)
+        {
+            var mixed = shape.hasMultipleDifferentValues;
+            var rect = EditorGUILayout.GetControlRect();
+            using (new EditorGUI.PropertyScope(rect, kShapeContent, shape))
+            {
+                rect = EditorGUI.PrefixLabel(rect, kShapeContent);
+                var left  = new Rect(rect.x, rect.y, rect.width * 0.5f, rect.height);
+                var right = new Rect(left.xMax, rect.y, rect.width - left.width, rect.height);
+                var isTrim = shape.enumValueIndex == (int)ChiselDecalShape.Trim;
+                var indent = EditorGUI.indentLevel;
+                EditorGUI.indentLevel = 0;
+                if (GUI.Toggle(left, !mixed && !isTrim, kBoxShapeContent, EditorStyles.miniButtonLeft) && (mixed || isTrim))
+                    shape.enumValueIndex = (int)ChiselDecalShape.Box;
+                if (GUI.Toggle(right, !mixed && isTrim, kTrimShapeContent, EditorStyles.miniButtonRight) && (mixed || !isTrim))
+                    shape.enumValueIndex = (int)ChiselDecalShape.Trim;
+                EditorGUI.indentLevel = indent;
+            }
         }
 
         // One target of the list: its brush, and once it has one, its surface. A box decal's target is its only one (none:
