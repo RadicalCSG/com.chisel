@@ -22,7 +22,6 @@ namespace Chisel.Editors
         static readonly GUIContent kFieldOfViewContent   = new GUIContent("Field Of View", "The perspective projection's vertical angle, in degrees.");
         static readonly GUIContent kTransparentContent   = new GUIContent("Transparent", "A transparent decal is drawn over the surfaces it covers. An opaque decal replaces them in the rendered mesh; the collider keeps them.");
         static readonly GUIContent kMaxAngleContent      = new GUIContent("Max Angle", "Surfaces turned further than this from the direction the image comes from don't take the decal. 180 takes every surface that doesn't face away from the box's center.");
-        static readonly GUIContent kSurfaceOffsetContent = new GUIContent("Surface Offset", "How far a transparent decal is lifted off the surface, so it doesn't fight it for depth.");
         static readonly GUIContent kUVScaleContent       = new GUIContent("UV Scale", "The texture coordinates are UV Offset + UV Scale * p, where p runs from (0,0) at the image's lower left to (1,1) at its upper right.");
         static readonly GUIContent kUVOffsetContent      = new GUIContent("UV Offset");
         static readonly GUIContent kTargetContent        = new GUIContent("Target", "Limits the decal to this brush's surface (surface index -1: all of the brush's surfaces). None: every surface it reaches.");
@@ -74,11 +73,12 @@ namespace Chisel.Editors
             var settings = serializedObject.FindProperty(ChiselDecalComponent.kSettingsName);
             var material = serializedObject.FindProperty(ChiselDecalComponent.kMaterialName);
             var transparent = settings.FindPropertyRelative(nameof(ChiselDecalSettings.transparent));
-            MaterialField(material, transparent);
+            var shapeValue = serializedObject.FindProperty(ChiselDecalComponent.kShapeName);
+            var isTrim = !shapeValue.hasMultipleDifferentValues && shapeValue.enumValueIndex == (int)ChiselDecalShape.Trim;
+            EditorGUILayout.PropertyField(material, kMaterialContent);
+            MaterialToggles(transparent, isTrim ? serializedObject.FindProperty(ChiselDecalComponent.kTrimMirrorName) : null);
             if (material.objectReferenceValue == null && !material.hasMultipleDifferentValues)
                 EditorGUILayout.HelpBox(kNoMaterialMessage, MessageType.Info);
-            if (transparent.hasMultipleDifferentValues || transparent.boolValue)
-                EditorGUILayout.PropertyField(settings.FindPropertyRelative(nameof(ChiselDecalSettings.surfaceOffset)), kSurfaceOffsetContent);
 
             var shape    = serializedObject.FindProperty(ChiselDecalComponent.kShapeName);
             EditorGUI.BeginChangeCheck();
@@ -91,7 +91,6 @@ namespace Chisel.Editors
             if (trim)
             {
                 EnumToggles(serializedObject.FindProperty(ChiselDecalComponent.kTrimFillName), kTrimFillContent, kTrimFillOptions, 2);
-                EditorGUILayout.PropertyField(serializedObject.FindProperty(ChiselDecalComponent.kTrimMirrorName), kTrimMirrorContent);
                 var size = settings.FindPropertyRelative(nameof(ChiselDecalSettings.size));
                 EditorGUILayout.PropertyField(size.FindPropertyRelative("x"), kTrimLengthContent);
                 EditorGUILayout.PropertyField(size.FindPropertyRelative("y"), kTrimHeightContent);
@@ -153,25 +152,30 @@ namespace Chisel.Editors
             serializedObject.ApplyModifiedProperties();
         }
 
-        // The material, and on its line whether the decal is transparent
-        static void MaterialField(SerializedProperty material, SerializedProperty transparent)
+        // Under the material, on one line: Transparent, and for a trim decal Mirror
+        static void MaterialToggles(SerializedProperty transparent, SerializedProperty mirror)
         {
             var rect = EditorGUILayout.GetControlRect();
-            var toggleWidth = EditorStyles.toggle.CalcSize(kTransparentContent).x + 4;
-            var materialRect = new Rect(rect.x, rect.y, rect.width - toggleWidth - 4, rect.height);
-            var toggleRect   = new Rect(rect.xMax - toggleWidth, rect.y, toggleWidth, rect.height);
-            EditorGUI.PropertyField(materialRect, material, kMaterialContent);
-            using (new EditorGUI.PropertyScope(toggleRect, kTransparentContent, transparent))
+            rect.xMin += EditorGUIUtility.labelWidth;
+            var half = rect.width * 0.5f;
+            var indent = EditorGUI.indentLevel;
+            EditorGUI.indentLevel = 0;
+            ToggleLeft(new Rect(rect.x, rect.y, half, rect.height), transparent, kTransparentContent);
+            if (mirror != null)
+                ToggleLeft(new Rect(rect.x + half, rect.y, rect.width - half, rect.height), mirror, kTrimMirrorContent);
+            EditorGUI.indentLevel = indent;
+        }
+
+        static void ToggleLeft(Rect rect, SerializedProperty property, GUIContent label)
+        {
+            using (new EditorGUI.PropertyScope(rect, label, property))
             {
-                var indent = EditorGUI.indentLevel;
-                EditorGUI.indentLevel = 0;
                 EditorGUI.BeginChangeCheck();
-                EditorGUI.showMixedValue = transparent.hasMultipleDifferentValues;
-                var value = EditorGUI.ToggleLeft(toggleRect, kTransparentContent, transparent.boolValue);
+                EditorGUI.showMixedValue = property.hasMultipleDifferentValues;
+                var value = EditorGUI.ToggleLeft(rect, label, property.boolValue);
                 EditorGUI.showMixedValue = false;
                 if (EditorGUI.EndChangeCheck())
-                    transparent.boolValue = value;
-                EditorGUI.indentLevel = indent;
+                    property.boolValue = value;
             }
         }
 
