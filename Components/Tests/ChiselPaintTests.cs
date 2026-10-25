@@ -214,6 +214,122 @@ namespace Chisel.Components.Tests
             AssertValuesAt(mesh, VertexAttribute.Color, new Vector3(0.5f, 1, 0.5f), new Vector4(0, 0, 0, 1), "the middle point's own value");
         }
 
+        // Painted for the first time, a surface gets a grid over it of the brush's cell size; a dab in its middle paints
+        // there, and the mesh shows it
+        [Test]
+        public void TheBrush_GivesASurfaceAGrid_AndPaintsWhereItDabs()
+        {
+            var model = Model();
+            var box   = Box(model, Vector3.zero);
+            var top   = SurfaceFacing(box, new float3(0, 1, 0));
+            var mode  = ChiselPaintMode.Color("Color");
+            var paint = ChiselPaintBrush.PaintFor(box, top, mode, 0.25f);
+            Assert.That(paint, Is.Not.Null);
+            Assert.That(paint.resolution, Is.EqualTo(new Vector2Int(5, 5)), "a metre in quarters: 5 points along each side");
+            Assert.That(paint.cellU.magnitude, Is.EqualTo(0.25f).Within(1e-5f));
+            Assert.That(Mathf.Abs(Vector3.Dot(Vector3.Cross(paint.cellU, paint.cellV).normalized, Vector3.up)), Is.EqualTo(1).Within(1e-5f), "in the top's plane");
+            Assert.That(box.GetSurfacePaint(top, ChiselPaintAttribute.Color), Is.SameAs(paint));
+
+            Assert.That(ChiselPaintBrush.Dab(paint, mode, ChiselPaintOperation.Paint, new Vector4(1, 0, 0, 1), new Vector3(0.5f, 1, 0.5f), 0.3f, 1, 1), Is.True);
+            box.PaintChanged();
+            Update();
+            var mesh = RenderMesh(model);
+            AssertValuesAt(mesh, VertexAttribute.Color, new Vector3(0.5f, 1, 0.5f), new Vector4(1, 0, 0, 1), "the middle");
+            AssertValuesAt(mesh, VertexAttribute.Color, new Vector3(0.25f, 1, 0.25f), Vector4.one, "out of reach (0.35 away)");
+        }
+
+        // Two modes in different components of one attribute share its paint: painting the second keeps the first
+        [Test]
+        public void ModesOfOneAttribute_ShareItsPaint()
+        {
+            var model  = Model();
+            var box    = Box(model, Vector3.zero);
+            var top    = SurfaceFacing(box, new float3(0, 1, 0));
+            var height = ChiselPaintMode.Value("Height", ChiselPaintAttribute.TexCoord2, ChiselPaintComponents.X, 0, 0, 1);
+            var wet    = ChiselPaintMode.Value("Wetness", ChiselPaintAttribute.TexCoord2, ChiselPaintComponents.Y, 0, 0, 1);
+            var paint  = ChiselPaintBrush.PaintFor(box, top, height, 0.25f);
+            ChiselPaintBrush.Dab(paint, height, ChiselPaintOperation.Add, Vector4.one * 0.5f, new Vector3(0.5f, 1, 0.5f), 2, 1, 1);
+            Assert.That(ChiselPaintBrush.PaintFor(box, top, wet, 0.25f), Is.SameAs(paint));
+            ChiselPaintBrush.Dab(paint, wet, ChiselPaintOperation.Paint, Vector4.one * 0.75f, new Vector3(0.5f, 1, 0.5f), 2, 1, 1);
+            Assert.That(paint.components, Is.EqualTo(ChiselPaintComponents.X | ChiselPaintComponents.Y));
+            Assert.That(paint[2, 2].x, Is.EqualTo(0.5f).Within(1e-5f), "the height stays");
+            Assert.That(paint[2, 2].y, Is.EqualTo(0.75f).Within(1e-5f));
+
+            ChiselPaintBrush.Dab(paint, height, ChiselPaintOperation.Add, Vector4.one, new Vector3(0.5f, 1, 0.5f), 2, 1, 1);
+            Assert.That(paint[2, 2].x, Is.EqualTo(1).Within(1e-5f), "clamped to the mode's range");
+            ChiselPaintBrush.Dab(paint, wet, ChiselPaintOperation.Erase, Vector4.zero, new Vector3(0.5f, 1, 0.5f), 2, 1, 1);
+            Assert.That(paint[2, 2], Is.EqualTo(new Vector4(1, 0, 0, 0)), "only the wetness erased");
+        }
+
+        // Smoothing evens out a spike
+        [Test]
+        public void Smoothing_EvensOutASpike()
+        {
+            var model = Model();
+            var box   = Box(model, Vector3.zero);
+            var top   = SurfaceFacing(box, new float3(0, 1, 0));
+            var mode  = ChiselPaintMode.Value("Value", ChiselPaintAttribute.TexCoord2, ChiselPaintComponents.X);
+            var paint = ChiselPaintBrush.PaintFor(box, top, mode, 0.25f);
+            paint[2, 2] = new Vector4(1, 0, 0, 0);
+            ChiselPaintBrush.Dab(paint, mode, ChiselPaintOperation.Smooth, Vector4.zero, new Vector3(0.5f, 1, 0.5f), 2, 1, 1);
+            Assert.That(paint[2, 2].x, Is.EqualTo(1f / 9).Within(1e-5f), "the average of it and its 8 neighbours");
+            Assert.That(paint[1, 1].x, Is.EqualTo(1f / 9).Within(1e-5f));
+        }
+
+        // Three layer weights in one group: painting one takes from the other two, in their proportion, so they always
+        // sum to one
+        [Test]
+        public void TheWeightsOfAGroup_AlwaysSumToOne()
+        {
+            var model   = Model();
+            var box     = Box(model, Vector3.zero);
+            var top     = SurfaceFacing(box, new float3(0, 1, 0));
+            var profile = ScriptableObject.CreateInstance<ChiselPaintProfile>();
+            created.Add(profile);
+            profile.modes.Add(ChiselPaintMode.Value("Rock", ChiselPaintAttribute.TexCoord4, ChiselPaintComponents.X, 1));
+            profile.modes.Add(ChiselPaintMode.Value("Moss", ChiselPaintAttribute.TexCoord4, ChiselPaintComponents.Y, 0));
+            profile.modes.Add(ChiselPaintMode.Value("Sand", ChiselPaintAttribute.TexCoord4, ChiselPaintComponents.Z, 0));
+            for (int i = 0; i < 3; i++)
+            {
+                var weighted = profile.modes[i];
+                weighted.group = 1;
+                profile.modes[i] = weighted;
+            }
+            Assert.That(profile.GroupOf(1), Is.EqualTo(ChiselPaintComponents.X | ChiselPaintComponents.Z));
+
+            var paint = ChiselPaintBrush.PaintFor(box, top, profile.modes[0], 0.25f);
+            ChiselPaintBrush.PaintFor(box, top, profile.modes[1], 0.25f);
+            ChiselPaintBrush.PaintFor(box, top, profile.modes[2], 0.25f);
+            // the weights are x, y and z; w is no mode's
+            Assert.That((Vector3)paint[2, 2], Is.EqualTo(new Vector3(1, 0, 0)), "all rock");
+
+            ChiselPaintBrush.Fill(paint, profile.modes[1], Vector4.one * 0.5f, profile.GroupOf(1));
+            Assert.That(Vector3.Distance(paint[2, 2], new Vector3(0.5f, 0.5f, 0)), Is.LessThan(1e-5f), "half moss: the rock gives it");
+            ChiselPaintBrush.Dab(paint, profile.modes[2], ChiselPaintOperation.Paint, Vector4.one * 0.5f, new Vector3(0.5f, 1, 0.5f), 0.1f, 1, 1, profile.GroupOf(2));
+            Assert.That(Vector3.Distance(paint[2, 2], new Vector3(0.25f, 0.25f, 0.5f)), Is.LessThan(1e-5f), "half sand: rock and moss give it alike");
+        }
+
+        // Sampling takes the paint between grid points; the channel buttons copy, swap and invert components
+        [Test]
+        public void Sampling_AndTheChannelUtilities()
+        {
+            var model = Model();
+            var box   = Box(model, Vector3.zero);
+            var top   = SurfaceFacing(box, new float3(0, 1, 0));
+            var mode  = ChiselPaintMode.Color("Color");
+            var paint = ChiselPaintBrush.PaintFor(box, top, mode, 1);
+            paint.values = new[] { new Vector4(0, 0, 0, 1), new Vector4(1, 0, 0, 1), new Vector4(0, 1, 0, 1), new Vector4(1, 1, 0, 1) };
+            var middle = paint.Sample(paint.origin + (paint.cellU + paint.cellV) * 0.5f + Vector3.up * 3);
+            Assert.That(Vector4.Distance(middle, new Vector4(0.5f, 0.5f, 0, 1)), Is.LessThan(1e-5f), "between the four, the grid projected along its normal");
+
+            ChiselPaintBrush.CopyComponent(paint, 0, 2);
+            Assert.That(paint.values[1], Is.EqualTo(new Vector4(1, 0, 1, 1)));
+            ChiselPaintBrush.SwapComponents(paint, 0, 1);
+            Assert.That(paint.values[1], Is.EqualTo(new Vector4(0, 1, 1, 1)));
+            ChiselPaintBrush.InvertComponent(paint, 3, new Vector2(0, 1));
+            Assert.That(paint.values[1].w, Is.EqualTo(0));
+        }
+
         // The grid moves with its generator
         [Test]
         public void Paint_MovesWithItsGenerator()

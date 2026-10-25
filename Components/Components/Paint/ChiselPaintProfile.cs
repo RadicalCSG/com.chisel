@@ -26,6 +26,9 @@ namespace Chisel.Components
         public Vector4                  defaultValue;
         /// <summary>A value mode's lowest and highest value</summary>
         public Vector2                  range;
+        /// <summary>Modes of one group (above 0), in components of one attribute, are weights that sum to one: painting
+        /// one of them takes from the others (blending material layers)</summary>
+        public int                      group;
 
         public static ChiselPaintMode Color(string name, ChiselPaintAttribute attribute = ChiselPaintAttribute.Color,
                                             ChiselPaintComponents components = ChiselPaintComponents.XYZW)
@@ -52,6 +55,20 @@ namespace Chisel.Components
     {
         public Shader shader;
         public List<ChiselPaintMode> modes = new();
+
+        /// <summary>The components of the other modes in a mode's group (in its attribute); None when it has no group</summary>
+        public ChiselPaintComponents GroupOf(int mode)
+        {
+            var result = ChiselPaintComponents.None;
+            if (mode < 0 || mode >= modes.Count || modes[mode].group <= 0)
+                return result;
+            for (int i = 0; i < modes.Count; i++)
+            {
+                if (i != mode && modes[i].group == modes[mode].group && modes[i].attribute == modes[mode].attribute)
+                    result |= modes[i].components;
+            }
+            return result & ~modes[mode].components;
+        }
 
         /// <summary>The first two modes that write one component of one attribute; false when there are none</summary>
         public bool FindOverlap(out int first, out int second)
