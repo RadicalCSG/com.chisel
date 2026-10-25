@@ -817,6 +817,12 @@ namespace Chisel.Components
                     changedColliders[i].sharedMesh.RecalculateBounds();
                 Profiler.EndSample();
 
+                // a fading decal's renderer is cross-faded by a LODGroup, sized to its mesh
+                Profiler.BeginSample("DecalFades");
+                foreach (var renderable in renderables)
+                    ChiselDecalFades.Apply(renderable);
+                Profiler.EndSample();
+
                 Profiler.BeginSample("Schedule Collider bake");
                 if (changedColliders.Length > 0)
                     ChiselColliderObjects.ScheduleColliderBake(model, changedColliders);

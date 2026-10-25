@@ -328,7 +328,18 @@ namespace Chisel.Components
         void DrawVolume()
         {
             Gizmos.color  = kGizmoColor;
-            Gizmos.matrix = transform.localToWorldMatrix;
+            if (settings.projection == ChiselDecalProjection.Omni)
+            {
+                // how far it reaches; the image lies on each surface it reaches
+                Gizmos.matrix = transform.localToWorldMatrix;
+                var reach = math.abs(settings.size.z);
+                if (settings.reach == ChiselDecalReach.Cube)
+                    Gizmos.DrawWireCube(settings.center, new Vector3(reach, reach, reach));
+                else
+                    Gizmos.DrawWireSphere(settings.center, reach * 0.5f);
+                return;
+            }
+            Gizmos.matrix = transform.localToWorldMatrix * (Matrix4x4)ChiselDecalSettings.SkewMatrix(settings.skew);
             GetCorners(s_Corners);
             for (int i = 0; i < 4; i++)
             {

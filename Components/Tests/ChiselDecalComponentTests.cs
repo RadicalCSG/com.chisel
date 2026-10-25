@@ -304,6 +304,120 @@ namespace Chisel.Components.Tests
             Assert.That(other, Is.EqualTo(1.0).Within(kTolerance), "the opaque decal replaces a square metre of the two floors");
         }
 
+        // Skewed 45 degrees, the square metre leans into a parallelogram twice as wide, of the same area
+        [Test]
+        public void ASkewedDecal_IsAParallelogramOnTheFloors()
+        {
+            var model = Floors(out _, out _, out var decal);
+            var settings = decal.Settings;
+            settings.skew = new Unity.Mathematics.float2(45, 0);
+            decal.Settings = settings;
+            Update();
+            Assert.That(UpAreas(model).decal, Is.EqualTo(1.0).Within(kTolerance));
+            float minX = float.PositiveInfinity, maxX = float.NegativeInfinity;
+            foreach (var r in model.generated.renderables)
+            {
+                if (r == null || !r.Valid || r.sharedMesh == null || r.renderMaterials == null)
+                    continue;
+                var vertices = r.sharedMesh.vertices;
+                for (int s = 0; s < r.sharedMesh.subMeshCount && s < r.renderMaterials.Length; s++)
+                {
+                    if (r.renderMaterials[s] != decalMaterial)
+                        continue;
+                    foreach (var index in r.sharedMesh.GetTriangles(s))
+                    {
+                        minX = Mathf.Min(minX, vertices[index].x);
+                        maxX = Mathf.Max(maxX, vertices[index].x);
+                    }
+                }
+            }
+            Assert.That(minX, Is.EqualTo(-1).Within(kTolerance));
+            Assert.That(maxX, Is.EqualTo(1).Within(kTolerance));
+        }
+
+        // The area drawn with the decal's material on triangles facing this way
+        double DecalAreaFacing(ChiselModelComponent model, Vector3 direction)
+        {
+            double area = 0;
+            foreach (var r in model.generated.renderables)
+            {
+                if (r == null || !r.Valid || r.sharedMesh == null || r.renderMaterials == null)
+                    continue;
+                var vertices = r.sharedMesh.vertices;
+                for (int s = 0; s < r.sharedMesh.subMeshCount && s < r.renderMaterials.Length; s++)
+                {
+                    if (r.renderMaterials[s] != decalMaterial)
+                        continue;
+                    var triangles = r.sharedMesh.GetTriangles(s);
+                    for (int t = 0; t < triangles.Length; t += 3)
+                    {
+                        var normal = Vector3.Cross(vertices[triangles[t + 1]] - vertices[triangles[t]], vertices[triangles[t + 2]] - vertices[triangles[t]]);
+                        if (Vector3.Dot(normal.normalized, direction) > 0.99f)
+                            area += normal.magnitude * 0.5;
+                    }
+                }
+            }
+            return area;
+        }
+
+        // An omni-directional decal reaching half a metre: just above the floors, its whole image is on them; raised out of
+        // their reach, it is on the wall beside it instead
+        [Test]
+        public void AnOmniDecal_IsItsWholeImageOnEverySurfaceItReaches()
+        {
+            var model = Floors(out _, out _, out var decal);
+            var settings = decal.Settings;
+            settings.projection = ChiselDecalProjection.Omni;
+            decal.Settings = settings;
+            decal.Size = new Vector3(0.5f, 0.5f, 1);
+            decal.transform.localPosition = new Vector3(0, 0.1f, 0);
+            Update();
+            Assert.That(DecalAreaFacing(model, Vector3.up), Is.EqualTo(0.25).Within(kTolerance), "on both floors, round the point under it");
+
+            Box("Wall", model.transform, new Vector3(0.3f, 0, -0.5f));
+            decal.transform.localPosition = new Vector3(0, 0.6f, 0);
+            Update();
+            Assert.That(DecalAreaFacing(model, Vector3.up), Is.EqualTo(0).Within(kTolerance), "the floors are out of reach");
+            Assert.That(DecalAreaFacing(model, Vector3.left), Is.EqualTo(0.25).Within(kTolerance), "on the wall, 0.3 away");
+        }
+
+        // A transparent decal that fades is a renderer of its own, cross-faded by a LODGroup between its distances; one that
+        // doesn't fade stays in the decals' mesh, and an opaque decal never fades
+        [Test]
+        public void AFadingDecal_IsCrossFadedByALODGroup()
+        {
+            // both on B, in one of the decals' 32 m cells (x = 0 is the edge of one)
+            var model = Floors(out _, out _, out var decal);
+            decal.Transparent = true;
+            decal.transform.localPosition = new Vector3(0.5f, 0, 0);
+            var settings = decal.Settings;
+            settings.fadeDistance = new Unity.Mathematics.float2(5, 10);
+            decal.Settings = settings;
+            var still = Object.Instantiate(decal.gameObject, decal.transform.parent).GetComponent<ChiselDecalComponent>();
+            still.transform.localPosition = new Vector3(0.6f, 0, 0);
+            var stillSettings = still.Settings;
+            stillSettings.fadeDistance = Unity.Mathematics.float2.zero;
+            still.Settings = stillSettings;
+            Update();
+
+            var decalMeshes = System.Array.FindAll(model.generated.renderables, r => r != null && r.surfaceParameter == ChiselDecalMeshes.kTransparentDecals);
+            Assert.That(decalMeshes.Length, Is.EqualTo(2), "the fading decal's own, and the decals' mesh");
+            var fading = System.Array.Find(decalMeshes, r => r.container.GetComponent<LODGroup>() != null);
+            Assert.That(fading, Is.Not.Null);
+            var lods = fading.container.GetComponent<LODGroup>().GetLODs();
+            Assert.That(lods.Length, Is.EqualTo(1));
+            Assert.That(lods[0].renderers, Is.EqualTo(new Renderer[] { fading.meshRenderer }));
+            var size = fading.sharedMesh.bounds.size;
+            var expected = ChiselDecalFades.ScreenHeightAt(Mathf.Max(size.x, Mathf.Max(size.y, size.z)), 10);
+            Assert.That(lods[0].screenRelativeTransitionHeight, Is.EqualTo(expected).Within(1e-5f), "gone at 10");
+            Assert.That(lods[0].fadeTransitionWidth, Is.GreaterThan(0).And.LessThan(1), "fading from 5");
+
+            decal.Transparent = false;
+            Update();
+            Assert.That(System.Array.FindAll(model.generated.renderables, r => r != null && r.container.GetComponent<LODGroup>() != null), Is.Empty,
+                        "an opaque decal doesn't fade");
+        }
+
         // Nothing tells the manager about a moved transform: it has to see it
         [Test]
         public void MovedDecal_MovesOnTheFloors()

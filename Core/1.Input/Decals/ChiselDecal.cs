@@ -12,7 +12,22 @@ namespace Chisel.Core
 
         /// <summary>From a point behind the box, like a projector. The image has the decal's size at the center
         /// of the box, and grows with depth.</summary>
-        Perspective  = 1
+        Perspective  = 1,
+
+        /// <summary>From the center out in every direction, like Source's infodecal: every surface the decal reaches
+        /// takes the whole image, laid flat on it round the point nearest the center, turned with the surface's
+        /// texture.</summary>
+        Omni         = 2
+    }
+
+    /// <summary>Which surfaces an omni-directional decal reaches: those passing within the decal's reach of its center.</summary>
+    public enum ChiselDecalReach : byte
+    {
+        /// <summary>Within a sphere: a surface no further than the reach from the center.</summary>
+        Sphere = 0,
+
+        /// <summary>Within a cube turned with the decal: a surface passing through it.</summary>
+        Cube   = 1
     }
 
     /// <summary>
@@ -26,15 +41,20 @@ namespace Chisel.Core
         public const float kMinFieldOfView = 0.1f;
         public const float kMaxFieldOfView = 170.0f;
         public const float kDefaultSurfaceOffset = 0.001f;
+        public const float kMaxSkew = 80.0f;
 
         /// <summary>The center of the box.</summary>
         public float3 center;
 
         /// <summary>The size of the box. X and Y are the image's width and height (for a perspective decal: at the
-        /// center of the box), Z is how deep the decal reaches.</summary>
+        /// center of the box), Z is how deep the decal reaches (for an omni-directional decal: the diameter of its
+        /// sphere, or its cube's edge).</summary>
         public float3 size;
 
         public ChiselDecalProjection projection;
+
+        /// <summary>The shape an omni-directional decal reaches in.</summary>
+        public ChiselDecalReach reach;
 
         /// <summary>The vertical field of view of a perspective decal, in degrees.</summary>
         public float fieldOfView;
@@ -64,6 +84,27 @@ namespace Chisel.Core
         /// <summary>How an orthographic box's start (x) and end (y) lean: x moved per unit of y in the decal's space, 0 for
         /// square ends. A trim decal's pieces are cut this way where they meet round a corner.</summary>
         public float2 endSlant;
+
+        /// <summary>Where a transparent decal fades out, by its distance from the camera: x where it starts to fade, y where
+        /// it is gone (at a 60 degree field of view). Each fading decal is a renderer of its own, cross-faded by a
+        /// LODGroup. A y of 0 never fades; opaque decals never fade, since they replace the surface below.</summary>
+        public float2 fadeDistance;
+
+        public readonly bool Fades => transparent && fadeDistance.y > 0;
+
+        /// <summary>How far the decal is sheared, in degrees, so its image frame is a parallelogram: x leans the image's
+        /// sides (x moves with y), y leans its top and bottom (y moves with x). The shear is about the decal's origin.</summary>
+        public float2 skew;
+
+        /// <summary>The shear <see cref="skew"/> describes, from the decal's unsheared space to its space</summary>
+        public static float4x4 SkewMatrix(float2 skew)
+        {
+            var lean = math.tan(math.radians(math.clamp(skew, -kMaxSkew, kMaxSkew)));
+            return new float4x4(1,      lean.x, 0, 0,
+                                lean.y, 1,      0, 0,
+                                0,      0,      1, 0,
+                                0,      0,      0, 1);
+        }
 
         /// <summary>Where in the image a point p of the decal (0 to 1 across it) looks, for an image turned this many quarter
         /// turns counter-clockwise</summary>
@@ -106,6 +147,8 @@ namespace Chisel.Core
             return math.all(center == other.center) &&
                    math.all(size == other.size) &&
                    projection == other.projection &&
+                   reach == other.reach &&
+                   math.all(fadeDistance == other.fadeDistance) &&
                    fieldOfView == other.fieldOfView &&
                    maxAngle == other.maxAngle &&
                    transparent == other.transparent &&
@@ -113,7 +156,8 @@ namespace Chisel.Core
                    math.all(uvScale == other.uvScale) &&
                    math.all(uvOffset == other.uvOffset) &&
                    (imageTurns & 3) == (other.imageTurns & 3) &&
-                   math.all(endSlant == other.endSlant);
+                   math.all(endSlant == other.endSlant) &&
+                   math.all(skew == other.skew);
         }
 
         public override readonly bool Equals(object obj) => obj is ChiselDecalSettings other && Equals(other);
@@ -126,6 +170,8 @@ namespace Chisel.Core
             hash = math.hash(new uint2(hash, math.hash(new float3(fieldOfView, maxAngle, surfaceOffset))));
             hash = math.hash(new uint3(hash, math.hash(uvScale), math.hash(uvOffset)));
             hash = math.hash(new uint3(hash, math.hash(endSlant), (uint)(imageTurns & 3)));
+            hash = math.hash(new uint3(hash, math.hash(skew), (uint)reach));
+            hash = math.hash(new uint2(hash, math.hash(fadeDistance)));
             return (int)hash;
         }
     }
@@ -213,6 +259,13 @@ namespace Chisel.Core
         /// <summary>The surface parameter of a chunk's transparent decals' mesh: all their materials, one sub-mesh per
         /// material, in the order the decals stack, so that they draw in that order</summary>
         public const ulong kTransparentDecals = ulong.MaxValue;
+
+        /// <summary>The chunk of a fading decal's mesh (see <see cref="ChiselDecalSettings.fadeDistance"/>): its own, so
+        /// that it is a renderer of its own</summary>
+        public static uint FadeChunkOf(ulong decalEntityID)
+        {
+            return math.hash(new uint3((uint)decalEntityID, (uint)(decalEntityID >> 32), 0x46414445u));
+        }
     }
 
     public static class CSGTreeDecalExtensions

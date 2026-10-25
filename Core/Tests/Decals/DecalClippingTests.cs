@@ -186,6 +186,61 @@ namespace Chisel.Core.Tests
             Assert.That(Volume(instance).ProjectUV(new double3(-0.5, 0.5, 0)), Is.EqualTo(new float2(0, 0)), "turned right, the lower left is at the upper left");
         }
 
+        // Skewed 45 degrees along x, the image's sides lean: its corners are on the parallelogram, and so is its volume
+        [Test]
+        public void ASkewedDecal_HasAParallelogramFrame()
+        {
+            var instance = Decal(new float3(1), float4x4.identity);
+            instance.settings.skew = new float2(45, 0);
+            var volume = Volume(instance);
+            Assert.That(math.distance(volume.ProjectUV(new double3(-1, -0.5, 0)), new float2(0, 0)), Is.LessThan(1e-5f));
+            Assert.That(math.distance(volume.ProjectUV(new double3( 1,  0.5, 0)), new float2(1, 1)), Is.LessThan(1e-5f));
+            Assert.That(math.distance(volume.ProjectUV(new double3( 0.5, 0.5, 0)), new float2(0.5f, 1)), Is.LessThan(1e-5f), "the top edge's middle");
+            Assert.That(volume.Contains(new double3(0.9, 0.45, 0)), Is.True, "inside the leaning side");
+            Assert.That(volume.Contains(new double3(-0.9, 0.45, 0)), Is.False, "outside the other leaning side");
+            Assert.That(volume.boundsMax.x, Is.EqualTo(1).Within(1e-3f));
+
+            instance.settings.skew = new float2(0, 45);
+            Assert.That(math.distance(Volume(instance).ProjectUV(new double3(0.5, 1, 0)), new float2(1, 1)), Is.LessThan(1e-5f), "skewed along y, the top and bottom lean");
+        }
+
+        // An omni-directional decal 0.3 above a floor, reaching half a metre: the floor's plane is reached from above, not
+        // from below, and not with the decal 0.6 above it - unless its reach is a cube turned so its corner points down
+        [Test]
+        public void AnOmniDecal_ReachesThePlanesPassingWithinItsReach()
+        {
+            var instance = Decal(new float3(0.5f, 0.5f, 1), float4x4.identity, projection: ChiselDecalProjection.Omni);
+            instance.settings.center = new float3(0, 0.3f, 0);
+            var floor = new double4(0, 1, 0, 0);
+            Assert.That(Volume(instance).Reaches(floor), Is.True);
+            Assert.That(Volume(instance).Reaches(-floor), Is.False, "the center is behind it");
+
+            instance.settings.center = new float3(0, 0.6f, 0);
+            Assert.That(Volume(instance).Reaches(floor), Is.False, "beyond the sphere");
+
+            instance.settings.reach = ChiselDecalReach.Cube;
+            instance.decalToTree    = float4x4.RotateZ(math.radians(45));
+            instance.settings.center = new float3(0.6f * math.sin(math.radians(45)), 0.6f * math.cos(math.radians(45)), 0);
+            Assert.That(Volume(instance).Reaches(floor), Is.True, "the turned cube's edge reaches 0.71 down");
+        }
+
+        // On a surface, an omni-directional decal is its whole image laid flat round the point under its center, its right
+        // along the surface texture's u
+        [Test]
+        public void AnOmniDecal_OnASurface_IsItsImageRoundThePointUnderItsCenter()
+        {
+            var instance = Decal(new float3(0.5f, 0.5f, 1), float4x4.identity, projection: ChiselDecalProjection.Omni);
+            instance.settings.center = new float3(1, 0.3f, 2);
+            var surface = Volume(instance).OnSurface(new double3(0, 1, 0), new double3(5, 0, 5), new double3(1, 0, 0));
+            Assert.That(surface.IsOmni, Is.False);
+            // the image's up is the normal turned from u: -z
+            Assert.That(math.distance(surface.ProjectUV(new double3(1, 0, 2)), new float2(0.5f, 0.5f)), Is.LessThan(1e-5f));
+            Assert.That(math.distance(surface.ProjectUV(new double3(1.25, 0, 1.75)), new float2(1, 1)), Is.LessThan(1e-5f));
+            Assert.That(surface.Contains(new double3(1.2, 0, 2.2)), Is.True);
+            Assert.That(surface.Contains(new double3(1.3, 0, 2)), Is.False, "past the image's side");
+            Assert.That(surface.Accepts(new double3(0, 1, 0), new double3(1, 0, 2)), Is.True);
+        }
+
         // A mapping turned with TurnMapping gives the same image coordinates as the mapping, turned
         [Test]
         public void ATurnedMapping_IsTheMappingTurned()

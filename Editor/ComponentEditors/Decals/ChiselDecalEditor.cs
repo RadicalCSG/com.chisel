@@ -21,8 +21,12 @@ namespace Chisel.Editors
         static readonly GUIContent kRotateLeftContent    = new GUIContent("90° Left", "A quarter turn counter-clockwise, as seen looking at the surface.");
         static readonly GUIContent kRotateRightContent   = new GUIContent("90° Right", "A quarter turn clockwise, as seen looking at the surface.");
         static readonly GUIContent kSizeContent           = new GUIContent("Size", "X and Y are the image's width and height (for a perspective decal: at the center of the box), Z is how deep the decal reaches.");
-        static readonly GUIContent kProjectionContent    = new GUIContent("Projection", "Orthographic keeps the image's size at every depth; perspective projects it from a point behind the box, like a projector.");
+        static readonly GUIContent kOmniSizeContent       = new GUIContent("Size", "X and Y are the image's width and height on each surface; Z is the diameter of the sphere it reaches in, or its cube's edge.");
+        static readonly GUIContent kReachContent          = new GUIContent("Reach", "Sphere: every surface no further from the center than half of Size Z takes the decal. Cube: every surface passing through the cube of Size Z, turned with the decal.");
+        static readonly GUIContent kSkewContent           = new GUIContent("Skew", "Shears the decal so its image is a parallelogram, in degrees: X leans the image's sides, Y its top and bottom. For slanted geometry such as stair stringers and ramps.");
+        static readonly GUIContent kProjectionContent    = new GUIContent("Projection", "Orthographic keeps the image's size at every depth; perspective projects it from a point behind the box, like a projector. Omni goes out from the center in every direction: every surface it reaches takes the whole image, laid flat on it and turned with its texture, like Source's infodecal.");
         static readonly GUIContent kFieldOfViewContent   = new GUIContent("Field Of View", "The perspective projection's vertical angle, in degrees.");
+        static readonly GUIContent kFadeDistanceContent  = new GUIContent("Fade Distance", "X: how far from the camera the decal starts to fade, Y: where it is gone (at a 60 degree field of view). A Y of 0 never fades. The decal becomes a renderer of its own, cross-faded by a LODGroup; its material's shader has to support LOD cross-fading, as URP's Lit does.");
         static readonly GUIContent kTransparentContent   = new GUIContent("Transparent", "A transparent decal is drawn over the surfaces it covers. An opaque decal replaces them in the rendered mesh; the collider keeps them.");
         static readonly GUIContent kMaxAngleContent      = new GUIContent("Max Angle", "Surfaces turned further than this from the direction the image comes from don't take the decal. 180 takes every surface that doesn't face away from the box's center.");
         static readonly GUIContent kUVScaleContent       = new GUIContent("UV Scale", "The texture coordinates are UV Offset + UV Scale * p, where p runs from (0,0) at the image's lower left to (1,1) at its upper right.");
@@ -75,6 +79,9 @@ namespace Chisel.Editors
             var isTrim = !shapeValue.hasMultipleDifferentValues && shapeValue.enumValueIndex == (int)ChiselDecalShape.Trim;
             EditorGUILayout.PropertyField(material, kMaterialContent);
             MaterialToggles(transparent, isTrim ? serializedObject.FindProperty(ChiselDecalComponent.kTrimMirrorName) : null);
+            // opaque decals replace the surface below, so only transparent ones fade
+            if (transparent.boolValue || transparent.hasMultipleDifferentValues)
+                EditorGUILayout.PropertyField(settings.FindPropertyRelative(nameof(ChiselDecalSettings.fadeDistance)), kFadeDistanceContent);
             if (material.objectReferenceValue == null && !material.hasMultipleDifferentValues)
                 EditorGUILayout.HelpBox(kNoMaterialMessage, MessageType.Info);
 
@@ -91,16 +98,24 @@ namespace Chisel.Editors
             {
                 var projection = settings.FindPropertyRelative(nameof(ChiselDecalSettings.projection));
                 EditorGUILayout.PropertyField(projection, kProjectionContent);
+                var omni = !projection.hasMultipleDifferentValues && projection.enumValueIndex == (int)ChiselDecalProjection.Omni;
                 if (projection.hasMultipleDifferentValues || projection.enumValueIndex == (int)ChiselDecalProjection.Perspective)
                 {
                     EditorGUILayout.Slider(settings.FindPropertyRelative(nameof(ChiselDecalSettings.fieldOfView)),
                                            ChiselDecalSettings.kMinFieldOfView, ChiselDecalSettings.kMaxFieldOfView, kFieldOfViewContent);
                 }
-                EditorGUILayout.Slider(settings.FindPropertyRelative(nameof(ChiselDecalSettings.maxAngle)), 0, 180, kMaxAngleContent);
+                if (omni)
+                    EditorGUILayout.PropertyField(settings.FindPropertyRelative(nameof(ChiselDecalSettings.reach)), kReachContent);
+                else
+                    EditorGUILayout.Slider(settings.FindPropertyRelative(nameof(ChiselDecalSettings.maxAngle)), 0, 180, kMaxAngleContent);
 
                 EditorGUILayout.PropertyField(settings.FindPropertyRelative(nameof(ChiselDecalSettings.center)), kCenterContent);
-                EditorGUILayout.PropertyField(settings.FindPropertyRelative(nameof(ChiselDecalSettings.size)), kSizeContent);
-                EditorGUILayout.PropertyField(serializedObject.FindProperty(ChiselDecalComponent.kRepeatName), kRepeatContent);
+                EditorGUILayout.PropertyField(settings.FindPropertyRelative(nameof(ChiselDecalSettings.size)), omni ? kOmniSizeContent : kSizeContent);
+                if (!omni)
+                {
+                    EditorGUILayout.PropertyField(settings.FindPropertyRelative(nameof(ChiselDecalSettings.skew)), kSkewContent);
+                    EditorGUILayout.PropertyField(serializedObject.FindProperty(ChiselDecalComponent.kRepeatName), kRepeatContent);
+                }
             }
             ImageField(material, serializedObject.FindProperty(ChiselDecalComponent.kImageTileName));
 
@@ -268,7 +283,9 @@ namespace Chisel.Editors
                 return;
             }
             var settings = decal.Settings;
-            using (new Handles.DrawingScope(kHandleColor, decal.transform.localToWorldMatrix))
+            // the box handle in the decal's unsheared space, so a skewed decal's handle is its parallelogram
+            var skew = settings.projection == ChiselDecalProjection.Omni ? Unity.Mathematics.float2.zero : settings.skew;
+            using (new Handles.DrawingScope(kHandleColor, decal.transform.localToWorldMatrix * (Matrix4x4)ChiselDecalSettings.SkewMatrix(skew)))
             {
                 s_BoxHandle.center = settings.center;
                 s_BoxHandle.size   = settings.size;

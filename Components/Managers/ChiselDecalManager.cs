@@ -299,7 +299,10 @@ namespace Chisel.Components
                     try
                     {
                         for (int i = 0; i < state.decals.Count; i++)
+                        {
                             decals[i] = state.decals[i];
+                            ChiselDecalFades.Register(state.decals[i]);
+                        }
                         for (int i = 0; i < state.targets.Count; i++)
                             targets[i] = state.targets[i];
                         state.tree.SetDecals(decals, targets);
@@ -458,7 +461,8 @@ namespace Chisel.Components
                 renderMaterial   = decalState.renderMaterial,
                 destinationFlags = decalState.destinationFlags
             };
-            var perspective = settings.projection == ChiselDecalProjection.Perspective;
+            // a perspective or omni-directional decal's image isn't a box to cut into tiles: it is drawn once
+            var perspective = settings.projection != ChiselDecalProjection.Orthographic;
             if (!sheet || perspective)
             {
                 // uv = offset + scale * (rect.position + rect.size * repeat * p)
