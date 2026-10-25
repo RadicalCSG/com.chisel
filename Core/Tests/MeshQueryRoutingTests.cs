@@ -7,11 +7,11 @@ namespace Chisel.Core.Tests
 	public class MeshQueryRoutingTests
 	{
 		readonly static int[] kValidRenderableIndices = { 2, 3, 7, 9, 10, 11, 13, 15 };
-		const int kShadowCastingRendererIndex = 2;  // <[generated-ShadowCasting]>, ie shadow-only
-		const int kDefaultRendererIndex       = 7;  // <[generated-Renderable|ShadowCasting|ShadowReceiving]>
-		const int kRenderableRendererIndex    = 9;  // <[generated-Renderable|ExcludedFromGlobalIllumination]>
-		const int kReceivingRendererIndex     = 13; // <[generated-Renderable|ShadowReceiving|ExcludedFromGlobalIllumination]>
-		const int kExcludedRendererIndex      = 15; // <[generated-Renderable|ShadowCasting|ShadowReceiving|ExcludedFromGlobalIllumination]>
+		const int kShadowCastingRendererIndex = 2;  // [generated-ShadowCasting], ie shadow-only
+		const int kDefaultRendererIndex       = 7;  // [generated-Renderable|ShadowCasting|ShadowReceiving]
+		const int kRenderableRendererIndex    = 9;  // [generated-Renderable|ExcludedFromGlobalIllumination]
+		const int kReceivingRendererIndex     = 13; // [generated-Renderable|ShadowReceiving|ExcludedFromGlobalIllumination]
+		const int kExcludedRendererIndex      = 15; // [generated-Renderable|ShadowCasting|ShadowReceiving|ExcludedFromGlobalIllumination]
 
 		// Renderable, ShadowCasting, ShadowReceiving, Collidable and ExcludedFromGlobalIllumination;
 		// Discarded is not a combination a real surface carries alongside the others, so it is left out.
@@ -115,7 +115,7 @@ namespace Chisel.Core.Tests
 			}
 		}
 
-		// A surface that casts shadows but isn't rendered reaches <[generated-ShadowCasting]>, which casts it with the ForceShadowOnly material
+		// A surface that casts shadows but isn't rendered reaches [generated-ShadowCasting], which casts it with the ForceShadowOnly material
 		[Test]
 		public void DefaultQueries_ShadowOnlySurfaceReachesTheShadowCastingRenderer()
 		{
