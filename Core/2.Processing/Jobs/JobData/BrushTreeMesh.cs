@@ -11,11 +11,4 @@ namespace Chisel.Core
     {
         public BlobArray<float3> treeSpaceVertices;
     }
-
-    struct BrushTreeSpacePlanes
-    {
-        public BlobArray<float4> treeSpacePlanes;
-        // How many of treeSpacePlanes are the brush's faces (BrushMeshBlob.localPlaneCount); the rest are edge planes.
-        public int               faceCount;
-    }
 }

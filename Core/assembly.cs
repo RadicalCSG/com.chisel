@@ -49,7 +49,6 @@ using System.Runtime.CompilerServices;
 [assembly: Unity.Jobs.RegisterGenericJobType(typeof(Chisel.Core.DisposeListChildrenBlobAssetReferenceJob<Chisel.Core.BrushTreeSpaceVerticesBlob>))]
 [assembly: Unity.Jobs.RegisterGenericJobType(typeof(Chisel.Core.DisposeListChildrenBlobAssetReferenceJob<Chisel.Core.BrushesTouchedByBrush>))]
 [assembly: Unity.Jobs.RegisterGenericJobType(typeof(Chisel.Core.DisposeListChildrenBlobAssetReferenceJob<Chisel.Core.RoutingTable>))]
-[assembly: Unity.Jobs.RegisterGenericJobType(typeof(Chisel.Core.DisposeListChildrenBlobAssetReferenceJob<Chisel.Core.BrushTreeSpacePlanes>))]
 [assembly: Unity.Jobs.RegisterGenericJobType(typeof(Chisel.Core.DisposeListChildrenBlobAssetReferenceJob<Chisel.Core.ChiselBrushRenderBuffer>))]
 [assembly: Unity.Jobs.RegisterGenericJobType(typeof(Chisel.Core.DisposeListChildrenBlobAssetReferenceJob<Chisel.Core.SubMeshTriangleLookup>))]
 [assembly: Unity.Jobs.RegisterGenericJobType(typeof(Chisel.Core.DisposeListChildrenBlobAssetReferenceJob<Chisel.Core.ExactBrush>))]

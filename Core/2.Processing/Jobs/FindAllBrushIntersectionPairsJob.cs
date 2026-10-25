@@ -282,8 +282,6 @@ namespace Chisel.Core
         [NativeDisableParallelForRestriction]
         [NoAlias] public NativeList<BlobAssetReference<RoutingTable>>                 routingTableCache;
         [NativeDisableParallelForRestriction]
-        [NoAlias] public NativeList<BlobAssetReference<BrushTreeSpacePlanes>>         brushTreeSpacePlaneCache;
-        [NativeDisableParallelForRestriction]
         [NoAlias] public NativeList<BlobAssetReference<ChiselBrushRenderBuffer>>      brushRenderBufferCache;
 
         // Write
@@ -291,7 +289,6 @@ namespace Chisel.Core
         [NoAlias, WriteOnly] public NativeList<BlobAssetReference<BrushTreeSpaceVerticesBlob>>.ParallelWriter   treeSpaceVerticesDisposeList;
         [NoAlias, WriteOnly] public NativeList<BlobAssetReference<BrushesTouchedByBrush>>.ParallelWriter        brushesTouchedByBrushDisposeList;
         [NoAlias, WriteOnly] public NativeList<BlobAssetReference<RoutingTable>>.ParallelWriter                 routingTableDisposeList;
-        [NoAlias, WriteOnly] public NativeList<BlobAssetReference<BrushTreeSpacePlanes>>.ParallelWriter         brushTreeSpacePlaneDisposeList;
         [NoAlias, WriteOnly] public NativeList<BlobAssetReference<ChiselBrushRenderBuffer>>.ParallelWriter      brushRenderBufferDisposeList;
 
         public void Execute(int index)
@@ -333,12 +330,6 @@ namespace Chisel.Core
                     routingTableCache[nodeOrder] = default;
                 }
                 {
-                    var original = brushTreeSpacePlaneCache[nodeOrder];
-                    if (original != default && original.IsCreated)
-                        brushTreeSpacePlaneDisposeList.AddNoResize(original);
-                    brushTreeSpacePlaneCache[nodeOrder] = default;
-                }
-                {
                     var original = brushRenderBufferCache[nodeOrder];
                     if (original != default && original.IsCreated)
                         brushRenderBufferDisposeList.AddNoResize(original);
@@ -366,8 +357,6 @@ namespace Chisel.Core
         [NoAlias] public NativeList<BlobAssetReference<BrushesTouchedByBrush>>        brushesTouchedByBrushCache;
         [NativeDisableParallelForRestriction]
         [NoAlias] public NativeList<BlobAssetReference<RoutingTable>>                 routingTableCache;
-        [NativeDisableParallelForRestriction]
-        [NoAlias] public NativeList<BlobAssetReference<BrushTreeSpacePlanes>>         brushTreeSpacePlaneCache;
         [NativeDisableParallelForRestriction]
         [NoAlias] public NativeList<BlobAssetReference<ChiselBrushRenderBuffer>>      brushRenderBufferCache;
 
@@ -404,11 +393,6 @@ namespace Chisel.Core
                     var original = routingTableCache[nodeOrder];
                     if (original != default && original.IsCreated) original.Dispose();
                     routingTableCache[nodeOrder] = default;
-                }
-                {
-                    var original = brushTreeSpacePlaneCache[nodeOrder];
-                    if (original != default && original.IsCreated) original.Dispose();
-                    brushTreeSpacePlaneCache[nodeOrder] = default;
                 }
                 {
                     var original = brushRenderBufferCache[nodeOrder];
