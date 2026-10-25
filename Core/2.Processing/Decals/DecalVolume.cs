@@ -12,7 +12,8 @@ namespace Chisel.Core
         Transparent  = 1 << 1,
         AngleLimited = 1 << 2,
         Omni         = 1 << 3,
-        OmniCube     = 1 << 4
+        OmniCube     = 1 << 4,
+        Fades        = 1 << 5
     }
 
     // The six planes around a decal's volume, in tree space. Their normals point inwards and are unit length, so
@@ -111,6 +112,13 @@ namespace Chisel.Core
         {
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             get { return (flags & DecalVolumeFlags.Perspective) != 0; }
+        }
+
+        // A transparent decal with a fade distance: its pieces are a mesh of their own (ChiselDecalMeshes.FadeChunkOf)
+        public readonly bool Fades
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            get { return (flags & DecalVolumeFlags.Fades) != 0; }
         }
 
         // An omni-directional decal has no volume of its own: each surface it reaches gets one (OnSurface)
@@ -218,6 +226,7 @@ namespace Chisel.Core
             var flags = DecalVolumeFlags.None;
             if (perspective)          flags |= DecalVolumeFlags.Perspective;
             if (settings.transparent) flags |= DecalVolumeFlags.Transparent;
+            if (settings.Fades)       flags |= DecalVolumeFlags.Fades;
             var cosMaxAngle = -1.0;
             if (settings.maxAngle < 180.0f)
             {
@@ -274,6 +283,7 @@ namespace Chisel.Core
             var flags = DecalVolumeFlags.Omni;
             if (cube)                 flags |= DecalVolumeFlags.OmniCube;
             if (settings.transparent) flags |= DecalVolumeFlags.Transparent;
+            if (settings.Fades)       flags |= DecalVolumeFlags.Fades;
             var uvScale = settings.uvScale;
             if (math.all(uvScale == float2.zero))
                 uvScale = new float2(1, 1);

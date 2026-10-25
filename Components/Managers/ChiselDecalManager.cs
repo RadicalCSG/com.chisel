@@ -299,7 +299,10 @@ namespace Chisel.Components
                     try
                     {
                         for (int i = 0; i < state.decals.Count; i++)
+                        {
                             decals[i] = state.decals[i];
+                            ChiselDecalFades.Register(state.decals[i]);
+                        }
                         for (int i = 0; i < state.targets.Count; i++)
                             targets[i] = state.targets[i];
                         state.tree.SetDecals(decals, targets);

@@ -269,6 +269,7 @@ namespace Chisel.Core
 					// the volumes stack lowest first
 					if (volume.IsTransparent)
 						surfaceBuffers[slot].decalStack = decalCandidates[candidateStart + k] + 1;
+						surfaceBuffers[slot].decalFades = volume.Fades;
 				}
 			}
 

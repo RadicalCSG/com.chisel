@@ -26,6 +26,7 @@ namespace Chisel.Editors
         static readonly GUIContent kSkewContent           = new GUIContent("Skew", "Shears the decal so its image is a parallelogram, in degrees: X leans the image's sides, Y its top and bottom. For slanted geometry such as stair stringers and ramps.");
         static readonly GUIContent kProjectionContent    = new GUIContent("Projection", "Orthographic keeps the image's size at every depth; perspective projects it from a point behind the box, like a projector. Omni goes out from the center in every direction: every surface it reaches takes the whole image, laid flat on it and turned with its texture, like Source's infodecal.");
         static readonly GUIContent kFieldOfViewContent   = new GUIContent("Field Of View", "The perspective projection's vertical angle, in degrees.");
+        static readonly GUIContent kFadeDistanceContent  = new GUIContent("Fade Distance", "X: how far from the camera the decal starts to fade, Y: where it is gone (at a 60 degree field of view). A Y of 0 never fades. The decal becomes a renderer of its own, cross-faded by a LODGroup; its material's shader has to support LOD cross-fading, as URP's Lit does.");
         static readonly GUIContent kTransparentContent   = new GUIContent("Transparent", "A transparent decal is drawn over the surfaces it covers. An opaque decal replaces them in the rendered mesh; the collider keeps them.");
         static readonly GUIContent kMaxAngleContent      = new GUIContent("Max Angle", "Surfaces turned further than this from the direction the image comes from don't take the decal. 180 takes every surface that doesn't face away from the box's center.");
         static readonly GUIContent kUVScaleContent       = new GUIContent("UV Scale", "The texture coordinates are UV Offset + UV Scale * p, where p runs from (0,0) at the image's lower left to (1,1) at its upper right.");
@@ -78,6 +79,9 @@ namespace Chisel.Editors
             var isTrim = !shapeValue.hasMultipleDifferentValues && shapeValue.enumValueIndex == (int)ChiselDecalShape.Trim;
             EditorGUILayout.PropertyField(material, kMaterialContent);
             MaterialToggles(transparent, isTrim ? serializedObject.FindProperty(ChiselDecalComponent.kTrimMirrorName) : null);
+            // opaque decals replace the surface below, so only transparent ones fade
+            if (transparent.boolValue || transparent.hasMultipleDifferentValues)
+                EditorGUILayout.PropertyField(settings.FindPropertyRelative(nameof(ChiselDecalSettings.fadeDistance)), kFadeDistanceContent);
             if (material.objectReferenceValue == null && !material.hasMultipleDifferentValues)
                 EditorGUILayout.HelpBox(kNoMaterialMessage, MessageType.Info);
 

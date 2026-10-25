@@ -381,6 +381,43 @@ namespace Chisel.Components.Tests
             Assert.That(DecalAreaFacing(model, Vector3.left), Is.EqualTo(0.25).Within(kTolerance), "on the wall, 0.3 away");
         }
 
+        // A transparent decal that fades is a renderer of its own, cross-faded by a LODGroup between its distances; one that
+        // doesn't fade stays in the decals' mesh, and an opaque decal never fades
+        [Test]
+        public void AFadingDecal_IsCrossFadedByALODGroup()
+        {
+            // both on B, in one of the decals' 32 m cells (x = 0 is the edge of one)
+            var model = Floors(out _, out _, out var decal);
+            decal.Transparent = true;
+            decal.transform.localPosition = new Vector3(0.5f, 0, 0);
+            var settings = decal.Settings;
+            settings.fadeDistance = new Unity.Mathematics.float2(5, 10);
+            decal.Settings = settings;
+            var still = Object.Instantiate(decal.gameObject, decal.transform.parent).GetComponent<ChiselDecalComponent>();
+            still.transform.localPosition = new Vector3(0.6f, 0, 0);
+            var stillSettings = still.Settings;
+            stillSettings.fadeDistance = Unity.Mathematics.float2.zero;
+            still.Settings = stillSettings;
+            Update();
+
+            var decalMeshes = System.Array.FindAll(model.generated.renderables, r => r != null && r.surfaceParameter == ChiselDecalMeshes.kTransparentDecals);
+            Assert.That(decalMeshes.Length, Is.EqualTo(2), "the fading decal's own, and the decals' mesh");
+            var fading = System.Array.Find(decalMeshes, r => r.container.GetComponent<LODGroup>() != null);
+            Assert.That(fading, Is.Not.Null);
+            var lods = fading.container.GetComponent<LODGroup>().GetLODs();
+            Assert.That(lods.Length, Is.EqualTo(1));
+            Assert.That(lods[0].renderers, Is.EqualTo(new Renderer[] { fading.meshRenderer }));
+            var size = fading.sharedMesh.bounds.size;
+            var expected = ChiselDecalFades.ScreenHeightAt(Mathf.Max(size.x, Mathf.Max(size.y, size.z)), 10);
+            Assert.That(lods[0].screenRelativeTransitionHeight, Is.EqualTo(expected).Within(1e-5f), "gone at 10");
+            Assert.That(lods[0].fadeTransitionWidth, Is.GreaterThan(0).And.LessThan(1), "fading from 5");
+
+            decal.Transparent = false;
+            Update();
+            Assert.That(System.Array.FindAll(model.generated.renderables, r => r != null && r.container.GetComponent<LODGroup>() != null), Is.Empty,
+                        "an opaque decal doesn't fade");
+        }
+
         // Nothing tells the manager about a moved transform: it has to see it
         [Test]
         public void MovedDecal_MovesOnTheFloors()

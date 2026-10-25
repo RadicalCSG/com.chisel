@@ -706,12 +706,15 @@ namespace Chisel.Core
         // The key a surface of a query is grouped by: its parameter, and its chunk
         public static SurfaceGroupKey KeyOf(ref ChiselBrushRenderBuffer buffer, ChiselQuerySurface surface, uint brushChunk, bool chunked, bool surfaceChunked, bool oneMaterial)
         {
-            // a render query's transparent decals are one mesh per chunk, whatever their material
-            var transparentDecal = surfaceChunked && !oneMaterial && buffer.surfaces[surface.surfaceIndex].decalStack > 0;
+            // a render query's transparent decals are one mesh per chunk, whatever their material; one that fades is a mesh
+            // of its own
+            ref var bufferSurface = ref buffer.surfaces[surface.surfaceIndex];
+            var transparentDecal = surfaceChunked && !oneMaterial && bufferSurface.decalStack > 0;
             return new SurfaceGroupKey
             {
                 parameter = oneMaterial ? 0 : transparentDecal ? ChiselDecalMeshes.kTransparentDecals : surface.surfaceParameter,
-                chunk     = chunked ? brushChunk : surfaceChunked ? CellOf(buffer.surfaces[surface.surfaceIndex].aabb) : 0
+                chunk     = transparentDecal && bufferSurface.decalFades ? ChiselDecalMeshes.FadeChunkOf(bufferSurface.decalEntityID) :
+                            chunked ? brushChunk : surfaceChunked ? CellOf(bufferSurface.aabb) : 0
             };
         }
 

@@ -85,6 +85,13 @@ namespace Chisel.Core
         /// square ends. A trim decal's pieces are cut this way where they meet round a corner.</summary>
         public float2 endSlant;
 
+        /// <summary>Where a transparent decal fades out, by its distance from the camera: x where it starts to fade, y where
+        /// it is gone (at a 60 degree field of view). Each fading decal is a renderer of its own, cross-faded by a
+        /// LODGroup. A y of 0 never fades; opaque decals never fade, since they replace the surface below.</summary>
+        public float2 fadeDistance;
+
+        public readonly bool Fades => transparent && fadeDistance.y > 0;
+
         /// <summary>How far the decal is sheared, in degrees, so its image frame is a parallelogram: x leans the image's
         /// sides (x moves with y), y leans its top and bottom (y moves with x). The shear is about the decal's origin.</summary>
         public float2 skew;
@@ -141,6 +148,7 @@ namespace Chisel.Core
                    math.all(size == other.size) &&
                    projection == other.projection &&
                    reach == other.reach &&
+                   math.all(fadeDistance == other.fadeDistance) &&
                    fieldOfView == other.fieldOfView &&
                    maxAngle == other.maxAngle &&
                    transparent == other.transparent &&
@@ -163,6 +171,7 @@ namespace Chisel.Core
             hash = math.hash(new uint3(hash, math.hash(uvScale), math.hash(uvOffset)));
             hash = math.hash(new uint3(hash, math.hash(endSlant), (uint)(imageTurns & 3)));
             hash = math.hash(new uint3(hash, math.hash(skew), (uint)reach));
+            hash = math.hash(new uint2(hash, math.hash(fadeDistance)));
             return (int)hash;
         }
     }
@@ -250,6 +259,13 @@ namespace Chisel.Core
         /// <summary>The surface parameter of a chunk's transparent decals' mesh: all their materials, one sub-mesh per
         /// material, in the order the decals stack, so that they draw in that order</summary>
         public const ulong kTransparentDecals = ulong.MaxValue;
+
+        /// <summary>The chunk of a fading decal's mesh (see <see cref="ChiselDecalSettings.fadeDistance"/>): its own, so
+        /// that it is a renderer of its own</summary>
+        public static uint FadeChunkOf(ulong decalEntityID)
+        {
+            return math.hash(new uint3((uint)decalEntityID, (uint)(decalEntityID >> 32), 0x46414445u));
+        }
     }
 
     public static class CSGTreeDecalExtensions
