@@ -26,6 +26,7 @@ namespace Chisel.Core
         public const float kMinFieldOfView = 0.1f;
         public const float kMaxFieldOfView = 170.0f;
         public const float kDefaultSurfaceOffset = 0.001f;
+        public const float kMaxSkew = 80.0f;
 
         /// <summary>The center of the box.</summary>
         public float3 center;
@@ -64,6 +65,20 @@ namespace Chisel.Core
         /// <summary>How an orthographic box's start (x) and end (y) lean: x moved per unit of y in the decal's space, 0 for
         /// square ends. A trim decal's pieces are cut this way where they meet round a corner.</summary>
         public float2 endSlant;
+
+        /// <summary>How far the decal is sheared, in degrees, so its image frame is a parallelogram: x leans the image's
+        /// sides (x moves with y), y leans its top and bottom (y moves with x). The shear is about the decal's origin.</summary>
+        public float2 skew;
+
+        /// <summary>The shear <see cref="skew"/> describes, from the decal's unsheared space to its space</summary>
+        public static float4x4 SkewMatrix(float2 skew)
+        {
+            var lean = math.tan(math.radians(math.clamp(skew, -kMaxSkew, kMaxSkew)));
+            return new float4x4(1,      lean.x, 0, 0,
+                                lean.y, 1,      0, 0,
+                                0,      0,      1, 0,
+                                0,      0,      0, 1);
+        }
 
         /// <summary>Where in the image a point p of the decal (0 to 1 across it) looks, for an image turned this many quarter
         /// turns counter-clockwise</summary>
@@ -113,7 +128,8 @@ namespace Chisel.Core
                    math.all(uvScale == other.uvScale) &&
                    math.all(uvOffset == other.uvOffset) &&
                    (imageTurns & 3) == (other.imageTurns & 3) &&
-                   math.all(endSlant == other.endSlant);
+                   math.all(endSlant == other.endSlant) &&
+                   math.all(skew == other.skew);
         }
 
         public override readonly bool Equals(object obj) => obj is ChiselDecalSettings other && Equals(other);
@@ -126,6 +142,7 @@ namespace Chisel.Core
             hash = math.hash(new uint2(hash, math.hash(new float3(fieldOfView, maxAngle, surfaceOffset))));
             hash = math.hash(new uint3(hash, math.hash(uvScale), math.hash(uvOffset)));
             hash = math.hash(new uint3(hash, math.hash(endSlant), (uint)(imageTurns & 3)));
+            hash = math.hash(new uint2(hash, math.hash(skew)));
             return (int)hash;
         }
     }

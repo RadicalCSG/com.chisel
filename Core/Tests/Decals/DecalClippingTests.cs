@@ -186,6 +186,24 @@ namespace Chisel.Core.Tests
             Assert.That(Volume(instance).ProjectUV(new double3(-0.5, 0.5, 0)), Is.EqualTo(new float2(0, 0)), "turned right, the lower left is at the upper left");
         }
 
+        // Skewed 45 degrees along x, the image's sides lean: its corners are on the parallelogram, and so is its volume
+        [Test]
+        public void ASkewedDecal_HasAParallelogramFrame()
+        {
+            var instance = Decal(new float3(1), float4x4.identity);
+            instance.settings.skew = new float2(45, 0);
+            var volume = Volume(instance);
+            Assert.That(math.distance(volume.ProjectUV(new double3(-1, -0.5, 0)), new float2(0, 0)), Is.LessThan(1e-5f));
+            Assert.That(math.distance(volume.ProjectUV(new double3( 1,  0.5, 0)), new float2(1, 1)), Is.LessThan(1e-5f));
+            Assert.That(math.distance(volume.ProjectUV(new double3( 0.5, 0.5, 0)), new float2(0.5f, 1)), Is.LessThan(1e-5f), "the top edge's middle");
+            Assert.That(volume.Contains(new double3(0.9, 0.45, 0)), Is.True, "inside the leaning side");
+            Assert.That(volume.Contains(new double3(-0.9, 0.45, 0)), Is.False, "outside the other leaning side");
+            Assert.That(volume.boundsMax.x, Is.EqualTo(1).Within(1e-3f));
+
+            instance.settings.skew = new float2(0, 45);
+            Assert.That(math.distance(Volume(instance).ProjectUV(new double3(0.5, 1, 0)), new float2(1, 1)), Is.LessThan(1e-5f), "skewed along y, the top and bottom lean");
+        }
+
         // A mapping turned with TurnMapping gives the same image coordinates as the mapping, turned
         [Test]
         public void ATurnedMapping_IsTheMappingTurned()

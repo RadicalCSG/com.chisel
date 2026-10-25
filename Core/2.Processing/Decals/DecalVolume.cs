@@ -118,6 +118,8 @@ namespace Chisel.Core
                 return false;
 
             var decalToTree = (double4x4)instance.decalToTree;
+            if (math.all(math.isfinite(settings.skew)) && math.any(settings.skew != float2.zero))
+                decalToTree = math.mul(decalToTree, (double4x4)ChiselDecalSettings.SkewMatrix(settings.skew));
             if (!math.all(math.isfinite(decalToTree.c0)) || !math.all(math.isfinite(decalToTree.c1)) ||
                 !math.all(math.isfinite(decalToTree.c2)) || !math.all(math.isfinite(decalToTree.c3)))
                 return false;

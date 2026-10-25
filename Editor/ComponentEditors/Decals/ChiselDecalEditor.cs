@@ -21,6 +21,7 @@ namespace Chisel.Editors
         static readonly GUIContent kRotateLeftContent    = new GUIContent("90° Left", "A quarter turn counter-clockwise, as seen looking at the surface.");
         static readonly GUIContent kRotateRightContent   = new GUIContent("90° Right", "A quarter turn clockwise, as seen looking at the surface.");
         static readonly GUIContent kSizeContent           = new GUIContent("Size", "X and Y are the image's width and height (for a perspective decal: at the center of the box), Z is how deep the decal reaches.");
+        static readonly GUIContent kSkewContent           = new GUIContent("Skew", "Shears the decal so its image is a parallelogram, in degrees: X leans the image's sides, Y its top and bottom. For slanted geometry such as stair stringers and ramps.");
         static readonly GUIContent kProjectionContent    = new GUIContent("Projection", "Orthographic keeps the image's size at every depth; perspective projects it from a point behind the box, like a projector.");
         static readonly GUIContent kFieldOfViewContent   = new GUIContent("Field Of View", "The perspective projection's vertical angle, in degrees.");
         static readonly GUIContent kTransparentContent   = new GUIContent("Transparent", "A transparent decal is drawn over the surfaces it covers. An opaque decal replaces them in the rendered mesh; the collider keeps them.");
@@ -100,6 +101,7 @@ namespace Chisel.Editors
 
                 EditorGUILayout.PropertyField(settings.FindPropertyRelative(nameof(ChiselDecalSettings.center)), kCenterContent);
                 EditorGUILayout.PropertyField(settings.FindPropertyRelative(nameof(ChiselDecalSettings.size)), kSizeContent);
+                EditorGUILayout.PropertyField(settings.FindPropertyRelative(nameof(ChiselDecalSettings.skew)), kSkewContent);
                 EditorGUILayout.PropertyField(serializedObject.FindProperty(ChiselDecalComponent.kRepeatName), kRepeatContent);
             }
             ImageField(material, serializedObject.FindProperty(ChiselDecalComponent.kImageTileName));
@@ -268,7 +270,8 @@ namespace Chisel.Editors
                 return;
             }
             var settings = decal.Settings;
-            using (new Handles.DrawingScope(kHandleColor, decal.transform.localToWorldMatrix))
+            // the box handle in the decal's unsheared space, so a skewed decal's handle is its parallelogram
+            using (new Handles.DrawingScope(kHandleColor, decal.transform.localToWorldMatrix * (Matrix4x4)ChiselDecalSettings.SkewMatrix(settings.skew)))
             {
                 s_BoxHandle.center = settings.center;
                 s_BoxHandle.size   = settings.size;

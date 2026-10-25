@@ -304,6 +304,37 @@ namespace Chisel.Components.Tests
             Assert.That(other, Is.EqualTo(1.0).Within(kTolerance), "the opaque decal replaces a square metre of the two floors");
         }
 
+        // Skewed 45 degrees, the square metre leans into a parallelogram twice as wide, of the same area
+        [Test]
+        public void ASkewedDecal_IsAParallelogramOnTheFloors()
+        {
+            var model = Floors(out _, out _, out var decal);
+            var settings = decal.Settings;
+            settings.skew = new Unity.Mathematics.float2(45, 0);
+            decal.Settings = settings;
+            Update();
+            Assert.That(UpAreas(model).decal, Is.EqualTo(1.0).Within(kTolerance));
+            float minX = float.PositiveInfinity, maxX = float.NegativeInfinity;
+            foreach (var r in model.generated.renderables)
+            {
+                if (r == null || !r.Valid || r.sharedMesh == null || r.renderMaterials == null)
+                    continue;
+                var vertices = r.sharedMesh.vertices;
+                for (int s = 0; s < r.sharedMesh.subMeshCount && s < r.renderMaterials.Length; s++)
+                {
+                    if (r.renderMaterials[s] != decalMaterial)
+                        continue;
+                    foreach (var index in r.sharedMesh.GetTriangles(s))
+                    {
+                        minX = Mathf.Min(minX, vertices[index].x);
+                        maxX = Mathf.Max(maxX, vertices[index].x);
+                    }
+                }
+            }
+            Assert.That(minX, Is.EqualTo(-1).Within(kTolerance));
+            Assert.That(maxX, Is.EqualTo(1).Within(kTolerance));
+        }
+
         // Nothing tells the manager about a moved transform: it has to see it
         [Test]
         public void MovedDecal_MovesOnTheFloors()

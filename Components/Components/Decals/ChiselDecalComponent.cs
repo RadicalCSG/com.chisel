@@ -328,7 +328,7 @@ namespace Chisel.Components
         void DrawVolume()
         {
             Gizmos.color  = kGizmoColor;
-            Gizmos.matrix = transform.localToWorldMatrix;
+            Gizmos.matrix = transform.localToWorldMatrix * (Matrix4x4)ChiselDecalSettings.SkewMatrix(settings.skew);
             GetCorners(s_Corners);
             for (int i = 0; i < 4; i++)
             {
