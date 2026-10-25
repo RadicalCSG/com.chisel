@@ -217,7 +217,7 @@ namespace Chisel.Core
 
         /// <summary>Determines the index of a specific child in the <see cref="Chisel.Core.CSGTreeBranch"/>.</summary>
         /// <param name="item">The <see cref="Chisel.Core.CSGTreeNode"/> to locate in the <see cref="Chisel.Core.CSGTreeBranch"/>.</param>
-        /// <returns>The index of <paramref name="item"/> if found in the <see cref="Chisel.Core.CSGTreeBranch"/>; otherwise, –1.</returns>
+        /// <returns>The index of <paramref name="item"/> if found in the <see cref="Chisel.Core.CSGTreeBranch"/>; otherwise, -1.</returns>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public int  IndexOf		(CSGTreeNode item)              { return Hierarchy.SiblingIndexOf(CompactNodeID, item.CompactNodeID); }
 

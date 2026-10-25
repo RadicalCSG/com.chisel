@@ -186,7 +186,7 @@ namespace Chisel.Components.Tests
             Assert.That(RenderersOf(model, first).Count, Is.EqualTo(1), "one mesh for the 32 m cell");
         }
 
-        // Three boxes of about 6 m² of lightmap each: with room for 15, their 32 m cell (18) splits into its 16 m cells (12 and 6)
+        // Three boxes of about 6 m^2 of lightmap each: with room for 15, their 32 m cell (18) splits into its 16 m cells (12 and 6)
         [Test]
         public void ASplitStopsAtTheCellsThatFit()
         {

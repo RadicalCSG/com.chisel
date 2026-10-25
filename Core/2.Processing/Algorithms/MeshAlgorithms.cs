@@ -410,7 +410,7 @@ namespace Chisel.Core
 			for (int i = 0; i < edgeCount; i++)
 				removeFlags[i] = false;
 
-			// Mark any pair of non‐adjacent edges that intersect
+			// Mark any pair of non-adjacent edges that intersect
 			for (int i = 0; i < edgeCount; ++i)
 			{
 				int p1i = edgeIndices[i * 2 + 0];

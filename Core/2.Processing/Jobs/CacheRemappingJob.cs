@@ -44,7 +44,6 @@ namespace Chisel.Core
         [NoAlias] public NativeList<NodeTransformations>                            transformationCache;
         [NoAlias] public NativeList<BlobAssetReference<ChiselBrushRenderBuffer>>    brushRenderBufferCache;
         [NoAlias] public NativeList<BlobAssetReference<BrushTreeSpaceVerticesBlob>> treeSpaceVerticesCache;
-        [NoAlias] public NativeList<BlobAssetReference<BrushTreeSpacePlanes>>       brushTreeSpacePlaneCache;
         [NoAlias] public NativeList<MinMaxAABB>                                     brushTreeSpaceBoundCache;
         [NoAlias] public NativeList<BlobAssetReference<BrushesTouchedByBrush>>      brushesTouchedByBrushCache;
         [NoAlias] public NativeList<BlobAssetReference<ExactBrush>>                 exactBrushCache;
@@ -183,8 +182,6 @@ namespace Chisel.Core
 						brushRenderBufferCache.Resize(maxCount, NativeArrayOptions.ClearMemory);
 					if (brushTreeSpaceBoundCache.Length < maxCount)
 						brushTreeSpaceBoundCache.Resize(maxCount, NativeArrayOptions.ClearMemory);
-					if (brushTreeSpacePlaneCache.Length < maxCount)
-						brushTreeSpacePlaneCache.Resize(maxCount, NativeArrayOptions.ClearMemory);
 					if (brushesTouchedByBrushCache.Length < maxCount)
 						brushesTouchedByBrushCache.Resize(maxCount, NativeArrayOptions.ClearMemory);
 					if (exactBrushCache.Length < maxCount)
@@ -208,7 +205,6 @@ namespace Chisel.Core
 							{ var tmp = brushRenderBufferCache[source]; brushRenderBufferCache[source] = default; if (tmp.IsCreated) tmp.Dispose(); }
 							{ var tmp = treeSpaceVerticesCache[source]; treeSpaceVerticesCache[source] = default; if (tmp.IsCreated) tmp.Dispose(); }
 							{ var tmp = brushTreeSpaceBoundCache[source]; brushTreeSpaceBoundCache[source] = default; }
-							{ var tmp = brushTreeSpacePlaneCache[source]; brushTreeSpacePlaneCache[source] = default; if (tmp.IsCreated) tmp.Dispose(); }
 							{ var tmp = brushesTouchedByBrushCache[source]; brushesTouchedByBrushCache[source] = default; if (tmp.IsCreated) tmp.Dispose(); }
 							{ var tmp = exactBrushCache[source]; exactBrushCache[source] = default; if (tmp.IsCreated) tmp.Dispose(); }
 							continue;
@@ -220,7 +216,6 @@ namespace Chisel.Core
 						(brushRenderBufferCache[source], brushRenderBufferCache[destination]) = (brushRenderBufferCache[destination], brushRenderBufferCache[source]);
 						(treeSpaceVerticesCache[source], treeSpaceVerticesCache[destination]) = (treeSpaceVerticesCache[destination], treeSpaceVerticesCache[source]);
 						(brushTreeSpaceBoundCache[source], brushTreeSpaceBoundCache[destination]) = (brushTreeSpaceBoundCache[destination], brushTreeSpaceBoundCache[source]);
-						(brushTreeSpacePlaneCache[source], brushTreeSpacePlaneCache[destination]) = (brushTreeSpacePlaneCache[destination], brushTreeSpacePlaneCache[source]);
 						(brushesTouchedByBrushCache[source], brushesTouchedByBrushCache[destination]) = (brushesTouchedByBrushCache[destination], brushesTouchedByBrushCache[source]);
 						(exactBrushCache[source], exactBrushCache[destination]) = (exactBrushCache[destination], exactBrushCache[source]);
 					}

@@ -24,7 +24,6 @@ namespace Chisel.Core
             public NativeList<BlobAssetReference<ChiselBrushRenderBuffer>>      brushRenderBufferCache;
 
             public NativeList<MinMaxAABB>                                       brushTreeSpaceBoundCache;
-            public NativeList<BlobAssetReference<BrushTreeSpacePlanes>>         brushTreeSpacePlaneCache;
             public NativeList<BlobAssetReference<BrushesTouchedByBrush>>        brushesTouchedByBrushCache;
             // Each brush as the exact CSG sees it (ExactBrush: exact planes, corners, bounds), rebuilt when the brush
             // changes (ExactInputJob).
@@ -72,7 +71,6 @@ namespace Chisel.Core
 				basePolygonCache            = new NativeList<BlobAssetReference<BasePolygonsBlob>>(1000, Allocator.Persistent); // Confirmed to get disposed
 				treeSpaceVerticesCache      = new NativeList<BlobAssetReference<BrushTreeSpaceVerticesBlob>>(1000, Allocator.Persistent); // Confirmed to get disposed
 				routingTableCache           = new NativeList<BlobAssetReference<RoutingTable>>(1000, Allocator.Persistent); // Confirmed to get disposed
-				brushTreeSpacePlaneCache    = new NativeList<BlobAssetReference<BrushTreeSpacePlanes>>(1000, Allocator.Persistent); // Confirmed to get disposed
 				brushesTouchedByBrushCache  = new NativeList<BlobAssetReference<BrushesTouchedByBrush>>(1000, Allocator.Persistent); // Confirmed to get disposed
 				brushRenderBufferCache      = new NativeList<BlobAssetReference<ChiselBrushRenderBuffer>>(1000, Allocator.Persistent); // Confirmed to get disposed
 				exactBrushCache             = new NativeList<BlobAssetReference<ExactBrush>>(1000, Allocator.Persistent);
@@ -115,8 +113,6 @@ namespace Chisel.Core
                 if (routingTableCache.Capacity < brushCount)
                     routingTableCache.Capacity = brushCount;
 
-                if (brushTreeSpacePlaneCache.Capacity < brushCount)
-                    brushTreeSpacePlaneCache.Capacity = brushCount;
 
                 if (brushesTouchedByBrushCache.Capacity < brushCount)
                     brushesTouchedByBrushCache.Capacity = brushCount;
@@ -182,19 +178,6 @@ namespace Chisel.Core
                     routingTableCache.Dispose();
                 }
                 routingTableCache = default;
-                if (brushTreeSpacePlaneCache.IsCreated)
-				{
-                    // Confirmed to be called
-					for (int i = 0; i < brushTreeSpacePlaneCache.Length; i++)
-                    {
-                        if (brushTreeSpacePlaneCache[i].IsCreated)
-							brushTreeSpacePlaneCache[i].Dispose();
-                        brushTreeSpacePlaneCache[i] = default;
-                    }
-                    brushTreeSpacePlaneCache.Clear();
-                    brushTreeSpacePlaneCache.Dispose();
-                }
-                brushTreeSpacePlaneCache = default;
                 if (brushesTouchedByBrushCache.IsCreated)
 				{
                     // Confirmed to be called
