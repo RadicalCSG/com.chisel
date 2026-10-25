@@ -178,6 +178,42 @@ namespace Chisel.Components.Tests
             AssertValuesAt(RenderMesh(model), VertexAttribute.TexCoord3, new Vector3(0, 1, 0), new Vector4(1, 0.25f, 1, 1), "changed");
         }
 
+        // A grid of quarter-metre cells on the top: its 9 points inside the top are vertices, each of them splitting the
+        // top's triangles further; the 16 on its outline and corners aren't, so the sides keep their two triangles each
+        [Test]
+        public void APaintedSurface_IsSubdividedAtItsGridPointsInsideIt()
+        {
+            var model = Model();
+            var box   = Box(model, Vector3.zero);
+            var top   = SurfaceFacing(box, new float3(0, 1, 0));
+            var paint = ChiselSurfacePaint.Create(top, ChiselPaintAttribute.Color, ChiselPaintComponents.XYZW, Vector4.one,
+                                                  new Vector3(0, 1, 0), Vector3.right * 0.25f, Vector3.forward * 0.25f, new Vector2Int(5, 5));
+            paint[2, 2] = new Vector4(0, 0, 0, 1);
+            box.SetSurfacePaint(paint);
+            Update();
+
+            var mesh     = RenderMesh(model);
+            var vertices = mesh.vertices;
+            var normals  = mesh.normals;
+            var triangles = mesh.triangles;
+            int topVertices = 0, topTriangles = 0, sideTriangles = 0;
+            for (int v = 0; v < vertices.Length; v++)
+            {
+                if (normals[v].y > 0.99f)
+                    topVertices++;
+            }
+            for (int t = 0; t < triangles.Length; t += 3)
+            {
+                var normal = Vector3.Cross(vertices[triangles[t + 1]] - vertices[triangles[t]], vertices[triangles[t + 2]] - vertices[triangles[t]]).normalized;
+                if (normal.y > 0.99f) topTriangles++;
+                else if (Mathf.Abs(normal.y) < 0.01f) sideTriangles++;
+            }
+            Assert.That(topVertices, Is.EqualTo(13), "the 4 corners and the 9 points inside");
+            Assert.That(topTriangles, Is.EqualTo(20));
+            Assert.That(sideTriangles, Is.EqualTo(8), "the sides aren't cut");
+            AssertValuesAt(mesh, VertexAttribute.Color, new Vector3(0.5f, 1, 0.5f), new Vector4(0, 0, 0, 1), "the middle point's own value");
+        }
+
         // The grid moves with its generator
         [Test]
         public void Paint_MovesWithItsGenerator()

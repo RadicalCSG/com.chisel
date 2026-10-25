@@ -61,6 +61,9 @@ namespace Chisel.Core
 						   NativeArray<int> decalCandidateStart, SlotLayout slots)
 		{
 			var baseSurfaceCount = slots.baseSurfaceCount;
+			// a painted surface gets its paint's grid points as vertices, before anything is worked out from them
+			if (paint.TryGetRange(entityID, baseSurfaces[surf].descriptionIndex, out var subdivision))
+				PaintSubdivision.Subdivide(surfaceIndexList, ref uniqueVertexMapper, finalFaceNormal, paint, subdivision);
 			if (normalSmoothingAngle > 0.0001f)
 			{
 				var renderVertices = uniqueVertexMapper.surfaceRenderVertices;
