@@ -458,7 +458,8 @@ namespace Chisel.Components
                 renderMaterial   = decalState.renderMaterial,
                 destinationFlags = decalState.destinationFlags
             };
-            var perspective = settings.projection == ChiselDecalProjection.Perspective;
+            // a perspective or omni-directional decal's image isn't a box to cut into tiles: it is drawn once
+            var perspective = settings.projection != ChiselDecalProjection.Orthographic;
             if (!sheet || perspective)
             {
                 // uv = offset + scale * (rect.position + rect.size * repeat * p)

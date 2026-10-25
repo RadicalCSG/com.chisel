@@ -10,7 +10,9 @@ namespace Chisel.Core
         None         = 0,
         Perspective  = 1 << 0,
         Transparent  = 1 << 1,
-        AngleLimited = 1 << 2
+        AngleLimited = 1 << 2,
+        Omni         = 1 << 3,
+        OmniCube     = 1 << 4
     }
 
     // The six planes around a decal's volume, in tree space. Their normals point inwards and are unit length, so
@@ -61,6 +63,8 @@ namespace Chisel.Core
         public const double kPlaneEpsilon = 1e-4;
         // Smaller boxes don't make a decal.
         public const double kMinSize = 1e-4;
+        // How far an omni-directional decal's volume on a surface reaches either side of it
+        const double kOmniSlab = 0.01;
 
         public ulong                    entityID;
         // where the decal was in the list given to SetDecals: how decals stack
@@ -84,6 +88,11 @@ namespace Chisel.Core
         public double3                  facingPoint;    // the box's center: surfaces facing away from it are skipped
         public double3                  axis;           // unit, the direction the image travels in (orthographic)
         public double3                  apex;           // perspective: where the image comes from
+
+        // Omni-directional: the image's size, how far the decal reaches from facingPoint, and its axes (a cube's)
+        public double2                  omniImage;
+        public double                   omniReach;
+        public double3x3                omniAxes;
         public DecalPlanes              planes;
         public float3                   boundsMin;
         public float3                   boundsMax;
@@ -104,6 +113,13 @@ namespace Chisel.Core
             get { return (flags & DecalVolumeFlags.Perspective) != 0; }
         }
 
+        // An omni-directional decal has no volume of its own: each surface it reaches gets one (OnSurface)
+        public readonly bool IsOmni
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            get { return (flags & DecalVolumeFlags.Omni) != 0; }
+        }
+
         // False for a decal that cannot draw anything: no material, a flat box, a transformation without an inverse.
         public static bool TryCreate(in ChiselDecalInstance instance, out DecalVolume volume)
         {
@@ -118,6 +134,8 @@ namespace Chisel.Core
                 return false;
 
             var decalToTree = (double4x4)instance.decalToTree;
+            if (settings.projection == ChiselDecalProjection.Omni)
+                return TryCreateOmni(instance, decalToTree, size, out volume);
             if (math.all(math.isfinite(settings.skew)) && math.any(settings.skew != float2.zero))
                 decalToTree = math.mul(decalToTree, (double4x4)ChiselDecalSettings.SkewMatrix(settings.skew));
             if (!math.all(math.isfinite(decalToTree.c0)) || !math.all(math.isfinite(decalToTree.c1)) ||
@@ -236,6 +254,98 @@ namespace Chisel.Core
                 boundsMax       = (float3)(boundsMax + kPlaneEpsilon)
             };
             return true;
+        }
+
+        static bool TryCreateOmni(in ChiselDecalInstance instance, double4x4 decalToTree, double3 size, out DecalVolume volume)
+        {
+            volume = default;
+            var settings = instance.settings;
+            var axes  = new double3x3(decalToTree.c0.xyz, decalToTree.c1.xyz, decalToTree.c2.xyz);
+            var scale = new double3(math.length(axes.c0), math.length(axes.c1), math.length(axes.c2));
+            if (!math.all(scale > 1e-12))
+                return false;
+            var image = size.xy * scale.xy;
+            var reach = size.z * 0.5 * scale.z;
+            var cube  = settings.reach == ChiselDecalReach.Cube;
+            var point = math.mul(decalToTree, new double4((double3)settings.center, 1)).xyz;
+            // a surface the decal reaches passes within it, and the image on it goes no further than its half diagonal
+            var extent = (cube ? reach * math.sqrt(3.0) : reach) + math.length(image) * 0.5;
+
+            var flags = DecalVolumeFlags.Omni;
+            if (cube)                 flags |= DecalVolumeFlags.OmniCube;
+            if (settings.transparent) flags |= DecalVolumeFlags.Transparent;
+            var uvScale = settings.uvScale;
+            if (math.all(uvScale == float2.zero))
+                uvScale = new float2(1, 1);
+
+            volume = new DecalVolume
+            {
+                entityID        = instance.entityID,
+                flags           = flags,
+                renderMaterial  = instance.renderMaterial,
+                materialFlags   = instance.destinationFlags,
+                surfaceOffset   = settings.transparent ? math.max(0, settings.surfaceOffset) : 0,
+                uvScale         = uvScale,
+                uvOffset        = settings.uvOffset,
+                imageTurns      = settings.imageTurns,
+                cosMaxAngle     = -1,
+                facingPoint     = point,
+                omniImage       = image,
+                omniReach       = reach,
+                omniAxes        = new double3x3(axes.c0 / scale.x, axes.c1 / scale.y, axes.c2 / scale.z),
+                boundsMin       = (float3)(point - extent - kPlaneEpsilon),
+                boundsMax       = (float3)(point + extent + kPlaneEpsilon)
+            };
+            return true;
+        }
+
+        // Whether an omni-directional decal reaches a surface on this plane (tree space, unit normal on its visible side):
+        // the center is in front of it, and the plane passes through the sphere or cube
+        public readonly bool Reaches(double4 plane)
+        {
+            var distance = math.dot(plane.xyz, facingPoint) + plane.w;
+            if (distance < -kPlaneEpsilon)
+                return false;
+            var reach = omniReach;
+            if ((flags & DecalVolumeFlags.OmniCube) != 0)
+                reach *= math.csum(math.abs(math.mul(math.transpose(omniAxes), plane.xyz)));
+            return distance <= reach + kPlaneEpsilon;
+        }
+
+        // An omni-directional decal on one surface: an orthographic decal laid flat on it, its image round the point of
+        // the surface's plane nearest the center, its right along uDirection (the surface texture's u)
+        public readonly DecalVolume OnSurface(double3 normal, double3 pointOnPlane, double3 uDirection)
+        {
+            var n = math.normalizesafe(normal);
+            var origin = facingPoint - n * math.dot(n, facingPoint - pointOnPlane);
+            var u = uDirection - n * math.dot(uDirection, n);
+            if (!(math.lengthsq(u) > 1e-12))
+                u = math.cross(n, math.abs(n.x) < 0.9 ? new double3(1, 0, 0) : new double3(0, 1, 0));
+            u = math.normalize(u);
+            var v = math.cross(n, u);
+
+            var half = omniImage * 0.5;
+            var surface = this;
+            surface.flags      &= ~(DecalVolumeFlags.Omni | DecalVolumeFlags.OmniCube | DecalVolumeFlags.Perspective | DecalVolumeFlags.AngleLimited);
+            surface.treeToDecal = math.inverse(new double4x4(new double4(u, 0), new double4(v, 0), new double4(-n, 0), new double4(origin, 1)));
+            surface.center      = double3.zero;
+            surface.size        = new double3(omniImage, kOmniSlab * 2);
+            surface.focal       = 0;
+            surface.facingPoint = origin + n;
+            surface.axis        = -n;
+            surface.apex        = double3.zero;
+            var planes = new DecalPlanes();
+            planes[0] = new double4( u, -math.dot(u, origin) + half.x);
+            planes[1] = new double4(-u,  math.dot(u, origin) + half.x);
+            planes[2] = new double4( v, -math.dot(v, origin) + half.y);
+            planes[3] = new double4(-v,  math.dot(v, origin) + half.y);
+            planes[4] = new double4( n, -math.dot(n, origin) + kOmniSlab);
+            planes[5] = new double4(-n,  math.dot(n, origin) + kOmniSlab);
+            surface.planes = planes;
+            var extent = math.abs(u) * half.x + math.abs(v) * half.y + math.abs(n) * kOmniSlab;
+            surface.boundsMin = (float3)(origin - extent - kPlaneEpsilon);
+            surface.boundsMax = (float3)(origin + extent + kPlaneEpsilon);
+            return surface;
         }
 
         // Whether the decal may draw on a surface of a brush: always, unless it has targets and none of them is it

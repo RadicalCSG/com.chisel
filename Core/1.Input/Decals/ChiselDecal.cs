@@ -12,7 +12,22 @@ namespace Chisel.Core
 
         /// <summary>From a point behind the box, like a projector. The image has the decal's size at the center
         /// of the box, and grows with depth.</summary>
-        Perspective  = 1
+        Perspective  = 1,
+
+        /// <summary>From the center out in every direction, like Source's infodecal: every surface the decal reaches
+        /// takes the whole image, laid flat on it round the point nearest the center, turned with the surface's
+        /// texture.</summary>
+        Omni         = 2
+    }
+
+    /// <summary>Which surfaces an omni-directional decal reaches: those passing within the decal's reach of its center.</summary>
+    public enum ChiselDecalReach : byte
+    {
+        /// <summary>Within a sphere: a surface no further than the reach from the center.</summary>
+        Sphere = 0,
+
+        /// <summary>Within a cube turned with the decal: a surface passing through it.</summary>
+        Cube   = 1
     }
 
     /// <summary>
@@ -32,10 +47,14 @@ namespace Chisel.Core
         public float3 center;
 
         /// <summary>The size of the box. X and Y are the image's width and height (for a perspective decal: at the
-        /// center of the box), Z is how deep the decal reaches.</summary>
+        /// center of the box), Z is how deep the decal reaches (for an omni-directional decal: the diameter of its
+        /// sphere, or its cube's edge).</summary>
         public float3 size;
 
         public ChiselDecalProjection projection;
+
+        /// <summary>The shape an omni-directional decal reaches in.</summary>
+        public ChiselDecalReach reach;
 
         /// <summary>The vertical field of view of a perspective decal, in degrees.</summary>
         public float fieldOfView;
@@ -121,6 +140,7 @@ namespace Chisel.Core
             return math.all(center == other.center) &&
                    math.all(size == other.size) &&
                    projection == other.projection &&
+                   reach == other.reach &&
                    fieldOfView == other.fieldOfView &&
                    maxAngle == other.maxAngle &&
                    transparent == other.transparent &&
@@ -142,7 +162,7 @@ namespace Chisel.Core
             hash = math.hash(new uint2(hash, math.hash(new float3(fieldOfView, maxAngle, surfaceOffset))));
             hash = math.hash(new uint3(hash, math.hash(uvScale), math.hash(uvOffset)));
             hash = math.hash(new uint3(hash, math.hash(endSlant), (uint)(imageTurns & 3)));
-            hash = math.hash(new uint2(hash, math.hash(skew)));
+            hash = math.hash(new uint3(hash, math.hash(skew), (uint)reach));
             return (int)hash;
         }
     }

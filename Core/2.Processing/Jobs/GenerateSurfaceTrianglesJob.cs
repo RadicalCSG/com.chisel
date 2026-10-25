@@ -220,8 +220,35 @@ namespace Chisel.Core
 			{
 				var candidates = new UnsafeList<int>(decalCandidates.GetUnsafeReadOnlyPtr() + candidateStart, candidateCount);
 				var targeted   = new UnsafeList<byte>(decalTargeted.GetUnsafeReadOnlyPtr() + candidateStart, candidateCount);
+				var volumes    = decalVolumes;
+				var anyOmni    = false;
+				for (int k = 0; k < candidateCount && !anyOmni; k++)
+					anyOmni = decalVolumes[candidates[k]].IsOmni;
+				NativeArray<DecalVolume> onSurface = default;
+				UnsafeList<int> onSurfaceIndices = default;
+				if (anyOmni && uniqueVertexMapper.surfaceRenderVertices.Length > 0)
+				{
+					// an omni-directional decal lies flat on this surface, turned with its texture's u
+					onSurface        = new NativeArray<DecalVolume>(candidateCount, Allocator.Temp);
+					onSurfaceIndices = new UnsafeList<int>(candidateCount, Allocator.Temp);
+					var pointOnPlane = (double3)uniqueVertexMapper.surfaceRenderVertices[0].position;
+					var uDirection   = new double3(uvMat.c0.x, uvMat.c1.x, uvMat.c2.x);
+					for (int k = 0; k < candidateCount; k++)
+					{
+						var volume = decalVolumes[candidates[k]];
+						onSurface[k] = volume.IsOmni ? volume.OnSurface(finalFaceNormal, pointOnPlane, uDirection) : volume;
+						onSurfaceIndices.Add(k);
+					}
+					volumes    = onSurface;
+					candidates = onSurfaceIndices;
+				}
 				decalCut = decalBuilder.Build(surfaceIndexList, uniqueVertexMapper.surfaceRenderVertices,
-											  uniqueVertexMapper.surfaceSelectVertices, decalVolumes, candidates, targeted, flags);
+											  uniqueVertexMapper.surfaceSelectVertices, volumes, candidates, targeted, flags);
+				if (onSurface.IsCreated)
+				{
+					onSurface.Dispose();
+					onSurfaceIndices.Dispose();
+				}
 				for (int k = 0; k < candidateCount; k++)
 				{
 					var decalOutput = decalBuilder.decals[k];
@@ -692,13 +719,20 @@ namespace Chisel.Core
 				{
 					var d = nearBrush[i];
 					ref var volume = ref volumes[d];
-					// Does the surface's plane pass through the decal's bounds?
-					var center   = ((double3)volume.boundsMin + (double3)volume.boundsMax) * 0.5;
-					var extents  = ((double3)volume.boundsMax - (double3)volume.boundsMin) * 0.5;
-					var distance = math.dot(plane.xyz, center) + plane.w;
-					var reach    = math.dot(math.abs(plane.xyz), extents);
-					if (math.abs(distance) > reach + DecalVolume.kPlaneEpsilon)
-						continue;
+					if (volume.IsOmni)
+					{
+						if (!volume.Reaches(subtractiveWorkflow ? -plane : plane))
+							continue;
+					} else
+					{
+						// Does the surface's plane pass through the decal's bounds?
+						var center   = ((double3)volume.boundsMin + (double3)volume.boundsMax) * 0.5;
+						var extents  = ((double3)volume.boundsMax - (double3)volume.boundsMin) * 0.5;
+						var distance = math.dot(plane.xyz, center) + plane.w;
+						var reach    = math.dot(math.abs(plane.xyz), extents);
+						if (math.abs(distance) > reach + DecalVolume.kPlaneEpsilon)
+							continue;
+					}
 					var isTargeted = volume.Targets(decalTargets, brushEntityID, baseSurfaces[s].descriptionIndex);
 					if (!isTargeted && volume.IsTransparent)
 						continue;

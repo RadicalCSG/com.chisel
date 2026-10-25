@@ -335,6 +335,52 @@ namespace Chisel.Components.Tests
             Assert.That(maxX, Is.EqualTo(1).Within(kTolerance));
         }
 
+        // The area drawn with the decal's material on triangles facing this way
+        double DecalAreaFacing(ChiselModelComponent model, Vector3 direction)
+        {
+            double area = 0;
+            foreach (var r in model.generated.renderables)
+            {
+                if (r == null || !r.Valid || r.sharedMesh == null || r.renderMaterials == null)
+                    continue;
+                var vertices = r.sharedMesh.vertices;
+                for (int s = 0; s < r.sharedMesh.subMeshCount && s < r.renderMaterials.Length; s++)
+                {
+                    if (r.renderMaterials[s] != decalMaterial)
+                        continue;
+                    var triangles = r.sharedMesh.GetTriangles(s);
+                    for (int t = 0; t < triangles.Length; t += 3)
+                    {
+                        var normal = Vector3.Cross(vertices[triangles[t + 1]] - vertices[triangles[t]], vertices[triangles[t + 2]] - vertices[triangles[t]]);
+                        if (Vector3.Dot(normal.normalized, direction) > 0.99f)
+                            area += normal.magnitude * 0.5;
+                    }
+                }
+            }
+            return area;
+        }
+
+        // An omni-directional decal reaching half a metre: just above the floors, its whole image is on them; raised out of
+        // their reach, it is on the wall beside it instead
+        [Test]
+        public void AnOmniDecal_IsItsWholeImageOnEverySurfaceItReaches()
+        {
+            var model = Floors(out _, out _, out var decal);
+            var settings = decal.Settings;
+            settings.projection = ChiselDecalProjection.Omni;
+            decal.Settings = settings;
+            decal.Size = new Vector3(0.5f, 0.5f, 1);
+            decal.transform.localPosition = new Vector3(0, 0.1f, 0);
+            Update();
+            Assert.That(DecalAreaFacing(model, Vector3.up), Is.EqualTo(0.25).Within(kTolerance), "on both floors, round the point under it");
+
+            Box("Wall", model.transform, new Vector3(0.3f, 0, -0.5f));
+            decal.transform.localPosition = new Vector3(0, 0.6f, 0);
+            Update();
+            Assert.That(DecalAreaFacing(model, Vector3.up), Is.EqualTo(0).Within(kTolerance), "the floors are out of reach");
+            Assert.That(DecalAreaFacing(model, Vector3.left), Is.EqualTo(0.25).Within(kTolerance), "on the wall, 0.3 away");
+        }
+
         // Nothing tells the manager about a moved transform: it has to see it
         [Test]
         public void MovedDecal_MovesOnTheFloors()
