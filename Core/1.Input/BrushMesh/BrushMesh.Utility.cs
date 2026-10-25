@@ -655,7 +655,7 @@ namespace Chisel.Core
                     intersections[i0] = planeTraversal0;
                 }
 
-                // NOTE: from this point on Traversal𝑛.EdgeIndex may no longer be valid!
+                // NOTE: from this point on TraversalN.EdgeIndex may no longer be valid!
 
 
                 Debug.Assert((intersections.Count & 1) != 1, "Found an uneven number of edge-plane traversals??");
