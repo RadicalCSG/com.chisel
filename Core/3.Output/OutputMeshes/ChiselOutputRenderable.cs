@@ -129,12 +129,44 @@ namespace Chisel.Core
                 return;
             }
 
-            meshData.SetVertexBufferParams(totalVertexCount, descriptors);
+            // the attributes painted on the mesh's surfaces go in a second stream, a float4 each; a surface without
+            // paint in one takes the default of the first layer of it
+            var paintSlots    = 0;
+            var paintDefaults = new FixedList128Bytes<float4>();
+            for (int slot = 0; slot < ChiselPaintOutput.kSlotCount; slot++)
+                paintDefaults.Add(float4.zero);
+            for (int d = startIndex; d < endIndex; d++)
+            {
+                var description  = subMeshSource.subMeshDescriptions[d];
+                var surfaceArray = subMeshSource.subMeshSurfaces[description.meshQueryIndex];
+                for (int s = description.surfacesOffset, last = s + description.surfacesCount; s < last; s++)
+                {
+                    ref var surface = ref surfaceArray[s].brushRenderBuffer.Value.surfaces[surfaceArray[s].surfaceIndex];
+                    if (!subMeshSource.paint.TryGetRange(surface.paintEntityID, surface.paintSurface, out var range))
+                        continue;
+                    for (int l = range.start; l < range.start + range.count; l++)
+                    {
+                        var slot = ChiselPaintOutput.SlotOf(subMeshSource.paint.layers[l].attribute);
+                        if ((paintSlots & (1 << slot)) == 0)
+                            paintDefaults[slot] = subMeshSource.paint.layers[l].defaultValue;
+                        paintSlots |= 1 << slot;
+                    }
+                }
+            }
+            var paintStride = math.countbits(paintSlots);
+            if (paintSlots != 0)
+            {
+                var painted = ChiselPaintOutput.Descriptors(descriptors, paintSlots);
+                meshData.SetVertexBufferParams(totalVertexCount, painted);
+                painted.Dispose();
+            } else
+                meshData.SetVertexBufferParams(totalVertexCount, descriptors);
             meshData.SetIndexBufferParams(totalIndexCount, IndexFormat.UInt32);
             meshData.subMeshCount = numberOfSubMeshes;
 
             var indices     = meshData.GetIndexData<int>();
             var vertices    = meshData.GetVertexData<RenderVertex>(stream: 0);
+            var paintPointer = paintSlots != 0 ? (float4*)NativeArrayUnsafeUtility.GetUnsafePtr(meshData.GetVertexData<float4>(stream: 1)) : null;
             var indexBufferLength  = indices.Length;
             var vertexBufferLength = vertices.Length;
             // the ranges write through these, so no copy asks the mesh for its buffers again
@@ -219,8 +251,16 @@ namespace Chisel.Core
 
                     // Where its lightmap coordinates go in this mesh's layout
                     var chartIndex = chartBase + (surfaceIndex - surfacesOffset);
+                    subMeshSource.paint.TryGetRange(sourceBuffer.paintEntityID, sourceBuffer.paintSurface, out var paintRange);
                     ranges.Add(new RenderCopyRange
                     {
+                        paint         = paintPointer,
+                        paintSlots    = paintSlots,
+                        paintStride   = paintStride,
+                        paintDefaults = paintDefaults,
+                        paintLayers   = paintRange.count > 0 ? (ChiselPaintLayer*)subMeshSource.paint.layers.GetUnsafeReadOnlyPtr() + paintRange.start : null,
+                        paintLayerCount = paintRange.count,
+                        paintValues   = paintRange.count > 0 ? (float4*)subMeshSource.paint.values.GetUnsafeReadOnlyPtr() : null,
                         meshIndex     = meshIndex,
                         indices       = indexPointer,
                         vertices      = vertexPointer,
@@ -285,6 +325,8 @@ namespace Chisel.Core
             for (int v = 0; v < sourceVertices.Length; v++)
             {
                 var vertex = sourceVertices[v];
+                if (range.paint != null)
+                    ChiselPaintOutput.Write(range, vertex.position, range.paint + (range.baseVertex + v) * range.paintStride);
                 vertex.uv1 = range.placement.Place(vertex.uv1, range.chartRect) * range.lightmapScale;
                 vertices[range.baseVertex + v] = vertex;
             }
@@ -303,6 +345,63 @@ namespace Chisel.Core
         public LightmapChartPlacement placement;
         public float4 chartRect;
         public float  lightmapScale;
+        // The mesh's paint stream (null without one): the slots it has, a float4 each, their defaults, and the surface's layers
+        [NativeDisableUnsafePtrRestriction] public float4*           paint;
+        public int    paintSlots;
+        public int    paintStride;
+        public FixedList128Bytes<float4> paintDefaults;
+        [NativeDisableUnsafePtrRestriction] public ChiselPaintLayer* paintLayers;
+        public int    paintLayerCount;
+        [NativeDisableUnsafePtrRestriction] public float4*           paintValues;
+    }
+
+    // How paint goes into a render mesh: a float4 in a second vertex stream for every vertex attribute painted on its
+    // surfaces (a slot), in the order of Unity's attributes
+    internal static unsafe class ChiselPaintOutput
+    {
+        public const int kSlotCount = 7;
+
+        public static int SlotOf(ChiselPaintAttribute attribute) => attribute == ChiselPaintAttribute.Color ? 0 : (int)attribute - 1;
+
+        static VertexAttribute AttributeOf(int slot) => slot == 0 ? VertexAttribute.Color : VertexAttribute.TexCoord0 + (slot + 1);
+
+        // The mesh's attributes with the painted ones: Color after Tangent, the texture coordinates at the end
+        public static NativeArray<VertexAttributeDescriptor> Descriptors(NativeArray<VertexAttributeDescriptor> descriptors, int slots)
+        {
+            var result = new NativeList<VertexAttributeDescriptor>(descriptors.Length + kSlotCount, Allocator.Temp);
+            for (int i = 0; i < descriptors.Length; i++)
+            {
+                result.Add(descriptors[i]);
+                if (descriptors[i].attribute == VertexAttribute.Tangent && (slots & 1) != 0)
+                    result.Add(new VertexAttributeDescriptor(VertexAttribute.Color, VertexAttributeFormat.Float32, 4, stream: 1));
+            }
+            for (int slot = 1; slot < kSlotCount; slot++)
+            {
+                if ((slots & (1 << slot)) != 0)
+                    result.Add(new VertexAttributeDescriptor(AttributeOf(slot), VertexAttributeFormat.Float32, 4, stream: 1));
+            }
+            var array = new NativeArray<VertexAttributeDescriptor>(result.AsArray(), Allocator.Temp);
+            result.Dispose();
+            return array;
+        }
+
+        // A vertex's paint: each slot's default, with every layer of the surface in it written over that
+        public static void Write(in RenderCopyRange range, float3 position, float4* destination)
+        {
+            for (int slot = 0, written = 0; slot < kSlotCount; slot++)
+            {
+                if ((range.paintSlots & (1 << slot)) == 0)
+                    continue;
+                var value = range.paintDefaults[slot];
+                for (int l = 0; l < range.paintLayerCount; l++)
+                {
+                    var layer = range.paintLayers[l];
+                    if (SlotOf(layer.attribute) == slot)
+                        value = ChiselPaintLayer.Apply(layer.Sample(range.paintValues, position), value, layer.components);
+                }
+                destination[written++] = value;
+            }
+        }
     }
 
 

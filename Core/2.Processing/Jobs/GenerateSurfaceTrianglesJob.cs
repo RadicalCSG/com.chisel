@@ -33,6 +33,8 @@ namespace Chisel.Core
 		[NoAlias, ReadOnly] public NativeArray<HotspotLayoutData> hotspotLayouts;
 		// the materials layouts with variants are drawn with (HotspotLayoutData.variantStart)
 		[NoAlias, ReadOnly] public NativeArray<ulong>             hotspotVariants;
+		// The tree's paint, by surface
+		[NoAlias, ReadOnly] public ChiselPaintLookup              paint;
 
 		// Write
 		[NativeDisableParallelForRestriction]
@@ -306,6 +308,15 @@ namespace Chisel.Core
 			buf.sectionInput = sectionInput;
 			buf.hotspot       = hotspotInfo;
 			buf.hotspotSource = hotspotSource;
+
+			// paint is found by the brush's entity and the surface's index, when the surface's mesh is copied
+			var paintSurface = baseSurfaces[surf].descriptionIndex;
+			if (paint.TryGetRange(entityID, paintSurface, out var paintRange))
+			{
+				buf.paintEntityID    = entityID;
+				buf.paintSurface     = paintSurface;
+				buf.surfaceHashValue = math.hash(new uint2(buf.surfaceHashValue, paintRange.hash));
+			}
 
 			if (HasBackFace(flags, outputFlags))
 				FinishBackFace(surf, entityID, flags, parms, outputFlags, surfaceIndexList, ref uniqueVertexMapper, builder, surfaceBuffers, slots);

@@ -39,6 +39,9 @@ namespace Chisel.Core
             public NativeList<MinMaxAABB>                                       changedDecalBounds;
             // The surfaces connected or disconnected by hand (ChiselHotspotLinkStore)
             public NativeList<HotspotLink>                                      hotspotLinks;
+            // The painted surfaces' layers, sorted by surface, and their grids' values (ChiselPaintStore)
+            public NativeList<ChiselPaintLayer>                                 paintLayers;
+            public NativeList<float4>                                           paintValues;
 
             public NativeParallelHashMap<CompactNodeID, BlobAssetReference<ChiselBrushRenderBuffer>> brushRenderBufferLookup;
 
@@ -80,6 +83,8 @@ namespace Chisel.Core
 				decalBounds                 = new NativeList<MinMaxAABB>(16, Allocator.Persistent);
 				decalVolumes                = new NativeList<DecalVolume>(16, Allocator.Persistent);
 				hotspotLinks                = new NativeList<HotspotLink>(4, Allocator.Persistent);
+				paintLayers                 = new NativeList<ChiselPaintLayer>(4, Allocator.Persistent);
+				paintValues                 = new NativeList<float4>(16, Allocator.Persistent);
 				hotspotLayoutHashes         = new NativeList<uint>(4, Allocator.Persistent);
 				collapseMoves               = new NativeList<float3x2>(4, Allocator.Persistent);
 				hotspotCutCache             = new NativeParallelHashMap<CompactNodeID, HotspotCutEntry>(16, Allocator.Persistent);
@@ -233,6 +238,10 @@ namespace Chisel.Core
                 if (changedDecalBounds.IsCreated) changedDecalBounds.Dispose();
                 if (hotspotLinks.IsCreated)       hotspotLinks.Dispose();
                 hotspotLinks = default;
+                if (paintLayers.IsCreated)        paintLayers.Dispose();
+                paintLayers = default;
+                if (paintValues.IsCreated)        paintValues.Dispose();
+                paintValues = default;
                 if (hotspotLayoutHashes.IsCreated) hotspotLayoutHashes.Dispose();
                 hotspotLayoutHashes = default;
                 if (collapseMoves.IsCreated) collapseMoves.Dispose();
