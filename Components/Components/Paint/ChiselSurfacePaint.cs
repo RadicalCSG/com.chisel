@@ -21,6 +21,9 @@ namespace Chisel.Components
         public Vector3                  cellU;
         public Vector3                  cellV;
         public Vector2Int               resolution;
+        /// <summary>The surface's paint spacing the grid was made for (its cells are larger when that would have been
+        /// too many points); 0 when not known</summary>
+        public float                    spacing;
         public Vector4[]                values = Array.Empty<Vector4>();
 
         /// <summary>A grid of resolution points from origin along cellU and cellV, every point at the default</summary>

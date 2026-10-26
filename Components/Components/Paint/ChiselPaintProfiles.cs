@@ -36,6 +36,31 @@ namespace Chisel.Components
                 if (registered != null && registered.shader == shader)
                     return registered;
             }
+            Load();
+            return s_ByShader.TryGetValue(shader, out var found) ? found : null;
+        }
+
+        /// <summary>Every profile: those made in code, then the project's (but for a shader one made in code is for)</summary>
+        public static IEnumerable<ChiselPaintProfile> All
+        {
+            get
+            {
+                foreach (var registered in s_Registered)
+                {
+                    if (registered != null)
+                        yield return registered;
+                }
+                Load();
+                foreach (var profile in s_ByShader.Values)
+                {
+                    if (profile != null && Find(profile.shader) == profile)
+                        yield return profile;
+                }
+            }
+        }
+
+        static void Load()
+        {
             if (s_ByShader == null)
             {
                 s_ByShader = new Dictionary<Shader, ChiselPaintProfile>();
@@ -48,7 +73,6 @@ namespace Chisel.Components
                 }
 #endif
             }
-            return s_ByShader.TryGetValue(shader, out var found) ? found : null;
         }
 
         /// <summary>Whether surfaces drawn with this material take paint in this attribute: its shader's profile has a mode

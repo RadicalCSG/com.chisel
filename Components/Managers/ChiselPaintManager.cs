@@ -55,6 +55,7 @@ namespace Chisel.Components
                 var model = generator.hierarchyItem?.Model;
                 if (!generator.isActiveAndEnabled || generator.SurfacePaint.Count == 0 || !model)
                     continue;
+                ChiselPaintBrush.Respace(generator);
                 s_Painted.Add(generator);
                 s_Spaces[generator] = SpaceOf(generator, model);
                 if (!s_ByModel.TryGetValue(model, out var generators))

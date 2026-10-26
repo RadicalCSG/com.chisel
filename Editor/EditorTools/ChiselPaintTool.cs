@@ -14,13 +14,12 @@ namespace Chisel.Editors
     [EditorTool("Chisel Paint")]
     sealed class ChiselPaintTool : EditorTool
     {
-        static readonly GUIContent kModeContent      = new("Mode", "What to paint: the modes of the paint profile of the surface's shader.");
+        static readonly GUIContent kModeContent      = new("Mode", "What to paint: the modes of the project's paint profiles, by name. A surface takes a mode when the paint profile of its shader has one of that name.");
         static readonly GUIContent kOperationContent = new("Operation", "Paint: towards the color or value. Add / Subtract: a value up or down. Smooth: towards the neighbouring paint. Erase: back to the default.");
         static readonly GUIContent kColorContent     = new("Color");
         static readonly GUIContent kRadiusContent    = new("Radius", "The brush's radius, in metres.");
         static readonly GUIContent kStrengthContent  = new("Strength", "How much a dab moves the paint towards what it paints.");
         static readonly GUIContent kHardnessContent  = new("Hardness", "How much of the radius is painted at full strength; beyond it the brush falls off smoothly.");
-        static readonly GUIContent kCellSizeContent  = new("Cell Size", "How finely a surface painted for the first time is divided: its paint is a grid of this size, and the surface is cut at its points.");
         static readonly GUIContent kFillContent      = new("Fill Surface", "Sets the whole of the last surface under the mouse to the color or value.");
         static readonly GUIContent kChannelsContent  = new("Channels", "Works on the paint of the last surface under the mouse, in the mode's attribute.");
         static readonly GUIContent kCopyContent      = new("Copy", "Copies the first component's paint to the second.");
@@ -28,14 +27,14 @@ namespace Chisel.Editors
         static readonly GUIContent kInvertContent    = new("Invert", "Turns the first component's paint over within the mode's range.");
         static readonly string[]   kComponentNames   = { "X (R)", "Y (G)", "Z (B)", "W (A)" };
 
-        static int                  s_Mode;
+        // the mode painted in, by name: a surface takes it when its shader's profile has a mode of that name
+        static string               s_ModeName;
         static ChiselPaintOperation s_Operation = ChiselPaintOperation.Paint;
         static Color                s_Color     = Color.red;
         static float                s_Value     = 1;
         static float                s_Radius    = 0.5f;
         static float                s_Strength  = 0.5f;
         static float                s_Hardness  = 0.5f;
-        static float                s_CellSize  = 0.25f;
 
         static bool                 s_ShowChannels;
         static int                  s_ChannelFrom, s_ChannelTo = 1;
@@ -90,6 +89,27 @@ namespace Chisel.Editors
             return default;
         }
 
+        static string NameOf(ChiselPaintProfile profile, int index)
+        {
+            var name = profile.modes[index].name;
+            return string.IsNullOrEmpty(name) ? $"Mode {index}" : name;
+        }
+
+        // The profile's mode of the chosen name, -1 when it has none
+        static int ModeIndex(ChiselPaintProfile profile)
+        {
+            if (profile == null)
+                return -1;
+            for (int i = 0; i < profile.modes.Count; i++)
+            {
+                if (NameOf(profile, i) == s_ModeName)
+                    return i;
+            }
+            return -1;
+        }
+
+        static bool Paintable(Hit hit) => hit.valid && ModeIndex(hit.profile) >= 0;
+
         public override void OnToolGUI(EditorWindow window)
         {
             if (window is not SceneView)
@@ -102,10 +122,14 @@ namespace Chisel.Editors
             {
                 s_Hover = Pick(evt.mousePosition);
                 if (s_Hover.valid && s_Hover.profile != null)
+                {
                     s_Last = s_Hover;
+                    if (string.IsNullOrEmpty(s_ModeName) && s_Hover.profile.modes.Count > 0)
+                        s_ModeName = NameOf(s_Hover.profile, 0);
+                }
             }
             var hit = s_Hover;
-            if (hit.valid && hit.profile != null)
+            if (Paintable(hit))
             {
                 Handles.color = new Color(1, 1, 1, 0.8f);
                 Handles.DrawWireDisc(hit.point, hit.normal, s_Radius);
@@ -122,7 +146,7 @@ namespace Chisel.Editors
                     HandleUtility.Repaint();
                     break;
                 case EventType.MouseDown:
-                    if (evt.button != 0 || evt.alt || !hit.valid || hit.profile == null)
+                    if (evt.button != 0 || evt.alt || !Paintable(hit))
                         break;
                     // control-click takes the paint under the mouse as the brush's color or value
                     if (evt.control)
@@ -141,7 +165,7 @@ namespace Chisel.Editors
                 case EventType.MouseDrag:
                     if (GUIUtility.hotControl != id)
                         break;
-                    if (hit.valid && hit.profile != null)
+                    if (Paintable(hit))
                         Dab(hit);
                     evt.Use();
                     break;
@@ -159,9 +183,10 @@ namespace Chisel.Editors
 
         static void Sample(Hit hit)
         {
-            if (s_Mode < 0 || s_Mode >= hit.profile.modes.Count)
+            var index = ModeIndex(hit.profile);
+            if (index < 0)
                 return;
-            var mode  = hit.profile.modes[s_Mode];
+            var mode  = hit.profile.modes[index];
             var paint = hit.generator.GetSurfacePaint(hit.surfaceIndex, mode.attribute);
             var value = paint != null ? paint.Sample(hit.generator.transform.InverseTransformPoint(hit.point)) : mode.defaultValue;
             if (mode.kind == ChiselPaintKind.Color)
@@ -185,11 +210,12 @@ namespace Chisel.Editors
         {
             paint = null;
             mode  = default;
-            if (!s_Last.valid || !s_Last.generator || s_Last.profile == null || s_Mode < 0 || s_Mode >= s_Last.profile.modes.Count)
+            var index = ModeIndex(s_Last.profile);
+            if (!s_Last.valid || !s_Last.generator || index < 0)
                 return false;
-            mode = s_Last.profile.modes[s_Mode];
+            mode = s_Last.profile.modes[index];
             Undo.RecordObject(s_Last.generator, "Chisel Paint");
-            paint = ChiselPaintBrush.PaintFor(s_Last.generator, s_Last.surfaceIndex, mode, s_CellSize);
+            paint = ChiselPaintBrush.PaintFor(s_Last.generator, s_Last.surfaceIndex, mode);
             return paint != null;
         }
 
@@ -201,18 +227,19 @@ namespace Chisel.Editors
 
         static void Dab(Hit hit)
         {
-            if (s_Mode < 0 || s_Mode >= hit.profile.modes.Count)
+            var index = ModeIndex(hit.profile);
+            if (index < 0)
                 return;
-            var mode = hit.profile.modes[s_Mode];
+            var mode = hit.profile.modes[index];
             Undo.RecordObject(hit.generator, "Chisel Paint");
-            var paint = ChiselPaintBrush.PaintFor(hit.generator, hit.surfaceIndex, mode, s_CellSize);
+            var paint = ChiselPaintBrush.PaintFor(hit.generator, hit.surfaceIndex, mode);
             if (paint == null)
                 return;
             var target = mode.kind == ChiselPaintKind.Color ? (Vector4)s_Color : Vector4.one * s_Value;
             var scale  = hit.generator.transform.lossyScale;
             var radius = s_Radius / Mathf.Max(Mathf.Abs(scale.x), Mathf.Max(Mathf.Abs(scale.y), Mathf.Abs(scale.z)), 1e-5f);
             var center = hit.generator.transform.InverseTransformPoint(hit.point);
-            if (ChiselPaintBrush.Dab(paint, mode, s_Operation, target, center, radius, s_Strength, s_Hardness, hit.profile.GroupOf(s_Mode)))
+            if (ChiselPaintBrush.Dab(paint, mode, s_Operation, target, center, radius, s_Strength, s_Hardness, hit.profile.GroupOf(index)))
             {
                 hit.generator.PaintChanged();
                 EditorUtility.SetDirty(hit.generator);
@@ -229,9 +256,9 @@ namespace Chisel.Editors
                 return;
             // solid, as a tooltip is: a panel's color with a border round it
             s_TooltipStyle ??= new GUIStyle(EditorStyles.label) { padding = new RectOffset(6, 6, 3, 3), wordWrap = false };
-            var content = new GUIContent(hit.shader
-                ? $"The shader {hit.shader.name} is not set up to be paintable: it has no paint profile."
-                : "The surface has no shader to paint for.");
+            var content = new GUIContent(!hit.shader         ? "The surface\nhas no shader\nto paint for"
+                                       : hit.profile == null ? $"The shader {hit.shader.name}\nis not set up to be paintable\nit has no paint profile"
+                                                             : $"The shader {hit.shader.name}\nhas no paint mode \"{s_ModeName}\"\nin its paint profile");
             var size = s_TooltipStyle.CalcSize(content);
             var rect = new Rect(mousePosition + new Vector2(16, 20), size);
             Handles.BeginGUI();
@@ -241,40 +268,102 @@ namespace Chisel.Editors
             Handles.EndGUI();
         }
 
+        // The overlay's width, and what its rows have of it
+        internal const float kPanelWidth = 260;
+        const float kRowWidth = kPanelWidth - 6;
+
+        static readonly List<string> s_ModeNames = new();
+
+        // The mode of the chosen name: the last painted surface's, else the first profile's that has one
+        static bool ChosenMode(out ChiselPaintMode mode)
+        {
+            var index = ModeIndex(s_Last.profile);
+            if (index >= 0)
+            {
+                mode = s_Last.profile.modes[index];
+                return true;
+            }
+            foreach (var profile in ChiselPaintProfiles.All)
+            {
+                index = ModeIndex(profile);
+                if (index >= 0)
+                {
+                    mode = profile.modes[index];
+                    return true;
+                }
+            }
+            mode = default;
+            return false;
+        }
+
+        // Every mode name of the project's profiles, as toggle buttons wrapping within the panel
+        static void ModeButtons()
+        {
+            s_ModeNames.Clear();
+            foreach (var profile in ChiselPaintProfiles.All)
+            {
+                for (int i = 0; i < profile.modes.Count; i++)
+                {
+                    var name = NameOf(profile, i);
+                    if (!s_ModeNames.Contains(name))
+                        s_ModeNames.Add(name);
+                }
+            }
+            if (s_ModeNames.Count == 0)
+            {
+                EditorGUILayout.HelpBox("The project has no paint profiles.", MessageType.None);
+                return;
+            }
+            if (!s_ModeNames.Contains(s_ModeName))
+                s_ModeName = s_ModeNames[0];
+
+            EditorGUILayout.LabelField(kModeContent);
+            var style = EditorStyles.miniButton;
+            for (int n = 0; n < s_ModeNames.Count;)
+            {
+                using (new EditorGUILayout.HorizontalScope())
+                {
+                    var used = 0f;
+                    do
+                    {
+                        var content = new GUIContent(s_ModeNames[n]);
+                        var width = Mathf.Min(kRowWidth, style.CalcSize(content).x + 8);
+                        if (used > 0 && used + width > kRowWidth)
+                            break;
+                        if (GUILayout.Toggle(s_ModeNames[n] == s_ModeName, content, style, GUILayout.Width(width)))
+                            s_ModeName = s_ModeNames[n];
+                        used += width + style.margin.horizontal;
+                        n++;
+                    } while (n < s_ModeNames.Count);
+                    GUILayout.FlexibleSpace();
+                }
+            }
+        }
+
         // The tool's settings, in its overlay
         internal static void PanelGUI()
         {
-            var hit = s_Hover;
             var labelWidth = EditorGUIUtility.labelWidth;
             EditorGUIUtility.labelWidth = 90;
             {
-                // the modes of the surface last painted on, so they stay while the mouse is over the panel
-                var profile = s_Last.valid ? s_Last.profile : null;
-                if (profile == null || profile.modes.Count == 0)
-                    EditorGUILayout.HelpBox("Hover over a surface whose shader has a paint profile.", MessageType.None);
-                else
+                ModeButtons();
+                if (ChosenMode(out var chosen))
                 {
-                    var names = new GUIContent[profile.modes.Count];
-                    for (int i = 0; i < names.Length; i++)
-                        names[i] = new GUIContent(string.IsNullOrEmpty(profile.modes[i].name) ? $"Mode {i}" : profile.modes[i].name);
-                    s_Mode = Mathf.Clamp(EditorGUILayout.Popup(kModeContent, s_Mode, names), 0, names.Length - 1);
-                    var mode = profile.modes[s_Mode];
-                    if (mode.kind == ChiselPaintKind.Color)
+                    if (chosen.kind == ChiselPaintKind.Color)
                         s_Color = EditorGUILayout.ColorField(kColorContent, s_Color, true, true, false);
                     else
-                        s_Value = EditorGUILayout.Slider(new GUIContent(names[s_Mode].text), s_Value, mode.range.x, mode.range.y);
+                        s_Value = EditorGUILayout.Slider(new GUIContent(s_ModeName), s_Value, chosen.range.x, chosen.range.y);
                 }
                 s_Operation = (ChiselPaintOperation)EditorGUILayout.EnumPopup(kOperationContent, s_Operation);
                 s_Radius    = Mathf.Max(0.01f, EditorGUILayout.FloatField(kRadiusContent, s_Radius));
                 s_Strength  = EditorGUILayout.Slider(kStrengthContent, s_Strength, 0, 1);
                 s_Hardness  = EditorGUILayout.Slider(kHardnessContent, s_Hardness, 0, 1);
-                s_CellSize  = Mathf.Max(0.01f, EditorGUILayout.FloatField(kCellSizeContent, s_CellSize));
-                using (new EditorGUI.DisabledScope(!s_Last.valid))
+                using (new EditorGUI.DisabledScope(!Paintable(s_Last)))
                 {
                     if (GUILayout.Button(kFillContent) && LastPaint(out var paint, out var mode))
                     {
                         var target = mode.kind == ChiselPaintKind.Color ? (Vector4)s_Color : Vector4.one * s_Value;
-                        ChiselPaintBrush.Fill(paint, mode, target, s_Last.profile.GroupOf(s_Mode));
+                        ChiselPaintBrush.Fill(paint, mode, target, s_Last.profile.GroupOf(ModeIndex(s_Last.profile)));
                         Changed();
                     }
                     s_ShowChannels = EditorGUILayout.Foldout(s_ShowChannels, kChannelsContent, true);
@@ -322,7 +411,7 @@ namespace Chisel.Editors
         public override void OnGUI()
         {
             // one width, whatever it shows
-            using (new EditorGUILayout.VerticalScope(GUILayout.Width(260)))
+            using (new EditorGUILayout.VerticalScope(GUILayout.Width(ChiselPaintTool.kPanelWidth)))
                 ChiselPaintTool.PanelGUI();
         }
     }

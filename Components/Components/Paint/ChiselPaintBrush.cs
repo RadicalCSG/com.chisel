@@ -80,12 +80,13 @@ namespace Chisel.Components
         }
 
         /// <summary>
-        /// A grid over a surface of a generator, in the surface's plane, its cells about cellSize (larger when it would
+        /// A grid over a surface of a generator, in the surface's plane, its cells about spacing (larger when it would
         /// have more than <see cref="kMaxGridPoints"/>), every point at the default. Null when the surface has no outline.
         /// </summary>
         public static ChiselSurfacePaint CreateGrid(ChiselGeneratorComponent generator, int surfaceIndex, ChiselPaintAttribute attribute,
-                                                    ChiselPaintComponents components, Vector4 defaultValue, float cellSize)
+                                                    ChiselPaintComponents components, Vector4 defaultValue, float spacing)
         {
+            var cellSize = spacing;
             if (!SurfaceOutline(generator, surfaceIndex, s_Corners, out var normal))
                 return null;
             var axisU = Vector3.Cross(normal, Mathf.Abs(normal.y) < 0.99f ? Vector3.up : Vector3.forward).normalized;
@@ -111,19 +112,68 @@ namespace Chisel.Components
             }
             var planePoint = s_Corners[0];
             var origin = planePoint + (min.x - Vector3.Dot(planePoint, axisU)) * axisU + (min.y - Vector3.Dot(planePoint, axisV)) * axisV;
-            return ChiselSurfacePaint.Create(surfaceIndex, attribute, components, defaultValue, origin, axisU * cellSize, axisV * cellSize, resolution);
+            var paint = ChiselSurfacePaint.Create(surfaceIndex, attribute, components, defaultValue, origin, axisU * cellSize, axisV * cellSize, resolution);
+            paint.spacing = spacing;
+            return paint;
+        }
+
+        /// <summary>The paint spacing of a generator's surface (<see cref="ChiselSurface.paintSpacing"/>)</summary>
+        public static float SpacingOf(ChiselGeneratorComponent generator, int surfaceIndex)
+        {
+            var surfaces = generator ? generator.SurfaceDefinition?.surfaces : null;
+            return surfaces != null && surfaceIndex >= 0 && surfaceIndex < surfaces.Length && surfaces[surfaceIndex] != null
+                ? surfaces[surfaceIndex].PaintSpacing : ChiselSurface.kDefaultPaintSpacing;
+        }
+
+        /// <summary>
+        /// Puts the paint of every surface of a generator whose paint spacing changed on a new grid of that spacing,
+        /// resampled from the old one. True when any changed.
+        /// </summary>
+        public static bool Respace(ChiselGeneratorComponent generator)
+        {
+            var changed = false;
+            var all = generator.SurfacePaint;
+            for (int p = 0; p < all.Count; p++)
+            {
+                var paint = all[p];
+                if (paint == null)
+                    continue;
+                var spacing = SpacingOf(generator, paint.surfaceIndex);
+                if (paint.spacing == spacing)
+                    continue;
+                if (!(paint.spacing > 0))
+                {
+                    paint.spacing = spacing;
+                    changed = true;
+                    continue;
+                }
+                var grid = CreateGrid(generator, paint.surfaceIndex, paint.attribute, paint.components, paint.defaultValue, spacing);
+                if (grid == null)
+                    continue;
+                for (int j = 0; j < grid.resolution.y; j++)
+                {
+                    for (int i = 0; i < grid.resolution.x; i++)
+                        grid[i, j] = paint.Sample(grid.origin + i * grid.cellU + j * grid.cellV);
+                }
+                // the old grid leaves the list, the new one goes to its end: the next paint is at p now
+                generator.SetSurfacePaint(grid);
+                p--;
+                changed = true;
+            }
+            return changed;
         }
 
         /// <summary>
         /// The paint a mode writes on a surface: the surface's paint in the mode's attribute, with the mode's components
-        /// (at its default where they weren't painted yet), made with a grid of cellSize when it has none
+        /// (at its default where they weren't painted yet), made with a grid of the surface's paint spacing when it has none
         /// </summary>
-        public static ChiselSurfacePaint PaintFor(ChiselGeneratorComponent generator, int surfaceIndex, in ChiselPaintMode mode, float cellSize)
+        public static ChiselSurfacePaint PaintFor(ChiselGeneratorComponent generator, int surfaceIndex, in ChiselPaintMode mode)
         {
+            Respace(generator);
             var paint = generator.GetSurfacePaint(surfaceIndex, mode.attribute);
             if (paint == null)
             {
-                paint = CreateGrid(generator, surfaceIndex, mode.attribute, mode.components, mode.defaultValue, cellSize);
+                paint = CreateGrid(generator, surfaceIndex, mode.attribute, mode.components, mode.defaultValue, SpacingOf(generator, surfaceIndex));
                 if (paint != null)
                     generator.SetSurfacePaint(paint);
                 return paint;

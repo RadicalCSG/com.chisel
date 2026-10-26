@@ -70,6 +70,13 @@ namespace Chisel.Core
 		[SerializeField]
 		internal ChiselMaterial chiselMaterial = new();
 		public SurfaceDetails surfaceDetails = SurfaceDetails.Default;
+		// How far apart the points the surface is painted at (and cut at) are, in metres; 0 for the default. Only painting
+		// reads it, so it stays out of the details that go into every brush polygon.
+		public float paintSpacing;
+
+		public const string kPaintSpacingName = nameof(paintSpacing);
+		public const float kDefaultPaintSpacing = 0.25f;
+		public float PaintSpacing => paintSpacing > 0 ? paintSpacing : kDefaultPaintSpacing;
 
 		public bool HasMaterial { get { return chiselMaterial.material != null; } }
 

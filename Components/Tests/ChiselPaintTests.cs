@@ -238,7 +238,7 @@ namespace Chisel.Components.Tests
             var box   = Box(model, Vector3.zero);
             var top   = SurfaceFacing(box, new float3(0, 1, 0));
             var mode  = ChiselPaintMode.Color("Color");
-            var paint = ChiselPaintBrush.PaintFor(box, top, mode, 0.25f);
+            var paint = ChiselPaintBrush.PaintFor(box, top, mode);
             Assert.That(paint, Is.Not.Null);
             Assert.That(paint.resolution, Is.EqualTo(new Vector2Int(5, 5)), "a metre in quarters: 5 points along each side");
             Assert.That(paint.cellU.magnitude, Is.EqualTo(0.25f).Within(1e-5f));
@@ -262,9 +262,9 @@ namespace Chisel.Components.Tests
             var top    = SurfaceFacing(box, new float3(0, 1, 0));
             var height = ChiselPaintMode.Value("Height", ChiselPaintAttribute.TexCoord2, ChiselPaintComponents.X, 0, 0, 1);
             var wet    = ChiselPaintMode.Value("Wetness", ChiselPaintAttribute.TexCoord2, ChiselPaintComponents.Y, 0, 0, 1);
-            var paint  = ChiselPaintBrush.PaintFor(box, top, height, 0.25f);
+            var paint  = ChiselPaintBrush.PaintFor(box, top, height);
             ChiselPaintBrush.Dab(paint, height, ChiselPaintOperation.Add, Vector4.one * 0.5f, new Vector3(0.5f, 1, 0.5f), 2, 1, 1);
-            Assert.That(ChiselPaintBrush.PaintFor(box, top, wet, 0.25f), Is.SameAs(paint));
+            Assert.That(ChiselPaintBrush.PaintFor(box, top, wet), Is.SameAs(paint));
             ChiselPaintBrush.Dab(paint, wet, ChiselPaintOperation.Paint, Vector4.one * 0.75f, new Vector3(0.5f, 1, 0.5f), 2, 1, 1);
             Assert.That(paint.components, Is.EqualTo(ChiselPaintComponents.X | ChiselPaintComponents.Y));
             Assert.That(paint[2, 2].x, Is.EqualTo(0.5f).Within(1e-5f), "the height stays");
@@ -284,7 +284,7 @@ namespace Chisel.Components.Tests
             var box   = Box(model, Vector3.zero);
             var top   = SurfaceFacing(box, new float3(0, 1, 0));
             var mode  = ChiselPaintMode.Value("Value", ChiselPaintAttribute.TexCoord2, ChiselPaintComponents.X);
-            var paint = ChiselPaintBrush.PaintFor(box, top, mode, 0.25f);
+            var paint = ChiselPaintBrush.PaintFor(box, top, mode);
             paint[2, 2] = new Vector4(1, 0, 0, 0);
             ChiselPaintBrush.Dab(paint, mode, ChiselPaintOperation.Smooth, Vector4.zero, new Vector3(0.5f, 1, 0.5f), 2, 1, 1);
             Assert.That(paint[2, 2].x, Is.EqualTo(1f / 9).Within(1e-5f), "the average of it and its 8 neighbours");
@@ -312,9 +312,9 @@ namespace Chisel.Components.Tests
             }
             Assert.That(profile.GroupOf(1), Is.EqualTo(ChiselPaintComponents.X | ChiselPaintComponents.Z));
 
-            var paint = ChiselPaintBrush.PaintFor(box, top, profile.modes[0], 0.25f);
-            ChiselPaintBrush.PaintFor(box, top, profile.modes[1], 0.25f);
-            ChiselPaintBrush.PaintFor(box, top, profile.modes[2], 0.25f);
+            var paint = ChiselPaintBrush.PaintFor(box, top, profile.modes[0]);
+            ChiselPaintBrush.PaintFor(box, top, profile.modes[1]);
+            ChiselPaintBrush.PaintFor(box, top, profile.modes[2]);
             // the weights are x, y and z; w is no mode's
             Assert.That((Vector3)paint[2, 2], Is.EqualTo(new Vector3(1, 0, 0)), "all rock");
 
@@ -332,7 +332,8 @@ namespace Chisel.Components.Tests
             var box   = Box(model, Vector3.zero);
             var top   = SurfaceFacing(box, new float3(0, 1, 0));
             var mode  = ChiselPaintMode.Color("Color");
-            var paint = ChiselPaintBrush.PaintFor(box, top, mode, 1);
+            box.SurfaceDefinition.surfaces[top].paintSpacing = 1;
+            var paint = ChiselPaintBrush.PaintFor(box, top, mode);
             paint.values = new[] { new Vector4(0, 0, 0, 1), new Vector4(1, 0, 0, 1), new Vector4(0, 1, 0, 1), new Vector4(1, 1, 0, 1) };
             var middle = paint.Sample(paint.origin + (paint.cellU + paint.cellV) * 0.5f + Vector3.up * 3);
             Assert.That(Vector4.Distance(middle, new Vector4(0.5f, 0.5f, 0, 1)), Is.LessThan(1e-5f), "between the four, the grid projected along its normal");
@@ -364,6 +365,38 @@ namespace Chisel.Components.Tests
             ChiselPaintProfiles.Register(profile);
             Update();
             Assert.That(RenderMesh(model).HasVertexAttribute(VertexAttribute.Color), Is.True, "drawn again");
+        }
+
+        // A surface's paint is on a grid of its paint spacing; changing the spacing resamples the paint onto a new grid
+        [Test]
+        public void ChangingThePaintSpacing_ResamplesThePaint()
+        {
+            var model = Model();
+            var box   = Box(model, Vector3.zero);
+            var top   = SurfaceFacing(box, new float3(0, 1, 0));
+            var paint = ChiselPaintBrush.PaintFor(box, top, ChiselPaintMode.Color("Color"));
+            Assert.That(paint.resolution, Is.EqualTo(new Vector2Int(5, 5)), "the default spacing, 25 cm");
+            Assert.That(ChiselPaintBrush.Respace(box), Is.False, "nothing changed");
+
+            var old = PaintTop(box, ChiselPaintAttribute.Color, ChiselPaintComponents.XYZW);
+            ChiselPaintBrush.Respace(box);
+            Assert.That(box.GetSurfacePaint(top, ChiselPaintAttribute.Color), Is.SameAs(old), "a grid of unknown spacing takes the surface's");
+
+            box.SurfaceDefinition.surfaces[top].paintSpacing = 0.5f;
+            Assert.That(ChiselPaintBrush.Respace(box), Is.True);
+            var respaced = box.GetSurfacePaint(top, ChiselPaintAttribute.Color);
+            Assert.That(respaced, Is.Not.SameAs(old));
+            Assert.That(respaced.resolution, Is.EqualTo(new Vector2Int(3, 3)));
+            Assert.That(respaced.spacing, Is.EqualTo(0.5f));
+            for (int j = 0; j < 3; j++)
+            {
+                for (int i = 0; i < 3; i++)
+                {
+                    var point = respaced.origin + i * respaced.cellU + j * respaced.cellV;
+                    Assert.That(Vector4.Distance(respaced[i, j], old.Sample(point)), Is.LessThan(1e-5f), $"point {i}, {j}");
+                }
+            }
+            Assert.That(box.SurfacePaint.Count, Is.EqualTo(1));
         }
 
         // The grid moves with its generator

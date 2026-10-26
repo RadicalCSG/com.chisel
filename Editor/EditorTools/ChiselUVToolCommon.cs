@@ -92,6 +92,7 @@ namespace Chisel.Editors
 			surfaceFlagsProp = null;
 			UV0Prop = null;
 			hotspotProp = null;
+			paintSpacingProp = null;
 			initialized = false;
         }
 
@@ -129,6 +130,7 @@ namespace Chisel.Editors
                 hotspotProp          = surfaceDetailsProp.FindPropertyRelative(nameof(SurfaceDetails.hotspot));
 			}
 			chiselMaterialProp = surfaceProp.FindPropertyRelative(ChiselSurface.kChiselMaterialName);
+			paintSpacingProp   = surfaceProp.FindPropertyRelative(ChiselSurface.kPaintSpacingName);
             initialized = true;
         }
 
@@ -147,6 +149,7 @@ namespace Chisel.Editors
 		SerializedProperty surfaceFlagsProp;
         SerializedProperty UV0Prop;
         SerializedProperty hotspotProp;
+        SerializedProperty paintSpacingProp;
         [SerializeField] UnityEngine.Object[]    undoableObjects = Array.Empty<UnityEngine.Object>();
         [SerializeField] ChiselSelectedSurface[] surfaces        = Array.Empty<ChiselSelectedSurface>();
 
@@ -536,6 +539,12 @@ namespace Chisel.Editors
                         EditorGUI.PropertyField(position, UV0Prop, SurfaceDetailsPropertyDrawer.kUV0Contents, true);
                 }
 
+                if (paintSpacingProp != null && SurfaceDetailsPropertyDrawer.TakesPaint(surfaces[0].Surface.RenderMaterial))
+                {
+                    position = EditorGUILayout.GetControlRect(true, EditorGUIUtility.singleLineHeight);
+                    SurfaceDetailsPropertyDrawer.PaintSpacingField(position, paintSpacingProp, SurfaceDetailsPropertyDrawer.kPaintSpacingContents);
+                }
+
                 EditorGUIUtility.labelWidth = prevLabelWidth;
             }
             if (EditorGUI.EndChangeCheck() && undoableObjects.Length > 0)
@@ -555,6 +564,7 @@ namespace Chisel.Editors
                     serializedObject.Update();
                 }
                 ChiselHotspotGroupEdit.Spread(edited, undoableObjects.Length > 1 ? "Modified materials" : "Modified material");
+                SurfaceDetailsPropertyDrawer.Respace(edited, undoableObjects.Length > 1 ? "Modified materials" : "Modified material");
             }
         }
 
