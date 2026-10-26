@@ -63,6 +63,16 @@ namespace Chisel.Core
         }
     }
 
+    /// <summary>What setting an entity's paint changed</summary>
+    public enum ChiselPaintChange : byte
+    {
+        None,
+        /// <summary>Only values on the same grids: the meshes are copied again, no brush is built</summary>
+        Values,
+        /// <summary>The grids (or which surfaces have paint): the entity's brushes have to be built again</summary>
+        Grids
+    }
+
     // The tree keeps its paint between updates: each entity's layers together, their values appended as they come (the
     // values of replaced layers are left until they are half of them), and the ranges and hashes an update looks up
     internal static class ChiselPaintStore
@@ -87,10 +97,25 @@ namespace Chisel.Core
 
         /// <summary>Replaces the paint of one entity: its layers, and the values their grids take from. True when it changed;
         /// its brushes then have to be rebuilt to show it.</summary>
-        public static unsafe bool SetPaint(CSGTree tree, ulong entityID, NativeArray<ChiselPaintLayer> layers, NativeArray<float> values)
+        public static bool SetPaint(CSGTree tree, ulong entityID, NativeArray<ChiselPaintLayer> layers, NativeArray<float> values)
+        {
+            return Set(tree, entityID, layers, values, false) != ChiselPaintChange.None;
+        }
+
+        /// <summary>
+        /// Replaces the paint of one entity. When only values changed on the same grids, they are written in place and
+        /// the meshes are copied again at the next update without building a brush (<see cref="ChiselPaintChange.Values"/>);
+        /// otherwise the entity's brushes have to be built again (<see cref="ChiselPaintChange.Grids"/>).
+        /// </summary>
+        public static ChiselPaintChange SetPaintOrValues(CSGTree tree, ulong entityID, NativeArray<ChiselPaintLayer> layers, NativeArray<float> values)
+        {
+            return Set(tree, entityID, layers, values, true);
+        }
+
+        static unsafe ChiselPaintChange Set(CSGTree tree, ulong entityID, NativeArray<ChiselPaintLayer> layers, NativeArray<float> values, bool valuesInPlace)
         {
             if (!tree.Valid)
-                return false;
+                return ChiselPaintChange.None;
             var data = ChiselTreeLookup.Value[tree];
 
             NativeList<ChiselPaintLayer> sorted;
@@ -116,14 +141,22 @@ namespace Chisel.Core
             }
             data.paintEntityHashes.TryGetValue(entityID, out var previous);
             if (sorted.Length == 0 ? !data.paintEntityHashes.ContainsKey(entityID) : previous == entityHash && data.paintEntityHashes.ContainsKey(entityID))
-                return false;
+                return ChiselPaintChange.None;
 
             data.lastJobHandle.Complete();
 
-            // its old layers out, their values left behind
             var first = 0;
             while (first < data.paintLayers.Length && data.paintLayers[first].entityID != entityID)
                 first++;
+            // a tree that kept its saved meshes has no buffers to put right: it is built
+            if (valuesInPlace && !CompactHierarchyManager.IsTreeUpdateSkipped(tree) && SameGrids(data, first, sorted) &&
+                SetValues(tree, data, entityID, first, sorted, hashes, valuesPointer))
+            {
+                data.paintEntityHashes[entityID] = entityHash;
+                return ChiselPaintChange.Values;
+            }
+
+            // its old layers out, their values left behind
             var last = first;
             while (last < data.paintLayers.Length && data.paintLayers[last].entityID == entityID)
             {
@@ -151,6 +184,92 @@ namespace Chisel.Core
             if (data.paintUnusedValues > 0 && data.paintUnusedValues * 2 >= data.paintValues.Length)
                 Compact(data);
             UpdateRanges(data);
+            return ChiselPaintChange.Grids;
+        }
+
+        // Whether the entity's layers from first are the new layers but for their values
+        static bool SameGrids(ChiselTreeLookup.Data data, int first, NativeList<ChiselPaintLayer> layers)
+        {
+            for (int l = 0; l < layers.Length; l++)
+            {
+                if (first + l >= data.paintLayers.Length)
+                    return false;
+                var old   = data.paintLayers[first + l];
+                var layer = layers[l];
+                if (old.entityID != layer.entityID)
+                    return false;
+                old.valueStart = layer.valueStart = 0;
+                if (!old.Equals(layer))
+                    return false;
+            }
+            var next = first + layers.Length;
+            return layers.Length > 0 && (next >= data.paintLayers.Length || data.paintLayers[next].entityID != layers[0].entityID);
+        }
+
+        // New values written over the old, and the hashes of the surfaces they are on put right in the brushes' cached
+        // buffers, so the next update copies their meshes again without building a brush. False when no buffer of the
+        // entity's brushes has the paint (they are built then)
+        static unsafe bool SetValues(CSGTree tree, ChiselTreeLookup.Data data, ulong entityID, int first, NativeList<ChiselPaintLayer> layers,
+                                     NativeList<uint> hashes, float* values)
+        {
+            for (int l = 0; l < layers.Length; l++)
+            {
+                var old = data.paintLayers[first + l];
+                UnsafeUtility.MemCpy((float*)data.paintValues.GetUnsafePtr() + old.valueStart, values + layers[l].valueStart, old.ValueCount * sizeof(float));
+                data.paintLayerHashes[first + l] = hashes[l];
+            }
+
+            // each surface's new hash, and what changes in the hash of the surfaces it is on
+            using var changes = new NativeParallelHashMap<int, uint>(math.max(1, layers.Length), Allocator.Temp);
+            for (int start = first; start < first + layers.Length;)
+            {
+                var surfaceIndex = data.paintLayers[start].surfaceIndex;
+                var key = new ChiselPaintKey { entityID = entityID, surfaceIndex = surfaceIndex };
+                data.paintRanges.TryGetValue(key, out var range);
+                var hash = 0u;
+                var end  = start;
+                for (; end < first + layers.Length && data.paintLayers[end].surfaceIndex == surfaceIndex; end++)
+                    hash = math.hash(new uint2(hash, data.paintLayerHashes[end]));
+                if (hash != range.hash)
+                    changes.TryAdd(surfaceIndex, hash ^ range.hash);
+                range.hash = hash;
+                data.paintRanges[key] = range;
+                start = end;
+            }
+            if (changes.IsEmpty)
+                return true;
+
+            var found = false;
+            var cache = data.brushRenderBufferCache;
+            for (int b = 0; b < cache.Length; b++)
+            {
+                if (!cache[b].IsCreated)
+                    continue;
+                ref var buffer = ref cache[b].Value;
+                if (buffer.entityID != entityID)
+                    continue;
+                for (int s = 0; s < buffer.surfaces.Length; s++)
+                {
+                    ref var surface = ref buffer.surfaces[s];
+                    if (surface.paintSurface < 0 || !changes.TryGetValue(surface.paintSurface, out var change))
+                        continue;
+                    found = true;
+                    surface.surfaceHashValue ^= change;
+                    for (int q = 0; q < buffer.querySurfaces.Length; q++)
+                    {
+                        ref var querySurfaces = ref buffer.querySurfaces[q].surfaces;
+                        for (int i = 0; i < querySurfaces.Length; i++)
+                        {
+                            if (querySurfaces[i].surfaceIndex == s)
+                                querySurfaces[i].surfaceHashValue ^= change;
+                        }
+                    }
+                }
+            }
+            if (!found)
+                return false;
+            data.paintValuesChanged = true;
+            tree.SetDirty();
             return true;
         }
 

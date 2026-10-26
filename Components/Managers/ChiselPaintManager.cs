@@ -86,7 +86,7 @@ namespace Chisel.Components
                 if (given)
                 {
                     // built again without it, if it is still there
-                    if (before.tree.Valid && before.tree.SetPaint(before.entityID, default, default) && generator)
+                    if (before.tree.Valid && before.tree.SetPaint(before.entityID, default, default) != ChiselPaintChange.None && generator)
                         SetBrushesDirty(generator.TopTreeNode);
                     s_Given.Remove(generator);
                 }
@@ -136,8 +136,9 @@ namespace Chisel.Components
                 v += paint.values.Length;
             }
             s_Given[generator] = new Given { entityID = entityID, tree = tree, space = space };
-            // the brushes of a generator whose paint changed are built again, with it
-            if (tree.SetPaint(entityID, layers, values))
+            // the brushes of a generator whose grids changed are built again, with them; new values on the same grids only
+            // have the meshes copied again
+            if (tree.SetPaint(entityID, layers, values) == ChiselPaintChange.Grids)
                 SetBrushesDirty(generator.TopTreeNode);
         }
 
