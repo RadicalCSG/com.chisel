@@ -987,6 +987,10 @@ namespace Chisel.Components
 					}
 				}
 			}
+			// nothing of the model is held on to
+			s_PaintGenerators.Clear();
+			s_PaintMaterials.Clear();
+			s_PaintSlots.Clear();
 		}
 
 		static void AppendMaterialIdentity(ref Hash128 hash, Material material)
