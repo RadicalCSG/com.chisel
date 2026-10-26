@@ -71,8 +71,6 @@ namespace Chisel.Editors
         static readonly List<ChiselIntersection> s_Intersections = new();
         // the surface under the mouse, as it was last picked
         static Hit                  s_Hover;
-        // where the panel was drawn, so a click on it doesn't paint
-        static Rect                 s_Panel;
         static int                  s_UndoGroup = -1;
 
         public override GUIContent toolbarIcon => new("Paint", "Chisel Paint: paint vertex data onto surfaces, in the modes of their shaders' paint profiles");
@@ -128,13 +126,11 @@ namespace Chisel.Editors
             var type = evt.GetTypeForControl(id);
             if (type == EventType.MouseMove || type == EventType.MouseDown || type == EventType.MouseDrag)
             {
-                s_Hover = s_Panel.Contains(evt.mousePosition) ? default : Pick(evt.mousePosition);
+                s_Hover = Pick(evt.mousePosition);
                 if (s_Hover.valid && s_Hover.profile != null)
                     s_Last = s_Hover;
             }
             var hit = s_Hover;
-
-            DrawPanel(hit);
             if (hit.valid)
             {
                 Handles.color = hit.profile != null ? new Color(1, 1, 1, 0.8f) : new Color(1, 0.3f, 0.3f, 0.8f);
@@ -151,7 +147,7 @@ namespace Chisel.Editors
                     HandleUtility.Repaint();
                     break;
                 case EventType.MouseDown:
-                    if (evt.button != 0 || evt.alt || !hit.valid || hit.profile == null || s_Panel.Contains(evt.mousePosition))
+                    if (evt.button != 0 || evt.alt || !hit.valid || hit.profile == null)
                         break;
                     // control-click takes the paint under the mouse as the brush's color or value
                     if (evt.control)
@@ -248,17 +244,13 @@ namespace Chisel.Editors
             }
         }
 
-        static void DrawPanel(Hit hit)
+        // The tool's settings, in its overlay
+        internal static void PanelGUI()
         {
-            // a plain area, not a GUI window: a tool draws outside the scene view's BeginWindows / EndWindows
-            Handles.BeginGUI();
-            var area = new Rect(10, 10, 280, Mathf.Max(100, Screen.height));
-            GUILayout.BeginArea(area);
+            var hit = s_Hover;
             var labelWidth = EditorGUIUtility.labelWidth;
             EditorGUIUtility.labelWidth = 90;
-            var panel = EditorGUILayout.BeginVertical(EditorStyles.helpBox);
             {
-                GUILayout.Label("Chisel Paint", EditorStyles.boldLabel);
                 // the modes of the surface last painted on, so they stay while the mouse is over the panel
                 var profile = s_Last.valid ? s_Last.profile : null;
                 if (hit.valid && hit.profile == null)
@@ -320,12 +312,22 @@ namespace Chisel.Editors
                 }
                 EditorGUILayout.HelpBox("Control-click takes the paint under the mouse.", MessageType.None);
             }
-            EditorGUILayout.EndVertical();
             EditorGUIUtility.labelWidth = labelWidth;
-            GUILayout.EndArea();
-            if (Event.current.type == EventType.Repaint)
-                s_Panel = new Rect(area.x + panel.x, area.y + panel.y, panel.width, panel.height);
-            Handles.EndGUI();
+        }
+    }
+
+    /// <summary>The Chisel Paint tool's settings, while it is the active tool</summary>
+    [UnityEditor.Overlays.Overlay(typeof(SceneView), kOverlayTitle)]
+    sealed class ChiselPaintOverlay : UnityEditor.Overlays.IMGUIOverlay, UnityEditor.Overlays.ITransientOverlay
+    {
+        const string kOverlayTitle = "Chisel Paint";
+
+        public bool visible => ToolManager.activeToolType == typeof(ChiselPaintTool);
+
+        public override void OnGUI()
+        {
+            EditorGUILayout.GetControlRect(false, 0, GUILayout.MinWidth(260));
+            ChiselPaintTool.PanelGUI();
         }
     }
 }
