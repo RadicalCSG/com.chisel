@@ -564,11 +564,8 @@ namespace Chisel.Core
                     Temporaries.hotspotTileSides = new NativeArray<float4>(hotspotTileSides.AsArray(), defaultAllocator);
                     Temporaries.hotspotVariants  = new NativeArray<ulong>(hotspotVariants.AsArray(), defaultAllocator);
                     Temporaries.hotspotLinks   = new NativeArray<HotspotLink>(chiselLookupValues.hotspotLinks.AsArray(), defaultAllocator);
-                    using (var materialSlots = new NativeList<ChiselPaintMaterialSlot>(Allocator.Temp))
-                    {
-                        ChiselPaintMaterials.Gather(materialSlots);
-                        Temporaries.paint = ChiselPaintLookup.Create(chiselLookupValues.paintLayers, chiselLookupValues.paintValues, materialSlots, defaultAllocator);
-                    }
+                    ChiselPaintStore.UpdateMaterials(chiselLookupValues);
+                    Temporaries.paint          = ChiselPaintLookup.Of(chiselLookupValues);
                 }
 
                 Temporaries.subMeshDescriptions             = new NativeList<SubMeshDescriptions>(defaultAllocator);
@@ -2705,8 +2702,6 @@ namespace Chisel.Core
                 lastJobHandle.AddDependency(Temporaries.hotspotTiles                 .SafeDispose(JobHandles[JobHandleType.decalVolumesJobHandle].readWriteBarrier));
                 lastJobHandle.AddDependency(Temporaries.hotspotLayouts               .SafeDispose(JobHandles[JobHandleType.decalVolumesJobHandle].readWriteBarrier));
                 lastJobHandle.AddDependency(Temporaries.hotspotLinks                 .SafeDispose(JobHandles[JobHandleType.decalVolumesJobHandle].readWriteBarrier));
-                lastJobHandle.AddDependency(Temporaries.paint.Dispose(JobHandle.CombineDependencies(JobHandles[JobHandleType.brushRenderBufferCacheJobHandle].readWriteBarrier,
-                                                                                                    JobHandles[JobHandleType.vertexBufferContents_meshesJobHandle].readWriteBarrier)));
                 lastJobHandle.AddDependency(Temporaries.hotspotTileSides             .SafeDispose(JobHandles[JobHandleType.decalVolumesJobHandle].readWriteBarrier));
                 lastJobHandle.AddDependency(Temporaries.hotspotVariants              .SafeDispose(JobHandles[JobHandleType.decalVolumesJobHandle].readWriteBarrier));
                 lastJobHandle.AddDependency(Temporaries.changedHotspotLayouts        .SafeDispose(JobHandles[JobHandleType.decalVolumesJobHandle].readWriteBarrier));

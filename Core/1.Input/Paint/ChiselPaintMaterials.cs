@@ -30,6 +30,7 @@ namespace Chisel.Core
         static readonly List<ChiselPaintMaterialSlot>     s_Scratch   = new();
         static readonly List<ulong>                       s_Gone      = new();
         static bool s_Dirty;
+        static int  s_Version;
         static bool s_Changed;
 
         public static void Register(Material material)
@@ -90,6 +91,7 @@ namespace Chisel.Core
             if (!s_Dirty)
                 return;
             s_Dirty = false;
+            s_Version++;
             s_Slots.Clear();
             s_Gone.Clear();
             foreach (var entry in s_Materials)
@@ -108,6 +110,13 @@ namespace Chisel.Core
             }
             foreach (var key in s_Gone)
                 s_Materials.Remove(key);
+        }
+
+        // The slots as they are now, and a number that changes when they do
+        internal static int Refresh()
+        {
+            Resolve();
+            return s_Version;
         }
 
         internal static void Gather(NativeList<ChiselPaintMaterialSlot> slots)

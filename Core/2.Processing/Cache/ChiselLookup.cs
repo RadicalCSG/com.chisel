@@ -39,9 +39,16 @@ namespace Chisel.Core
             public NativeList<MinMaxAABB>                                       changedDecalBounds;
             // The surfaces connected or disconnected by hand (ChiselHotspotLinkStore)
             public NativeList<HotspotLink>                                      hotspotLinks;
-            // The painted surfaces' layers, sorted by surface, and their grids' values (ChiselPaintStore)
+            // The painted surfaces' layers and their grids' values, and what an update looks up in them (ChiselPaintStore)
             public NativeList<ChiselPaintLayer>                                 paintLayers;
+            public NativeList<uint>                                             paintLayerHashes;
             public NativeList<float4>                                           paintValues;
+            public int                                                          paintUnusedValues;
+            public NativeParallelHashMap<ulong, uint>                           paintEntityHashes;
+            public NativeParallelHashMap<ChiselPaintKey, ChiselPaintRange>      paintRanges;
+            public NativeList<ChiselPaintMaterialSlot>                          paintMaterialSlots;
+            public NativeParallelHashMap<ulong, ChiselPaintRange>               paintMaterials;
+            public int                                                          paintMaterialsVersion = -1;
 
             public NativeParallelHashMap<CompactNodeID, BlobAssetReference<ChiselBrushRenderBuffer>> brushRenderBufferLookup;
 
@@ -84,7 +91,13 @@ namespace Chisel.Core
 				decalVolumes                = new NativeList<DecalVolume>(16, Allocator.Persistent);
 				hotspotLinks                = new NativeList<HotspotLink>(4, Allocator.Persistent);
 				paintLayers                 = new NativeList<ChiselPaintLayer>(4, Allocator.Persistent);
+				paintLayerHashes            = new NativeList<uint>(4, Allocator.Persistent);
 				paintValues                 = new NativeList<float4>(16, Allocator.Persistent);
+				paintEntityHashes           = new NativeParallelHashMap<ulong, uint>(4, Allocator.Persistent);
+				paintRanges                 = new NativeParallelHashMap<ChiselPaintKey, ChiselPaintRange>(4, Allocator.Persistent);
+				paintMaterialSlots          = new NativeList<ChiselPaintMaterialSlot>(4, Allocator.Persistent);
+				paintMaterials              = new NativeParallelHashMap<ulong, ChiselPaintRange>(4, Allocator.Persistent);
+				paintMaterialsVersion       = -1;
 				hotspotLayoutHashes         = new NativeList<uint>(4, Allocator.Persistent);
 				collapseMoves               = new NativeList<float3x2>(4, Allocator.Persistent);
 				hotspotCutCache             = new NativeParallelHashMap<CompactNodeID, HotspotCutEntry>(16, Allocator.Persistent);
@@ -242,6 +255,17 @@ namespace Chisel.Core
                 paintLayers = default;
                 if (paintValues.IsCreated)        paintValues.Dispose();
                 paintValues = default;
+                if (paintLayerHashes.IsCreated)   paintLayerHashes.Dispose();
+                paintLayerHashes = default;
+                if (paintEntityHashes.IsCreated)  paintEntityHashes.Dispose();
+                paintEntityHashes = default;
+                if (paintRanges.IsCreated)        paintRanges.Dispose();
+                paintRanges = default;
+                if (paintMaterialSlots.IsCreated) paintMaterialSlots.Dispose();
+                paintMaterialSlots = default;
+                if (paintMaterials.IsCreated)     paintMaterials.Dispose();
+                paintMaterials = default;
+                paintUnusedValues = 0;
                 if (hotspotLayoutHashes.IsCreated) hotspotLayoutHashes.Dispose();
                 hotspotLayoutHashes = default;
                 if (collapseMoves.IsCreated) collapseMoves.Dispose();
