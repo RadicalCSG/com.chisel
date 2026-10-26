@@ -313,7 +313,7 @@ namespace Chisel.Editors
                 return;
 
             var existing = new HashSet<(ChiselNodeComponent, int, ChiselNodeComponent, int)>();
-            foreach (var decal in Object.FindObjectsByType<ChiselDecalComponent>(FindObjectsSortMode.None))
+            foreach (var decal in Object.FindObjectsByType<ChiselDecalComponent>(FindObjectsInactive.Exclude))
             {
                 if (decal.Shape == ChiselDecalShape.Trim && decal.Targets.Count >= 2)
                     existing.Add((decal.Targets[0].brush, decal.Targets[0].surfaceIndex, decal.Targets[1].brush, decal.Targets[1].surfaceIndex));

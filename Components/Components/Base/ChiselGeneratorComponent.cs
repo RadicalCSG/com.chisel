@@ -185,6 +185,40 @@ namespace Chisel.Components
         // Scenes saved before contents existed load as Solid.
         [SerializeField, HideInInspector] protected int                 contents;		    // NOTE: do not rename, name is directly used in editors
         [SerializeField] protected Vector3                              pivotOffset         = Vector3.zero;
+        // The paint of the generator's surfaces, a grid per surface and vertex attribute (ChiselSurfacePaint)
+        [SerializeField, HideInInspector] System.Collections.Generic.List<ChiselSurfacePaint> surfacePaint = new();
+
+        public System.Collections.Generic.IReadOnlyList<ChiselSurfacePaint> SurfacePaint => surfacePaint;
+
+        /// <summary>The paint of a surface in an attribute, or null</summary>
+        public ChiselSurfacePaint GetSurfacePaint(int surfaceIndex, ChiselPaintAttribute attribute)
+        {
+            foreach (var paint in surfacePaint)
+            {
+                if (paint != null && paint.surfaceIndex == surfaceIndex && paint.attribute == attribute)
+                    return paint;
+            }
+            return null;
+        }
+
+        /// <summary>Gives a surface this paint in its attribute, in place of what it had</summary>
+        public void SetSurfacePaint(ChiselSurfacePaint paint)
+        {
+            if (paint == null)
+                return;
+            surfacePaint.RemoveAll(other => other == null || (other.surfaceIndex == paint.surfaceIndex && other.attribute == paint.attribute));
+            surfacePaint.Add(paint);
+            ChiselPaintManager.SetDirty(this);
+        }
+
+        public void RemoveSurfacePaint(int surfaceIndex, ChiselPaintAttribute attribute)
+        {
+            if (surfacePaint.RemoveAll(other => other == null || (other.surfaceIndex == surfaceIndex && other.attribute == attribute)) > 0)
+                ChiselPaintManager.SetDirty(this);
+        }
+
+        /// <summary>Called after the values of a surface's paint were changed in place</summary>
+        public void PaintChanged() => ChiselPaintManager.SetDirty(this);
 
         public override CSGTreeNode TopTreeNode 
         { 
@@ -416,7 +450,14 @@ namespace Chisel.Components
 
             if (TopTreeNode.Dirty)
                 ChiselNodeHierarchyManager.NotifyContentsModified(this);
+            ChiselPaintManager.SetDirty(this);
             base.OnValidateState();
+        }
+
+        protected override void OnEnable()
+        {
+            base.OnEnable();
+            ChiselPaintManager.SetDirty(this);
         }
 
         public override void UpdateTransformation()
@@ -444,6 +485,7 @@ namespace Chisel.Components
         {
             base.OnDisable();
             DestroyChildTreeNodes();
+            ChiselPaintManager.SetDirty(this);
         }
 
         [HideInInspector] int prevMaterialHash;

@@ -1,0 +1,362 @@
+using Unity.Collections;
+using Unity.Mathematics;
+
+namespace Chisel.Core
+{
+    // Subdivides a painted surface at its paint's grid: every grid point inside it, and every place a grid line
+    // crosses its outline, is inserted as in an incremental Delaunay triangulation. Cutting the outline leaves
+    // T-junctions with the neighbouring surfaces.
+    internal static class PaintSubdivision
+    {
+        // Most points one surface gets; a grid of tiny cells on a big surface stops here
+        public const int kMaxPoints = 4096;
+        // How close to an edge or a corner a grid point counts as on it, in parts of the grid's cell
+        const float kSnap = 0.05f;
+
+        public static void Subdivide(NativeList<int> indices, ref UniqueVertexMapper mapper, float3 surfaceNormal,
+                                     in ChiselPaintLookup paint, in ChiselPaintRange range)
+        {
+            if (range.count <= 0 || indices.Length < 3)
+                return;
+            var snap = float.PositiveInfinity;
+            using var points = new NativeList<float3>(64, Allocator.Temp);
+            using var seen   = new NativeParallelHashSet<int3>(64, Allocator.Temp);
+            for (int l = range.start; l < range.start + range.count; l++)
+            {
+                var layer  = paint.layers[l];
+                var normal = math.normalizesafe(math.cross(layer.cellU, layer.cellV));
+                // only a surface in the grid's plane, or parallel to it
+                if (math.abs(math.dot(normal, surfaceNormal)) < 0.999f)
+                    continue;
+                snap = math.min(snap, kSnap * math.min(math.length(layer.cellU), math.length(layer.cellV)));
+                for (int j = 0; j < layer.resolution.y && points.Length < kMaxPoints; j++)
+                {
+                    for (int i = 0; i < layer.resolution.x && points.Length < kMaxPoints; i++)
+                    {
+                        var point = layer.origin + i * layer.cellU + j * layer.cellV;
+                        if (seen.Add((int3)math.round(point * 1e4f)))
+                            points.Add(point);
+                    }
+                }
+            }
+            if (points.Length == 0)
+                return;
+
+            // where the grid's lines cross the outline, before the points: an outline that isn't along the grid's lines
+            // is cut where they meet it
+            using var crossings = new NativeList<float3>(16, Allocator.Temp);
+            for (int l = range.start; l < range.start + range.count; l++)
+            {
+                var layer  = paint.layers[l];
+                var normal = math.normalizesafe(math.cross(layer.cellU, layer.cellV));
+                if (math.abs(math.dot(normal, surfaceNormal)) < 0.999f)
+                    continue;
+                AddOutlineCrossings(indices, mapper.surfaceColliderVertices, layer, crossings);
+            }
+
+            var triangulation = new Triangulation(indices, ref mapper, surfaceNormal, snap);
+            for (int p = 0; p < crossings.Length; p++)
+                triangulation.Insert(ref mapper, crossings[p]);
+            for (int p = 0; p < points.Length; p++)
+                triangulation.Insert(ref mapper, points[p]);
+            triangulation.Dispose();
+        }
+
+        // Where the grid's lines (whole numbers of cells along cellU or cellV) cross the edges of the outline (the edges
+        // only one triangle has), away from the edges' ends
+        static void AddOutlineCrossings(NativeList<int> indices, NativeList<float3> positions, in ChiselPaintLayer layer, NativeList<float3> crossings)
+        {
+            using var edges = new NativeParallelHashSet<int2>(indices.Length, Allocator.Temp);
+            for (int t = 0; t + 2 < indices.Length; t += 3)
+            {
+                for (int k = 0; k < 3; k++)
+                    edges.Add(new int2(indices[t + k], indices[t + (k + 1) % 3]));
+            }
+            const double kAwayFromEnds = 0.05;  // in cells
+            for (int t = 0; t + 2 < indices.Length; t += 3)
+            {
+                for (int k = 0; k < 3 && crossings.Length < kMaxPoints; k++)
+                {
+                    var a = indices[t + k];
+                    var b = indices[t + (k + 1) % 3];
+                    if (edges.Contains(new int2(b, a)))
+                        continue;   // inside: two triangles have it
+                    var from = GridCoordinates(layer, positions[a]);
+                    var to   = GridCoordinates(layer, positions[b]);
+                    for (int axis = 0; axis < 2; axis++)
+                    {
+                        var lo = math.min(from[axis], to[axis]);
+                        var hi = math.max(from[axis], to[axis]);
+                        if (!(hi - lo > 2 * kAwayFromEnds))
+                            continue;
+                        for (var line = math.ceil(lo + kAwayFromEnds); line < hi - kAwayFromEnds && crossings.Length < kMaxPoints; line++)
+                        {
+                            var along = (line - from[axis]) / (to[axis] - from[axis]);
+                            crossings.Add((float3)math.lerp((double3)positions[a], (double3)positions[b], along));
+                        }
+                    }
+                }
+            }
+        }
+
+        // A point's place on the grid, in cells along cellU and cellV (which needn't be at right angles)
+        static double2 GridCoordinates(in ChiselPaintLayer layer, float3 point)
+        {
+            var offset = (double3)(point - layer.origin);
+            double3 u = layer.cellU, v = layer.cellV;
+            var uu = math.dot(u, u); var uv = math.dot(u, v); var vv = math.dot(v, v);
+            var determinant = uu * vv - uv * uv;
+            if (!(math.abs(determinant) > 1e-18))
+                return double2.zero;
+            var du = math.dot(offset, u); var dv = math.dot(offset, v);
+            return new double2((vv * du - uv * dv) / determinant, (uu * dv - uv * du) / determinant);
+        }
+
+        struct Triangulation
+        {
+            enum Result { NotHere, Inserted, Existing }
+
+            NativeList<int>      indices;
+            NativeList<double2>  flat;      // every vertex in the surface's plane
+            NativeList<int2>     pending;   // edges (a, b) of triangles (a, b, v) round a new vertex v, to be made Delaunay
+            // the triangle each edge (a, b) is in, in its winding
+            NativeParallelHashMap<int2, int> edges;
+            double3              axisU, axisV;
+            double               snap;
+            int                  last;      // where the last point went: the next is usually near it
+
+            public Triangulation(NativeList<int> indices, ref UniqueVertexMapper mapper, float3 normal, double snap)
+            {
+                this.indices = indices;
+                this.snap    = snap;
+                last    = 0;
+                axisU   = math.normalizesafe(math.cross((double3)normal, math.abs(normal.x) < 0.9f ? new double3(1, 0, 0) : new double3(0, 1, 0)));
+                axisV   = math.normalizesafe(math.cross((double3)normal, axisU));
+                flat    = new NativeList<double2>(mapper.surfaceColliderVertices.Length, Allocator.Temp);
+                pending = new NativeList<int2>(16, Allocator.Temp);
+                edges   = new NativeParallelHashMap<int2, int>(math.max(16, indices.Length * 4), Allocator.Temp);
+                for (int i = 0; i < mapper.surfaceColliderVertices.Length; i++)
+                    flat.Add(Flat(mapper.surfaceColliderVertices[i]));
+                for (int t = 0; t + 2 < indices.Length; t += 3)
+                {
+                    for (int k = 0; k < 3; k++)
+                        edges[new int2(indices[t + k], indices[t + (k + 1) % 3])] = t;
+                }
+            }
+
+            public void Dispose()
+            {
+                flat.Dispose();
+                pending.Dispose();
+                edges.Dispose();
+            }
+
+            readonly double2 Flat(float3 position) => new double2(math.dot((double3)position, axisU), math.dot((double3)position, axisV));
+
+            void SetTriangle(int t, int a, int b, int c)
+            {
+                for (int k = 0; k < 3; k++)
+                {
+                    var edge = new int2(indices[t + k], indices[t + (k + 1) % 3]);
+                    if (edges.TryGetValue(edge, out var owner) && owner == t)
+                        edges.Remove(edge);
+                }
+                indices[t] = a; indices[t + 1] = b; indices[t + 2] = c;
+                edges[new int2(a, b)] = t;
+                edges[new int2(b, c)] = t;
+                edges[new int2(c, a)] = t;
+            }
+
+            void AddTriangle(int a, int b, int c)
+            {
+                var t = indices.Length;
+                indices.Add(a); indices.Add(b); indices.Add(c);
+                edges[new int2(a, b)] = t;
+                edges[new int2(b, c)] = t;
+                edges[new int2(c, a)] = t;
+            }
+
+            // The triangle the point is in, walking from where the last point went; -1 when the walk leaves the surface
+            readonly int Locate(double2 point)
+            {
+                var t = last + 2 < indices.Length ? last : 0;
+                for (int steps = 0; steps <= indices.Length / 3; steps++)
+                {
+                    int i0 = indices[t], i1 = indices[t + 1], i2 = indices[t + 2];
+                    var a = flat[i0]; var b = flat[i1]; var c = flat[i2];
+                    var twiceArea = Cross(a, b, c);
+                    if (!(math.abs(twiceArea) > 1e-18))
+                        return -1;
+                    var w = new double3(Cross(point, b, c), Cross(a, point, c), Cross(a, b, point)) / twiceArea;
+                    // on to the triangle across the edge it is furthest beyond
+                    var k = w.x <= w.y && w.x <= w.z ? 0 : w.y <= w.z ? 1 : 2;
+                    if (w[k] >= 0)
+                        return t;
+                    int e0 = k == 0 ? i1 : k == 1 ? i2 : i0;
+                    int e1 = k == 0 ? i2 : k == 1 ? i0 : i1;
+                    if (!edges.TryGetValue(new int2(e1, e0), out t))
+                        return -1;
+                }
+                return -1;
+            }
+
+            public void Insert(ref UniqueVertexMapper mapper, float3 position)
+            {
+                var point = Flat(position);
+                var found = Locate(point);
+                if (found >= 0 && TryInsert(ref mapper, point, found) != Result.NotHere)
+                    return;
+                // near the outline, or where the walk stopped: every triangle
+                for (int t = 0; t + 2 < indices.Length; t += 3)
+                {
+                    if (t != found && TryInsert(ref mapper, point, t) != Result.NotHere)
+                        return;
+                }
+            }
+
+            Result TryInsert(ref UniqueVertexMapper mapper, double2 point, int t)
+            {
+                int i0 = indices[t], i1 = indices[t + 1], i2 = indices[t + 2];
+                var a = flat[i0]; var b = flat[i1]; var c = flat[i2];
+                var twiceArea = Cross(a, b, c);
+                if (!(math.abs(twiceArea) > 1e-18))
+                    return Result.NotHere;
+                // the point's weights, and how far it is from each edge (the one opposite each corner)
+                var w = new double3(Cross(point, b, c), Cross(a, point, c), Cross(a, b, point)) / twiceArea;
+                var distance = w * math.abs(twiceArea) / new double3(math.distance(b, c), math.distance(c, a), math.distance(a, b));
+                if (math.cmin(distance) < -snap)
+                    return Result.NotHere;
+                if (math.distance(point, a) < snap || math.distance(point, b) < snap || math.distance(point, c) < snap)
+                    return Result.Existing;
+
+                // snapped onto the outline when near it (a sliver there can't be flipped away), onto an inner edge
+                // only when on it
+                var nearest  = distance.x <= distance.y && distance.x <= distance.z ? 0 : distance.y <= distance.z ? 1 : 2;
+                int opposite = nearest == 0 ? i0 : nearest == 1 ? i1 : i2;
+                int e0       = nearest == 0 ? i1 : nearest == 1 ? i2 : i0;
+                int e1       = nearest == 0 ? i2 : nearest == 1 ? i0 : i1;
+                var other = FindEdge(e1, e0, out var otherOpposite);
+                var onEdge = other < 0 ? snap : snap * 1e-3;
+                if (distance[nearest] < -onEdge)
+                    return Result.NotHere;   // across an edge inside: in the triangle on its other side
+
+                last = t;
+                if (distance[nearest] >= onEdge)
+                {
+                    // inside: three triangles round it
+                    var v = AddVertex(ref mapper, i0, i1, i2, w);
+                    SetTriangle(t, i0, i1, v);
+                    AddTriangle(i1, i2, v);
+                    AddTriangle(i2, i0, v);
+                    pending.Add(new int2(i0, i1));
+                    pending.Add(new int2(i1, i2));
+                    pending.Add(new int2(i2, i0));
+                    Legalize(v);
+                    return Result.Inserted;
+                }
+
+                // on the edge: it splits both of its triangles, or the one on the surface's outline
+                w = math.max(w, 0);
+                w[nearest] = 0;
+                w /= math.csum(w);
+                var vertex = AddVertex(ref mapper, i0, i1, i2, w);
+                SetTriangle(t, opposite, e0, vertex);
+                AddTriangle(opposite, vertex, e1);
+                pending.Add(new int2(opposite, e0));
+                pending.Add(new int2(e1, opposite));
+                if (other >= 0)
+                {
+                    SetTriangle(other, otherOpposite, e1, vertex);
+                    AddTriangle(otherOpposite, vertex, e0);
+                    pending.Add(new int2(otherOpposite, e1));
+                    pending.Add(new int2(e0, otherOpposite));
+                }
+                Legalize(vertex);
+                return Result.Inserted;
+            }
+
+            // Each edge (a, b) of a triangle (a, b, v) is flipped when the far corner d of the triangle across it is in
+            // the circle through a, b and v; the two edges that then face v are looked at in turn
+            void Legalize(int v)
+            {
+                while (pending.Length > 0)
+                {
+                    var edge = pending[pending.Length - 1];
+                    pending.RemoveAt(pending.Length - 1);
+                    int a = edge.x, b = edge.y;
+                    var t = FindEdge(a, b, out var third);
+                    if (t < 0 || third != v)
+                        continue;
+                    var u = FindEdge(b, a, out var d);
+                    if (u < 0)
+                        continue;   // the outline
+                    if (!InCircle(flat[a], flat[b], flat[v], flat[d]) || !Convex(flat[a], flat[d], flat[b], flat[v]))
+                        continue;
+                    // (a, b, v) and (b, a, d) become (v, a, d) and (d, b, v)
+                    SetTriangle(t, v, a, d);
+                    SetTriangle(u, d, b, v);
+                    pending.Add(new int2(a, d));
+                    pending.Add(new int2(d, b));
+                }
+            }
+
+            // The triangle with the edge from a to b (in its winding), and its third corner; -1 when there is none
+            readonly int FindEdge(int a, int b, out int opposite)
+            {
+                if (!edges.TryGetValue(new int2(a, b), out var t))
+                {
+                    opposite = -1;
+                    return -1;
+                }
+                var k = indices[t] == a ? 0 : indices[t + 1] == a ? 1 : 2;
+                opposite = indices[t + (k + 2) % 3];
+                return t;
+            }
+
+            // A vertex where the weights put it in the triangle, every stream interpolated
+            int AddVertex(ref UniqueVertexMapper mapper, int i0, int i1, int i2, double3 w)
+            {
+                var f  = (float3)w;
+                var r0 = mapper.surfaceRenderVertices[i0];
+                var r1 = mapper.surfaceRenderVertices[i1];
+                var r2 = mapper.surfaceRenderVertices[i2];
+                var render = new RenderVertex
+                {
+                    position = r0.position * f.x + r1.position * f.y + r2.position * f.z,
+                    normal   = math.normalizesafe(r0.normal * f.x + r1.normal * f.y + r2.normal * f.z),
+                    tangent  = r0.tangent * f.x + r1.tangent * f.y + r2.tangent * f.z,
+                    uv0      = r0.uv0 * f.x + r1.uv0 * f.y + r2.uv0 * f.z,
+                    uv1      = r0.uv1 * f.x + r1.uv1 * f.y + r2.uv1 * f.z
+                };
+                var select = mapper.surfaceSelectVertices[i0];
+                select.position = render.position;
+                var index = mapper.surfaceRenderVertices.Length;
+                mapper.surfaceRenderVertices.Add(render);
+                mapper.surfaceColliderVertices.Add(render.position);
+                mapper.surfaceSelectVertices.Add(select);
+                flat.Add(flat[i0] * w.x + flat[i1] * w.y + flat[i2] * w.z);
+                return index;
+            }
+        }
+
+        static double Cross(double2 o, double2 p, double2 q) => (p.x - o.x) * (q.y - o.y) - (p.y - o.y) * (q.x - o.x);
+
+        // Whether d is inside the circle through a, b and c, whichever way round they go (cocircular points are not)
+        static bool InCircle(double2 a, double2 b, double2 c, double2 d)
+        {
+            var ad = a - d; var bd = b - d; var cd = c - d;
+            var det = math.lengthsq(ad) * (bd.x * cd.y - cd.x * bd.y) -
+                      math.lengthsq(bd) * (ad.x * cd.y - cd.x * ad.y) +
+                      math.lengthsq(cd) * (ad.x * bd.y - bd.x * ad.y);
+            var scale = math.lengthsq(ad) * math.lengthsq(bd) + 1e-30;
+            return Cross(a, b, c) > 0 ? det > 1e-9 * scale : det < -1e-9 * scale;
+        }
+
+        // Whether the quadrilateral a, d, b, c (in order) is convex, so its diagonal c-d lies inside it
+        static bool Convex(double2 a, double2 d, double2 b, double2 c)
+        {
+            var s0 = Cross(a, d, b); var s1 = Cross(d, b, c); var s2 = Cross(b, c, a); var s3 = Cross(c, a, d);
+            return (s0 > 0 && s1 > 0 && s2 > 0 && s3 > 0) || (s0 < 0 && s1 < 0 && s2 < 0 && s3 < 0);
+        }
+    }
+}

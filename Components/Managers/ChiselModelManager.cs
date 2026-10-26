@@ -296,6 +296,8 @@ namespace Chisel.Components
 			ChiselDecalManager.Update();
 			// and the surfaces connected or disconnected by hand
 			ChiselHotspotLinks.Update();
+			// and the paint of the generators' surfaces
+			ChiselPaintManager.Update();
 
 			// Update the tree meshes
 			Profiler.BeginSample("Flush");

@@ -26,6 +26,7 @@ namespace Chisel.Core
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public static InternalChiselSurface Convert(ChiselSurface surface)
 		{
+			ChiselPaintMaterials.Register(surface.RenderMaterial);
 			return new InternalChiselSurface
             {
                 details		     = surface.surfaceDetails,

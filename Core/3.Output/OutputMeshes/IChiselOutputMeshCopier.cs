@@ -12,6 +12,8 @@ namespace Chisel.Core
 		[NoAlias, ReadOnly] public NativeArray<UnsafeList<SubMeshSurface>> subMeshSurfaces;
 		// How the meshes' lightmap coordinates are laid out: the model's (LightmapUVLayout)
 		public LightmapUVSettings                                   lightmapUVSettings;
+		// The tree's paint: a render mesh with painted surfaces takes it in a second vertex stream (ChiselOutputRenderable)
+		public ChiselPaintLookup                                    paint;
     }
 
 	internal interface IChiselOutputMeshCopier

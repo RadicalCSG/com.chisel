@@ -1238,6 +1238,7 @@ namespace Chisel.Core
             {
                 ref var original = ref source.Value;
                 ref var root     = ref builder.ConstructRoot<ChiselBrushRenderBuffer>();
+                root.entityID    = original.entityID;
                 var surfaces     = builder.Allocate(ref root.surfaces, original.surfaces.Length);
                 for (int s = 0; s < original.surfaces.Length; s++)
                 {
@@ -1248,6 +1249,7 @@ namespace Chisel.Core
                     to.decalEntityID         = from.decalEntityID;
                     to.decalStack            = from.decalStack;
                     to.decalFades            = from.decalFades;
+                    to.paintSurface          = from.paintSurface;
                     to.destinationFlags      = from.destinationFlags;
                     to.destinationParameters = from.destinationParameters;
                     to.outputFlags           = from.outputFlags;

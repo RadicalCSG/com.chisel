@@ -290,6 +290,7 @@ namespace Chisel.Core
                 public NativeArray<bool>                    changedHotspotLayouts;
                 // and the surfaces connected or disconnected by hand (ChiselHotspotLinkStore)
                 public NativeArray<HotspotLink>             hotspotLinks;
+                public ChiselPaintLookup                    paint;
             } 
             internal TemporariesStruct Temporaries;
             #endregion
@@ -563,6 +564,8 @@ namespace Chisel.Core
                     Temporaries.hotspotTileSides = new NativeArray<float4>(hotspotTileSides.AsArray(), defaultAllocator);
                     Temporaries.hotspotVariants  = new NativeArray<ulong>(hotspotVariants.AsArray(), defaultAllocator);
                     Temporaries.hotspotLinks   = new NativeArray<HotspotLink>(chiselLookupValues.hotspotLinks.AsArray(), defaultAllocator);
+                    ChiselPaintStore.UpdateMaterials(chiselLookupValues);
+                    Temporaries.paint          = ChiselPaintLookup.Of(chiselLookupValues);
                 }
 
                 Temporaries.subMeshDescriptions             = new NativeList<SubMeshDescriptions>(defaultAllocator);
@@ -1861,6 +1864,7 @@ namespace Chisel.Core
                         hotspotTiles              = Temporaries.hotspotTiles,
                         hotspotLayouts            = Temporaries.hotspotLayouts,
                         hotspotVariants           = Temporaries.hotspotVariants,
+                        paint                     = Temporaries.paint,
 
 						// Write
 						brushRenderBufferCache    = chiselLookupValues.brushRenderBufferCache
@@ -2396,7 +2400,8 @@ namespace Chisel.Core
                     { 
 						subMeshSurfaces     = Temporaries.subMeshSurfaces,    // PrepareSubSectionsJob   -> meshQueries / brushRenderData (FindBrushRenderBuffersJob)
 						subMeshDescriptions = Temporaries.subMeshDescriptions, // SortSurfacesParallelJob -> meshQueries / subMeshSurfaces (PrepareSubSectionsJob)
-						lightmapUVSettings  = lightmapUVSettings
+						lightmapUVSettings  = lightmapUVSettings,
+						paint               = Temporaries.paint
 					};
 
                     // the render meshes made ready, then every surface of them copied at once

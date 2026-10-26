@@ -13,6 +13,39 @@ namespace Chisel.Editors
         public readonly static GUIContent	kUV0Contents            = new("UV");
         public readonly static GUIContent	kSurfaceFlagsContents   = new("Surface Flags");
         public readonly static GUIContent	kSmoothingGroupContents = new("Smoothing Groups");
+        public readonly static GUIContent	kPaintSpacingContents   = new("Paint Spacing", "How far apart the points this surface is painted at are, in metres: the surface is cut at them. Changing it resamples the paint it has.");
+
+        // Whether the material's shader takes paint (has a paint profile)
+        public static bool TakesPaint(Material material)
+        {
+            return material && ChiselPaintProfiles.Find(material.shader) != null;
+        }
+
+        // A paint spacing field; 0 (not set) shows the default
+        public static void PaintSpacingField(Rect position, SerializedProperty spacingProp, GUIContent label)
+        {
+            EditorGUI.BeginProperty(position, label, spacingProp);
+            EditorGUI.showMixedValue = spacingProp.hasMultipleDifferentValues;
+            EditorGUI.BeginChangeCheck();
+            var spacing = EditorGUI.FloatField(position, label, spacingProp.floatValue > 0 ? spacingProp.floatValue : ChiselSurface.kDefaultPaintSpacing);
+            if (EditorGUI.EndChangeCheck())
+                spacingProp.floatValue = Mathf.Max(0.01f, spacing);
+            EditorGUI.showMixedValue = false;
+            EditorGUI.EndProperty();
+        }
+
+        // Resamples the paint of the generators these details are on, after their paint spacing changed
+        public static void Respace(System.Collections.Generic.List<SurfaceReference> surfaces, string undoName)
+        {
+            foreach (var surface in surfaces)
+            {
+                if (surface.node is not ChiselGeneratorComponent generator || generator.SurfacePaint.Count == 0)
+                    continue;
+                Undo.RecordObject(generator, undoName);
+                if (ChiselPaintBrush.Respace(generator))
+                    EditorUtility.SetDirty(generator);
+            }
+        }
 
         // The material beside these details (the first selected surface's)
         static Material MaterialOf(SerializedProperty property)
@@ -32,6 +65,15 @@ namespace Chisel.Editors
             var parent = dot < 0 ? string.Empty : path.Substring(0, dot + 1);
             var materialProp = property.serializedObject.FindProperty(parent + ChiselSurface.kChiselMaterialName + "." + ChiselMaterial.kMaterialFieldName);
             return materialProp != null ? HotspotTransformGUI.LayoutOf(materialProp.objectReferenceValue as Material) : null;
+        }
+
+        // The paint spacing beside these details (on their surface)
+        static SerializedProperty PaintSpacingOf(SerializedProperty property)
+        {
+            var path = property.propertyPath;
+            var dot = path.LastIndexOf('.');
+            var parent = dot < 0 ? string.Empty : path.Substring(0, dot + 1);
+            return property.serializedObject.FindProperty(parent + ChiselSurface.kPaintSpacingName);
         }
 
         static readonly System.Text.RegularExpressions.Regex kDescriptionIndex = new(@"data\[(\d+)\]\.[^.\[]+$");
@@ -77,7 +119,8 @@ namespace Chisel.Editors
                     kSpacing + 
                     SurfaceFlagsPropertyDrawer.DefaultHeight +
                     kSpacing + 
-                    SmoothingGroupPropertyDrawer.GetDefaultHeight(smoothingGroupProp.propertyPath, true);
+                    SmoothingGroupPropertyDrawer.GetDefaultHeight(smoothingGroupProp.propertyPath, true) +
+                    (TakesPaint(MaterialOf(property)) && PaintSpacingOf(property) != null ? kSpacing + EditorGUIUtility.singleLineHeight : 0);
         }
 
         public override void OnGUI(Rect position, SerializedProperty property, GUIContent label)
@@ -126,6 +169,14 @@ namespace Chisel.Editors
 
                     position.height = SmoothingGroupPropertyDrawer.GetDefaultHeight(smoothingGroupProp.propertyPath, true);
                     EditorGUI.PropertyField(position, smoothingGroupProp, !hasLabel ? GUIContent.none : kSmoothingGroupContents, false);
+
+                    var paintSpacingProp = PaintSpacingOf(property);
+                    if (paintSpacingProp != null && TakesPaint(MaterialOf(property)))
+                    {
+                        position.y += position.height + kSpacing;
+                        position.height = EditorGUIUtility.singleLineHeight;
+                        PaintSpacingField(position, paintSpacingProp, !hasLabel ? GUIContent.none : kPaintSpacingContents);
+                    }
                 }
                 if (EditorGUI.EndChangeCheck())
                 {
@@ -134,6 +185,7 @@ namespace Chisel.Editors
                     if (ChiselTextureLockEdit.KeepLook(surfaces, wasWorld, "Modified surface"))
                         property.serializedObject.Update();
                     SpreadToConnected(property);
+                    Respace(surfaces, "Modified surface");
                 }
             }
             catch (ExitGUIException) { }

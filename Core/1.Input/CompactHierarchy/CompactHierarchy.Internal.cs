@@ -1409,6 +1409,20 @@ namespace Chisel.Core
             SetBrushesBeforeDirty(compactNodeID);
         }
 
+        // A brush whose surfaces change but not its shape: only it is built again, not the brushes touching it
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal bool SetSurfacesDirty(CompactNodeID compactNodeID)
+        {
+            if (!IsValidCompactNodeID(compactNodeID) || RootID == compactNodeID)
+                return false;
+            ref var node = ref GetChildRef(compactNodeID);
+            if (node.brushMeshHash == Int32.MaxValue)
+                return false;
+            node.flags |= NodeStatusFlags.OutlineModified;
+            GetChildRef(RootID).flags |= NodeStatusFlags.TreeNeedsUpdate;
+            return true;
+        }
+
         // This method might be removed/renamed in the future
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal bool SetDirty(CompactNodeID compactNodeID)

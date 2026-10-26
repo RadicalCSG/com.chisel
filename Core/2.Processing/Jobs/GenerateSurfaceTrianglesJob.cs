@@ -33,6 +33,8 @@ namespace Chisel.Core
 		[NoAlias, ReadOnly] public NativeArray<HotspotLayoutData> hotspotLayouts;
 		// the materials layouts with variants are drawn with (HotspotLayoutData.variantStart)
 		[NoAlias, ReadOnly] public NativeArray<ulong>             hotspotVariants;
+		// The tree's paint, by surface
+		[NoAlias, ReadOnly] public ChiselPaintLookup              paint;
 
 		// Write
 		[NativeDisableParallelForRestriction]
@@ -59,6 +61,9 @@ namespace Chisel.Core
 						   NativeArray<int> decalCandidateStart, SlotLayout slots)
 		{
 			var baseSurfaceCount = slots.baseSurfaceCount;
+			// a painted surface gets its paint's grid points as vertices, before anything is worked out from them
+			if (paint.TryGetRange(entityID, baseSurfaces[surf].descriptionIndex, out var subdivision))
+				PaintSubdivision.Subdivide(surfaceIndexList, ref uniqueVertexMapper, finalFaceNormal, paint, subdivision);
 			if (normalSmoothingAngle > 0.0001f)
 			{
 				var renderVertices = uniqueVertexMapper.surfaceRenderVertices;
@@ -306,6 +311,17 @@ namespace Chisel.Core
 			buf.sectionInput = sectionInput;
 			buf.hotspot       = hotspotInfo;
 			buf.hotspotSource = hotspotSource;
+
+			// paint is found by the brush's entity and the surface's index, when the surface's mesh is copied
+			var paintSurface = baseSurfaces[surf].descriptionIndex;
+			if (paint.TryGetRange(entityID, paintSurface, out var paintRange))
+			{
+				buf.paintSurface     = paintSurface;
+				buf.surfaceHashValue = math.hash(new uint2(buf.surfaceHashValue, paintRange.hash));
+			}
+			// the attributes its material's shader takes paint in are in its mesh, painted or not
+			if (paint.TryGetMaterial(parms.parameter1, out var materialRange))
+				buf.surfaceHashValue = math.hash(new uint2(buf.surfaceHashValue, materialRange.hash));
 
 			if (HasBackFace(flags, outputFlags))
 				FinishBackFace(surf, entityID, flags, parms, outputFlags, surfaceIndexList, ref uniqueVertexMapper, builder, surfaceBuffers, slots);
@@ -660,6 +676,7 @@ namespace Chisel.Core
 					FinishSurface(surf, brushNodeOrder, entityID, ref baseSurfaces, treeToPlane, transform.nodeToTree, finalFaceNormal, surfaceIndexList, ref uniqueVertexMapper,
 								  builder, surfaceBuffers, ref decalBuilder, decalCandidates, decalTargeted, decalCandidateStart, layout);
 				}
+				root.entityID = entityID;
 				FinishBrush(brushIndexOrder, brushNodeOrder, builder, ref root, surfaceBuffers, decalCandidateStart, layout);
 			}
 			finally

@@ -2,6 +2,7 @@ using UnityEngine;
 using UnityEditor;
 using System;
 using Chisel.Core;
+using Chisel.Components;
 using UnityEngine.Profiling;
 
 namespace Chisel.Editors
@@ -158,6 +159,22 @@ namespace Chisel.Editors
 				ChiselHotspotLayoutWindow.RefreshSurfacesUsing(MaterialOf(metadata));
 		}
 
+		static readonly GUIContent kConfigurePaintContents = new("Configure Paintability Of Shader", "Opens Project Settings > Chisel > Paint on the paint profile of the material's shader, adding one when it has none");
+
+		// Whether the material's shader can be painted, and the way to its paint profile
+		void PaintGUI()
+		{
+			var material = MaterialOf(target);
+			if (!material || !material.shader)
+				return;
+			using (new EditorGUILayout.HorizontalScope())
+			{
+				EditorGUILayout.PrefixLabel(ChiselPaintProfiles.Find(material.shader) != null ? "Paintable" : "Not Paintable");
+				if (GUILayout.Button(kConfigurePaintContents, EditorStyles.miniButton))
+					ChiselPaintSettingsProvider.Configure(material.shader);
+			}
+		}
+
 		public override void OnInspectorGUI()
 		{
 			Profiler.BeginSample("OnInspectorGUI");
@@ -188,6 +205,7 @@ namespace Chisel.Editors
 					foreach (var metadata in targets)
 						ChiselHotspotLayoutWindow.RefreshSurfacesUsing(MaterialOf(metadata));
 				}
+				PaintGUI();
 			}
 			catch (ExitGUIException) { }
 			catch (Exception ex) { Debug.LogException(ex); }
