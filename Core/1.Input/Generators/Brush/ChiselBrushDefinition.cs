@@ -173,10 +173,10 @@ namespace Chisel.Core
 				if (brushOutline.planes == null || brushOutline.planes.Length != brushOutline.polygons.Length)
 					brushOutline.CalculatePlanes();
 
-				// If the brush is concave, we set the generator to not be valid, so that when we commit, it will be reverted
+				// If the brush is concave, we set the generator to not be valid, so that when we commit, it will be reverted.
+				// Not logged: it happens while a shape is dragged, and the inspector shows why (GetMessages)
 				if (!brushOutline.ValidateShape(out errorMessage))
 				{
-					Debug.LogError(errorMessage);
 					validState = false;
 					return false;
 				}

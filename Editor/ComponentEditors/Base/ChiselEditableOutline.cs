@@ -508,6 +508,8 @@ namespace Chisel.Editors
             UpdateSelectionCenter();
         }
 
+        // Whether the outline can be edited: whole topology only, so a brush whose shape is invalid (concave, flat) keeps
+        // its handles and can be dragged back
         bool IsValidBrush()
         {
             if (brushMesh == null ||
@@ -515,7 +517,11 @@ namespace Chisel.Editors
                 brushMesh.halfEdges == null || brushMesh.halfEdges.Length == 0 ||
                 brushMesh.polygons == null || brushMesh.polygons.Length == 0)
                 return false;
-			return brushMesh.Validate();
+            if (!brushMesh.ValidateData(out _))
+                return false;
+            if (brushMesh.planes == null || brushMesh.planes.Length != brushMesh.polygons.Length)
+                brushMesh.CalculatePlanes();
+            return true;
         }
 
 
