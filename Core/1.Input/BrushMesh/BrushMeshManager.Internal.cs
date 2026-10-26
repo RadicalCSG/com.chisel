@@ -867,6 +867,7 @@ namespace Chisel.Core
             {
                 Debug.Assert(generatedNodeDefinitions.IsCreated);
             }
+            BrushMeshBlobLayout.CheckOnce();
             var brushMeshBlobCache = ChiselMeshLookup.Value.brushMeshBlobCache;
             var registerBrushesJob = new RegisterBrushMeshesJob
             {
