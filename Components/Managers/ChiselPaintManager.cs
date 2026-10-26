@@ -24,7 +24,7 @@ namespace Chisel.Components
         static bool s_All = true;
         static readonly HashSet<ChiselGeneratorComponent>             s_Changed = new();
         static readonly Dictionary<ChiselGeneratorComponent, Given>   s_Given   = new();
-        static readonly List<ChiselGeneratorComponent>                s_Work    = new();
+        static readonly HashSet<ChiselGeneratorComponent>             s_Work    = new();
 
         /// <summary>Every generator's paint is looked at again (what shaders take may have changed)</summary>
         public static void SetDirty() => s_All = true;
@@ -64,15 +64,12 @@ namespace Chisel.Components
                 }
                 s_All = false;
             }
-            foreach (var generator in s_Changed)
-            {
-                if (!s_Work.Contains(generator))
-                    s_Work.Add(generator);
-            }
+            s_Work.UnionWith(s_Changed);
             s_Changed.Clear();
 
             foreach (var generator in s_Work)
                 Give(generator);
+            s_Work.Clear();
         }
 
         // The generator's paint given to its model's tree, and taken from the tree it was in before
