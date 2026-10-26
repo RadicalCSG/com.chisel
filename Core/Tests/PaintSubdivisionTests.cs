@@ -31,7 +31,7 @@ namespace Chisel.Core.Tests
             NativeArray<ChiselPaintLayer> layers;
             using var _layers = layers = new NativeArray<ChiselPaintLayer>(1, Allocator.Temp);
             var size = 2f / cells;
-            using var values = new NativeArray<float4>((cells + 1) * (cells + 1), Allocator.Temp);
+            using var values = new NativeArray<float>(1, Allocator.Temp);
             layers[0] = new ChiselPaintLayer { origin = offset, cellU = new float3(size, 0, 0), cellV = new float3(0, 0, size), resolution = new int2(cells + 1, cells + 1) };
             var lookup = new ChiselPaintLookup { layers = layers, values = values };
             PaintSubdivision.Subdivide(indices, ref mapper, new float3(0, 1, 0), lookup, new ChiselPaintRange { start = 0, count = 1 });

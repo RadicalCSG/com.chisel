@@ -9,9 +9,10 @@ namespace Chisel.Core
     /// <summary>An attribute a material's shader takes paint in, and what it has where nothing is painted</summary>
     public struct ChiselPaintMaterialSlot
     {
-        public ulong                material;
-        public ChiselPaintAttribute attribute;
-        public float4               defaultValue;
+        public ulong                 material;
+        public ChiselPaintAttribute  attribute;
+        public ChiselPaintComponents components;
+        public float4                defaultValue;
     }
 
     /// <summary>
@@ -59,7 +60,7 @@ namespace Chisel.Core
             for (int i = 0; same && i < before; i++)
             {
                 same = s_Scratch[i].material == s_Slots[i].material && s_Scratch[i].attribute == s_Slots[i].attribute &&
-                       s_Scratch[i].defaultValue.Equals(s_Slots[i].defaultValue);
+                       s_Scratch[i].components == s_Slots[i].components && s_Scratch[i].defaultValue.Equals(s_Slots[i].defaultValue);
             }
             if (same)
                 return;
@@ -106,7 +107,7 @@ namespace Chisel.Core
                 s_Resolved.Clear();
                 Resolver(entry.Value, s_Resolved);
                 foreach (var slot in s_Resolved)
-                    s_Slots.Add(new ChiselPaintMaterialSlot { material = entry.Key, attribute = slot.attribute, defaultValue = slot.defaultValue });
+                    s_Slots.Add(new ChiselPaintMaterialSlot { material = entry.Key, attribute = slot.attribute, components = slot.components, defaultValue = slot.defaultValue });
             }
             foreach (var key in s_Gone)
                 s_Materials.Remove(key);

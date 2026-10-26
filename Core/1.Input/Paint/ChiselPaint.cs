@@ -50,10 +50,14 @@ namespace Chisel.Core
         public float3                   cellV;
         /// <summary>How many grid points there are along cellU and cellV</summary>
         public int2                     resolution;
-        /// <summary>Where the grid's values start in the values given with the layers, row by row along cellU</summary>
+        /// <summary>Where the grid's values start in the values given with the layers: row by row along cellU, each point
+        /// as only its components (x, y, z, w in that order)</summary>
         public int                      valueStart;
 
-        public readonly int ValueCount => math.max(resolution.x, 0) * math.max(resolution.y, 0);
+        /// <summary>How many values each grid point has: one per component</summary>
+        public readonly int Stride     => math.countbits((int)components & 15);
+        public readonly int PointCount => math.max(resolution.x, 0) * math.max(resolution.y, 0);
+        public readonly int ValueCount => PointCount * Stride;
 
         public readonly bool Equals(ChiselPaintLayer other)
         {
@@ -68,21 +72,33 @@ namespace Chisel.Core
         public override readonly int GetHashCode() => (int)math.hash(new uint4((uint)entityID, (uint)surfaceIndex, (uint)attribute, math.hash(origin)));
 
         /// <summary>The layer's value at a point, in all four components (its grid projected along the plane's normal)</summary>
-        public readonly unsafe float4 Sample(NativeArray<float4> values, float3 point)
+        public readonly unsafe float4 Sample(NativeArray<float> values, float3 point)
         {
-            return Sample((float4*)Unity.Collections.LowLevel.Unsafe.NativeArrayUnsafeUtility.GetUnsafeReadOnlyPtr(values), point);
+            return Sample((float*)Unity.Collections.LowLevel.Unsafe.NativeArrayUnsafeUtility.GetUnsafeReadOnlyPtr(values), point);
         }
 
-        internal readonly unsafe float4 Sample(float4* values, float3 point)
+        internal readonly unsafe float4 Sample(float* values, float3 point)
         {
             if (!GridPosition(point, out var cell, out var t))
                 return defaultValue;
-            var row0 = valueStart + cell.y * resolution.x + cell.x;
+            var row0 = cell.y * resolution.x + cell.x;
             var row1 = row0 + (resolution.y > 1 ? resolution.x : 0);
             var next = resolution.x > 1 ? 1 : 0;
-            var bottom = math.lerp(values[row0], values[row0 + next], t.x);
-            var top    = math.lerp(values[row1], values[row1 + next], t.x);
+            var bottom = math.lerp(Load(values, row0), Load(values, row0 + next), t.x);
+            var top    = math.lerp(Load(values, row1), Load(values, row1 + next), t.x);
             return math.lerp(bottom, top, t.y);
+        }
+
+        // A grid point's value, the default in the components the layer doesn't have
+        readonly unsafe float4 Load(float* values, int point)
+        {
+            var value = defaultValue;
+            var at = values + valueStart + point * Stride;
+            if ((components & ChiselPaintComponents.X) != 0) value.x = *at++;
+            if ((components & ChiselPaintComponents.Y) != 0) value.y = *at++;
+            if ((components & ChiselPaintComponents.Z) != 0) value.z = *at++;
+            if ((components & ChiselPaintComponents.W) != 0) value.w = *at;
+            return value;
         }
 
         // Where a point is on the grid: the cell (its lower grid point) and how far across it, clamped to the grid
@@ -126,7 +142,7 @@ namespace Chisel.Core
         /// <see cref="ChiselPaintLayer.valueStart"/>). Returns the entities whose paint changed; their brushes have to be
         /// rebuilt to show it (the caller marks them dirty).
         /// </summary>
-        public static bool SetPaint(this CSGTree tree, NativeArray<ChiselPaintLayer> layers, NativeArray<float4> values, NativeList<ulong> changedEntities)
+        public static bool SetPaint(this CSGTree tree, NativeArray<ChiselPaintLayer> layers, NativeArray<float> values, NativeList<ulong> changedEntities)
         {
             return ChiselPaintStore.SetPaint(tree, layers, values, changedEntities);
         }
@@ -135,7 +151,7 @@ namespace Chisel.Core
         /// Replaces the paint of one entity: its layers, and the values their grids take from. True when it changed; the
         /// entity's brushes then have to be rebuilt to show it (<see cref="CSGTreeNode.SetSurfacesDirty"/>).
         /// </summary>
-        public static bool SetPaint(this CSGTree tree, ulong entityID, NativeArray<ChiselPaintLayer> layers, NativeArray<float4> values)
+        public static bool SetPaint(this CSGTree tree, ulong entityID, NativeArray<ChiselPaintLayer> layers, NativeArray<float> values)
         {
             return ChiselPaintStore.SetPaint(tree, entityID, layers, values);
         }

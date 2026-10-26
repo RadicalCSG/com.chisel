@@ -331,7 +331,7 @@ namespace Chisel.Components.Tests
             var mode  = ChiselPaintMode.Color("Color");
             box.SurfaceDefinition.surfaces[top].paintSpacing = 1;
             var paint = ChiselPaintBrush.PaintFor(box, top, mode);
-            paint.values = new[] { new Vector4(0, 0, 0, 1), new Vector4(1, 0, 0, 1), new Vector4(0, 1, 0, 1), new Vector4(1, 1, 0, 1) };
+            paint[0] = new Vector4(0, 0, 0, 1); paint[1] = new Vector4(1, 0, 0, 1); paint[2] = new Vector4(0, 1, 0, 1); paint[3] = new Vector4(1, 1, 0, 1);
             var middle = paint.Sample(paint.origin + (paint.cellU + paint.cellV) * 0.5f + Vector3.up * 3);
             Assert.That(Vector4.Distance(middle, new Vector4(0.5f, 0.5f, 0, 1)), Is.LessThan(1e-5f), "between the four, the grid projected along its normal");
         }
@@ -399,8 +399,8 @@ namespace Chisel.Components.Tests
             var mode  = ChiselPaintMode.Color("Color");
             var paint = ChiselPaintBrush.PaintFor(box, top, mode);
             Assert.That(ChiselPaintBrush.Dab(paint, mode, ChiselPaintOperation.Fill, new Vector4(0, 1, 0, 1), new Vector3(0.1f, 1, 0.1f), 0.01f, 0.1f, 0), Is.True);
-            foreach (var value in paint.values)
-                Assert.That(value, Is.EqualTo(new Vector4(0, 1, 0, 1)));
+            for (int p = 0; p < paint.PointCount; p++)
+                Assert.That(paint[p], Is.EqualTo(new Vector4(0, 1, 0, 1)));
         }
 
         // A surface under a shader that takes paint has its attributes before it is painted, at their modes' defaults

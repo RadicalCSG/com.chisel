@@ -28,11 +28,11 @@ namespace Chisel.Core.Tests
         {
             NativeArray<ChiselPaintLayer> layers;
             using var _layers = layers = new NativeArray<ChiselPaintLayer>(1, Allocator.Temp);
-            NativeArray<float4> values;
-            using var _values = values = new NativeArray<float4>(4, Allocator.Temp);
+            NativeArray<float> values;
+            using var _values = values = new NativeArray<float>(4 * 4, Allocator.Temp);
             layers[0] = new ChiselPaintLayer { surfaceIndex = surfaceIndex, attribute = ChiselPaintAttribute.Color, components = ChiselPaintComponents.XYZW,
                                                cellU = new float3(1, 0, 0), cellV = new float3(0, 0, 1), resolution = new int2(2, 2) };
-            for (int i = 0; i < 4; i++)
+            for (int i = 0; i < values.Length; i++)
                 values[i] = value;
             return ChiselPaintStore.SetPaint(tree, entityID, layers, values);
         }
@@ -41,7 +41,7 @@ namespace Chisel.Core.Tests
         {
             var lookup = ChiselPaintLookup.Of(ChiselTreeLookup.Value[tree]);
             Assert.That(lookup.TryGetRange(entityID, surfaceIndex, out var range), Is.True, $"surface {surfaceIndex} of {entityID}");
-            return lookup.values[lookup.layers[range.start].valueStart].x;
+            return lookup.values[lookup.layers[range.start].valueStart];
         }
 
         [Test]
@@ -69,7 +69,7 @@ namespace Chisel.Core.Tests
             for (int i = 1; i <= 10; i++)
                 Paint(tree, 1, 0, i);
             var data = ChiselTreeLookup.Value[tree];
-            Assert.That(data.paintValues.Length, Is.LessThanOrEqualTo(8));
+            Assert.That(data.paintValues.Length, Is.LessThanOrEqualTo(2 * 4 * 4));
             Assert.That(ValueOf(tree, 1, 0), Is.EqualTo(10));
         }
     }

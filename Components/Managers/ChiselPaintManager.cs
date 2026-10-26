@@ -111,8 +111,8 @@ namespace Chisel.Components
 
             NativeArray<ChiselPaintLayer> layers;
             using var _layers = layers = new NativeArray<ChiselPaintLayer>(layerCount, Allocator.Temp);
-            NativeArray<float4> values;
-            using var _values = values = new NativeArray<float4>(valueCount, Allocator.Temp);
+            NativeArray<float> values;
+            using var _values = values = new NativeArray<float>(valueCount, Allocator.Temp);
             int l = 0, v = 0;
             foreach (var paint in generator.SurfacePaint)
             {
@@ -131,8 +131,8 @@ namespace Chisel.Components
                     resolution   = new int2(paint.resolution.x, paint.resolution.y),
                     valueStart   = v
                 };
-                foreach (var value in paint.values)
-                    values[v++] = value;
+                NativeArray<float>.Copy(paint.values, 0, values, v, paint.values.Length);
+                v += paint.values.Length;
             }
             s_Given[generator] = new Given { entityID = entityID, tree = tree, space = space };
             // the brushes of a generator whose paint changed are built again, with it

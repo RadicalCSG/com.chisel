@@ -29,7 +29,7 @@ namespace Chisel.Core
     {
         [ReadOnly] public NativeParallelHashMap<ChiselPaintKey, ChiselPaintRange> ranges;
         [ReadOnly] public NativeArray<ChiselPaintLayer>                          layers;
-        [ReadOnly] public NativeArray<float4>                                    values;
+        [ReadOnly] public NativeArray<float>                                     values;
         public bool                                                              hasPaint;
         // the attributes of the materials whose shaders take paint, by material (ChiselPaintMaterials)
         [ReadOnly] public NativeParallelHashMap<ulong, ChiselPaintRange>         materials;
@@ -77,17 +77,17 @@ namespace Chisel.Core
         }
 
         // A layer and its values
-        public static unsafe uint HashOf(in ChiselPaintLayer layer, float4* values)
+        public static unsafe uint HashOf(in ChiselPaintLayer layer, float* values)
         {
             var copy = layer;
             copy.valueStart = 0;
             var hash = math.hash(&copy, UnsafeUtility.SizeOf<ChiselPaintLayer>());
-            return math.hash(new uint2(hash, math.hash(values + layer.valueStart, layer.ValueCount * UnsafeUtility.SizeOf<float4>())));
+            return math.hash(new uint2(hash, math.hash(values + layer.valueStart, layer.ValueCount * sizeof(float))));
         }
 
         /// <summary>Replaces the paint of one entity: its layers, and the values their grids take from. True when it changed;
         /// its brushes then have to be rebuilt to show it.</summary>
-        public static unsafe bool SetPaint(CSGTree tree, ulong entityID, NativeArray<ChiselPaintLayer> layers, NativeArray<float4> values)
+        public static unsafe bool SetPaint(CSGTree tree, ulong entityID, NativeArray<ChiselPaintLayer> layers, NativeArray<float> values)
         {
             if (!tree.Valid)
                 return false;
@@ -108,7 +108,7 @@ namespace Chisel.Core
             NativeList<uint> hashes;
             using var _hashes = hashes = new NativeList<uint>(math.max(1, sorted.Length), Allocator.Temp);
             var entityHash = 0u;
-            var valuesPointer = values.IsCreated ? (float4*)values.GetUnsafeReadOnlyPtr() : null;
+            var valuesPointer = values.IsCreated ? (float*)values.GetUnsafeReadOnlyPtr() : null;
             for (int l = 0; l < sorted.Length; l++)
             {
                 hashes.Add(HashOf(sorted[l], valuesPointer));
@@ -157,7 +157,7 @@ namespace Chisel.Core
         // The values of the layers only, in their order
         static void Compact(ChiselTreeLookup.Data data)
         {
-            using var compacted = new NativeList<float4>(math.max(1, data.paintValues.Length - data.paintUnusedValues), Allocator.Temp);
+            using var compacted = new NativeList<float>(math.max(1, data.paintValues.Length - data.paintUnusedValues), Allocator.Temp);
             for (int l = 0; l < data.paintLayers.Length; l++)
             {
                 var layer = data.paintLayers[l];
@@ -192,7 +192,7 @@ namespace Chisel.Core
 
         /// <summary>Replaces all paint of the tree: the entities in the layers get theirs, every other entity loses its paint.
         /// Returns the entities whose paint changed.</summary>
-        public static bool SetPaint(CSGTree tree, NativeArray<ChiselPaintLayer> layers, NativeArray<float4> values, NativeList<ulong> changedEntities)
+        public static bool SetPaint(CSGTree tree, NativeArray<ChiselPaintLayer> layers, NativeArray<float> values, NativeList<ulong> changedEntities)
         {
             if (changedEntities.IsCreated)
                 changedEntities.Clear();
@@ -249,7 +249,7 @@ namespace Chisel.Core
                 var end  = start;
                 var hash = 0u;
                 for (; end < slots.Length && slots[end].material == material; end++)
-                    hash = math.hash(new uint3(hash, (uint)slots[end].attribute, math.hash(math.asuint(slots[end].defaultValue))));
+                    hash = math.hash(new uint4(hash, (uint)slots[end].attribute, (uint)slots[end].components, math.hash(math.asuint(slots[end].defaultValue))));
                 data.paintMaterials.TryAdd(material, new ChiselPaintRange { start = start, count = end - start, hash = hash });
                 start = end;
             }

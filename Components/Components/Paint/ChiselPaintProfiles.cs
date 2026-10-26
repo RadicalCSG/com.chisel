@@ -49,6 +49,7 @@ namespace Chisel.Components
                 }
                 var slot = slots[index];
                 slot.defaultValue = ChiselPaintLayer.Apply(mode.defaultValue, slot.defaultValue, mode.components);
+                slot.components  |= mode.components;
                 slots[index] = slot;
             }
         }

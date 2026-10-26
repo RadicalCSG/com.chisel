@@ -42,7 +42,7 @@ namespace Chisel.Core
             // The painted surfaces' layers and their grids' values, and what an update looks up in them (ChiselPaintStore)
             public NativeList<ChiselPaintLayer>                                 paintLayers;
             public NativeList<uint>                                             paintLayerHashes;
-            public NativeList<float4>                                           paintValues;
+            public NativeList<float>                                            paintValues;
             public int                                                          paintUnusedValues;
             public NativeParallelHashMap<ulong, uint>                           paintEntityHashes;
             public NativeParallelHashMap<ChiselPaintKey, ChiselPaintRange>      paintRanges;
@@ -92,7 +92,7 @@ namespace Chisel.Core
 				hotspotLinks                = new NativeList<HotspotLink>(4, Allocator.Persistent);
 				paintLayers                 = new NativeList<ChiselPaintLayer>(4, Allocator.Persistent);
 				paintLayerHashes            = new NativeList<uint>(4, Allocator.Persistent);
-				paintValues                 = new NativeList<float4>(16, Allocator.Persistent);
+				paintValues                 = new NativeList<float>(64, Allocator.Persistent);
 				paintEntityHashes           = new NativeParallelHashMap<ulong, uint>(4, Allocator.Persistent);
 				paintRanges                 = new NativeParallelHashMap<ChiselPaintKey, ChiselPaintRange>(4, Allocator.Persistent);
 				paintMaterialSlots          = new NativeList<ChiselPaintMaterialSlot>(4, Allocator.Persistent);

@@ -184,10 +184,7 @@ namespace Chisel.Components
             if (added != ChiselPaintComponents.None)
             {
                 // another mode of the attribute painted it already: its components stay, the mode's start at its default
-                paint.defaultValue = ChiselPaintLayer.Apply(mode.defaultValue, paint.defaultValue, added);
-                for (int i = 0; i < paint.values.Length; i++)
-                    paint.values[i] = ChiselPaintLayer.Apply(mode.defaultValue, paint.values[i], added);
-                paint.components |= added;
+                paint.AddComponents(added, mode.defaultValue);
                 generator.PaintChanged();
             }
             return paint;
@@ -223,7 +220,13 @@ namespace Chisel.Components
                 return true;
             }
             var normal  = Vector3.Cross(paint.cellU, paint.cellV).normalized;
-            var before  = operation == ChiselPaintOperation.Smooth ? (Vector4[])paint.values.Clone() : null;
+            Vector4[] before = null;
+            if (operation == ChiselPaintOperation.Smooth)
+            {
+                before = new Vector4[paint.PointCount];
+                for (int p = 0; p < before.Length; p++)
+                    before[p] = paint[p];
+            }
             var changed = false;
             for (int j = 0; j < paint.resolution.y; j++)
             {
@@ -261,12 +264,12 @@ namespace Chisel.Components
         {
             if (paint == null || !paint.IsValid)
                 return;
-            for (int i = 0; i < paint.values.Length; i++)
+            for (int i = 0; i < paint.PointCount; i++)
             {
-                Vector4 result = ChiselPaintLayer.Apply(target, paint.values[i], mode.components);
+                Vector4 result = ChiselPaintLayer.Apply(target, paint[i], mode.components);
                 if (group != ChiselPaintComponents.None)
                     result = Normalize(result, mode.components, group);
-                paint.values[i] = result;
+                paint[i] = result;
             }
         }
 
