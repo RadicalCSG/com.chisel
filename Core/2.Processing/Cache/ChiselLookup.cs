@@ -49,6 +49,8 @@ namespace Chisel.Core
             public NativeList<ChiselPaintMaterialSlot>                          paintMaterialSlots;
             public NativeParallelHashMap<ulong, ChiselPaintRange>               paintMaterials;
             public int                                                          paintMaterialsVersion = -1;
+            // paint values changed in place: the meshes are copied again without building a brush
+            public bool                                                         paintValuesChanged;
 
             public NativeParallelHashMap<CompactNodeID, BlobAssetReference<ChiselBrushRenderBuffer>> brushRenderBufferLookup;
 

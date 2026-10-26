@@ -312,16 +312,17 @@ namespace Chisel.Core
 			buf.hotspot       = hotspotInfo;
 			buf.hotspotSource = hotspotSource;
 
-			// paint is found by the brush's entity and the surface's index, when the surface's mesh is copied
+			// the attributes its material's shader takes paint in are in its mesh, painted or not
+			if (paint.TryGetMaterial(parms.parameter1, out var materialRange))
+				buf.surfaceHashValue = math.hash(new uint2(buf.surfaceHashValue, materialRange.hash));
+			// paint is found by the brush's entity and the surface's index, when the surface's mesh is copied; its hash
+			// goes in last, by xor, so new values can replace it in place (ChiselPaintStore.SetValues)
 			var paintSurface = baseSurfaces[surf].descriptionIndex;
 			if (paint.TryGetRange(entityID, paintSurface, out var paintRange))
 			{
 				buf.paintSurface     = paintSurface;
-				buf.surfaceHashValue = math.hash(new uint2(buf.surfaceHashValue, paintRange.hash));
+				buf.surfaceHashValue ^= paintRange.hash;
 			}
-			// the attributes its material's shader takes paint in are in its mesh, painted or not
-			if (paint.TryGetMaterial(parms.parameter1, out var materialRange))
-				buf.surfaceHashValue = math.hash(new uint2(buf.surfaceHashValue, materialRange.hash));
 
 			if (HasBackFace(flags, outputFlags))
 				FinishBackFace(surf, entityID, flags, parms, outputFlags, surfaceIndexList, ref uniqueVertexMapper, builder, surfaceBuffers, slots);

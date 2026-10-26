@@ -189,6 +189,8 @@ namespace Chisel.Core
             public int           maxNodeOrder;
             public int           updateCount;
             public bool          brushListChanged;
+            // only paint values changed: the meshes are copied again from the brushes' buffers (ChiselPaintStore)
+            public bool          paintValuesChanged;
             // RunMeshUpdateJobs ran for this update (RunMeshCopyJobs follows)
             public bool          ranMeshUpdate;
             public bool          subtractiveWorkflow;
@@ -736,6 +738,9 @@ namespace Chisel.Core
                             treeUpdate.treeCompactNodeID = treeCompactNodeID;
                             treeUpdate.ranMeshUpdate = false;
                             treeUpdate.brushListChanged = false;
+                            var lookup = ChiselTreeLookup.Value[tree];
+                            treeUpdate.paintValuesChanged = lookup.paintValuesChanged;
+                            lookup.paintValuesChanged = false;
                             treeUpdateLength++;
                         }
 
@@ -806,6 +811,7 @@ namespace Chisel.Core
 
                                     if (treeUpdate.updateCount <= 0 &&
                                         !treeUpdate.brushListChanged &&
+                                        !(treeUpdate.paintValuesChanged && treeUpdate.brushCount > 0) &&
                                         !(s_RemakeAll && treeUpdate.brushCount > 0))
                                         continue;
 
@@ -876,6 +882,7 @@ namespace Chisel.Core
 
                             if (treeUpdate.updateCount <= 0 &&
                                 !treeUpdate.brushListChanged &&
+                                !treeUpdate.paintValuesChanged &&
                                 treeUpdate.brushCount > 0 &&
                                 !s_RemakeAll)
                                 continue;

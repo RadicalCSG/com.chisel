@@ -28,7 +28,8 @@ namespace Chisel.Core
         static readonly Dictionary<ulong, Material>       s_Materials = new();
         static readonly List<ChiselPaintMaterialSlot>     s_Slots     = new();
         static readonly List<ChiselPaintMaterialSlot>     s_Resolved  = new();
-        static readonly List<ChiselPaintMaterialSlot>     s_Scratch   = new();
+        static readonly Dictionary<ulong, uint>           s_Before    = new();
+        static readonly Dictionary<ulong, uint>           s_After     = new();
         static readonly List<ulong>                       s_Gone      = new();
         static bool s_Dirty;
         static int  s_Version;
@@ -45,22 +46,28 @@ namespace Chisel.Core
         /// <summary>What shaders take may have changed; looked into at the next <see cref="Update"/></summary>
         public static void Changed() => s_Changed = true;
 
-        /// <summary>Before the trees are built: every brush is built again when a registered material's attributes changed</summary>
+        /// <summary>Before the trees are built: every brush is built again when what a material already resolved takes
+        /// changed (a material resolved for the first time is in the brushes being built with it)</summary>
         public static void Update()
         {
             if (!s_Changed)
                 return;
             s_Changed = false;
             s_Dirty = true;
-            var before = s_Slots.Count;
-            s_Scratch.Clear();
-            s_Scratch.AddRange(s_Slots);
+            s_Before.Clear();
+            HashByMaterial(s_Slots, s_Before);
             Resolve();
-            var same = before == s_Slots.Count;
-            for (int i = 0; same && i < before; i++)
+            s_After.Clear();
+            HashByMaterial(s_Slots, s_After);
+            var same = true;
+            foreach (var entry in s_Before)
             {
-                same = s_Scratch[i].material == s_Slots[i].material && s_Scratch[i].attribute == s_Slots[i].attribute &&
-                       s_Scratch[i].components == s_Slots[i].components && s_Scratch[i].defaultValue.Equals(s_Slots[i].defaultValue);
+                s_After.TryGetValue(entry.Key, out var after);
+                if (after != entry.Value)
+                {
+                    same = false;
+                    break;
+                }
             }
             if (same)
                 return;
@@ -70,6 +77,15 @@ namespace Chisel.Core
             {
                 for (int i = 0; tree.Valid && i < tree.Count; i++)
                     SetBrushesDirty(tree[i]);
+            }
+        }
+
+        static void HashByMaterial(List<ChiselPaintMaterialSlot> slots, Dictionary<ulong, uint> hashes)
+        {
+            foreach (var slot in slots)
+            {
+                hashes.TryGetValue(slot.material, out var hash);
+                hashes[slot.material] = math.hash(new uint4(hash, (uint)slot.attribute, (uint)slot.components, math.hash(math.asuint(slot.defaultValue))));
             }
         }
 

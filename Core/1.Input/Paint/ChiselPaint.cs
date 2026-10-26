@@ -148,12 +148,13 @@ namespace Chisel.Core
         }
 
         /// <summary>
-        /// Replaces the paint of one entity: its layers, and the values their grids take from. True when it changed; the
-        /// entity's brushes then have to be rebuilt to show it (<see cref="CSGTreeNode.SetSurfacesDirty"/>).
+        /// Replaces the paint of one entity: its layers, and the values their grids take from. When only values changed on
+        /// the same grids the meshes are copied again at the next update without building a brush; when the grids changed
+        /// the entity's brushes have to be built again to show it (<see cref="CSGTreeNode.SetSurfacesDirty"/>).
         /// </summary>
-        public static bool SetPaint(this CSGTree tree, ulong entityID, NativeArray<ChiselPaintLayer> layers, NativeArray<float> values)
+        public static ChiselPaintChange SetPaint(this CSGTree tree, ulong entityID, NativeArray<ChiselPaintLayer> layers, NativeArray<float> values)
         {
-            return ChiselPaintStore.SetPaint(tree, entityID, layers, values);
+            return ChiselPaintStore.SetPaintOrValues(tree, entityID, layers, values);
         }
     }
 }

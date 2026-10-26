@@ -458,6 +458,67 @@ namespace Chisel.Components.Tests
             Assert.That(box.GetSurfacePaint(top, ChiselPaintAttribute.Color), Is.SameAs(paint));
         }
 
+        // A scene keeps its saved meshes only while their paint is the same: the paint and what the shaders take of it are
+        // in the hash that decides it
+        [Test]
+        public void TheSavedMeshesInputHash_HasThePaintAndWhatTheShaderTakes()
+        {
+            var model = Model();
+            var box   = Box(model, Vector3.zero);
+            Update();
+            var unpainted = ChiselModelManager.GetComponentInputHash(model);
+
+            var paint = PaintTop(box, ChiselPaintAttribute.Color, ChiselPaintComponents.XYZW);
+            Update();
+            var painted = ChiselModelManager.GetComponentInputHash(model);
+            Assert.That(painted, Is.Not.EqualTo(unpainted), "painted");
+
+            paint[0, 0] = new Vector4(0.5f, 0.5f, 0.5f, 1);
+            Assert.That(ChiselModelManager.GetComponentInputHash(model), Is.Not.EqualTo(painted), "a value changed");
+            var repainted = ChiselModelManager.GetComponentInputHash(model);
+
+            ChiselPaintProfiles.Unregister(profile);
+            Assert.That(ChiselModelManager.GetComponentInputHash(model), Is.Not.EqualTo(repainted), "the shader takes no paint");
+            ChiselPaintProfiles.Register(profile);
+            Assert.That(ChiselModelManager.GetComponentInputHash(model), Is.EqualTo(repainted), "and takes it again");
+        }
+
+        // The buffer the box's brush was last built into
+        static Unity.Entities.BlobAssetReference<ChiselBrushRenderBuffer> BuiltBuffer(ChiselModelComponent model, ChiselBoxComponent box)
+        {
+            var entityID = EntityId.ToULong(box.GetEntityId());
+            var cache = ChiselTreeLookup.Value[model.Node].brushRenderBufferCache;
+            for (int b = 0; b < cache.Length; b++)
+            {
+                if (cache[b].IsCreated && cache[b].Value.entityID == entityID)
+                    return cache[b];
+            }
+            Assert.Fail("the box's brush has no buffer");
+            return default;
+        }
+
+        // New values on the same grid are copied into the mesh without building the brush again; a new grid builds it
+        [Test]
+        public void NewValues_AreDrawnWithoutBuildingTheBrush()
+        {
+            var model = Model();
+            var box   = Box(model, Vector3.zero);
+            var paint = PaintTop(box, ChiselPaintAttribute.Color, ChiselPaintComponents.XYZW);
+            Update();
+            var built = BuiltBuffer(model, box);
+
+            paint[0, 0] = new Vector4(0, 1, 1, 1);
+            box.PaintChanged();
+            Update();
+            AssertValuesAt(RenderMesh(model), VertexAttribute.Color, new Vector3(0, 1, 0), new Vector4(0, 1, 1, 1), "the new value");
+            Assert.That(BuiltBuffer(model, box), Is.EqualTo(built), "the brush was built again for new values");
+
+            box.SetSurfacePaint(ChiselSurfacePaint.Create(paint.surfaceIndex, paint.attribute, paint.components, Vector4.one,
+                                                          paint.origin, paint.cellU * 0.5f, paint.cellV * 0.5f, new Vector2Int(3, 3)));
+            Update();
+            Assert.That(BuiltBuffer(model, box), Is.Not.EqualTo(built), "a new grid didn't build the brush");
+        }
+
         // The grid moves with its generator
         [Test]
         public void Paint_MovesWithItsGenerator()
