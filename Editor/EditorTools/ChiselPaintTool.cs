@@ -507,9 +507,12 @@ namespace Chisel.Editors
             var swatches = Swatches;
             var chosen   = ChosenSwatch();
             var count    = swatches.Count + 1;
-            var perRow   = Mathf.Max(1, Mathf.FloorToInt((kRowWidth + kSwatchGap) / (kSwatchSize + kSwatchGap)));
+            // starting where the labels' text does
+            var indent   = EditorStyles.label.margin.left + EditorStyles.label.padding.left;
+            var perRow   = Mathf.Max(1, Mathf.FloorToInt((kRowWidth - indent + kSwatchGap) / (kSwatchSize + kSwatchGap)));
             var rows     = (count + perRow - 1) / perRow;
             var area     = GUILayoutUtility.GetRect(kRowWidth, rows * (kSwatchSize + kSwatchGap) - kSwatchGap + 2);
+            area.xMin   += indent;
             var evt      = Event.current;
             var id       = GUIUtility.GetControlID(FocusType.Passive);
             var border   = EditorGUIUtility.isProSkin ? new Color(0.6f, 0.6f, 0.6f) : new Color(0.3f, 0.3f, 0.3f);
