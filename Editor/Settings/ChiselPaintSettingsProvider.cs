@@ -17,6 +17,27 @@ namespace Chisel.Editors
 		static readonly GUIContent kModesContent  = EditorGUIUtility.TrTextContent("Modes", "What a surface drawn with the shader can be painted with");
 
 		internal static int s_Selected;
+		static UnityEditorInternal.ReorderableList s_ModesList;
+
+		// The modes of the chosen profile: a list with a header, not a foldout
+		static UnityEditorInternal.ReorderableList ModesList(SerializedProperty modesProp)
+		{
+			if (s_ModesList != null && s_ModesList.serializedProperty.propertyPath == modesProp.propertyPath &&
+				s_ModesList.serializedProperty.serializedObject == modesProp.serializedObject)
+				return s_ModesList;
+			s_ModesList = new UnityEditorInternal.ReorderableList(modesProp.serializedObject, modesProp, true, true, true, true)
+			{
+				drawHeaderCallback    = rect => EditorGUI.LabelField(rect, kModesContent),
+				elementHeightCallback = index => EditorGUI.GetPropertyHeight(modesProp.GetArrayElementAtIndex(index), true) + EditorGUIUtility.standardVerticalSpacing,
+				drawElementCallback   = (rect, index, active, focused) =>
+				{
+					rect.xMin  += 10;
+					rect.height = EditorGUI.GetPropertyHeight(modesProp.GetArrayElementAtIndex(index), true);
+					EditorGUI.PropertyField(rect, modesProp.GetArrayElementAtIndex(index), true);
+				}
+			};
+			return s_ModesList;
+		}
 		static SerializedObject s_Serialized;
 
 		public static void OnGUI(ChiselPaintSettings settings)
@@ -57,9 +78,7 @@ namespace Chisel.Editors
 			if (s_Selected >= 0 && s_Selected < profilesProp.arraySize)
 			{
 				EditorGUILayout.Space();
-				var modesProp = profilesProp.GetArrayElementAtIndex(s_Selected).FindPropertyRelative(nameof(ChiselPaintProfile.modes));
-				modesProp.isExpanded = true;
-				EditorGUILayout.PropertyField(modesProp, kModesContent, true);
+				ModesList(profilesProp.GetArrayElementAtIndex(s_Selected).FindPropertyRelative(nameof(ChiselPaintProfile.modes))).DoLayoutList();
 			}
 			if (EditorGUI.EndChangeCheck())
 			{
