@@ -69,7 +69,10 @@ namespace Chisel.Editors
         static Hit                  s_Last;
 
         static readonly List<ChiselIntersection> s_Intersections = new();
-        static Rect                 s_Window = new(10, 30, 260, 200);
+        // the surface under the mouse, as it was last picked
+        static Hit                  s_Hover;
+        // where the panel was drawn, so a click on it doesn't paint
+        static Rect                 s_Panel;
         static int                  s_UndoGroup = -1;
 
         public override GUIContent toolbarIcon => new("Paint", "Chisel Paint: paint vertex data onto surfaces, in the modes of their shaders' paint profiles");
@@ -121,9 +124,15 @@ namespace Chisel.Editors
                 return;
             var evt = Event.current;
             var id  = GUIUtility.GetControlID(FocusType.Passive);
-            var hit = Pick(evt.mousePosition);
-            if (hit.valid && hit.profile != null)
-                s_Last = hit;
+            // picking renders: only on the mouse's own events, never inside the scene view's layout or repaint
+            var type = evt.GetTypeForControl(id);
+            if (type == EventType.MouseMove || type == EventType.MouseDown || type == EventType.MouseDrag)
+            {
+                s_Hover = s_Panel.Contains(evt.mousePosition) ? default : Pick(evt.mousePosition);
+                if (s_Hover.valid && s_Hover.profile != null)
+                    s_Last = s_Hover;
+            }
+            var hit = s_Hover;
 
             DrawPanel(hit);
             if (hit.valid)
@@ -142,7 +151,7 @@ namespace Chisel.Editors
                     HandleUtility.Repaint();
                     break;
                 case EventType.MouseDown:
-                    if (evt.button != 0 || evt.alt || !hit.valid || hit.profile == null || s_Window.Contains(evt.mousePosition))
+                    if (evt.button != 0 || evt.alt || !hit.valid || hit.profile == null || s_Panel.Contains(evt.mousePosition))
                         break;
                     // control-click takes the paint under the mouse as the brush's color or value
                     if (evt.control)
@@ -241,14 +250,21 @@ namespace Chisel.Editors
 
         static void DrawPanel(Hit hit)
         {
+            // a plain area, not a GUI window: a tool draws outside the scene view's BeginWindows / EndWindows
             Handles.BeginGUI();
-            s_Window = GUILayout.Window(typeof(ChiselPaintTool).GetHashCode(), s_Window, id =>
+            var area = new Rect(10, 10, 280, Mathf.Max(100, Screen.height));
+            GUILayout.BeginArea(area);
+            var labelWidth = EditorGUIUtility.labelWidth;
+            EditorGUIUtility.labelWidth = 90;
+            var panel = EditorGUILayout.BeginVertical(EditorStyles.helpBox);
             {
-                var profile = hit.profile;
-                if (!hit.valid)
-                    EditorGUILayout.HelpBox("Hover over a surface to paint it.", MessageType.None);
-                else if (profile == null || profile.modes.Count == 0)
+                GUILayout.Label("Chisel Paint", EditorStyles.boldLabel);
+                // the modes of the surface last painted on, so they stay while the mouse is over the panel
+                var profile = s_Last.valid ? s_Last.profile : null;
+                if (hit.valid && hit.profile == null)
                     EditorGUILayout.HelpBox($"The shader {(hit.shader ? hit.shader.name : "(none)")} has no paint profile (Assets > Create > Chisel > Paint Profile).", MessageType.Info);
+                if (profile == null || profile.modes.Count == 0)
+                    EditorGUILayout.HelpBox("Hover over a surface whose shader has a paint profile.", MessageType.None);
                 else
                 {
                     var names = new GUIContent[profile.modes.Count];
@@ -303,8 +319,12 @@ namespace Chisel.Editors
                     }
                 }
                 EditorGUILayout.HelpBox("Control-click takes the paint under the mouse.", MessageType.None);
-                GUI.DragWindow();
-            }, "Chisel Paint");
+            }
+            EditorGUILayout.EndVertical();
+            EditorGUIUtility.labelWidth = labelWidth;
+            GUILayout.EndArea();
+            if (Event.current.type == EventType.Repaint)
+                s_Panel = new Rect(area.x + panel.x, area.y + panel.y, panel.width, panel.height);
             Handles.EndGUI();
         }
     }
