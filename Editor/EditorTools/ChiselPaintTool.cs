@@ -441,8 +441,9 @@ namespace Chisel.Editors
             new(0.15f, 0.35f, 0.95f), new(0.55f, 0.25f, 0.85f), new(0.95f, 0.3f, 0.7f), new(0.5f, 0.3f, 0.15f),
         };
         const string kSwatchesPref = "Chisel.Paint.Swatches";
-        const float  kSwatchSize   = 18;
-        const float  kSwatchGap    = 3;
+        const float  kSwatchSize   = 14;
+        // neighbours share their border
+        const float  kSwatchGap    = -1;
         static List<Color> s_Swatches;
         static readonly GUIContent kAddSwatchContent = new(string.Empty, "Adds the current color as a swatch, and picks its color (middle-click a swatch to remove it)");
 
@@ -508,7 +509,7 @@ namespace Chisel.Editors
             var count    = swatches.Count + 1;
             var perRow   = Mathf.Max(1, Mathf.FloorToInt((kRowWidth + kSwatchGap) / (kSwatchSize + kSwatchGap)));
             var rows     = (count + perRow - 1) / perRow;
-            var area     = GUILayoutUtility.GetRect(kRowWidth, rows * (kSwatchSize + kSwatchGap));
+            var area     = GUILayoutUtility.GetRect(kRowWidth, rows * (kSwatchSize + kSwatchGap) - kSwatchGap + 2);
             var evt      = Event.current;
             var id       = GUIUtility.GetControlID(FocusType.Passive);
             var border   = EditorGUIUtility.isProSkin ? new Color(0.6f, 0.6f, 0.6f) : new Color(0.3f, 0.3f, 0.3f);
@@ -554,7 +555,7 @@ namespace Chisel.Editors
                     {
                         EditorGUI.DrawRect(cell, border);
                         EditorGUI.DrawRect(inner, EditorGUIUtility.isProSkin ? new Color(0.22f, 0.22f, 0.22f) : new Color(0.76f, 0.76f, 0.76f));
-                        EditorGUI.DrawRect(new Rect(cell.x + 4, cell.y + 4, cell.width - 8, cell.height - 8), s_Color);
+                        EditorGUI.DrawRect(new Rect(cell.x + 3, cell.y + 3, cell.width - 6, cell.height - 6), s_Color);
                     }
                     if (GUI.Button(cell, kAddSwatchContent, GUIStyle.none))
                     {
@@ -576,11 +577,14 @@ namespace Chisel.Editors
                 {
                     if (i == chosen)
                     {
-                        EditorGUI.DrawRect(new Rect(cell.x - 2, cell.y - 2, cell.width + 4, cell.height + 4), highlight);
-                        EditorGUI.DrawRect(cell, Color.black);
+                        // inside the cell: there is no room between the swatches
+                        EditorGUI.DrawRect(cell, highlight);
+                        EditorGUI.DrawRect(new Rect(cell.x + 2, cell.y + 2, cell.width - 4, cell.height - 4), swatches[i]);
                     } else
+                    {
                         EditorGUI.DrawRect(cell, border);
-                    EditorGUI.DrawRect(inner, swatches[i]);
+                        EditorGUI.DrawRect(inner, swatches[i]);
+                    }
                 }
                 EditorGUIUtility.AddCursorRect(cell, GUIUtility.hotControl == id ? MouseCursor.Pan : MouseCursor.Link);
                 if (evt.type == EventType.MouseDown && cell.Contains(evt.mousePosition))
