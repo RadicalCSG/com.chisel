@@ -319,6 +319,9 @@ namespace Chisel.Core
 				buf.paintSurface     = paintSurface;
 				buf.surfaceHashValue = math.hash(new uint2(buf.surfaceHashValue, paintRange.hash));
 			}
+			// the attributes its material's shader takes paint in are in its mesh, painted or not
+			if (paint.TryGetMaterial(parms.parameter1, out var materialRange))
+				buf.surfaceHashValue = math.hash(new uint2(buf.surfaceHashValue, materialRange.hash));
 
 			if (HasBackFace(flags, outputFlags))
 				FinishBackFace(surf, entityID, flags, parms, outputFlags, surfaceIndexList, ref uniqueVertexMapper, builder, surfaceBuffers, slots);

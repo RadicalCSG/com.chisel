@@ -15,17 +15,50 @@ namespace Chisel.Components
         {
             if (profile != null && !s_Registered.Contains(profile))
                 s_Registered.Add(profile);
+            SetDirty();
             ChiselPaintManager.SetDirty();
         }
 
         public static void Unregister(ChiselPaintProfile profile)
         {
             s_Registered.Remove(profile);
+            SetDirty();
             ChiselPaintManager.SetDirty();
         }
 
         /// <summary>Called when profiles may have been added, removed or changed</summary>
-        public static void SetDirty() => s_ByShader = null;
+        public static void SetDirty()
+        {
+            s_ByShader = null;
+            ChiselPaintMaterials.Changed();
+        }
+
+        // The attributes a material's shader takes paint in, each with the defaults of its modes
+        static void Resolve(Material material, List<ChiselPaintMaterialSlot> slots)
+        {
+            var profile = Find(material.shader);
+            if (profile == null)
+                return;
+            foreach (var mode in profile.modes)
+            {
+                var index = slots.FindIndex(slot => slot.attribute == mode.attribute);
+                if (index < 0)
+                {
+                    slots.Add(new ChiselPaintMaterialSlot { attribute = mode.attribute });
+                    index = slots.Count - 1;
+                }
+                var slot = slots[index];
+                slot.defaultValue = ChiselPaintLayer.Apply(mode.defaultValue, slot.defaultValue, mode.components);
+                slots[index] = slot;
+            }
+        }
+
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
+        static void Hook()
+        {
+            ChiselPaintMaterials.Resolver = Resolve;
+            ChiselPaintMaterials.Changed();
+        }
 
         public static ChiselPaintProfile Find(Shader shader)
         {
@@ -95,6 +128,7 @@ namespace Chisel.Components
         [UnityEditor.InitializeOnLoadMethod]
         static void Initialize()
         {
+            Hook();
             UnityEditor.EditorApplication.projectChanged += () =>
             {
                 SetDirty();

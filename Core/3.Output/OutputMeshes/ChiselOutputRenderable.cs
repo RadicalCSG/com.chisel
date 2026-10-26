@@ -142,6 +142,16 @@ namespace Chisel.Core
                 {
                     ref var brush   = ref surfaceArray[s].brushRenderBuffer.Value;
                     ref var surface = ref brush.surfaces[surfaceArray[s].surfaceIndex];
+                    if (subMeshSource.paint.TryGetMaterial(surface.destinationParameters.parameter1, out var materialRange))
+                    {
+                        for (int m = materialRange.start; m < materialRange.start + materialRange.count; m++)
+                        {
+                            var slot = ChiselPaintOutput.SlotOf(subMeshSource.paint.materialSlots[m].attribute);
+                            if ((paintSlots & (1 << slot)) == 0)
+                                paintDefaults[slot] = subMeshSource.paint.materialSlots[m].defaultValue;
+                            paintSlots |= 1 << slot;
+                        }
+                    }
                     if (surface.paintSurface < 0 || !subMeshSource.paint.TryGetRange(brush.entityID, surface.paintSurface, out var range))
                         continue;
                     for (int l = range.start; l < range.start + range.count; l++)

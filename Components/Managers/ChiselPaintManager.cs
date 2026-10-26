@@ -30,6 +30,7 @@ namespace Chisel.Components
 
         public static void Update()
         {
+            ChiselPaintMaterials.Update();
             if (!s_Dirty)
             {
                 foreach (var generator in s_Painted)

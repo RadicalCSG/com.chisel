@@ -148,7 +148,7 @@ namespace Chisel.Components.Tests
             var model = Model();
             var box   = Box(model, new Vector3(2, 0, 3));
             Update();
-            Assert.That(RenderMesh(model).HasVertexAttribute(VertexAttribute.Color), Is.False, "nothing painted: no colors");
+            AssertValuesAt(RenderMesh(model), VertexAttribute.Color, new Vector3(2, 1, 3), Vector4.one, "nothing painted: the default");
 
             PaintTop(box, ChiselPaintAttribute.Color, ChiselPaintComponents.XYZW);
             Update();
@@ -167,7 +167,7 @@ namespace Chisel.Components.Tests
 
             box.RemoveSurfacePaint(SurfaceFacing(box, new float3(0, 1, 0)), ChiselPaintAttribute.Color);
             Update();
-            Assert.That(RenderMesh(model).HasVertexAttribute(VertexAttribute.Color), Is.False, "the paint removed");
+            AssertValuesAt(RenderMesh(model), VertexAttribute.Color, new Vector3(2, 1, 3), Vector4.one, "the paint removed: the default");
         }
 
         // Paint in one component of a texture coordinate leaves the others at the default
@@ -180,15 +180,15 @@ namespace Chisel.Components.Tests
             Update();
             var mesh = RenderMesh(model);
             Assert.That(mesh.HasVertexAttribute(VertexAttribute.TexCoord3), Is.True);
-            Assert.That(mesh.HasVertexAttribute(VertexAttribute.Color), Is.False);
-            AssertValuesAt(mesh, VertexAttribute.TexCoord3, new Vector3(1, 1, 0), new Vector4(1, 1, 1, 1), "the green corner's y, the default elsewhere");
-            AssertValuesAt(mesh, VertexAttribute.TexCoord3, new Vector3(0, 1, 0), new Vector4(1, 0, 1, 1), "the red corner's y");
+            // the other components take the profile's default (the mask mode's 0)
+            AssertValuesAt(mesh, VertexAttribute.TexCoord3, new Vector3(1, 1, 0), new Vector4(0, 1, 0, 0), "the green corner's y, the default elsewhere");
+            AssertValuesAt(mesh, VertexAttribute.TexCoord3, new Vector3(0, 1, 0), new Vector4(0, 0, 0, 0), "the red corner's y");
 
             // a value changed in place shows at the next update
             paint[0, 0] = new Vector4(0.25f, 0.25f, 0.25f, 0.25f);
             box.PaintChanged();
             Update();
-            AssertValuesAt(RenderMesh(model), VertexAttribute.TexCoord3, new Vector3(0, 1, 0), new Vector4(1, 0.25f, 1, 1), "changed");
+            AssertValuesAt(RenderMesh(model), VertexAttribute.TexCoord3, new Vector3(0, 1, 0), new Vector4(0, 0.25f, 0, 0), "changed");
         }
 
         // A grid of quarter-metre cells on the top: all of its 25 points are vertices, the top is the grid's 32 half cells,
@@ -408,6 +408,21 @@ namespace Chisel.Components.Tests
             Assert.That(ChiselPaintBrush.Dab(paint, mode, ChiselPaintOperation.Fill, new Vector4(0, 1, 0, 1), new Vector3(0.1f, 1, 0.1f), 0.01f, 0.1f, 0), Is.True);
             foreach (var value in paint.values)
                 Assert.That(value, Is.EqualTo(new Vector4(0, 1, 0, 1)));
+        }
+
+        // A surface under a shader that takes paint has its attributes before it is painted, at their modes' defaults
+        [Test]
+        public void AnUnpaintedSurface_HasItsShadersAttributesAtTheirDefaults()
+        {
+            var model = Model();
+            Box(model, Vector3.zero);
+            Update();
+            var mesh = RenderMesh(model);
+            Assert.That(mesh.HasVertexAttribute(VertexAttribute.Color), Is.True);
+            Assert.That(mesh.HasVertexAttribute(VertexAttribute.TexCoord2), Is.True);
+            Assert.That(mesh.HasVertexAttribute(VertexAttribute.TexCoord3), Is.True);
+            AssertValuesAt(mesh, VertexAttribute.Color, new Vector3(0, 1, 0), new Vector4(1, 1, 1, 1), "the color mode's default");
+            AssertValuesAt(mesh, VertexAttribute.TexCoord2, new Vector3(0, 1, 0), Vector4.zero, "the value mode's default");
         }
 
         // The grid moves with its generator

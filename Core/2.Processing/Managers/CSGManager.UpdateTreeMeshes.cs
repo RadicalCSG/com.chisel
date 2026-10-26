@@ -564,7 +564,11 @@ namespace Chisel.Core
                     Temporaries.hotspotTileSides = new NativeArray<float4>(hotspotTileSides.AsArray(), defaultAllocator);
                     Temporaries.hotspotVariants  = new NativeArray<ulong>(hotspotVariants.AsArray(), defaultAllocator);
                     Temporaries.hotspotLinks   = new NativeArray<HotspotLink>(chiselLookupValues.hotspotLinks.AsArray(), defaultAllocator);
-                    Temporaries.paint          = ChiselPaintLookup.Create(chiselLookupValues.paintLayers, chiselLookupValues.paintValues, defaultAllocator);
+                    using (var materialSlots = new NativeList<ChiselPaintMaterialSlot>(Allocator.Temp))
+                    {
+                        ChiselPaintMaterials.Gather(materialSlots);
+                        Temporaries.paint = ChiselPaintLookup.Create(chiselLookupValues.paintLayers, chiselLookupValues.paintValues, materialSlots, defaultAllocator);
+                    }
                 }
 
                 Temporaries.subMeshDescriptions             = new NativeList<SubMeshDescriptions>(defaultAllocator);

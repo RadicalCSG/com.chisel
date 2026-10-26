@@ -32,6 +32,10 @@ namespace Chisel.Core
         [ReadOnly] public NativeArray<ChiselPaintLayer> layers;
         [ReadOnly] public NativeArray<float4>           values;
         public bool                                     hasPaint;
+        // the attributes of the materials whose shaders take paint, by material (ChiselPaintMaterials)
+        [ReadOnly] public NativeParallelHashMap<ulong, ChiselPaintRange> materials;
+        [ReadOnly] public NativeArray<ChiselPaintMaterialSlot>          materialSlots;
+        public bool                                     hasMaterials;
 
         public readonly bool TryGetRange(ulong entityID, int surfaceIndex, out ChiselPaintRange range)
         {
@@ -39,15 +43,41 @@ namespace Chisel.Core
             return hasPaint && ranges.TryGetValue(new ChiselPaintKey { entityID = entityID, surfaceIndex = surfaceIndex }, out range);
         }
 
-        public static ChiselPaintLookup Create(NativeList<ChiselPaintLayer> layers, NativeList<float4> values, Allocator allocator)
+        public readonly bool TryGetMaterial(ulong material, out ChiselPaintRange range)
+        {
+            range = default;
+            return hasMaterials && materials.TryGetValue(material, out range);
+        }
+
+        public static ChiselPaintLookup Create(NativeList<ChiselPaintLayer> layers, NativeList<float4> values,
+                                               NativeList<ChiselPaintMaterialSlot> materialSlots, Allocator allocator)
         {
             var count  = layers.IsCreated ? layers.Length : 0;
+            var slots  = materialSlots.IsCreated ? materialSlots.Length : 0;
             var lookup = new ChiselPaintLookup
             {
-                ranges = new NativeParallelHashMap<ChiselPaintKey, ChiselPaintRange>(math.max(1, count), allocator),
-                layers = new NativeArray<ChiselPaintLayer>(math.max(1, count), allocator),
-                values = new NativeArray<float4>(math.max(1, values.IsCreated ? values.Length : 0), allocator)
+                ranges        = new NativeParallelHashMap<ChiselPaintKey, ChiselPaintRange>(math.max(1, count), allocator),
+                layers        = new NativeArray<ChiselPaintLayer>(math.max(1, count), allocator),
+                values        = new NativeArray<float4>(math.max(1, values.IsCreated ? values.Length : 0), allocator),
+                materials     = new NativeParallelHashMap<ulong, ChiselPaintRange>(math.max(1, slots), allocator),
+                materialSlots = new NativeArray<ChiselPaintMaterialSlot>(math.max(1, slots), allocator)
             };
+            if (slots > 0)
+            {
+                lookup.hasMaterials = true;
+                NativeArray<ChiselPaintMaterialSlot>.Copy(materialSlots.AsArray(), lookup.materialSlots, slots);
+                // a material's slots are together (ChiselPaintMaterials)
+                for (int start = 0; start < slots;)
+                {
+                    var material = materialSlots[start].material;
+                    var end  = start;
+                    var hash = 0u;
+                    for (; end < slots && materialSlots[end].material == material; end++)
+                        hash = math.hash(new uint3(hash, (uint)materialSlots[end].attribute, math.hash(math.asuint(materialSlots[end].defaultValue))));
+                    lookup.materials.TryAdd(material, new ChiselPaintRange { start = start, count = end - start, hash = hash });
+                    start = end;
+                }
+            }
             if (count == 0)
                 return lookup;
             lookup.hasPaint = true;
@@ -75,6 +105,8 @@ namespace Chisel.Core
             if (ranges.IsCreated) handle = JobHandle.CombineDependencies(handle, ranges.Dispose(dependency));
             if (layers.IsCreated) handle = JobHandle.CombineDependencies(handle, layers.Dispose(dependency));
             if (values.IsCreated) handle = JobHandle.CombineDependencies(handle, values.Dispose(dependency));
+            if (materials.IsCreated)     handle = JobHandle.CombineDependencies(handle, materials.Dispose(dependency));
+            if (materialSlots.IsCreated) handle = JobHandle.CombineDependencies(handle, materialSlots.Dispose(dependency));
             this = default;
             return handle;
         }
