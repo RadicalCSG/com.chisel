@@ -47,6 +47,8 @@ almost always belongs in the CSG, not in a special case in the generator.
 * New features should work for any level someone builds by hand, not only for one kind of content, and be reachable
   from the editor's UI.
 
+Pull requests are squash-merged into a single commit, which keeps you as its author.
+
 ## Tests
 
 The tests are in `Core/Tests`, `Components/Tests` and `Editor/Tests`. With Chisel embedded in your project's
