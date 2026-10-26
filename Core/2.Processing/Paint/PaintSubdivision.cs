@@ -3,11 +3,11 @@ using Unity.Mathematics;
 
 namespace Chisel.Core
 {
-    // A painted surface is subdivided at its paint's grid points, so the paint has vertices to land on: each grid point
-    // inside the surface becomes a vertex, inserted as in an incremental Delaunay triangulation (it splits the triangle it
-    // is in, or the two on the edge it is on, and the edges round it are flipped until the triangles round it are
-    // Delaunay), so no sliver is left for the paint to streak across. The surface's outline is never cut, so the surfaces
-    // it touches don't get T-junctions.
+    // A painted surface is subdivided at its paint's grid, so the paint has vertices to land on: each grid point in the
+    // surface becomes a vertex, and so does each place a grid line crosses its outline, inserted as in an incremental
+    // Delaunay triangulation (it splits the triangle it is in, or the triangles of the edge it is on, and the edges round
+    // it are flipped until the triangles round it are Delaunay), so no sliver is left for the paint to streak across.
+    // The outline is cut too: the surfaces on the other side of it don't get those vertices (T-junctions).
     internal static class PaintSubdivision
     {
         // Most points one surface gets; a grid of tiny cells on a big surface stops here
@@ -44,10 +44,74 @@ namespace Chisel.Core
             if (points.Length == 0)
                 return;
 
+            // where the grid's lines cross the outline, before the points: an outline that isn't along the grid's lines
+            // is cut where they meet it
+            using var crossings = new NativeList<float3>(16, Allocator.Temp);
+            for (int l = range.start; l < range.start + range.count; l++)
+            {
+                var layer  = paint.layers[l];
+                var normal = math.normalizesafe(math.cross(layer.cellU, layer.cellV));
+                if (math.abs(math.dot(normal, surfaceNormal)) < 0.999f)
+                    continue;
+                AddOutlineCrossings(indices, mapper.surfaceColliderVertices, layer, crossings);
+            }
+
             var triangulation = new Triangulation(indices, ref mapper, surfaceNormal, snap);
+            for (int p = 0; p < crossings.Length; p++)
+                triangulation.Insert(ref mapper, crossings[p]);
             for (int p = 0; p < points.Length; p++)
                 triangulation.Insert(ref mapper, points[p]);
             triangulation.Dispose();
+        }
+
+        // Where the grid's lines (whole numbers of cells along cellU or cellV) cross the edges of the outline (the edges
+        // only one triangle has), away from the edges' ends
+        static void AddOutlineCrossings(NativeList<int> indices, NativeList<float3> positions, in ChiselPaintLayer layer, NativeList<float3> crossings)
+        {
+            using var edges = new NativeParallelHashSet<int2>(indices.Length, Allocator.Temp);
+            for (int t = 0; t + 2 < indices.Length; t += 3)
+            {
+                for (int k = 0; k < 3; k++)
+                    edges.Add(new int2(indices[t + k], indices[t + (k + 1) % 3]));
+            }
+            const double kAwayFromEnds = 0.05;  // in cells
+            for (int t = 0; t + 2 < indices.Length; t += 3)
+            {
+                for (int k = 0; k < 3 && crossings.Length < kMaxPoints; k++)
+                {
+                    var a = indices[t + k];
+                    var b = indices[t + (k + 1) % 3];
+                    if (edges.Contains(new int2(b, a)))
+                        continue;   // inside: two triangles have it
+                    var from = GridCoordinates(layer, positions[a]);
+                    var to   = GridCoordinates(layer, positions[b]);
+                    for (int axis = 0; axis < 2; axis++)
+                    {
+                        var lo = math.min(from[axis], to[axis]);
+                        var hi = math.max(from[axis], to[axis]);
+                        if (!(hi - lo > 2 * kAwayFromEnds))
+                            continue;
+                        for (var line = math.ceil(lo + kAwayFromEnds); line < hi - kAwayFromEnds && crossings.Length < kMaxPoints; line++)
+                        {
+                            var along = (line - from[axis]) / (to[axis] - from[axis]);
+                            crossings.Add((float3)math.lerp((double3)positions[a], (double3)positions[b], along));
+                        }
+                    }
+                }
+            }
+        }
+
+        // A point's place on the grid, in cells along cellU and cellV (which needn't be at right angles)
+        static double2 GridCoordinates(in ChiselPaintLayer layer, float3 point)
+        {
+            var offset = (double3)(point - layer.origin);
+            double3 u = layer.cellU, v = layer.cellV;
+            var uu = math.dot(u, u); var uv = math.dot(u, v); var vv = math.dot(v, v);
+            var determinant = uu * vv - uv * uv;
+            if (!(math.abs(determinant) > 1e-18))
+                return double2.zero;
+            var du = math.dot(offset, u); var dv = math.dot(offset, v);
+            return new double2((vv * du - uv * dv) / determinant, (uu * dv - uv * du) / determinant);
         }
 
         struct Triangulation
@@ -96,7 +160,18 @@ namespace Chisel.Core
                     if (math.distance(point, a) < snap || math.distance(point, b) < snap || math.distance(point, c) < snap)
                         return;     // there is a vertex already
 
-                    if (math.cmin(distance) >= snap)
+                    // the nearest edge: a point near the outline is put on it (or float noise would leave a sliver along
+                    // it, which can't be flipped), one near an edge inside only when it is on it (the flips mend the rest)
+                    var nearest  = distance.x <= distance.y && distance.x <= distance.z ? 0 : distance.y <= distance.z ? 1 : 2;
+                    int opposite = nearest == 0 ? i0 : nearest == 1 ? i1 : i2;
+                    int e0       = nearest == 0 ? i1 : nearest == 1 ? i2 : i0;
+                    int e1       = nearest == 0 ? i2 : nearest == 1 ? i0 : i1;
+                    var other = FindEdge(e1, e0, out var otherOpposite);
+                    var onEdge = other < 0 ? snap : snap * 1e-3;
+                    if (distance[nearest] < -onEdge)
+                        continue;   // across an edge inside: in the triangle on its other side
+
+                    if (distance[nearest] >= onEdge)
                     {
                         // inside: three triangles round it
                         var v = AddVertex(ref mapper, i0, i1, i2, w);
@@ -110,19 +185,21 @@ namespace Chisel.Core
                         return;
                     }
 
-                    // on an edge (the nearest): it splits both of its triangles, or none on the surface's outline
-                    var nearest  = distance.x <= distance.y && distance.x <= distance.z ? 0 : distance.y <= distance.z ? 1 : 2;
-                    int opposite = nearest == 0 ? i0 : nearest == 1 ? i1 : i2;
-                    int e0       = nearest == 0 ? i1 : nearest == 1 ? i2 : i0;
-                    int e1       = nearest == 0 ? i2 : nearest == 1 ? i0 : i1;
-                    var other = FindEdge(e1, e0, out var otherOpposite);
-                    if (other < 0)
-                        return;
+                    // on the edge: it splits both of its triangles, or the one on the surface's outline
                     // exactly on the edge
                     w = math.max(w, 0);
                     w[nearest] = 0;
                     w /= math.csum(w);
                     var vertex = AddVertex(ref mapper, i0, i1, i2, w);
+                    if (other < 0)
+                    {
+                        indices[t] = opposite; indices[t + 1] = e0; indices[t + 2] = vertex;
+                        indices.Add(opposite); indices.Add(vertex); indices.Add(e1);
+                        pending.Add(new int2(opposite, e0));
+                        pending.Add(new int2(e1, opposite));
+                        Legalize(vertex);
+                        return;
+                    }
                     indices[t] = opposite; indices[t + 1] = e0; indices[t + 2] = vertex;
                     indices.Add(opposite); indices.Add(vertex); indices.Add(e1);
                     indices[other] = otherOpposite; indices[other + 1] = e1; indices[other + 2] = vertex;

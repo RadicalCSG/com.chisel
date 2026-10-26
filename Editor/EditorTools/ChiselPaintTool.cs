@@ -131,12 +131,13 @@ namespace Chisel.Editors
                     s_Last = s_Hover;
             }
             var hit = s_Hover;
-            if (hit.valid)
+            if (hit.valid && hit.profile != null)
             {
-                Handles.color = hit.profile != null ? new Color(1, 1, 1, 0.8f) : new Color(1, 0.3f, 0.3f, 0.8f);
+                Handles.color = new Color(1, 1, 1, 0.8f);
                 Handles.DrawWireDisc(hit.point, hit.normal, s_Radius);
                 Handles.DrawWireDisc(hit.point, hit.normal, s_Radius * Mathf.Clamp01(s_Hardness));
-            }
+            } else if (hit.valid)
+                NotPaintable(window, hit, evt.mousePosition);
 
             switch (evt.GetTypeForControl(id))
             {
@@ -244,6 +245,28 @@ namespace Chisel.Editors
             }
         }
 
+        static GUIStyle s_TooltipStyle;
+
+        // Over a surface that can't be painted: no brush, a cursor that says so, and why next to it
+        static void NotPaintable(EditorWindow window, Hit hit, Vector2 mousePosition)
+        {
+            EditorGUIUtility.AddCursorRect(new Rect(0, 0, window.position.width, window.position.height), MouseCursor.NotAllowed);
+            if (Event.current.type != EventType.Repaint)
+                return;
+            // solid, as a tooltip is: a panel's color with a border round it
+            s_TooltipStyle ??= new GUIStyle(EditorStyles.label) { padding = new RectOffset(6, 6, 3, 3), wordWrap = false };
+            var content = new GUIContent(hit.shader
+                ? $"The shader {hit.shader.name} is not set up to be paintable: it has no paint profile."
+                : "The surface has no shader to paint for.");
+            var size = s_TooltipStyle.CalcSize(content);
+            var rect = new Rect(mousePosition + new Vector2(16, 20), size);
+            Handles.BeginGUI();
+            EditorGUI.DrawRect(new Rect(rect.x - 1, rect.y - 1, rect.width + 2, rect.height + 2), EditorGUIUtility.isProSkin ? new Color(0.1f, 0.1f, 0.1f, 1) : new Color(0.5f, 0.5f, 0.5f, 1));
+            EditorGUI.DrawRect(rect, EditorGUIUtility.isProSkin ? new Color(0.24f, 0.24f, 0.24f, 1) : new Color(0.94f, 0.94f, 0.94f, 1));
+            s_TooltipStyle.Draw(rect, content, false, false, false, false);
+            Handles.EndGUI();
+        }
+
         // The tool's settings, in its overlay
         internal static void PanelGUI()
         {
@@ -253,8 +276,6 @@ namespace Chisel.Editors
             {
                 // the modes of the surface last painted on, so they stay while the mouse is over the panel
                 var profile = s_Last.valid ? s_Last.profile : null;
-                if (hit.valid && hit.profile == null)
-                    EditorGUILayout.HelpBox($"The shader {(hit.shader ? hit.shader.name : "(none)")} has no paint profile (Assets > Create > Chisel > Paint Profile).", MessageType.Info);
                 if (profile == null || profile.modes.Count == 0)
                     EditorGUILayout.HelpBox("Hover over a surface whose shader has a paint profile.", MessageType.None);
                 else
@@ -326,8 +347,9 @@ namespace Chisel.Editors
 
         public override void OnGUI()
         {
-            EditorGUILayout.GetControlRect(false, 0, GUILayout.MinWidth(260));
-            ChiselPaintTool.PanelGUI();
+            // one width, whatever it shows
+            using (new EditorGUILayout.VerticalScope(GUILayout.Width(260)))
+                ChiselPaintTool.PanelGUI();
         }
     }
 }

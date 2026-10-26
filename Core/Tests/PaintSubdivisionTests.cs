@@ -4,12 +4,12 @@ using Unity.Mathematics;
 
 namespace Chisel.Core.Tests
 {
-    // A painted surface subdivided at its grid points (PaintSubdivision): every point inside it a vertex, its outline
-    // never cut, and no sliver left by the flips
+    // A painted surface subdivided at its grid (PaintSubdivision): every grid point in it a vertex, its outline cut where
+    // the grid meets it, and no sliver left by the flips
     public sealed class PaintSubdivisionTests
     {
         // A square of side 2 in the xz plane at offset, two triangles, and a grid of 0.1 cells over it exactly
-        static void Subdivide(float3 offset, bool otherDiagonal, out int vertexCount, out int triangleCount, out float minAngle, out string worst)
+        static void Subdivide(float3 offset, bool otherDiagonal, out int vertexCount, out int triangleCount, out float minAngle, out string worst, out string offGrid)
         {
             var mapper = new UniqueVertexMapper
             {
@@ -36,14 +36,18 @@ namespace Chisel.Core.Tests
             PaintSubdivision.Subdivide(indices, ref mapper, new float3(0, 1, 0), lookup, new ChiselPaintRange { start = 0, count = 1 });
 
             vertexCount   = mapper.surfaceColliderVertices.Length;
+            offGrid       = "";
+            for (int v = 0; v < vertexCount; v++)
+            {
+                var cell = (mapper.surfaceColliderVertices[v] - offset) / 0.1f;
+                if (math.any(math.abs(cell - math.round(cell)) > 0.01f))
+                    offGrid += " " + (mapper.surfaceColliderVertices[v] - offset);
+            }
             triangleCount = indices.Length / 3;
             minAngle      = 180;
             worst         = null;
             for (int t = 0; t < indices.Length; t += 3)
             {
-                // the outline isn't cut: its corners fan to the points nearest it, thin by nature
-                if (indices[t] < 4 || indices[t + 1] < 4 || indices[t + 2] < 4)
-                    continue;
                 var a = mapper.surfaceColliderVertices[indices[t]];
                 var b = mapper.surfaceColliderVertices[indices[t + 1]];
                 var c = mapper.surfaceColliderVertices[indices[t + 2]];
@@ -61,14 +65,14 @@ namespace Chisel.Core.Tests
 
         static float Angle(float3 o, float3 p, float3 q) => math.degrees(math.acos(math.clamp(math.dot(math.normalize(p - o), math.normalize(q - o)), -1, 1)));
 
-        // 19 x 19 points inside; the 80 on the outline aren't vertices. Away from the outline's corners the triangles are the
-        // grid's half cells, whichever way the square was cut and however far from the origin it is
+        // All 21 x 21 points, the outline's too: the triangles are the grid's half cells, whichever way the square was cut and
+        // however far from the origin it is
         [Test]
         public void EveryGridPointInside_IsAVertex_AndNoTriangleIsASliver([Values(false, true)] bool otherDiagonal, [Values(0, 5000)] float offset)
         {
-            Subdivide(new float3(offset, offset * 0.5f, -offset), otherDiagonal, out var vertices, out var triangles, out var minAngle, out var worst);
-            Assert.That(vertices, Is.EqualTo(4 + 19 * 19));
-            Assert.That(triangles, Is.EqualTo(2 + 2 * 19 * 19));
+            Subdivide(new float3(offset, offset * 0.5f, -offset), otherDiagonal, out var vertices, out var triangles, out var minAngle, out var worst, out var offGrid);
+            Assert.That(vertices, Is.EqualTo(21 * 21), "not on a grid point:" + offGrid);
+            Assert.That(triangles, Is.EqualTo(2 * 20 * 20));
             Assert.That(minAngle, Is.GreaterThan(30), "no sliver; the thinnest: " + worst);
         }
     }
