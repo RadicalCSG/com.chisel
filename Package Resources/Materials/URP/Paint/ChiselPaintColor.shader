@@ -1,4 +1,4 @@
-// Shows a Color paint mode: the base color times the vertex color (Chisel's "Paint Color" test profile)
+// Test shader for a Color paint mode: the base color times the vertex color
 Shader "Chisel/Test/Paint Color"
 {
     Properties

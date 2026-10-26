@@ -31,13 +31,12 @@ namespace Chisel.Core
         [ReadOnly] public NativeParallelHashMap<ChiselPaintKey, ChiselPaintRange> ranges;
         [ReadOnly] public NativeArray<ChiselPaintLayer> layers;
         [ReadOnly] public NativeArray<float4>           values;
-
-        public readonly bool IsEmpty => !ranges.IsCreated || ranges.IsEmpty;
+        public bool                                     hasPaint;
 
         public readonly bool TryGetRange(ulong entityID, int surfaceIndex, out ChiselPaintRange range)
         {
             range = default;
-            return entityID != 0 && !IsEmpty && ranges.TryGetValue(new ChiselPaintKey { entityID = entityID, surfaceIndex = surfaceIndex }, out range);
+            return hasPaint && ranges.TryGetValue(new ChiselPaintKey { entityID = entityID, surfaceIndex = surfaceIndex }, out range);
         }
 
         public static ChiselPaintLookup Create(NativeList<ChiselPaintLayer> layers, NativeList<float4> values, Allocator allocator)
@@ -51,6 +50,7 @@ namespace Chisel.Core
             };
             if (count == 0)
                 return lookup;
+            lookup.hasPaint = true;
             NativeArray<ChiselPaintLayer>.Copy(layers.AsArray(), lookup.layers, count);
             NativeArray<float4>.Copy(values.AsArray(), lookup.values, values.Length);
             // the layers are sorted by surface (ChiselPaintStore.SetPaint)

@@ -316,7 +316,6 @@ namespace Chisel.Core
 			var paintSurface = baseSurfaces[surf].descriptionIndex;
 			if (paint.TryGetRange(entityID, paintSurface, out var paintRange))
 			{
-				buf.paintEntityID    = entityID;
 				buf.paintSurface     = paintSurface;
 				buf.surfaceHashValue = math.hash(new uint2(buf.surfaceHashValue, paintRange.hash));
 			}
@@ -674,6 +673,7 @@ namespace Chisel.Core
 					FinishSurface(surf, brushNodeOrder, entityID, ref baseSurfaces, treeToPlane, transform.nodeToTree, finalFaceNormal, surfaceIndexList, ref uniqueVertexMapper,
 								  builder, surfaceBuffers, ref decalBuilder, decalCandidates, decalTargeted, decalCandidateStart, layout);
 				}
+				root.entityID = entityID;
 				FinishBrush(brushIndexOrder, brushNodeOrder, builder, ref root, surfaceBuffers, decalCandidateStart, layout);
 			}
 			finally

@@ -8,7 +8,7 @@ namespace Chisel.Components
     public static class ChiselPaintProfiles
     {
         static Dictionary<Shader, ChiselPaintProfile> s_ByShader;
-        // profiles made in code (not assets), which come first
+        // profiles registered in code, which come first
         static readonly List<ChiselPaintProfile> s_Registered = new();
 
         public static void Register(ChiselPaintProfile profile)
@@ -40,7 +40,7 @@ namespace Chisel.Components
             return s_ByShader.TryGetValue(shader, out var found) ? found : null;
         }
 
-        /// <summary>Every profile: those made in code, then the project's (but for a shader one made in code is for)</summary>
+        /// <summary>Every profile: those registered in code, then the project's (unless one in code is for its shader)</summary>
         public static IEnumerable<ChiselPaintProfile> All
         {
             get

@@ -32,7 +32,7 @@ namespace Chisel.Core.Tests
             Assert.That(layout.surfaceDetails + layout.detailsSize, Is.LessThanOrEqualTo(layout.surfaceParameters));
         }
 
-        // The 10-26 case: old code wrote 120 byte polygons of 104 byte surfaces, read at 128 and 112
+        // A stale layout: polygons and surfaces 8 bytes short
         [Test]
         public void Check_LogsEveryFieldThatDiffers()
         {

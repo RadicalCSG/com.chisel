@@ -129,8 +129,7 @@ namespace Chisel.Core
                 return;
             }
 
-            // the attributes painted on the mesh's surfaces go in a second stream, a float4 each; a surface without
-            // paint in one takes the default of the first layer of it
+            // painted attributes go in a second stream, a float4 each
             var paintSlots    = 0;
             var paintDefaults = new FixedList128Bytes<float4>();
             for (int slot = 0; slot < ChiselPaintOutput.kSlotCount; slot++)
@@ -141,8 +140,9 @@ namespace Chisel.Core
                 var surfaceArray = subMeshSource.subMeshSurfaces[description.meshQueryIndex];
                 for (int s = description.surfacesOffset, last = s + description.surfacesCount; s < last; s++)
                 {
-                    ref var surface = ref surfaceArray[s].brushRenderBuffer.Value.surfaces[surfaceArray[s].surfaceIndex];
-                    if (!subMeshSource.paint.TryGetRange(surface.paintEntityID, surface.paintSurface, out var range))
+                    ref var brush   = ref surfaceArray[s].brushRenderBuffer.Value;
+                    ref var surface = ref brush.surfaces[surfaceArray[s].surfaceIndex];
+                    if (surface.paintSurface < 0 || !subMeshSource.paint.TryGetRange(brush.entityID, surface.paintSurface, out var range))
                         continue;
                     for (int l = range.start; l < range.start + range.count; l++)
                     {
@@ -251,7 +251,9 @@ namespace Chisel.Core
 
                     // Where its lightmap coordinates go in this mesh's layout
                     var chartIndex = chartBase + (surfaceIndex - surfacesOffset);
-                    subMeshSource.paint.TryGetRange(sourceBuffer.paintEntityID, sourceBuffer.paintSurface, out var paintRange);
+                    var paintRange = default(ChiselPaintRange);
+                    if (sourceBuffer.paintSurface >= 0)
+                        subMeshSource.paint.TryGetRange(subMeshSurface.brushRenderBuffer.Value.entityID, sourceBuffer.paintSurface, out paintRange);
                     ranges.Add(new RenderCopyRange
                     {
                         paint         = paintPointer,

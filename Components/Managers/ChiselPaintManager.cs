@@ -153,8 +153,7 @@ namespace Chisel.Components
             }
         }
 
-        // Paint is drawn while its surface's material's shader takes paint in its attribute; otherwise it is kept on the
-        // generator, but doesn't subdivide the surface or reach its mesh
+        // Whether the surface's shader takes paint in this attribute; paint it doesn't take is kept, but not drawn
         static bool Drawn(ChiselGeneratorComponent generator, ChiselSurfacePaint paint)
         {
             if (paint == null || !paint.IsValid)

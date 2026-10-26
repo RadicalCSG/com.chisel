@@ -19,9 +19,7 @@ namespace Chisel.Core
         public int                          decalStack;
         // a transparent decal's piece that fades (DecalVolume.Fades): its mesh is its decal's own
         public bool                         decalFades;
-        // a painted surface: its brush's entity and its surface index, which its paint is found by (ChiselPaintLookup);
-        // 0 for a surface without paint
-        public ulong                        paintEntityID;
+        // a painted surface's index, which its paint is found by with its brush's entity (ChiselPaintLookup); -1 without
         public int                          paintSurface;
 		public SurfaceDestinationFlags      destinationFlags;
 		public SurfaceDestinationParameters destinationParameters;
@@ -202,8 +200,7 @@ namespace Chisel.Core
 				this.decalEntityID = 0;
 				this.decalStack = 0;
 				this.decalFades = false;
-				this.paintEntityID = 0;
-				this.paintSurface = 0;
+				this.paintSurface = -1;
 				this.destinationFlags = destinationFlags;
 				this.destinationParameters = destinationParameters;
 				this.outputFlags = outputFlags;
@@ -230,8 +227,7 @@ namespace Chisel.Core
 			this.decalEntityID = 0;
 			this.decalStack = 0;
 			this.decalFades = false;
-			this.paintEntityID = 0;
-			this.paintSurface = 0;
+			this.paintSurface = -1;
 
 			this.destinationFlags = destinationFlags;
 			this.destinationParameters = destinationParameters;
@@ -314,6 +310,8 @@ namespace Chisel.Core
     {
         public BlobArray<ChiselSurfaceRenderBuffer> surfaces;
         public BlobArray<ChiselQuerySurfaces>       querySurfaces;
+        // the node the brush was created with
+        public ulong entityID;
         public int surfaceOffset;
         public int surfaceCount;
     };

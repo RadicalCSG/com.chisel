@@ -3,11 +3,9 @@ using Unity.Mathematics;
 
 namespace Chisel.Core
 {
-    // A painted surface is subdivided at its paint's grid, so the paint has vertices to land on: each grid point in the
-    // surface becomes a vertex, and so does each place a grid line crosses its outline, inserted as in an incremental
-    // Delaunay triangulation (it splits the triangle it is in, or the triangles of the edge it is on, and the edges round
-    // it are flipped until the triangles round it are Delaunay), so no sliver is left for the paint to streak across.
-    // The outline is cut too: the surfaces on the other side of it don't get those vertices (T-junctions).
+    // Subdivides a painted surface at its paint's grid: every grid point inside it, and every place a grid line
+    // crosses its outline, is inserted as in an incremental Delaunay triangulation. Cutting the outline leaves
+    // T-junctions with the neighbouring surfaces.
     internal static class PaintSubdivision
     {
         // Most points one surface gets; a grid of tiny cells on a big surface stops here
@@ -160,8 +158,8 @@ namespace Chisel.Core
                     if (math.distance(point, a) < snap || math.distance(point, b) < snap || math.distance(point, c) < snap)
                         return;     // there is a vertex already
 
-                    // the nearest edge: a point near the outline is put on it (or float noise would leave a sliver along
-                    // it, which can't be flipped), one near an edge inside only when it is on it (the flips mend the rest)
+                    // snapped onto the outline when near it (a sliver there can't be flipped away), onto an inner edge
+                    // only when on it
                     var nearest  = distance.x <= distance.y && distance.x <= distance.z ? 0 : distance.y <= distance.z ? 1 : 2;
                     int opposite = nearest == 0 ? i0 : nearest == 1 ? i1 : i2;
                     int e0       = nearest == 0 ? i1 : nearest == 1 ? i2 : i0;

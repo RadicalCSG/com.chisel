@@ -36,7 +36,7 @@ namespace Chisel.Editors
 
         static bool                 s_ShowChannels;
         static int                  s_ChannelFrom, s_ChannelTo = 1;
-        // the surface last under the mouse: what Fill and the channel buttons work on
+        // the surface last under the mouse: what the channel buttons work on
         static Hit                  s_Last;
 
         static readonly List<ChiselIntersection> s_Intersections = new();

@@ -227,8 +227,8 @@ namespace Chisel.Components.Tests
             AssertValuesAt(mesh, VertexAttribute.Color, new Vector3(0.5f, 1, 0.5f), new Vector4(0, 0, 0, 1), "the middle point's own value");
         }
 
-        // Painted for the first time, a surface gets a grid over it of the brush's cell size; a dab in its middle paints
-        // there, and the mesh shows it
+        // Painted for the first time, a surface gets a grid of its paint spacing; a dab in its middle paints there, and
+        // the mesh shows it
         [Test]
         public void TheBrush_GivesASurfaceAGrid_AndPaintsWhereItDabs()
         {

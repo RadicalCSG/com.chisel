@@ -1,5 +1,4 @@
-// Shows a Value paint mode: TEXCOORD2.x from 0 to 1, from the base color to the value color (Chisel's "Paint Value"
-// test profile)
+// Test shader for a Value paint mode: TEXCOORD2.x from 0 to 1, from the base color to the value color
 Shader "Chisel/Test/Paint Value"
 {
     Properties
