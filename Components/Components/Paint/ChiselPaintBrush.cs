@@ -270,31 +270,6 @@ namespace Chisel.Components
             }
         }
 
-        /// <summary>One component's paint copied to another (0 x, 1 y, 2 z, 3 w)</summary>
-        public static void CopyComponent(ChiselSurfacePaint paint, int from, int to)
-        {
-            for (int i = 0; paint != null && i < paint.values.Length; i++)
-                paint.values[i][to] = paint.values[i][from];
-        }
-
-        /// <summary>Two components' paint swapped</summary>
-        public static void SwapComponents(ChiselSurfacePaint paint, int a, int b)
-        {
-            for (int i = 0; paint != null && i < paint.values.Length; i++)
-            {
-                var value = paint.values[i];
-                (value[a], value[b]) = (value[b], value[a]);
-                paint.values[i] = value;
-            }
-        }
-
-        /// <summary>A component's paint turned over within a range: its lowest becomes its highest</summary>
-        public static void InvertComponent(ChiselSurfacePaint paint, int component, Vector2 range)
-        {
-            for (int i = 0; paint != null && i < paint.values.Length; i++)
-                paint.values[i][component] = range.x + range.y - paint.values[i][component];
-        }
-
         // The weights of a group made to sum to one again after the painted components changed: the others share what is
         // left, in the proportion they had (equally when they were all 0)
         static Vector4 Normalize(Vector4 value, ChiselPaintComponents painted, ChiselPaintComponents others)

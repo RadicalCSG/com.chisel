@@ -321,9 +321,9 @@ namespace Chisel.Components.Tests
             Assert.That(Vector3.Distance(paint[2, 2], new Vector3(0.25f, 0.25f, 0.5f)), Is.LessThan(1e-5f), "half sand: rock and moss give it alike");
         }
 
-        // Sampling takes the paint between grid points; the channel buttons copy, swap and invert components
+        // Sampling takes the paint between grid points
         [Test]
-        public void Sampling_AndTheChannelUtilities()
+        public void Sampling_TakesThePaintBetweenGridPoints()
         {
             var model = Model();
             var box   = Box(model, Vector3.zero);
@@ -334,13 +334,6 @@ namespace Chisel.Components.Tests
             paint.values = new[] { new Vector4(0, 0, 0, 1), new Vector4(1, 0, 0, 1), new Vector4(0, 1, 0, 1), new Vector4(1, 1, 0, 1) };
             var middle = paint.Sample(paint.origin + (paint.cellU + paint.cellV) * 0.5f + Vector3.up * 3);
             Assert.That(Vector4.Distance(middle, new Vector4(0.5f, 0.5f, 0, 1)), Is.LessThan(1e-5f), "between the four, the grid projected along its normal");
-
-            ChiselPaintBrush.CopyComponent(paint, 0, 2);
-            Assert.That(paint.values[1], Is.EqualTo(new Vector4(1, 0, 1, 1)));
-            ChiselPaintBrush.SwapComponents(paint, 0, 1);
-            Assert.That(paint.values[1], Is.EqualTo(new Vector4(0, 1, 1, 1)));
-            ChiselPaintBrush.InvertComponent(paint, 3, new Vector2(0, 1));
-            Assert.That(paint.values[1].w, Is.EqualTo(0));
         }
 
         // Paint under a shader that doesn't take it (its profile gone, or another material) is kept, but neither drawn nor

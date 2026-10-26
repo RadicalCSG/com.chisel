@@ -19,11 +19,6 @@ namespace Chisel.Editors
         static readonly GUIContent kRadiusContent    = new("Radius", "The brush's radius, in metres.");
         static readonly GUIContent kStrengthContent  = new("Strength", "How much a dab moves the paint towards what it paints.");
         static readonly GUIContent kHardnessContent  = new("Hardness", "How much of the radius is painted at full strength; beyond it the brush falls off smoothly.");
-        static readonly GUIContent kChannelsContent  = new("Channels", "Works on the paint of the last surface under the mouse, in the mode's attribute.");
-        static readonly GUIContent kCopyContent      = new("Copy", "Copies the first component's paint to the second.");
-        static readonly GUIContent kSwapContent      = new("Swap", "Swaps the two components' paint.");
-        static readonly GUIContent kInvertContent    = new("Invert", "Turns the first component's paint over within the mode's range.");
-        static readonly string[]   kComponentNames   = { "X (R)", "Y (G)", "Z (B)", "W (A)" };
 
         // the mode painted in, by name: a surface takes it when its shader's profile has a mode of that name
         static string               s_ModeName;
@@ -34,9 +29,7 @@ namespace Chisel.Editors
         static float                s_Strength  = 0.5f;
         static float                s_Hardness  = 0.5f;
 
-        static bool                 s_ShowChannels;
-        static int                  s_ChannelFrom, s_ChannelTo = 1;
-        // the surface last under the mouse: what the channel buttons work on
+        // the surface last under the mouse, whose mode's color or range the panel shows
         static Hit                  s_Last;
 
         static readonly List<ChiselIntersection> s_Intersections = new();
@@ -215,26 +208,6 @@ namespace Chisel.Editors
                     }
                 }
             }
-        }
-
-        // The paint of the last surface under the mouse in the mode's attribute, made when it has none
-        static bool LastPaint(out ChiselSurfacePaint paint, out ChiselPaintMode mode)
-        {
-            paint = null;
-            mode  = default;
-            var index = ModeIndex(s_Last.profile);
-            if (!s_Last.valid || !s_Last.generator || index < 0)
-                return false;
-            mode = s_Last.profile.modes[index];
-            Undo.RecordObject(s_Last.generator, "Chisel Paint");
-            paint = ChiselPaintBrush.PaintFor(s_Last.generator, s_Last.surfaceIndex, mode);
-            return paint != null;
-        }
-
-        static void Changed()
-        {
-            s_Last.generator.PaintChanged();
-            EditorUtility.SetDirty(s_Last.generator);
         }
 
         static readonly HashSet<(ChiselGeneratorComponent, int)> s_Filled = new();
@@ -699,36 +672,6 @@ namespace Chisel.Editors
                         var falloff = GUILayoutUtility.GetRect(kFalloffSize, kFalloffSize, GUILayout.Width(kFalloffSize), GUILayout.Height(kFalloffSize));
                         if (Event.current.type == EventType.Repaint)
                             GUI.DrawTexture(falloff, Falloff(), ScaleMode.ScaleToFit);
-                    }
-                }
-                using (new EditorGUI.DisabledScope(!Paintable(s_Last)))
-                {
-                    s_ShowChannels = EditorGUILayout.Foldout(s_ShowChannels, kChannelsContent, true);
-                    if (s_ShowChannels)
-                    {
-                        using (new EditorGUILayout.HorizontalScope())
-                        {
-                            s_ChannelFrom = EditorGUILayout.Popup(s_ChannelFrom, kComponentNames);
-                            s_ChannelTo   = EditorGUILayout.Popup(s_ChannelTo, kComponentNames);
-                        }
-                        using (new EditorGUILayout.HorizontalScope())
-                        {
-                            if (GUILayout.Button(kCopyContent) && LastPaint(out var copyPaint, out _))
-                            {
-                                ChiselPaintBrush.CopyComponent(copyPaint, s_ChannelFrom, s_ChannelTo);
-                                Changed();
-                            }
-                            if (GUILayout.Button(kSwapContent) && LastPaint(out var swapPaint, out _))
-                            {
-                                ChiselPaintBrush.SwapComponents(swapPaint, s_ChannelFrom, s_ChannelTo);
-                                Changed();
-                            }
-                            if (GUILayout.Button(kInvertContent) && LastPaint(out var invertPaint, out var invertMode))
-                            {
-                                ChiselPaintBrush.InvertComponent(invertPaint, s_ChannelFrom, invertMode.range);
-                                Changed();
-                            }
-                        }
                     }
                 }
                 EditorGUILayout.HelpBox("Control-click takes the paint under the mouse.", MessageType.None);

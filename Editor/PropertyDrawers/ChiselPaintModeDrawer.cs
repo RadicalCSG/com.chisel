@@ -16,7 +16,7 @@ namespace Chisel.Editors
         static readonly GUIContent kComponentsContent = new("Components", "The components of the attribute the mode writes; the others keep their default.");
         static readonly GUIContent kDefaultColor      = new("Default", "What an unpainted surface has.");
         static readonly GUIContent kDefaultValue      = new("Default", "What an unpainted surface has, in each of the mode's components.");
-        static readonly GUIContent kRangeContent      = new("Range", "The lowest and highest value: the brush keeps paint between them, and Invert turns it over within them.");
+        static readonly GUIContent kRangeContent      = new("Range", "The lowest and highest value: the brush keeps paint between them.");
         static readonly GUIContent kGroupContent      = new("Group", "Value modes with the same group (above 0), in one attribute, are weights that always sum to one: painting one takes from the others. 0 is no group.");
         static readonly string[]   kXYZW = { "X", "Y", "Z", "W" };
         static readonly string[]   kRGBA = { "R", "G", "B", "A" };
