@@ -25,7 +25,7 @@ jobs:
       - run: python .github/scripts/check_package.py
 
   links:
-    name: Links in the documentation
+    name: Links in the documentation and issue templates
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -37,6 +37,7 @@ jobs:
             --accept 200,206,429
             --exclude 'discord\.gg'
             './*.md'
+            './.github/ISSUE_TEMPLATE/*.yml'
           fail: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
