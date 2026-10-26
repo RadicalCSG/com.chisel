@@ -208,17 +208,17 @@ namespace Chisel.Components
                 return;
             surfacePaint.RemoveAll(other => other == null || (other.surfaceIndex == paint.surfaceIndex && other.attribute == paint.attribute));
             surfacePaint.Add(paint);
-            ChiselPaintManager.SetDirty();
+            ChiselPaintManager.SetDirty(this);
         }
 
         public void RemoveSurfacePaint(int surfaceIndex, ChiselPaintAttribute attribute)
         {
             if (surfacePaint.RemoveAll(other => other == null || (other.surfaceIndex == surfaceIndex && other.attribute == attribute)) > 0)
-                ChiselPaintManager.SetDirty();
+                ChiselPaintManager.SetDirty(this);
         }
 
         /// <summary>Called after the values of a surface's paint were changed in place</summary>
-        public void PaintChanged() => ChiselPaintManager.SetDirty();
+        public void PaintChanged() => ChiselPaintManager.SetDirty(this);
 
         public override CSGTreeNode TopTreeNode 
         { 
@@ -450,16 +450,14 @@ namespace Chisel.Components
 
             if (TopTreeNode.Dirty)
                 ChiselNodeHierarchyManager.NotifyContentsModified(this);
-            if (surfacePaint.Count > 0)
-                ChiselPaintManager.SetDirty();
+            ChiselPaintManager.SetDirty(this);
             base.OnValidateState();
         }
 
         protected override void OnEnable()
         {
             base.OnEnable();
-            if (surfacePaint.Count > 0)
-                ChiselPaintManager.SetDirty();
+            ChiselPaintManager.SetDirty(this);
         }
 
         public override void UpdateTransformation()
@@ -487,8 +485,7 @@ namespace Chisel.Components
         {
             base.OnDisable();
             DestroyChildTreeNodes();
-            if (surfacePaint.Count > 0)
-                ChiselPaintManager.SetDirty();
+            ChiselPaintManager.SetDirty(this);
         }
 
         [HideInInspector] int prevMaterialHash;

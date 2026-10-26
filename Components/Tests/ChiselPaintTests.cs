@@ -418,6 +418,28 @@ namespace Chisel.Components.Tests
             AssertValuesAt(mesh, VertexAttribute.TexCoord2, new Vector3(0, 1, 0), Vector4.zero, "the value mode's default");
         }
 
+        // A disabled generator's paint leaves its tree, and comes back with it
+        [Test]
+        public void ADisabledGenerator_TakesItsPaintWithIt()
+        {
+            var model = Model();
+            var box   = Box(model, Vector3.zero);
+            var top   = SurfaceFacing(box, new float3(0, 1, 0));
+            PaintTop(box, ChiselPaintAttribute.Color, ChiselPaintComponents.XYZW);
+            Update();
+            var entityID = EntityId.ToULong(box.GetEntityId());
+            bool InTree() => ChiselPaintLookup.Of(ChiselTreeLookup.Value[model.Node]).TryGetRange(entityID, top, out _);
+            Assert.That(InTree(), Is.True);
+
+            box.enabled = false;
+            Update();
+            Assert.That(InTree(), Is.False, "disabled");
+
+            box.enabled = true;
+            Update();
+            Assert.That(InTree(), Is.True, "enabled again");
+        }
+
         // The grid moves with its generator
         [Test]
         public void Paint_MovesWithItsGenerator()

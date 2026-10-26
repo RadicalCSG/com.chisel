@@ -130,5 +130,14 @@ namespace Chisel.Core
         {
             return ChiselPaintStore.SetPaint(tree, layers, values, changedEntities);
         }
+
+        /// <summary>
+        /// Replaces the paint of one entity: its layers, and the values their grids take from. True when it changed; the
+        /// entity's brushes then have to be rebuilt to show it (<see cref="CSGTreeNode.SetSurfacesDirty"/>).
+        /// </summary>
+        public static bool SetPaint(this CSGTree tree, ulong entityID, NativeArray<ChiselPaintLayer> layers, NativeArray<float4> values)
+        {
+            return ChiselPaintStore.SetPaint(tree, entityID, layers, values);
+        }
     }
 }

@@ -8,20 +8,33 @@ namespace Chisel.Components
 {
     /// <summary>
     /// Gives each model's tree the paint of its generators' surfaces (<see cref="ChiselGeneratorComponent.SurfacePaint"/>),
-    /// in the model's space, and rebuilds the brushes whose paint changed. Called before the trees are built.
+    /// in the model's space, and rebuilds the brushes whose paint changed. Called before the trees are built. Only the
+    /// generators that said their paint changed, or that moved, are looked at.
     /// </summary>
     public static class ChiselPaintManager
     {
-        static bool s_Dirty = true;
-        static readonly List<ChiselGeneratorComponent>                   s_Painted       = new();
-        // each painted generator's space in its model's, as its paint was last given in
-        static readonly Dictionary<ChiselGeneratorComponent, Matrix4x4>  s_Spaces        = new();
-        static readonly HashSet<ChiselModelComponent>                    s_PaintedModels = new();
-        static readonly Dictionary<ChiselModelComponent, List<ChiselGeneratorComponent>> s_ByModel = new();
-        // every generator paint was given for, by entity: one that lost all of its paint is rebuilt without it too
-        static readonly Dictionary<ulong, ChiselGeneratorComponent>      s_Known         = new();
+        // a generator whose paint a tree has: which tree, and the generator's space in its model's as the paint was given in
+        struct Given
+        {
+            public ulong     entityID;
+            public CSGTree   tree;
+            public Matrix4x4 space;
+        }
 
-        public static void SetDirty() => s_Dirty = true;
+        static bool s_All = true;
+        static readonly HashSet<ChiselGeneratorComponent>             s_Changed = new();
+        static readonly Dictionary<ChiselGeneratorComponent, Given>   s_Given   = new();
+        static readonly List<ChiselGeneratorComponent>                s_Work    = new();
+
+        /// <summary>Every generator's paint is looked at again (what shaders take may have changed)</summary>
+        public static void SetDirty() => s_All = true;
+
+        /// <summary>A generator's paint, or what it is drawn with, may have changed</summary>
+        public static void SetDirty(ChiselGeneratorComponent generator)
+        {
+            if (generator)
+                s_Changed.Add(generator);
+        }
 
         static Matrix4x4 SpaceOf(ChiselGeneratorComponent generator, ChiselModelComponent model)
         {
@@ -31,80 +44,69 @@ namespace Chisel.Components
         public static void Update()
         {
             ChiselPaintMaterials.Update();
-            if (!s_Dirty)
+
+            s_Work.Clear();
+            // the painted generators that moved, or are gone
+            foreach (var entry in s_Given)
             {
-                foreach (var generator in s_Painted)
+                var generator = entry.Key;
+                var model = generator ? generator.hierarchyItem?.Model : null;
+                if (s_All || !generator || !model || entry.Value.space != SpaceOf(generator, model))
+                    s_Work.Add(generator);
+            }
+            if (s_All)
+            {
+                foreach (var generator in Object.FindObjectsByType<ChiselGeneratorComponent>(FindObjectsInactive.Exclude))
                 {
-                    var model = generator ? generator.hierarchyItem?.Model : null;
-                    if (!generator || !model || !s_Spaces.TryGetValue(generator, out var space) || space != SpaceOf(generator, model))
-                    {
-                        s_Dirty = true;
-                        break;
-                    }
+                    if (generator.SurfacePaint.Count > 0 && !s_Given.ContainsKey(generator))
+                        s_Work.Add(generator);
                 }
-                if (!s_Dirty)
-                    return;
+                s_All = false;
             }
-            s_Dirty = false;
+            foreach (var generator in s_Changed)
+            {
+                if (!s_Work.Contains(generator))
+                    s_Work.Add(generator);
+            }
+            s_Changed.Clear();
 
-            s_Painted.Clear();
-            s_Spaces.Clear();
-            foreach (var list in s_ByModel.Values)
-                list.Clear();
-            foreach (var generator in Object.FindObjectsByType<ChiselGeneratorComponent>(FindObjectsInactive.Exclude))
-            {
-                var model = generator.hierarchyItem?.Model;
-                if (!generator.isActiveAndEnabled || generator.SurfacePaint.Count == 0 || !model)
-                    continue;
-                ChiselPaintBrush.Respace(generator);
-                s_Painted.Add(generator);
-                s_Spaces[generator] = SpaceOf(generator, model);
-                if (!s_ByModel.TryGetValue(model, out var generators))
-                    s_ByModel[model] = generators = new List<ChiselGeneratorComponent>();
-                generators.Add(generator);
-            }
-
-            // every model with paint, and every model that had paint (which loses it)
-            var models = new HashSet<ChiselModelComponent>(s_PaintedModels);
-            foreach (var entry in s_ByModel)
-            {
-                if (entry.Value.Count > 0)
-                    models.Add(entry.Key);
-            }
-            s_PaintedModels.Clear();
-            using var changed = new NativeList<ulong>(16, Allocator.Temp);
-            foreach (var model in models)
-            {
-                if (!model || !model.Node.Valid)
-                    continue;
-                s_ByModel.TryGetValue(model, out var generators);
-                if (generators != null && generators.Count > 0)
-                    s_PaintedModels.Add(model);
-                SetPaint(model, generators, changed);
-            }
-            foreach (var model in new List<ChiselModelComponent>(s_ByModel.Keys))
-            {
-                if (!model)
-                    s_ByModel.Remove(model);
-            }
+            foreach (var generator in s_Work)
+                Give(generator);
         }
 
-        static void SetPaint(ChiselModelComponent model, List<ChiselGeneratorComponent> generators, NativeList<ulong> changed)
+        // The generator's paint given to its model's tree, and taken from the tree it was in before
+        static void Give(ChiselGeneratorComponent generator)
         {
+            s_Given.TryGetValue(generator, out var before);
+            var given = s_Given.ContainsKey(generator);
+            var model = generator ? generator.hierarchyItem?.Model : null;
+            if (!generator || !generator.isActiveAndEnabled || !model || !model.Node.Valid || generator.SurfacePaint.Count == 0)
+            {
+                if (given)
+                {
+                    // built again without it, if it is still there
+                    if (before.tree.Valid && before.tree.SetPaint(before.entityID, default, default) && generator)
+                        SetBrushesDirty(generator.TopTreeNode);
+                    s_Given.Remove(generator);
+                }
+                return;
+            }
+
+            var entityID = EntityId.ToULong(generator.GetEntityId());
+            var tree     = model.Node;
+            if (given && (before.tree != tree || before.entityID != entityID) && before.tree.Valid)
+                before.tree.SetPaint(before.entityID, default, default);
+
+            ChiselPaintBrush.Respace(generator);
+            var space = SpaceOf(generator, model);
             var layerCount = 0;
             var valueCount = 0;
-            if (generators != null)
+            foreach (var paint in generator.SurfacePaint)
             {
-                foreach (var generator in generators)
-                {
-                    foreach (var paint in generator.SurfacePaint)
-                    {
-                        if (!Drawn(generator, paint))
-                            continue;
-                        layerCount++;
-                        valueCount += paint.values.Length;
-                    }
-                }
+                if (!Drawn(generator, paint))
+                    continue;
+                layerCount++;
+                valueCount += paint.values.Length;
             }
 
             NativeArray<ChiselPaintLayer> layers;
@@ -112,46 +114,30 @@ namespace Chisel.Components
             NativeArray<float4> values;
             using var _values = values = new NativeArray<float4>(valueCount, Allocator.Temp);
             int l = 0, v = 0;
-            if (generators != null)
+            foreach (var paint in generator.SurfacePaint)
             {
-                foreach (var generator in generators)
+                if (!Drawn(generator, paint))
+                    continue;
+                layers[l++] = new ChiselPaintLayer
                 {
-                    var entityID = EntityId.ToULong(generator.GetEntityId());
-                    s_Known[entityID] = generator;
-                    var space = s_Spaces[generator];
-                    foreach (var paint in generator.SurfacePaint)
-                    {
-                        if (!Drawn(generator, paint))
-                            continue;
-                        layers[l++] = new ChiselPaintLayer
-                        {
-                            entityID     = entityID,
-                            surfaceIndex = paint.surfaceIndex,
-                            attribute    = paint.attribute,
-                            components   = paint.components,
-                            defaultValue = paint.defaultValue,
-                            origin       = space.MultiplyPoint3x4(paint.origin),
-                            cellU        = space.MultiplyVector(paint.cellU),
-                            cellV        = space.MultiplyVector(paint.cellV),
-                            resolution   = new int2(paint.resolution.x, paint.resolution.y),
-                            valueStart   = v
-                        };
-                        foreach (var value in paint.values)
-                            values[v++] = value;
-                    }
-                }
+                    entityID     = entityID,
+                    surfaceIndex = paint.surfaceIndex,
+                    attribute    = paint.attribute,
+                    components   = paint.components,
+                    defaultValue = paint.defaultValue,
+                    origin       = space.MultiplyPoint3x4(paint.origin),
+                    cellU        = space.MultiplyVector(paint.cellU),
+                    cellV        = space.MultiplyVector(paint.cellV),
+                    resolution   = new int2(paint.resolution.x, paint.resolution.y),
+                    valueStart   = v
+                };
+                foreach (var value in paint.values)
+                    values[v++] = value;
             }
-
-            if (!model.Node.SetPaint(layers, values, changed))
-                return;
+            s_Given[generator] = new Given { entityID = entityID, tree = tree, space = space };
             // the brushes of a generator whose paint changed are built again, with it
-            foreach (var entityID in changed)
-            {
-                if (s_Known.TryGetValue(entityID, out var generator) && generator)
-                    SetBrushesDirty(generator.TopTreeNode);
-                else
-                    s_Known.Remove(entityID);
-            }
+            if (tree.SetPaint(entityID, layers, values))
+                SetBrushesDirty(generator.TopTreeNode);
         }
 
         // Whether the surface's shader takes paint in this attribute; paint it doesn't take is kept, but not drawn
