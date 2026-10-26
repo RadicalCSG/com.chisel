@@ -7,32 +7,6 @@ using UnityEngine;
 
 namespace Chisel.Editors
 {
-    /// <summary>The paint profiles of the project, by the shader they are for</summary>
-    static class ChiselPaintProfiles
-    {
-        static Dictionary<Shader, ChiselPaintProfile> s_ByShader;
-
-        [InitializeOnLoadMethod]
-        static void Initialize() => EditorApplication.projectChanged += () => s_ByShader = null;
-
-        public static ChiselPaintProfile Find(Shader shader)
-        {
-            if (shader == null)
-                return null;
-            if (s_ByShader == null)
-            {
-                s_ByShader = new Dictionary<Shader, ChiselPaintProfile>();
-                foreach (var guid in AssetDatabase.FindAssets("t:" + nameof(ChiselPaintProfile)))
-                {
-                    var profile = AssetDatabase.LoadAssetAtPath<ChiselPaintProfile>(AssetDatabase.GUIDToAssetPath(guid));
-                    if (profile != null && profile.shader != null)
-                        s_ByShader.TryAdd(profile.shader, profile);
-                }
-            }
-            return s_ByShader.TryGetValue(shader, out var found) ? found : null;
-        }
-    }
-
     /// <summary>
     /// Paints the surface under the mouse in a mode of the paint profile of its material's shader: a color, or a named
     /// value, with a round brush. Only the surface that is hit is painted; a stroke is one undo.

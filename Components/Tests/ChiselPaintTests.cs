@@ -13,17 +13,30 @@ namespace Chisel.Components.Tests
     public class ChiselPaintTests
     {
         readonly List<Object> created = new();
+        ChiselPaintProfile profile;
+        static Material s_Material;
 
         [SetUp]
         public void SetUp()
         {
             if (Object.FindObjectsByType<ChiselModelComponent>(FindObjectsInactive.Include).Length > 0)
                 Assert.Ignore("A Chisel model is loaded; run these in a scene without one");
+            // the boxes' material takes paint in the attributes these paint in (its own, so a project's materials don't matter)
+            s_Material = new Material(Shader.Find("Universal Render Pipeline/Lit")) { name = "PaintTestMaterial" };
+            created.Add(s_Material);
+            profile = ScriptableObject.CreateInstance<ChiselPaintProfile>();
+            profile.shader = s_Material.shader;
+            profile.modes.Add(ChiselPaintMode.Color("Color"));
+            profile.modes.Add(ChiselPaintMode.Value("Value", ChiselPaintAttribute.TexCoord2, ChiselPaintComponents.XYZW));
+            profile.modes.Add(ChiselPaintMode.Value("Mask", ChiselPaintAttribute.TexCoord3, ChiselPaintComponents.XYZW));
+            created.Add(profile);
+            ChiselPaintProfiles.Register(profile);
         }
 
         [TearDown]
         public void TearDown()
         {
+            ChiselPaintProfiles.Unregister(profile);
             foreach (var item in created)
             {
                 if (item)
@@ -59,6 +72,8 @@ namespace Chisel.Components.Tests
             box.Max = new float3(1e4f);
             box.Min = float3.zero;
             box.Max = new float3(1);
+            foreach (var surface in box.SurfaceDefinition.surfaces)
+                surface.SetMaterial(s_Material);
             return box;
         }
 
@@ -328,6 +343,27 @@ namespace Chisel.Components.Tests
             Assert.That(paint.values[1], Is.EqualTo(new Vector4(0, 1, 1, 1)));
             ChiselPaintBrush.InvertComponent(paint, 3, new Vector2(0, 1));
             Assert.That(paint.values[1].w, Is.EqualTo(0));
+        }
+
+        // Paint under a shader that doesn't take it (its profile gone, or another material) is kept, but neither drawn nor
+        // subdividing the surface; it comes back with a shader that does
+        [Test]
+        public void PaintUnderAShaderWithoutAProfile_IsKeptButNotDrawn()
+        {
+            var model = Model();
+            var box   = Box(model, Vector3.zero);
+            PaintTop(box, ChiselPaintAttribute.Color, ChiselPaintComponents.XYZW);
+            Update();
+            Assert.That(RenderMesh(model).HasVertexAttribute(VertexAttribute.Color), Is.True);
+
+            ChiselPaintProfiles.Unregister(profile);
+            Update();
+            Assert.That(RenderMesh(model).HasVertexAttribute(VertexAttribute.Color), Is.False, "no profile: not drawn");
+            Assert.That(box.SurfacePaint.Count, Is.EqualTo(1), "but kept");
+
+            ChiselPaintProfiles.Register(profile);
+            Update();
+            Assert.That(RenderMesh(model).HasVertexAttribute(VertexAttribute.Color), Is.True, "drawn again");
         }
 
         // The grid moves with its generator

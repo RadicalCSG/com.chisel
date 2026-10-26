@@ -97,7 +97,7 @@ namespace Chisel.Components
                 {
                     foreach (var paint in generator.SurfacePaint)
                     {
-                        if (paint == null || !paint.IsValid)
+                        if (!Drawn(generator, paint))
                             continue;
                         layerCount++;
                         valueCount += paint.values.Length;
@@ -119,7 +119,7 @@ namespace Chisel.Components
                     var space = s_Spaces[generator];
                     foreach (var paint in generator.SurfacePaint)
                     {
-                        if (paint == null || !paint.IsValid)
+                        if (!Drawn(generator, paint))
                             continue;
                         layers[l++] = new ChiselPaintLayer
                         {
@@ -150,6 +150,18 @@ namespace Chisel.Components
                 else
                     s_Known.Remove(entityID);
             }
+        }
+
+        // Paint is drawn while its surface's material's shader takes paint in its attribute; otherwise it is kept on the
+        // generator, but doesn't subdivide the surface or reach its mesh
+        static bool Drawn(ChiselGeneratorComponent generator, ChiselSurfacePaint paint)
+        {
+            if (paint == null || !paint.IsValid)
+                return false;
+            var surfaces = generator.SurfaceDefinition?.surfaces;
+            if (surfaces == null || paint.surfaceIndex < 0 || paint.surfaceIndex >= surfaces.Length)
+                return false;
+            return ChiselPaintProfiles.TakesPaint(surfaces[paint.surfaceIndex].RenderMaterial, paint.attribute);
         }
 
         static void SetBrushesDirty(CSGTreeNode node)
