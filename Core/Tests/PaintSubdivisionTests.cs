@@ -8,8 +8,8 @@ namespace Chisel.Core.Tests
     // the grid meets it, and no sliver left by the flips
     public sealed class PaintSubdivisionTests
     {
-        // A square of side 2 in the xz plane at offset, two triangles, and a grid of 0.1 cells over it exactly
-        static void Subdivide(float3 offset, bool otherDiagonal, out int vertexCount, out int triangleCount, out float minAngle, out string worst, out string offGrid)
+        // A square of side 2 in the xz plane at offset, two triangles, and a grid of cells x cells over it exactly
+        static void Subdivide(float3 offset, bool otherDiagonal, int cells, out int vertexCount, out int triangleCount, out float minAngle, out string worst, out string offGrid)
         {
             var mapper = new UniqueVertexMapper
             {
@@ -30,8 +30,9 @@ namespace Chisel.Core.Tests
 
             NativeArray<ChiselPaintLayer> layers;
             using var _layers = layers = new NativeArray<ChiselPaintLayer>(1, Allocator.Temp);
-            using var values = new NativeArray<float4>(21 * 21, Allocator.Temp);
-            layers[0] = new ChiselPaintLayer { origin = offset, cellU = new float3(0.1f, 0, 0), cellV = new float3(0, 0, 0.1f), resolution = new int2(21, 21) };
+            var size = 2f / cells;
+            using var values = new NativeArray<float4>((cells + 1) * (cells + 1), Allocator.Temp);
+            layers[0] = new ChiselPaintLayer { origin = offset, cellU = new float3(size, 0, 0), cellV = new float3(0, 0, size), resolution = new int2(cells + 1, cells + 1) };
             var lookup = new ChiselPaintLookup { layers = layers, values = values };
             PaintSubdivision.Subdivide(indices, ref mapper, new float3(0, 1, 0), lookup, new ChiselPaintRange { start = 0, count = 1 });
 
@@ -39,7 +40,7 @@ namespace Chisel.Core.Tests
             offGrid       = "";
             for (int v = 0; v < vertexCount; v++)
             {
-                var cell = (mapper.surfaceColliderVertices[v] - offset) / 0.1f;
+                var cell = (mapper.surfaceColliderVertices[v] - offset) / size;
                 if (math.any(math.abs(cell - math.round(cell)) > 0.01f))
                     offGrid += " " + (mapper.surfaceColliderVertices[v] - offset);
             }
@@ -70,9 +71,19 @@ namespace Chisel.Core.Tests
         [Test]
         public void EveryGridPointInside_IsAVertex_AndNoTriangleIsASliver([Values(false, true)] bool otherDiagonal, [Values(0, 5000)] float offset)
         {
-            Subdivide(new float3(offset, offset * 0.5f, -offset), otherDiagonal, out var vertices, out var triangles, out var minAngle, out var worst, out var offGrid);
+            Subdivide(new float3(offset, offset * 0.5f, -offset), otherDiagonal, 20, out var vertices, out var triangles, out var minAngle, out var worst, out var offGrid);
             Assert.That(vertices, Is.EqualTo(21 * 21), "not on a grid point:" + offGrid);
             Assert.That(triangles, Is.EqualTo(2 * 20 * 20));
+            Assert.That(minAngle, Is.GreaterThan(30), "no sliver; the thinnest: " + worst);
+        }
+
+        // A grid of as many points as a surface gets (64 x 64): every one a vertex, still the grid's half cells
+        [Test]
+        public void AGridOfTheMostPoints_IsSubdividedAsASmallOneIs()
+        {
+            Subdivide(float3.zero, false, 63, out var vertices, out var triangles, out var minAngle, out var worst, out var offGrid);
+            Assert.That(vertices, Is.EqualTo(PaintSubdivision.kMaxPoints), "not on a grid point:" + offGrid);
+            Assert.That(triangles, Is.EqualTo(2 * 63 * 63));
             Assert.That(minAngle, Is.GreaterThan(30), "no sliver; the thinnest: " + worst);
         }
     }
