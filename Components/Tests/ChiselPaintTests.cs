@@ -458,6 +458,31 @@ namespace Chisel.Components.Tests
             Assert.That(box.GetSurfacePaint(top, ChiselPaintAttribute.Color), Is.SameAs(paint));
         }
 
+        // A scene keeps its saved meshes only while their paint is the same: the paint and what the shaders take of it are
+        // in the hash that decides it
+        [Test]
+        public void TheSavedMeshesInputHash_HasThePaintAndWhatTheShaderTakes()
+        {
+            var model = Model();
+            var box   = Box(model, Vector3.zero);
+            Update();
+            var unpainted = ChiselModelManager.GetComponentInputHash(model);
+
+            var paint = PaintTop(box, ChiselPaintAttribute.Color, ChiselPaintComponents.XYZW);
+            Update();
+            var painted = ChiselModelManager.GetComponentInputHash(model);
+            Assert.That(painted, Is.Not.EqualTo(unpainted), "painted");
+
+            paint[0, 0] = new Vector4(0.5f, 0.5f, 0.5f, 1);
+            Assert.That(ChiselModelManager.GetComponentInputHash(model), Is.Not.EqualTo(painted), "a value changed");
+            var repainted = ChiselModelManager.GetComponentInputHash(model);
+
+            ChiselPaintProfiles.Unregister(profile);
+            Assert.That(ChiselModelManager.GetComponentInputHash(model), Is.Not.EqualTo(repainted), "the shader takes no paint");
+            ChiselPaintProfiles.Register(profile);
+            Assert.That(ChiselModelManager.GetComponentInputHash(model), Is.EqualTo(repainted), "and takes it again");
+        }
+
         // The grid moves with its generator
         [Test]
         public void Paint_MovesWithItsGenerator()

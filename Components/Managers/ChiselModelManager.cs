@@ -828,6 +828,7 @@ namespace Chisel.Components
 				return default;
 			AppendEnvironment(ref hash);
 			AppendHotspotInputs(ref hash, model);
+			AppendPaintInputs(ref hash, model);
 			return hash;
 		}
 
@@ -845,6 +846,7 @@ namespace Chisel.Components
 				return default;
 			AppendEnvironment(ref hash);
 			AppendHotspotInputs(ref hash, model);
+			AppendPaintInputs(ref hash, model);
 			return hash;
 		}
 
@@ -929,6 +931,62 @@ namespace Chisel.Components
 			}
 			s_HotspotGenerators.Clear();
 			s_HotspotMaterials.Clear();
+		}
+
+		static readonly List<ChiselGeneratorComponent>      s_PaintGenerators = new();
+		static readonly List<Material>                      s_PaintMaterials  = new();
+		static readonly List<ChiselPaintMaterialSlot>       s_PaintSlots      = new();
+
+		// What the meshes take of paint: each generator's paint, and what the shader of each material its surfaces are
+		// drawn with takes (the attributes a mesh has even where nothing is painted)
+		static void AppendPaintInputs(ref Hash128 hash, ChiselModelComponent model)
+		{
+			s_PaintGenerators.Clear();
+			s_PaintMaterials.Clear();
+			model.GetComponentsInChildren(true, s_PaintGenerators);
+			foreach (var generator in s_PaintGenerators)
+			{
+				var paints = generator.SurfacePaint;
+				var paintCount = paints.Count;
+				hash.Append(ref paintCount);
+				foreach (var paint in paints)
+				{
+					if (paint == null)
+						continue;
+					var header = new Unity.Mathematics.int4(paint.surfaceIndex, (int)paint.attribute, (int)paint.components, paint.values?.Length ?? 0);
+					hash.Append(ref header);
+					var defaultValue = paint.defaultValue; hash.Append(ref defaultValue);
+					var origin = paint.origin; hash.Append(ref origin);
+					var cellU  = paint.cellU;  hash.Append(ref cellU);
+					var cellV  = paint.cellV;  hash.Append(ref cellV);
+					var resolution = paint.resolution; hash.Append(ref resolution);
+					if (paint.values != null && paint.values.Length > 0)
+						hash.Append(paint.values);
+				}
+
+				var surfaces = generator.SurfaceDefinition?.surfaces;
+				if (surfaces == null)
+					continue;
+				foreach (var surface in surfaces)
+				{
+					var material = surface?.RenderMaterial;
+					if (!material || s_PaintMaterials.Contains(material))
+						continue;
+					s_PaintMaterials.Add(material);
+					s_PaintSlots.Clear();
+					ChiselPaintMaterials.Resolver?.Invoke(material, s_PaintSlots);
+					if (s_PaintSlots.Count == 0)
+						continue;
+					AppendMaterialIdentity(ref hash, material);
+					foreach (var slot in s_PaintSlots)
+					{
+						var key = new Unity.Mathematics.int2((int)slot.attribute, (int)slot.components);
+						hash.Append(ref key);
+						var defaultValue = slot.defaultValue;
+						hash.Append(ref defaultValue);
+					}
+				}
+			}
 		}
 
 		static void AppendMaterialIdentity(ref Hash128 hash, Material material)

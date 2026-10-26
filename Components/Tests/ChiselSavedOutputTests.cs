@@ -223,6 +223,84 @@ namespace Chisel.Components.Tests
             Assert.That(IsMarked(models[1]), Is.True);
         }
 
+        // Box 0's surfaces drawn with a material whose shader takes color paint, and its top painted red
+        ChiselSurfacePaint PaintBox0(out Material material, out ChiselPaintProfile profile)
+        {
+            material = new Material(Shader.Find("Universal Render Pipeline/Lit"));
+            profile  = new ChiselPaintProfile { shader = material.shader, modes = { ChiselPaintMode.Color("Color") } };
+            ChiselPaintProfiles.Register(profile);
+            foreach (var surface in boxes[0].SurfaceDefinition.surfaces)
+                surface.SetMaterial(material);
+            boxes[0].OnValidate();
+            Update();
+            var top = 0;
+            var brush = (CSGTreeBrush)boxes[0].TopTreeNode;
+            ref var mesh = ref BrushMeshManager.GetBrushMeshBlob(brush.BrushMesh).Value;
+            for (int s = 0; s < mesh.polygons.Length; s++)
+            {
+                if (mesh.localPlanes[s].y > 0.999f)
+                    top = mesh.polygons[s].descriptionIndex;
+            }
+            var paint = ChiselPaintBrush.PaintFor(boxes[0], top, profile.modes[0]);
+            ChiselPaintBrush.Fill(paint, profile.modes[0], new Vector4(1, 0, 0, 1));
+            boxes[0].PaintChanged();
+            Update();
+            return paint;
+        }
+
+        static bool HasRed(ChiselModelComponent model)
+        {
+            foreach (var color in RenderableWithGeometry(model).sharedMesh.colors)
+            {
+                if (color.r > 0.99f && color.g < 0.01f)
+                    return true;
+            }
+            return false;
+        }
+
+        // A painted model keeps its saved meshes, and with them its paint
+        [Test]
+        public void APaintedModel_KeepsItsSavedMeshes_WithTheirPaint()
+        {
+            PaintBox0(out var material, out var profile);
+            try
+            {
+                Assert.That(HasRed(models[0]), Is.True, "painted");
+                Save();
+                MarkSavedMeshes();
+                Reopen();
+                Assert.That(CompactHierarchyManager.IsTreeUpdateSkipped(models[0].Node), Is.True);
+                Assert.That(IsMarked(models[0]), Is.True, "the painted model was built again");
+                Assert.That(HasRed(models[0]), Is.True, "the saved mesh has the paint");
+            }
+            finally
+            {
+                ChiselPaintProfiles.Unregister(profile);
+                UnityEngine.Object.DestroyImmediate(material);
+            }
+        }
+
+        // Paint changed while the scene was closed is built when it opens
+        [Test]
+        public void PaintThatChangedWhileClosed_IsBuiltWhenItOpens()
+        {
+            var paint = PaintBox0(out var material, out var profile);
+            try
+            {
+                Save();
+                MarkSavedMeshes();
+                Reopen(whileClosed: () => ChiselPaintBrush.Fill(paint, profile.modes[0], new Vector4(0, 0, 1, 1)));
+                Assert.That(IsMarked(models[0]), Is.False, "the repainted model kept its old meshes");
+                Assert.That(IsMarked(models[1]), Is.True);
+                Assert.That(HasRed(models[0]), Is.False, "the old paint");
+            }
+            finally
+            {
+                ChiselPaintProfiles.Unregister(profile);
+                UnityEngine.Object.DestroyImmediate(material);
+            }
+        }
+
         [Test]
         public void AModelSavedWithoutAHash_IsBuiltWhenItOpens()
         {
