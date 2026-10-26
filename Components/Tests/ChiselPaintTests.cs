@@ -396,6 +396,20 @@ namespace Chisel.Components.Tests
             Assert.That(box.SurfacePaint.Count, Is.EqualTo(1));
         }
 
+        // A fill sets the whole surface, wherever it is clicked and whatever the brush's radius
+        [Test]
+        public void AFill_SetsTheWholeSurface()
+        {
+            var model = Model();
+            var box   = Box(model, Vector3.zero);
+            var top   = SurfaceFacing(box, new float3(0, 1, 0));
+            var mode  = ChiselPaintMode.Color("Color");
+            var paint = ChiselPaintBrush.PaintFor(box, top, mode);
+            Assert.That(ChiselPaintBrush.Dab(paint, mode, ChiselPaintOperation.Fill, new Vector4(0, 1, 0, 1), new Vector3(0.1f, 1, 0.1f), 0.01f, 0.1f, 0), Is.True);
+            foreach (var value in paint.values)
+                Assert.That(value, Is.EqualTo(new Vector4(0, 1, 0, 1)));
+        }
+
         // The grid moves with its generator
         [Test]
         public void Paint_MovesWithItsGenerator()

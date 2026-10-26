@@ -19,7 +19,6 @@ namespace Chisel.Editors
         static readonly GUIContent kRadiusContent    = new("Radius", "The brush's radius, in metres.");
         static readonly GUIContent kStrengthContent  = new("Strength", "How much a dab moves the paint towards what it paints.");
         static readonly GUIContent kHardnessContent  = new("Hardness", "How much of the radius is painted at full strength; beyond it the brush falls off smoothly.");
-        static readonly GUIContent kFillContent      = new("Fill Surface", "Sets the whole of the last surface under the mouse to the color or value.");
         static readonly GUIContent kChannelsContent  = new("Channels", "Works on the paint of the last surface under the mouse, in the mode's attribute.");
         static readonly GUIContent kCopyContent      = new("Copy", "Copies the first component's paint to the second.");
         static readonly GUIContent kSwapContent      = new("Swap", "Swaps the two components' paint.");
@@ -140,9 +139,12 @@ namespace Chisel.Editors
             var hit = s_Hover;
             if (Paintable(hit))
             {
-                Handles.color = new Color(1, 1, 1, 0.8f);
-                Handles.DrawWireDisc(hit.point, hit.normal, s_Radius);
-                Handles.DrawWireDisc(hit.point, hit.normal, s_Radius * Mathf.Clamp01(s_Hardness));
+                if (s_Operation != ChiselPaintOperation.Fill)
+                {
+                    Handles.color = new Color(1, 1, 1, 0.8f);
+                    Handles.DrawWireDisc(hit.point, hit.normal, s_Radius);
+                    Handles.DrawWireDisc(hit.point, hit.normal, s_Radius * Mathf.Clamp01(s_Hardness));
+                }
             } else if (hit.valid)
                 NotPaintable(window, hit, s_HoverMouse);
 
@@ -168,6 +170,7 @@ namespace Chisel.Editors
                     Undo.IncrementCurrentGroup();
                     Undo.SetCurrentGroupName("Chisel Paint");
                     s_UndoGroup = Undo.GetCurrentGroup();
+                    s_Filled.Clear();
                     Dab(hit);
                     evt.Use();
                     break;
@@ -234,12 +237,20 @@ namespace Chisel.Editors
             EditorUtility.SetDirty(s_Last.generator);
         }
 
+        static readonly HashSet<(ChiselGeneratorComponent, int)> s_Filled = new();
+
         static void Dab(Hit hit)
         {
             var index = ModeIndex(hit.profile);
             if (index < 0)
                 return;
             var mode = hit.profile.modes[index];
+            if (s_Operation == ChiselPaintOperation.Fill)
+            {
+                // a stroke fills each surface it goes over once
+                if (!s_Filled.Add((hit.generator, hit.surfaceIndex)))
+                    return;
+            }
             Undo.RecordObject(hit.generator, "Chisel Paint");
             var paint = ChiselPaintBrush.PaintFor(hit.generator, hit.surfaceIndex, mode);
             if (paint == null)
@@ -374,6 +385,7 @@ namespace Chisel.Editors
         static readonly (ChiselPaintOperation operation, string icon, string name, string tooltip)[] kOperations =
         {
             (ChiselPaintOperation.Paint,    "paint_paint",    "Paint",    "Towards the color or value"),
+            (ChiselPaintOperation.Fill,     "paint_fill",     "Fill",     "The whole surface clicked on, to the color or value"),
             (ChiselPaintOperation.Add,      "paint_add",      "Add",      "Raises the value"),
             (ChiselPaintOperation.Subtract, "paint_subtract", "Subtract", "Lowers the value"),
             (ChiselPaintOperation.Smooth,   "paint_smooth",   "Smooth",   "Towards the neighbouring paint"),
@@ -445,7 +457,7 @@ namespace Chisel.Editors
         // neighbours share their border
         const float  kSwatchGap    = -1;
         static List<Color> s_Swatches;
-        static readonly GUIContent kAddSwatchContent = new(string.Empty, "Adds the current color as a swatch, and picks its color (middle-click a swatch to remove it)");
+        static readonly GUIContent kAddSwatchContent = new(string.Empty, "Adds the current color as a swatch, and picks its color (middle-click or right-click a swatch to remove it)");
 
         // the swatches, kept per user
         static List<Color> Swatches
@@ -457,7 +469,7 @@ namespace Chisel.Editors
                 s_Swatches = new List<Color>();
                 foreach (var hex in EditorPrefs.GetString(kSwatchesPref, string.Empty).Split(';'))
                 {
-                    if (UnityEngine.ColorUtility.TryParseHtmlString("#" + hex, out var color))
+                    if (UnityEngine.ColorUtility.TryParseHtmlString("#" + hex, out var color) && !s_Swatches.Contains(color))
                         s_Swatches.Add(color);
                 }
                 if (s_Swatches.Count == 0 && !EditorPrefs.HasKey(kSwatchesPref))
@@ -474,11 +486,16 @@ namespace Chisel.Editors
             EditorPrefs.SetString(kSwatchesPref, string.Join(";", hexes));
         }
 
-        static int ChosenSwatch()
+        static int ChosenSwatch() => SwatchOf(s_Color);
+
+        // The swatch of a color, as the swatches are kept (8 bits a component); -1 when it has none
+        static int SwatchOf(Color color)
         {
+            Color32 wanted = color;
             for (int i = 0; i < Swatches.Count; i++)
             {
-                if (Swatches[i] == s_Color)
+                Color32 swatch = Swatches[i];
+                if (swatch.r == wanted.r && swatch.g == wanted.g && swatch.b == wanted.b && swatch.a == wanted.a)
                     return i;
             }
             return -1;
@@ -502,6 +519,42 @@ namespace Chisel.Editors
         // a drag reorders them, a middle-click removes one
         static int s_DraggedSwatch = -1;
 
+        static void RemoveSwatch(int index)
+        {
+            if (index < 0 || index >= Swatches.Count)
+                return;
+            Swatches.RemoveAt(index);
+            SaveSwatches();
+            SceneView.RepaintAll();
+        }
+
+        // The current color as a new swatch, then Unity's color picker on it; a color some other swatch has already
+        // isn't added twice, that swatch is chosen instead
+        static void AddSwatch()
+        {
+            var index = Swatches.Count;
+            Swatches.Add(s_Color);
+            SaveSwatches();
+            PickColor(s_Color, color =>
+            {
+                s_Color = color;
+                var existing = SwatchOf(color);
+                if (existing >= 0 && existing != index)
+                {
+                    if (index >= 0 && index < Swatches.Count)
+                        Swatches.RemoveAt(index);
+                    index = -1;
+                } else if (index < 0)
+                {
+                    index = Swatches.Count;
+                    Swatches.Add(color);
+                } else if (index < Swatches.Count)
+                    Swatches[index] = color;
+                SaveSwatches();
+                SceneView.RepaintAll();
+            });
+        }
+
         static void SwatchesGUI()
         {
             var swatches = Swatches;
@@ -515,7 +568,7 @@ namespace Chisel.Editors
             area.xMin   += indent;
             var evt      = Event.current;
             var id       = GUIUtility.GetControlID(FocusType.Passive);
-            var border   = EditorGUIUtility.isProSkin ? new Color(0.6f, 0.6f, 0.6f) : new Color(0.3f, 0.3f, 0.3f);
+            var border   = EditorGUIUtility.isProSkin ? new Color(0.36f, 0.36f, 0.36f) : new Color(0.58f, 0.58f, 0.58f);
             var highlight = new Color(0.25f, 0.6f, 1f);
             Rect CellOf(int i) => new(area.x + (i % perRow) * (kSwatchSize + kSwatchGap), area.y + (i / perRow) * (kSwatchSize + kSwatchGap) + 1, kSwatchSize, kSwatchSize);
 
@@ -560,19 +613,13 @@ namespace Chisel.Editors
                         EditorGUI.DrawRect(inner, EditorGUIUtility.isProSkin ? new Color(0.22f, 0.22f, 0.22f) : new Color(0.76f, 0.76f, 0.76f));
                         EditorGUI.DrawRect(new Rect(cell.x + 3, cell.y + 3, cell.width - 6, cell.height - 6), s_Color);
                     }
-                    if (GUI.Button(cell, kAddSwatchContent, GUIStyle.none))
+                    GUI.Label(cell, kAddSwatchContent, GUIStyle.none);
+                    if (evt.type == EventType.MouseDown && evt.button == 0 && cell.Contains(evt.mousePosition))
                     {
-                        var index = swatches.Count;
-                        swatches.Add(s_Color);
-                        SaveSwatches();
-                        PickColor(s_Color, color =>
-                        {
-                            if (index < Swatches.Count)
-                                Swatches[index] = color;
-                            s_Color = color;
-                            SaveSwatches();
-                            SceneView.RepaintAll();
-                        });
+                        evt.Use();
+                        // a color that has a swatch already is chosen there
+                        if (chosen < 0)
+                            AddSwatch();
                     }
                     continue;
                 }
@@ -602,10 +649,17 @@ namespace Chisel.Editors
                         evt.Use();
                     } else if (evt.button == 2)
                     {
-                        swatches.RemoveAt(i);
-                        SaveSwatches();
+                        RemoveSwatch(i);
                         evt.Use();
                         GUIUtility.ExitGUI();
+                    } else if (evt.button == 1)
+                    {
+                        // for those without a middle mouse button
+                        var index = i;
+                        var menu = new GenericMenu();
+                        menu.AddItem(new GUIContent("Delete"), false, () => RemoveSwatch(index));
+                        menu.ShowAsContext();
+                        evt.Use();
                     }
                 }
             }
@@ -630,26 +684,25 @@ namespace Chisel.Editors
                     else
                         s_Value = EditorGUILayout.Slider(new GUIContent(s_ModeName), s_Value, chosen.range.x, chosen.range.y);
                 }
-                s_Radius = Mathf.Max(0.01f, EditorGUILayout.FloatField(kRadiusContent, s_Radius));
-                using (new EditorGUILayout.HorizontalScope())
+                // a fill takes the whole surface: the brush doesn't count
+                using (new EditorGUI.DisabledScope(s_Operation == ChiselPaintOperation.Fill))
+                using (new EditorGUILayout.VerticalScope())
                 {
-                    using (new EditorGUILayout.VerticalScope())
+                    s_Radius = Mathf.Max(0.01f, EditorGUILayout.FloatField(kRadiusContent, s_Radius));
+                    using (new EditorGUILayout.HorizontalScope())
                     {
-                        s_Strength = EditorGUILayout.Slider(kStrengthContent, s_Strength, 0, 1);
-                        s_Hardness = EditorGUILayout.Slider(kHardnessContent, s_Hardness, 0, 1);
+                        using (new EditorGUILayout.VerticalScope())
+                        {
+                            s_Strength = EditorGUILayout.Slider(kStrengthContent, s_Strength, 0, 1);
+                            s_Hardness = EditorGUILayout.Slider(kHardnessContent, s_Hardness, 0, 1);
+                        }
+                        var falloff = GUILayoutUtility.GetRect(kFalloffSize, kFalloffSize, GUILayout.Width(kFalloffSize), GUILayout.Height(kFalloffSize));
+                        if (Event.current.type == EventType.Repaint)
+                            GUI.DrawTexture(falloff, Falloff(), ScaleMode.ScaleToFit);
                     }
-                    var falloff = GUILayoutUtility.GetRect(kFalloffSize, kFalloffSize, GUILayout.Width(kFalloffSize), GUILayout.Height(kFalloffSize));
-                    if (Event.current.type == EventType.Repaint)
-                        GUI.DrawTexture(falloff, Falloff(), ScaleMode.ScaleToFit);
                 }
                 using (new EditorGUI.DisabledScope(!Paintable(s_Last)))
                 {
-                    if (GUILayout.Button(kFillContent) && LastPaint(out var paint, out var mode))
-                    {
-                        var target = mode.kind == ChiselPaintKind.Color ? (Vector4)s_Color : Vector4.one * s_Value;
-                        ChiselPaintBrush.Fill(paint, mode, target, s_Last.profile.GroupOf(ModeIndex(s_Last.profile)));
-                        Changed();
-                    }
                     s_ShowChannels = EditorGUILayout.Foldout(s_ShowChannels, kChannelsContent, true);
                     if (s_ShowChannels)
                     {

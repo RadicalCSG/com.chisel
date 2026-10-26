@@ -17,7 +17,9 @@ namespace Chisel.Components
         /// <summary>Towards the average of the neighbouring grid points</summary>
         Smooth   = 3,
         /// <summary>Back towards the mode's default</summary>
-        Erase    = 4
+        Erase    = 4,
+        /// <summary>The whole surface set to the brush's color or value</summary>
+        Fill     = 5
     }
 
     /// <summary>
@@ -215,6 +217,11 @@ namespace Chisel.Components
         {
             if (paint == null || !paint.IsValid)
                 return false;
+            if (operation == ChiselPaintOperation.Fill)
+            {
+                Fill(paint, mode, target, group);
+                return true;
+            }
             var normal  = Vector3.Cross(paint.cellU, paint.cellV).normalized;
             var before  = operation == ChiselPaintOperation.Smooth ? (Vector4[])paint.values.Clone() : null;
             var changed = false;
