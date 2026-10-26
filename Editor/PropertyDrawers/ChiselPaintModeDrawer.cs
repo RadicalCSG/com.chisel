@@ -111,19 +111,4 @@ namespace Chisel.Editors
             }
         }
     }
-
-    // A profile warns about two modes writing one component of one attribute
-    [CustomEditor(typeof(ChiselPaintProfile))]
-    sealed class ChiselPaintProfileEditor : Editor
-    {
-        public override void OnInspectorGUI()
-        {
-            DrawDefaultInspector();
-            var profile = (ChiselPaintProfile)target;
-            if (profile.shader == null)
-                EditorGUILayout.HelpBox("Give the profile the shader it is for: surfaces drawn with that shader are painted in its modes.", MessageType.Info);
-            if (profile.FindOverlap(out var first, out var second))
-                EditorGUILayout.HelpBox($"Modes {first} and {second} both write a component of {profile.modes[first].attribute}: one of them overwrites the other.", MessageType.Warning);
-        }
-    }
 }

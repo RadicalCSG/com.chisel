@@ -11,7 +11,6 @@ namespace Chisel.Editors
     /// Paints the surface under the mouse in a mode of the paint profile of its material's shader: a color, or a named
     /// value, with a round brush. Only the surface that is hit is painted; a stroke is one undo.
     /// </summary>
-    [EditorTool("Chisel Paint")]
     sealed class ChiselPaintTool : EditorTool
     {
         static readonly GUIContent kModeContent      = new("Mode", "What to paint: the modes of the project's paint profiles, by name. A surface takes a mode when the paint profile of its shader has one of that name.");
@@ -46,7 +45,9 @@ namespace Chisel.Editors
         static Hit                  s_Hover;
         static int                  s_UndoGroup = -1;
 
-        public override GUIContent toolbarIcon => new("Paint", "Chisel Paint: paint vertex data onto surfaces, in the modes of their shaders' paint profiles");
+        static GUIContent s_ToolbarIcon;
+        public override GUIContent toolbarIcon => s_ToolbarIcon ??= new GUIContent(ChiselEditorResources.LoadIconImages("paint_tool")?[0],
+                                                                                   "Chisel Paint Tool: paint vertex data onto surfaces, in the modes of their shaders' paint profiles");
 
         [MenuItem("Tools/Chisel/Paint")]
         static void Activate() => ToolManager.SetActiveTool<ChiselPaintTool>();
@@ -159,6 +160,8 @@ namespace Chisel.Editors
                     Undo.IncrementCurrentGroup();
                     Undo.SetCurrentGroupName("Chisel Paint");
                     s_UndoGroup = Undo.GetCurrentGroup();
+                    if (hit.profile.modes[ModeIndex(hit.profile)].kind == ChiselPaintKind.Color && s_Operation == ChiselPaintOperation.Paint)
+                        Painted(s_Color);
                     Dab(hit);
                     evt.Use();
                     break;
@@ -318,24 +321,154 @@ namespace Chisel.Editors
                 s_ModeName = s_ModeNames[0];
 
             EditorGUILayout.LabelField(kModeContent);
+            if (s_ModeContents.Length != s_ModeNames.Count)
+                s_ModeContents = new GUIContent[s_ModeNames.Count];
+            var chosen = -1;
+            for (int n = 0; n < s_ModeNames.Count; n++)
+            {
+                s_ModeContents[n] ??= new GUIContent();
+                s_ModeContents[n].text = s_ModeNames[n];
+                if (s_ModeNames[n] == s_ModeName)
+                    chosen = n;
+            }
+            s_ModeName = s_ModeNames[Toggles(chosen, s_ModeContents, null)];
+        }
+
+        static GUIContent[] s_ModeContents = System.Array.Empty<GUIContent>();
+
+        // Toggle buttons wrapping within the panel, one of them on; disabled (when given) are drawn but can't be chosen
+        static int Toggles(int chosen, GUIContent[] contents, bool[] disabled)
+        {
             var style = EditorStyles.miniButton;
-            for (int n = 0; n < s_ModeNames.Count;)
+            for (int n = 0; n < contents.Length;)
             {
                 using (new EditorGUILayout.HorizontalScope())
                 {
                     var used = 0f;
                     do
                     {
-                        var content = new GUIContent(s_ModeNames[n]);
-                        var width = Mathf.Min(kRowWidth, style.CalcSize(content).x + 8);
+                        var width = Mathf.Min(kRowWidth, style.CalcSize(contents[n]).x + 8);
                         if (used > 0 && used + width > kRowWidth)
                             break;
-                        if (GUILayout.Toggle(s_ModeNames[n] == s_ModeName, content, style, GUILayout.Width(width)))
-                            s_ModeName = s_ModeNames[n];
+                        using (new EditorGUI.DisabledScope(disabled != null && disabled[n]))
+                        {
+                            if (GUILayout.Toggle(n == chosen, contents[n], style, GUILayout.Width(width), GUILayout.Height(20)))
+                                chosen = n;
+                        }
                         used += width + style.margin.horizontal;
                         n++;
-                    } while (n < s_ModeNames.Count);
+                    } while (n < contents.Length);
                     GUILayout.FlexibleSpace();
+                }
+            }
+            return Mathf.Max(chosen, 0);
+        }
+
+        static readonly (ChiselPaintOperation operation, string icon, string name, string tooltip)[] kOperations =
+        {
+            (ChiselPaintOperation.Paint,    "paint_paint",    "Paint",    "Towards the color or value"),
+            (ChiselPaintOperation.Add,      "paint_add",      "Add",      "Raises the value"),
+            (ChiselPaintOperation.Subtract, "paint_subtract", "Subtract", "Lowers the value"),
+            (ChiselPaintOperation.Smooth,   "paint_smooth",   "Smooth",   "Towards the neighbouring paint"),
+            (ChiselPaintOperation.Erase,    "paint_erase",    "Erase",    "Back to the default"),
+        };
+        static readonly GUIContent[] s_OperationContents = new GUIContent[kOperations.Length];
+        static readonly bool[]       s_OperationDisabled = new bool[kOperations.Length];
+
+        // The operations, with their icons; adding and subtracting only for a value
+        static void OperationButtons(bool isValue)
+        {
+            var chosen = 0;
+            for (int i = 0; i < kOperations.Length; i++)
+            {
+                var icons = ChiselEditorResources.GetIconContent(kOperations[i].icon, kOperations[i].tooltip);
+                var on    = kOperations[i].operation == s_Operation;
+                s_OperationContents[i] ??= new GUIContent();
+                s_OperationContents[i].text    = kOperations[i].name;
+                s_OperationContents[i].image   = icons[on ? 1 : 0].image;
+                s_OperationContents[i].tooltip = kOperations[i].tooltip;
+                s_OperationDisabled[i] = !isValue && (kOperations[i].operation == ChiselPaintOperation.Add || kOperations[i].operation == ChiselPaintOperation.Subtract);
+                if (on)
+                    chosen = i;
+            }
+            if (s_OperationDisabled[chosen])
+                s_Operation = ChiselPaintOperation.Paint;
+            EditorGUILayout.LabelField(kOperationContent);
+            s_Operation = kOperations[Toggles(chosen, s_OperationContents, s_OperationDisabled)].operation;
+        }
+
+        const int kFalloffSize = 40;
+        static Texture2D s_Falloff;
+        static float s_FalloffStrength = -1, s_FalloffHardness = -1;
+
+        // A blob as a dab paints it: how much the brush counts across its radius
+        static Texture2D Falloff()
+        {
+            if (s_Falloff && s_FalloffStrength == s_Strength && s_FalloffHardness == s_Hardness)
+                return s_Falloff;
+            if (!s_Falloff)
+                s_Falloff = new Texture2D(kFalloffSize, kFalloffSize, TextureFormat.RGBA32, false) { hideFlags = HideFlags.HideAndDontSave, filterMode = FilterMode.Bilinear };
+            s_FalloffStrength = s_Strength;
+            s_FalloffHardness = s_Hardness;
+            var pixels = new Color32[kFalloffSize * kFalloffSize];
+            var radius = kFalloffSize * 0.5f;
+            for (int y = 0; y < kFalloffSize; y++)
+            {
+                for (int x = 0; x < kFalloffSize; x++)
+                {
+                    var distance = Vector2.Distance(new Vector2(x + 0.5f, y + 0.5f), new Vector2(radius, radius));
+                    var weight = ChiselPaintBrush.Weight(distance, radius, s_Strength, s_Hardness);
+                    var shade = (byte)Mathf.RoundToInt(Mathf.Lerp(32, 255, weight));
+                    pixels[y * kFalloffSize + x] = new Color32(shade, shade, shade, 255);
+                }
+            }
+            s_Falloff.SetPixels32(pixels);
+            s_Falloff.Apply();
+            return s_Falloff;
+        }
+
+        static readonly Color[] kSwatches =
+        {
+            Color.white, new(0.75f, 0.75f, 0.75f), new(0.5f, 0.5f, 0.5f), new(0.25f, 0.25f, 0.25f), Color.black,
+            new(0.9f, 0.1f, 0.1f), new(1, 0.5f, 0), new(1, 0.9f, 0.1f), new(0.2f, 0.8f, 0.2f), new(0.1f, 0.8f, 0.8f),
+            new(0.15f, 0.35f, 0.95f), new(0.55f, 0.25f, 0.85f), new(0.95f, 0.3f, 0.7f), new(0.5f, 0.3f, 0.15f),
+        };
+        // the colors painted with last, newest first
+        static readonly List<Color> s_Recent = new();
+        const int kMaxRecent = 9;
+        const float kSwatchSize = 16;
+
+        internal static void Painted(Color color)
+        {
+            s_Recent.Remove(color);
+            s_Recent.Insert(0, color);
+            if (s_Recent.Count > kMaxRecent)
+                s_Recent.RemoveAt(s_Recent.Count - 1);
+        }
+
+        // A row of swatches; clicking one takes its color
+        static void SwatchRow(IReadOnlyList<Color> colors)
+        {
+            var perRow = Mathf.Max(1, Mathf.FloorToInt(kRowWidth / (kSwatchSize + 2)));
+            for (int start = 0; start < colors.Count; start += perRow)
+            {
+                var rect = GUILayoutUtility.GetRect(kRowWidth, kSwatchSize + 2);
+                for (int i = start; i < Mathf.Min(start + perRow, colors.Count); i++)
+                {
+                    var swatch = new Rect(rect.x + (i - start) * (kSwatchSize + 2), rect.y + 1, kSwatchSize, kSwatchSize);
+                    if (Event.current.type == EventType.Repaint)
+                    {
+                        var selected = colors[i] == s_Color;
+                        EditorGUI.DrawRect(swatch, selected ? (EditorGUIUtility.isProSkin ? Color.white : Color.black) : new Color(0, 0, 0, 0.5f));
+                        EditorGUI.DrawRect(new Rect(swatch.x + 1, swatch.y + 1, swatch.width - 2, swatch.height - 2), colors[i]);
+                    }
+                    EditorGUIUtility.AddCursorRect(swatch, MouseCursor.Link);
+                    if (Event.current.type == EventType.MouseDown && Event.current.button == 0 && swatch.Contains(Event.current.mousePosition))
+                    {
+                        s_Color = colors[i];
+                        GUI.changed = true;
+                        Event.current.Use();
+                    }
                 }
             }
         }
@@ -347,17 +480,33 @@ namespace Chisel.Editors
             EditorGUIUtility.labelWidth = 90;
             {
                 ModeButtons();
-                if (ChosenMode(out var chosen))
+                var hasMode = ChosenMode(out var chosen);
+                OperationButtons(hasMode && chosen.kind == ChiselPaintKind.Value);
+                EditorGUILayout.Space(2);
+                if (hasMode)
                 {
                     if (chosen.kind == ChiselPaintKind.Color)
+                    {
                         s_Color = EditorGUILayout.ColorField(kColorContent, s_Color, true, true, false);
+                        SwatchRow(kSwatches);
+                        if (s_Recent.Count > 0)
+                            SwatchRow(s_Recent);
+                    }
                     else
                         s_Value = EditorGUILayout.Slider(new GUIContent(s_ModeName), s_Value, chosen.range.x, chosen.range.y);
                 }
-                s_Operation = (ChiselPaintOperation)EditorGUILayout.EnumPopup(kOperationContent, s_Operation);
-                s_Radius    = Mathf.Max(0.01f, EditorGUILayout.FloatField(kRadiusContent, s_Radius));
-                s_Strength  = EditorGUILayout.Slider(kStrengthContent, s_Strength, 0, 1);
-                s_Hardness  = EditorGUILayout.Slider(kHardnessContent, s_Hardness, 0, 1);
+                s_Radius = Mathf.Max(0.01f, EditorGUILayout.FloatField(kRadiusContent, s_Radius));
+                using (new EditorGUILayout.HorizontalScope())
+                {
+                    using (new EditorGUILayout.VerticalScope())
+                    {
+                        s_Strength = EditorGUILayout.Slider(kStrengthContent, s_Strength, 0, 1);
+                        s_Hardness = EditorGUILayout.Slider(kHardnessContent, s_Hardness, 0, 1);
+                    }
+                    var falloff = GUILayoutUtility.GetRect(kFalloffSize, kFalloffSize, GUILayout.Width(kFalloffSize), GUILayout.Height(kFalloffSize));
+                    if (Event.current.type == EventType.Repaint)
+                        GUI.DrawTexture(falloff, Falloff(), ScaleMode.ScaleToFit);
+                }
                 using (new EditorGUI.DisabledScope(!Paintable(s_Last)))
                 {
                     if (GUILayout.Button(kFillContent) && LastPaint(out var paint, out var mode))

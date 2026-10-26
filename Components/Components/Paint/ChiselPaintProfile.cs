@@ -50,8 +50,8 @@ namespace Chisel.Components
     /// What paint means to a shader: the modes a surface drawn with it can be painted in. The shader shows the paint;
     /// Chisel only writes it to the vertex attributes the modes name. Two modes don't write one component of one attribute.
     /// </summary>
-    [CreateAssetMenu(menuName = "Chisel/Paint Profile", fileName = "Paint Profile")]
-    public sealed class ChiselPaintProfile : ScriptableObject
+    [Serializable]
+    public sealed class ChiselPaintProfile
     {
         public Shader shader;
         public List<ChiselPaintMode> modes = new();

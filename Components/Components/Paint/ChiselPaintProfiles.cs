@@ -4,7 +4,7 @@ using UnityEngine;
 
 namespace Chisel.Components
 {
-    /// <summary>The project's paint profiles, by the shader they are for</summary>
+    /// <summary>The project's paint profiles (<see cref="ChiselPaintSettings"/>), by the shader they are for</summary>
     public static class ChiselPaintProfiles
     {
         static Dictionary<Shader, ChiselPaintProfile> s_ByShader;
@@ -64,14 +64,15 @@ namespace Chisel.Components
             if (s_ByShader == null)
             {
                 s_ByShader = new Dictionary<Shader, ChiselPaintProfile>();
-#if UNITY_EDITOR
-                foreach (var guid in UnityEditor.AssetDatabase.FindAssets("t:" + nameof(ChiselPaintProfile)))
+                var settings = ChiselPaintSettings.Project;
+                if (settings)
                 {
-                    var profile = UnityEditor.AssetDatabase.LoadAssetAtPath<ChiselPaintProfile>(UnityEditor.AssetDatabase.GUIDToAssetPath(guid));
-                    if (profile != null && profile.shader != null)
-                        s_ByShader.TryAdd(profile.shader, profile);
+                    foreach (var profile in settings.profiles)
+                    {
+                        if (profile != null && profile.shader != null)
+                            s_ByShader.TryAdd(profile.shader, profile);
+                    }
                 }
-#endif
             }
         }
 

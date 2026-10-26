@@ -24,12 +24,10 @@ namespace Chisel.Components.Tests
             // the boxes' material takes paint in the attributes these paint in (its own, so a project's materials don't matter)
             s_Material = new Material(Shader.Find("Universal Render Pipeline/Lit")) { name = "PaintTestMaterial" };
             created.Add(s_Material);
-            profile = ScriptableObject.CreateInstance<ChiselPaintProfile>();
-            profile.shader = s_Material.shader;
+            profile = new ChiselPaintProfile { shader = s_Material.shader };
             profile.modes.Add(ChiselPaintMode.Color("Color"));
             profile.modes.Add(ChiselPaintMode.Value("Value", ChiselPaintAttribute.TexCoord2, ChiselPaintComponents.XYZW));
             profile.modes.Add(ChiselPaintMode.Value("Mask", ChiselPaintAttribute.TexCoord3, ChiselPaintComponents.XYZW));
-            created.Add(profile);
             ChiselPaintProfiles.Register(profile);
         }
 
@@ -299,8 +297,7 @@ namespace Chisel.Components.Tests
             var model   = Model();
             var box     = Box(model, Vector3.zero);
             var top     = SurfaceFacing(box, new float3(0, 1, 0));
-            var profile = ScriptableObject.CreateInstance<ChiselPaintProfile>();
-            created.Add(profile);
+            var profile = new ChiselPaintProfile();
             profile.modes.Add(ChiselPaintMode.Value("Rock", ChiselPaintAttribute.TexCoord4, ChiselPaintComponents.X, 1));
             profile.modes.Add(ChiselPaintMode.Value("Moss", ChiselPaintAttribute.TexCoord4, ChiselPaintComponents.Y, 0));
             profile.modes.Add(ChiselPaintMode.Value("Sand", ChiselPaintAttribute.TexCoord4, ChiselPaintComponents.Z, 0));
