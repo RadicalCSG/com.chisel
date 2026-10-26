@@ -173,7 +173,8 @@ namespace Chisel.Components
         {
             Respace(generator);
             var paint = generator.GetSurfacePaint(surfaceIndex, mode.attribute);
-            if (paint == null)
+            // a grid that isn't whole (its values didn't load) starts again
+            if (paint == null || !paint.IsValid)
             {
                 paint = CreateGrid(generator, surfaceIndex, mode.attribute, mode.components, mode.defaultValue, SpacingOf(generator, surfaceIndex));
                 if (paint != null)

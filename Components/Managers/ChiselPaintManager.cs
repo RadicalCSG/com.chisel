@@ -32,7 +32,8 @@ namespace Chisel.Components
         /// <summary>A generator's paint, or what it is drawn with, may have changed</summary>
         public static void SetDirty(ChiselGeneratorComponent generator)
         {
-            if (generator)
+            // only one with paint, or whose paint a tree has (it may have lost it): no other generator is held on to
+            if (generator && (generator.SurfacePaint.Count > 0 || s_Given.ContainsKey(generator)))
                 s_Changed.Add(generator);
         }
 

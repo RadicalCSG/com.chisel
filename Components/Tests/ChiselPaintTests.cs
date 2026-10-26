@@ -440,6 +440,24 @@ namespace Chisel.Components.Tests
             Assert.That(InTree(), Is.True, "enabled again");
         }
 
+        // A grid whose values didn't load is made again when the surface is painted
+        [Test]
+        public void AGridWithoutItsValues_IsMadeAgainWhenPainted()
+        {
+            var model = Model();
+            var box   = Box(model, Vector3.zero);
+            var top   = SurfaceFacing(box, new float3(0, 1, 0));
+            var mode  = ChiselPaintMode.Color("Color");
+            var broken = ChiselPaintBrush.PaintFor(box, top, mode);
+            broken.values = System.Array.Empty<float>();
+            Assert.That(broken.IsValid, Is.False);
+
+            var paint = ChiselPaintBrush.PaintFor(box, top, mode);
+            Assert.That(paint, Is.Not.SameAs(broken));
+            Assert.That(paint.IsValid, Is.True);
+            Assert.That(box.GetSurfacePaint(top, ChiselPaintAttribute.Color), Is.SameAs(paint));
+        }
+
         // The grid moves with its generator
         [Test]
         public void Paint_MovesWithItsGenerator()
