@@ -444,7 +444,7 @@ namespace Chisel.Editors
         const float  kSwatchSize   = 18;
         const float  kSwatchGap    = 3;
         static List<Color> s_Swatches;
-        static readonly GUIContent kAddSwatchContent = new(string.Empty, "Adds a swatch, picking its color (middle-click a swatch to remove it)");
+        static readonly GUIContent kAddSwatchContent = new(string.Empty, "Adds the current color as a swatch, and picks its color (middle-click a swatch to remove it)");
 
         // the swatches, kept per user
         static List<Color> Swatches
@@ -497,7 +497,8 @@ namespace Chisel.Editors
             }
         }
 
-        // The swatches, wrapping over as many rows as they need, then + (a new swatch, picked); middle-click removes one
+        // The swatches, wrapping over as many rows as they need, then the current color (adds it as a swatch, picked);
+        // a drag reorders them, a middle-click removes one
         static int s_DraggedSwatch = -1;
 
         static void SwatchesGUI()
@@ -548,14 +549,12 @@ namespace Chisel.Editors
                 var inner = new Rect(cell.x + 1, cell.y + 1, cell.width - 2, cell.height - 2);
                 if (i == swatches.Count)
                 {
-                    // as the color picker's own: the current color with a plus over it
+                    // as the color picker's own: the current color, smaller than a swatch, in an empty cell
                     if (evt.type == EventType.Repaint)
                     {
                         EditorGUI.DrawRect(cell, border);
-                        EditorGUI.DrawRect(inner, s_Color);
-                        var ink = s_Color.grayscale > 0.5f ? Color.black : Color.white;
-                        EditorGUI.DrawRect(new Rect(cell.center.x - 5, cell.center.y - 1, 10, 2), ink);
-                        EditorGUI.DrawRect(new Rect(cell.center.x - 1, cell.center.y - 5, 2, 10), ink);
+                        EditorGUI.DrawRect(inner, EditorGUIUtility.isProSkin ? new Color(0.22f, 0.22f, 0.22f) : new Color(0.76f, 0.76f, 0.76f));
+                        EditorGUI.DrawRect(new Rect(cell.x + 4, cell.y + 4, cell.width - 8, cell.height - 8), s_Color);
                     }
                     if (GUI.Button(cell, kAddSwatchContent, GUIStyle.none))
                     {
