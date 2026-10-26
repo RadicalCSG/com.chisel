@@ -73,5 +73,25 @@ namespace Chisel.Core.Tests
 				Assert.That(hierarchy.GetLocalTransformation(brushID), Is.EqualTo(moved));
 			}
 		}
+
+		// Surfaces built again without a change of shape (paint): the brush alone, not what it touches
+		[Test]
+		public void SetSurfacesDirty_FlagsTheBrushOnly()
+		{
+			using (var harness = BuildAndUpdate())
+			{
+				var brush   = (CSGTreeBrush)harness.Tree[0];
+				var brushID = brush.CompactNodeID;
+				ref var hierarchy = ref CompactHierarchyManager.GetHierarchy(brushID);
+
+				((CSGTreeNode)brush).SetSurfacesDirty();
+
+				Assert.That(hierarchy.IsStatusFlagSet(brushID, NodeStatusFlags.OutlineModified), Is.True);
+				Assert.That(hierarchy.IsStatusFlagSet(brushID, NodeStatusFlags.NeedAllTouchingUpdated), Is.False);
+				Assert.That(hierarchy.IsStatusFlagSet(brushID, NodeStatusFlags.ShapeModified), Is.False);
+				Assert.That(harness.Update(), Is.True, "the CSG update did not run");
+				Assert.That(hierarchy.IsAnyStatusFlagSet(brushID), Is.False, "the update left flags on the brush");
+			}
+		}
 	}
 }

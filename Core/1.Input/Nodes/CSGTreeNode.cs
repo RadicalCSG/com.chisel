@@ -105,6 +105,10 @@ namespace Chisel.Core
         /// <summary>Force set the dirty flag of the <see cref="Chisel.Core.CSGTreeBrush"/>.</summary>
         public void SetDirty	()				{ CompactHierarchyManager.SetDirty(nodeID); }
 
+        /// <summary>Builds a brush's surfaces again without its shape having changed (its paint did): the brushes
+        /// touching it are left as they are.</summary>
+        public void SetSurfacesDirty()			{ CompactHierarchyManager.SetSurfacesDirty(nodeID); }
+
         /// <summary>Destroy this <see cref="Chisel.Core.CSGTreeNode"/>. Sets the state to invalid.</summary>
         /// <returns><b>true</b> on success, <b>false</b> on failure</returns>
         public bool	Destroy		()				{ var prevNodeID = nodeID; this = Invalid; return CompactHierarchyManager.DestroyNode(prevNodeID); }

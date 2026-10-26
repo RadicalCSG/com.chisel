@@ -171,7 +171,7 @@ namespace Chisel.Components
                 return;
             if (node.Type == CSGNodeType.Brush)
             {
-                node.SetDirty();
+                node.SetSurfacesDirty();
                 return;
             }
             for (int i = 0; i < node.Count; i++)

@@ -792,6 +792,15 @@ namespace Chisel.Core
             return SetDirty(nodes[index]);
         }
 
+        [return: MarshalAs(UnmanagedType.U1)]
+        internal bool SetSurfacesDirty(NodeID nodeID)
+        {
+            if (!IsValidNodeID(nodeID, out var index) || !IsValidCompactNodeID(nodes[index]))
+                return false;
+            ref var hierarchy = ref GetHierarchy(nodes[index]);
+            return hierarchy.SetSurfacesDirty(nodes[index]);
+        }
+
         // Do not use. This method might be removed/renamed in the future
         [EditorBrowsable(EditorBrowsableState.Never)]
         [return: MarshalAs(UnmanagedType.U1)]
@@ -2310,6 +2319,9 @@ namespace Chisel.Core
         [return: MarshalAs(UnmanagedType.U1)]
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal static bool SetDirty(NodeID nodeID) { return instance.SetDirty(nodeID); }
+
+        [return: MarshalAs(UnmanagedType.U1)]
+        internal static bool SetSurfacesDirty(NodeID nodeID) { return instance.SetSurfacesDirty(nodeID); }
 
         // Do not use. This method might be removed/renamed in the future
         [EditorBrowsable(EditorBrowsableState.Never)]
