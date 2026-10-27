@@ -1,85 +1,140 @@
-# [Chisel](https://github.com/RadicalCSG/com.chisel/wiki) (WIP)
+<p align="center">
+  <img src="Documentation~/Images/chisel_banner.png" alt="Chisel — real-time CSG level editor for Unity" width="100%">
+</p>
 
-Chisel is an extension for **Unity** that allows for _rapid_, iterative, **non destructive** level editing!
+<p align="center">
+  <a href="https://unity.com/releases/editor"><img src="https://img.shields.io/badge/unity-6.6%2B-222c37?logo=unity" alt="Unity 6.6+"></a>
+  <img src="https://img.shields.io/badge/pipeline-URP-222c37" alt="Universal Render Pipeline">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-007ec6" alt="MIT license"></a>
+  <img src="https://img.shields.io/badge/status-work%20in%20progress-c4520a" alt="Status: work in progress">
+  <a href="https://github.com/RadicalCSG/com.chisel/stargazers"><img src="https://img.shields.io/github/stars/RadicalCSG/com.chisel" alt="GitHub stars"></a>
+  <a href="https://discord.gg/zttNkPQ"><img src="https://img.shields.io/badge/discord-join%20chat-5865f2?logo=discord&logoColor=white" alt="Join the Discord"></a>
+</p>
 
-![Example](Documentation~/Images/chisel_example.png)
+<p align="center">
+  <a href="INSTALLATION.md">Installation</a> ·
+  <a href="GETTING_STARTED.md">Getting started</a> ·
+  <a href="https://github.com/RadicalCSG/com.chisel/wiki">Wiki</a> ·
+  <a href="#roadmap">Roadmap</a> ·
+  <a href="#extensions">Extensions</a> ·
+  <a href="http://www.youtube.com/watch?v=Iqmg4gblreo">GDC talk</a> ·
+  <a href="https://discord.gg/zttNkPQ">Discord</a>
+</p>
 
----
-* You can find [installation instructions here](INSTALLATION.md)
-* [Click here for information on how to get started](GETTING_STARTED.md)
-* Every feature is explained on [the wiki](https://github.com/RadicalCSG/com.chisel/wiki)
-* Want to help out? Read [how to contribute](CONTRIBUTING.md), and see [what is planned](https://github.com/orgs/RadicalCSG/projects/1)
-* ![Discord](Documentation~/Images/discord-mark-blue-small.png) If you have questions be sure to ask in the discord! **[Click here to join the official Discord server!](https://discord.gg/zttNkPQ)**
+<p align="center">
+  <img src="Documentation~/Images/chisel_warning.png" alt="Warning: Chisel is a work in progress and not yet ready for production. The UX and the CSG algorithm are still under development." width="100%">
+</p>
 
----
+![Chisel in the Unity editor](Documentation~/Images/chisel_example.png)
 
-Note:
-- Chisel *requires Unity 6.6 or newer*, and the *Universal Render Pipeline (URP)*
-- UX is *still under development*
-- Feature set is *still under development*
-- It is *not yet* ready for production, but please feel free to try it out, or better yet, help out!
+## About
 
----
+Chisel is a Unity extension for rapid, iterative, **non-destructive** level editing. Block out a level with brushes, carve it with subtractive shapes, refine it with generators and texture it with hotspots and decals — every operation stays live, so nothing is baked until you want it to be.
 
-## Features (incomplete)
+Every feature is documented in the [wiki](https://github.com/RadicalCSG/com.chisel/wiki).
 
-Building geometry
-* [Constructive Solid Geometry](https://github.com/RadicalCSG/com.chisel/wiki/Real-time-CSG) that generates geometry in real-time, exactly, without cracks where shapes meet
-* [Add, remove and intersect geometry](https://github.com/RadicalCSG/com.chisel/wiki/Operations) to your level using CSG, for fluid, interactive, non destructive workflows
-* Higher level ["generators"](https://github.com/RadicalCSG/com.chisel/wiki/Generators) that create more complicated geometry to perform CSG with, while retaining context of what it is you're creating (if you create stairs, these will remain stairs that you can edit and tweak)
-* [Hierarchical Constructive Solid Geometry](https://github.com/RadicalCSG/com.chisel/wiki/Hierarchical-CSG): generators and brushes grouped in a composite act as one whole, to perform CSG on other objects with
-* [Subtractive Workflow](https://github.com/RadicalCSG/com.chisel/wiki/Subtractive-Workflow)
-* Works well with [prefabs](https://github.com/RadicalCSG/com.chisel/wiki/Prefabs): drag and drop windows onto walls including their holes
-* [Draw 2D shapes](https://github.com/RadicalCSG/com.chisel/wiki/Drawing-2D-Shapes) (possible to turn straight lines into curves) on existing CSG surfaces and extrude them
-* [Brush contents](https://github.com/RadicalCSG/com.chisel/wiki/Brush-Contents): solid, glass, water; faces stay where different contents meet
+## Features
 
-Precision
-* [Snapping](https://github.com/RadicalCSG/com.chisel/wiki/Snapping) to grid lines, of the pivot or bounds of what you move
-* [Rotatable & movable grid](https://github.com/RadicalCSG/com.chisel/wiki/Grid)
+### Surfaces & texturing
 
-Surfaces and texturing
-* [Normal smoothing](https://github.com/RadicalCSG/com.chisel/wiki/Normal-Smoothing)
-* [Double sided surfaces](https://github.com/RadicalCSG/com.chisel/wiki/Double-Sided-Surfaces): a material can make its surfaces drawn from behind too
-* [Hotspot mapping](https://github.com/RadicalCSG/com.chisel/wiki/Hotspot-Mapping): surfaces take their texture coordinates from the best matching tile of a layout (borders, repeats, shaped tiles and trim sheets), with a layout editor
-* [Decals](https://github.com/RadicalCSG/com.chisel/wiki/Decals): boxes that project a material onto the surfaces they reach, drawn over them or replacing them, their image repeated in x and y, from the whole texture or an image in a trim sheet
-* [Trim decals](https://github.com/RadicalCSG/com.chisel/wiki/Trim-Decals): a decal on the edge between two surfaces, the lower half of its image on one and the upper half on the other (or mirrored), stretched, repeated or fitted along the edge or one image placed on it, running round corners, its image from the whole texture or a trim sheet, following the edge when either brush changes; placed by picking an edge in the scene view, or on every edge where two materials meet
+<table>
+  <tr>
+    <td width="33%"><b><a href="https://github.com/RadicalCSG/com.chisel/wiki/Hotspot-Mapping">Hotspot mapping</a></b><br>UVs come from the best-matching tile of a layout. Layout editor included.</td>
+    <td width="33%"><b><a href="https://github.com/RadicalCSG/com.chisel/wiki/Decals">Decals</a></b><br>Project a material over or in place of surfaces. Omni-directional, skewed, with fade distances.</td>
+    <td width="33%"><b><a href="https://github.com/RadicalCSG/com.chisel/wiki/Trim-Decals">Trim decals</a></b><br>Decals that wrap the edge between two surfaces and follow it as brushes change.</td>
+  </tr>
+  <tr>
+    <td><b>Vertex painting</b><br>Paint directly onto CSG surfaces.</td>
+    <td><b><a href="https://github.com/RadicalCSG/com.chisel/wiki/Double-Sided-Surfaces">Double-sided surfaces</a></b><br>A material can draw its surfaces from behind too.</td>
+    <td><b><a href="https://github.com/RadicalCSG/com.chisel/wiki/Normal-Smoothing">Normal smoothing</a></b><br>Smooth shading across CSG surfaces.</td>
+  </tr>
+</table>
 
-Output
-* Ordinary Unity meshes and colliders, that work with Unity's lightmapping, occlusion culling and navigation meshes
-* [Chunking](https://github.com/RadicalCSG/com.chisel/wiki/Chunking): a model's output is split into a mesh per material, and divided into chunks of space, for better occlusion and culling handling
-* [Debug visualizations](https://github.com/RadicalCSG/com.chisel/wiki/Debug-Visualizations) of user-hidden, shadow-only, shadow-casting, shadow-receiving, collider and discarded (removed by the CSG) surfaces
+### Building geometry
 
-## Planned Features (incomplete, and in random order)
+<table>
+  <tr>
+    <td width="33%"><b><a href="https://github.com/RadicalCSG/com.chisel/wiki/Real-time-CSG">Real-time CSG</a></b><br>Exact geometry, generated in real time, without cracks where shapes meet.</td>
+    <td width="33%"><b><a href="https://github.com/RadicalCSG/com.chisel/wiki/Operations">Add, remove, intersect</a></b><br>Fluid, interactive, non-destructive CSG operations.</td>
+    <td width="33%"><b><a href="https://github.com/RadicalCSG/com.chisel/wiki/Generators">Generators</a></b><br>Higher-level shapes keep their context: stairs stay editable as stairs.</td>
+  </tr>
+  <tr>
+    <td><b><a href="https://github.com/RadicalCSG/com.chisel/wiki/Hierarchical-CSG">Hierarchical CSG</a></b><br>Grouped brushes and generators act as one whole.</td>
+    <td><b><a href="https://github.com/RadicalCSG/com.chisel/wiki/Brush-Contents">Brush contents</a></b><br>Solid, glass or water. Faces stay where different contents meet.</td>
+    <td><b><a href="https://github.com/RadicalCSG/com.chisel/wiki/Subtractive-Workflow">Subtractive workflow</a></b><br>Start from solid space and carve rooms out of it.</td>
+  </tr>
+</table>
 
-See [the project](https://github.com/orgs/RadicalCSG/projects/1) for everything that is planned.
-* Decals, still to do:
-  * [Omni directional decals](https://github.com/RadicalCSG/com.chisel/issues/33)
-  * [Skewed decals](https://github.com/RadicalCSG/com.chisel/issues/34)
-  * [Fade distances](https://github.com/RadicalCSG/com.chisel/issues/35)
-* [Snapping to vertices, edges and surfaces of other geometry](https://github.com/RadicalCSG/com.chisel/issues/42)
-* [Brushes that stay visible and editable while their shape is invalid](https://github.com/RadicalCSG/com.chisel/issues/12)
-* [Vertex Painting](https://github.com/RadicalCSG/com.chisel/issues/36)
-* [Extrusion from existing surface](https://github.com/RadicalCSG/com.chisel/issues/37)
-* [2D shape editor](https://github.com/RadicalCSG/com.chisel/issues/38)
-* [Grid Objects](https://github.com/RadicalCSG/com.chisel/issues/39)
-* [Clip Tool](https://github.com/RadicalCSG/com.chisel/issues/40)
-* [Node Based Generators](https://github.com/RadicalCSG/com.chisel/issues/41) for easy procedural content generation
+### Editing
+
+<table>
+  <tr>
+    <td width="33%"><b><a href="https://github.com/RadicalCSG/com.chisel/wiki/Prefabs">Prefabs</a></b><br>Drop a window onto a wall and its hole comes with it.</td>
+    <td width="33%"><b><a href="https://github.com/RadicalCSG/com.chisel/wiki/Drawing-2D-Shapes">2D shapes</a></b><br>Draw on CSG surfaces, bend lines into curves, extrude.</td>
+    <td width="33%"><b>Forgiving brushes</b><br>Brushes stay visible and editable while their shape is invalid.</td>
+  </tr>
+  <tr>
+    <td><b><a href="https://github.com/RadicalCSG/com.chisel/wiki/Snapping">Snapping</a></b><br>Snap the pivot or bounds of what you move to grid lines.</td>
+    <td><b><a href="https://github.com/RadicalCSG/com.chisel/wiki/Grid">Rotatable grid</a></b><br>Move and rotate the grid to work at any angle.</td>
+    <td><b><a href="https://github.com/RadicalCSG/com.chisel/wiki/Debug-Visualizations">Debug visualizations</a></b><br>See hidden, shadow-only, collider and CSG-discarded surfaces.</td>
+  </tr>
+</table>
+
+### Output
+
+Ordinary Unity meshes and colliders that work with lightmapping, occlusion culling and navigation meshes — split into a mesh per material and into [spatial chunks](https://github.com/RadicalCSG/com.chisel/wiki/Chunking).
+
+## Getting started
+
+Requires **Unity 6.6** or newer and the **Universal Render Pipeline** (URP).
+
+1. Open <kbd>Window › Package Manager</kbd>
+2. Click <kbd>+</kbd> and choose *Install package from git URL…*
+3. Paste the URL below and press Enter.
+
+```
+https://github.com/RadicalCSG/com.chisel.git
+```
+
+The first start-up takes a while: Burst compiles a lot of code. This only happens once.
+
+[Read the getting started guide →](GETTING_STARTED.md)
+
+## Roadmap
+
+Planned, in no particular order. Discussion lives in the linked issues.
+
+- [ ] Snapping to vertices, edges and surfaces of other geometry — [#42](https://github.com/RadicalCSG/com.chisel/issues/42)
+- [ ] Extrusion from existing surfaces — [#37](https://github.com/RadicalCSG/com.chisel/issues/37)
+- [ ] 2D shape editor — [#38](https://github.com/RadicalCSG/com.chisel/issues/38)
+- [ ] Grid objects — [#39](https://github.com/RadicalCSG/com.chisel/issues/39)
+- [ ] Clip tool — [#40](https://github.com/RadicalCSG/com.chisel/issues/40)
+- [ ] Node-based generators for procedural content — [#41](https://github.com/RadicalCSG/com.chisel/issues/41)
 
 ## Extensions
-* [Source Engine 2006 Map Importer for Chisel Editor](https://github.com/Henry00IS/Chisel.Import.Source)
-  * [Decals on models that aren't Chisel geometry, for the importer](https://github.com/Henry00IS/Chisel.Decals)
-  * [VPK import support for importer](https://github.com/nukeandbeans/com.chisel.import.source.vpktools)
-* [Quake1 Importer](https://github.com/Quixotic7/Chisel.Import.Quake1)
+
+| Extension | Repository |
+|---|---|
+| Source Engine 2006 map importer | [Henry00IS/Chisel.Import.Source](https://github.com/Henry00IS/Chisel.Import.Source) |
+| ↳ Decals on models that aren't Chisel geometry | [Henry00IS/Chisel.Decals](https://github.com/Henry00IS/Chisel.Decals) |
+| ↳ VPK import support for the importer | [nukeandbeans/com.chisel.import.source.vpktools](https://github.com/nukeandbeans/com.chisel.import.source.vpktools) |
+| Quake 1 importer | [Quixotic7/Chisel.Import.Quake1](https://github.com/Quixotic7/Chisel.Import.Quake1) |
+
+## How it works
+
+The core algorithm is explained in the GDC 2020 talk *Geometry in Milliseconds: Real-Time Constructive Solid Geometry*.
+
+[![Geometry in Milliseconds: Real-Time Constructive Solid Geometry — GDC 2020](https://img.youtube.com/vi/Iqmg4gblreo/0.jpg)](http://www.youtube.com/watch?v=Iqmg4gblreo)
+
+## Community
+
+- Questions, showcases and dev chat: [join the Discord server](https://discord.gg/zttNkPQ)
+- Want to contribute? Start with a [good first issue](https://github.com/RadicalCSG/Chisel/labels/good%20first%20issue)
 
 ## Reporting problems
 
-If you find any failure cases, please [open an issue](https://github.com/RadicalCSG/com.chisel/issues/new/choose), and if possible provide us with a reproducible scene so we can more easily fix it!
+Found a case where Chisel fails? [Open an issue](https://github.com/RadicalCSG/com.chisel/issues/new/choose) — a scene that reproduces it helps a lot.
 
 ## License
 
-Chisel is available under the [MIT license](LICENSE).
-
----
-The core technology is based on the algorithm explained in [this GDC 2020 talk](http://www.youtube.com/watch?v=Iqmg4gblreo)
-
-[![GDC Video](http://img.youtube.com/vi/Iqmg4gblreo/0.jpg)](http://www.youtube.com/watch?v=Iqmg4gblreo "Geometry in Milliseconds: Real-Time Constructive Solid Geometry")
+Chisel is released under the [MIT license](LICENSE).
