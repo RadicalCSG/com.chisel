@@ -15,7 +15,7 @@
   <a href="INSTALLATION.md">Installation</a> ·
   <a href="GETTING_STARTED.md">Getting started</a> ·
   <a href="https://github.com/RadicalCSG/com.chisel/wiki">Wiki</a> ·
-  <a href="#roadmap">Roadmap</a> ·
+  <a href="https://github.com/orgs/RadicalCSG/projects/1">Roadmap</a> ·
   <a href="#extensions">Extensions</a> ·
   <a href="http://www.youtube.com/watch?v=Iqmg4gblreo">GDC talk</a> ·
   <a href="https://discord.gg/zttNkPQ">Discord</a>
@@ -82,7 +82,7 @@ Every feature is documented in the [wiki](https://github.com/RadicalCSG/com.chis
 
 ### Output
 
-Ordinary Unity meshes and colliders that work with lightmapping, occlusion culling and navigation meshes — split into a mesh per material and into [spatial chunks](https://github.com/RadicalCSG/com.chisel/wiki/Chunking).
+Ordinary Unity meshes and colliders that work with light-mapping, occlusion culling and navigation meshes — split into a mesh per material and into [spatial chunks](https://github.com/RadicalCSG/com.chisel/wiki/Chunking).
 
 ## Getting started
 
@@ -99,17 +99,6 @@ https://github.com/RadicalCSG/com.chisel.git
 The first start-up takes a while: Burst compiles a lot of code. This only happens once.
 
 [Read the getting started guide →](GETTING_STARTED.md)
-
-## Roadmap
-
-Planned, in no particular order. Discussion lives in the linked issues.
-
-- [ ] Snapping to vertices, edges and surfaces of other geometry — [#42](https://github.com/RadicalCSG/com.chisel/issues/42)
-- [ ] Extrusion from existing surfaces — [#37](https://github.com/RadicalCSG/com.chisel/issues/37)
-- [ ] 2D shape editor — [#38](https://github.com/RadicalCSG/com.chisel/issues/38)
-- [ ] Grid objects — [#39](https://github.com/RadicalCSG/com.chisel/issues/39)
-- [ ] Clip tool — [#40](https://github.com/RadicalCSG/com.chisel/issues/40)
-- [ ] Node-based generators for procedural content — [#41](https://github.com/RadicalCSG/com.chisel/issues/41)
 
 ## Extensions
 
