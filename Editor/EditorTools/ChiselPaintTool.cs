@@ -481,9 +481,16 @@ namespace Chisel.Editors
             foreach (var method in picker?.GetMethods(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static) ?? System.Array.Empty<System.Reflection.MethodInfo>())
             {
                 var parameters = method.GetParameters();
-                if (method.Name != "Show" || parameters.Length != 4 || parameters[0].ParameterType != typeof(System.Action<Color>))
+                if (method.Name != "Show" || parameters.Length < 4 || parameters[0].ParameterType != typeof(System.Action<Color>))
                     continue;
-                method.Invoke(null, new object[] { changed, color, true, false });
+                var arguments = new object[parameters.Length];
+                arguments[0] = changed;
+                arguments[1] = color;
+                arguments[2] = true;
+                arguments[3] = false;
+                for (int i = 4; i < parameters.Length; i++)
+                    arguments[i] = parameters[i].HasDefaultValue ? parameters[i].DefaultValue : null;
+                method.Invoke(null, arguments);
                 return;
             }
         }
