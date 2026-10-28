@@ -86,83 +86,40 @@ namespace Chisel.Editors
         
         static readonly bool s_ReflectionSucceeded = false;
 
+        // Unity's rect selection in the scene view has no public API: it is read and driven through its internals
+        const string kFeature = "selecting brushes with a rectangle";
+
         static ChiselRectSelection()
         {
-            s_ReflectionSucceeded	= false;
+            s_UnityRectSelectionType    = ChiselUnityInternals.Type("UnityEditor.RectSelection", kFeature);
+            s_UnityEnumSelectionType    = ChiselUnityInternals.Type("UnityEditor.RectSelection+SelectionType", kFeature);
+            s_RectSelectionField        = ChiselUnityInternals.Field(typeof(SceneView), "m_RectSelection", kFeature);
+            s_RectSelectionIDField      = ChiselUnityInternals.Field(s_UnityRectSelectionType, "k_RectSelectionID", kFeature);
+            s_SelectStartPointField     = ChiselUnityInternals.Field(s_UnityRectSelectionType, "m_StartPoint", kFeature);
+            s_IsNearestControlField     = ChiselUnityInternals.Field(s_UnityRectSelectionType, "m_IsNearestControl", kFeature);
+            s_SelectionStartField       = ChiselUnityInternals.Field(s_UnityRectSelectionType, "m_SelectionStart", kFeature);
+            s_LastSelectionField        = ChiselUnityInternals.Field(s_UnityRectSelectionType, "m_LastSelection", kFeature);
+            s_CurrentSelectionField     = ChiselUnityInternals.Field(s_UnityRectSelectionType, "m_CurrentSelection", kFeature);
+            s_SelectMousePointField     = ChiselUnityInternals.Field(s_UnityRectSelectionType, "m_SelectMousePoint", kFeature);
+            s_UpdateSelectionMethod     = ChiselUnityInternals.Method(s_UnityRectSelectionType, "UpdateSelection", kFeature,
+                                                                      typeof(Object[]), typeof(Object[]), s_UnityEnumSelectionType, typeof(bool));
+            s_SelectionTypeAdditive     = ChiselUnityInternals.EnumValue(s_UnityEnumSelectionType, "Additive", kFeature);
+            s_SelectionTypeSubtractive  = ChiselUnityInternals.EnumValue(s_UnityEnumSelectionType, "Subtractive", kFeature);
+            s_SelectionTypeNormal       = ChiselUnityInternals.EnumValue(s_UnityEnumSelectionType, "Normal", kFeature);
 
-            s_UnityRectSelectionType		= ReflectionExtensions.GetTypeByName("UnityEditor.RectSelection");
-            if (s_UnityRectSelectionType == null)
-			{
-				Debug.LogError("Could not find UnityEditor.RectSelection");
-				return;
-			}
-
-			s_UnityEnumSelectionType 		= ReflectionExtensions.GetTypeByName("UnityEditor.RectSelection+SelectionType");
-            if (s_UnityEnumSelectionType == null)
-			{
-				Debug.LogError("Could not find UnityEditor.RectSelection+SelectionType");
-				return;
-			}
-
-			s_RectSelectionField			= typeof(SceneView).GetField("m_RectSelection",			BindingFlags.NonPublic | BindingFlags.Instance);
-            if (s_RectSelectionField == null)
-            {
-                Debug.LogError("Could not find SceneView.m_RectSelection");
-                return;
-            }
-
-            s_RectSelectionIDField        = s_UnityRectSelectionType.GetField("k_RectSelectionID",  BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.FlattenHierarchy);
-            if (s_RectSelectionIDField == null)
-			{
-				Debug.LogError("Could not find UnityEditor.RectSelection.k_RectSelectionID");
-				return;
-			}
-
-			RectSelectionID       = 0;
-            s_SelectStartPointField = s_UnityRectSelectionType.GetField("m_StartPoint",	        BindingFlags.NonPublic | BindingFlags.Instance);
-            s_IsNearestControlField = s_UnityRectSelectionType.GetField("m_IsNearestControl",	BindingFlags.NonPublic | BindingFlags.Instance);
-            s_SelectionStartField	  = s_UnityRectSelectionType.GetField("m_SelectionStart",	    BindingFlags.NonPublic | BindingFlags.Instance);
-            s_LastSelectionField	  = s_UnityRectSelectionType.GetField("m_LastSelection",	    BindingFlags.NonPublic | BindingFlags.Instance);
-            s_CurrentSelectionField = s_UnityRectSelectionType.GetField("m_CurrentSelection",	BindingFlags.NonPublic | BindingFlags.Instance);
-            s_SelectMousePointField = s_UnityRectSelectionType.GetField("m_SelectMousePoint",	BindingFlags.NonPublic | BindingFlags.Instance);
-            s_UpdateSelectionMethod = ReflectionExtensions.GetStaticMethod(s_UnityRectSelectionType, "UpdateSelection", new Type[] {
-                                                                                typeof(Object[]),
-                                                                                typeof(Object[]),
-                                                                                s_UnityEnumSelectionType,
-                                                                                typeof(bool)
-                                                                            });
-
-			s_SelectionTypeAdditive    = Enum.Parse(s_UnityEnumSelectionType, "Additive");
-            s_SelectionTypeSubtractive = Enum.Parse(s_UnityEnumSelectionType, "Subtractive");
-            s_SelectionTypeNormal		 = Enum.Parse(s_UnityEnumSelectionType, "Normal");
-            
-            s_ReflectionSucceeded = s_SelectStartPointField	   != null &&
-                                  s_SelectionStartField	   != null &&
-                                  s_LastSelectionField	   != null &&
-                                  s_CurrentSelectionField	   != null &&
-                                  s_SelectMousePointField	   != null &&
-                                  s_UpdateSelectionMethod	   != null &&
-
-                                  s_SelectionTypeAdditive	   != null &&
-                                  s_SelectionTypeSubtractive != null &&
-                                  s_SelectionTypeNormal	   != null;
-
-
-            if (!s_ReflectionSucceeded)
-            {
-                Debug.LogError("Could not initialize rect selection properly");
-
-				Debug.LogError($"selectStartPointField {s_SelectStartPointField}");
-				Debug.LogError($"selectionStartField {s_SelectionStartField}");
-				Debug.LogError($"currentSelectionField {s_CurrentSelectionField}");
-				Debug.LogError($"selectMousePointField {s_SelectMousePointField}");
-
-				Debug.LogError($"updateSelectionMethod {s_UpdateSelectionMethod}");
-				Debug.LogError($"selectionTypeAdditive {s_SelectionTypeAdditive}");
-				Debug.LogError($"selectionTypeSubtractive {s_SelectionTypeSubtractive}");
-				Debug.LogError($"selectionTypeNormal {s_SelectionTypeNormal}");
-			}
-		}
+            s_ReflectionSucceeded = s_RectSelectionField        != null &&
+                                    s_RectSelectionIDField      != null &&
+                                    s_SelectStartPointField     != null &&
+                                    s_IsNearestControlField     != null &&
+                                    s_SelectionStartField       != null &&
+                                    s_LastSelectionField        != null &&
+                                    s_CurrentSelectionField     != null &&
+                                    s_SelectMousePointField     != null &&
+                                    s_UpdateSelectionMethod     != null &&
+                                    s_SelectionTypeAdditive     != null &&
+                                    s_SelectionTypeSubtractive  != null &&
+                                    s_SelectionTypeNormal       != null;
+        }
     }
 
     // TODO: clean up, rename

@@ -54,10 +54,9 @@ namespace Chisel.Editors
 
         readonly static string[] kExcludeProperties = new[] { "m_Script" };
 
-        // Sadly the DrawPropertiesExcluding method is protected, so we need to use reflection to be able to render the
-        // placementToolDefinition properties, without a "PlacementToolDefinition" foldout, and a "script" property.
-        delegate void DrawPropertiesExcludingDelegate(SerializedObject obj, params string[] propertyToExclude);
-        static DrawPropertiesExcludingDelegate DrawPropertiesExcluding = ReflectionExtensions.CreateDelegate<DrawPropertiesExcludingDelegate>(typeof(Editor), "DrawPropertiesExcluding");
+        // The placementToolDefinition's properties as the inspector draws them, without a "PlacementToolDefinition"
+        // foldout or a "script" property
+        static void DrawPropertiesExcluding(SerializedObject obj, params string[] propertyToExclude) => ChiselPropertiesDrawer.DrawExcluding(obj, propertyToExclude);
 
         public override void OnSceneSettingsGUI()
         {
@@ -342,5 +341,11 @@ namespace Chisel.Editors
             return settings;
         }
         #endregion
+    }
+
+    // Editor.DrawPropertiesExcluding is protected: a class deriving from Editor can call it
+    abstract class ChiselPropertiesDrawer : Editor
+    {
+        public static void DrawExcluding(SerializedObject obj, string[] propertyToExclude) => DrawPropertiesExcluding(obj, propertyToExclude);
     }
 }

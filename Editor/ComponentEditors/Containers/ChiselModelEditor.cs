@@ -174,21 +174,6 @@ namespace Chisel.Editors
         //private Vector2 modelMessagesScrollPosition = Vector2.zero;
 
 
-        delegate float GetCachedMeshSurfaceAreaDelegate(MeshRenderer meshRenderer);
-        delegate bool HasClampedResolutionDelegate(Renderer renderer);
-        delegate bool HasUVOverlapsDelegate(Renderer renderer);
-        delegate bool HasInstancingDelegate(Shader s);
-
-        delegate void LightmapParametersGUIDelegate(SerializedProperty prop, GUIContent content);
-        readonly static LightmapParametersGUIDelegate kLightmapParametersGUI = ReflectionExtensions.CreateDelegate<LightmapParametersGUIDelegate>("UnityEditor.RendererLightingSettings", "LightmapParametersGUI");
-        readonly static HasClampedResolutionDelegate kHasClampedResolution = typeof(Lightmapping).CreateDelegate<HasClampedResolutionDelegate>("HasClampedResolution");
-		readonly static HasUVOverlapsDelegate kHasUVOverlaps = typeof(Lightmapping).CreateDelegate<HasUVOverlapsDelegate>("HasUVOverlaps");
-
-		readonly static GetCachedMeshSurfaceAreaDelegate kGetCachedMeshSurfaceArea    = ReflectionExtensions.CreateDelegate<GetCachedMeshSurfaceAreaDelegate>("UnityEditor.InternalMeshUtil", "GetCachedMeshSurfaceArea");
-		readonly static HasInstancingDelegate            kHasInstancing               = typeof(ShaderUtil).CreateDelegate<HasInstancingDelegate>("HasInstancing");
-
-        readonly static ReflectedInstanceProperty<int> HasMultipleDifferentValuesBitwise = typeof(SerializedProperty).GetProperty<int>("hasMultipleDifferentValuesBitwise");
-
         internal void OnEnable()
         {
             EditorApplication.contextualPropertyMenu -= OnPropertyContextMenu;
@@ -359,9 +344,20 @@ namespace Chisel.Editors
         {
             get
             {
-                if (staticEditorFlagsProp == null)
+                var gameObjects = gameObjectsSerializedObject?.targetObjects;
+                if (gameObjects == null || gameObjects.Length < 2)
                     return false;
-                return (HasMultipleDifferentValuesBitwise.GetValue(staticEditorFlagsProp) & (int)StaticEditorFlags.ContributeGI) != 0;
+                bool? first = null;
+                foreach (var gameObject in gameObjects)
+                {
+                    if (gameObject is not GameObject go)
+                        continue;
+                    var contributes = (GameObjectUtility.GetStaticEditorFlags(go) & StaticEditorFlags.ContributeGI) != 0;
+                    if (first.HasValue && first.Value != contributes)
+                        return true;
+                    first = contributes;
+                }
+                return false;
             }
         }
 
@@ -418,9 +414,41 @@ namespace Chisel.Editors
             }
         }
 
+        // The world space area of a renderer's mesh
+        static float MeshSurfaceArea(MeshRenderer meshRenderer)
+        {
+            if (!meshRenderer.TryGetComponent<MeshFilter>(out var meshFilter) || !meshFilter.sharedMesh || !meshFilter.sharedMesh.isReadable)
+                return 0;
+            var mesh = meshFilter.sharedMesh;
+            var toWorld = meshRenderer.localToWorldMatrix;
+            var vertices = ListPool<Vector3>.Get();
+            var indices  = ListPool<int>.Get();
+            try
+            {
+                mesh.GetVertices(vertices);
+                for (int v = 0; v < vertices.Count; v++)
+                    vertices[v] = toWorld.MultiplyPoint3x4(vertices[v]);
+                var area = 0.0;
+                for (int s = 0; s < mesh.subMeshCount; s++)
+                {
+                    if (mesh.GetTopology(s) != MeshTopology.Triangles)
+                        continue;
+                    mesh.GetTriangles(indices, s);
+                    for (int i = 0; i + 2 < indices.Count; i += 3)
+                        area += Vector3.Cross(vertices[indices[i + 1]] - vertices[indices[i]], vertices[indices[i + 2]] - vertices[indices[i]]).magnitude * 0.5;
+                }
+                return (float)area;
+            }
+            finally
+            {
+                ListPool<Vector3>.Release(vertices);
+                ListPool<int>.Release(indices);
+            }
+        }
+
         float GetLargestCachedMeshSurfaceAreaForTargets(float defaultValue)
         {
-            if (target == null || kGetCachedMeshSurfaceArea == null)
+            if (target == null)
                 return defaultValue;
             float largestSurfaceArea = -1;
             foreach(var target in targets)
@@ -439,7 +467,7 @@ namespace Chisel.Editors
                     var meshRenderer = renderable.meshRenderer;
                     if (!meshRenderer)
                         continue;
-                    largestSurfaceArea = Mathf.Max(largestSurfaceArea, kGetCachedMeshSurfaceArea(meshRenderer));
+                    largestSurfaceArea = Mathf.Max(largestSurfaceArea, MeshSurfaceArea(meshRenderer));
                 }
             }
             if (largestSurfaceArea >= 0)
@@ -449,7 +477,7 @@ namespace Chisel.Editors
 
         bool TargetsHaveClampedResolution()
         {
-            if (target == null || kHasClampedResolution == null)
+            if (target == null || !ChiselLightmappingInternals.Available)
                 return false;
             foreach (var target in targets)
             {
@@ -467,7 +495,7 @@ namespace Chisel.Editors
                     var meshRenderer = renderable.meshRenderer;
                     if (!meshRenderer)
                         continue;
-                    if (kHasClampedResolution(meshRenderer))
+                    if (ChiselLightmappingInternals.HasClampedResolution(meshRenderer))
                         return true;
                 }
             }
@@ -476,7 +504,7 @@ namespace Chisel.Editors
 
         bool TargetsHaveUVOverlaps()
         {
-            if (target == null || kHasUVOverlaps == null)
+            if (target == null || !ChiselLightmappingInternals.Available)
                 return false;
             foreach (var target in targets)
             {
@@ -494,7 +522,7 @@ namespace Chisel.Editors
                     var meshRenderer = renderable.meshRenderer;
                     if (!meshRenderer)
                         continue;
-                    if (kHasUVOverlaps(meshRenderer))
+                    if (ChiselLightmappingInternals.HasUVOverlaps(meshRenderer))
                         return true;
                 }
             }
@@ -503,7 +531,7 @@ namespace Chisel.Editors
 
         bool TargetsUseInstancingShader()
         {
-            if (target == null || kHasInstancing == null)
+            if (target == null || !ChiselLightmappingInternals.Available)
                 return false;
             foreach (var target in targets)
             {
@@ -520,7 +548,7 @@ namespace Chisel.Editors
                         continue;
                     foreach (var material in renderable.renderMaterials)
                     {
-                        if (material != null && material.enableInstancing && material.shader != null && kHasInstancing(material.shader))
+                        if (material != null && material.enableInstancing && material.shader != null && ChiselLightmappingInternals.HasInstancing(material.shader))
                             return true;
                     }
                 }
@@ -949,8 +977,8 @@ namespace Chisel.Editors
                     if (showProgressiveSettings && stitchLightmapSeamsProp != null)
                         EditorGUILayout.PropertyField(stitchLightmapSeamsProp, kStitchLightmapSeamsContents);
 
-                    if (kLightmapParametersGUI != null && lightmapParametersProp != null)
-                        kLightmapParametersGUI(lightmapParametersProp, kLightmapParametersContents);
+                    if (lightmapParametersProp != null)
+                        EditorGUILayout.PropertyField(lightmapParametersProp, kLightmapParametersContents);
 
                     EditorGUILayout.Space();
 
