@@ -1,17 +1,19 @@
-﻿using UnityEditor;
+﻿using System;
+using System.Reflection;
+using UnityEditor;
 using UnityEngine;
 
 namespace Chisel.Editors
 {
     public static class ChiselGridSettings
     {
-		readonly static ReflectedInstanceProperty<object> kSceneViewGridsProperty  = typeof(SceneView).GetProperty<object>("sceneViewGrids");
-		readonly static ReflectedInstanceProperty<float>  kGridOpacityProperty     = ReflectionExtensions.GetProperty<float>("UnityEditor.SceneViewGrid", "gridOpacity");
-		readonly static ReflectedInstanceProperty<int>    kGridAxisProperty        = ReflectionExtensions.GetProperty<int>("UnityEditor.SceneViewGrid", "gridAxis");
+        /// <summary>The size of Unity's grid</summary>
+        public static Vector3 Size
+        {
+            get => EditorSnapSettings.gridSize;
+            set => EditorSnapSettings.gridSize = value;
+        }
 
-        public readonly static ReflectedProperty<Vector3> kSize              = ReflectionExtensions.GetStaticProperty<Vector3>("UnityEditor.GridSettings", "size");
-
-        
         internal static void GridOnSceneGUI(SceneView sceneView)
         {
             if (sceneView.showGrid)
@@ -22,8 +24,8 @@ namespace Chisel.Editors
                 ChiselEditorSettings.Save();
             }
 
-            var sceneViewGrids = kSceneViewGridsProperty?.GetValue(sceneView);
-            GridRenderer.Opacity = kGridOpacityProperty?.GetValue(sceneViewGrids) ?? 1.0f;
+            ChiselSceneViewGrid.Read(sceneView, out var gridOpacity, out var gridAxis);
+            GridRenderer.Opacity = gridOpacity;
 
             var activeTransform = Selection.activeTransform;
 
@@ -35,7 +37,6 @@ namespace Chisel.Editors
 				Chisel.Editors.Grid.DefaultGrid.GridToWorldSpace = Matrix4x4.TRS(center, rotation, Vector3.one);
             } else
             {
-                var gridAxis = kGridAxisProperty?.GetValue(sceneViewGrids) ?? 1;
                 switch (gridAxis)
                 {
                     case 0: Chisel.Editors.Grid.DefaultGrid.GridToWorldSpace = Chisel.Editors.Grid.XYPlane; break;
@@ -64,10 +65,42 @@ namespace Chisel.Editors
 
             if (Chisel.Editors.Grid.DebugGrid != null)
             {
-				//static ReflectedInstanceProperty<object> sceneViewGrids = typeof(SceneView).GetProperty<object>("sceneViewGrids");
-				//static ReflectedInstanceProperty<float> gridOpacity = ReflectionExtensions.GetProperty<float>("SceneViewGrid", "gridOpacity");
 				Chisel.Editors.Grid.DebugGrid.Render(sceneView);
 			}
+        }
+    }
+
+    // The scene view's grid opacity and plane have no public API: they are read from its internals
+    static class ChiselSceneViewGrid
+    {
+        const string kFeature = "following the scene view's grid opacity and plane";
+
+        static readonly PropertyInfo s_SceneViewGrids;
+        static readonly PropertyInfo s_GridOpacity;
+        static readonly PropertyInfo s_GridAxis;
+
+        public static bool Available => s_SceneViewGrids != null && s_GridOpacity != null && s_GridAxis != null;
+
+        static ChiselSceneViewGrid()
+        {
+            var sceneViewGridType = ChiselUnityInternals.Type("UnityEditor.SceneViewGrid", kFeature);
+            s_SceneViewGrids = ChiselUnityInternals.Property(typeof(SceneView), "sceneViewGrids", kFeature);
+            s_GridOpacity    = ChiselUnityInternals.Property(sceneViewGridType, "gridOpacity", kFeature);
+            s_GridAxis       = ChiselUnityInternals.Property(sceneViewGridType, "gridAxis", kFeature);
+        }
+
+        // The grid's opacity, and its plane (0: XY, 1: XZ, 2: YZ); fully opaque on XZ when they can't be read
+        public static void Read(SceneView sceneView, out float opacity, out int axis)
+        {
+            opacity = 1.0f;
+            axis    = 1;
+            if (!Available || !sceneView)
+                return;
+            var grids = s_SceneViewGrids.GetValue(sceneView);
+            if (grids == null)
+                return;
+            opacity = (float)s_GridOpacity.GetValue(grids);
+            axis    = Convert.ToInt32(s_GridAxis.GetValue(grids));
         }
     }
 }

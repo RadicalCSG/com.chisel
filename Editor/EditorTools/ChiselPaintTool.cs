@@ -474,27 +474,6 @@ namespace Chisel.Editors
             return -1;
         }
 
-        // Unity's color picker, giving every change to the callback
-        static void PickColor(Color color, System.Action<Color> changed)
-        {
-            var picker = typeof(EditorWindow).Assembly.GetType("UnityEditor.ColorPicker");
-            foreach (var method in picker?.GetMethods(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static) ?? System.Array.Empty<System.Reflection.MethodInfo>())
-            {
-                var parameters = method.GetParameters();
-                if (method.Name != "Show" || parameters.Length < 4 || parameters[0].ParameterType != typeof(System.Action<Color>))
-                    continue;
-                var arguments = new object[parameters.Length];
-                arguments[0] = changed;
-                arguments[1] = color;
-                arguments[2] = true;
-                arguments[3] = false;
-                for (int i = 4; i < parameters.Length; i++)
-                    arguments[i] = parameters[i].HasDefaultValue ? parameters[i].DefaultValue : null;
-                method.Invoke(null, arguments);
-                return;
-            }
-        }
-
         // The swatches, wrapping over as many rows as they need, then the current color (adds it as a swatch, picked);
         // a drag reorders them, a middle-click removes one
         static int s_DraggedSwatch = -1;
@@ -508,31 +487,36 @@ namespace Chisel.Editors
             SceneView.RepaintAll();
         }
 
-        // The current color as a new swatch, then Unity's color picker on it; a color some other swatch has already
-        // isn't added twice, that swatch is chosen instead
-        static void AddSwatch()
+        // The swatch the add cell's color picker is changing; -1 when a picked color is to be added
+        static int s_PickedSwatch = -1;
+
+        // The current color as a new swatch
+        static int AddSwatch()
         {
-            var index = Swatches.Count;
             Swatches.Add(s_Color);
             SaveSwatches();
-            PickColor(s_Color, color =>
+            return Swatches.Count - 1;
+        }
+
+        // A color from the add cell's color picker, for the swatch it was opened on; a color some other swatch has
+        // already isn't added twice, that swatch is chosen instead
+        static void ColorPicked(Color color)
+        {
+            s_Color = color;
+            var existing = SwatchOf(color);
+            if (existing >= 0 && existing != s_PickedSwatch)
             {
-                s_Color = color;
-                var existing = SwatchOf(color);
-                if (existing >= 0 && existing != index)
-                {
-                    if (index >= 0 && index < Swatches.Count)
-                        Swatches.RemoveAt(index);
-                    index = -1;
-                } else if (index < 0)
-                {
-                    index = Swatches.Count;
-                    Swatches.Add(color);
-                } else if (index < Swatches.Count)
-                    Swatches[index] = color;
-                SaveSwatches();
-                SceneView.RepaintAll();
-            });
+                if (s_PickedSwatch >= 0 && s_PickedSwatch < Swatches.Count)
+                    Swatches.RemoveAt(s_PickedSwatch);
+                s_PickedSwatch = -1;
+            } else if (s_PickedSwatch < 0)
+            {
+                s_PickedSwatch = Swatches.Count;
+                Swatches.Add(color);
+            } else if (s_PickedSwatch < Swatches.Count)
+                Swatches[s_PickedSwatch] = color;
+            SaveSwatches();
+            SceneView.RepaintAll();
         }
 
         static void SwatchesGUI()
@@ -586,6 +570,14 @@ namespace Chisel.Editors
                 var inner = new Rect(cell.x + 1, cell.y + 1, cell.width - 2, cell.height - 2);
                 if (i == swatches.Count)
                 {
+                    // a click adds the current color as a swatch (unless one has it), and the color field under the cell
+                    // opens Unity's color picker on it
+                    if (evt.type == EventType.MouseDown && evt.button == 0 && cell.Contains(evt.mousePosition))
+                        s_PickedSwatch = chosen < 0 ? AddSwatch() : -1;
+                    EditorGUI.BeginChangeCheck();
+                    var picked = EditorGUI.ColorField(cell, GUIContent.none, s_Color, false, true, false);
+                    if (EditorGUI.EndChangeCheck())
+                        ColorPicked(picked);
                     // as the color picker's own: the current color, smaller than a swatch, in an empty cell
                     if (evt.type == EventType.Repaint)
                     {
@@ -594,13 +586,6 @@ namespace Chisel.Editors
                         EditorGUI.DrawRect(new Rect(cell.x + 3, cell.y + 3, cell.width - 6, cell.height - 6), s_Color);
                     }
                     GUI.Label(cell, kAddSwatchContent, GUIStyle.none);
-                    if (evt.type == EventType.MouseDown && evt.button == 0 && cell.Contains(evt.mousePosition))
-                    {
-                        evt.Use();
-                        // a color that has a swatch already is chosen there
-                        if (chosen < 0)
-                            AddSwatch();
-                    }
                     continue;
                 }
                 if (evt.type == EventType.Repaint)

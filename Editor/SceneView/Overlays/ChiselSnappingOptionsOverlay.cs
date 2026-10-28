@@ -1,4 +1,3 @@
-using System.Reflection;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEditor;
@@ -155,42 +154,7 @@ namespace Chisel.Editors
         }
         static Styles s_Styles;
 
-        // TODO: remove this? move this?
-        // {{
-        readonly static ReflectedProperty<object> kRecycledEditor = typeof(EditorGUI).GetStaticProperty<object>("s_RecycledEditor");
-        readonly static MethodInfo kDoFloatFieldMethodInfo = typeof(EditorGUI).GetStaticMethod("DoFloatField", 8);
-
-		readonly static object[] s_FloatFieldArray = new object[]{
-                null, null, null, null, null, kFloatFieldFormatString, null, null
-        };
-        static float DoFloatField(Rect position, Rect dragHotZone, int id, float value, GUIStyle style, bool draggable)
-        {
-            if (s_FloatFieldArray == null || kRecycledEditor == null)
-                return value;
-            s_FloatFieldArray[0] = kRecycledEditor.Value;
-            s_FloatFieldArray[1] = position;
-            s_FloatFieldArray[2] = dragHotZone;
-            s_FloatFieldArray[3] = id;
-            s_FloatFieldArray[4] = value;
-            //s_FloatFieldArray[5] = kFloatFieldFormatString;
-            s_FloatFieldArray[6] = style;
-            s_FloatFieldArray[7] = draggable;
-            return (float)kDoFloatFieldMethodInfo.Invoke(null, s_FloatFieldArray);
-		}
-		// }}
-
-
-		public static float FloatField(Rect position, int id, float value, GUIStyle style)
-        {
-            return FloatFieldInternal(position, id, value, style);
-        }
-
         private readonly static int kFloatFieldHash = "EditorTextField".GetHashCode();
-        const string kFloatFieldFormatString = "g7";
-        internal static float FloatFieldInternal(Rect position, int id, float value, GUIStyle style)
-        {
-            return DoFloatField(EditorGUI.IndentedRect(position), new Rect(0, 0, 0, 0), id, value, style, false);
-        }
 
 
         public delegate float ModifyValue();
@@ -222,8 +186,7 @@ namespace Chisel.Editors
                                 
             var temp = position; 
             temp.xMax -= s_Styles.plus.fixedWidth * 2;
-            value = FloatField(temp, id, value, emptyStyle);
-            //EditorGUI.FloatField(temp, id, value, emptyStyle);
+            value = EditorGUI.FloatField(EditorGUI.IndentedRect(temp), value, emptyStyle);
 
 			var buttonRect = position;
             buttonRect.xMin = buttonRect.xMax -= s_Styles.plus.fixedWidth + 2;

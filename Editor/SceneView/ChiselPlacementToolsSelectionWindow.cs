@@ -265,7 +265,7 @@ namespace Chisel.Editors
             // TODO: figure out how to do this without needing layout stuff?
             EditorGUILayout.GetControlRect(false, height);
 
-            var togglePosition  = new Rect(0,0, ChiselEditorUtility.ContextWidth, kSingleLineHeight);
+            var togglePosition  = new Rect(0,0, EditorGUIUtility.currentViewWidth, kSingleLineHeight);
             var style           = s_Styles.namedToggleStyle;
             previousGroup   = string.Empty;
             for (int i = 0; i < generatorModes.Length; i++)

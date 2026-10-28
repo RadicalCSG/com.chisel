@@ -31,7 +31,7 @@ namespace Chisel.Editors
         public static bool				MoveSnapping	{ get { return BoundsSnapping || PivotSnapping; } }
         public static bool				BoundsSnapping  { get { return Snapping.BoundsSnappingEnabled; } set { Snapping.BoundsSnappingEnabled = value; } }
         public static bool				PivotSnapping   { get { return Snapping.PivotSnappingEnabled; } set { Snapping.PivotSnappingEnabled = value; } }
-        public static float				UniformSnapSize { get { return ChiselGridSettings.kSize.Value.x; } set { Grid.DefaultGrid.Spacing = ChiselGridSettings.kSize.Value = new UnityEngine.Vector3(value, value, value); } } 
+        public static float				UniformSnapSize { get { return ChiselGridSettings.Size.x; } set { Grid.DefaultGrid.Spacing = ChiselGridSettings.Size = new UnityEngine.Vector3(value, value, value); } }
 
         public static bool				ShowAllAxi      { get; set; } = false;
         public static DistanceUnit		DistanceUnit	{ get; set; } = DistanceUnit.Meters;

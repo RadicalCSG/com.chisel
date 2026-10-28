@@ -8,12 +8,6 @@ namespace Chisel.Editors
 {
     internal static class ChiselEditorUtility
     {
-        public readonly static ReflectedProperty<float> ContextWidth = typeof(EditorGUIUtility).GetStaticProperty<float>("contextWidth");
-
-        public delegate Texture2D GetHelpIconDelegate(MessageType type);
-
-        public static GetHelpIconDelegate GetHelpIcon = ReflectionExtensions.CreateDelegate<GetHelpIconDelegate>(typeof(EditorGUIUtility), "GetHelpIcon");
-
         public static Camera GetMainCamera()
         {
             // main camera, if we have any
