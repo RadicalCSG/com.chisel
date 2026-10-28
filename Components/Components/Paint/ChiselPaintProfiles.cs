@@ -95,19 +95,21 @@ namespace Chisel.Components
 
         static void Load()
         {
-            if (s_ByShader == null)
+            if (s_ByShader != null)
+                return;
+
+            // Loading the settings asset calls SetDirty, so fill a local copy and publish it last
+            var settings = ChiselPaintSettings.Project;
+            var byShader = new Dictionary<Shader, ChiselPaintProfile>();
+            if (settings)
             {
-                s_ByShader = new Dictionary<Shader, ChiselPaintProfile>();
-                var settings = ChiselPaintSettings.Project;
-                if (settings)
+                foreach (var profile in settings.profiles)
                 {
-                    foreach (var profile in settings.profiles)
-                    {
-                        if (profile != null && profile.shader != null)
-                            s_ByShader.TryAdd(profile.shader, profile);
-                    }
+                    if (profile != null && profile.shader != null)
+                        byShader.TryAdd(profile.shader, profile);
                 }
             }
+            s_ByShader = byShader;
         }
 
         /// <summary>Whether surfaces drawn with this material take paint in this attribute: its shader's profile has a mode
