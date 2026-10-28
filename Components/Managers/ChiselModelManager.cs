@@ -326,6 +326,14 @@ namespace Chisel.Components
 				CompactHierarchyManager.Flush(finishMeshUpdatesMethod, canSkipTreeUpdateMethod);
 				Profiler.EndSample();
 			}
+			// and so does the paint: a grid a surface outgrew grows with it, and is built with its surface now
+			if (ChiselPaintManager.GridsGrew())
+			{
+				ChiselPaintManager.Update();
+				Profiler.BeginSample("Flush (paint grids)");
+				CompactHierarchyManager.Flush(finishMeshUpdatesMethod, canSkipTreeUpdateMethod);
+				Profiler.EndSample();
+			}
 
 			// The models that kept their saved meshes get back what the scene doesn't keep of them
 			foreach (var model in s_SkippedModels)
