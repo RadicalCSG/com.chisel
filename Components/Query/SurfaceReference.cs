@@ -255,9 +255,9 @@ namespace Chisel.Components
 
         #region Equals
         [EditorBrowsable(EditorBrowsableState.Never)]
-        public static bool operator ==(SurfaceReference left, SurfaceReference right) { return left.Equals(right); }
+        public static bool operator ==(SurfaceReference left, SurfaceReference right) { return ReferenceEquals(left, null) ? ReferenceEquals(right, null) : left.Equals(right); }
         [EditorBrowsable(EditorBrowsableState.Never)]
-        public static bool operator !=(SurfaceReference left, SurfaceReference right) { return !left.Equals(right); }
+        public static bool operator !=(SurfaceReference left, SurfaceReference right) { return !(left == right); }
 
         public bool Equals(SurfaceReference other)
         {
