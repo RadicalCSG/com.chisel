@@ -60,6 +60,27 @@ namespace Chisel.Components
         // a decal's image can be a tile of its material's hotspot layout
         static ChiselDecalManager() { ChiselHotspotLayout.AnyChanged += _ => SetDirty(); }
 
+        // Entering play mode without a domain reload keeps all of this: what was destroyed goes, the decals that are still
+        // there stay registered (without a scene reload nothing registers them again), and everything is worked out again
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        static void ResetState()
+        {
+            s_Decals.RemoveWhere(decal => decal == null);
+            s_Ordered.Clear();
+            s_DecalStates.Clear();
+            s_MaterialFlags.Clear();
+            s_Stale.Clear();
+            foreach (var model in s_Models.Keys)
+            {
+                if (model == null)
+                    s_Stale.Add(model);
+            }
+            foreach (var model in s_Stale)
+                s_Models.Remove(model);
+            s_Stale.Clear();
+            s_Dirty = s_OrderDirty = true;
+        }
+
         public static void Register(ChiselDecalComponent decal)
         {
             if (decal != null && s_Decals.Add(decal))

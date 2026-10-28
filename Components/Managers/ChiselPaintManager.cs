@@ -30,6 +30,17 @@ namespace Chisel.Components
         /// <summary>Every generator's paint is looked at again (what shaders take may have changed)</summary>
         public static void SetDirty() => s_All = true;
 
+        // Entering play mode without a domain reload keeps all of this: what was destroyed goes, and every generator's
+        // paint is looked at again
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        static void ResetState()
+        {
+            s_Changed.RemoveWhere(generator => generator == null);
+            s_Work.Clear();
+            s_GivenNow.Clear();
+            s_All = true;
+        }
+
         /// <summary>A generator's paint, or what it is drawn with, may have changed</summary>
         public static void SetDirty(ChiselGeneratorComponent generator)
         {
