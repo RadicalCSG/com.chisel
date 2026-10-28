@@ -130,7 +130,42 @@ namespace Chisel.Editors
 			AssetDatabase.CreateAsset(settings, AssetDatabase.GenerateUniqueAssetPath(ChiselPaintSettings.kAssetPath));
 			AssetDatabase.SaveAssets();
 			ChiselPaintSettings.Project = settings;
+			EnsurePreloaded(settings);
 			return settings;
+		}
+
+		[InitializeOnLoadMethod]
+		static void Initialize()
+		{
+			EditorApplication.delayCall += () => EnsureProjectSettings();
+		}
+
+		// A project without paint settings gets them, with the package's paint shaders in them, so those can be
+		// painted right away and a player built from the project has the profiles too
+		public static ChiselPaintSettings EnsureProjectSettings()
+		{
+			if (EditorApplication.isPlayingOrWillChangePlaymode)
+				return ChiselPaintSettings.Project;
+			var settings = ChiselPaintSettings.Project;
+			if (!settings)
+				return CreateProjectAsset();
+			EnsurePreloaded(settings);
+			return settings;
+		}
+
+		public static bool IsPreloaded(ChiselPaintSettings settings)
+		{
+			return settings && System.Array.IndexOf(PlayerSettings.GetPreloadedAssets(), settings) >= 0;
+		}
+
+		public static void EnsurePreloaded(ChiselPaintSettings settings)
+		{
+			if (!settings || IsPreloaded(settings))
+				return;
+			var preloaded = new List<Object>(PlayerSettings.GetPreloadedAssets());
+			preloaded.RemoveAll(asset => asset == null || asset is ChiselPaintSettings);
+			preloaded.Add(settings);
+			PlayerSettings.SetPreloadedAssets(preloaded.ToArray());
 		}
 
 		// The index of the shader's profile, added when it has none
@@ -170,6 +205,22 @@ namespace Chisel.Editors
 				return;
 			}
 			ChiselPaintSettingsGUI.OnGUI(settings);
+		}
+	}
+
+	// A build has to carry the profiles, or the player draws no paint
+	class ChiselPaintSettingsBuildPreprocess : UnityEditor.Build.IPreprocessBuildWithReport
+	{
+		public int callbackOrder => 0;
+
+		public void OnPreprocessBuild(UnityEditor.Build.Reporting.BuildReport report)
+		{
+			var settings = ChiselPaintSettings.Project;
+			if (settings && !ChiselPaintSettingsProvider.IsPreloaded(settings))
+			{
+				Debug.LogWarning($"Adding the paint settings {AssetDatabase.GetAssetPath(settings)} to the preloaded assets, so the player draws paint", settings);
+				ChiselPaintSettingsProvider.EnsurePreloaded(settings);
+			}
 		}
 	}
 
