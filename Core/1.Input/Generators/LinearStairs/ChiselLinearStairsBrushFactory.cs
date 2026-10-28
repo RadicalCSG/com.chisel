@@ -155,12 +155,13 @@ namespace Chisel.Core
 		{
 			using var builder = new BlobBuilder(Allocator.Temp);
 			ref var root = ref builder.ConstructRoot<BrushMeshBlob>();
-			if (BrushMeshFactory.CreateExtrudedSubMesh(vertices, extrusion, indices,
-													   ref surfaceDefinition,
-													   in builder, ref root,
-													   out var polygons,
-													   out var halfEdges,
-													   out var localVertices))
+			var arrays = BrushMeshFactory.CreateExtrudedSubMesh(vertices, extrusion, indices,
+																ref surfaceDefinition,
+																in builder, ref root);
+			var polygons = arrays.polygons;
+			var halfEdges = arrays.halfEdges;
+			var localVertices = arrays.localVertices;
+			if (localVertices.Length > 0)
 			{
 				// TODO: eventually remove when it's more battle tested
 				if (!Validate(in localVertices, in halfEdges, in polygons, logErrors: true))

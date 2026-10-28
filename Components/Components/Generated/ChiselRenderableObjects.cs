@@ -225,7 +225,9 @@ namespace Chisel.Components
 #endif
             } else
             {
+#if !UNITY_6000_7_OR_NEWER
                 meshRenderer.allowOcclusionWhenDynamic = false;
+#endif
                 meshRenderer.lightProbeUsage = LightProbeUsage.Off;
                 meshRenderer.reflectionProbeUsage = ReflectionProbeUsage.Off;
                 meshRenderer.motionVectorGenerationMode = MotionVectorGenerationMode.ForceNoMotion;
@@ -378,7 +380,9 @@ namespace Chisel.Components
                 meshRenderer.motionVectorGenerationMode		= !isRenderable ? MotionVectorGenerationMode.ForceNoMotion : renderSettings.motionVectorGenerationMode;
                 meshRenderer.reflectionProbeUsage			= !isRenderable ? ReflectionProbeUsage.Off : renderSettings.reflectionProbeUsage;
                 meshRenderer.lightProbeUsage				= !isRenderable ? LightProbeUsage.Off : renderSettings.lightProbeUsage;
+#if !UNITY_6000_7_OR_NEWER
                 meshRenderer.allowOcclusionWhenDynamic		= renderSettings.allowOcclusionWhenDynamic;
+#endif
                 meshRenderer.renderingLayerMask				= renderSettings.renderingLayerMask;
 #if UNITY_EDITOR
                 meshRenderer.stitchLightmapSeams            = isRenderable && renderSettings.stitchLightmapSeams;

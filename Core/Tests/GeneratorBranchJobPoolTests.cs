@@ -9,7 +9,7 @@ namespace Chisel.Core.Tests
     [TestFixture]
     public unsafe class GeneratorBranchJobPoolTests
     {
-        struct CountingGenerator : IBranchGenerator
+        internal struct CountingGenerator : IBranchGenerator
         {
             [NativeDisableUnsafePtrRestriction] public int* disposed;
 

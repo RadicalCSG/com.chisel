@@ -4,6 +4,7 @@ Shader "Custom/ForceShadowOnly"
     Properties
     {
         _BaseMap ("Alpha Map", 2D) = "white" {}
+        _BaseColor ("Color", Color) = (1, 1, 1, 1)
         _Cutoff ("Alpha Cutoff", Range(0, 1)) = 0.5
     }
 
@@ -35,8 +36,10 @@ Shader "Custom/ForceShadowOnly"
             #pragma fragment ShadowPassFragment
 
             #pragma multi_compile_instancing
+            #include_with_pragmas "Packages/com.unity.render-pipelines.universal/ShaderLibrary/DOTS.hlsl"
             #pragma multi_compile_vertex _ _CASTING_PUNCTUAL_LIGHT_SHADOW
 
+            #include "Packages/com.unity.render-pipelines.universal/Shaders/LitInput.hlsl"
             #include "Packages/com.unity.render-pipelines.universal/Shaders/ShadowCasterPass.hlsl"
 
             ENDHLSL

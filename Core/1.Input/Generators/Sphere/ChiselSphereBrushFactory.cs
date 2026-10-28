@@ -18,9 +18,12 @@ namespace Chisel.Core
 			ref var surfaceDefinition = ref surfaceDefinitionBlob.Value;
 
 			var transform = float4x4.TRS(Vector3.zero, quaternion.AxisAngle(new Vector3(0, 1, 0), rotation), Vector3.one);
-			if (!CreateSphere(diameterXYZ, offsetY, generateFromCenter, horzSegments, vertSegments,
-							  ref surfaceDefinition, in builder, ref root,
-							  out var localVertices, out var polygons, out var halfEdges))
+			var arrays = CreateSphere(diameterXYZ, offsetY, generateFromCenter, horzSegments, vertSegments,
+									  ref surfaceDefinition, in builder, ref root);
+			var localVertices = arrays.localVertices;
+			var polygons = arrays.polygons;
+			var halfEdges = arrays.halfEdges;
+			if (localVertices.Length == 0)
 				return false;
 
 			// TODO: do something more intelligent with surface assignment, and put it inside CreateSphere
@@ -46,21 +49,15 @@ namespace Chisel.Core
 			return true;
 		}
         
-        public static bool CreateSphere(float3 diameterXYZ, float offsetY, bool generateFromCenter, int horzSegments, int vertSegments, 
-                                        ref InternalChiselSurfaceArray surfaceDefinition,
-                                        in BlobBuilder builder,
-                                        ref BrushMeshBlob root,
-                                        out BlobBuilderArray<float3>                 vertices,
-                                        out BlobBuilderArray<BrushMeshBlob.Polygon>  polygons,
-                                        out BlobBuilderArray<BrushMeshBlob.HalfEdge> halfEdges)
+        public static BrushMeshArrays CreateSphere(float3 diameterXYZ, float offsetY, bool generateFromCenter, int horzSegments, int vertSegments,
+                                                   ref InternalChiselSurfaceArray surfaceDefinition,
+                                                   in BlobBuilder builder,
+                                                   ref BrushMeshBlob root)
         {
-            vertices = default;
-            polygons = default;
-            halfEdges = default;
             if (diameterXYZ.x == 0 ||
                 diameterXYZ.y == 0 ||
                 diameterXYZ.z == 0)
-                return false;
+                return default;
 
             var lastVertSegment = vertSegments - 1;
 
@@ -69,10 +66,9 @@ namespace Chisel.Core
             int polygonCount    = triangleCount + quadCount;
             int halfEdgeCount   = (triangleCount * 3) + (quadCount * 4);
 
-            CreateSphereVertices(diameterXYZ, offsetY, generateFromCenter, horzSegments, vertSegments, in builder, ref root, out vertices);
-
-            polygons    = builder.Allocate(ref root.polygons, polygonCount);
-            halfEdges   = builder.Allocate(ref root.halfEdges, halfEdgeCount);
+            var vertices    = CreateSphereVertices(diameterXYZ, offsetY, generateFromCenter, horzSegments, vertSegments, in builder, ref root);
+            var polygons    = builder.Allocate(ref root.polygons, polygonCount);
+            var halfEdges   = builder.Allocate(ref root.halfEdges, halfEdgeCount);
 
             var edgeIndex       = 0;
             var polygonIndex    = 0;
@@ -153,15 +149,15 @@ namespace Chisel.Core
                 if (v > 0)
                     startVertex += horzSegments;
             }
-            return true;
+            return new BrushMeshArrays { localVertices = vertices, polygons = polygons, halfEdges = halfEdges };
         }
 
-        public static void CreateSphereVertices(float3 diameterXYZ, float offsetY, bool generateFromCenter, int horzSegments, int vertSegments, 
-                                                in BlobBuilder builder, ref BrushMeshBlob root, out BlobBuilderArray<float3> vertices)
+        public static BlobBuilderArray<float3> CreateSphereVertices(float3 diameterXYZ, float offsetY, bool generateFromCenter, int horzSegments, int vertSegments,
+                                                                    in BlobBuilder builder, ref BrushMeshBlob root)
         {
             var vertexCount = (horzSegments * (vertSegments - 1)) + 2;
 
-            vertices = builder.Allocate(ref root.localVertices, vertexCount);
+            var vertices = builder.Allocate(ref root.localVertices, vertexCount);
 
             var radius = 0.5f * diameterXYZ;
 
@@ -208,6 +204,7 @@ namespace Chisel.Core
                     }
                 }
             }
+            return vertices;
         }
 
         public static bool GenerateSphereVertices(ChiselSphereDefinition definition, ref Vector3[] vertices)

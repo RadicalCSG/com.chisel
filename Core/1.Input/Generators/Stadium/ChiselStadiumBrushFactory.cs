@@ -19,19 +19,19 @@ namespace Chisel.Core
 			using var builder = new BlobBuilder(Allocator.Temp);
 			ref var root = ref builder.ConstructRoot<BrushMeshBlob>();
 			ref var surfaceDefinition = ref surfaceDefinitionBlob.Value;
-			if (!GenerateStadiumVertices(width, height, length,
-										 topLength, topSides,
-										 bottomLength, bottomSides, in builder, ref root, out var localVertices))
-				return false;
+			var localVertices = GenerateStadiumVertices(width, height, length,
+														topLength, topSides,
+														bottomLength, bottomSides, in builder, ref root);
 
 			var haveRoundedTop = (topLength > 0) && (topSides > 1);
 			var haveRoundedBottom = (bottomLength > 0) && (bottomSides > 1);
 			var haveCenter = (length - ((haveRoundedTop ? topLength : 0) + (haveRoundedBottom ? bottomLength : 0))) >= ChiselStadium.kNoCenterEpsilon;
 			var sides = (haveCenter ? 2 : 0) + math.max(topSides, 1) + math.max(bottomSides, 1);
 
-			CreateExtrudedSubMesh(sides, 0, 1,
-								  in localVertices, in surfaceDefinitionBlob, in builder, ref root,
-								  out var polygons, out var halfEdges);
+			var arrays = CreateExtrudedSubMesh(sides, 0, 1,
+											   in localVertices, in surfaceDefinitionBlob, in builder, ref root);
+			var polygons = arrays.polygons;
+			var halfEdges = arrays.halfEdges;
 
 			// TODO: eventually remove when it's more battle tested
 			if (!Validate(in localVertices, in halfEdges, in polygons, logErrors: true))
@@ -48,12 +48,11 @@ namespace Chisel.Core
 			return true;
 		}
 
-        public static bool GenerateStadiumVertices(float diameter, float height, float length,
-                                                   float topLength, int topSides,
-                                                   float bottomLength, int bottomSides, 
-                                                   in BlobBuilder builder,
-                                                   ref BrushMeshBlob            root,
-                                                   out BlobBuilderArray<float3> vertices)
+        public static BlobBuilderArray<float3> GenerateStadiumVertices(float diameter, float height, float length,
+                                                                       float topLength, int topSides,
+                                                                       float bottomLength, int bottomSides,
+                                                                       in BlobBuilder builder,
+                                                                       ref BrushMeshBlob root)
         {
             var haveRoundedTop      = (topLength    > 0) && (topSides    > 1);
             var haveRoundedBottom   = (bottomLength > 0) && (bottomSides > 1);
@@ -62,7 +61,7 @@ namespace Chisel.Core
             
             var radius			= diameter * 0.5f;
 
-            vertices = builder.Allocate(ref root.localVertices, sides * 2);
+            var vertices = builder.Allocate(ref root.localVertices, sides * 2);
             
             int vertexIndex = 0;
             if (!haveRoundedTop)
@@ -116,7 +115,7 @@ namespace Chisel.Core
             var extrusion = new float3(0, 1, 0) * height;
             for (int s = 0; s < sides; s++)
                 vertices[s + sides] = vertices[s] + extrusion;
-            return true;
+            return vertices;
         }
 
         public static bool GenerateStadiumVertices(ChiselStadiumDefinition definition, ref Vector3[] vertices)

@@ -275,8 +275,10 @@ namespace Chisel.Components
             {
 				desiredStaticFlags = state.staticFlags;
             }
+#if !UNITY_6000_7_OR_NEWER
             if (!isRenderable)
 				desiredStaticFlags &= ~(StaticEditorFlags.OccluderStatic | StaticEditorFlags.OccludeeStatic);
+#endif
             // Only a renderer whose surfaces take part in the baked lighting goes into a bake (they are the
             // ones without SurfaceDestinationFlags.ExcludedFromGlobalIllumination), and only when the model does.
             if (!contributesGI)

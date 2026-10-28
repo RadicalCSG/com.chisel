@@ -100,7 +100,9 @@ namespace Chisel.Core
 				}
 
 				// TODO: could probably just create one torus section and repeat that with different transformations
-				CreateExtrudedSubMesh(verticalSegments, segmentIndices, segmentIndices.Length, 0, 1, in localVertices, in surfaceDefinitionBlob, in builder, ref root, out var polygons, out var halfEdges);
+				var arrays = CreateExtrudedSubMesh(verticalSegments, segmentIndices, segmentIndices.Length, 0, 1, in localVertices, in surfaceDefinitionBlob, in builder, ref root);
+				var polygons = arrays.polygons;
+				var halfEdges = arrays.halfEdges;
 
 				if (!Validate(in localVertices, in halfEdges, in polygons, logErrors: true))
 					return false;

@@ -512,6 +512,7 @@ namespace Chisel.Components.Tests
             }
         }
 
+#if !UNITY_6000_7_OR_NEWER
         [Test]
         public void TheRenderersThatOnlyCastShadows_NeitherOccludeNorAreOccluded()
         {
@@ -535,6 +536,7 @@ namespace Chisel.Components.Tests
                 }
             }
         }
+#endif
 
         [Test]
         public void AModelMarkedContributeGI_PutsItsRenderersInTheBake_WithoutBuildingAgain()

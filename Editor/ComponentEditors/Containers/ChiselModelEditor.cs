@@ -332,7 +332,11 @@ namespace Chisel.Editors
 
         bool GIEnabled
         {
+#if UNITY_6000_7_OR_NEWER
+            get { return Lightmapping.bakedGI || IsPrefabAsset; }
+#else
             get { return (Lightmapping.bakedGI || Lightmapping.realtimeGI) || IsPrefabAsset; }
+#endif
         }
 
         bool ContributeGI
@@ -382,11 +386,15 @@ namespace Chisel.Editors
 		{
 			get
 			{
+#if UNITY_6000_7_OR_NEWER
+				return false;
+#else
 				if (!Lightmapping.TryGetLightingSettings(out LightingSettings lightingSettings))
 				{
 					lightingSettings = Lightmapping.lightingSettingsDefaults;
 				}
 				return lightingSettings.realtimeGI;
+#endif
 			}
 		}
 
@@ -723,8 +731,10 @@ namespace Chisel.Editors
                 EditorGUILayout.IntPopup(motionVectorsProp, new[] { new GUIContent("Camera Motion Only"), new GUIContent("Per Object Motion"), new GUIContent("Force No Motion") }, new[] { 0, 1, 2 }, kMotionVectorsContent);
             }
 
+#if !UNITY_6000_7_OR_NEWER
             if (allowOcclusionWhenDynamicProp != null)
                 EditorGUILayout.PropertyField(allowOcclusionWhenDynamicProp, kDynamicOccludeeContents);
+#endif
 
             RenderRenderingLayer();
         }

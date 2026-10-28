@@ -4,7 +4,12 @@ using System.Runtime.CompilerServices;
 using Chisel.Components;
 
 using UnityEditor;
-using UnityEditor.Callbacks;
+using UnityEditor.Build;
+#if UNITY_6000_7_OR_NEWER
+using UnityEditor.Build.Content;
+#else
+using UnityEditor.Build.Reporting;
+#endif
 using UnityEngine;
 using UnityEngine.Profiling;
 using UnityEngine.Rendering;
@@ -109,12 +114,6 @@ namespace Chisel.Editors
 			ChiselUnityVisibilityManager.Update(); // <- ensures selection works (rendering partial meshes hides regular meshes)
 		}
 
-        [PostProcessScene(1)]
-		public static void OnPostprocessScene()
-		{
-			ChiselModelManager.Instance.HideDebugVisualizationSurfaces();
-		}
-
 		/// <summary>Whether <paramref name="cameraModeName"/> is one of the Chisel camera modes, and
 		/// so overrides <see cref="ChiselEditorSettings.HelperSurfaceFlags"/>.</summary>
 		public static bool IsChiselCameraMode(string cameraModeName)
@@ -148,4 +147,26 @@ namespace Chisel.Editors
 			}
 		}
 	}
+
+#if UNITY_6000_7_OR_NEWER
+	class ChiselDrawModesProcessScene : AssetPostprocessor
+	{
+		public override uint GetVersion() => 1;
+
+		void OnProcessScene(Scene scene, SceneImportContext context)
+		{
+			ChiselModelManager.Instance.HideDebugVisualizationSurfaces(scene);
+		}
+	}
+#else
+	class ChiselDrawModesProcessScene : IProcessSceneWithReport
+	{
+		public int callbackOrder => 1;
+
+		public void OnProcessScene(Scene scene, BuildReport report)
+		{
+			ChiselModelManager.Instance.HideDebugVisualizationSurfaces(scene);
+		}
+	}
+#endif
 }
