@@ -140,13 +140,8 @@ namespace Chisel.Core.Tests
 		/// <summary>Builds the scene, runs one update and asserts it matches the oracle on every face, however far from the origin</summary>
 		public static void AssertMatchesOracle(ContentsScene scene, string what)
 		{
-			// A probe sets this to get a CSG trace of every scene a fixture asserts on (ContentsTrace, Library/ChiselHarvest/traces).
-			if (TraceTo != null)
-				ContentsTrace.RunToFile(scene, what, TraceTo + "_" + System.Text.RegularExpressions.Regex.Replace(what, "[^A-Za-z0-9]+", "_"));
 			ContentsComparison.BuildAndAssertMatchesOracle(scene, what, RequiredExtent(scene));
 		}
-
-		internal static string TraceTo;
 
 
 		const float kClusterDistance = 1.6f;

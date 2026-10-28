@@ -48,8 +48,6 @@ namespace Chisel.Components
             public List<float3> outline;
         }
 
-        static readonly HashSet<CSGTreeBrush> s_Brushes = new();
-
         /// <summary>
         /// A trim decal's pieces, in the space of the model its first surface is in (the model is returned too). Its targets
         /// are pairs of surfaces, an edge each, in order: a chain round corners. Per edge its two halves, or for an image in

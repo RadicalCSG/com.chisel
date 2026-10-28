@@ -229,15 +229,13 @@ namespace Chisel.Core
     public struct WriteJobHandles
     {
         DualJobHandle[]        m_Array;
-        List<JobHandle>        m_Nodes;
         FixedList512Bytes<int> m_Indices;
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal static WriteJobHandles Create(DualJobHandle[] array, List<JobHandle> nodes)
+        internal static WriteJobHandles Create(DualJobHandle[] array)
         {
             WriteJobHandles result;
             result.m_Array   = array;
-            result.m_Nodes   = nodes;
             result.m_Indices = default;
             return result;
         }

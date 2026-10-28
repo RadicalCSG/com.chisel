@@ -345,7 +345,6 @@ namespace Chisel.Core
 
         readonly Dictionary<CSGTree, Data> chiselTreeData = new();
 
-        internal int  TreeCount                 => chiselTreeData.Count;
         internal bool HasTree(CSGTree treeNode) => chiselTreeData.ContainsKey(treeNode);
 
         /// <summary>Releases the caches of a tree that is being destroyed.</summary>

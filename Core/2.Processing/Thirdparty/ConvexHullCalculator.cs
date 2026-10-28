@@ -255,12 +255,6 @@ namespace Chisel.Core
 		List<HorizonEdge> horizon;
 
 		/// <summary>
-		///   If SplitVerts is false, this Dictionary is used to keep track of
-		///   which points we've added to the final mesh.
-		/// </summary>
-		Dictionary<int, int> hullVerts;
-
-		/// <summary>
 		///   The "tail" of the openSet, the last index of a vertex that has
 		///   been assigned to a face.
 		/// </summary>

@@ -485,24 +485,6 @@ namespace Chisel.Editors
         }
 #endif
 
-        internal static bool IsHovering(int controlID, Event evt)
-        {
-            return controlID == HandleUtility.nearestControl && GUIUtility.hotControl == 0 && !ViewToolActive;
-        }
-
-        internal static bool ViewToolActive
-        {
-            get
-            {
-                if (GUIUtility.hotControl != 0)
-                    return false;
-
-                Event evt = Event.current;
-                bool viewShortcut = evt.type != EventType.Used && (evt.alt || evt.button == 1 || evt.button == 2);
-                return Tools.current == Tool.View || viewShortcut;
-            }
-        }
-
         public readonly static CapFunction ArrowHandleCap = ArrowHandleCapFunction;
         public static void ArrowHandleCapFunction(int controlID, Vector3 position, Quaternion rotation, float size, EventType eventType)
         {

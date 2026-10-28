@@ -9,8 +9,6 @@ namespace Chisel.Editors
     [CustomPropertyDrawer(typeof(DistanceValueAttribute))]
     public class DistanceValuesDrawer : PropertyDrawer
     {
-        // TODO: use UnityTypes
-        UnitType Type { get { return ((DistanceValueAttribute)attribute).Type; } }
 
         public override float GetPropertyHeight(SerializedProperty property, GUIContent label)
         {

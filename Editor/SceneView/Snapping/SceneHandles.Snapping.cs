@@ -888,8 +888,6 @@ namespace Chisel.Editors
     {
         private Vector3     startWorldPlanePosition;
         private Plane       worldSlidePlane;
-        private Vector3     vectorX;
-        private Vector3     vectorZ;
         private Grid        worldSlideGrid;
 
         private Extents3D	gridSlideExtents;
@@ -934,8 +932,6 @@ namespace Chisel.Editors
             this.worldSnappedPosition	= worldSlideOrigin;
 
             this.worldSlidePlane		= this.worldSlideGrid.PlaneXZ;
-            this.vectorX		        = this.worldSlideGrid.Right;
-            this.vectorZ		        = this.worldSlideGrid.Forward;
             
             this.snapResult				= SnapResult3D.None;
 
@@ -946,8 +942,6 @@ namespace Chisel.Editors
         {
             startWorldPlanePosition = Vector3.zero;
             worldSlidePlane         = new Plane(Vector3.up, 0);
-            vectorX		            = Vector3.right;
-            vectorZ		            = Vector3.forward;
             worldSlideGrid          = null;
 
             gridSlideExtents        = new Extents3D(Vector3.zero);

@@ -223,8 +223,6 @@ namespace Chisel.Core
     {
         // Runs the full weld beside the incremental one and compares (FinishIncremental)
         public static bool VerifyIncremental;
-        // and logs what each update welded when it is the same
-        public static bool ReportIncremental;
 
         const float kRelationLength = 2 * kCollapseLength;
 
@@ -1230,7 +1228,7 @@ namespace Chisel.Core
 
         // The copies handed to their brushes and kept; every other brush gets what it was given last time, or its own
         // buffer. verify: the full weld run beside it, any difference logged
-        public static void FinishIncremental(NativeList<BrushData> brushes, NativeList<WeldCopy> copies, ref WeldMemory memory, bool verify, bool report, NativeList<float3x2> moves)
+        public static void FinishIncremental(NativeList<BrushData> brushes, NativeList<WeldCopy> copies, ref WeldMemory memory, bool verify, NativeList<float3x2> moves)
         {
             NativeList<BrushData> reference = default;
             NativeList<BlobAssetReference<ChiselBrushRenderBuffer>> referencePatched = default;
@@ -1298,8 +1296,6 @@ namespace Chisel.Core
             var movesDifferent = movesDiffer ? 1 : 0;
             if (different > 0 || movesDiffer)
                 Debug.LogError($"The incremental weld differs from the full weld: {different} of {brushes.Length} brushes (first {first}), moves differ: {movesDifferent} ({moves.Length} and {referenceMoves.Length}); scope {memory.lastScope.Value}");
-            else if (report)
-                Debug.Log($"The incremental weld is the full weld: scope {memory.lastScope.Value}, {copies.Length} brushes stored again of {brushes.Length}");
             for (int i = 0; i < referencePatched.Length; i++)
                 referencePatched[i].Dispose();
             reference.Dispose(); referencePatched.Dispose(); referenceMoves.Dispose();
@@ -1321,7 +1317,7 @@ namespace Chisel.Core
                 var copies = state.copies.AsArray();
                 for (int i = 0; i < copies.Length; i++)
                     copies[i] = CopyPlanned(copies[i], brushes.AsArray(), state.work, state.workIndex, state.decisions, default);
-                FinishIncremental(brushes, state.copies, ref memory, VerifyIncremental, ReportIncremental, moves);
+                FinishIncremental(brushes, state.copies, ref memory, VerifyIncremental, moves);
             }
             finally
             {

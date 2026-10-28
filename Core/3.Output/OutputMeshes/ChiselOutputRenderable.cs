@@ -70,25 +70,6 @@ namespace Chisel.Core
 
 	internal struct ChiselOutputRenderable : IChiselOutputMeshCopier
 	{
-#if false
-        [GenerateTestsForBurstCompatibility]
-		public readonly int GetOutputMeshCount([ReadOnly] NativeArray<MeshQuery> meshQueries,
-									           [ReadOnly] NativeArray<int>       parameterCounts)
-		{
-			var meshAllocations = 0;
-			for (int m = 0; m < meshQueries.Length; m++)
-			{
-				var meshQuery = meshQueries[m];
-				// Query must use Material
-				if (meshQuery.LayerParameterIndex != SurfaceParameterIndex.Parameter1)
-					continue;
-
-				// Each Material is stored as a submesh in the same mesh
-				meshAllocations += 1;
-			}
-			return meshAllocations;
-		}
-#endif
 
         [GenerateTestsForBurstCompatibility]
 		public void CopyMesh([NoAlias, ReadOnly] NativeArray<VertexAttributeDescriptor> descriptors,
@@ -456,26 +437,6 @@ namespace Chisel.Core
 
 	internal struct ChiselOutputCollidable : IChiselOutputMeshCopier
 	{
-#if false
-        [GenerateTestsForBurstCompatibility]
-		public readonly int GetOutputMeshCount([ReadOnly] NativeArray<MeshQuery> meshQueries,
-									           [ReadOnly] NativeArray<int>       parameterCounts)
-		{
-			var meshAllocations = 0;
-			for (int m = 0; m < meshQueries.Length; m++)
-			{
-				var meshQuery = meshQueries[m];
-				// Query must use PhysicMaterial
-				if (meshQuery.LayerParameterIndex != SurfaceParameterIndex.Parameter2)
-					continue;
-				Debug.Assert((meshQuery.LayerQuery & SurfaceDestinationFlags.Collidable) != 0);
-				
-				// Each PhysicMaterial is stored in its own separate mesh
-				meshAllocations += parameterCounts[SurfaceDestinationParameters.kColliderLayer];
-			}
-			return meshAllocations;
-		}
-#endif
 
         [GenerateTestsForBurstCompatibility]
 		public void CopyMesh([NoAlias, ReadOnly] NativeArray<VertexAttributeDescriptor> descriptors,
@@ -621,23 +582,6 @@ namespace Chisel.Core
 
 	internal struct ChiselOutputDebugVisualizer : IChiselOutputMeshCopier
 	{
-#if false
-        [GenerateTestsForBurstCompatibility]
-		public readonly int GetOutputMeshCount([ReadOnly] NativeArray<MeshQuery> meshQueries,
-									  [ReadOnly] NativeArray<int>		parameterCounts)
-		{
-			var meshAllocations = 0;
-			for (int m = 0; m < meshQueries.Length; m++)
-			{
-				var meshQuery = meshQueries[m];
-				// Query doesn't use Material or PhysicMaterial
-				if (meshQuery.LayerParameterIndex == SurfaceParameterIndex.None)
-					continue;
-				meshAllocations++;
-			}
-			return meshAllocations;
-		}
-#endif
 
         [GenerateTestsForBurstCompatibility]
 		public void CopyMesh([NoAlias, ReadOnly] NativeArray<VertexAttributeDescriptor> descriptors,
@@ -757,141 +701,4 @@ namespace Chisel.Core
 
     
 
-    // TODO: this doesn't make sense, since we'd want to create a selection mesh, 
-    //          for EACH renderable, debug-visualizer AND collider mesh that we create ..
-	internal struct ChiselOutputSelectionMesh : IChiselOutputMeshCopier
-	{
-#if false
-		public readonly int GetOutputMeshCount([ReadOnly] NativeArray<MeshQuery> meshQueries,
-									           [ReadOnly] NativeArray<int>       parameterCounts)
-		{
-			var meshAllocations = 0;
-			for (int m = 0; m < meshQueries.Length; m++)
-			{
-				var meshQuery = meshQueries[m];
-				// Query must use Material
-				if (meshQuery.LayerParameterIndex != SurfaceParameterIndex.Parameter1)
-					continue;
-
-				// Each Material is stored as a submesh in the same mesh
-				meshAllocations += 1;
-			}
-			return meshAllocations;
-		}
-#endif
-
-		public void CopyMesh([NoAlias, ReadOnly] NativeArray<VertexAttributeDescriptor> descriptors,
-					         [NoAlias, ReadOnly] SubMeshSection subMeshSection, 
-					         [NoAlias, ReadOnly] SubMeshSource subMeshSource,
-                             [NoAlias] ref Mesh.MeshData meshData)
-        {
-            var startIndex          = subMeshSection.startIndex;
-            var endIndex            = subMeshSection.endIndex;
-            var numberOfSubMeshes   = endIndex - startIndex;
-            var totalVertexCount    = subMeshSection.totalVertexCount;
-            var totalIndexCount     = subMeshSection.totalIndexCount;            
-            if (numberOfSubMeshes == 0 ||
-                totalVertexCount == 0 ||
-                totalIndexCount == 0)
-            {
-                meshData.SetVertexBufferParams(0, descriptors);
-                meshData.SetIndexBufferParams(0, IndexFormat.UInt32);
-                meshData.subMeshCount = 0;
-                return;
-            }
-
-            meshData.SetVertexBufferParams(totalVertexCount, descriptors);
-            meshData.SetIndexBufferParams(totalIndexCount, IndexFormat.UInt32);
-            meshData.subMeshCount = numberOfSubMeshes;
-
-            var vertices    = meshData.GetVertexData<SelectVertex>(stream: 0);
-            var indices     = meshData.GetIndexData<int>();
-            var indexBufferLength  = indices.Length;
-            var vertexBufferLength = vertices.Length;
-
-            int currentBaseVertex   = 0;
-            int currentBaseIndex    = 0;
-
-            for (int subMeshIndex = 0, d = startIndex; d < endIndex; d++, subMeshIndex++)
-            {
-                var subMeshCount        = subMeshSource.subMeshDescriptions[d];
-                var vertexCount		    = subMeshCount.vertexCount;
-                var indexCount		    = subMeshCount.indexCount;
-                var surfacesOffset      = subMeshCount.surfacesOffset;
-                var surfacesCount       = subMeshCount.surfacesCount;
-                var meshQueryIndex      = subMeshCount.meshQueryIndex;
-                var subMeshSurfaceArray = subMeshSource.subMeshSurfaces[meshQueryIndex];
-
-                var aabb = new MinMaxAABB()
-                {
-                    Min = new float3(float.PositiveInfinity, float.PositiveInfinity, float.PositiveInfinity),
-                    Max = new float3(float.NegativeInfinity, float.NegativeInfinity, float.NegativeInfinity)
-                };
-
-                // copy all the vertices & indices to the sub-meshes, one sub-mesh per material
-                int writtenIndexCount = 0;
-                for (int surfaceIndex       = surfacesOffset, 
-                         indexOffset        = currentBaseIndex, 
-                         indexVertexOffset  = 0, 
-                         lastSurfaceIndex   = surfacesCount + surfacesOffset;
-
-                         surfaceIndex < lastSurfaceIndex;
-
-                         ++surfaceIndex)
-                {
-                    var subMeshSurface      = subMeshSurfaceArray[surfaceIndex];
-                    ref var sourceBuffer    = ref subMeshSurface.brushRenderBuffer.Value.surfaces[subMeshSurface.surfaceIndex];
-                            
-                    ref var sourceIndices   = ref sourceBuffer.indices;
-                    ref var sourceVertices  = ref sourceBuffer.selectVertices;
-
-                    var sourceIndexCount    = sourceIndices.Length;
-                    var sourceVertexCount   = sourceVertices.Length;
-
-                    if (sourceIndexCount == 0 ||
-                        sourceVertexCount == 0)
-                        continue;
-
-                    // Ask BEFORE writing - the [BurstDiscard] validation below never runs inside the
-                    // job, and by the time it would, the buffer has already been overrun.
-                    if (!ChiselOutputMeshValidation.FitsInBuffer(indexOffset, sourceIndexCount, indexBufferLength) ||
-                        !ChiselOutputMeshValidation.FitsInBuffer(currentBaseVertex + indexVertexOffset, sourceVertexCount, vertexBufferLength))
-                    {
-                        ChiselOutputMeshValidation.ReportCopyOverflow(subMeshIndex, indexOffset, sourceIndexCount, indexBufferLength);
-                        break;
-                    }
-
-                    for (int i = 0; i < sourceIndexCount; i++)
-                        indices[i + indexOffset] = (int)(sourceIndices[i] + indexVertexOffset) + currentBaseVertex;
-                    indexOffset += sourceIndexCount;
-                    writtenIndexCount += sourceIndexCount;
-
-                    vertices.CopyFrom(currentBaseVertex + indexVertexOffset, ref sourceVertices, 0, sourceVertexCount);
-
-					aabb.Min = math.min(aabb.Min, sourceBuffer.aabb.Min);
-					aabb.Max = math.max(aabb.Max, sourceBuffer.aabb.Max);
-
-                    indexVertexOffset += sourceVertexCount;
-                }
-                
-                for (int z = currentBaseIndex + writtenIndexCount; z < currentBaseIndex + indexCount && z < indexBufferLength; z++)
-                    indices[z] = 0;
-
-                ChiselOutputMeshValidation.ValidateSubMeshIndices(indices, currentBaseIndex, indexCount, totalVertexCount, subMeshIndex);
-                meshData.SetSubMesh(subMeshIndex, new SubMeshDescriptor
-                {
-                    baseVertex  = 0,//currentBaseVertex,
-                    indexStart  = currentBaseIndex,
-                    indexCount  = writtenIndexCount,
-					//firstVertex = 0,
-					//vertexCount = vertexCount,
-					bounds      = aabb.ToBounds(),
-                    topology    = UnityEngine.MeshTopology.Triangles,
-                }, MeshUpdateFlags.DontRecalculateBounds | MeshUpdateFlags.DontValidateIndices);
-
-                currentBaseVertex += vertexCount;
-                currentBaseIndex += indexCount;
-            }
-        }
-	}
 }

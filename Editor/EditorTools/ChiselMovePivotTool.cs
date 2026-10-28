@@ -741,18 +741,6 @@ namespace Chisel.Editors
 
         static void DrawCustomSnappedEvent()
         {
-#if false
-            // Debug code to render snapping points close to mouse position
-            if (s_SnappingContext.TryGetValue(0, out var snappingContext))
-            {
-                var foundWorldspacePoints = new List<Vector3>();
-                snappingContext.CollectAllSnapPoints(foundWorldspacePoints);
-                foreach (var vertex in foundWorldspacePoints)
-                {
-                    HandleRendering.DrawIntersectionPoint(vertex);
-                }
-            }
-#endif
 
 			var polygonVertices = ListPool<Vector3>.Get();
 			var usedVertices = HashSetPool<(CSGTreeNode, int)>.Get();

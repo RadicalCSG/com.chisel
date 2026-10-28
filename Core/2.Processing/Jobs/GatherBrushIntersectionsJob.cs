@@ -22,9 +22,6 @@ namespace Chisel.Core
         // Read / Write
         [NoAlias] public NativeList<BrushIntersectWith>     brushIntersectionsWith;
 
-        // Per thread scratch memory
-        [NativeDisableContainerSafetyRestriction] NativeList<BrushPair> intersections;
-
 
         struct BrusPairListComparer : System.Collections.Generic.IComparer<BrushPair>
         {

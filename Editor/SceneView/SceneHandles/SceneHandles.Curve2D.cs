@@ -334,61 +334,6 @@ namespace Chisel.Editors
                 }
             }
 
-            internal static float ClosestConstraintHandleDistance(Curve2D curve, float closestDistance)
-            {
-                var controlPoints = curve.controlPoints;
-                for (int i = 0; i < controlPoints.Length; i++)
-                {
-                    var prevConstraint  = controlPoints[i].constraint2;
-                    var nextConstraint  = controlPoints[i].constraint1;
-                    var point           = controlPoints[i].position;
-                    var prevTangent     = controlPoints[i].tangent2;
-                    var nextTangent     = controlPoints[i].tangent1;
-
-                    if (prevConstraint != ControlPointConstraint.Straight)
-                    {
-                        if (curve.closed || i < controlPoints.Length - 1)
-                        {
-                            var tangent1 = point - prevTangent;
-                            var tangentSize1 = UnityEditor.HandleUtility.GetHandleSize(tangent1) * (kCurveTangentSize * kCurveLayoutSize);
-                            closestDistance = Mathf.Min(closestDistance, UnityEditor.HandleUtility.DistanceToCircle(tangent1, tangentSize1));
-                        }
-                    }
-
-                    if (nextConstraint != ControlPointConstraint.Straight)
-                    {
-                        if (curve.closed || i > 0)
-                        {
-                            var tangent2		= point - nextTangent;
-                            var tangentSize2	= UnityEditor.HandleUtility.GetHandleSize(tangent2) * (kCurveTangentSize * kCurveLayoutSize);
-                            closestDistance = Mathf.Min(closestDistance, UnityEditor.HandleUtility.DistanceToCircle(tangent2, tangentSize2));
-                        }
-                    }
-                }
-
-                return closestDistance;
-            }
-            
-            internal static float ClosestCurveDistance(Curve2D curve, float closestDistance)
-            {
-                var controlPoints	= curve.controlPoints;
-                var points			= new Vector3[kCurveEdges];
-                for (int i = 0; i < controlPoints.Length; i++)
-                {
-                    var length = 0;
-                    Curve2DHandleUtility.CurvedEdges(curve, i, kCurveEdges, ref points, out length);
-                    for (int j = 0; j < length - 1; j++)
-                    {
-                        var point1 = points[j    ];
-                        var point2 = points[j + 1];
-
-                        closestDistance = Mathf.Min(closestDistance, UnityEditor.HandleUtility.DistanceToLine(point1, point2));
-                    }
-                }
-
-                return closestDistance;
-            }
-
 
             internal static void PaintCurveHandles(Curve2D curve, Curve2DSelection curveSelection, bool haveFocus, int hoverOverPointID, int hoverOverTangentID)
             {
@@ -415,19 +360,6 @@ namespace Chisel.Editors
                 }
             }
 
-            internal static float ClosestCurveHandleDistance(Curve2D curve, float closestDistance)
-            {
-                var controlPoints = curve.controlPoints;
-                for (int i = 0; i < controlPoints.Length; i++)
-                {
-                    var point = controlPoints[i].position;
-                    var size = UnityEditor.HandleUtility.GetHandleSize(point) * (kCurvePointSize * kCurveLayoutSize);
-                    
-                    closestDistance = Mathf.Min(closestDistance, UnityEditor.HandleUtility.DistanceToCircle(point, size));
-                }
-                return closestDistance;
-            }
-            
             internal static void PaintCurveOutline(Curve2D curve, bool haveFocus, int hoverOverPointID, int hoverOverTangentID, int hoverOverEdgeID)
             {
                 var color = SceneHandles.Color;

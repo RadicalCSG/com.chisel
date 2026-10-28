@@ -43,7 +43,6 @@ namespace Chisel.Editors
 
         static Styles s_Styles;
 
-        readonly static int kToggleHashCode = $"{nameof(ChiselCompositeGUI)}.Toggle".GetHashCode();
         static bool Toggle(ref Rect toggleRect, bool selected, GUIContent[] content, GUIStyle style)
         {
             var selectedContent = selected ? content[1] : content[0];

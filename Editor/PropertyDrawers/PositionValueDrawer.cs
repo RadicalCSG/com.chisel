@@ -8,8 +8,6 @@ namespace Chisel.Editors
     [CustomPropertyDrawer(typeof(PositionValueAttribute))]
     public class PositionValuesDrawer : PropertyDrawer
     {
-        // TODO: use UnityTypes
-        UnitType Type { get { return ((PositionValueAttribute)attribute).Type; } }
 
         public override float GetPropertyHeight(SerializedProperty property, GUIContent label)
         {

@@ -32,16 +32,6 @@ namespace Chisel.Core
 
         internal const int kMaxRowsPerNodeCopy = ushort.MaxValue / CategoryRoutingRow.Length;
 
-        // Per thread scratch memory
-        [NativeDisableContainerSafetyRestriction, NoAlias] NativeArray<QueuedEvent>         queuedEvents;
-        [NativeDisableContainerSafetyRestriction, NoAlias] NativeArray<CategoryStackNode>   tempStackArray;
-        [NativeDisableContainerSafetyRestriction, NoAlias] NativeBitArray                   combineUsedIndices;
-#if USE_OPTIMIZATIONS
-        [NativeDisableContainerSafetyRestriction, NoAlias] NativeArray<ushort>              combineIndexRemap;
-#endif
-        [NativeDisableContainerSafetyRestriction, NoAlias] NativeArray<int>                 routingSteps;
-        [NativeDisableContainerSafetyRestriction, NoAlias] NativeArray<CategoryStackNode>   routingTable;
-
         struct CategoryStackNode
         {
             int nodeIndex;

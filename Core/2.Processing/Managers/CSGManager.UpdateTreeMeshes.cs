@@ -415,29 +415,29 @@ namespace Chisel.Core
                 public readonly ReadJobHandles Read(JobHandleType t0, JobHandleType t1, JobHandleType t2, JobHandleType t3, JobHandleType t4, JobHandleType t5, JobHandleType t6, JobHandleType t7, JobHandleType t8, JobHandleType t9, JobHandleType t10, JobHandleType t11) { var r = ReadJobHandles.Create(m_Handles, m_NodeHandles); r.Add((int)t0); r.Add((int)t1); r.Add((int)t2); r.Add((int)t3); r.Add((int)t4); r.Add((int)t5); r.Add((int)t6); r.Add((int)t7); r.Add((int)t8); r.Add((int)t9); r.Add((int)t10); r.Add((int)t11); return r; }
 
                 [MethodImpl(MethodImplOptions.AggressiveInlining)]
-                public readonly WriteJobHandles Write(JobHandleType t0) { var r = WriteJobHandles.Create(m_Handles, m_NodeHandles); r.Add((int)t0); return r; }
+                public readonly WriteJobHandles Write(JobHandleType t0) { var r = WriteJobHandles.Create(m_Handles); r.Add((int)t0); return r; }
                 [MethodImpl(MethodImplOptions.AggressiveInlining)]
-                public readonly WriteJobHandles Write(JobHandleType t0, JobHandleType t1) { var r = WriteJobHandles.Create(m_Handles, m_NodeHandles); r.Add((int)t0); r.Add((int)t1); return r; }
+                public readonly WriteJobHandles Write(JobHandleType t0, JobHandleType t1) { var r = WriteJobHandles.Create(m_Handles); r.Add((int)t0); r.Add((int)t1); return r; }
                 [MethodImpl(MethodImplOptions.AggressiveInlining)]
-                public readonly WriteJobHandles Write(JobHandleType t0, JobHandleType t1, JobHandleType t2) { var r = WriteJobHandles.Create(m_Handles, m_NodeHandles); r.Add((int)t0); r.Add((int)t1); r.Add((int)t2); return r; }
+                public readonly WriteJobHandles Write(JobHandleType t0, JobHandleType t1, JobHandleType t2) { var r = WriteJobHandles.Create(m_Handles); r.Add((int)t0); r.Add((int)t1); r.Add((int)t2); return r; }
                 [MethodImpl(MethodImplOptions.AggressiveInlining)]
-                public readonly WriteJobHandles Write(JobHandleType t0, JobHandleType t1, JobHandleType t2, JobHandleType t3) { var r = WriteJobHandles.Create(m_Handles, m_NodeHandles); r.Add((int)t0); r.Add((int)t1); r.Add((int)t2); r.Add((int)t3); return r; }
+                public readonly WriteJobHandles Write(JobHandleType t0, JobHandleType t1, JobHandleType t2, JobHandleType t3) { var r = WriteJobHandles.Create(m_Handles); r.Add((int)t0); r.Add((int)t1); r.Add((int)t2); r.Add((int)t3); return r; }
                 [MethodImpl(MethodImplOptions.AggressiveInlining)]
-                public readonly WriteJobHandles Write(JobHandleType t0, JobHandleType t1, JobHandleType t2, JobHandleType t3, JobHandleType t4) { var r = WriteJobHandles.Create(m_Handles, m_NodeHandles); r.Add((int)t0); r.Add((int)t1); r.Add((int)t2); r.Add((int)t3); r.Add((int)t4); return r; }
+                public readonly WriteJobHandles Write(JobHandleType t0, JobHandleType t1, JobHandleType t2, JobHandleType t3, JobHandleType t4) { var r = WriteJobHandles.Create(m_Handles); r.Add((int)t0); r.Add((int)t1); r.Add((int)t2); r.Add((int)t3); r.Add((int)t4); return r; }
                 [MethodImpl(MethodImplOptions.AggressiveInlining)]
-                public readonly WriteJobHandles Write(JobHandleType t0, JobHandleType t1, JobHandleType t2, JobHandleType t3, JobHandleType t4, JobHandleType t5) { var r = WriteJobHandles.Create(m_Handles, m_NodeHandles); r.Add((int)t0); r.Add((int)t1); r.Add((int)t2); r.Add((int)t3); r.Add((int)t4); r.Add((int)t5); return r; }
+                public readonly WriteJobHandles Write(JobHandleType t0, JobHandleType t1, JobHandleType t2, JobHandleType t3, JobHandleType t4, JobHandleType t5) { var r = WriteJobHandles.Create(m_Handles); r.Add((int)t0); r.Add((int)t1); r.Add((int)t2); r.Add((int)t3); r.Add((int)t4); r.Add((int)t5); return r; }
                 [MethodImpl(MethodImplOptions.AggressiveInlining)]
-                public readonly WriteJobHandles Write(JobHandleType t0, JobHandleType t1, JobHandleType t2, JobHandleType t3, JobHandleType t4, JobHandleType t5, JobHandleType t6) { var r = WriteJobHandles.Create(m_Handles, m_NodeHandles); r.Add((int)t0); r.Add((int)t1); r.Add((int)t2); r.Add((int)t3); r.Add((int)t4); r.Add((int)t5); r.Add((int)t6); return r; }
+                public readonly WriteJobHandles Write(JobHandleType t0, JobHandleType t1, JobHandleType t2, JobHandleType t3, JobHandleType t4, JobHandleType t5, JobHandleType t6) { var r = WriteJobHandles.Create(m_Handles); r.Add((int)t0); r.Add((int)t1); r.Add((int)t2); r.Add((int)t3); r.Add((int)t4); r.Add((int)t5); r.Add((int)t6); return r; }
                 [MethodImpl(MethodImplOptions.AggressiveInlining)]
-                public readonly WriteJobHandles Write(JobHandleType t0, JobHandleType t1, JobHandleType t2, JobHandleType t3, JobHandleType t4, JobHandleType t5, JobHandleType t6, JobHandleType t7) { var r = WriteJobHandles.Create(m_Handles, m_NodeHandles); r.Add((int)t0); r.Add((int)t1); r.Add((int)t2); r.Add((int)t3); r.Add((int)t4); r.Add((int)t5); r.Add((int)t6); r.Add((int)t7); return r; }
+                public readonly WriteJobHandles Write(JobHandleType t0, JobHandleType t1, JobHandleType t2, JobHandleType t3, JobHandleType t4, JobHandleType t5, JobHandleType t6, JobHandleType t7) { var r = WriteJobHandles.Create(m_Handles); r.Add((int)t0); r.Add((int)t1); r.Add((int)t2); r.Add((int)t3); r.Add((int)t4); r.Add((int)t5); r.Add((int)t6); r.Add((int)t7); return r; }
                 [MethodImpl(MethodImplOptions.AggressiveInlining)]
-                public readonly WriteJobHandles Write(JobHandleType t0, JobHandleType t1, JobHandleType t2, JobHandleType t3, JobHandleType t4, JobHandleType t5, JobHandleType t6, JobHandleType t7, JobHandleType t8) { var r = WriteJobHandles.Create(m_Handles, m_NodeHandles); r.Add((int)t0); r.Add((int)t1); r.Add((int)t2); r.Add((int)t3); r.Add((int)t4); r.Add((int)t5); r.Add((int)t6); r.Add((int)t7); r.Add((int)t8); return r; }
+                public readonly WriteJobHandles Write(JobHandleType t0, JobHandleType t1, JobHandleType t2, JobHandleType t3, JobHandleType t4, JobHandleType t5, JobHandleType t6, JobHandleType t7, JobHandleType t8) { var r = WriteJobHandles.Create(m_Handles); r.Add((int)t0); r.Add((int)t1); r.Add((int)t2); r.Add((int)t3); r.Add((int)t4); r.Add((int)t5); r.Add((int)t6); r.Add((int)t7); r.Add((int)t8); return r; }
                 [MethodImpl(MethodImplOptions.AggressiveInlining)]
-                public readonly WriteJobHandles Write(JobHandleType t0, JobHandleType t1, JobHandleType t2, JobHandleType t3, JobHandleType t4, JobHandleType t5, JobHandleType t6, JobHandleType t7, JobHandleType t8, JobHandleType t9) { var r = WriteJobHandles.Create(m_Handles, m_NodeHandles); r.Add((int)t0); r.Add((int)t1); r.Add((int)t2); r.Add((int)t3); r.Add((int)t4); r.Add((int)t5); r.Add((int)t6); r.Add((int)t7); r.Add((int)t8); r.Add((int)t9); return r; }
+                public readonly WriteJobHandles Write(JobHandleType t0, JobHandleType t1, JobHandleType t2, JobHandleType t3, JobHandleType t4, JobHandleType t5, JobHandleType t6, JobHandleType t7, JobHandleType t8, JobHandleType t9) { var r = WriteJobHandles.Create(m_Handles); r.Add((int)t0); r.Add((int)t1); r.Add((int)t2); r.Add((int)t3); r.Add((int)t4); r.Add((int)t5); r.Add((int)t6); r.Add((int)t7); r.Add((int)t8); r.Add((int)t9); return r; }
                 [MethodImpl(MethodImplOptions.AggressiveInlining)]
-                public readonly WriteJobHandles Write(JobHandleType t0, JobHandleType t1, JobHandleType t2, JobHandleType t3, JobHandleType t4, JobHandleType t5, JobHandleType t6, JobHandleType t7, JobHandleType t8, JobHandleType t9, JobHandleType t10) { var r = WriteJobHandles.Create(m_Handles, m_NodeHandles); r.Add((int)t0); r.Add((int)t1); r.Add((int)t2); r.Add((int)t3); r.Add((int)t4); r.Add((int)t5); r.Add((int)t6); r.Add((int)t7); r.Add((int)t8); r.Add((int)t9); r.Add((int)t10); return r; }
+                public readonly WriteJobHandles Write(JobHandleType t0, JobHandleType t1, JobHandleType t2, JobHandleType t3, JobHandleType t4, JobHandleType t5, JobHandleType t6, JobHandleType t7, JobHandleType t8, JobHandleType t9, JobHandleType t10) { var r = WriteJobHandles.Create(m_Handles); r.Add((int)t0); r.Add((int)t1); r.Add((int)t2); r.Add((int)t3); r.Add((int)t4); r.Add((int)t5); r.Add((int)t6); r.Add((int)t7); r.Add((int)t8); r.Add((int)t9); r.Add((int)t10); return r; }
                 [MethodImpl(MethodImplOptions.AggressiveInlining)]
-                public readonly WriteJobHandles Write(JobHandleType t0, JobHandleType t1, JobHandleType t2, JobHandleType t3, JobHandleType t4, JobHandleType t5, JobHandleType t6, JobHandleType t7, JobHandleType t8, JobHandleType t9, JobHandleType t10, JobHandleType t11) { var r = WriteJobHandles.Create(m_Handles, m_NodeHandles); r.Add((int)t0); r.Add((int)t1); r.Add((int)t2); r.Add((int)t3); r.Add((int)t4); r.Add((int)t5); r.Add((int)t6); r.Add((int)t7); r.Add((int)t8); r.Add((int)t9); r.Add((int)t10); r.Add((int)t11); return r; }
+                public readonly WriteJobHandles Write(JobHandleType t0, JobHandleType t1, JobHandleType t2, JobHandleType t3, JobHandleType t4, JobHandleType t5, JobHandleType t6, JobHandleType t7, JobHandleType t8, JobHandleType t9, JobHandleType t10, JobHandleType t11) { var r = WriteJobHandles.Create(m_Handles); r.Add((int)t0); r.Add((int)t1); r.Add((int)t2); r.Add((int)t3); r.Add((int)t4); r.Add((int)t5); r.Add((int)t6); r.Add((int)t7); r.Add((int)t8); r.Add((int)t9); r.Add((int)t10); r.Add((int)t11); return r; }
             }
             
             internal JobHandlesStruct JobHandles;
@@ -2016,7 +2016,6 @@ namespace Chisel.Core
                         weldMemory           = chiselLookupValues.weldMemory,
                         collapseMoves        = chiselLookupValues.collapseMoves,
                         verify               = OutputModelWeld.VerifyIncremental,
-                        report               = OutputModelWeld.ReportIncremental,
                         hotspotLayouts       = Temporaries.hotspotLayouts,
                         hotspotStageMemory   = chiselLookupValues.hotspotStageMemory
                     };
@@ -2033,8 +2032,7 @@ namespace Chisel.Core
                         hashes          = Temporaries.hotspotFind.hashes.AsDeferredJobArray(),
                         slotOfBrush     = chiselLookupValues.hotspotStageMemory.slotOfBrush.AsDeferredJobArray(),
                         keptKinds       = chiselLookupValues.hotspotStageMemory.keptKinds.AsDeferredJobArray(),
-                        stageBrushes    = chiselLookupValues.hotspotStageMemory.brushes.AsDeferredJobArray(),
-                        verify          = HotspotGroups.VerifyIncremental
+                        stageBrushes    = chiselLookupValues.hotspotStageMemory.brushes.AsDeferredJobArray()
                     };
                     surfaceKindsJob.Schedule(runInParallel, Temporaries.brushRenderData, 16,
                         JobHandles.Read(JobHandleType.decalVolumesJobHandle),
@@ -2053,8 +2051,7 @@ namespace Chisel.Core
                         hotspotCut           = Temporaries.hotspotCut,
                         hotspotFind          = Temporaries.hotspotFind,
                         hotspotGroupMemory   = chiselLookupValues.hotspotGroupMemory,
-                        keptBrushes          = chiselLookupValues.hotspotStageMemory.keptKinds,
-                        verify               = HotspotGroups.VerifyIncremental
+                        keptBrushes          = chiselLookupValues.hotspotStageMemory.keptKinds
                     };
                     prepareHotspotGroupsJob.Schedule(runInParallel,
                         JobHandles.Read(JobHandleType.decalVolumesJobHandle),
@@ -2114,8 +2111,7 @@ namespace Chisel.Core
                         brushCuts       = Temporaries.hotspotCut.brushCuts.AsDeferredJobArray(),
                         slotOfBrush     = chiselLookupValues.hotspotStageMemory.slotOfBrush.AsDeferredJobArray(),
                         keptContent     = chiselLookupValues.hotspotStageMemory.keptContent.AsDeferredJobArray(),
-                        stageBrushes    = chiselLookupValues.hotspotStageMemory.brushes.AsDeferredJobArray(),
-                        verify          = HotspotGroups.VerifyIncremental
+                        stageBrushes    = chiselLookupValues.hotspotStageMemory.brushes.AsDeferredJobArray()
                     };
                     hotspotCutKeysJob.Schedule(runInParallel, Temporaries.brushRenderData, 16,
                         JobHandles.Read(JobHandleType.decalVolumesJobHandle),

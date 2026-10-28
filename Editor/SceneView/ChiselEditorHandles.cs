@@ -1290,7 +1290,6 @@ namespace Chisel.Editors
             return true;
         }
 
-        internal static int kDoRotatableLineHandleHash = "DoDirectionHandle".GetHashCode();
         public bool DoRotatableLineHandle(ref float angle, Vector3 origin, float diameter, Vector3 handleDir, Vector3 slideDir1, Vector3 slideDir2, string undoMessage = null)
         {
             EditorGUI.BeginChangeCheck();

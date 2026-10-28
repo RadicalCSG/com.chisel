@@ -58,7 +58,6 @@ namespace Chisel.Editors
 
         float Thumbnails => pages.Count > 1 ? kThumbnail + 4 : 0;
 
-        static float Aspect(ChiselHotspotLayout layout) => layout != null && layout.size.x > 0 ? (float)layout.size.y / layout.size.x : 1;
 
         public override Vector2 GetWindowSize()
         {
