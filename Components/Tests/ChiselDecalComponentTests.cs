@@ -131,6 +131,78 @@ namespace Chisel.Components.Tests
             return (decal, other);
         }
 
+        // A floor anywhere in the box takes the decal, also when the box's center is below it
+        [Test]
+        public void Decal_IsDrawnOnTheFloors_WhereverTheyAreInItsBox([Values(-0.2f, -0.1f, 0f, 0.1f, 0.2f)] float height)
+        {
+            var model = Floors(out _, out _, out var decal);
+            decal.transform.localPosition = new Vector3(0, height, 0);
+            Update();
+            Assert.That(UpAreas(model).decal, Is.EqualTo(1.0).Within(kTolerance));
+        }
+
+        // The area of the downward triangles drawn with the decal's material
+        double DownDecalArea(ChiselModelComponent model)
+        {
+            double area = 0;
+            foreach (var r in model.generated.renderables)
+            {
+                if (r == null || !r.Valid || r.sharedMesh == null || r.sharedMesh.vertexCount == 0)
+                    continue;
+                var vertices = r.sharedMesh.vertices;
+                for (int s = 0; s < r.sharedMesh.subMeshCount; s++)
+                {
+                    if (r.renderMaterials == null || s >= r.renderMaterials.Length || r.renderMaterials[s] != decalMaterial)
+                        continue;
+                    var triangles = r.sharedMesh.GetTriangles(s);
+                    for (int t = 0; t < triangles.Length; t += 3)
+                    {
+                        var normal = Vector3.Cross(vertices[triangles[t + 1]] - vertices[triangles[t]], vertices[triangles[t + 2]] - vertices[triangles[t]]);
+                        if (normal.normalized.y < -0.99f)
+                            area += normal.magnitude * 0.5;
+                    }
+                }
+            }
+            return area;
+        }
+
+        // A decal turned away from the floor still draws on it: every surface in the box takes it
+        [Test]
+        public void ADecalFacingAwayFromTheFloors_IsDrawnOnThem()
+        {
+            var model = Floors(out _, out _, out var decal);
+            decal.transform.rotation = Quaternion.LookRotation(Vector3.up, Vector3.forward);
+            decal.transform.localPosition = new Vector3(0, -0.1f, 0);
+            Update();
+            Assert.That(UpAreas(model).decal, Is.EqualTo(1.0).Within(kTolerance));
+        }
+
+        // A box reaching both sides of a thin slab draws on both, or on the side facing it with a max angle below 90
+        [Test]
+        public void ADecalThroughAThinSlab_IsOnBothSides_UnlessItsMaxAngleKeepsItToOne([Values(180f, 80f)] float maxAngle)
+        {
+            var root = new GameObject("decal test");
+            created.Add(root);
+            var model = root.AddComponent<ChiselModelComponent>();
+            var slab = Box("Slab", model.transform, Vector3.zero);
+            slab.Min = new Unity.Mathematics.float3(-1, 0, -1);
+            slab.Max = new Unity.Mathematics.float3( 1, 0.05f, 1);
+
+            var decalObject = new GameObject("Decal");
+            decalObject.transform.SetParent(model.transform, false);
+            decalObject.transform.localPosition = new Vector3(0, 0.025f, 0);
+            decalObject.transform.rotation = Quaternion.LookRotation(Vector3.down, Vector3.forward);
+            var decal = decalObject.AddComponent<ChiselDecalComponent>();
+            decal.Material    = decalMaterial;
+            decal.Size        = new Vector3(1, 1, 0.5f);
+            decal.Transparent = false;
+            decal.MaxAngle    = maxAngle;
+            Update();
+
+            Assert.That(UpAreas(model).decal, Is.EqualTo(1.0).Within(kTolerance), "the top");
+            Assert.That(DownDecalArea(model), Is.EqualTo(maxAngle > 90 ? 1.0 : 0.0).Within(kTolerance), "the bottom");
+        }
+
         static ChiselDecalSurfaceTarget Target(ChiselNodeComponent brush, int surface)
         {
             return new ChiselDecalSurfaceTarget { brush = brush, surfaceIndex = surface };
@@ -389,6 +461,8 @@ namespace Chisel.Components.Tests
             // both on B, in one of the decals' 32 m cells (x = 0 is the edge of one)
             var model = Floors(out _, out _, out var decal);
             decal.Transparent = true;
+            // on the floor only, not B's side that the second decal's box reaches
+            decal.MaxAngle = 60;
             decal.transform.localPosition = new Vector3(0.5f, 0, 0);
             var settings = decal.Settings;
             settings.fadeDistance = new Unity.Mathematics.float2(5, 10);

@@ -86,7 +86,7 @@ namespace Chisel.Core
         public double                   focal;          // perspective: the distance from the apex to the center plane
 
         // Tree space
-        public double3                  facingPoint;    // the box's center: surfaces facing away from it are skipped
+        public double3                  facingPoint;    // the box's center
         public double3                  axis;           // unit, the direction the image travels in (orthographic)
         public double3                  apex;           // perspective: where the image comes from
 
@@ -427,12 +427,10 @@ namespace Chisel.Core
             return uvOffset + uvScale * ChiselDecalSettings.TurnImage((float2)ProjectImage(treePosition), imageTurns);
         }
 
-        // Whether a surface takes this decal. surfaceNormal is the unit normal of its visible side, and
-        // surfacePoint a point on it. A surface facing away from the box's center never does.
+        // Whether a surface in the volume takes this decal. surfaceNormal is the unit normal of its visible side, and
+        // surfacePoint a point on it. Every surface does, whichever way it faces, unless the decal has a max angle.
         public readonly bool Accepts(double3 surfaceNormal, double3 surfacePoint)
         {
-            if (math.dot(surfaceNormal, facingPoint - surfacePoint) < -kPlaneEpsilon)
-                return false;
             if ((flags & DecalVolumeFlags.AngleLimited) != 0)
             {
                 var towardsProjector = IsPerspective ? math.normalizesafe(apex - surfacePoint) : -axis;
