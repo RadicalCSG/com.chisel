@@ -77,12 +77,13 @@ namespace Chisel.Core
 				}
 			}
 
-			if (!GenerateSegmentedSubMesh(horzSegments, vertSegments, bottomCap, topCap, bottomVertex, topVertex,
-										  in localVertices,
-										  ref surfaceDefinitionBlob.Value,
-										  in builder, ref root,
-										  out var polygons,
-										  out var halfEdges))
+			var arrays = GenerateSegmentedSubMesh(horzSegments, vertSegments, bottomCap, topCap, bottomVertex, topVertex,
+												  in localVertices,
+												  ref surfaceDefinitionBlob.Value,
+												  in builder, ref root);
+			var polygons = arrays.polygons;
+			var halfEdges = arrays.halfEdges;
+			if (polygons.Length == 0)
 				return false;
 
 			// TODO: eventually remove when it's more battle tested

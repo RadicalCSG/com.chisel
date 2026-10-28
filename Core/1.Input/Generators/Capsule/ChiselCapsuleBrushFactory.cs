@@ -16,7 +16,8 @@ namespace Chisel.Core
             brushMesh = BlobAssetReference<BrushMeshBlob>.Null;
 			using var builder = new BlobBuilder(Allocator.Temp);
 			ref var root = ref builder.ConstructRoot<BrushMeshBlob>();
-			if (!GenerateCapsuleVertices(in settings, in builder, ref root, out var localVertices))
+			var localVertices = GenerateCapsuleVertices(in settings, in builder, ref root);
+			if (localVertices.Length == 0)
 				return false;
 
 			var bottomCap = !settings.HaveRoundedBottom;
@@ -26,14 +27,15 @@ namespace Chisel.Core
 			var bottomVertex = settings.BottomVertex;
 			var topVertex = settings.TopVertex;
 
-			if (!GenerateSegmentedSubMesh(sides, segments,
-										  topCap, bottomCap,
-										  topVertex, bottomVertex,
-										  in localVertices,
-										  ref surfaceDefinition.Value,
-										  in builder, ref root,
-										  out var polygons,
-										  out var halfEdges))
+			var arrays = GenerateSegmentedSubMesh(sides, segments,
+												  topCap, bottomCap,
+												  topVertex, bottomVertex,
+												  in localVertices,
+												  ref surfaceDefinition.Value,
+												  in builder, ref root);
+			var polygons = arrays.polygons;
+			var halfEdges = arrays.halfEdges;
+			if (polygons.Length == 0)
 				return false;
 
 			var localPlanes = builder.Allocate(ref root.localPlanes, polygons.Length);
@@ -47,18 +49,16 @@ namespace Chisel.Core
 			return true;
 		}
 
-        public static bool GenerateCapsuleVertices(in ChiselCapsule     settings,
-                                                   in BlobBuilder       builder, 
-                                                   ref BrushMeshBlob    root,
-                                                   out BlobBuilderArray<float3> localVertices)
+        public static BlobBuilderArray<float3> GenerateCapsuleVertices(in ChiselCapsule     settings,
+                                                                       in BlobBuilder       builder,
+                                                                       ref BrushMeshBlob    root)
         {
             var haveTopHemisphere		= settings.HaveRoundedTop;
             var haveBottomHemisphere	= settings.HaveRoundedBottom;
             var haveMiddleCylinder		= settings.HaveCylinder;
 
-            localVertices = default;
             if (!haveBottomHemisphere && !haveTopHemisphere && !haveMiddleCylinder)
-                return false;
+                return default;
             
             var radiusX				= settings.diameterX * 0.5f;
             var radiusZ				= settings.diameterZ * 0.5f;
@@ -80,7 +80,7 @@ namespace Chisel.Core
             var topOffset			= settings.TopOffset    + settings.offsetY;
             var bottomOffset		= settings.BottomOffset + settings.offsetY;
 
-            localVertices = builder.Allocate(ref root.localVertices, vertexCount);
+            var localVertices = builder.Allocate(ref root.localVertices, vertexCount);
             if (haveBottomHemisphere) localVertices[bottomVertex] = new Vector3(0, 1, 0) * (bottomOffset - bottomHeight); // bottom
             if (haveTopHemisphere   ) localVertices[topVertex   ] = new Vector3(0, 1, 0) * (topOffset    + topHeight   ); // top
 
@@ -146,7 +146,7 @@ namespace Chisel.Core
                     localVertices[h + unitCircleOffset].y = topOffset;
                 }
             }
-            return true;
+            return localVertices;
         }
 
         // possible situations:

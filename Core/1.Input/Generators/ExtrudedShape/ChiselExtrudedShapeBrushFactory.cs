@@ -10,34 +10,33 @@ namespace Chisel.Core
     // TODO: rename
     public sealed partial class BrushMeshFactory
     {
-        static bool GetExtrudedVertices(UnsafeList<SegmentVertex> shapeVertices, Range range, Matrix4x4 matrix0, Matrix4x4 matrix1, in BlobBuilder builder, ref BrushMeshBlob root, out BlobBuilderArray<float3> localVertices, out NativeArray<int> segmentIndices, Allocator allocator)
+        static BlobBuilderArray<float3> GetExtrudedVertices(UnsafeList<SegmentVertex> shapeVertices, Range range, Matrix4x4 matrix0, Matrix4x4 matrix1, in BlobBuilder builder, ref BrushMeshBlob root, out NativeArray<int> segmentIndices, Allocator allocator)
         {
             const int pathSegments = 2;
             var rangeLength = range.Length;
             var vertexCount = rangeLength * pathSegments;
 
-            localVertices = default;
             segmentIndices = default;
             if (range.Length <= 0)
             {
                 Debug.LogError($"range.Length <= 0");
-                return false;
+                return default;
             }
 
             if (range.start < 0)
             {
                 Debug.LogError($"range.start < 0");
-                return false;
+                return default;
             }
 
             if (range.end > shapeVertices.Length)
             {
                 Debug.LogError($"range.end {range.end} > shapeVertices.length {shapeVertices.Length}");
-                return false;
+                return default;
             }
 
 
-            localVertices = builder.Allocate(ref root.localVertices, vertexCount);
+            var localVertices = builder.Allocate(ref root.localVertices, vertexCount);
             segmentIndices = new NativeArray<int>(vertexCount, allocator);
 
             for (int s = range.start, v = 0; s < range.end; s++, v++)
@@ -52,7 +51,7 @@ namespace Chisel.Core
                 segmentIndices[rangeLength + v] = srcSegment + 2;
                 Debug.Assert(rangeLength + v < vertexCount);
             }
-            return true;
+            return localVertices;
         }
 
         public static unsafe bool GenerateExtrudedShape(NativeList<BlobAssetReference<BrushMeshBlob>> brushMeshes, 
@@ -111,12 +110,15 @@ namespace Chisel.Core
                     using var builder = new BlobBuilder(Allocator.Temp);
                     ref var root = ref builder.ConstructRoot<BrushMeshBlob>();
                     
-                    if (!GetExtrudedVertices(polygonVerticesArray, range, matrix0, matrix1, in builder, ref root, out var localVertices, out var segmentIndices, Allocator.Temp))
+                    var localVertices = GetExtrudedVertices(polygonVerticesArray, range, matrix0, matrix1, in builder, ref root, out var segmentIndices, Allocator.Temp);
+                    if (localVertices.Length == 0)
                         continue;
 
                     using (segmentIndices)
                     {
-                        CreateExtrudedSubMesh(range.Length, segmentIndices, segmentIndices.Length, 0, 1, in localVertices, in surfaceDefinitionBlob, in builder, ref root, out var polygons, out var halfEdges);
+                        var arrays = CreateExtrudedSubMesh(range.Length, segmentIndices, segmentIndices.Length, 0, 1, in localVertices, in surfaceDefinitionBlob, in builder, ref root);
+                        var polygons = arrays.polygons;
+                        var halfEdges = arrays.halfEdges;
 
                         if (!Validate(in localVertices, in halfEdges, in polygons, logErrors: true))
                             return false;

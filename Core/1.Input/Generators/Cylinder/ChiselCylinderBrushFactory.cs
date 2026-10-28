@@ -59,43 +59,11 @@ namespace Chisel.Core
 
 			using var builder = new BlobBuilder(Allocator.Temp);
 			ref var root = ref builder.ConstructRoot<BrushMeshBlob>();
-			BlobBuilderArray<float3> localVertices;
-			BlobBuilderArray<BrushMeshBlob.HalfEdge> halfEdges;
-			BlobBuilderArray<BrushMeshBlob.Polygon> polygons;
-
-			// TODO: handle situation where ellipsoid is a line
-
-			if (topDiameter.x == 0)
-			{
-				GetConeFrustumVertices(topHeight,
-									   bottomDiameter, bottomHeight,
-									   rotation, segments,
-									   in builder, ref root, out localVertices, inverse: false, fitToBounds: fitToBounds);
-
-				// TODO: the polygon/half-edge part would be the same for any extruded shape and should be re-used
-				CreateConeSubMesh(segments, in localVertices, in surfaceDefinitionBlob, in builder, ref root, out polygons, out halfEdges);
-			}
-			else
-			if (bottomDiameter.x == 0)
-			{
-				GetConeFrustumVertices(bottomHeight,
-									   topDiameter, topHeight,
-									   rotation, segments,
-									   in builder, ref root, out localVertices, inverse: true, fitToBounds: fitToBounds);
-
-				// TODO: the polygon/half-edge part would be the same for any extruded shape and should be re-used
-				CreateConeSubMesh(segments, in localVertices, in surfaceDefinitionBlob, in builder, ref root, out polygons, out halfEdges);
-			}
-			else
-			{
-				GetConicalFrustumVertices(topDiameter, topHeight,
-										  bottomDiameter, bottomHeight,
-										  rotation, segments,
-										  in builder, ref root, out localVertices, fitToBounds: fitToBounds);
-
-				// TODO: the polygon/half-edge part would be the same for any extruded shape and should be re-used
-				CreateExtrudedSubMesh(segments, 0, 1, in localVertices, in surfaceDefinitionBlob, in builder, ref root, out polygons, out halfEdges);
-			}
+			var arrays = CreateConicalFrustumArrays(topDiameter, topHeight, bottomDiameter, bottomHeight, rotation, segments, fitToBounds,
+													in surfaceDefinitionBlob, in builder, ref root);
+			var localVertices = arrays.localVertices;
+			var polygons = arrays.polygons;
+			var halfEdges = arrays.halfEdges;
 
 			if (!Validate(in localVertices, in halfEdges, in polygons, logErrors: true))
 				return false;
@@ -110,11 +78,52 @@ namespace Chisel.Core
 			brushMesh = builder.CreateBlobAssetReference<BrushMeshBlob>(allocator); // Allocator.Persistent / Confirmed to dispose
 			return true;
 		}
-        
+
+        static BrushMeshArrays CreateConicalFrustumArrays(float2 topDiameter,    float topHeight,
+                                                          float2 bottomDiameter, float bottomHeight,
+                                                          float rotation, int segments, bool fitToBounds,
+                                                          in BlobAssetReference<InternalChiselSurfaceArray> surfaceDefinitionBlob,
+                                                          in BlobBuilder builder, ref BrushMeshBlob root)
+        {
+            // TODO: handle situation where ellipsoid is a line
+
+            if (topDiameter.x == 0)
+            {
+                var localVertices = GetConeFrustumVertices(topHeight,
+                                                           bottomDiameter, bottomHeight,
+                                                           rotation, segments,
+                                                           in builder, ref root, inverse: false, fitToBounds: fitToBounds);
+
+                // TODO: the polygon/half-edge part would be the same for any extruded shape and should be re-used
+                return CreateConeSubMesh(segments, in localVertices, in surfaceDefinitionBlob, in builder, ref root);
+            }
+
+            if (bottomDiameter.x == 0)
+            {
+                var localVertices = GetConeFrustumVertices(bottomHeight,
+                                                           topDiameter, topHeight,
+                                                           rotation, segments,
+                                                           in builder, ref root, inverse: true, fitToBounds: fitToBounds);
+
+                // TODO: the polygon/half-edge part would be the same for any extruded shape and should be re-used
+                return CreateConeSubMesh(segments, in localVertices, in surfaceDefinitionBlob, in builder, ref root);
+            }
+
+            {
+                var localVertices = GetConicalFrustumVertices(topDiameter, topHeight,
+                                                              bottomDiameter, bottomHeight,
+                                                              rotation, segments,
+                                                              in builder, ref root, fitToBounds: fitToBounds);
+
+                // TODO: the polygon/half-edge part would be the same for any extruded shape and should be re-used
+                return CreateExtrudedSubMesh(segments, 0, 1, in localVertices, in surfaceDefinitionBlob, in builder, ref root);
+            }
+        }
+
         // TODO: could probably figure out "inverse" from direction of topY compared to bottomY
-        public static void GetConeFrustumVertices(float topHeight, float2 bottomDiameter, float bottomHeight, float rotation, int segments, 
-                                                  in BlobBuilder builder, ref BrushMeshBlob root, out BlobBuilderArray<float3> localVertices, 
-                                                  bool inverse = false, bool fitToBounds = false)
+        public static BlobBuilderArray<float3> GetConeFrustumVertices(float topHeight, float2 bottomDiameter, float bottomHeight, float rotation, int segments,
+                                                                      in BlobBuilder builder, ref BrushMeshBlob root,
+                                                                      bool inverse = false, bool fitToBounds = false)
         {
             var rotate			= quaternion.AxisAngle(new float3(0, 1, 0), math.radians(rotation));
             var bottomRadiusX	= math.mul(rotate, new float3(bottomDiameter.x * 0.5f, 0, 0));
@@ -122,7 +131,7 @@ namespace Chisel.Core
             var topY			= new float3(0, topHeight, 0);
             var bottomY			= new float3(0, bottomHeight, 0);
 
-            localVertices = builder.Allocate(ref root.localVertices, segments + 1);
+            var localVertices = builder.Allocate(ref root.localVertices, segments + 1);
             localVertices[0] = topY;
 
             const float doublePI = (math.PI * 2);
@@ -143,13 +152,14 @@ namespace Chisel.Core
 
             if (fitToBounds)
                 FitXZ(ref localVertices, 1, localVertices.Length - 1, bottomDiameter);
+            return localVertices;
         }
-        
-        public static void GetConicalFrustumVertices(float2 topDiameter, float topHeight,
-                                                     float2 bottomDiameter, float bottomHeight, 
-                                                     float rotation, int segments, 
-                                                     in BlobBuilder builder, ref BrushMeshBlob root, out BlobBuilderArray<float3> localVertices, 
-                                                     bool fitToBounds = false)
+
+        public static BlobBuilderArray<float3> GetConicalFrustumVertices(float2 topDiameter, float topHeight,
+                                                                         float2 bottomDiameter, float bottomHeight,
+                                                                         float rotation, int segments,
+                                                                         in BlobBuilder builder, ref BrushMeshBlob root,
+                                                                         bool fitToBounds = false)
         {
             if (topHeight > bottomHeight) 
             {
@@ -167,7 +177,7 @@ namespace Chisel.Core
 
             // TODO: handle situation where diameterX & diameterZ are 0 (only create one vertex)
 
-            localVertices = builder.Allocate(ref root.localVertices, segments * 2);
+            var localVertices = builder.Allocate(ref root.localVertices, segments * 2);
             
             const float doublePI = (math.PI * 2);
             var angleStep   = doublePI / segments;
@@ -191,20 +201,19 @@ namespace Chisel.Core
                 FitXZ(ref localVertices, 0, segments, topDiameter);
                 FitXZ(ref localVertices, segments, segments, bottomDiameter);
             }
+            return localVertices;
         }
 
-        static void CreateConeSubMesh(int segments, 
-                                      in BlobBuilderArray<float3>                           localVertices, 
-                                      in BlobAssetReference<InternalChiselSurfaceArray>  surfaceDefinitionBlob, 
-                                      in BlobBuilder builder, ref BrushMeshBlob root,
-                                      out BlobBuilderArray<BrushMeshBlob.Polygon>           polygons,
-                                      out BlobBuilderArray<BrushMeshBlob.HalfEdge>          halfEdges)
+        static BrushMeshArrays CreateConeSubMesh(int segments,
+                                                 in BlobBuilderArray<float3>                        localVertices,
+                                                 in BlobAssetReference<InternalChiselSurfaceArray>  surfaceDefinitionBlob,
+                                                 in BlobBuilder builder, ref BrushMeshBlob root)
         {
             ref var surfaceDefinition   = ref surfaceDefinitionBlob.Value;
             const int descriptionIndex0 = 0;
             ref var chiselSurface0      = ref surfaceDefinition.surfaces[descriptionIndex0];
 
-            polygons = builder.Allocate(ref root.polygons, segments + 1);
+            var polygons = builder.Allocate(ref root.polygons, segments + 1);
             polygons[0] = new BrushMeshBlob.Polygon { firstEdge = 0, edgeCount = segments, descriptionIndex = descriptionIndex0, surface = chiselSurface0 };
 
             for (int s = 0, surfaceID = 1; s < segments; s++)
@@ -220,7 +229,7 @@ namespace Chisel.Core
                 surfaceID++;
             }
 
-            halfEdges = builder.Allocate(ref root.halfEdges, 4 * segments);
+            var halfEdges = builder.Allocate(ref root.halfEdges, 4 * segments);
             for (int n = 0, e = segments - 1; n < segments; e=n, n++)
             {
                 var p = (n + 1) % segments; // TODO: optimize away
@@ -258,6 +267,7 @@ namespace Chisel.Core
                 halfEdges[e2] = new BrushMeshBlob.HalfEdge { vertexIndex = v0, twinIndex = t3 };
                 halfEdges[e3] = new BrushMeshBlob.HalfEdge { vertexIndex = v1, twinIndex = t2 };
             }
+            return new BrushMeshArrays { localVertices = localVertices, polygons = polygons, halfEdges = halfEdges };
         }
 
         public static void FitXZ(float3[] vertices, int offset, int count, float2 expectedSize)
