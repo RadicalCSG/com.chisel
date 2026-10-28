@@ -350,8 +350,15 @@ namespace Chisel.Components
             PropertiesOf(ChiselModelComponent model)
         {
             var s = model.RenderSettings;
+#if UNITY_EDITOR
+            var stitchLightmapSeams = s.stitchLightmapSeams;
+            var scaleInLightmap     = s.scaleInLightmap;
+#else
+            var stitchLightmapSeams = false;
+            var scaleInLightmap     = 1.0f;
+#endif
             return (s.lightProbeProxyVolumeOverride, s.probeAnchor, s.motionVectorGenerationMode, s.reflectionProbeUsage, s.lightProbeUsage,
-                    s.allowOcclusionWhenDynamic, s.renderingLayerMask, s.receiveGI, s.stitchLightmapSeams, s.scaleInLightmap,
+                    s.allowOcclusionWhenDynamic, s.renderingLayerMask, s.receiveGI, stitchLightmapSeams, scaleInLightmap,
                     ChiselProjectSettings.ForceShadowOnlySurfacesMaterial);
         }
 
