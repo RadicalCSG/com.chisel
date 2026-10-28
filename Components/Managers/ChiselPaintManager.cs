@@ -22,6 +22,7 @@ namespace Chisel.Components
         }
 
         static bool s_All = true;
+        static int  s_ClearCount;
         static readonly HashSet<ChiselGeneratorComponent>             s_Changed = new();
         static readonly Dictionary<ChiselGeneratorComponent, Given>   s_Given   = new();
         static readonly HashSet<ChiselGeneratorComponent>             s_Work    = new();
@@ -46,13 +47,21 @@ namespace Chisel.Components
         {
             ChiselPaintMaterials.Update();
 
+            // every tree was released, and their paint with them: all of it is given again
+            if (s_ClearCount != CompactHierarchyManager.ClearCount)
+            {
+                s_ClearCount = CompactHierarchyManager.ClearCount;
+                s_Given.Clear();
+                s_All = true;
+            }
+
             s_Work.Clear();
-            // the painted generators that moved, or are gone
+            // the painted generators that moved, are in another tree, or are gone
             foreach (var entry in s_Given)
             {
                 var generator = entry.Key;
                 var model = generator ? generator.hierarchyItem?.Model : null;
-                if (s_All || !generator || !model || entry.Value.space != SpaceOf(generator, model))
+                if (s_All || !generator || !model || entry.Value.tree != model.Node || entry.Value.space != SpaceOf(generator, model))
                     s_Work.Add(generator);
             }
             if (s_All)

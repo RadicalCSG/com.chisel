@@ -152,6 +152,8 @@ namespace Chisel.Core
         public NativeList<int> slotOfBrush;
         // brush by brush: its buffer is the one it was handed at the last update (FinishIncremental)
         public NativeList<bool> sameBuffer;
+        // buffers whose paint values were written in place since the last update (ChiselPaintStore): their brushes changed
+        public NativeList<BlobAssetReference<ChiselBrushRenderBuffer>> repainted;
 
         public static WeldMemory Create(Allocator allocator)
         {
@@ -171,7 +173,8 @@ namespace Chisel.Core
                 lastScope   = new NativeReference<int>(allocator),
                 scope       = new NativeParallelHashSet<WeldTriangle>(256, allocator),
                 slotOfBrush = new NativeList<int>(64, allocator),
-                sameBuffer  = new NativeList<bool>(64, allocator)
+                sameBuffer  = new NativeList<bool>(64, allocator),
+                repainted   = new NativeList<BlobAssetReference<ChiselBrushRenderBuffer>>(4, allocator)
             };
         }
 
@@ -187,7 +190,7 @@ namespace Chisel.Core
             }
             brushes.Clear(); freeSlots.Clear(); slotOf.Clear();
             atPosition.Clear(); byTriple.Clear(); shortLinks.Clear(); splitRoots.Clear(); moves.Clear(); roundsAt.Clear(); touched.Clear();
-            scope.Clear(); slotOfBrush.Clear();
+            scope.Clear(); slotOfBrush.Clear(); repainted.Clear();
             valid.Value = false;
         }
 
@@ -212,6 +215,7 @@ namespace Chisel.Core
             if (scope.IsCreated)       scope.Dispose();
             if (slotOfBrush.IsCreated) slotOfBrush.Dispose();
             if (sameBuffer.IsCreated)  sameBuffer.Dispose();
+            if (repainted.IsCreated)   repainted.Dispose();
         }
     }
 
@@ -485,6 +489,16 @@ namespace Chisel.Core
             state.scope = scope;
         }
 
+        static bool IsRepainted(NativeList<BlobAssetReference<ChiselBrushRenderBuffer>> repainted, BlobAssetReference<ChiselBrushRenderBuffer> buffer)
+        {
+            for (int i = 0; i < repainted.Length; i++)
+            {
+                if (repainted[i].Equals(buffer))
+                    return true;
+            }
+            return false;
+        }
+
         // Which triangles this update welds (state.scope): the pieces of the brushes that changed since the last update
         // (updated: the brushes whose buffers were made again), before and after; the memory's index brought up to date.
         // Everything when there is no memory yet or the brushes' order changed.
@@ -529,13 +543,15 @@ namespace Chisel.Core
                     if (known.order <= lastOrder)
                         full = true;
                     lastOrder = known.order;
-                    known.changed = updatedIDs.Contains(id) || !known.input.Equals(brushes[b].brushRenderBuffer);
+                    known.changed = updatedIDs.Contains(id) || !known.input.Equals(brushes[b].brushRenderBuffer) ||
+                                    IsRepainted(memory.repainted, brushes[b].brushRenderBuffer);
                 }
                 ref var item = ref memory.brushes.ElementAt(slot);
                 item.live = true;
                 memory.slotOfBrush[b] = slot;
             }
             updatedIDs.Dispose();
+            memory.repainted.Clear();
             var changedCount = 0;
             for (int b = 0; b < brushes.Length; b++)
             {

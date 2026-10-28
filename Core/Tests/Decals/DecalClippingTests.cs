@@ -296,13 +296,13 @@ namespace Chisel.Core.Tests
         }
 
         [Test]
-        public void Surface_FacingAwayFromTheCenter_DoesNotTakeTheDecal()
+        public void EverySurfaceInTheBox_TakesTheDecal_WithoutAnAngleLimit()
         {
             var volume = UnitBox();
             // A floor at the bottom of the box, facing up at the center
             Assert.That(volume.Accepts(new double3(0, 1, 0), new double3(0, -0.4, 0)), Is.True);
-            // Its underside
-            Assert.That(volume.Accepts(new double3(0, -1, 0), new double3(0, -0.4, 0)), Is.False);
+            // Its underside: without an angle limit, a surface facing away takes it as well
+            Assert.That(volume.Accepts(new double3(0, -1, 0), new double3(0, -0.4, 0)), Is.True);
             // A surface through the center faces it either way
             Assert.That(volume.Accepts(new double3(0, -1, 0), new double3(0, 0, 0)), Is.True);
             // Without an angle limit a wall at the side takes it too

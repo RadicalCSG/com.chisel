@@ -217,16 +217,17 @@ namespace Chisel.Core.Tests
         }
 
         [Test]
-        public void Surface_FacingAwayFromTheDecal_IsLeftAlone()
+        public void Surface_FacingAwayFromTheDecal_TakesIt_UnlessTheMaxAngleIsBelow90([Values(180f, 89f)] float maxAngle)
         {
-            // A thin wall. The decal box reaches through it, but its center is in front of the wall.
+            // A thin wall. The decal box reaches through it, and its center is in front of the wall.
             var scene = new ContentsScene().Add(Box("wall", new float3(-2, -2, -0.1f), new float3(2, 2, 0.1f)));
             var towardsWall = quaternion.LookRotation(new float3(0, 0, -1), new float3(0, 1, 0));
-            using var harness = BuildAndUpdate(scene, Decal(1, new float3(0, 0, 0.3f), towardsWall, new float3(1, 1, 1), transparent: false));
+            using var harness = BuildAndUpdate(scene, Decal(1, new float3(0, 0, 0.3f), towardsWall, new float3(1, 1, 1), transparent: false, maxAngle: maxAngle));
 
+            var back = maxAngle > 90 ? 1.0 : 0.0;
             Assert.That(AreaOf(harness, kDecalMaterial, new float3(0, 0, 1)), Is.EqualTo(1.0).Within(kAreaTolerance), "the front takes the decal");
-            Assert.That(AreaOf(harness, kDecalMaterial, new float3(0, 0, -1)), Is.EqualTo(0.0).Within(kAreaTolerance), "the back faces away from it");
-            Assert.That(SurfaceArea(harness, new float3(0, 0, -1)), Is.EqualTo(16.0).Within(kAreaTolerance), "the back is whole");
+            Assert.That(AreaOf(harness, kDecalMaterial, new float3(0, 0, -1)), Is.EqualTo(back).Within(kAreaTolerance), "the back, which faces away from it");
+            Assert.That(SurfaceArea(harness, new float3(0, 0, -1)), Is.EqualTo(16.0 - back).Within(kAreaTolerance), "what is left of the back");
         }
 
         [Test]
