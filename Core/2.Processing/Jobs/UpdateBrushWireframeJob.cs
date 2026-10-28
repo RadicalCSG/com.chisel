@@ -8,7 +8,7 @@ using WriteOnlyAttribute = Unity.Collections.WriteOnlyAttribute;
 namespace Chisel.Core
 {
 	[BurstCompile(CompileSynchronously = true)]
-    unsafe struct UpdateBrushWireframeJob : IJob
+    struct UpdateBrushWireframeJob : IJob
 	{
 		// Read
         [NoAlias, ReadOnly] public CompactHierarchy.ReadOnly compactHierarchy;

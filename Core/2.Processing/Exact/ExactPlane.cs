@@ -460,7 +460,7 @@ namespace Chisel.Core
         }
 
         // The tie at an exact midpoint goes to the float with an even mantissa.
-        static unsafe float RoundTieToEven(double midpoint)
+        static float RoundTieToEven(double midpoint)
         {
             float low  = (float)midpoint;   // IEEE conversion already rounds half to even
             return low;

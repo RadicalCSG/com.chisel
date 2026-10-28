@@ -14,7 +14,7 @@ namespace Chisel.Core
 {
     // TODO: make cache part of compactHierarchy? no need for remapping?
     [BurstCompile(CompileSynchronously = true)]
-    unsafe struct CacheRemappingJob : IJob
+    struct CacheRemappingJob : IJob
     {
         #region IndexOrderComparer - Sort index order to ensure consistency
         struct IndexOrderComparer : System.Collections.Generic.IComparer<int2>

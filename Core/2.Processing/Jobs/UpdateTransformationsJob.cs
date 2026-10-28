@@ -13,7 +13,7 @@ namespace Chisel.Core
     internal struct NodeOrderNodeID { public int nodeOrder; public CompactNodeID compactNodeID; }
 
     [BurstCompile(CompileSynchronously = true)]
-    unsafe struct UpdateTransformationsJob: IJobParallelForDefer
+    struct UpdateTransformationsJob: IJobParallelForDefer
     {      
         // Read
         [NoAlias, ReadOnly] public CompactHierarchy.ReadOnly            compactHierarchy;

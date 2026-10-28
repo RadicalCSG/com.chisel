@@ -68,7 +68,7 @@ namespace Chisel.Core
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public override int GetHashCode() { return CalculateHashCode(ref this); }
 
-        public static unsafe bool SameContent([NoAlias, ReadOnly] ref BrushMeshBlob a, [NoAlias, ReadOnly] ref BrushMeshBlob b)
+        public static bool SameContent([NoAlias, ReadOnly] ref BrushMeshBlob a, [NoAlias, ReadOnly] ref BrushMeshBlob b)
         {
             return a.localPlaneCount == b.localPlaneCount &&
                    SameBits(ref a.localVertices, ref b.localVertices) &&

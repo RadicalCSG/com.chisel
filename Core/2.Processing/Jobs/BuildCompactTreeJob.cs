@@ -12,7 +12,7 @@ using WriteOnlyAttribute = Unity.Collections.WriteOnlyAttribute;
 namespace Chisel.Core
 {
     [BurstCompile(CompileSynchronously = true)]
-    unsafe struct BuildCompactTreeJob : IJob
+    struct BuildCompactTreeJob : IJob
     {
         // Read
         public CompactNodeID treeCompactNodeID;

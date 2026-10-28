@@ -54,7 +54,7 @@ namespace Chisel.Core
             return localVertices;
         }
 
-        public static unsafe bool GenerateExtrudedShape(NativeList<BlobAssetReference<BrushMeshBlob>> brushMeshes, 
+        public static bool GenerateExtrudedShape(NativeList<BlobAssetReference<BrushMeshBlob>> brushMeshes, 
                                                         in UnsafeList<SegmentVertex>    polygonVerticesArray, 
                                                         in UnsafeList<int>              polygonVerticesSegments,
                                                         in UnsafeList<float4x4>         pathMatrices,

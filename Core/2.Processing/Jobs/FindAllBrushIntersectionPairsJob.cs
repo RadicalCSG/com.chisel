@@ -134,7 +134,7 @@ namespace Chisel.Core
         // Read / Write
         [NoAlias] public NativeList<IndexOrder> brushesThatNeedIndirectUpdate;
 
-        public unsafe void Execute()
+        public void Execute()
         {
             using var keys = brushesThatNeedIndirectUpdateHashMap.ToNativeArray(Allocator.Temp);
             brushesThatNeedIndirectUpdate.AddRangeNoResize(keys, keys.Length);

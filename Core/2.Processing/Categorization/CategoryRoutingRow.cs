@@ -6,7 +6,7 @@ namespace Chisel.Core
 {
     [System.Diagnostics.DebuggerTypeProxy(typeof(CategoryRoutingRow.DebuggerProxy))]
     [StructLayout(LayoutKind.Explicit)]
-    readonly unsafe struct CategoryRoutingRow
+    readonly struct CategoryRoutingRow
     {
         internal sealed class DebuggerProxy
         {
