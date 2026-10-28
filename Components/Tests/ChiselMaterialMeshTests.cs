@@ -357,8 +357,10 @@ namespace Chisel.Components.Tests
             // both in one 32 m chunk, so in one mesh
             Box(model, new float3(1, 0, 0), new float3(2, 1, 1), first);
             var hidden = Box(model, new float3(9, 0, 0), new float3(10, 1, 1), first);
+#if !UNITY_6000_7_OR_NEWER
             var visualizing = UnityEditor.StaticOcclusionCullingVisualization.showOcclusionCulling;
             UnityEditor.StaticOcclusionCullingVisualization.showOcclusionCulling = false;
+#endif
             RefreshVisibility();
             var renderer = RenderersOf(model, first)[0];
             Assert.That(renderer.DrawnMesh, Is.SameAs(renderer.sharedMesh), "every brush shown: the mesh itself");
@@ -372,6 +374,7 @@ namespace Chisel.Components.Tests
                 Assert.That(IndexCount(renderer.partialMesh), Is.GreaterThan(0));
                 Assert.That(IndexCount(renderer.partialMesh), Is.LessThan(IndexCount(renderer.sharedMesh)), "without the hidden brush");
 
+#if !UNITY_6000_7_OR_NEWER
                 // the occlusion culling visualizer shows what occlusion culling sees: the whole mesh
                 UnityEditor.StaticOcclusionCullingVisualization.showOcclusionCulling = true;
                 RefreshVisibility();
@@ -379,10 +382,13 @@ namespace Chisel.Components.Tests
                 UnityEditor.StaticOcclusionCullingVisualization.showOcclusionCulling = false;
                 RefreshVisibility();
                 Assert.That(renderer.meshRenderer.forceRenderingOff, Is.True, "and the copy again when the visualizer is off");
+#endif
             }
             finally
             {
+#if !UNITY_6000_7_OR_NEWER
                 UnityEditor.StaticOcclusionCullingVisualization.showOcclusionCulling = visualizing;
+#endif
                 UnityEditor.SceneVisibilityManager.instance.Show(hidden.gameObject, false);
                 RefreshVisibility();
             }

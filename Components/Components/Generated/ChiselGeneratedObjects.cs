@@ -884,7 +884,11 @@ namespace Chisel.Components
             
             var showRenderables = (drawModeFlags & DrawModeFlags.HideRenderables) == DrawModeFlags.None;
             // the occlusion culling visualizer shows what occlusion culling sees: every mesh whole, hidden brushes too
+#if UNITY_6000_7_OR_NEWER
+            var showWhole = false;
+#else
             var showWhole = UnityEditor.StaticOcclusionCullingVisualization.showOcclusionCulling;
+#endif
 
             // with the same visibility and draw mode only the renderables whose meshes changed have anything to do
             var unchanged = visibilityStateKnown &&

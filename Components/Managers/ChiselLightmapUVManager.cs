@@ -28,7 +28,9 @@ namespace Chisel.Components
             if (!IsLightmapped(model, state.staticFlags))
                 return false;
 
+#if !UNITY_6000_7_OR_NEWER
             renderable.meshRenderer.realtimeLightmapIndex = -1;
+#endif
             renderable.meshRenderer.lightmapIndex = -1;
             return true;
         }
