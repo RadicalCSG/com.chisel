@@ -1991,8 +1991,12 @@ namespace Chisel.Core
         [return: MarshalAs(UnmanagedType.U1)]
         public static bool CheckConsistency() { return instance.CheckConsistency(); }
 
-        public static void Clear() 
-        { 
+        /// <summary>Goes up every time <see cref="Clear"/> releases every tree, and what was given to them with it</summary>
+        public static int ClearCount { get; private set; }
+
+        public static void Clear()
+        {
+            ClearCount++;
             instance.Clear();
             ChiselTreeLookup.ReleaseAllTrees();
             s_SkippedTrees.Clear();

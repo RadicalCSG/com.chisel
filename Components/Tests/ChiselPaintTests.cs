@@ -532,5 +532,123 @@ namespace Chisel.Components.Tests
             Update();
             AssertValuesAt(RenderMesh(model), VertexAttribute.Color, new Vector3(5, 1, 0), new Vector4(1, 0, 0, 1), "moved with it");
         }
+
+        // The mesh the scene view shows: the renderer's own, or the copy drawn in its place
+        static Mesh VisibleMesh(ChiselModelComponent model)
+        {
+            foreach (var renderable in model.generated.renderables)
+            {
+                if (renderable == null || !renderable.HasGeometry || (renderable.query & SurfaceDestinationFlags.Renderable) == 0)
+                    continue;
+                return renderable.meshRenderer.forceRenderingOff ? renderable.DrawnMesh : renderable.sharedMesh;
+            }
+            Assert.Fail("the model has no render mesh");
+            return null;
+        }
+
+        // New values on a grid the surface already has are shown, not only built into the model's mesh
+        [Test]
+        public void NewValuesOfADab_AreShownInTheSceneView()
+        {
+            var model = Model();
+            var box   = Box(model, Vector3.zero);
+            var top   = SurfaceFacing(box, new float3(0, 1, 0));
+            var mode  = profile.modes[0];
+            System.Func<Color, bool> blue = c => c.b > 0.5f && c.r < 0.5f;
+
+            var paint = ChiselPaintBrush.PaintFor(box, top, mode);
+            ChiselPaintBrush.Dab(paint, mode, ChiselPaintOperation.Paint, new Vector4(1, 0, 0, 1), new Vector3(0.25f, 1, 0.25f), 0.2f, 1, 1);
+            box.PaintChanged();
+            Update();
+            ChiselUnityVisibilityManager.Update();
+
+            paint = ChiselPaintBrush.PaintFor(box, top, mode);
+            ChiselPaintBrush.Dab(paint, mode, ChiselPaintOperation.Paint, new Vector4(0, 0, 1, 1), new Vector3(0.25f, 1, 0.25f), 0.2f, 1, 1);
+            box.PaintChanged();
+            Update();
+            ChiselUnityVisibilityManager.Update();
+            Assert.That(TopVerticesWith(RenderMesh(model), blue), Is.GreaterThan(0), "in the model's mesh");
+            Assert.That(TopVerticesWith(VisibleMesh(model), blue), Is.GreaterThan(0), "in what the scene view shows");
+        }
+
+        // The weld keeps what it made of a brush whose buffer is the one it had at the last update. New paint values keep
+        // the buffer, so the weld has to take the brush as changed, or it draws the old values
+        [Test]
+        public void NewValues_MakeTheWeldTakeTheBrushAgain()
+        {
+            var model = Model();
+            var box   = Box(model, Vector3.zero);
+            Box(model, new Vector3(1, 0, 0.5f));
+            var paint = PaintTop(box, ChiselPaintAttribute.Color, ChiselPaintComponents.XYZW);
+            Update();
+            var built = BuiltBuffer(model, box);
+
+            paint[0, 0] = new Vector4(0, 1, 1, 1);
+            box.PaintChanged();
+            Update();
+            Assert.That(BuiltBuffer(model, box), Is.EqualTo(built), "new values built the brush, so this didn't test them");
+            var memory = ChiselTreeLookup.Value[model.Node].weldMemory;
+            var id = CompactHierarchyManager.GetCompactNodeID(box.TopTreeNode);
+            Assert.That(memory.slotOf.TryGetValue(id, out var slot), Is.True, "the weld doesn't know the box");
+            Assert.That(memory.brushes[slot].changed, Is.True, "the weld kept what it made of the box with the old values");
+        }
+
+        // The upward vertices whose color matches
+        static int TopVerticesWith(Mesh mesh, System.Func<Color, bool> match)
+        {
+            var colors  = mesh.colors;
+            var normals = mesh.normals;
+            var count = 0;
+            for (int v = 0; v < colors.Length; v++)
+            {
+                if (normals[v].y > 0.99f && match(colors[v]))
+                    count++;
+            }
+            return count;
+        }
+
+        // Painting with a profile from the project's paint settings, a dab at a time the way the paint tool does: every
+        // dab is drawn, and a rebuild keeps what was painted
+        [Test]
+        public void DabsWithTheProjectsProfile_AreDrawnOneAfterAnother_AndKeptByARebuild()
+        {
+            ChiselPaintProfiles.Unregister(profile);
+            var previous = ChiselPaintSettings.Project;
+            var settings = ScriptableObject.CreateInstance<ChiselPaintSettings>();
+            created.Add(settings);
+            settings.profiles.Add(profile);
+            ChiselPaintSettings.Project = settings;
+            try
+            {
+                var model = Model();
+                var box   = Box(model, Vector3.zero);
+                var top   = SurfaceFacing(box, new float3(0, 1, 0));
+                var mode  = profile.modes[0];
+                System.Func<Color, bool> red  = c => c.r > 0.5f && c.b < 0.5f;
+                System.Func<Color, bool> blue = c => c.b > 0.5f && c.r < 0.5f;
+
+                var paint = ChiselPaintBrush.PaintFor(box, top, mode);
+                Assert.That(ChiselPaintBrush.Dab(paint, mode, ChiselPaintOperation.Paint, new Vector4(1, 0, 0, 1), new Vector3(0.25f, 1, 0.25f), 0.2f, 1, 1), Is.True);
+                box.PaintChanged();
+                Update();
+                Assert.That(TopVerticesWith(RenderMesh(model), red), Is.GreaterThan(0), "the first dab");
+
+                paint = ChiselPaintBrush.PaintFor(box, top, mode);
+                Assert.That(ChiselPaintBrush.Dab(paint, mode, ChiselPaintOperation.Paint, new Vector4(0, 0, 1, 1), new Vector3(0.75f, 1, 0.75f), 0.2f, 1, 1), Is.True);
+                box.PaintChanged();
+                Update();
+                Assert.That(TopVerticesWith(RenderMesh(model), blue), Is.GreaterThan(0), "the second dab");
+                Assert.That(TopVerticesWith(RenderMesh(model), red), Is.GreaterThan(0), "the first dab, after the second");
+
+                ChiselNodeHierarchyManager.Rebuild();
+                Update();
+                Assert.That(TopVerticesWith(RenderMesh(model), red), Is.GreaterThan(0), "the first dab, after a rebuild");
+                Assert.That(TopVerticesWith(RenderMesh(model), blue), Is.GreaterThan(0), "the second dab, after a rebuild");
+            }
+            finally
+            {
+                ChiselPaintSettings.Project = previous;
+            }
+        }
     }
 }

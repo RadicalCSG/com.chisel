@@ -248,12 +248,19 @@ namespace Chisel.Core
                 ref var buffer = ref cache[b].Value;
                 if (buffer.entityID != entityID)
                     continue;
+                var repainted = false;
                 for (int s = 0; s < buffer.surfaces.Length; s++)
                 {
                     ref var surface = ref buffer.surfaces[s];
                     if (surface.paintSurface < 0 || !changes.TryGetValue(surface.paintSurface, out var change))
                         continue;
                     found = true;
+                    // the weld keeps what it made of an unchanged buffer, so it has to know this one changed
+                    if (!repainted)
+                    {
+                        repainted = true;
+                        data.weldMemory.repainted.Add(cache[b]);
+                    }
                     surface.surfaceHashValue ^= change;
                     for (int q = 0; q < buffer.querySurfaces.Length; q++)
                     {
