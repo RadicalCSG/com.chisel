@@ -910,7 +910,7 @@ namespace Chisel.Core
 
         // TODO: implement a way to setup a full hierarchy here, instead of a list of brushes
         // TODO: make this burstable
-        struct UpdateHierarchyJob : IJob
+        internal struct UpdateHierarchyJob : IJob
         {
             [NoAlias, ReadOnly] public NativeList<NodeID>   generatorRootNodeIDs;
             [NoAlias, ReadOnly] public NativeList<Range>    generatorNodeRanges;
