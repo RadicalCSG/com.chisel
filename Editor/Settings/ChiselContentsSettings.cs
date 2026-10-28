@@ -39,6 +39,35 @@ namespace Chisel.Editors
 
 		public static bool IsPreloaded(ChiselContentsList list)     => ChiselContentsList.IsPreloaded(list);
 		public static void EnsurePreloaded(ChiselContentsList list) => ChiselContentsList.EnsurePreloaded(list);
+
+		[InitializeOnLoadMethod]
+		static void Initialize()
+		{
+			EditorApplication.delayCall += () => EnsureProjectList();
+		}
+
+		// A project without a contents list gets one with the default types, so a player built from it has them too
+		public static ChiselContentsList EnsureProjectList()
+		{
+			if (EditorApplication.isPlayingOrWillChangePlaymode)
+				return ChiselProjectSettings.ContentsList;
+			var list = ChiselProjectSettings.ContentsList;
+			if (list != null)
+			{
+				EnsurePreloaded(list);
+				return list;
+			}
+			foreach (var guid in AssetDatabase.FindAssets("t:" + nameof(ChiselContentsList)))
+			{
+				list = AssetDatabase.LoadAssetAtPath<ChiselContentsList>(AssetDatabase.GUIDToAssetPath(guid));
+				if (list != null)
+				{
+					Use(list);
+					return list;
+				}
+			}
+			return Create();
+		}
 	}
 
 	public static class ChiselContentsListGUI
