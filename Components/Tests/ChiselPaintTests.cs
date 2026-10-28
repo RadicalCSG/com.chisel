@@ -594,6 +594,46 @@ namespace Chisel.Components.Tests
         }
 
         // The upward vertices whose color matches
+        // A painted surface made bigger: its grid grows with it by whole cells, so the new part is cut as finely, and the
+        // paint it had stays where it was
+        [Test]
+        public void APaintedSurfaceMadeBigger_GrowsItsGrid_AndKeepsItsPaint()
+        {
+            var model = Model();
+            var box   = Box(model, Vector3.zero);
+            var top   = SurfaceFacing(box, new float3(0, 1, 0));
+            var mode  = profile.modes[0];
+            var paint = ChiselPaintBrush.PaintFor(box, top, mode);
+            Assert.That(paint.resolution, Is.EqualTo(new Vector2Int(5, 5)), "the default spacing, 25 cm");
+            Assert.That(ChiselPaintBrush.Dab(paint, mode, ChiselPaintOperation.Paint, new Vector4(1, 0, 0, 1), new Vector3(0.1f, 1, 0.1f), 0.2f, 1, 1), Is.True);
+            box.PaintChanged();
+            Update();
+            var red = paint.Sample(new Vector3(0.1f, 1, 0.1f));
+
+            box.Max = new float3(3, 1, 1);
+            Update();
+
+            var grown = box.GetSurfacePaint(top, mode.attribute);
+            Assert.That(grown.resolution, Is.EqualTo(new Vector2Int(13, 5)), "two meters more, in cells of 25 cm");
+            Assert.That(grown.cellU.magnitude, Is.EqualTo(paint.cellU.magnitude).Within(1e-5f), "the same cells");
+            Assert.That(grown.Sample(new Vector3(0.1f, 1, 0.1f)), Is.EqualTo(red), "the paint it had");
+            Assert.That(TopVertexCount(RenderMesh(model), 2f), Is.GreaterThanOrEqualTo(5 * 5), "the new part is cut at the grid");
+        }
+
+        // The vertices on top (facing up) at x of at least minX
+        static int TopVertexCount(Mesh mesh, float minX)
+        {
+            var vertices = mesh.vertices;
+            var normals  = mesh.normals;
+            var count = 0;
+            for (int v = 0; v < vertices.Length; v++)
+            {
+                if (normals[v].y > 0.99f && vertices[v].x >= minX - 1e-4f)
+                    count++;
+            }
+            return count;
+        }
+
         static int TopVerticesWith(Mesh mesh, System.Func<Color, bool> match)
         {
             var colors  = mesh.colors;

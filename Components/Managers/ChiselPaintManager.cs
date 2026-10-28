@@ -78,7 +78,33 @@ namespace Chisel.Components
 
             foreach (var generator in s_Work)
                 Give(generator);
+            s_GivenNow.UnionWith(s_Work);
             s_Work.Clear();
+        }
+
+        // the generators given since the last trees were built: the build may have given them new shapes
+        static readonly HashSet<ChiselGeneratorComponent> s_GivenNow = new();
+
+        /// <summary>
+        /// After the trees were built: grows the grids of the generators given since the last build that no longer cover
+        /// their surfaces, as the generators only get their new shapes then. True when any did; their paint is given
+        /// again at the next <see cref="Update"/>.
+        /// </summary>
+        public static bool GridsGrew()
+        {
+            var grew = false;
+            foreach (var generator in s_GivenNow)
+            {
+                if (!generator || generator.SurfacePaint.Count == 0 || !ChiselPaintBrush.Refit(generator))
+                    continue;
+                s_Changed.Add(generator);
+#if UNITY_EDITOR
+                UnityEditor.EditorUtility.SetDirty(generator);
+#endif
+                grew = true;
+            }
+            s_GivenNow.Clear();
+            return grew;
         }
 
         // The generator's paint given to its model's tree, and taken from the tree it was in before

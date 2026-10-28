@@ -152,10 +152,52 @@ namespace Chisel.Components
                 var grid = CreateGrid(generator, paint.surfaceIndex, paint.attribute, paint.components, paint.defaultValue, spacing);
                 if (grid == null)
                     continue;
-                for (int j = 0; j < grid.resolution.y; j++)
+                Resample(paint, grid);
+                // the old grid leaves the list, the new one goes to its end: the next paint is at p now
+                generator.SetSurfacePaint(grid);
+                p--;
+                changed = true;
+            }
+            return changed;
+        }
+
+        static void Resample(ChiselSurfacePaint from, ChiselSurfacePaint to)
+        {
+            for (int j = 0; j < to.resolution.y; j++)
+            {
+                for (int i = 0; i < to.resolution.x; i++)
+                    to[i, j] = from.Sample(to.origin + i * to.cellU + j * to.cellV);
+            }
+        }
+
+        /// <summary>
+        /// Grows the grids of a generator's surfaces that no longer cover them (the generator was made bigger) by whole
+        /// cells, so the points they had keep their paint and the new ones take the nearest edge's. A surface that turned
+        /// gets a grid in its new plane, resampled from the old one. True when any changed.
+        /// </summary>
+        public static bool Refit(ChiselGeneratorComponent generator)
+        {
+            var changed = false;
+            var all = generator.SurfacePaint;
+            for (int p = 0; p < all.Count; p++)
+            {
+                var paint = all[p];
+                if (paint == null || !paint.IsValid || !SurfaceOutline(generator, paint.surfaceIndex, s_Corners, out var normal))
+                    continue;
+
+                ChiselSurfacePaint grid;
+                var gridNormal = Vector3.Cross(paint.cellU, paint.cellV).normalized;
+                if (Mathf.Abs(Vector3.Dot(gridNormal, normal)) >= 0.999f)
                 {
-                    for (int i = 0; i < grid.resolution.x; i++)
-                        grid[i, j] = paint.Sample(grid.origin + i * grid.cellU + j * grid.cellV);
+                    if (!Grown(paint, s_Corners, out grid))
+                        continue;
+                } else
+                {
+                    grid = CreateGrid(generator, paint.surfaceIndex, paint.attribute, paint.components, paint.defaultValue,
+                                      paint.spacing > 0 ? paint.spacing : SpacingOf(generator, paint.surfaceIndex));
+                    if (grid == null)
+                        continue;
+                    Resample(paint, grid);
                 }
                 // the old grid leaves the list, the new one goes to its end: the next paint is at p now
                 generator.SetSurfacePaint(grid);
@@ -163,6 +205,70 @@ namespace Chisel.Components
                 changed = true;
             }
             return changed;
+        }
+
+        // The grid with whole cells added on the sides where the corners are beyond it, its points kept; false when they
+        // are all on it. Too many points for one grid: larger cells, resampled.
+        static bool Grown(ChiselSurfacePaint paint, List<Vector3> corners, out ChiselSurfacePaint grown)
+        {
+            grown = null;
+            const float kOnTheGrid = 1e-3f;    // in cells
+            var uu = Vector3.Dot(paint.cellU, paint.cellU);
+            var uv = Vector3.Dot(paint.cellU, paint.cellV);
+            var vv = Vector3.Dot(paint.cellV, paint.cellV);
+            var determinant = uu * vv - uv * uv;
+            if (!(Mathf.Abs(determinant) > 1e-12f))
+                return false;
+            var min = new Vector2(float.PositiveInfinity, float.PositiveInfinity);
+            var max = new Vector2(float.NegativeInfinity, float.NegativeInfinity);
+            foreach (var corner in corners)
+            {
+                var offset = corner - paint.origin;
+                var du = Vector3.Dot(offset, paint.cellU);
+                var dv = Vector3.Dot(offset, paint.cellV);
+                var cell = new Vector2((vv * du - uv * dv) / determinant, (uu * dv - uv * du) / determinant);
+                min = Vector2.Min(min, cell);
+                max = Vector2.Max(max, cell);
+            }
+            var before = new Vector2Int(Mathf.Max(0, -Mathf.FloorToInt(min.x + kOnTheGrid)), Mathf.Max(0, -Mathf.FloorToInt(min.y + kOnTheGrid)));
+            var after  = new Vector2Int(Mathf.Max(0, Mathf.CeilToInt(max.x - kOnTheGrid) - (paint.resolution.x - 1)),
+                                        Mathf.Max(0, Mathf.CeilToInt(max.y - kOnTheGrid) - (paint.resolution.y - 1)));
+            if (before == Vector2Int.zero && after == Vector2Int.zero)
+                return false;
+
+            var resolution = paint.resolution + before + after;
+            var origin     = paint.origin - before.x * paint.cellU - before.y * paint.cellV;
+            var cellU      = paint.cellU;
+            var cellV      = paint.cellV;
+            var scale      = 1f;
+            // grow the cells until the grid fits
+            while (resolution.x * resolution.y > kMaxGridPoints && scale < 1e3f)
+            {
+                scale *= 1.25f;
+                var size = new Vector2((resolution.x - 1) * paint.cellU.magnitude, (resolution.y - 1) * paint.cellV.magnitude);
+                cellU = paint.cellU * scale;
+                cellV = paint.cellV * scale;
+                resolution = new Vector2Int(Mathf.CeilToInt(size.x / cellU.magnitude) + 1, Mathf.CeilToInt(size.y / cellV.magnitude) + 1);
+            }
+            grown = ChiselSurfacePaint.Create(paint.surfaceIndex, paint.attribute, paint.components, paint.defaultValue, origin, cellU, cellV, resolution);
+            grown.spacing = paint.spacing;
+            if (scale > 1)
+            {
+                Resample(paint, grown);
+                return true;
+            }
+            for (int j = 0; j < resolution.y; j++)
+            {
+                for (int i = 0; i < resolution.x; i++)
+                {
+                    var oldI = i - before.x;
+                    var oldJ = j - before.y;
+                    grown[i, j] = oldI >= 0 && oldJ >= 0 && oldI < paint.resolution.x && oldJ < paint.resolution.y
+                        ? paint[oldI, oldJ]
+                        : paint.Sample(origin + i * cellU + j * cellV);
+                }
+            }
+            return true;
         }
 
         /// <summary>
