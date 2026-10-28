@@ -571,7 +571,7 @@ namespace Chisel.Core
             }
         }
 
-        public unsafe float3 GetUniqueVertex(float3 vertex)
+        public float3 GetUniqueVertex(float3 vertex)
         {
 #if ENABLE_UNITY_COLLECTIONS_CHECKS
             AtomicSafetyHandle.CheckWriteAndThrow(m_Safety);
@@ -588,7 +588,7 @@ namespace Chisel.Core
             return HashedVerticesUtility.AddNoResize((ushort*)m_HashTable, m_ChainedIndices, m_Vertices, vertex);
         }
 
-        public unsafe void AddUniqueVertices([ReadOnly] ref BlobArray<float3> uniqueVertices)
+        public void AddUniqueVertices([ReadOnly] ref BlobArray<float3> uniqueVertices)
         {
 #if ENABLE_UNITY_COLLECTIONS_CHECKS
             AtomicSafetyHandle.CheckWriteAndThrow(m_Safety);
@@ -607,7 +607,7 @@ namespace Chisel.Core
             }
         }
         
-        public unsafe void AddUniqueVertices(in UnsafeList<float3> uniqueVertices)
+        public void AddUniqueVertices(in UnsafeList<float3> uniqueVertices)
         {
 #if ENABLE_UNITY_COLLECTIONS_CHECKS
             AtomicSafetyHandle.CheckWriteAndThrow(m_Safety);
@@ -626,7 +626,7 @@ namespace Chisel.Core
             }
         }
         
-        public unsafe void ReplaceIfExists([ReadOnly] ref BlobArray<float3> uniqueVertices)
+        public void ReplaceIfExists([ReadOnly] ref BlobArray<float3> uniqueVertices)
         {
 #if ENABLE_UNITY_COLLECTIONS_CHECKS
             AtomicSafetyHandle.CheckWriteAndThrow(m_Safety);
@@ -639,7 +639,7 @@ namespace Chisel.Core
             }
         }
 
-        public unsafe void ReplaceIfExists([ReadOnly] in UnsafeList<float3> uniqueVertices)
+        public void ReplaceIfExists([ReadOnly] in UnsafeList<float3> uniqueVertices)
         {
 #if ENABLE_UNITY_COLLECTIONS_CHECKS
             AtomicSafetyHandle.CheckWriteAndThrow(m_Safety);
@@ -652,7 +652,7 @@ namespace Chisel.Core
             }
         }
 
-        public unsafe void ReplaceIfExists([ReadOnly] ref BlobArray<float3> uniqueVertices, float3 min, float3 max)
+        public void ReplaceIfExists([ReadOnly] ref BlobArray<float3> uniqueVertices, float3 min, float3 max)
         {
 #if ENABLE_UNITY_COLLECTIONS_CHECKS
             AtomicSafetyHandle.CheckWriteAndThrow(m_Safety);
@@ -666,7 +666,7 @@ namespace Chisel.Core
             }
         }
 
-        public unsafe void ReplaceIfExists([ReadOnly] in UnsafeList<float3> uniqueVertices, float3 min, float3 max)
+        public void ReplaceIfExists([ReadOnly] in UnsafeList<float3> uniqueVertices, float3 min, float3 max)
         {
 #if ENABLE_UNITY_COLLECTIONS_CHECKS
             AtomicSafetyHandle.CheckWriteAndThrow(m_Safety);

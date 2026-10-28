@@ -11,7 +11,7 @@ using WriteOnlyAttribute = Unity.Collections.WriteOnlyAttribute;
 namespace Chisel.Core
 {        
     [BurstCompile(CompileSynchronously = true)]
-    unsafe struct FindModifiedBrushesJob : IJob
+    struct FindModifiedBrushesJob : IJob
     {
 		// Read
 		[NoAlias, ReadOnly] public CompactHierarchy.ReadOnly    compactHierarchy;

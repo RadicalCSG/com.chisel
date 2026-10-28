@@ -61,7 +61,7 @@ namespace Chisel.Core
             }
 
 #else
-            internal unsafe ParallelWriterExt(void* ptr, UnsafeList<T>* listData)
+            internal ParallelWriterExt(void* ptr, UnsafeList<T>* listData)
             {
                 Ptr = ptr;
                 ListData = listData;

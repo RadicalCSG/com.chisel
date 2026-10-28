@@ -12,7 +12,7 @@ using WriteOnlyAttribute = Unity.Collections.WriteOnlyAttribute;
 namespace Chisel.Core
 {
     [BurstCompile(CompileSynchronously = true)]
-    unsafe struct InvalidateBrushesJob : IJob
+    struct InvalidateBrushesJob : IJob
     {
         [NoAlias, ReadOnly] public CompactHierarchy.ReadOnly                             compactHierarchy;
         [NoAlias, ReadOnly] public NativeReference<bool>                                 needRemappingRef;
