@@ -15,7 +15,6 @@ namespace Chisel.Editors
         static float            s_LastHeight = 1.0f;
         static float            s_NextHeight = 1.0f;
         static float            s_DefaultHeight = 0;
-        static Bounds           s_LastBounds;
         
         // TODO: somehow get rid of this
         public static void Reset()
@@ -26,7 +25,6 @@ namespace Chisel.Editors
             s_ModifyMode = false;
             s_DefaultHeight = 0;
             s_NextHeight = 0;
-            s_LastBounds = new Bounds();
             GUIUtility.hotControl = 0;
             PointDrawing.Reset();
         }
@@ -129,7 +127,6 @@ namespace Chisel.Editors
             // TODO: fixed height should be possible to change sign
 
             // TODO: have some sort of click placement of previously used bounds (alt?)
-            //bounds = s_LastBounds;
 
             bool doCommit = false;
             try
@@ -303,7 +300,6 @@ namespace Chisel.Editors
                 bounds.center = center;
                 if (doCommit)
                 {
-                    s_LastBounds = bounds;
                     s_LastHeight = s_NextHeight;
                 }
             }

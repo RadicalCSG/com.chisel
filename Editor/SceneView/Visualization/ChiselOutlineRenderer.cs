@@ -158,15 +158,6 @@ namespace Chisel.Editors
             s_UpdateSurfaceSelection = true;
         }
 
-        internal void OnSyncedBrushesChanged()
-        {
-            // Defer since we could potentially get several events before we actually render
-            // also, not everything might be set up correctly just yet.
-            s_UpdateBrushSelection = true;
-            s_UpdateSurfaceSelection = true;
-            s_ClearSurfaceCache = true;
-        }
-
         internal void OnSelectionChanged()
         {
             // Defer since we could potentially get several events before we actually render

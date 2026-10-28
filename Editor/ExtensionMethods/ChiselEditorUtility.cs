@@ -74,18 +74,5 @@ namespace Chisel.Editors
             EditorGUI.EndProperty();
         }
 
-        internal static void ConsumeUnusedMouseEvents(int hash, Rect position)
-        { 
-            int controlID = GUIUtility.GetControlID(hash, FocusType.Keyboard, position);
-            var type = Event.current.GetTypeForControl(controlID);
-            switch (type)
-            {
-                case EventType.MouseDown: { if (position.Contains(Event.current.mousePosition)) { GUIUtility.hotControl = controlID; GUIUtility.keyboardControl = controlID; Event.current.Use(); } break; }
-                case EventType.ScrollWheel:
-                case EventType.MouseMove: { if (position.Contains(Event.current.mousePosition)) { Event.current.Use(); } break; }
-                case EventType.MouseUp:   { if (GUIUtility.hotControl == controlID) { GUIUtility.hotControl = 0; GUIUtility.keyboardControl = 0; Event.current.Use(); } break; }
-                case EventType.MouseDrag: { if (GUIUtility.hotControl == controlID) { Event.current.Use(); } break; }
-            }
-        }
     }
 }

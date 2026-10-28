@@ -343,17 +343,6 @@ namespace Chisel.Core
 
         [System.Diagnostics.Conditional("ENABLE_UNITY_COLLECTIONS_CHECKS")]
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static void CheckCapacityInRange(long value, long length)
-        {
-            if (value < 0)
-                throw new ArgumentOutOfRangeException($"Value {value} must be positive.");
-
-            if (value < length)
-                throw new ArgumentOutOfRangeException($"Value {value} is out of range in NativeListArray of '{length}' Length.");
-        }
-
-        [System.Diagnostics.Conditional("ENABLE_UNITY_COLLECTIONS_CHECKS")]
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         static private void CheckAllocator(Allocator a)
         {
             if (a <= Allocator.None)
@@ -442,13 +431,6 @@ namespace Chisel.Core
         #endregion
 
         #region UnsafeDisposeJob
-        internal static bool ShouldDeallocate(Allocator allocator)
-        {
-            // Allocator.Invalid == container is not initialized.
-            // Allocator.None    == container is initialized, but container doesn't own data.
-            return allocator > Allocator.None;
-        }
-
 
         [BurstCompile(CompileSynchronously = true)]
         internal unsafe struct UnsafeDisposeJob : IJob

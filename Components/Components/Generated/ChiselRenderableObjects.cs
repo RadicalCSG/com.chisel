@@ -399,46 +399,6 @@ namespace Chisel.Components
             }
         }
 
-#if false // not used?
-        public void Clear(ChiselModelComponent model, GameObjectState gameObjectState)
-        {
-            bool meshIsModified = false;
-            {
-                Profiler.BeginSample("Clear");
-                triangleBrushes.Clear();
-
-                if (sharedMesh.vertexCount > 0)
-                {
-                    meshIsModified = true;
-                    sharedMesh.Clear(keepVertexLayout: true);
-                }
-                Profiler.EndSample();
-
-                Profiler.BeginSample("SetSharedMesh");
-                if (meshFilter.sharedMesh != sharedMesh)
-                {
-                    meshFilter.sharedMesh = sharedMesh;
-                    meshIsModified = true;
-                }
-                Profiler.EndSample();
-
-                Profiler.BeginSample("SetMaterialsIfModified");
-                renderMaterials = Array.Empty<Material>();
-                SetMaterialsIfModified(meshRenderer, renderMaterials);
-                Profiler.EndSample();
-
-                Profiler.BeginSample("Enable");
-                var expectedEnabled = sharedMesh.vertexCount > 0 && !debugVisualizationRenderer;
-                if (meshRenderer.enabled != expectedEnabled)
-                    meshRenderer.enabled = expectedEnabled;
-                Profiler.EndSample();
-            }
-
-            Profiler.BeginSample("UpdateSettings");
-            UpdateSettings(model, gameObjectState, meshIsModified);
-            Profiler.EndSample();
-        }
-#endif
         
         public static void SetTriangleBrushes(List<ChiselMeshUpdate> meshUpdates, List<ChiselRenderObjectUpdate> objectUpdates, ref VertexBufferContents vertexBufferContents)
         {

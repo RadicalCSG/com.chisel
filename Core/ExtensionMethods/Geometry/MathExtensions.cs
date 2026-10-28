@@ -131,24 +131,6 @@ namespace Chisel.Core
             return (distance > kDistanceEpsilon);
 		}
 
-        static bool Intersect(Vector2 p1, Vector2 d1, Vector2 p2, Vector2 d2, out Vector2 intersection)
-        {
-            const float kEpsilon = 0.0001f;
-
-            var f = d1.y * d2.x - d1.x * d2.y;
-            // check if the rays are parallel
-            if (f >= -kEpsilon && f <= kEpsilon)
-            {
-                intersection = Vector2.zero;
-                return false;
-            }
-
-            var c0 = p1 - p2;
-            var t = (d2.y * c0.x - d2.x * c0.y) / f;
-            intersection = p1 + (t * d1);
-            return true;
-        }
-
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public static float SignedAngle(Vector3 from, Vector3 to, Vector3 axis)
 		{

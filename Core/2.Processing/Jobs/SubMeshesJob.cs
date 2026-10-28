@@ -414,20 +414,11 @@ namespace Chisel.Core
         [NoAlias] public HotspotGroupMemory hotspotGroupMemory;
         // the brushes whose kinds were kept (HotspotStageMemory.keptKinds)
         [NoAlias, ReadOnly] public NativeList<bool> keptBrushes;
-        public bool verify;
 
         public void Execute()
         {
             HotspotGroups.Borders(brushRenderData, hotspotLinks, ref hotspotCut.bordersOf);
             HotspotGroups.PrepareIncremental(brushRenderData, hotspotTiles, hotspotLayouts, hotspotLinks, ref hotspotFind, ref hotspotGroupMemory, keptBrushes.AsArray());
-            if (verify)
-            {
-                var full = FindState.Create(Allocator.Temp);
-                HotspotGroups.Prepare(brushRenderData, hotspotTiles, hotspotLayouts, hotspotLinks, ref full);
-                if (!HotspotGroups.SameAs(hotspotFind, full, out var difference))
-                    Debug.LogError($"Incremental hotspot groups differ from the full grouping ({hotspotGroupMemory.lastDirty.Value} dirty, full: {hotspotGroupMemory.lastFull.Value}): {difference}");
-                full.Dispose();
-            }
             hotspotFind.inputs.Value = HotspotGroups.InputsKey(hotspotTiles, hotspotLayouts, hotspotTileSides);
         }
     }
@@ -444,7 +435,7 @@ namespace Chisel.Core
         [NoAlias] public FindState       hotspotFind;
         [NoAlias] public WeldMemory      weldMemory;
         [NoAlias, ReadOnly] public NativeList<float3x2> collapseMoves;
-        public bool verify, report;
+        public bool verify;
         [NoAlias, ReadOnly] public NativeArray<HotspotLayoutData> hotspotLayouts;
         [NoAlias] public HotspotStageMemory hotspotStageMemory;
 
@@ -454,7 +445,7 @@ namespace Chisel.Core
             hotspotCut.kept.Clear();
             for (int i = 0; i < brushRenderData.Length; i++)
                 hotspotCut.kept.Add(brushRenderData[i].brushRenderBuffer);
-            OutputModelWeld.FinishIncremental(brushRenderData, weldCopies, ref weldMemory, verify, report, collapseMoves);
+            OutputModelWeld.FinishIncremental(brushRenderData, weldCopies, ref weldMemory, verify, collapseMoves);
             HotspotGroups.StartKinds(brushRenderData, ref hotspotFind);
             hotspotStageMemory.Prepare(brushRenderData, hotspotLayouts, weldMemory.sameBuffer);
         }
@@ -473,7 +464,6 @@ namespace Chisel.Core
         [NoAlias, ReadOnly] public NativeArray<int>  slotOfBrush;
         [NoAlias, ReadOnly] public NativeArray<bool> keptKinds;
         [NoAlias, ReadOnly] public NativeArray<HotspotStageBrush> stageBrushes;
-        public bool verify;
 
         public void Execute(int b)
         {
@@ -489,8 +479,6 @@ namespace Chisel.Core
                     kinds[start + s]  = kept.kinds[s];
                     hashes[start + s] = kept.hashes[s];
                 }
-                if (verify)
-                    HotspotGroups.VerifyKeptKinds(b, brushRenderData, hotspotLayouts, kindStart, kinds, hashes);
                 return;
             }
             HotspotGroups.KindsOf(b, brushRenderData, hotspotLayouts, kindStart, kinds, hashes);
@@ -577,7 +565,6 @@ namespace Chisel.Core
         [NoAlias, ReadOnly] public NativeArray<int>  slotOfBrush;
         [NoAlias, ReadOnly] public NativeArray<bool> keptContent;
         [NativeDisableParallelForRestriction] [NoAlias] public NativeArray<HotspotStageBrush> stageBrushes;
-        public bool verify;
 
         public void Execute(int b)
         {
@@ -592,9 +579,7 @@ namespace Chisel.Core
                 kept.content    = content;
                 kept.hasContent = true;
                 stageBrushes[slot] = kept;
-            } else
-            if (verify && keptContent[b])
-                OutputHotspotSections.VerifyKeptContent(b, brushRenderData, content);
+            }
         }
     }
 

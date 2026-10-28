@@ -6,7 +6,6 @@ namespace Chisel.Editors
 {
     public sealed partial class SceneHandles
     {
-		internal readonly static int kEdge2DHash = "Edge1DHash".GetHashCode();
 
         public static bool InCameraOrbitMode
         {

@@ -67,8 +67,6 @@ namespace Chisel.Core
 
         internal int		VertexCount			{ get { return (sides * RingCount) + ExtraVertexCount; } }
 
-        internal int		BottomRing			{ get { return (HaveRoundedBottom) ? (RingCount - bottomSegments) : RingCount - 1; } }
-        internal int		TopRing				{ get { return (HaveRoundedTop   ) ? (topSegments - 1) : 0; } }
 
         internal float	    TopOffset			{ get { if (height < 0) return -topHeight; return height - topHeight; } }
 

@@ -1,5 +1,4 @@
 using System;
-using System.Reflection;
 using System.Text;
 using NUnit.Framework;
 
@@ -10,62 +9,6 @@ namespace Chisel.Core.Tests
 	[Explicit("writes traces of the exact CSG to Library/ChiselHarvest/traces; run it deliberately")]
 	public class ExactCSGProbeTests
 	{
-		// Corpus fixtures: they assert through ContentsHarvest.AssertMatchesOracle, which traces when TraceTo is set.
-		static readonly (Type fixture, string method)[] kFixtures =
-		{
-			(typeof(SampleSceneHoleTests), "HoleOnExtrudedShapeBottom_WithAddBoxAndAddBox15AndAddExtrudedShape2_Model2F04"),
-		};
-
-		// Generated scenes, asserted the same way so they are traced too.
-		static readonly (string what, Func<ContentsScene> scene)[] kScenes =
-		{
-			("cut brushes with types seed 29",  () => ContentsSceneGenerators.CutBrushes(29)),
-			("free brushes with types seed 29", () => ContentsSceneGenerators.FreeBrushes(29)),
-		};
-
-		[Test]
-		public void TraceFailingFixtures()
-		{
-			var report = new StringBuilder();
-			foreach (var (fixture, method) in kFixtures)
-			{
-				ContentsHarvest.TraceTo = "exact";
-				try
-				{
-					var instance = Activator.CreateInstance(fixture);
-					fixture.GetMethod(method, BindingFlags.Public | BindingFlags.Instance).Invoke(instance, null);
-					report.AppendLine($"{method}: PASS");
-				}
-				catch (TargetInvocationException e)
-				{
-					var message = e.InnerException?.Message ?? e.Message;
-					report.AppendLine($"{method}: FAIL {message.Split('\n')[0]}");
-				}
-				finally
-				{
-					ContentsHarvest.TraceTo = null;
-				}
-			}
-			foreach (var (what, scene) in kScenes)
-			{
-				ContentsHarvest.TraceTo = "exact";
-				try
-				{
-					ContentsHarvest.AssertMatchesOracle(scene(), what);
-					report.AppendLine($"{what}: PASS");
-				}
-				catch (Exception e)
-				{
-					report.AppendLine($"{what}: FAIL {e.Message.Split('\n')[0]}");
-				}
-				finally
-				{
-					ContentsHarvest.TraceTo = null;
-				}
-			}
-			Assert.Pass(report.ToString());
-		}
-
 		[Test]
 		public void NestedSubtractionDepths()
 		{

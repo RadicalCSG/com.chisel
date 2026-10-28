@@ -168,7 +168,6 @@ namespace Chisel.Editors
         #endregion
 
         [SerializeField] ChiselTopologySelection[] topologySelection;
-        private object brushMeshSelection;
         readonly Dictionary<ChiselNodeComponent, ChiselNodeSelection> nodeSelectionLookup = new Dictionary<ChiselNodeComponent, ChiselNodeSelection>();
 
         public ChiselNodeSelection this[ChiselNodeComponent node]

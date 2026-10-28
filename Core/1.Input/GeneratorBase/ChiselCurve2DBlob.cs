@@ -126,22 +126,6 @@ namespace Chisel.Core
 		}
 
         // TODO: put somewhere else
-        static float CalculateOrientation(NativeList<SegmentVertex> vertices, Range range)
-        {
-            // Newell's algorithm to create a plane for concave polygons.
-            // NOTE: doesn't work well for self-intersecting polygons
-            var direction = 0.0f;
-            var prevVertex = vertices[range.end - 1].position;
-            for (int n = range.start; n < range.end; n++)
-            {
-                var currVertex = vertices[n].position;
-                direction += (prevVertex.x - currVertex.x) * (prevVertex.y + currVertex.y);
-                prevVertex = currVertex;
-            }
-            return direction;
-        }
-
-        // TODO: put somewhere else
         public static float CalculateOrientation(UnsafeList<SegmentVertex> vertices, Range range)
         {
             // Newell's algorithm to create a plane for concave polygons.

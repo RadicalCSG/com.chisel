@@ -267,13 +267,6 @@ namespace Chisel.Core
             return true;
         }
 
-        // HotspotGroups.VerifyIncremental: a kept content hash is the one the buffer has now
-        public static void VerifyKeptContent(int b, NativeArray<BrushData> brushes, uint4 content)
-        {
-            if (!ContentHash(brushes[b].brushRenderBuffer, out var now) || !now.Equals(content))
-                UnityEngine.Debug.LogError($"Kept hotspot content hash of brush {b} differs from its buffer's");
-        }
-
         // The brushes to cut (work): a brush whose key is what it was when the cache kept its cut is given that cut here
         public static void FinishCutKeys(NativeList<BrushData> brushes, NativeParallelHashMap<CompactNodeID, HotspotCutEntry> cache, ref HotspotCutState state)
         {

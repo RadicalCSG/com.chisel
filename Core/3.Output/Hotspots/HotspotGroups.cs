@@ -289,9 +289,6 @@ namespace Chisel.Core
     // neighbour it shares its longest edge with.
     internal static class HotspotGroups
     {
-        // Every update also groups everything again (Prepare) and logs where the incremental result differs
-        public static bool VerifyIncremental;
-
         // Normals and frames agree this closely (the cosine), and the surfaces share at least two corners
         const float kSameDirection = 1 - 1e-6f;
         // A corner two members have, unfolded by each, is one point when they put it this close (squared)
@@ -464,23 +461,6 @@ namespace Chisel.Core
                 var kind = KindOf(ref surfaces[s], layouts);
                 kinds[kindStart[b] + s]  = kind;
                 hashes[kindStart[b] + s] = kind == 0 ? default : SurfaceHash(ref surfaces[s], kind);
-            }
-        }
-
-        // VerifyIncremental: a brush's kept kinds and hashes are what KindsOf makes of it now
-        public static void VerifyKeptKinds(int b, NativeArray<BrushData> brushes, NativeArray<HotspotLayoutData> layouts, NativeArray<int> kindStart, NativeArray<byte> kinds,
-                                           NativeArray<uint4> hashes)
-        {
-            ref var surfaces = ref brushes[b].brushRenderBuffer.Value.surfaces;
-            for (int s = 0; s < surfaces.Length; s++)
-            {
-                var kind = KindOf(ref surfaces[s], layouts);
-                var hash = kind == 0 ? default : SurfaceHash(ref surfaces[s], kind);
-                if (kinds[kindStart[b] + s] != kind || !hashes[kindStart[b] + s].Equals(hash))
-                {
-                    UnityEngine.Debug.LogError($"Kept hotspot kind of brush {b}, surface {s} differs from what its buffer gives now");
-                    return;
-                }
             }
         }
 

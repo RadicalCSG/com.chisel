@@ -226,8 +226,6 @@ namespace Chisel.Core
                     }
                 }
 
-                TraceBrush(brushNodeOrder, faceCount, ref builder.planes, ref touching, ref lookupBrush, ref lookupStart, ref lookupEnd);
-
                 for (int surface = 0; surface < surfaceCount; surface++)
                 {
                     if (!valid || surface >= faceCount)
@@ -238,7 +236,6 @@ namespace Chisel.Core
                     Count(ExactCSGStat.Faces);
                     builder.routingErrors = 0;
                     var failure = builder.BuildFace(surface, faceCount, ref touching, ref routingRows, ref lookupStart, ref lookupEnd, ref lookupBrush);
-                    TraceFace(brushNodeOrder, surface, ref builder, ref touching, failure);
                     Count(ExactCSGStat.RoutingOutOfRange, builder.routingErrors);
                     if (failure != ExactFaceFailure.None)
                     {
@@ -294,71 +291,6 @@ namespace Chisel.Core
             output.EndForEachIndex();
             if (captureExact)
                 capture.EndForEachIndex();
-        }
-
-        // Investigation trace (CSGTrace): discarded under Burst, so it only runs when a test turns Burst off.
-        [BurstDiscard]
-        static void TraceBrush(int brushNodeOrder, int faceCount, ref ExactList<ExactPlane> planes, ref ExactList<ExactTouchingBrush> touching,
-                               ref ExactList<int> lookupBrush, ref ExactList<int> lookupStart, ref ExactList<int> lookupEnd)
-        {
-            if (!CSGTrace.Enabled)
-                return;
-            var text = new System.Text.StringBuilder();
-            text.Append("X b").Append(brushNodeOrder).Append(": faces ").Append(faceCount).Append("; lookups");
-            for (int k = 0; k < lookupBrush.Length; k++)
-            {
-                var t = lookupBrush[k];
-                text.Append(' ').Append(k).Append(':').Append(t < 0 ? "-" : ("b" + touching[t].nodeOrder))
-                    .Append('[').Append(lookupStart[k]).Append(',').Append(lookupEnd[k]).Append(')');
-            }
-            text.Append("; touching");
-            for (int t = 0; t < touching.Length; t++)
-            {
-                var brush = touching[t];
-                text.Append(" b").Append(brush.nodeOrder).Append(brush.routes ? "" : "(no route)")
-                    .Append(" I").Append(brush.insideCategory).Append(" A").Append(brush.alignedCategory).Append(" R").Append(brush.reverseAlignedCategory);
-            }
-            CSGTrace.Line(text.ToString());
-            // prefixed with the brush: jobs run in parallel and their lines interleave
-            for (int p = 0; p < planes.Length; p++)
-            {
-                var plane = planes[p];
-                CSGTrace.Line($"X b{brushNodeOrder} plane {p}: {plane.a} {plane.b} {plane.c} {plane.w}");
-            }
-        }
-
-        [BurstDiscard]
-        static void TraceFace(int brushNodeOrder, int surface, ref ExactFaceBuilder builder, ref ExactList<ExactTouchingBrush> touching,
-                              ExactFaceFailure failure)
-        {
-            if (!CSGTrace.Enabled)
-                return;
-            var text = new System.Text.StringBuilder();
-            text.Append("X b").Append(brushNodeOrder).Append(" f").Append(surface).Append(": ").Append(failure)
-                .Append("; regions");
-            for (int r = 0; r < builder.regions.Length; r++)
-            {
-                var region = builder.regions[r];
-                text.Append(' ').Append(region.brush < 0 ? "face" : ("b" + touching[region.brush].nodeOrder))
-                    .Append(":c").Append(region.category).Append(":n").Append(region.polygon.count);
-            }
-            text.Append("; lines ").Append(builder.lines.Length)
-                .Append("; edges aligned ").Append(builder.alignedEdges.Length).Append(" reverse ").Append(builder.reverseAlignedEdges.Length)
-                .Append("; vertices");
-            for (int v = 0; v < builder.vertices.Length; v++)
-            {
-                var vertex = builder.vertices[v];
-                text.Append(' ').Append(v).Append('(').Append(vertex.x.ToString("0.#####", System.Globalization.CultureInfo.InvariantCulture))
-                    .Append(',').Append(vertex.y.ToString("0.#####", System.Globalization.CultureInfo.InvariantCulture))
-                    .Append(',').Append(vertex.z.ToString("0.#####", System.Globalization.CultureInfo.InvariantCulture)).Append(')');
-            }
-            text.Append("; aligned");
-            for (int e = 0; e < builder.alignedEdges.Length; e++)
-                text.Append(' ').Append(builder.alignedEdges[e].from).Append('>').Append(builder.alignedEdges[e].to);
-            text.Append("; reverse");
-            for (int e = 0; e < builder.reverseAlignedEdges.Length; e++)
-                text.Append(' ').Append(builder.reverseAlignedEdges[e].from).Append('>').Append(builder.reverseAlignedEdges[e].to);
-            CSGTrace.Line(text.ToString());
         }
 
         void CountFailure(ExactFaceFailure failure)

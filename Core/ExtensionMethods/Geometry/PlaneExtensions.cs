@@ -16,17 +16,6 @@ namespace Chisel.Core
 		//*
 		public static double3 Intersection(double4 inPlane1, double4 inPlane2, double4 inPlane3)
         {
-#if false
-            var N0 = inPlane2.wzyx * inPlane3.yxwz - inPlane2.yxwz * inPlane3.wzyx;
-            var Nx = inPlane2.yyww * inPlane3.xzzx - inPlane2.xzzx * inPlane3.yyww;
-
-            var tx = inPlane1 * N0;
-            var ty = inPlane1.wxyz * Nx;
-            var tz = inPlane1.yzwx * -Nx.wxyz;
-
-            var E = tx + ty + tz;
-            return E.zwx / E.y;
-#else
             var N0 = inPlane2.wzyx * inPlane3.yxwz - inPlane2.yxwz * inPlane3.wzyx;
             var Nx = inPlane2.yyww * inPlane3.xzzx - inPlane2.xzzx * inPlane3.yyww;
 
@@ -38,7 +27,6 @@ namespace Chisel.Core
             if (math.isnan(E.y) || E.y > -CSGConstants.kDivideMinimumEpsilon && E.y < CSGConstants.kDivideMinimumEpsilon)
                 return NanDouble3;
             return (E.zwx / E.y);
-#endif
         }
         /*/
 
@@ -174,25 +162,12 @@ namespace Chisel.Core
 
         public static void IntersectionFirst(double4 inPlane2, double4 inPlane3, out double4 outN0, out double4 outN1)
         {
-#if false
-            outN0 = inPlane2.wzyx * inPlane3.yxwz - inPlane2.yxwz * inPlane3.wzyx;
-            outN1 = inPlane2.yyww * inPlane3.xzzx - inPlane2.xzzx * inPlane3.yyww;
-#else
             outN0 = inPlane2.wzyx * inPlane3.yxwz - inPlane2.yxwz * inPlane3.wzyx;
             outN1 = inPlane2.ywwy * inPlane3.zzxx - inPlane2.zzxx * inPlane3.ywwy;
-#endif
         }
 
         public static float3 IntersectionSecond(double4 inPlane1, double4 N0, double4 N1)
         {
-#if false
-            var tx = inPlane1 * N0;
-            var ty = inPlane1.wxyz * N1;
-            var tz = inPlane1.yzwx * -N1.wxyz;
-
-            var E = tx + ty + tz;
-            return (float3)(E.zwx / E.y); 
-#else
             /*
             var m = new float4x4(0, N1.y, N0.z, -N1.x,
                                  -N1.y, 0, N1.z, N0.w,
@@ -217,7 +192,6 @@ namespace Chisel.Core
 
             var E = (tx.zwxy + ty.yzwx + tz.wxyz);*/
             return (float3)(E.xyz / E.w);
-#endif
         }
     }
 

@@ -211,25 +211,6 @@ namespace Chisel.Editors
 			}
 		}
 
-		static IEnumerable<T> IterateOverPropertyClasses<T>(SerializedProperty prop)
-			where T : class
-		{
-			Debug.Assert(prop.propertyType == SerializedPropertyType.ManagedReference);
-			var propertyPath = prop.propertyPath;
-			foreach (var target in prop.serializedObject.targetObjects)
-			{
-				if (target == null)
-					continue;
-				var targetSerializedObject = new SerializedObject(target);
-				if (targetSerializedObject == null)
-					continue;
-				var targetRenderMaterialProp = targetSerializedObject.FindProperty(propertyPath);
-				if (targetRenderMaterialProp == null)
-					continue;
-				yield return targetRenderMaterialProp.managedReferenceValue as T;
-			}
-		}
-
 		public static void UpdateChiselMaterials(SerializedProperty prop)
 		{
 			bool modified = false;

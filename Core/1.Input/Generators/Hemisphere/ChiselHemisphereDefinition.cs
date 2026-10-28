@@ -89,7 +89,6 @@ namespace Chisel.Core
         const float kVertLineThickness			= 0.75f;
         const float kHorzLineThickness			= 1.0f;
         const float kCapLineThickness			= 2.0f;
-        const float kCapLineThicknessSelected   = 2.5f;
 
         static void DrawOutline(IChiselHandleRenderer renderer, ChiselHemisphereDefinition definition, Vector3[] vertices, LineMode lineMode)
         {
