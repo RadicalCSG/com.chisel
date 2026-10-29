@@ -632,6 +632,92 @@ namespace Chisel.Core
 
                 #endregion
             }
+
+            // Initialize threw partway: nothing has been scheduled yet, so whatever it made is freed right away
+            void DisposeAfterFailedInitialize()
+            {
+                ref var t = ref Temporaries;
+                if (t.transformTreeBrushIndicesList.IsCreated)  t.transformTreeBrushIndicesList.Dispose();
+                if (t.nodes.IsCreated)                          t.nodes.Dispose();
+                if (t.brushes.IsCreated)                        t.brushes.Dispose();
+                if (t.meshDatas.IsCreated)                      t.meshDatas.Dispose();
+                if (t.brushesThatNeedIndirectUpdateHashMap.IsCreated) t.brushesThatNeedIndirectUpdateHashMap.Dispose();
+                if (t.brushesThatNeedIndirectUpdate.IsCreated)  t.brushesThatNeedIndirectUpdate.Dispose();
+                if (t.brushIntersectionsWith.IsCreated)         t.brushIntersectionsWith.Dispose();
+                if (t.nodeIDValueToNodeOrderOffsetRef.IsCreated) t.nodeIDValueToNodeOrderOffsetRef.Dispose();
+                if (t.surfaceCountRef.IsCreated)                t.surfaceCountRef.Dispose();
+                if (t.compactTreeRef.IsCreated)                 t.compactTreeRef.Dispose();
+                if (t.needRemappingRef.IsCreated)               t.needRemappingRef.Dispose();
+                if (t.rebuildTreeBrushIndexOrders.IsCreated)    t.rebuildTreeBrushIndexOrders.Dispose();
+                if (t.allUpdateBrushIndexOrders.IsCreated)      t.allUpdateBrushIndexOrders.Dispose();
+                if (t.allBrushMeshIDs.IsCreated)                t.allBrushMeshIDs.Dispose();
+                if (t.brushRenderData.IsCreated)                t.brushRenderData.Dispose();
+                if (t.allTreeBrushIndexOrders.IsCreated)        t.allTreeBrushIndexOrders.Dispose();
+                if (t.brushIntersectionsWithRange.IsCreated)    t.brushIntersectionsWithRange.Dispose();
+                if (t.nodeIDValueToNodeOrder.IsCreated)         t.nodeIDValueToNodeOrder.Dispose();
+                if (t.brushMeshLookup.IsCreated)                t.brushMeshLookup.Dispose();
+                if (t.brushBrushIntersections.IsCreated)        t.brushBrushIntersections.Dispose();
+                if (t.brushBoundsSweep.IsCreated)               t.brushBoundsSweep.Dispose();
+                if (t.exactCSGStats.IsCreated)                  t.exactCSGStats.Dispose();
+                if (t.exactBounds.IsCreated)                    t.exactBounds.Dispose();
+                if (t.decalVolumes.IsCreated)                   t.decalVolumes.Dispose();
+                if (t.decalTargets.IsCreated)                   t.decalTargets.Dispose();
+                if (t.changedDecalBounds.IsCreated)             t.changedDecalBounds.Dispose();
+                if (t.changedHotspotLayouts.IsCreated)          t.changedHotspotLayouts.Dispose();
+                if (t.hotspotTiles.IsCreated)                   t.hotspotTiles.Dispose();
+                if (t.hotspotLayouts.IsCreated)                 t.hotspotLayouts.Dispose();
+                if (t.hotspotTileSides.IsCreated)               t.hotspotTileSides.Dispose();
+                if (t.hotspotVariants.IsCreated)                t.hotspotVariants.Dispose();
+                if (t.hotspotLinks.IsCreated)                   t.hotspotLinks.Dispose();
+                if (t.subMeshDescriptions.IsCreated)            t.subMeshDescriptions.Dispose();
+                if (t.meshUpdatesColliders.IsCreated)           t.meshUpdatesColliders.Dispose();
+                if (t.meshUpdatesRenderables.IsCreated)         t.meshUpdatesRenderables.Dispose();
+                if (t.meshUpdatesKept.IsCreated)                t.meshUpdatesKept.Dispose();
+                if (t.meshUpdatesKeptColliders.IsCreated)       t.meshUpdatesKeptColliders.Dispose();
+                if (t.meshUpdatesKeptDebugVisualizations.IsCreated) t.meshUpdatesKeptDebugVisualizations.Dispose();
+                if (t.meshUpdatesDebugVisualizations.IsCreated) t.meshUpdatesDebugVisualizations.Dispose();
+                if (t.renderCopyRanges.IsCreated)               t.renderCopyRanges.Dispose();
+                if (t.renderCopyChunks.IsCreated)               t.renderCopyChunks.Dispose();
+                t.vertexBufferContents.Dispose(default).Complete();
+                if (t.meshQueries.IsCreated)                    t.meshQueries.Dispose();
+                if (t.subMeshSurfaces.IsCreated)                t.subMeshSurfaces.Dispose();
+                if (t.patchedRenderBuffers.IsCreated)           t.patchedRenderBuffers.Dispose();
+                t.hotspotCut.Dispose();
+                t.weld.Dispose();
+                t.hotspotFind.Dispose();
+                if (t.basePolygonDisposeList.IsCreated)         t.basePolygonDisposeList.Dispose();
+                if (t.treeSpaceVerticesDisposeList.IsCreated)   t.treeSpaceVerticesDisposeList.Dispose();
+                if (t.brushesTouchedByBrushDisposeList.IsCreated) t.brushesTouchedByBrushDisposeList.Dispose();
+                if (t.routingTableDisposeList.IsCreated)        t.routingTableDisposeList.Dispose();
+                if (t.brushRenderBufferDisposeList.IsCreated)   t.brushRenderBufferDisposeList.Dispose();
+                if (t.exactBrushDisposeList.IsCreated)          t.exactBrushDisposeList.Dispose();
+                Temporaries = default;
+            }
+
+            // Initializes every tree; when one fails, the trees before it give back their temporaries as usual
+            static void InitializeAll(TreeUpdate[] treeUpdates, int treeUpdateLength, ref JobHandle finalJobHandle)
+            {
+                for (int t = 0; t < treeUpdateLength; t++)
+                {
+                    try
+                    {
+                        treeUpdates[t].Initialize();
+                    }
+                    catch
+                    {
+                        treeUpdates[t].DisposeAfterFailedInitialize();
+                        for (int i = 0; i < t; i++)
+                        {
+                            ref var treeUpdate = ref treeUpdates[i];
+                            treeUpdate.PreMeshUpdateDispose();
+                            treeUpdate.FreeTemporaries(ref finalJobHandle);
+                            treeUpdate.Temporaries = default;
+                        }
+                        GeneratorJobPoolManager.Clear();
+                        throw;
+                    }
+                }
+            }
             #endregion
 
 
@@ -757,10 +843,7 @@ namespace Chisel.Core
                     #region Initialize temporaries
                     using (kTreeUpdateInitializeProfilerMarker.Auto())
                     {
-                        for (int t = 0; t < treeUpdateLength; t++)
-                        {
-                            treeUpdates[t].Initialize();
-                        }
+                        InitializeAll(treeUpdates, treeUpdateLength, ref finalJobHandle);
                     }
                     #endregion
 
