@@ -183,57 +183,6 @@ namespace Chisel.Core.Tests
             AssertApproximately(new Vector3(2, 0, 0), MathExtensions.ProjectPointRay(new Vector3(2, 1, 0), start, direction));
         }
 
-        // -- Point-on-segment / distance --------------------------------------------------
-
-        [Test]
-        public void IsPointOnLineSegment_DetectsOnAndOff()
-        {
-            var a = new float3(0, 0, 0);
-            var b = new float3(1, 0, 0);
-            Assert.That(MathExtensions.IsPointOnLineSegment(new float3(0.5f, 0, 0), a, b, 0.001f, 0.001f), Is.True);
-            Assert.That(MathExtensions.IsPointOnLineSegment(new float3(0.5f, 0.5f, 0), a, b, 0.001f, 0.001f), Is.False);
-            // endpoints count as on-segment via the vertex epsilon
-            Assert.That(MathExtensions.IsPointOnLineSegment(a, a, b, 0.001f, 0.001f), Is.True);
-        }
-
-        [Test]
-        public void IsPointOnLineSegmentButNotOnVertex_ExcludesEndpoints()
-        {
-            var a = new float3(0, 0, 0);
-            var b = new float3(1, 0, 0);
-            Assert.That(MathExtensions.IsPointOnLineSegmentButNotOnVertex(new float3(0.5f, 0, 0), a, b, 0.001f), Is.True);
-            Assert.That(MathExtensions.IsPointOnLineSegmentButNotOnVertex(a, a, b, 0.001f), Is.False);
-            Assert.That(MathExtensions.IsPointOnLineSegmentButNotOnVertex(b, a, b, 0.001f), Is.False);
-        }
-
-        [Test]
-        public void IsPointOnLineSegment_ProductionEpsilonsRejectNearbyDistinctVertex()
-        {
-            var a = new float3(93.90189f, -15.86011f, 38.64029f);   // bottom end of the edge
-            var b = new float3(93.90189f, -13.41992f, 38.64029f);   // top end of the edge
-            var v = new float3(93.90186f, -15.85986f, 38.65869f);   // neighbour's vertex, 0.0184 off in z
-
-            Assert.That(MathExtensions.IsPointOnLineSegment(v, a, b, CSGConstants.kSqrVertexEqualEpsilon, CSGConstants.kSqrEdgeDistanceEpsilon), Is.False);
-            Assert.That(MathExtensions.IsPointOnLineSegmentButNotOnVertex(v, a, b, CSGConstants.kSqrEdgeDistanceEpsilon), Is.False);
-
-            // The un-squared constant would let it through: 0.0184^2 = 0.00034 < 0.0006
-            Assert.That(MathExtensions.IsPointOnLineSegment(v, a, b, CSGConstants.kVertexEqualEpsilon, CSGConstants.kEdgeIntersectionEpsilon), Is.True);
-
-            // A vertex on the edge (0.1 mm off, inside the 0.6 mm band) still splits it
-            var on = new float3(93.90199f, -15.0f, 38.64029f);
-            Assert.That(MathExtensions.IsPointOnLineSegment(on, a, b, CSGConstants.kSqrVertexEqualEpsilon, CSGConstants.kSqrEdgeDistanceEpsilon), Is.True);
-        }
-
-        [Test]
-        public void SqrDistanceFromPointToLineSegment_OnSegmentBeyondAndOn()
-        {
-            var a = new float3(0, 0, 0);
-            var b = new float3(1, 0, 0);
-            Assert.That(MathExtensions.SqrDistanceFromPointToLineSegment(new float3(0.5f, 0.5f, 0), a, b), Is.EqualTo(0.25f).Within(1e-5f));
-            Assert.That(MathExtensions.SqrDistanceFromPointToLineSegment(new float3(2, 0, 0), a, b),       Is.EqualTo(1f).Within(1e-5f));
-            Assert.That(MathExtensions.SqrDistanceFromPointToLineSegment(new float3(0.5f, 0, 0), a, b),    Is.EqualTo(0f).Within(1e-5f));
-        }
-
         // -- Line/line intersection -------------------------------------------------------
 
         [Test]

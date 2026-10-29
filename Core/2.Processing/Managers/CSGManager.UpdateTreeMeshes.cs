@@ -1738,7 +1738,6 @@ namespace Chisel.Core
                     {
                         // Read
                         allUpdateBrushIndexOrders   = Temporaries.allUpdateBrushIndexOrders,
-                        brushesTouchedByBrushCache  = chiselLookupValues.brushesTouchedByBrushCache,
                         brushMeshLookup             = Temporaries.brushMeshLookup,
                         treeSpaceVerticesCache      = chiselLookupValues.treeSpaceVerticesCache,
 
@@ -1748,7 +1747,6 @@ namespace Chisel.Core
                     createBlobPolygonsBlobs.Schedule(runInParallel, Temporaries.allUpdateBrushIndexOrders, 16,
                         JobHandles.Read(
                             JobHandleType.allUpdateBrushIndexOrdersJobHandle,
-                            JobHandleType.brushesTouchedByBrushCacheJobHandle,
                             JobHandleType.brushMeshLookupJobHandle,
                             JobHandleType.treeSpaceVerticesCacheJobHandle),
                         JobHandles.Write(
