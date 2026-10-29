@@ -13,18 +13,24 @@ Thanks for wanting to help! There are many ways to do so:
 Chisel is a Unity package. To work on it, put it in a Unity project as an embedded package:
 
 1. Create a project with **Unity 6.6 or newer** and the **Universal Render Pipeline (URP)**.
-2. Clone the repository, with its submodules, into the project's `Packages` folder:
+2. Clone the repository into the project's `Packages` folder:
 
    ```
    cd <your project>/Packages
-   git clone --recurse-submodules https://github.com/<you>/com.chisel.git
+   git clone https://github.com/<you>/com.chisel.git
    ```
 
-   (Fork the repository first, and clone your fork.) If you already cloned without `--recurse-submodules`, run
-   `git submodule update --init` in it.
-3. Open the project in Unity. The first time takes a while, because Burst compiles a lot of code.
+   (Fork the repository first, and clone your fork.)
+3. Add its dependency, [Custom Asset Metadata](https://github.com/RadicalCSG/CustomAssetMetadata), to the project's
+   `Packages/manifest.json`:
 
-The package's dependency, CustomAssetMetadata, is a git submodule in `Dependencies`.
+   ```
+   "com.custom_asset_metadata": "https://github.com/RadicalCSG/CustomAssetMetadata.git",
+   ```
+4. Open the project in Unity. The first time takes a while, because Burst compiles a lot of code.
+
+The installer (`Installer~`) is a package of its own, which users install by its path in the repository. To work
+on it, add it to a project with a `file:` path to that folder; it does nothing there, so its tests can run.
 
 ## Where things are
 
