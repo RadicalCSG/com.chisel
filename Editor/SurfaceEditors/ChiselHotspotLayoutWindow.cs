@@ -39,11 +39,11 @@ namespace Chisel.Editors
         Drawing drawing;
         int     hoverLine = -1;
         int     dragNode  = -1;
-        bool    dragged;
         // the selected drawn shape: a corner dragged (its loop, -1 the outline), or the whole shape from a pixel
         int        dragLoop, dragCorner = -1;
         bool       dragShape;
         Vector2Int dragFrom;
+        LayoutDrag drag;
         Vector2 panelScroll;
         Rect    canvas;
 
@@ -62,6 +62,40 @@ namespace Chisel.Editors
             if (layout != null)
                 window.SetLayout(layout);
             window.Show();
+        }
+
+        // A drag of a line, a shape or one of its corners: one undo step, recorded at every move (a record only keeps
+        // what changes before its event ends), and the models told once, when it ends
+        internal struct LayoutDrag
+        {
+            ChiselHotspotLayout layout;
+            int                 undoGroup;
+            bool                moved;
+
+            public static LayoutDrag Begin(ChiselHotspotLayout layout)
+            {
+                return new LayoutDrag { layout = layout, undoGroup = Undo.GetCurrentGroup() };
+            }
+
+            public bool Move(string name, System.Func<bool> move)
+            {
+                Undo.RecordObject(layout, name);
+                if (!move())
+                    return false;
+                moved = true;
+                EditorUtility.SetDirty(layout);
+                return true;
+            }
+
+            public void End()
+            {
+                if (layout == null)
+                    return;
+                Undo.CollapseUndoOperations(undoGroup);
+                if (moved)
+                    layout.NotifyChanged();
+                layout = null;
+            }
         }
 
         // Records the layout for undo, and afterwards tells the models it changed
@@ -338,16 +372,14 @@ namespace Chisel.Editors
                     }
                     if (CornerAt(local, out dragLoop, out dragCorner))
                     {
-                        Undo.RecordObject(layout, "Move Hotspot Shape Corner");
-                        dragged = false;
+                        drag = LayoutDrag.Begin(layout);
                         current.Use();
                         return true;
                     }
                     if (LineAt(local) < 0 && layout.IsDrawn(selectedTile) && layout.TileAt(ToPixel(local)) == selectedTile)
                     {
-                        Undo.RecordObject(layout, "Move Hotspot Shape");
+                        drag = LayoutDrag.Begin(layout);
                         dragShape = true;
-                        dragged = false;
                         dragFrom = SnappedPixel(local);
                         GUI.FocusControl(null);
                         current.Use();
@@ -356,23 +388,18 @@ namespace Chisel.Editors
                     return false;
                 }
                 case EventType.MouseDrag when dragCorner >= 0:
-                    if (layout.MoveShapePoint(selectedTile, dragLoop, dragCorner, SnappedPixel(local)))
-                    {
-                        dragged = true;
-                        EditorUtility.SetDirty(layout);
-                    }
+                {
+                    var tile = selectedTile; var loop = dragLoop; var corner = dragCorner; var to = SnappedPixel(local);
+                    drag.Move("Move Hotspot Shape Corner", () => layout.MoveShapePoint(tile, loop, corner, to));
                     current.Use();
                     Repaint();
                     return true;
+                }
                 case EventType.MouseDrag when dragShape:
                 {
-                    var to = SnappedPixel(local);
-                    if (to != dragFrom && layout.MoveShape(selectedTile, to - dragFrom))
-                    {
+                    var tile = selectedTile; var to = SnappedPixel(local); var by = to - dragFrom;
+                    if (to != dragFrom && drag.Move("Move Hotspot Shape", () => layout.MoveShape(tile, by)))
                         dragFrom = to;
-                        dragged = true;
-                        EditorUtility.SetDirty(layout);
-                    }
                     current.Use();
                     Repaint();
                     return true;
@@ -380,8 +407,7 @@ namespace Chisel.Editors
                 case EventType.MouseUp when dragCorner >= 0 || dragShape:
                     dragCorner = -1;
                     dragShape = false;
-                    if (dragged)
-                        layout.NotifyChanged();
+                    drag.End();
                     current.Use();
                     return true;
                 case EventType.KeyDown when inside && (current.keyCode == KeyCode.Delete || current.keyCode == KeyCode.Backspace):
@@ -549,8 +575,7 @@ namespace Chisel.Editors
                     if (hoverLine >= 0 && layout.MoveRange(lines[hoverLine].node, out _, out _))
                     {
                         dragNode = lines[hoverLine].node;
-                        dragged = false;
-                        Undo.RecordObject(layout, "Move Hotspot Line");
+                        drag = LayoutDrag.Begin(layout);
                     } else
                         selectedTile = layout.TileAt(ToPixel(local));
                     current.Use();
@@ -561,10 +586,9 @@ namespace Chisel.Editors
                 case EventType.MouseDrag when dragNode >= 0:
                 {
                     var pixel = ToPixel(local);
-                    var cut = layout.cuts[dragNode];
-                    layout.MoveCut(dragNode, Snap(cut.kind == HotspotCutKind.Horizontal ? pixel.y : pixel.x));
-                    dragged = true;
-                    EditorUtility.SetDirty(layout);
+                    var node = dragNode;
+                    var to = Snap(layout.cuts[node].kind == HotspotCutKind.Horizontal ? pixel.y : pixel.x);
+                    drag.Move("Move Hotspot Line", () => layout.MoveCut(node, to));
                     current.Use();
                     Repaint();
                     break;
@@ -572,8 +596,7 @@ namespace Chisel.Editors
                 case EventType.MouseUp when dragNode >= 0:
                 {
                     dragNode = -1;
-                    if (dragged)
-                        layout.NotifyChanged();
+                    drag.End();
                     current.Use();
                     break;
                 }
