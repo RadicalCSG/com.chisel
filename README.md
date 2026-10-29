@@ -93,10 +93,11 @@ Requires **Unity 6.6** or newer and the **Universal Render Pipeline** (URP).
 3. Paste the URL below and press Enter.
 
 ```
-https://github.com/RadicalCSG/com.chisel.git
+https://github.com/RadicalCSG/com.chisel.git?path=/Installer~
 ```
 
-The first start-up takes a while: Burst compiles a lot of code. This only happens once.
+This installs the Chisel Installer, which installs Chisel and the package it needs from git, then removes itself.
+Git has to be installed. The first start-up takes a while: Burst compiles a lot of code. This only happens once.
 
 [Read the getting started guide →](GETTING_STARTED.md)
 
