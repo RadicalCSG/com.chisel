@@ -21,13 +21,61 @@ namespace Chisel.Editors
         static readonly GUIContent kHardnessContent  = new("Hardness", "How much of the radius is painted at full strength; beyond it the brush falls off smoothly.");
 
         // the mode painted in, by name: a surface takes it when its shader's profile has a mode of that name
-        static string               s_ModeName;
-        static ChiselPaintOperation s_Operation = ChiselPaintOperation.Paint;
-        static Color                s_Color     = Color.red;
-        static float                s_Value     = 1;
-        static float                s_Radius    = 0.5f;
-        static float                s_Strength  = 0.5f;
-        static float                s_Hardness  = 0.5f;
+        internal static string               s_ModeName;
+        internal static ChiselPaintOperation s_Operation = ChiselPaintOperation.Paint;
+        internal static Color                s_Color     = Color.red;
+        internal static float                s_Value     = 1;
+        internal static float                s_Radius    = 0.5f;
+        internal static float                s_Strength  = 0.5f;
+        internal static float                s_Hardness  = 0.5f;
+
+        // the brush's settings are kept per user, like the swatches, so a domain reload or a restart doesn't reset them
+        internal static readonly string[] kSettingsPrefs =
+        {
+            "Chisel.Paint.Mode", "Chisel.Paint.Operation", "Chisel.Paint.Value", "Chisel.Paint.Radius", "Chisel.Paint.Strength", "Chisel.Paint.Hardness",
+            "Chisel.Paint.Color.R", "Chisel.Paint.Color.G", "Chisel.Paint.Color.B", "Chisel.Paint.Color.A"
+        };
+
+        // what a domain reload leaves the settings at
+        internal static void ResetSettings()
+        {
+            s_ModeName  = null;
+            s_Operation = ChiselPaintOperation.Paint;
+            s_Color     = Color.red;
+            s_Value     = 1;
+            s_Radius    = 0.5f;
+            s_Strength  = 0.5f;
+            s_Hardness  = 0.5f;
+        }
+
+        [InitializeOnLoadMethod]
+        internal static void LoadSettings()
+        {
+            s_ModeName  = EditorPrefs.GetString(kSettingsPrefs[0], s_ModeName);
+            var operation = (ChiselPaintOperation)EditorPrefs.GetInt(kSettingsPrefs[1], (int)s_Operation);
+            if (System.Enum.IsDefined(typeof(ChiselPaintOperation), operation))
+                s_Operation = operation;
+            s_Value     = EditorPrefs.GetFloat(kSettingsPrefs[2], s_Value);
+            s_Radius    = Mathf.Max(0.01f, EditorPrefs.GetFloat(kSettingsPrefs[3], s_Radius));
+            s_Strength  = Mathf.Clamp01(EditorPrefs.GetFloat(kSettingsPrefs[4], s_Strength));
+            s_Hardness  = Mathf.Clamp01(EditorPrefs.GetFloat(kSettingsPrefs[5], s_Hardness));
+            s_Color     = new Color(EditorPrefs.GetFloat(kSettingsPrefs[6], s_Color.r), EditorPrefs.GetFloat(kSettingsPrefs[7], s_Color.g),
+                                    EditorPrefs.GetFloat(kSettingsPrefs[8], s_Color.b), EditorPrefs.GetFloat(kSettingsPrefs[9], s_Color.a));
+        }
+
+        internal static void SaveSettings()
+        {
+            EditorPrefs.SetString(kSettingsPrefs[0], s_ModeName ?? string.Empty);
+            EditorPrefs.SetInt(kSettingsPrefs[1], (int)s_Operation);
+            EditorPrefs.SetFloat(kSettingsPrefs[2], s_Value);
+            EditorPrefs.SetFloat(kSettingsPrefs[3], s_Radius);
+            EditorPrefs.SetFloat(kSettingsPrefs[4], s_Strength);
+            EditorPrefs.SetFloat(kSettingsPrefs[5], s_Hardness);
+            EditorPrefs.SetFloat(kSettingsPrefs[6], s_Color.r);
+            EditorPrefs.SetFloat(kSettingsPrefs[7], s_Color.g);
+            EditorPrefs.SetFloat(kSettingsPrefs[8], s_Color.b);
+            EditorPrefs.SetFloat(kSettingsPrefs[9], s_Color.a);
+        }
 
         // the surface last under the mouse, whose mode's color or range the panel shows
         static Hit                  s_Last;
@@ -156,6 +204,7 @@ namespace Chisel.Editors
                     if (evt.control)
                     {
                         Sample(hit);
+                        SaveSettings();
                         evt.Use();
                         break;
                     }
@@ -634,6 +683,7 @@ namespace Chisel.Editors
         {
             var labelWidth = EditorGUIUtility.labelWidth;
             EditorGUIUtility.labelWidth = 90;
+            EditorGUI.BeginChangeCheck();
             {
                 ModeButtons();
                 var hasMode = ChosenMode(out var chosen);
@@ -668,6 +718,8 @@ namespace Chisel.Editors
                 }
                 EditorGUILayout.HelpBox("Control-click takes the paint under the mouse.", MessageType.None);
             }
+            if (EditorGUI.EndChangeCheck())
+                SaveSettings();
             EditorGUIUtility.labelWidth = labelWidth;
         }
     }
