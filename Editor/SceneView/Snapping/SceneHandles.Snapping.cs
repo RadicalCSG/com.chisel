@@ -1,4 +1,3 @@
-//#define ENABLE_DEBUG_GRID
 using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
@@ -953,9 +952,6 @@ namespace Chisel.Editors
             localToWorldMatrix      = Matrix4x4.identity;
 
             snapResult              = SnapResult3D.None;
-#if ENABLE_DEBUG_GRID
-            Grid.debugGrid          = null;
-#endif
         }
 
         public void CalculateExtents(Vector3[] localPoints)
@@ -985,21 +981,12 @@ namespace Chisel.Editors
             var rotation        = fromQuaternion * Quaternion.Inverse(toQuaternion);
             var worldAlternativePlanePosition = worldRay.GetPoint(dist) - origin;
             worldPlanePosition = (rotation * (worldAlternativePlanePosition)) + origin;
-#if ENABLE_DEBUG_GRID
-            {
-                var planeOrientation = Quaternion.LookRotation(tangent, alternativePlane.normal);
-                Grid.debugGrid = new Grid(Matrix4x4.TRS(origin, planeOrientation, Vector3.one));
-            }
-#endif
             return true;
         }
 
 
         private bool GetPlaneIntersection(Vector2 guiPosition, out Vector3 worldPlanePosition)
         {
-#if ENABLE_DEBUG_GRID
-            Grid.debugGrid = null;
-#endif
             if (worldSlideGrid == null)
             {
                 worldPlanePosition = worldSlideOrigin;
@@ -1033,13 +1020,6 @@ namespace Chisel.Editors
                 if (!originSnappedPlane.SignedRaycast(worldRay, out dist)) { worldPlanePosition = worldSlideOrigin; return false; }
 
                 worldPlanePosition = worldRay.GetPoint(Mathf.Abs(dist));
-#if ENABLE_DEBUG_GRID
-                {
-                    var tangent = GeometryUtility.CalculateTangent(worldSlidePlane.normal);
-                    var planeOrientation = Quaternion.LookRotation(tangent, worldSlidePlane.normal);
-                    Grid.debugGrid = new Grid(Matrix4x4.TRS(worldPlanePosition, planeOrientation, Vector3.one));
-                }
-#endif
 
                 return true;
             }
