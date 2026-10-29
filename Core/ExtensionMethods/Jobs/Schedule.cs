@@ -205,7 +205,7 @@ namespace Chisel.Core
         }
 
         public static void DisposeDeep<T>(this NativeList<T> list) where T : unmanaged, IDisposable { DisposeDeep(false, ref list, default); }
-		public static void DisposeDeep<T>(this NativeList<BlobAssetReference<T>> list) where T : unmanaged { DisposeDeep(ref list, default); }
+		public static void DisposeDeep<T>(this NativeList<BlobAssetReference<T>> list) where T : unmanaged { DisposeDeep(false, ref list, default); }
 
 		public static JobHandle DisposeDeep<T>(ref this NativeList<T> list, JobHandle dependencies) where T : unmanaged, IDisposable { return DisposeDeep(true, ref list, dependencies); }
 		
