@@ -100,7 +100,9 @@ namespace Chisel.Core
 
 		public void Dispose()
 		{
-			// Confirmed to be called
+			// Confirmed to be called; only the lookup in use has a cache, and the hierarchies go with it
+			if (!ReferenceEquals(instance, this))
+				return;
 			data.Dispose();
 			instance = null;
 		}
