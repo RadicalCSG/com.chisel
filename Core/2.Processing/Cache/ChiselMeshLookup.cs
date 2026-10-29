@@ -81,6 +81,9 @@ namespace Chisel.Core
             }
         }
 
+        // Lets teardown code skip the lookup instead of creating a new one
+        internal static bool IsCreated { [MethodImpl(MethodImplOptions.AggressiveInlining)] get { return instance != null; } }
+
         readonly Data data = new();
 
         internal void OnEnable() { data.Initialize(); }
