@@ -7,7 +7,7 @@ using Unity.Collections.LowLevel.Unsafe;
 
 namespace Chisel.Core
 {
-    unsafe struct ExactList<T> : IDisposable where T : unmanaged
+    public unsafe struct ExactList<T> : IDisposable where T : unmanaged
     {
         T*  m_Buffer;
         int m_Length;
