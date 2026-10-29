@@ -99,6 +99,7 @@ namespace Chisel.Core
                     UV0                   = polygon.surface.details.UV0,
                     localPlane            = p < localPlanes.Length ? localPlanes[p] : default,
                     descriptionIndex      = polygon.descriptionIndex,
+                    smoothingGroup        = polygon.surface.details.smoothingGroup,
                     hotspotLayout         = polygon.surface.hotspotLayout,
                     hotspotPinned         = polygon.surface.details.hotspot.pinnedTile,
                     hotspotPinnedSheet    = polygon.surface.details.hotspot.pinnedSheet,
