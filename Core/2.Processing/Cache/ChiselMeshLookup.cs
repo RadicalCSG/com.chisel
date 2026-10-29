@@ -28,7 +28,8 @@ namespace Chisel.Core
 
 			internal void Initialize()
             {
-                brushMeshBlobCache = new NativeParallelHashMap<int, RefCountedBrushMeshBlob>(1000, Allocator.Persistent); // Confirmed to get disposed
+                if (!brushMeshBlobCache.IsCreated)
+                    brushMeshBlobCache = new NativeParallelHashMap<int, RefCountedBrushMeshBlob>(1000, Allocator.Persistent); // Confirmed to get disposed
 			}
 
 			public void Dispose()
@@ -86,7 +87,14 @@ namespace Chisel.Core
 
         readonly Data data = new();
 
-        internal void OnEnable() { data.Initialize(); }
+        internal void OnEnable()
+        {
+            // The lookup outlives a domain reload, so it takes its place again instead of a new one being made
+            if (instance == null)
+                instance = this;
+            if (instance == this)
+                data.Initialize();
+        }
         internal void OnDisable() { Dispose(); }
 		private void OnDestroy() { Dispose(); }
 
