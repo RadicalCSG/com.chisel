@@ -236,6 +236,7 @@ namespace Chisel.Core.Tests
 			box.planes = given.ToArray();
 			var a = BrushMeshInstance.Create(new BrushMesh(box), SurfacesFor(box));
 			var b = BrushMeshInstance.Create(new BrushMesh(box), SurfacesFor(box));
+			var registered = a;
 			try
 			{
 				Assert.That(b.BrushMeshID, Is.EqualTo(a.BrushMeshID));
@@ -244,6 +245,34 @@ namespace Chisel.Core.Tests
 			{
 				a.Destroy();
 				b.Destroy();
+			}
+			Assert.That(registered.Valid, Is.False, "the mesh outlived both of its instances");
+		}
+
+		// Each brush using a mesh keeps it alive, and the last one to let go frees it
+		[Test]
+		public void AMesh_IsFreedWhenItsInstanceAndLastBrushAreGone()
+		{
+			var box = BoxWithGivenPlanes(out var given);
+			box.planes = given.ToArray();
+			var instance = BrushMeshInstance.Create(new BrushMesh(box), SurfacesFor(box));
+			var registered = instance;
+			var created = CSGTreeBrush.Create(default(UnityEngine.EntityId), float4x4.identity, instance);
+			var assigned = CSGTreeBrush.Create();
+			try
+			{
+				assigned.BrushMesh = instance;
+				instance.Destroy();
+				Assert.That(registered.Valid, Is.True, "the mesh was freed while two brushes use it");
+				created.Destroy();
+				Assert.That(registered.Valid, Is.True, "the mesh was freed while a brush uses it");
+				assigned.Destroy();
+				Assert.That(registered.Valid, Is.False, "the mesh outlived its instance and brushes");
+			}
+			finally
+			{
+				if (created.Valid) created.Destroy();
+				if (assigned.Valid) assigned.Destroy();
 			}
 		}
 

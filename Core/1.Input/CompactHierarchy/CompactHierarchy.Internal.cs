@@ -115,6 +115,15 @@ namespace Chisel.Core
 		{
             // Confirmed to be called
 			isCreated = false;
+            if (compactNodes.IsCreated)
+            {
+                for (int i = 0; i < compactNodes.Length; i++)
+                {
+                    var brushMeshHash = compactNodes[i].nodeInformation.brushMeshHash;
+                    if (brushMeshHash != 0 && brushMeshHash != Int32.MaxValue)
+                        BrushMeshManager.ReleaseReference(brushMeshHash);
+                }
+            }
             if (brushMeshToBrush.IsCreated) brushMeshToBrush.Dispose(); brushMeshToBrush = default;
             if (compactNodes.IsCreated) compactNodes.Dispose(); compactNodes = default;
 
@@ -176,7 +185,10 @@ namespace Chisel.Core
             };
             if (nodeInformation.brushMeshHash != 0 &&
                 nodeInformation.brushMeshHash != Int32.MaxValue)
+            {
                 brushMeshToBrush.TryAdd(nodeInformation.brushMeshHash, compactNodeID);
+                BrushMeshManager.AddReference(ref ChiselMeshLookup.Value.brushMeshBlobCache, nodeInformation.brushMeshHash);
+            }
 
             Debug.Assert(IsValidCompactNodeID(compactNodeID), "newly created ID is invalid");
             Debug.Assert(GetChildRef(compactNodeID).entityID == nodeInformation.entityID, "newly created ID is invalid");
@@ -231,6 +243,7 @@ namespace Chisel.Core
                 return;
 
             brushMeshToBrush.Remove(brushMeshID);//, compactNodeID.value);
+            BrushMeshManager.ReleaseReference(brushMeshID);
             /*
             var value = compactNodeID.value;
 
@@ -1449,6 +1462,8 @@ namespace Chisel.Core
 			if (nodeRef.brushMeshHash == brushMeshID)
 				return false;
 
+			BrushMeshManager.AddReference(ref ChiselMeshLookup.Value.brushMeshBlobCache, brushMeshID);
+			BrushMeshManager.ReleaseReference(nodeRef.brushMeshHash);
 			nodeRef.brushMeshHash = brushMeshID;
 			nodeRef.flags |= NodeStatusFlags.ShapeModified | NodeStatusFlags.NeedAllTouchingUpdated;
 			return true;

@@ -241,7 +241,10 @@ namespace Chisel.Core
             for (int i = 0; i < brushMeshPointers.Length; i++)
             {
                 var brush = nativeTreeBrushes[brushMeshPointers[i].index];
-                brush.BrushMesh = new BrushMeshInstance { brushMeshHash = BrushMeshManager.RegisterBrushMesh(brushMeshBlobs[i]) };
+                var brushMeshHash = BrushMeshManager.RegisterBrushMesh(brushMeshBlobs[i]);
+                brush.BrushMesh = new BrushMeshInstance { brushMeshHash = brushMeshHash };
+                // the brush holds its own reference now
+                ReleaseReference(ref ChiselMeshLookup.Value.brushMeshBlobCache, brushMeshHash);
             }
         }
 
@@ -805,13 +808,37 @@ namespace Chisel.Core
                     refCountedBrushMeshBlob.brushMeshBlob.Dispose();
                     refCountedBrushMeshBlob.brushMeshBlob = default;
                     brushMeshBlobCache.Remove(brushMeshHash);
-                }
+                } else
+                    brushMeshBlobCache[brushMeshHash] = refCountedBrushMeshBlob;
             } else
             {
                 Debug.LogError($"Invalid ID {brushMeshHash}");
                 return false;
             }
             return true;
+        }
+
+        // A tree node holds one reference to its brush mesh; hashes that aren't registered are ignored
+        internal static void AddReference([NoAlias] ref NativeParallelHashMap<int, RefCountedBrushMeshBlob> brushMeshBlobCache, Int32 brushMeshHash)
+        {
+            if (!brushMeshBlobCache.IsCreated || !brushMeshBlobCache.TryGetValue(brushMeshHash, out var refCountedBrushMeshBlob))
+                return;
+            refCountedBrushMeshBlob.refCount++;
+            brushMeshBlobCache[brushMeshHash] = refCountedBrushMeshBlob;
+        }
+
+        internal static void ReleaseReference([NoAlias] ref NativeParallelHashMap<int, RefCountedBrushMeshBlob> brushMeshBlobCache, Int32 brushMeshHash)
+        {
+            if (!IsBrushMeshIDValid(brushMeshBlobCache, brushMeshHash))
+                return;
+            DecreaseRefCount(ref brushMeshBlobCache, brushMeshHash);
+        }
+
+        internal static void ReleaseReference(Int32 brushMeshHash)
+        {
+            if (!ChiselMeshLookup.IsCreated)
+                return;
+            ReleaseReference(ref ChiselMeshLookup.Value.brushMeshBlobCache, brushMeshHash);
         }
 
         [BurstCompile(CompileSynchronously = true)]

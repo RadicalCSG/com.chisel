@@ -297,6 +297,8 @@ namespace Chisel.Core
 
                     ref var compactHierarchy = ref hierarchyListPtr[hierarchyIndex];
                     compactHierarchy.SetState(compactNodeID, brushMeshBlobCache, brushMeshHash, operation, contents, transformation);
+                    // the node holds its own reference now
+                    BrushMeshManager.ReleaseReference(ref brushMeshBlobCache, brushMeshHash);
                     compactHierarchy.SetTreeDirty(); 
                 } 
 
