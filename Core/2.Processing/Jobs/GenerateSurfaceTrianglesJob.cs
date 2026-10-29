@@ -64,7 +64,7 @@ namespace Chisel.Core
 			// a painted surface gets its paint's grid points as vertices, before anything is worked out from them
 			if (paint.TryGetRange(entityID, baseSurfaces[surf].descriptionIndex, out var subdivision))
 				PaintSubdivision.Subdivide(surfaceIndexList, ref uniqueVertexMapper, finalFaceNormal, paint, subdivision);
-			using var surfaceNormals = NormalsOf(surf, brushNodeOrder, ref baseSurfaces, finalFaceNormal);
+			using var surfaceNormals = NormalsOf(surf, brushNodeOrder, entityID, ref baseSurfaces, finalFaceNormal);
 			surfaceNormals.Apply(uniqueVertexMapper.surfaceRenderVertices);
 
 			var flags = baseSurfaces[surf].destinationFlags;
@@ -285,7 +285,20 @@ namespace Chisel.Core
 		{
 			public float3 normal;   // facing as drawn
 			public int    brush;
+			public ulong  entity;   // the brush's, shared by a generator's brushes
 			public uint   group;
+
+			// A smoothing group is a brush's own, or its generator's (all the brushes it made)
+			public readonly bool InGroupWith(in SmoothingFace other)
+			{
+				return group != 0 && group == other.group && (brush == other.brush || (entity != 0 && entity == other.entity));
+			}
+		}
+
+		ulong EntityOf(int brushNodeOrder)
+		{
+			ref var polygons = ref basePolygonCache[brushNodeOrder].Value.polygons;
+			return polygons.Length > 0 ? entityIDLookup.SafeGetNodeEntityID(polygons[0].nodeIndexOrder.compactNodeID) : 0;
 		}
 
 		// A surface's normals as a function of where on it they are, as its uvs are: the normals at its brush polygon's
@@ -365,10 +378,10 @@ namespace Chisel.Core
 		}
 
 		// A corner's normal is shared by the surfaces around it that are smoothed together: two surfaces at the corner
-		// are when they are the same brush's in the same smoothing group (not 0), or within the model's smoothing angle
+		// are when they are in the same smoothing group (not 0) of the same brush or generator, or within the model's smoothing angle
 		// of each other, and so are the surfaces joined to them that way, so a curved surface has no seams however
 		// many faces turn round the corner. Every surface counts once, coplanar ones of different brushes included.
-		SurfaceNormals NormalsOf(int surf, int brushNodeOrder, ref BlobArray<BaseSurface> baseSurfaces, float3 finalFaceNormal)
+		SurfaceNormals NormalsOf(int surf, int brushNodeOrder, ulong entityID, ref BlobArray<BaseSurface> baseSurfaces, float3 finalFaceNormal)
 		{
 			var result = new SurfaceNormals { faceNormal = finalFaceNormal };
 			var smoothingGroup = baseSurfaces[surf].smoothingGroup;
@@ -403,7 +416,7 @@ namespace Chisel.Core
 			{
 				if (!basePolygonCache[otherBrushIdx].IsCreated) continue;
 				// only the brush's own surfaces can be in its smoothing group
-				if (!byAngle && otherBrushIdx != brushNodeOrder) continue;
+				if (!byAngle && otherBrushIdx != brushNodeOrder && (entityID == 0 || EntityOf(otherBrushIdx) != entityID)) continue;
 				ref var otherSurfaces = ref basePolygonCache[otherBrushIdx].Value.surfaces;
 				var otherNodeToTreeInvTrans = math.transpose(transformationCache[otherBrushIdx].treeToNode);
 				for (int otherSurf = 0; otherSurf < otherSurfaces.Length; otherSurf++)
@@ -429,7 +442,7 @@ namespace Chisel.Core
 				var position = positions[v];
 				// the surfaces the vertex is on, this one first
 				faces.Clear();
-				faces.Add(new SmoothingFace { normal = finalFaceNormal, brush = brushNodeOrder, group = smoothingGroup });
+				faces.Add(new SmoothingFace { normal = finalFaceNormal, brush = brushNodeOrder, entity = entityID, group = smoothingGroup });
 				for (int a = 0; a < planes.Length; a++)
 				{
 					var plane = planes[a];
@@ -447,7 +460,7 @@ namespace Chisel.Core
 					for (int f = 0; f < faces.Length && !same; f++)
 						same = faces[f].brush != brush && math.dot(faces[f].normal, normal) > 0.99999f;
 					if (!same)
-						faces.Add(new SmoothingFace { normal = normal, brush = brush, group = group });
+						faces.Add(new SmoothingFace { normal = normal, brush = brush, entity = EntityOf(brush), group = group });
 				}
 
 				// the surfaces joined to this one, one after another
@@ -466,8 +479,7 @@ namespace Chisel.Core
 					{
 						if (joined[o])
 							continue;
-						var inGroup = faces[f].group != 0 && faces[f].brush == faces[o].brush && faces[f].group == faces[o].group;
-						if (!inGroup && math.dot(faces[f].normal, faces[o].normal) < smoothingCos)
+						if (!faces[f].InGroupWith(faces[o]) &&math.dot(faces[f].normal, faces[o].normal) < smoothingCos)
 							continue;
 						joined[o] = true;
 						stack.Add(o);

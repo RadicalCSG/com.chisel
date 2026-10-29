@@ -26,7 +26,8 @@ namespace Chisel.Core
             
             sides				= 8,
             topSegments			= 4,
-            bottomSegments		= 4
+            bottomSegments		= 4,
+            smoothingGroup      = 1
         };
 		public static ChiselCapsule DefaultSettings { get { return kDefaultSettings; } }
 
@@ -42,6 +43,8 @@ namespace Chisel.Core
         public int      sides;
         public int      topSegments;
         public int      bottomSegments;
+        // the smoothing group of its rounded faces and sides, not its flat caps (0 for none)
+        public uint     smoothingGroup;
 
 
         #region Properties

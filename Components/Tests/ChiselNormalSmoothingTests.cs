@@ -178,10 +178,10 @@ namespace Chisel.Components.Tests
             Assert.That(SeamsOnTheSides(Vertices(model)), Is.Zero, "22.5 degrees is softer than 25, so the sides are smoothed");
         }
 
-        // Every vertex of the model has one normal wherever it is drawn: none means no seams (the first one in the message)
-        static void AssertNoSeams(List<Vertex> vertices)
+        // The places where a vertex is drawn with different normals, and the first one
+        static int Seams(List<Vertex> vertices, out string first)
         {
-            var seams = 0; var first = "";
+            var seams = 0; first = "";
             for (int i = 0; i < vertices.Count; i++)
             {
                 for (int j = i + 1; j < vertices.Count; j++)
@@ -192,7 +192,57 @@ namespace Chisel.Components.Tests
                         first = $"at {vertices[i].position}: {vertices[i].normal} and {vertices[j].normal}";
                 }
             }
-            Assert.That(seams, Is.Zero, $"seams, the first {first}");
+            return seams;
+        }
+
+        static void AssertNoSeams(List<Vertex> vertices)
+        {
+            Assert.That(Seams(vertices, out var first), Is.Zero, $"seams, the first {first}");
+        }
+
+        static T Shape<T>(ChiselModelComponent model, uint smoothingGroup) where T : ChiselNodeComponent
+        {
+            var shape = Add<T>(model, typeof(T).Name);
+            switch (shape)
+            {
+                case ChiselSphereComponent sphere:   sphere.SmoothingGroup = smoothingGroup; break;
+                case ChiselCapsuleComponent capsule: capsule.SmoothingGroup = smoothingGroup; break;
+                case ChiselTorusComponent torus:     torus.SmoothingGroup = smoothingGroup; break;
+            }
+            Update();
+            return shape;
+        }
+
+        // A sphere, capsule and torus are in a smoothing group of their own, as a cylinder is: smooth without the model's
+        // smoothing, the torus across all of its brushes
+        [Test] public void ASphere_IsSmoothedByItsSmoothingGroup()  { var model = Model(); Shape<ChiselSphereComponent>(model, 1);  AssertNoSeams(Vertices(model)); }
+        [Test] public void ACapsule_IsSmoothedByItsSmoothingGroup() { var model = Model(); Shape<ChiselCapsuleComponent>(model, 1); AssertNoSeams(Vertices(model)); }
+        [Test] public void ATorus_IsSmoothedByItsSmoothingGroup()   { var model = Model(); Shape<ChiselTorusComponent>(model, 1);   AssertNoSeams(Vertices(model)); }
+
+        [Test]
+        public void TheShapesWithoutASmoothingGroup_KeepTheirEdges()
+        {
+            var sphere = Model(); Shape<ChiselSphereComponent>(sphere, 0);
+            Assert.That(Seams(Vertices(sphere), out _), Is.GreaterThan(0), "the sphere");
+            var capsule = Model(); Shape<ChiselCapsuleComponent>(capsule, 0);
+            Assert.That(Seams(Vertices(capsule), out _), Is.GreaterThan(0), "the capsule");
+            var torus = Model(); Shape<ChiselTorusComponent>(torus, 0);
+            Assert.That(Seams(Vertices(torus), out _), Is.GreaterThan(0), "the torus");
+        }
+
+        // A capsule's flat ends aren't in its group: they stay flat, the rest is smooth
+        [Test]
+        public void ACapsulesFlatEnds_StayHard()
+        {
+            var model = Model();
+            var capsule = Shape<ChiselCapsuleComponent>(model, 1);
+            capsule.TopSegments = 0;
+            capsule.BottomSegments = 0;
+            Update();
+            var vertices = Vertices(model);
+            var ends = vertices.FindAll(vertex => math.abs(vertex.normal.y) > 1 - kEpsilon);
+            Assert.That(ends, Is.Not.Empty, "the flat ends");
+            AssertNoSeams(vertices.FindAll(vertex => math.abs(vertex.normal.y) <= 1 - kEpsilon));
         }
 
         // Shapes without hard edges, smoothed by the model's angle (their faces turn less than it from one to the next):
@@ -201,8 +251,7 @@ namespace Chisel.Components.Tests
         public void ASmoothedSphere_HasNoSeams()
         {
             var model = Model(60);
-            Add<ChiselSphereComponent>(model, "sphere");
-            Update();
+            Shape<ChiselSphereComponent>(model, 0);
             var vertices = Vertices(model);
             AssertNoSeams(vertices);
             var centre = float3.zero;
@@ -218,8 +267,7 @@ namespace Chisel.Components.Tests
         public void ASmoothedCapsule_HasNoSeams()
         {
             var model = Model(60);
-            Add<ChiselCapsuleComponent>(model, "capsule");
-            Update();
+            Shape<ChiselCapsuleComponent>(model, 0);
             AssertNoSeams(Vertices(model));
         }
 
@@ -227,8 +275,7 @@ namespace Chisel.Components.Tests
         public void ASmoothedTorus_HasNoSeams()
         {
             var model = Model(60);
-            Add<ChiselTorusComponent>(model, "torus");
-            Update();
+            Shape<ChiselTorusComponent>(model, 0);
             AssertNoSeams(Vertices(model));
         }
 

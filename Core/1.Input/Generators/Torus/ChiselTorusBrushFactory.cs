@@ -72,6 +72,7 @@ namespace Chisel.Core
               
         public static bool GenerateTorus(NativeList<BlobAssetReference<BrushMeshBlob>> brushMeshes, 
                                                 in NativeArray<float3> vertices, int verticalSegments, int horizontalSegments,
+                                                uint smoothingGroup,
                                                 in BlobAssetReference<InternalChiselSurfaceArray> surfaceDefinitionBlob,
                                                 Allocator allocator = Allocator.Persistent)// Indirect
 		{
@@ -103,6 +104,12 @@ namespace Chisel.Core
 				var arrays = CreateExtrudedSubMesh(verticalSegments, segmentIndices, segmentIndices.Length, 0, 1, in localVertices, in surfaceDefinitionBlob, in builder, ref root);
 				var polygons = arrays.polygons;
 				var halfEdges = arrays.halfEdges;
+				// the tube, not the segment's ends
+				if (smoothingGroup != 0)
+				{
+					for (int p = 2; p < polygons.Length; p++)
+						polygons[p].surface.details.smoothingGroup = smoothingGroup;
+				}
 
 				if (!Validate(in localVertices, in halfEdges, in polygons, logErrors: true))
 					return false;

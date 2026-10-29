@@ -34,7 +34,7 @@ namespace Chisel.Core
         public float4   localPlane;
         // The brush's surface this polygon shows (its index in the generator's surface array)
         public int      descriptionIndex;
-        // The brush's surfaces in the same group (not 0) share their normals where they meet
+        // The surfaces in the same group (not 0) of the same brush, or generator, share their normals where they meet
         public uint     smoothingGroup;
         // Hotspot mapping: the layout (ChiselHotspotStore, 0 for none), the pinned tile and the seed
         public int      hotspotLayout;

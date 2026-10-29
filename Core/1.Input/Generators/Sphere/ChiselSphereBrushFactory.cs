@@ -8,6 +8,7 @@ namespace Chisel.Core
     public sealed partial class BrushMeshFactory
     {
         public static bool GenerateSphere(float3 diameterXYZ, float offsetY, float rotation, bool generateFromCenter, int horzSegments, int vertSegments,
+                                          uint smoothingGroup,
                                           in BlobAssetReference<InternalChiselSurfaceArray> surfaceDefinitionBlob,
                                           out BlobAssetReference<BrushMeshBlob> brushMesh,
                                           Allocator allocator = Allocator.Persistent)// Indirect
@@ -32,6 +33,8 @@ namespace Chisel.Core
 				var surfaceID = i < surfaceDefinition.surfaces.Length ? i : 0;
 				polygons[i].descriptionIndex = surfaceID;
 				polygons[i].surface = surfaceDefinition.surfaces[surfaceID];
+				if (smoothingGroup != 0)
+					polygons[i].surface.details.smoothingGroup = smoothingGroup;
 			}
 
 			// TODO: eventually remove when it's more battle tested

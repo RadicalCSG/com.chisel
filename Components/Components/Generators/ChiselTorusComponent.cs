@@ -11,5 +11,11 @@ namespace Chisel.Components
         public override string ChiselNodeTypeName { get { return kNodeTypeName; } }
 
         // TODO: add all properties of ChiselTorusDefinition
+
+        public uint SmoothingGroup
+        {
+            get { return definition.settings.smoothingGroup; }
+            set { if (value == definition.settings.smoothingGroup) return; definition.settings.smoothingGroup = value; OnValidateState(); }
+        }
     }
 }

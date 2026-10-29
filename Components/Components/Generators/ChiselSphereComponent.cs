@@ -47,6 +47,12 @@ namespace Chisel.Components
             set { if (value == definition.settings.verticalSegments) return; definition.settings.verticalSegments = value; OnValidateState(); }
         }
 
+        public uint SmoothingGroup
+        {
+            get { return definition.settings.smoothingGroup; }
+            set { if (value == definition.settings.smoothingGroup) return; definition.settings.smoothingGroup = value; OnValidateState(); }
+        }
+
         public bool GenerateFromCenter
         {
             get { return definition.settings.generateFromCenter; }

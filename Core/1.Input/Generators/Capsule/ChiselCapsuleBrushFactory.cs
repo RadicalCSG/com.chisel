@@ -37,6 +37,15 @@ namespace Chisel.Core
 			var halfEdges = arrays.halfEdges;
 			if (polygons.Length == 0)
 				return false;
+			if (settings.smoothingGroup != 0)
+			{
+				for (int p = 0; p < polygons.Length; p++)
+				{
+					if ((topCap && p == 0) || (bottomCap && p == polygons.Length - 1))
+						continue;
+					polygons[p].surface.details.smoothingGroup = settings.smoothingGroup;
+				}
+			}
 
 			var localPlanes = builder.Allocate(ref root.localPlanes, polygons.Length);
 			root.localPlaneCount = polygons.Length;
