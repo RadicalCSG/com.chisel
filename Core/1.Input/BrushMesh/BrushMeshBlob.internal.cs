@@ -52,6 +52,9 @@ namespace Chisel.Core
         public BlobArray<Polygon>   polygons;
         public BlobArray<float4>    localPlanes;        // surface planes + edge planes (to reject vertices at sharp plane intersections)
         public int                  localPlaneCount;    // number of surface planes
+        // By half edge, the uv its polygon has at its vertex, when the generator gives them (empty otherwise): the polygon's
+        // uvs in between are interpolated from these, so faces meet exactly where a flat mapping can't make them
+        public BlobArray<float2>    halfEdgeUVs;
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static int CalculateHashCode([NoAlias, ReadOnly] ref BrushMeshBlob blob)
@@ -75,7 +78,8 @@ namespace Chisel.Core
                    SameBits(ref a.halfEdges, ref b.halfEdges) &&
                    SameBits(ref a.halfEdgePolygonIndices, ref b.halfEdgePolygonIndices) &&
                    SameBits(ref a.polygons, ref b.polygons) &&
-                   SameBits(ref a.localPlanes, ref b.localPlanes);
+                   SameBits(ref a.localPlanes, ref b.localPlanes) &&
+                   SameBits(ref a.halfEdgeUVs, ref b.halfEdgeUVs);
         }
 
         static unsafe bool SameBits<T>(ref BlobArray<T> a, ref BlobArray<T> b) where T : unmanaged

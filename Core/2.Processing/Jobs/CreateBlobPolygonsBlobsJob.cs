@@ -37,6 +37,8 @@ namespace Chisel.Core
             ref var halfEdges           = ref mesh.Value.halfEdges;
             ref var localPlanes         = ref mesh.Value.localPlanes;
             ref var polygons            = ref mesh.Value.polygons;
+            ref var halfEdgeUVs         = ref mesh.Value.halfEdgeUVs;
+            var hasCornerUVs            = halfEdgeUVs.Length == halfEdges.Length && halfEdgeUVs.Length > 0;
 
             Debug.Assert(localPlanes.Length > 0);
 
@@ -52,7 +54,8 @@ namespace Chisel.Core
             var totalPolygonSize    = 16 + (polygons.Length          * UnsafeUtility.SizeOf<BasePolygon>());
             var totalSurfaceSize    = 16 + (polygons.Length          * UnsafeUtility.SizeOf<BaseSurface>());
             var totalVertexSize     = 16 + (treeSpaceVertices.Length * UnsafeUtility.SizeOf<float3>());
-            var totalSize           = totalEdgeSize + totalPolygonSize + totalSurfaceSize + totalVertexSize;
+            var totalUVSize         = 16 + ((hasCornerUVs ? totalEdgeCount : 0) * UnsafeUtility.SizeOf<float2>());
+            var totalSize           = totalEdgeSize + totalPolygonSize + totalSurfaceSize + totalVertexSize + totalUVSize;
 
             using var builder = new BlobBuilder(Allocator.Temp, totalSize);
             ref var root = ref builder.ConstructRoot<BasePolygonsBlob>();
@@ -60,6 +63,7 @@ namespace Chisel.Core
             var edgeArray    = builder.Allocate(ref root.edges, totalEdgeCount);
             builder.Construct(ref root.vertices, ref treeSpaceVertices);
             var surfaceArray = builder.Allocate(ref root.surfaces, polygons.Length);
+            var edgeUVArray  = builder.Allocate(ref root.edgeUVs, hasCornerUVs ? totalEdgeCount : 0);
             var edgeIndex = 0;
             for (int p = 0; p < polygons.Length; p++)
             {
@@ -77,6 +81,8 @@ namespace Chisel.Core
                             index1 = (ushort)halfEdges[e].vertexIndex,
                             index2 = (ushort)halfEdges[next].vertexIndex
                         };
+                        if (hasCornerUVs)
+                            edgeUVArray[edgeIndex] = halfEdgeUVs[e];
                         edgeIndex++;
                     }
                 }
@@ -109,7 +115,9 @@ namespace Chisel.Core
                     hotspotDensity        = polygon.surface.details.hotspot.Density,
                     hotspotMirror         = polygon.surface.details.hotspot.mirror != polygon.surface.details.hotspot.mirrorY,
                     hotspotOffset         = polygon.surface.details.hotspot.offset,
-                    textureInWorld        = (polygon.surface.details.detailFlags & SurfaceDetailFlags.TextureIsInWorldSpace) != 0
+                    textureInWorld        = (polygon.surface.details.detailFlags & SurfaceDetailFlags.TextureIsInWorldSpace) != 0,
+                    cornerUVs             = hasCornerUVs && polygon.edgeCount >= 3 && p < localPlanes.Length &&
+                                            (polygon.surface.details.detailFlags & SurfaceDetailFlags.TextureIsInWorldSpace) == 0
                 };
             }
             var basePolygonsBlob = builder.CreateBlobAssetReference<BasePolygonsBlob>(Allocator.Persistent); // Confirmed to be disposed

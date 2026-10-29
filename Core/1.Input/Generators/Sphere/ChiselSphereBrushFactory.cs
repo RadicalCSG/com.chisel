@@ -8,6 +8,7 @@ namespace Chisel.Core
     public sealed partial class BrushMeshFactory
     {
         public static bool GenerateSphere(float3 diameterXYZ, float offsetY, float rotation, bool generateFromCenter, int horzSegments, int vertSegments,
+                                          uint smoothingGroup,
                                           in BlobAssetReference<InternalChiselSurfaceArray> surfaceDefinitionBlob,
                                           out BlobAssetReference<BrushMeshBlob> brushMesh,
                                           Allocator allocator = Allocator.Persistent)// Indirect
@@ -32,6 +33,8 @@ namespace Chisel.Core
 				var surfaceID = i < surfaceDefinition.surfaces.Length ? i : 0;
 				polygons[i].descriptionIndex = surfaceID;
 				polygons[i].surface = surfaceDefinition.surfaces[surfaceID];
+				if (smoothingGroup != 0)
+					polygons[i].surface.details.smoothingGroup = smoothingGroup;
 			}
 
 			// TODO: eventually remove when it's more battle tested
@@ -43,10 +46,94 @@ namespace Chisel.Core
 			// TODO: calculate corner planes
 			var halfEdgePolygonIndices = builder.Allocate(ref root.halfEdgePolygonIndices, halfEdges.Length);
 			CalculatePlanes(ref localPlanes, in polygons, in halfEdges, in localVertices);
+			var halfEdgeUVs = builder.Allocate(ref root.halfEdgeUVs, halfEdges.Length);
+			MapSphere(ref polygons, in halfEdges, in localVertices, in localPlanes, ref halfEdgeUVs, (localVertices[0] + localVertices[1]) * 0.5f, 0.5f * math.abs(diameterXYZ));
 			UpdateHalfEdgePolygonIndices(ref halfEdgePolygonIndices, in polygons);
 			root.localBounds = CalculateBounds(in localVertices);
 			brushMesh = builder.CreateBlobAssetReference<BrushMeshBlob>(allocator); // Allocator.Persistent / Confirmed to dispose
 			return true;
+		}
+
+		// Every face's uvs as a part of one map of the sphere, so the texture goes on from one face to the next: u round the
+		// sphere (its longitude, at the equator's scale) and v along it from pole to pole (its latitude's arc), in units,
+		// stretched towards the poles and cut where the longitude goes round. Each corner gets its place on the map (the
+		// face's uvs are interpolated between them, so faces meet exactly), and each face the flat mapping closest to it
+		// (for its tangents, decals and lightmap). The surface's own uv settings are applied to the map; a surface mapped
+		// in world space keeps its own.
+		static void MapSphere(ref BlobBuilderArray<BrushMeshBlob.Polygon> polygons, in BlobBuilderArray<BrushMeshBlob.HalfEdge> halfEdges,
+							  in BlobBuilderArray<float3> localVertices, in BlobBuilderArray<float4> localPlanes, ref BlobBuilderArray<float2> halfEdgeUVs,
+							  float3 centre, float3 radius)
+		{
+			var equator  = (radius.x + radius.z) * 0.5f;
+			var meridian = (equator + radius.y) * 0.5f;
+			if (!(equator > 0) || !(radius.y > 0))
+				return;
+			for (int p = 0; p < polygons.Length; p++)
+			{
+				ref var polygon = ref polygons[p];
+				if ((polygon.surface.details.detailFlags & SurfaceDetailFlags.TextureIsInWorldSpace) != 0)
+					continue;
+				var faceCentre = float3.zero;
+				for (int e = 0; e < polygon.edgeCount; e++)
+					faceCentre += localVertices[halfEdges[polygon.firstEdge + e].vertexIndex];
+				faceCentre /= polygon.edgeCount;
+
+				var faceOffset = faceCentre - centre;
+				var faceLongitude = math.atan2(faceOffset.z, faceOffset.x);
+				var normal     = math.normalizesafe(localPlanes[p].xyz);
+				// westwards, so the texture isn't mirrored seen from outside, and northwards, in the face's plane
+				var west       = new float3(math.sin(faceLongitude), 0, -math.cos(faceLongitude));
+				west           = math.normalizesafe(west - normal * math.dot(west, normal));
+				var north      = math.normalizesafe(math.cross(west, normal));
+				if (math.dot(north, new float3(0, 1, 0) - normal * normal.y) < 0)
+					north = -north;
+
+				// the flat mapping that puts the face's corners closest to where they are on the map (exactly, for a
+				// triangle): least squares over (west, north, 1) in the face's plane
+				ref var uv0 = ref polygon.surface.details.UV0;
+				float4 givenU = uv0.U, givenV = uv0.V;
+				var normalMatrix = float3x3.zero;
+				var targetU = float3.zero; var targetV = float3.zero;
+				for (int e = 0; e < polygon.edgeCount; e++)
+				{
+					var corner = localVertices[halfEdges[polygon.firstEdge + e].vertexIndex];
+					var offset = corner - centre;
+					var ring   = math.length(offset.xz);
+					// a pole is on every longitude: the face's own
+					var longitude = ring > equator * 1e-4f ? math.atan2(offset.z, offset.x) : faceLongitude;
+					// on the same side of where the map is cut as the face
+					longitude = faceLongitude + math.atan2(math.sin(longitude - faceLongitude), math.cos(longitude - faceLongitude));
+					var latitude  = math.atan2(offset.y / radius.y, ring / equator);
+					var mapU = -longitude * equator;
+					var mapV = (latitude + math.PI * 0.5f) * meridian;
+					halfEdgeUVs[polygon.firstEdge + e] = new float2(givenU.x * mapU + givenU.y * mapV + givenU.w,
+																	givenV.x * mapU + givenV.y * mapV + givenV.w);
+					var row = new float3(math.dot(west, corner - faceCentre), math.dot(north, corner - faceCentre), 1);
+					normalMatrix += new float3x3(row * row.x, row * row.y, row * row.z);
+					targetU += row * mapU;
+					targetV += row * mapV;
+				}
+				if (math.abs(math.determinant(normalMatrix)) < 1e-12f)
+					continue;
+				var inverse = math.inverse(normalMatrix);
+				var fitU = math.mul(inverse, targetU);
+				var fitV = math.mul(inverse, targetV);
+				// u = dot(along, position) + atU, v = dot(up, position) + atV, in the brush's space
+				var along = west * fitU.x + north * fitU.y;
+				var atU   = fitU.z - math.dot(along, faceCentre);
+				var up    = west * fitV.x + north * fitV.y;
+				var atV   = fitV.z - math.dot(up, faceCentre);
+
+				// the same in the plane's space, which the surface's uv settings work in
+				var toPlane  = MathExtensions.GenerateLocalToPlaneSpaceMatrix(localPlanes[p]);
+				var rotation = new float3x3(toPlane);
+				var shift    = toPlane.c3.xyz;
+				var u = new float4(math.mul(rotation, along), atU - math.dot(math.mul(rotation, along), shift));
+				var v = new float4(math.mul(rotation, up),    atV - math.dot(math.mul(rotation, up),    shift));
+
+				uv0.U = givenU.x * u + givenU.y * v + new float4(0, 0, 0, givenU.w);
+				uv0.V = givenV.x * u + givenV.y * v + new float4(0, 0, 0, givenV.w);
+			}
 		}
         
         public static BrushMeshArrays CreateSphere(float3 diameterXYZ, float offsetY, bool generateFromCenter, int horzSegments, int vertSegments,

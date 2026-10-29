@@ -34,7 +34,7 @@ namespace Chisel.Core
         public float4   localPlane;
         // The brush's surface this polygon shows (its index in the generator's surface array)
         public int      descriptionIndex;
-        // The brush's surfaces in the same group (not 0) share their normals where they meet
+        // The surfaces in the same group (not 0) of the same brush, or generator, share their normals where they meet
         public uint     smoothingGroup;
         // Hotspot mapping: the layout (ChiselHotspotStore, 0 for none), the pinned tile and the seed
         public int      hotspotLayout;
@@ -48,6 +48,8 @@ namespace Chisel.Core
         // the texture is not locked to the object (SurfaceDetailFlags.TextureIsInWorldSpace): a hotspot surface's frame
         // comes from the tree's axes and its repeats lie on a grid fixed in the tree
         public bool     textureInWorld;
+        // its uvs are interpolated from the ones its generator gave its corners (BasePolygonsBlob.edgeUVs)
+        public bool     cornerUVs;
     }
 
     struct BasePolygonsBlob
@@ -56,5 +58,7 @@ namespace Chisel.Core
         public BlobArray<Edge>        edges;
         public BlobArray<float3>      vertices;
         public BlobArray<BaseSurface> surfaces;
+        // By edge, the uv its polygon has at the edge's first vertex, when the brush's generator gave them (empty otherwise)
+        public BlobArray<float2>      edgeUVs;
     }
 }

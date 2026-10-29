@@ -17,7 +17,8 @@ namespace Chisel.Core
             rotation		    = 0.0f,
             horizontalSegments  = 12,
             verticalSegments    = 12,
-            generateFromCenter  = false
+            generateFromCenter  = false,
+            smoothingGroup      = 1
         };
 		public static ref readonly ChiselSphere DefaultSettings => ref kDefaultSettings;
 
@@ -27,6 +28,8 @@ namespace Chisel.Core
         public float    rotation; // TODO: useless?
         public int	    horizontalSegments;
         public int	    verticalSegments;
+        // the smoothing group of all its faces (0 for none)
+        public uint     smoothingGroup;
 
 
         #region Generate
@@ -39,6 +42,7 @@ namespace Chisel.Core
                                                  generateFromCenter,
                                                  horizontalSegments,
                                                  verticalSegments,
+                                                 smoothingGroup,
                                                  in surfaceDefinitionBlob,
                                                  out var newBrushMesh,
                                                  allocator))// Indirect

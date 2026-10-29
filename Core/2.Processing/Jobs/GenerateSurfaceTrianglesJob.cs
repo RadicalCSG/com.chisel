@@ -64,64 +64,10 @@ namespace Chisel.Core
 			// a painted surface gets its paint's grid points as vertices, before anything is worked out from them
 			if (paint.TryGetRange(entityID, baseSurfaces[surf].descriptionIndex, out var subdivision))
 				PaintSubdivision.Subdivide(surfaceIndexList, ref uniqueVertexMapper, finalFaceNormal, paint, subdivision);
-			// A vertex's normal takes those of the surfaces that meet it there and are smoothed with this one: the brush's
-			// surfaces in its smoothing group, and any surface within the model's smoothing angle
-			var smoothingGroup = baseSurfaces[surf].smoothingGroup;
-			var byAngle        = normalSmoothingAngle > 0.0001f;
-			if (byAngle || smoothingGroup != 0)
-			{
-				var renderVertices = uniqueVertexMapper.surfaceRenderVertices;
-				var positions      = uniqueVertexMapper.surfaceColliderVertices;
-				var smoothingCos   = byAngle ? math.cos(math.radians(normalSmoothingAngle)) : 2.0f;
-
-				// (brush, surface) of each surface smoothed with this one, and its plane in the tree, normalized and
-				// facing as drawn
-				using var smoothedWith = new NativeList<int2>(64, Allocator.Temp);
-				using var planes       = new NativeList<float4>(64, Allocator.Temp);
-				for (int otherBrushIdx = 0; otherBrushIdx < basePolygonCache.Length; otherBrushIdx++)
-				{
-					if (!basePolygonCache[otherBrushIdx].IsCreated) continue;
-					ref var otherSurfaces = ref basePolygonCache[otherBrushIdx].Value.surfaces;
-					var otherNodeToTreeInvTrans = math.transpose(transformationCache[otherBrushIdx].treeToNode);
-
-					for (int otherSurf = 0; otherSurf < otherSurfaces.Length; otherSurf++)
-					{
-						if (otherBrushIdx == brushNodeOrder && otherSurf == surf) continue;
-
-						var plane  = math.mul(otherNodeToTreeInvTrans, otherSurfaces[otherSurf].localPlane);
-						var length = math.length(plane.xyz);
-						if (!(length > 0)) continue;
-						plane /= length;
-						// inwards against inwards in the subtractive workflow
-						var drawnNormal = subtractiveWorkflow ? -plane.xyz : plane.xyz;
-						var inGroup = smoothingGroup != 0 && otherBrushIdx == brushNodeOrder && otherSurfaces[otherSurf].smoothingGroup == smoothingGroup;
-						if (!inGroup && math.dot(finalFaceNormal, drawnNormal) < smoothingCos)
-							continue;
-						smoothedWith.Add(new int2(otherBrushIdx, otherSurf));
-						planes.Add(plane);
-					}
-				}
-
-				for (int v = 0; v < renderVertices.Length; v++)
-				{
-					float3 position       = positions[v];
-					float3 smoothedNormal = finalFaceNormal;
-					for (int a = 0; a < planes.Length; a++)
-					{
-						var plane = planes[a];
-						if (math.abs(math.dot(plane.xyz, position) + plane.w) >= kSmoothingDistance)
-							continue;
-						// only a surface the vertex is on, not one whose plane goes through it somewhere else
-						if (!OnPolygon(ref basePolygonCache[smoothedWith[a].x].Value, smoothedWith[a].y, plane.xyz, position))
-							continue;
-						smoothedNormal += subtractiveWorkflow ? -plane.xyz : plane.xyz;
-					}
-
-					var rv = renderVertices[v];
-					rv.normal = math.normalizesafe(smoothedNormal, finalFaceNormal);
-					renderVertices[v] = rv;
-				}
-			}
+			using var surfaceCorners = CornersOf(surf, brushNodeOrder, entityID, ref baseSurfaces, finalFaceNormal);
+			surfaceCorners.ApplyNormals(uniqueVertexMapper.surfaceRenderVertices);
+			// the generator's uvs, unless a hotspot tile maps the surface
+			var cornerUVs = surfaceCorners.hasUVs;
 
 			var flags = baseSurfaces[surf].destinationFlags;
 			var outputFlags = baseSurfaces[surf].outputFlags;
@@ -197,6 +143,7 @@ namespace Chisel.Core
 					var onOtherSheet = hotspotTiles[choice.tile].sheet > 0;
 					layout = sheet;
 					uvMat = HotspotMatcher.Mapping(hotspotTiles[choice.tile], layout, shape, choice, hotspotRight, hotspotUp);
+					cornerUVs = false;
 					// a tile that repeats, has a border, or whose repeats are moved along (a cap is mapped whole): what is drawn is cut
 					// where its sections meet, after the model's weld (OutputHotspotSections)
 					if (!cap && (hotspotTiles[choice.tile].border > 0 || choice.Repeated || math.any(baseSurfaces[surf].hotspotOffset != 0) ||
@@ -218,6 +165,8 @@ namespace Chisel.Core
 			}
 			
 			MeshAlgorithms.ComputeUVs(uniqueVertexMapper.surfaceRenderVertices, uvMat);
+			if (cornerUVs)
+				surfaceCorners.ApplyUVs(uniqueVertexMapper.surfaceRenderVertices);
 			MeshAlgorithms.ComputeTangents(uniqueVertexMapper.surfaceRenderVertices, finalFaceNormal, uvMat);
 			MeshAlgorithms.ComputeLightmapCoordinates(uniqueVertexMapper.surfaceRenderVertices, finalFaceNormal);
 
@@ -268,6 +217,7 @@ namespace Chisel.Core
 					decalParms.parameter1 = volume.renderMaterial;
 					if (volume.IsTransparent)
 						decalParms.parameter2 = 0;
+					surfaceCorners.ApplyNormals(decalOutput.renderVertices);
 					MeshAlgorithms.ComputeTangents(decalOutput.indices, decalOutput.renderVertices);
 					MeshAlgorithms.ComputeLightmapCoordinates(decalOutput.renderVertices, finalFaceNormal);
 					var slot = baseSurfaceCount + candidateStart + k;
@@ -287,7 +237,10 @@ namespace Chisel.Core
 			{
 				// An opaque decal took part of this surface: the rest of it is drawn instead
 				var remaining = decalBuilder.surface;
+				surfaceCorners.ApplyNormals(remaining.renderVertices);
 				MeshAlgorithms.ComputeUVs(remaining.renderVertices, uvMat);
+				if (cornerUVs)
+					surfaceCorners.ApplyUVs(remaining.renderVertices);
 				MeshAlgorithms.ComputeTangents(remaining.renderVertices, finalFaceNormal, uvMat);
 				MeshAlgorithms.ComputeLightmapCoordinates(remaining.renderVertices, finalFaceNormal);
 				buf.Construct(builder, remaining.indices, remaining.colliderVertices,
@@ -334,6 +287,267 @@ namespace Chisel.Core
 
 		// How far from a surface a vertex may be and still be on it, for smoothing
 		const float kSmoothingDistance = 0.005f;
+
+		struct SmoothingFace
+		{
+			public float3 normal;   // facing as drawn
+			public int    brush;
+			public ulong  entity;   // the brush's, shared by a generator's brushes
+			public uint   group;
+
+			// A smoothing group is a brush's own, or its generator's (all the brushes it made)
+			public readonly bool InGroupWith(in SmoothingFace other)
+			{
+				return group != 0 && group == other.group && (brush == other.brush || (entity != 0 && entity == other.entity));
+			}
+		}
+
+		ulong EntityOf(int brushNodeOrder)
+		{
+			ref var polygons = ref basePolygonCache[brushNodeOrder].Value.polygons;
+			return polygons.Length > 0 ? entityIDLookup.SafeGetNodeEntityID(polygons[0].nodeIndexOrder.compactNodeID) : 0;
+		}
+
+		// A surface's normals and uvs as a function of where on it they are: their values at its brush polygon's corners,
+		// in between them over the polygon. Whatever adds vertices to the surface (the CSG, paint, decals) takes them from
+		// it, so the surface is shaded and textured the same however it is cut, and two surfaces that share an edge agree
+		// along it.
+		struct SurfaceCorners : System.IDisposable
+		{
+			// the normals are smoothed (else the face's), and the uvs given by the generator (else the surface's mapping)
+			public bool        smooth;
+			public bool        hasUVs;
+			public float3      faceNormal;
+			// the polygon's normal, the way its corners go round counterclockwise
+			public float3      areaNormal;
+			public NativeList<float3> corners;
+			public NativeList<float3> normals;
+			public NativeList<float2> uvs;
+			// how much each corner counts at a position
+			public NativeList<float>  weights;
+
+			// The corners' weights at a position: one corner, along an edge, or Wachspress coordinates inside
+			public void Weigh(float3 position)
+			{
+				var count = corners.Length;
+				weights.Clear();
+				weights.Resize(count, NativeArrayOptions.ClearMemory);
+				// at a corner (the CSG's vertex for it can be a little off where its planes meet at shallow angles)
+				for (int i = 0; i < count; i++)
+				{
+					if (math.lengthsq(position - corners[i]) < kSmoothingDistance * kSmoothingDistance)
+					{
+						weights[i] = 1;
+						return;
+					}
+				}
+				// on an edge, or just outside the polygon: along the nearest edge
+				var inside = float.MaxValue; var nearest = 0; var along = 0.0f;
+				for (int i = 0; i < count; i++)
+				{
+					var from = corners[i];
+					var edge = corners[(i + 1) % count] - from;
+					var length = math.length(edge);
+					if (!(length > 0)) continue;
+					var side = math.dot(math.cross(edge, position - from), areaNormal) / length;
+					if (side < inside)
+					{
+						inside  = side;
+						nearest = i;
+						along   = math.saturate(math.dot(position - from, edge) / (length * length));
+					}
+				}
+				if (inside <= kSmoothingDistance)
+				{
+					weights[nearest] = 1 - along;
+					weights[(nearest + 1) % count] = along;
+					return;
+				}
+				var sum = 0.0f;
+				for (int i = 0; i < count; i++)
+				{
+					var previous = corners[(i + count - 1) % count];
+					var corner   = corners[i];
+					var next     = corners[(i + 1) % count];
+					var weight   = Area(previous, corner, next) / (Area(position, previous, corner) * Area(position, corner, next));
+					weights[i] = weight;
+					sum += weight;
+				}
+				for (int i = 0; i < count; i++)
+					weights[i] /= sum;
+			}
+
+			readonly float Area(float3 a, float3 b, float3 c) => math.dot(math.cross(b - a, c - a), areaNormal);
+
+			public void ApplyNormals(NativeList<RenderVertex> vertices)
+			{
+				if (!smooth)
+					return;
+				for (int v = 0; v < vertices.Length; v++)
+				{
+					var vertex = vertices[v];
+					Weigh(vertex.position);
+					var normal = float3.zero;
+					for (int i = 0; i < weights.Length; i++)
+						normal += normals[i] * weights[i];
+					vertex.normal = math.normalizesafe(normal, faceNormal);
+					vertices[v] = vertex;
+				}
+			}
+
+			public void ApplyUVs(NativeList<RenderVertex> vertices)
+			{
+				if (!hasUVs)
+					return;
+				for (int v = 0; v < vertices.Length; v++)
+				{
+					var vertex = vertices[v];
+					Weigh(vertex.position);
+					var uv = float2.zero;
+					for (int i = 0; i < weights.Length; i++)
+						uv += uvs[i] * weights[i];
+					vertex.uv0 = uv;
+					vertices[v] = vertex;
+				}
+			}
+
+			public void Dispose()
+			{
+				if (corners.IsCreated) corners.Dispose();
+				if (normals.IsCreated) normals.Dispose();
+				if (uvs.IsCreated)     uvs.Dispose();
+				if (weights.IsCreated) weights.Dispose();
+			}
+		}
+
+		// A corner's normal is shared by the surfaces around it that are smoothed together: two surfaces at the corner
+		// are when they are in the same smoothing group (not 0) of the same brush or generator, or within the model's smoothing angle
+		// of each other, and so are the surfaces joined to them that way, so a curved surface has no seams however
+		// many faces turn round the corner. Every surface counts once, coplanar ones of different brushes included.
+		SurfaceCorners CornersOf(int surf, int brushNodeOrder, ulong entityID, ref BlobArray<BaseSurface> baseSurfaces, float3 finalFaceNormal)
+		{
+			var result = new SurfaceCorners { faceNormal = finalFaceNormal };
+			var smoothingGroup = baseSurfaces[surf].smoothingGroup;
+			var byAngle        = normalSmoothingAngle > 0.0001f;
+			ref var blob = ref basePolygonCache[brushNodeOrder].Value;
+			var wantsNormals   = byAngle || smoothingGroup != 0;
+			var wantsUVs       = baseSurfaces[surf].cornerUVs && blob.edgeUVs.Length == blob.edges.Length;
+			if (!wantsNormals && !wantsUVs)
+				return result;
+
+			ref var polygon = ref blob.polygons[surf];
+			var cornerCount = polygon.endEdgeIndex - polygon.startEdgeIndex;
+			if (cornerCount < 3)
+				return result;
+			result.corners = new NativeList<float3>(cornerCount, Allocator.Temp);
+			result.weights = new NativeList<float>(cornerCount, Allocator.Temp);
+			if (wantsUVs)
+				result.uvs = new NativeList<float2>(cornerCount, Allocator.Temp);
+			var newell = float3.zero;
+			for (int e = polygon.startEdgeIndex; e < polygon.endEdgeIndex; e++)
+			{
+				result.corners.Add(blob.vertices[blob.edges[e].index1]);
+				newell += math.cross(blob.vertices[blob.edges[e].index1], blob.vertices[blob.edges[e].index2]);
+				if (wantsUVs)
+					result.uvs.Add(blob.edgeUVs[e]);
+			}
+			result.areaNormal = math.normalizesafe(newell, finalFaceNormal);
+			result.hasUVs = wantsUVs;
+			if (!wantsNormals)
+				return result;
+			result.normals = new NativeList<float3>(cornerCount, Allocator.Temp);
+			var positions = result.corners;
+			var smoothingCos   = byAngle ? math.cos(math.radians(normalSmoothingAngle)) : 2.0f;
+
+			// the surfaces whose planes pass by this one's corners: (brush, surface), and the plane in the tree, normalized
+			float3 min = positions[0], max = positions[0];
+			for (int v = 1; v < positions.Length; v++) { min = math.min(min, positions[v]); max = math.max(max, positions[v]); }
+			var centre  = (min + max) * 0.5f;
+			var extents = (max - min) * 0.5f + kSmoothingDistance;
+			using var nearby = new NativeList<int2>(64, Allocator.Temp);
+			using var planes = new NativeList<float4>(64, Allocator.Temp);
+			for (int otherBrushIdx = 0; otherBrushIdx < basePolygonCache.Length; otherBrushIdx++)
+			{
+				if (!basePolygonCache[otherBrushIdx].IsCreated) continue;
+				// only the brush's own surfaces can be in its smoothing group
+				if (!byAngle && otherBrushIdx != brushNodeOrder && (entityID == 0 || EntityOf(otherBrushIdx) != entityID)) continue;
+				ref var otherSurfaces = ref basePolygonCache[otherBrushIdx].Value.surfaces;
+				var otherNodeToTreeInvTrans = math.transpose(transformationCache[otherBrushIdx].treeToNode);
+				for (int otherSurf = 0; otherSurf < otherSurfaces.Length; otherSurf++)
+				{
+					if (otherBrushIdx == brushNodeOrder && otherSurf == surf) continue;
+					var plane  = math.mul(otherNodeToTreeInvTrans, otherSurfaces[otherSurf].localPlane);
+					var length = math.length(plane.xyz);
+					if (!(length > 0)) continue;
+					plane /= length;
+					if (math.abs(math.dot(plane.xyz, centre) + plane.w) > math.dot(math.abs(plane.xyz), extents)) continue;
+					nearby.Add(new int2(otherBrushIdx, otherSurf));
+					planes.Add(plane);
+				}
+			}
+
+			using var faces  = new NativeList<SmoothingFace>(16, Allocator.Temp);
+			NativeList<bool> joined;
+			using var _joined = joined = new NativeList<bool>(16, Allocator.Temp);
+			using var stack  = new NativeList<int>(16, Allocator.Temp);
+			var anySmoothed = false;
+			for (int v = 0; v < positions.Length; v++)
+			{
+				var position = positions[v];
+				// the surfaces the vertex is on, this one first
+				faces.Clear();
+				faces.Add(new SmoothingFace { normal = finalFaceNormal, brush = brushNodeOrder, entity = entityID, group = smoothingGroup });
+				for (int a = 0; a < planes.Length; a++)
+				{
+					var plane = planes[a];
+					if (math.abs(math.dot(plane.xyz, position) + plane.w) >= kSmoothingDistance)
+						continue;
+					// only a surface the vertex is on, not one whose plane goes through it somewhere else
+					if (!OnPolygon(ref basePolygonCache[nearby[a].x].Value, nearby[a].y, plane.xyz, position))
+						continue;
+					// inwards against inwards in the subtractive workflow
+					var normal = subtractiveWorkflow ? -plane.xyz : plane.xyz;
+					var brush  = nearby[a].x;
+					var group  = basePolygonCache[brush].Value.surfaces[nearby[a].y].smoothingGroup;
+					// a surface of another brush in the same plane is the same surface
+					var same   = false;
+					for (int f = 0; f < faces.Length && !same; f++)
+						same = faces[f].brush != brush && math.dot(faces[f].normal, normal) > 0.99999f;
+					if (!same)
+						faces.Add(new SmoothingFace { normal = normal, brush = brush, entity = EntityOf(brush), group = group });
+				}
+
+				// the surfaces joined to this one, one after another
+				joined.Clear();
+				joined.Resize(faces.Length, NativeArrayOptions.ClearMemory);
+				joined[0] = true;
+				stack.Clear();
+				stack.Add(0);
+				var smoothedNormal = float3.zero;
+				while (stack.Length > 0)
+				{
+					var f = stack[stack.Length - 1];
+					stack.RemoveAt(stack.Length - 1);
+					smoothedNormal += faces[f].normal;
+					for (int o = 0; o < faces.Length; o++)
+					{
+						if (joined[o])
+							continue;
+						if (!faces[f].InGroupWith(faces[o]) && math.dot(faces[f].normal, faces[o].normal) < smoothingCos)
+							continue;
+						joined[o] = true;
+						stack.Add(o);
+					}
+				}
+
+				var cornerNormal = math.normalizesafe(smoothedNormal, finalFaceNormal);
+				anySmoothed |= math.dot(cornerNormal, finalFaceNormal) < 0.99999f;
+				result.normals.Add(cornerNormal);
+			}
+			// a surface no other is smoothed with is flat
+			result.smooth = anySmoothed;
+			return result;
+		}
 
 		// Whether a point on a polygon's plane is inside its outline (or on it), in the tree's space
 		static bool OnPolygon(ref BasePolygonsBlob blob, int polygonIndex, float3 normal, float3 point)

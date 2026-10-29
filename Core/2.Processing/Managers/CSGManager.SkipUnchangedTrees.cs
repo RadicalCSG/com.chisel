@@ -172,6 +172,9 @@ namespace Chisel.Core
             AppendArray(ref buffer, ref brushMesh.halfEdgePolygonIndices);
             AppendArray(ref buffer, ref brushMesh.localPlanes);
             buffer.Add(brushMesh.localPlaneCount);
+            // only when given: nothing for the brushes without them
+            if (brushMesh.halfEdgeUVs.Length > 0)
+                AppendArray(ref buffer, ref brushMesh.halfEdgeUVs);
 
             ref var polygons = ref brushMesh.polygons;
             buffer.Add(polygons.Length);

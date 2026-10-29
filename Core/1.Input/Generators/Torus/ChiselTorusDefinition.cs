@@ -21,7 +21,8 @@ namespace Chisel.Core
             totalAngle          = 360.0f,
             horizontalSegments  = 8,
             verticalSegments    = 8,
-            fitCircle           = true
+            fitCircle           = true,
+            smoothingGroup      = 1
         };
 		public static ref readonly ChiselTorus DefaultSettings => ref kDefaultSettings;
 
@@ -39,6 +40,9 @@ namespace Chisel.Core
 
         [MarshalAs(UnmanagedType.U1)]
         public bool     fitCircle;
+
+        // the smoothing group of its tube, all its brushes' (0 for none)
+        public uint     smoothingGroup;
 
 
         #region Properties
@@ -75,6 +79,7 @@ namespace Chisel.Core
                                                 in vertices,
                                                 verticalSegments,
                                                 horizontalSegments,
+                                                smoothingGroup,
                                                 in surfaceDefinitionBlob,
                                                 allocator))// Indirect
 			{

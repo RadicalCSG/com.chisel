@@ -42,6 +42,11 @@ namespace Chisel.Components
             get { return definition.settings.sides; }
             set { if (definition.settings.sides == value) return; definition.settings.sides = value; OnValidateState(); }
         }
+        public uint SmoothingGroup
+        {
+            get { return definition.settings.smoothingGroup; }
+            set { if (definition.settings.smoothingGroup == value) return; definition.settings.smoothingGroup = value; OnValidateState(); }
+        }
         public int TopSegments
         {
             get { return definition.settings.topSegments; }
