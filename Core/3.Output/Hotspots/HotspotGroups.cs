@@ -1,3 +1,4 @@
+using System;
 using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
 using Unity.Entities;
@@ -465,7 +466,7 @@ namespace Chisel.Core
         }
 
         // What grouping reads of a candidate that is its own: its kind, its frame and settings, its corners
-        public static unsafe uint4 SurfaceHash(ref ChiselSurfaceRenderBuffer surface, byte kind)
+        public static uint4 SurfaceHash(ref ChiselSurfaceRenderBuffer surface, byte kind)
         {
             var source = surface.hotspotSource;
             var buffer = new UnsafeAppendBuffer(128, 16, Allocator.Temp);
@@ -474,19 +475,19 @@ namespace Chisel.Core
             buffer.Add(source.seed); buffer.Add(source.pinned); buffer.Add(source.pinnedSheet); buffer.Add(source.density);
             buffer.Add(source.offset); buffer.Add(source.world ? 1 : 0);
             buffer.Add(surface.colliderVertices.Length);
-            buffer.Add(surface.colliderVertices.Length == 0 ? default : xxHash3.Hash128(surface.colliderVertices.GetUnsafePtr(), (long)surface.colliderVertices.Length * UnsafeUtility.SizeOf<float3>()));
-            var hash = xxHash3.Hash128(buffer.Ptr, buffer.Length);
+            buffer.Add(surface.colliderVertices.Hash128());
+            var hash = buffer.Hash128();
             buffer.Dispose();
             return hash;
         }
 
         // What every candidate's grouping reads: the layouts and the links
-        public static unsafe uint4 GroupInputsKey(NativeArray<HotspotLayoutData> layouts, NativeArray<HotspotLink> links)
+        public static uint4 GroupInputsKey(NativeArray<HotspotLayoutData> layouts, NativeArray<HotspotLink> links)
         {
-            var parts = stackalloc uint4[2];
-            parts[0] = layouts.IsCreated && layouts.Length > 0 ? xxHash3.Hash128(layouts.GetUnsafeReadOnlyPtr(), (long)layouts.Length * UnsafeUtility.SizeOf<HotspotLayoutData>()) : default;
-            parts[1] = links.IsCreated && links.Length > 0     ? xxHash3.Hash128(links.GetUnsafeReadOnlyPtr(), (long)links.Length * UnsafeUtility.SizeOf<HotspotLink>()) : default;
-            return xxHash3.Hash128(parts, 2 * 16);
+            Span<uint4> parts = stackalloc uint4[2];
+            parts[0] = layouts.Hash128();
+            parts[1] = links.Hash128();
+            return HashExtensions.HashValues<uint4>(parts);
         }
 
         // Everything Find does but matching the groups (Match): the candidates, who is grouped with whom, how each is
@@ -1357,7 +1358,7 @@ namespace Chisel.Core
 
         // Everything Match reads of a group: its first member's settings, and each member's corners, triangles, unfold and
         // borders given by hand; inputs: what every match reads (InputsKey)
-        static unsafe uint4 MatchKey(int lead, NativeArray<BrushData> brushes, in UnsafeParallelMultiHashMap<int2, HotspotBorderCorner> bordersOf,
+        static uint4 MatchKey(int lead, NativeArray<BrushData> brushes, in UnsafeParallelMultiHashMap<int2, HotspotBorderCorner> bordersOf,
                                      in FindState state, uint4 inputs)
         {
             var buffer = new UnsafeAppendBuffer(1024, 16, Allocator.Temp);
@@ -1376,9 +1377,9 @@ namespace Chisel.Core
                     ref var surface = ref brushes[at.x].brushRenderBuffer.Value.surfaces[at.y];
                     buffer.Add(state.unfold[c]);
                     buffer.Add(surface.colliderVertices.Length);
-                    buffer.Add(surface.colliderVertices.GetUnsafePtr(), surface.colliderVertices.Length * UnsafeUtility.SizeOf<float3>());
+                    buffer.AddBytes(ref surface.colliderVertices);
                     buffer.Add(surface.indices.Length);
-                    buffer.Add(surface.indices.GetUnsafePtr(), surface.indices.Length * sizeof(int));
+                    buffer.AddBytes(ref surface.indices);
                     BordersOf(at, bordersOf, rules);
                     buffer.Add(rules.Length);
                     for (int i = 0; i < rules.Length; i++)
@@ -1387,7 +1388,7 @@ namespace Chisel.Core
                         buffer.Add(rules[i].rule); buffer.Add(rules[i].border);
                     }
                 }
-                return xxHash3.Hash128(buffer.Ptr, buffer.Length);
+                return buffer.Hash128();
             }
             finally
             {
@@ -1397,13 +1398,13 @@ namespace Chisel.Core
         }
 
         // What every group's match reads: the tiles, the layouts and the shaped tiles' sides
-        public static unsafe uint4 InputsKey(NativeArray<HotspotTileData> tiles, NativeArray<HotspotLayoutData> layouts, NativeArray<float4> tileSides)
+        public static uint4 InputsKey(NativeArray<HotspotTileData> tiles, NativeArray<HotspotLayoutData> layouts, NativeArray<float4> tileSides)
         {
-            var parts = stackalloc uint4[3];
-            parts[0] = tiles.IsCreated && tiles.Length > 0         ? xxHash3.Hash128(tiles.GetUnsafeReadOnlyPtr(), (long)tiles.Length * UnsafeUtility.SizeOf<HotspotTileData>()) : default;
-            parts[1] = layouts.IsCreated && layouts.Length > 0     ? xxHash3.Hash128(layouts.GetUnsafeReadOnlyPtr(), (long)layouts.Length * UnsafeUtility.SizeOf<HotspotLayoutData>()) : default;
-            parts[2] = tileSides.IsCreated && tileSides.Length > 0 ? xxHash3.Hash128(tileSides.GetUnsafeReadOnlyPtr(), (long)tileSides.Length * UnsafeUtility.SizeOf<float4>()) : default;
-            return xxHash3.Hash128(parts, 3 * 16);
+            Span<uint4> parts = stackalloc uint4[3];
+            parts[0] = tiles.Hash128();
+            parts[1] = layouts.Hash128();
+            parts[2] = tileSides.Hash128();
+            return HashExtensions.HashValues<uint4>(parts);
         }
 
         // The matched groups in the model's order, their sections in the flat lists, and which group each member is in

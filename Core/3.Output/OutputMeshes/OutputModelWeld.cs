@@ -381,20 +381,16 @@ namespace Chisel.Core
         }
 
         // What Copy reads for a brush: its buffer and the weld's working copies of its surfaces
-        static unsafe bool CopyKey(BlobAssetReference<ChiselBrushRenderBuffer> source, int brush, NativeList<Working> work,
-                                   NativeParallelHashMap<long, int> workIndex, NativeList<CollapseDecision> collapseDecisions, out uint4 key)
+        static bool CopyKey(BlobAssetReference<ChiselBrushRenderBuffer> source, int brush, NativeList<Working> work,
+                            NativeParallelHashMap<long, int> workIndex, NativeList<CollapseDecision> collapseDecisions, out uint4 key)
         {
             key = default;
-            if (!source.IsCreated)
-                return false;
-            var data   = (byte*)source.GetUnsafePtr();
-            var length = *(int*)(data - 32 + 8);
-            if (length <= 0 || length >= (1 << 30))
+            if (!source.TryHash128(out var sourceHash))
                 return false;
             var buffer = new UnsafeAppendBuffer(256, 16, Allocator.Temp);
             try
             {
-                buffer.Add(xxHash3.Hash128(data, length));
+                buffer.Add(sourceHash);
                 ref var surfaces = ref source.Value.surfaces;
                 for (int s = 0; s < surfaces.Length; s++)
                 {
@@ -406,18 +402,17 @@ namespace Chisel.Core
                     if (item.CollapseOnly)
                     {
                         buffer.Add(-1);
-                        buffer.Add(HashOf((byte*)collapseDecisions.GetUnsafeReadOnlyPtr() + (long)item.decisionStart * UnsafeUtility.SizeOf<CollapseDecision>(),
-                                          (long)item.decisionCount * UnsafeUtility.SizeOf<CollapseDecision>()));
+                        buffer.Add(collapseDecisions.AsArray().GetSubArray(item.decisionStart, item.decisionCount).Hash128());
                         continue;
                     }
                     buffer.Add(item.indices.Length);
                     buffer.Add(item.collider.Length);
-                    buffer.Add(HashOf(item.indices.Ptr,  (long)item.indices.Length  * sizeof(int)));
-                    buffer.Add(HashOf(item.collider.Ptr, (long)item.collider.Length * sizeof(float3)));
-                    buffer.Add(HashOf(item.select.Ptr,   (long)item.select.Length   * UnsafeUtility.SizeOf<SelectVertex>()));
-                    buffer.Add(HashOf(item.render.Ptr,   (long)item.render.Length   * UnsafeUtility.SizeOf<RenderVertex>()));
+                    buffer.Add(item.indices.Hash128());
+                    buffer.Add(item.collider.Hash128());
+                    buffer.Add(item.select.Hash128());
+                    buffer.Add(item.render.Hash128());
                 }
-                key = xxHash3.Hash128(buffer.Ptr, buffer.Length);
+                key = buffer.Hash128();
                 return true;
             }
             finally
@@ -425,8 +420,6 @@ namespace Chisel.Core
                 buffer.Dispose();
             }
         }
-
-        static unsafe uint4 HashOf(void* data, long length) { return length == 0 ? default : xxHash3.Hash128(data, length); }
 
         // One pass over the needles; true when it dropped one
         static bool WeldNeedles(NativeList<BrushData> brushes, NativeArray<MinMaxAABB> bounds, NativeList<Needle> needles,

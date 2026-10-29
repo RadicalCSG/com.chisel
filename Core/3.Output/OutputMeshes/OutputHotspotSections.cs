@@ -1,3 +1,4 @@
+using System;
 using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
 using Unity.Entities;
@@ -390,34 +391,32 @@ namespace Chisel.Core
             return length > 0 && length < (1 << 30);
         }
 
-        static unsafe uint4 Hash(void* data, long length) { return length == 0 ? default : xxHash3.Hash128(data, length); }
-
         // The group as the cut reads it: where its sections start in the model's flat lists changes with the other groups
-        static unsafe uint4 HashGroup(HotspotGroups.Group group, NativeList<HotspotSectionLine> lines, NativeList<HotspotSectionHalfPlane> halfPlanes,
-                                      NativeList<HotspotSectionCell> cells)
+        static uint4 HashGroup(HotspotGroups.Group group, NativeList<HotspotSectionLine> lines, NativeList<HotspotSectionHalfPlane> halfPlanes,
+                               NativeList<HotspotSectionCell> cells)
         {
             var start = group.sectionStart;
             var count = group.sectionCount;
             group.sectionStart = int3.zero;
-            var parts = stackalloc uint4[4];
-            parts[0] = Hash(&group, UnsafeUtility.SizeOf<HotspotGroups.Group>());
-            parts[1] = Hash((byte*)lines.GetUnsafePtr()      + (long)start.x * UnsafeUtility.SizeOf<HotspotSectionLine>(),      (long)count.x * UnsafeUtility.SizeOf<HotspotSectionLine>());
-            parts[2] = Hash((byte*)halfPlanes.GetUnsafePtr() + (long)start.y * UnsafeUtility.SizeOf<HotspotSectionHalfPlane>(), (long)count.y * UnsafeUtility.SizeOf<HotspotSectionHalfPlane>());
-            parts[3] = Hash((byte*)cells.GetUnsafePtr()      + (long)start.z * UnsafeUtility.SizeOf<HotspotSectionCell>(),      (long)count.z * UnsafeUtility.SizeOf<HotspotSectionCell>());
-            return Hash(parts, 4 * 16);
+            Span<uint4> parts = stackalloc uint4[4];
+            parts[0] = HashExtensions.HashValue(group);
+            parts[1] = lines.AsArray().GetSubArray(start.x, count.x).Hash128();
+            parts[2] = halfPlanes.AsArray().GetSubArray(start.y, count.y).Hash128();
+            parts[3] = cells.AsArray().GetSubArray(start.z, count.z).Hash128();
+            return HashExtensions.HashValues<uint4>(parts);
         }
 
-        static unsafe uint4 HashInputs(NativeArray<HotspotLayoutData> layouts, NativeArray<float4> tileSides, NativeArray<ulong> variants)
+        static uint4 HashInputs(NativeArray<HotspotLayoutData> layouts, NativeArray<float4> tileSides, NativeArray<ulong> variants)
         {
-            var parts = stackalloc uint4[3];
-            parts[0] = layouts.IsCreated   ? Hash(layouts.GetUnsafeReadOnlyPtr(),   (long)layouts.Length   * UnsafeUtility.SizeOf<HotspotLayoutData>()) : default;
-            parts[1] = tileSides.IsCreated ? Hash(tileSides.GetUnsafeReadOnlyPtr(), (long)tileSides.Length * UnsafeUtility.SizeOf<float4>()) : default;
-            parts[2] = variants.IsCreated  ? Hash(variants.GetUnsafeReadOnlyPtr(),  (long)variants.Length  * UnsafeUtility.SizeOf<ulong>()) : default;
-            return Hash(parts, 3 * 16);
+            Span<uint4> parts = stackalloc uint4[3];
+            parts[0] = layouts.Hash128();
+            parts[1] = tileSides.Hash128();
+            parts[2] = variants.Hash128();
+            return HashExtensions.HashValues<uint4>(parts);
         }
 
         // One key for everything Cut reads for the brush; false when the brush cannot be keyed (it is cut every time then)
-        static unsafe void BrushKey(BlobAssetReference<ChiselBrushRenderBuffer> source, int brush, uint4 content, UnsafeHashMap<int2, int> groupOf, UnsafeHashMap<int2, float4x4> unfoldOf,
+        static void BrushKey(BlobAssetReference<ChiselBrushRenderBuffer> source, int brush, uint4 content, UnsafeHashMap<int2, int> groupOf, UnsafeHashMap<int2, float4x4> unfoldOf,
                                     in UnsafeParallelMultiHashMap<int2, HotspotBorderCorner> bordersOf, NativeArray<uint4> groupKeys, uint4 globalKey,
                                     NativeList<HotspotBorderCorner> rules, out uint4 key)
         {
@@ -446,7 +445,7 @@ namespace Chisel.Core
                     for (int r = 0; r < rules.Length; r++)
                         buffer.Add(rules[r]);
                 }
-                key = xxHash3.Hash128(buffer.Ptr, buffer.Length);
+                key = buffer.Hash128();
             }
             finally
             {

@@ -70,9 +70,9 @@ namespace Chisel.Core
 
         // Which brushes keep what was found for them (sameBuffer: the brush's buffer is the one of the last update), room
         // for the others; the kinds also need the same layouts
-        public unsafe void Prepare(NativeList<BrushData> brushes, NativeArray<HotspotLayoutData> layouts, NativeList<bool> sameBuffer)
+        public void Prepare(NativeList<BrushData> brushes, NativeArray<HotspotLayoutData> layouts, NativeList<bool> sameBuffer)
         {
-            var key = layouts.IsCreated && layouts.Length > 0 ? xxHash3.Hash128(layouts.GetUnsafeReadOnlyPtr(), (long)layouts.Length * UnsafeUtility.SizeOf<HotspotLayoutData>()) : default;
+            var key = layouts.Hash128();
             var sameLayouts = valid.Value && layoutsKey.Value.Equals(key);
             layoutsKey.Value = key;
             valid.Value = true;
