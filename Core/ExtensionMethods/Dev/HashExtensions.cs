@@ -58,6 +58,20 @@ namespace Chisel.Core
 			fixed (T* data = values) { return Bytes(data, (long)values.Length * sizeof(T)); }
 		}
 
+		// 32 bit math.hash of the bytes, also when there are none
+		[MethodImpl(MethodImplOptions.AggressiveInlining)]
+		public static uint Hash32<T>(this NativeArray<T> array) where T : unmanaged
+		{
+			return math.hash(array.IsCreated ? array.GetUnsafeReadOnlyPtr() : null, array.Length * sizeof(T));
+		}
+
+		[MethodImpl(MethodImplOptions.AggressiveInlining)]
+		public static uint Hash32Value<T>(in T value) where T : unmanaged
+		{
+			var copy = value;
+			return math.hash(&copy, sizeof(T));
+		}
+
 		// The blob's data, as long as the header in front of it (BlobAssetHeader: 32 bytes, its length at 8) gives a sane size
 		public static bool TryHash128<T>(this BlobAssetReference<T> blob, out uint4 hash) where T : unmanaged
 		{

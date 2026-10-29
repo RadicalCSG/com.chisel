@@ -87,12 +87,12 @@ namespace Chisel.Core
         }
 
         // A layer and its values
-        public static unsafe uint HashOf(in ChiselPaintLayer layer, float* values)
+        public static uint HashOf(in ChiselPaintLayer layer, NativeArray<float> values)
         {
             var copy = layer;
             copy.valueStart = 0;
-            var hash = math.hash(&copy, UnsafeUtility.SizeOf<ChiselPaintLayer>());
-            return math.hash(new uint2(hash, math.hash(values + layer.valueStart, layer.ValueCount * sizeof(float))));
+            var hash = HashExtensions.Hash32Value(copy);
+            return math.hash(new uint2(hash, values.GetSubArray(layer.valueStart, layer.ValueCount).Hash32()));
         }
 
         /// <summary>Replaces the paint of one entity: its layers, and the values their grids take from. True when it changed;
@@ -112,7 +112,7 @@ namespace Chisel.Core
             return Set(tree, entityID, layers, values, true);
         }
 
-        static unsafe ChiselPaintChange Set(CSGTree tree, ulong entityID, NativeArray<ChiselPaintLayer> layers, NativeArray<float> values, bool valuesInPlace)
+        static ChiselPaintChange Set(CSGTree tree, ulong entityID, NativeArray<ChiselPaintLayer> layers, NativeArray<float> values, bool valuesInPlace)
         {
             if (!tree.Valid)
                 return ChiselPaintChange.None;
@@ -133,10 +133,9 @@ namespace Chisel.Core
             NativeList<uint> hashes;
             using var _hashes = hashes = new NativeList<uint>(math.max(1, sorted.Length), Allocator.Temp);
             var entityHash = 0u;
-            var valuesPointer = values.IsCreated ? (float*)values.GetUnsafeReadOnlyPtr() : null;
             for (int l = 0; l < sorted.Length; l++)
             {
-                hashes.Add(HashOf(sorted[l], valuesPointer));
+                hashes.Add(HashOf(sorted[l], values));
                 entityHash = math.hash(new uint2(entityHash, hashes[l]));
             }
             data.paintEntityHashes.TryGetValue(entityID, out var previous);
@@ -150,7 +149,7 @@ namespace Chisel.Core
                 first++;
             // a tree that kept its saved meshes has no buffers to put right: it is built
             if (valuesInPlace && !CompactHierarchyManager.IsTreeUpdateSkipped(tree) && SameGrids(data, first, sorted) &&
-                SetValues(tree, data, entityID, first, sorted, hashes, valuesPointer))
+                SetValues(tree, data, entityID, first, sorted, hashes, values))
             {
                 data.paintEntityHashes[entityID] = entityHash;
                 return ChiselPaintChange.Values;
@@ -171,7 +170,7 @@ namespace Chisel.Core
             {
                 var layer = sorted[l];
                 var start = data.paintValues.Length;
-                data.paintValues.AddRange(valuesPointer + layer.valueStart, layer.ValueCount);
+                data.paintValues.AddRange(values.GetSubArray(layer.valueStart, layer.ValueCount));
                 layer.valueStart = start;
                 data.paintLayers.Add(layer);
                 data.paintLayerHashes.Add(hashes[l]);
@@ -209,13 +208,13 @@ namespace Chisel.Core
         // New values written over the old, and the hashes of the surfaces they are on put right in the brushes' cached
         // buffers, so the next update copies their meshes again without building a brush. False when no buffer of the
         // entity's brushes has the paint (they are built then)
-        static unsafe bool SetValues(CSGTree tree, ChiselTreeLookup.Data data, ulong entityID, int first, NativeList<ChiselPaintLayer> layers,
-                                     NativeList<uint> hashes, float* values)
+        static bool SetValues(CSGTree tree, ChiselTreeLookup.Data data, ulong entityID, int first, NativeList<ChiselPaintLayer> layers,
+                              NativeList<uint> hashes, NativeArray<float> values)
         {
             for (int l = 0; l < layers.Length; l++)
             {
                 var old = data.paintLayers[first + l];
-                UnsafeUtility.MemCpy((float*)data.paintValues.GetUnsafePtr() + old.valueStart, values + layers[l].valueStart, old.ValueCount * sizeof(float));
+                NativeArray<float>.Copy(values, layers[l].valueStart, data.paintValues.AsArray(), old.valueStart, old.ValueCount);
                 data.paintLayerHashes[first + l] = hashes[l];
             }
 
