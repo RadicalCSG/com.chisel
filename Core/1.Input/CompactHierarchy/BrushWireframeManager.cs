@@ -60,6 +60,18 @@ namespace Chisel.Core
 			outlineLookup.Remove(compactNodeID);
 		}
 
+		// A node that moves to another hierarchy gets another id, and its wireframe goes with it
+		[MethodImpl(MethodImplOptions.AggressiveInlining)]
+		public void MoveOutline(CompactNodeID fromCompactNodeID, CompactNodeID toCompactNodeID)
+		{
+			Debug.Assert(IsCreated);
+			if (fromCompactNodeID == toCompactNodeID ||
+				!outlineLookup.TryGetValue(fromCompactNodeID, out var nativeOutline))
+				return;
+			outlineLookup.Remove(fromCompactNodeID);
+			SetWireframe(toCompactNodeID, nativeOutline);
+		}
+
 		public void Dispose()
 		{
 			// Confirmed to get disposed

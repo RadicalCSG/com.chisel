@@ -1294,6 +1294,7 @@ namespace Chisel.Core
             var srcCompactNodeID    = sourceNode.compactNodeID;
             var nodeID              = sourceNode.nodeID;
 			var newCompactNodeID    = destinationHierarchy.CreateNode(sourceNode.nodeID, ref nodeIndex, in sourceNode.nodeInformation, destinationParentCompactNodeID);
+            brushOutlineManager.MoveOutline(srcCompactNodeID, newCompactNodeID);
             var childCount          = sourceHierarchy.ChildCount(srcCompactNodeID);
             if (childCount > 0)
             {
@@ -1334,6 +1335,7 @@ namespace Chisel.Core
             }
 
             var result2 = destinationHierarchy.CreateNode(sourceNode.nodeID, sourceNode.nodeInformation);
+            brushOutlineManager.MoveOutline(compactNodeID, result2);
             return result2;
         }
 
@@ -1935,8 +1937,31 @@ namespace Chisel.Core
                 return;
 
             SetChildrenDirty(parentCompactNodeID);
+
+            // The children's ids, and their wireframes, go with them
+            using (var descendants = new NativeList<CompactNodeID>(Allocator.Temp))
+            {
+                AddDescendants(ref hierarchy, parentCompactNodeID, descendants);
+                for (int i = 0; i < descendants.Length; i++)
+                {
+                    var nodeID = hierarchy.GetNodeIDNoErrors(descendants[i]);
+                    if (nodeID != NodeID.Invalid)
+                        FreeNodeID(nodeID);
+                }
+            }
+
             hierarchy.DestroyAllChildrenFromParent(parentCompactNodeID);
             SetDirty(parentCompactNodeID);
+        }
+
+        static void AddDescendants(ref CompactHierarchy hierarchy, CompactNodeID parentCompactNodeID, NativeList<CompactNodeID> descendants)
+        {
+            for (int i = 0, count = hierarchy.ChildCount(parentCompactNodeID); i < count; i++)
+            {
+                var child = hierarchy.GetChildCompactNodeIDAt(parentCompactNodeID, i);
+                descendants.Add(child);
+                AddDescendants(ref hierarchy, child, descendants);
+            }
         }
     }
 
