@@ -178,6 +178,60 @@ namespace Chisel.Components.Tests
             Assert.That(SeamsOnTheSides(Vertices(model)), Is.Zero, "22.5 degrees is softer than 25, so the sides are smoothed");
         }
 
+        // Every vertex of the model has one normal wherever it is drawn: none means no seams (the first one in the message)
+        static void AssertNoSeams(List<Vertex> vertices)
+        {
+            var seams = 0; var first = "";
+            for (int i = 0; i < vertices.Count; i++)
+            {
+                for (int j = i + 1; j < vertices.Count; j++)
+                {
+                    if (!Same(vertices[i].position, vertices[j].position) || Same(vertices[i].normal, vertices[j].normal))
+                        continue;
+                    if (seams++ == 0)
+                        first = $"at {vertices[i].position}: {vertices[i].normal} and {vertices[j].normal}";
+                }
+            }
+            Assert.That(seams, Is.Zero, $"seams, the first {first}");
+        }
+
+        // Shapes without hard edges, smoothed by the model's angle (their faces turn less than it from one to the next):
+        // no seams anywhere, a torus's brushes included
+        [Test]
+        public void ASmoothedSphere_HasNoSeams()
+        {
+            var model = Model(60);
+            Add<ChiselSphereComponent>(model, "sphere");
+            Update();
+            var vertices = Vertices(model);
+            AssertNoSeams(vertices);
+            var centre = float3.zero;
+            foreach (var vertex in vertices)
+                centre += vertex.position;
+            centre /= vertices.Count;
+            foreach (var vertex in vertices)
+                Assert.That(math.dot(vertex.normal, math.normalize(vertex.position - centre)), Is.GreaterThan(0.97f),
+                            $"round: the normal at {vertex.position} is {vertex.normal}");
+        }
+
+        [Test]
+        public void ASmoothedCapsule_HasNoSeams()
+        {
+            var model = Model(60);
+            Add<ChiselCapsuleComponent>(model, "capsule");
+            Update();
+            AssertNoSeams(Vertices(model));
+        }
+
+        [Test]
+        public void ASmoothedTorus_HasNoSeams()
+        {
+            var model = Model(60);
+            Add<ChiselTorusComponent>(model, "torus");
+            Update();
+            AssertNoSeams(Vertices(model));
+        }
+
         // The tangents of normal mapped materials are square to the smoothed normals
         [Test]
         public void TheTangents_FollowTheSmoothedNormals()
