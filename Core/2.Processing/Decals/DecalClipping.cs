@@ -1,3 +1,4 @@
+using System;
 using System.Runtime.CompilerServices;
 using Unity.Mathematics;
 
@@ -468,7 +469,7 @@ namespace Chisel.Core
             return angle;
         }
 
-        internal static unsafe bool TriangulateRing(ref DecalClipPolygon outer, ref DecalClipPolygon inner, ref DecalTriangleIndices triangles)
+        internal static bool TriangulateRing(ref DecalClipPolygon outer, ref DecalClipPolygon inner, ref DecalTriangleIndices triangles)
         {
             var outerCount = outer.Count;
             var innerCount = inner.Count;
@@ -483,7 +484,7 @@ namespace Chisel.Core
             var mirror   = normal[dominant] < 0;
 
             // Ring index space: outer points first, then inner points
-            var points    = stackalloc double2[outerCount + innerCount];
+            Span<double2> points = stackalloc double2[outerCount + innerCount];
             var boundsMin = new double2(double.PositiveInfinity);
             var boundsMax = new double2(double.NegativeInfinity);
             for (int v = 0; v < outerCount; v++)
@@ -535,8 +536,8 @@ namespace Chisel.Core
             }
 
             // How far around the center each point is from where the walk starts, to choose between two steps
-            var outerTurn = stackalloc double[outerCount + 1];
-            var innerTurn = stackalloc double[innerCount + 1];
+            Span<double> outerTurn = stackalloc double[outerCount + 1];
+            Span<double> innerTurn = stackalloc double[innerCount + 1];
             outerTurn[0] = 0;
             for (int k = 1; k <= outerCount; k++)
             {
@@ -633,7 +634,7 @@ namespace Chisel.Core
         }
 
         // Flat triangles (points along an edge) are left out
-        static unsafe void AddRingTriangle(double2* points, ref DecalTriangleIndices triangles, int a, int b, int c, double tolerance)
+        static void AddRingTriangle(ReadOnlySpan<double2> points, ref DecalTriangleIndices triangles, int a, int b, int c, double tolerance)
         {
             if (Orient(points[a], points[b], points[c]) <= tolerance)
                 return;

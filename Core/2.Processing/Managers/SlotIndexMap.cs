@@ -462,9 +462,8 @@ namespace Chisel.Core
             if (indexToSlot.Length < newOffset + newCount)
                 indexToSlot.Resize(newOffset + newCount, NativeArrayOptions.ClearMemory);
 
-            unsafe
             {
-                var originalSlotIndices = stackalloc int[moveCount];
+                Span<int> originalSlotIndices = stackalloc int[moveCount];
                 for (int index = 0; index < moveCount; index++)
                 {
                     originalSlotIndices[index] = indexToSlot[srcIndex + index];

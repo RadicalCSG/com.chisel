@@ -160,7 +160,6 @@ namespace Chisel.Core
             var polygons        = builder.Allocate(ref root.polygons, assetPolygonCount);
             var halfEdges	    = builder.Allocate(ref root.halfEdges, halfEdgeCount);
 
-            // TODO: use NativeArray (safer)
             Span<int> twins	= stackalloc int[horzSegments];
 
             var edgeIndex		= 0;

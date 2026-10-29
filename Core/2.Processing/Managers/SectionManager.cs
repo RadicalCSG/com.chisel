@@ -113,9 +113,8 @@ namespace Chisel.Core
             if (findOffset < 0 || findOffset > sections[sectionsLength - 1].end)
                 return false;
 
-            unsafe
-            { 
-                var searchStack = stackalloc SectionFindStack[16]; // should be be more than enough, we'd be running into integer size issues before then
+            {
+                Span<SectionFindStack> searchStack = stackalloc SectionFindStack[16]; // should be be more than enough, we'd be running into integer size issues before then
                 int searchLength;
 
                 searchStack[0] = new SectionFindStack { first = 0, last = sectionsLength - 1 };
