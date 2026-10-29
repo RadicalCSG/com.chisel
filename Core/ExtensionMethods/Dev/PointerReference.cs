@@ -3,7 +3,7 @@ using Unity.Collections.LowLevel.Unsafe;
 
 namespace Chisel.Core
 {
-    unsafe struct PointerReference<T>
+    public unsafe struct PointerReference<T>
         where T : unmanaged
     {
         public PointerReference(ref T input) { ptr = (T*)UnsafeUtility.AddressOf(ref input); }
