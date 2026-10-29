@@ -3,9 +3,28 @@
   "displayName": "Chisel 3D Level Editor",
   "version": "0.4.0-preview",
   "unity": "6000.6",
-  "description": "A boolean (CSG) based 3d level editor for Unity",
+  "description": "A level editor for Unity built on real-time boolean (CSG) operations: add, subtract and intersect brushes to block out and build levels in the scene view.\n\nComes with generators for common shapes (boxes, cylinders, spheres, stairs, extruded and revolved shapes and more), hierarchical CSG, a subtractive workflow, decals, hotspot mapping, vertex paint and normal smoothing. Its materials are made for the Universal Render Pipeline.",
   "license": "MIT",
-  "keywords": [ "level design", "3D", "world building", "CSG", "BSP", "Boolean", "Geometry" ],
+  "author": {
+    "name": "Sander van Rossen",
+    "email": "sander.vanrossen at gmail.com",
+    "url": "https://github.com/RadicalCSG"
+  },
+  "documentationUrl": "https://github.com/RadicalCSG/com.chisel/wiki",
+  "changelogUrl": "https://github.com/RadicalCSG/com.chisel/blob/main/CHANGELOG.md",
+  "licensesUrl": "https://github.com/RadicalCSG/com.chisel/blob/main/LICENSE",
+  "keywords": [
+    "level design",
+    "level editor",
+    "world building",
+    "blockout",
+    "CSG",
+    "boolean",
+    "brushes",
+    "geometry",
+    "decals",
+    "hotspot mapping"
+  ],
   "type": "tool",
   "hideInEditor": false,
   "samples": [
@@ -16,10 +35,10 @@
     }
   ],
   "dependencies": {
-    "com.unity.burst": "1.8.26",
-    "com.unity.entities": "1.4.3",
-    "com.unity.collections": "2.6.3",
-    "com.unity.mathematics": "1.3.3",
+    "com.unity.burst": "2.0.0",
+    "com.unity.entities": "6.6.0",
+    "com.unity.collections": "6.6.0",
+    "com.unity.mathematics": "1.4.0",
     "com.unity.profiling.core": "1.0.3",
     "com.unity.render-pipelines.universal": "17.6.0"
   }
