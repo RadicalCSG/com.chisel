@@ -10,45 +10,7 @@ namespace Chisel.Core.Tests
     [TestFixture]
     public class CSGMathTests
     {
-        [Test]
-        public void SignedDistance_IsDotPlanePoint()
-        {
-            var plane = new float4(1, 0, 0, -1); // x = 1
-            Assert.That(CSGMath.SignedDistance(plane, new float3(3, 0, 0)), Is.EqualTo(2f).Within(1e-5f));
-            Assert.That(CSGMath.SignedDistance(plane, new float3(1, 5, 9)), Is.EqualTo(0f).Within(1e-5f));
-            Assert.That(CSGMath.SignedDistance(plane, new float3(0, 0, 0)), Is.EqualTo(-1f).Within(1e-5f));
-            // float4 overload agrees
-            Assert.That(CSGMath.SignedDistance(plane, new float4(3, 0, 0, 1)), Is.EqualTo(2f).Within(1e-5f));
-        }
-
-        [Test]
-        public void SqrDistance_And_VerticesEqual()
-        {
-            Assert.That(CSGMath.SqrDistance(new float3(0, 0, 0), new float3(3, 4, 0)), Is.EqualTo(25f).Within(1e-4f));
-            // within the weld tolerance (kVertexEqualEpsilon ~0.0125): nearly coincident -> equal
-            Assert.That(CSGMath.VerticesEqual(new float3(0, 0, 0), new float3(0.001f, 0, 0)), Is.True);
-            // clearly separated -> not equal
-            Assert.That(CSGMath.VerticesEqual(new float3(0, 0, 0), new float3(1, 0, 0)), Is.False);
-        }
-
-        [Test]
-        public void EdgePlaneCrossing_HitsThePlane()
-        {
-            // segment (0,0,0)[d=+1] -> (0,0,2)[d=-1] crosses at the midpoint (0,0,1).
-            var p = CSGMath.EdgePlaneCrossing(new float3(0, 0, 0), new float3(0, 0, 2), 1f, -1f);
-            AssertApproximately(new float3(0, 0, 1), p, 1e-4f);
-            // direction-independent: same segment given in reverse with swapped distances -> same point.
-            var q = CSGMath.EdgePlaneCrossing(new float3(0, 0, 2), new float3(0, 0, 0), -1f, 1f);
-            AssertApproximately(new float3(0, 0, 1), q, 1e-4f);
-        }
-
-        [Test]
-        public void EdgePlaneCrossing_OffCenter()
-        {
-            // d0=3, d1=-1 -> delta=3/4, crossing at v0 - (v0-v1)*0.75 = (0,0,0)-(0,0,-4)*0.75 = (0,0,3)
-            var p = CSGMath.EdgePlaneCrossing(new float3(0, 0, 0), new float3(0, 0, 4), 3f, -1f);
-            AssertApproximately(new float3(0, 0, 3), p, 1e-4f);
-        }
+        static double Orient2D(double2 p, double2 q, double2 r) => CSGMath.DifferenceOfProducts(q.y - p.y, r.x - q.x, q.x - p.x, r.y - q.y);
 
         [Test]
         public void PlaneIntersection_ThreeAxisPlanes()
@@ -66,12 +28,12 @@ namespace Chisel.Core.Tests
             var a = new double2(0, 0);
             var b = new double2(1, 0);
             var c = new double2(0, 1);
-            var ccw = CSGMath.Orient2D(a, b, c);
-            var cw  = CSGMath.Orient2D(a, c, b); // reversed winding
+            var ccw = Orient2D(a, b, c);
+            var cw  = Orient2D(a, c, b); // reversed winding
             Assert.That(ccw, Is.Not.EqualTo(0.0));
             Assert.That(math.sign(ccw), Is.EqualTo(-math.sign(cw))); // opposite signs
             // collinear -> zero
-            Assert.That(CSGMath.Orient2D(new double2(0, 0), new double2(1, 1), new double2(2, 2)), Is.EqualTo(0.0).Within(1e-12));
+            Assert.That(Orient2D(new double2(0, 0), new double2(1, 1), new double2(2, 2)), Is.EqualTo(0.0).Within(1e-12));
         }
 
         // error-free transformations
@@ -144,7 +106,7 @@ namespace Chisel.Core.Tests
             Assert.That(naive, Is.EqualTo(0.0), "expected naive double to lose the cancellation");
 
             // compensated orient2d recovers the true sign (+).
-            Assert.That(CSGMath.Orient2D(p, q, r), Is.GreaterThan(0.0));
+            Assert.That(Orient2D(p, q, r), Is.GreaterThan(0.0));
         }
 
         [Test]
@@ -162,20 +124,8 @@ namespace Chisel.Core.Tests
             {
                 decimal a = (decimal)(q.y - p.y), b = (decimal)(r.x - q.x), c = (decimal)(q.x - p.x), d = (decimal)(r.y - q.y);
                 int refSign = Math.Sign(a * b - c * d);
-                Assert.That(Math.Sign(CSGMath.Orient2D(p, q, r)), Is.EqualTo(refSign));
+                Assert.That(Math.Sign(Orient2D(p, q, r)), Is.EqualTo(refSign));
             }
-        }
-
-        [Test]
-        public void NewellTerm_AccumulatesUnitSquareNormal()
-        {
-            // CCW unit square in the XY plane -> normal should point +Z.
-            var v = new[] { new float3(0, 0, 0), new float3(1, 0, 0), new float3(1, 1, 0), new float3(0, 1, 0) };
-            var n = float3.zero;
-            for (int i = 0; i < v.Length; i++)
-                n += CSGMath.NewellTerm(v[i], v[(i + 1) % v.Length]);
-            n = math.normalize(n);
-            AssertApproximately(new float3(0, 0, 1), n, 1e-4f);
         }
     }
 }

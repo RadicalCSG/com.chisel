@@ -11,12 +11,12 @@ using WriteOnlyAttribute = Unity.Collections.WriteOnlyAttribute;
 
 namespace Chisel.Core
 {
+    // Each brush's polygons in tree space, with the vertex indices of its mesh, and what its surfaces are drawn with
     [BurstCompile(CompileSynchronously = true)]
     struct CreateBlobPolygonsBlobsJob : IJobParallelForDefer
     {
         // Read
         [NoAlias, ReadOnly] public NativeList<IndexOrder>                                         allUpdateBrushIndexOrders;
-        [NoAlias, ReadOnly] public NativeList<BlobAssetReference<BrushesTouchedByBrush>>          brushesTouchedByBrushCache;
         [NoAlias, ReadOnly] public NativeArray<BlobAssetReference<BrushMeshBlob>>                 brushMeshLookup;
         [NoAlias, ReadOnly] public NativeList<BlobAssetReference<BrushTreeSpaceVerticesBlob>>     treeSpaceVerticesCache;
 
@@ -24,265 +24,80 @@ namespace Chisel.Core
         [NativeDisableParallelForRestriction]
         [NoAlias, WriteOnly] public NativeList<BlobAssetReference<BasePolygonsBlob>>              basePolygonCache;
 
-
-        static bool IsDegenerate([NoAlias, ReadOnly] HashedVertices hashedTreeSpaceVertices, [NoAlias, ReadOnly] NativeArray<Edge> edges, int edgeCount)
-        {
-            if (edgeCount < 3)
-                return true;
-
-            for (int i = 0; i < edgeCount; i++)
-            {
-                var vertexIndex1 = edges[i].index1;
-                var vertex1 = hashedTreeSpaceVertices[vertexIndex1];
-                for (int j = 0; j < edgeCount; j++)
-                {
-                    if (i == j)
-                        continue;
-
-                    var vertexIndexA = edges[j].index1;
-                    var vertexIndexB = edges[j].index2;
-
-                    // Loop loops back on same vertex
-                    if (vertexIndex1 == vertexIndexA ||
-                        vertexIndex1 == vertexIndexB ||
-                        vertexIndexA == vertexIndexB)
-                        continue;
-
-                    var vertexA = hashedTreeSpaceVertices[vertexIndexA];
-                    var vertexB = hashedTreeSpaceVertices[vertexIndexB];
-
-                    var distance = MathExtensions.SqrDistanceFromPointToLineSegment(vertex1, vertexA, vertexB);
-                    if (distance <= CSGConstants.kSqrEdgeDistanceEpsilon)
-                        return true;
-                }
-            }
-            return false;
-        }
-        
-        static void RemoveDuplicates(NativeArray<Edge> edges, ref int edgeCount)
-        {
-            if (edgeCount < 3)
-            {
-                edgeCount = 0;
-                return;
-            }
-
-            for (int e = edgeCount - 1; e >= 0; e--)
-            {
-                if (edges[e].index1 != edges[e].index2)
-                    continue;
-                edges[e] = edges[edgeCount - 1];
-                edgeCount--;
-            }
-        }
-
-        bool CopyPolygonToIndices([NoAlias, ReadOnly] BlobAssetReference<BrushMeshBlob> mesh, [NoAlias, ReadOnly] NativeArray<float3> treeSpaceVertices, int polygonIndex, [NoAlias] HashedVertices hashedTreeSpaceVertices, [NoAlias] NativeArray<Edge> edges, [NoAlias] ref int edgeCount)
-        {
-            ref var halfEdges   = ref mesh.Value.halfEdges;
-            ref var polygon     = ref mesh.Value.polygons[polygonIndex];
-
-            var firstEdge   = polygon.firstEdge;
-            var lastEdge    = firstEdge + polygon.edgeCount;
-
-            
-            // TODO: put in job so we can burstify this, maybe join with RemoveIdenticalIndicesJob & IsDegenerate?
-            for (int e = firstEdge; e < lastEdge; e++)
-            {
-                var vertexIndex     = halfEdges[e].vertexIndex;
-                var treeSpaceVertex = treeSpaceVertices[vertexIndex];
-
-                var newIndex = hashedTreeSpaceVertices.AddNoResize(treeSpaceVertex);
-                if (e > firstEdge)
-                {
-                    var edge = edges[edgeCount - 1];
-                    edge.index2 = newIndex;
-                    edges[edgeCount - 1] = edge;
-                }
-                edges[edgeCount] = new Edge { index1 = newIndex };
-                //edges.AddNoResize(new Edge { index1 = newIndex });
-                edgeCount++;
-            }
-            {
-                var edge = edges[edgeCount - 1];
-                edge.index2 = edges[0].index1;
-                edges[edgeCount - 1] = edge;
-            }
-
-            RemoveDuplicates(edges, ref edgeCount);
-
-            if ((edgeCount == 0) || IsDegenerate(hashedTreeSpaceVertices, edges, edgeCount))
-            {
-                edgeCount = 0;
-                return false;
-            }
-
-            return true;
-        }
-
-        struct ValidPolygon
-        {
-            public ushort basePlaneIndex;
-            public ushort startEdgeIndex;
-            public ushort endEdgeIndex;
-        }
-
         public void Execute(int b)
         {
             var indexOrder = allUpdateBrushIndexOrders[b];
             int nodeOrder  = indexOrder.nodeOrder;
-            
+
             if (treeSpaceVerticesCache[nodeOrder] == BlobAssetReference<BrushTreeSpaceVerticesBlob>.Null)
                 return;
 
             var mesh                    = brushMeshLookup[nodeOrder];
-            ref var treeSpaceVerticesBlob = ref treeSpaceVerticesCache[nodeOrder].Value.treeSpaceVertices;
+            ref var treeSpaceVertices   = ref treeSpaceVerticesCache[nodeOrder].Value.treeSpaceVertices;
             ref var halfEdges           = ref mesh.Value.halfEdges;
             ref var localPlanes         = ref mesh.Value.localPlanes;
             ref var polygons            = ref mesh.Value.polygons;
 
-            NativeArray<float3> treeSpaceVertices;
-            using var _treeSpaceVertices = treeSpaceVertices = new NativeArray<float3>(treeSpaceVerticesBlob.Length, Allocator.Temp);
-            for (int v = 0; v < treeSpaceVerticesBlob.Length; v++)
-                treeSpaceVertices[v] = treeSpaceVerticesBlob[v];
-
-			HashedVertices hashedTreeSpaceVertices;
-			using var _hashedTreeSpaceVertices = hashedTreeSpaceVertices = new HashedVertices(math.max(treeSpaceVertices.Length, 1000), Allocator.Temp);
-
-			NativeArray<Edge> edges;
-			using var _edges = edges = new NativeArray<Edge>(halfEdges.Length, Allocator.Temp);
-			
-            NativeArray<ValidPolygon> validPolygons;
-			using var _validPolygons = validPolygons = new NativeArray<ValidPolygon>(polygons.Length, Allocator.Temp);
-
-			NativeArray<Edge> tempEdges;
-			using var _tempEdges = tempEdges = new NativeArray<Edge>(halfEdges.Length, Allocator.Temp);
-
-			//NativeCollectionHelpers.EnsureMinimumSize(ref edges, halfEdges.Length);
-			//NativeCollectionHelpers.EnsureMinimumSize(ref validPolygons, polygons.Length);
-			//NativeCollectionHelpers.EnsureMinimumSize(ref tempEdges, halfEdges.Length);
-			//NativeCollectionHelpers.EnsureCapacityAndClear(ref hashedTreeSpaceVertices, math.max(treeSpaceVertices.Length, 1000));
-
-
-            var totalEdgeCount      = 0;
-            var totalSurfaceCount   = 0;
-
-			//var edges           = new NativeArray<Edge>(halfEdges.Length, Allocator.Temp);
-			//var validPolygons   = new NativeArray<ValidPolygon>(polygons.Length, Allocator.Temp);
-			for (int polygonIndex = 0; polygonIndex < polygons.Length; polygonIndex++)
-            {
-                var polygon = polygons[polygonIndex];
-                if (polygon.edgeCount < 3 || polygonIndex >= localPlanes.Length)
-                {
-                    validPolygons[totalSurfaceCount] = new ValidPolygon
-                    {
-                        basePlaneIndex = (ushort)polygonIndex,
-                        startEdgeIndex = (ushort)0,
-                        endEdgeIndex = (ushort)0
-                    };
-                    totalSurfaceCount++;
-                    continue;
-                }
-
-                // Note: can end up with duplicate vertices when close enough vertices are snapped together
-
-                int edgeCount = 0;
-                int startEdgeIndex = totalEdgeCount;
-                
-
-                //var tempEdges = new NativeArray<Edge>(polygon.edgeCount, Allocator.Temp);
-                CopyPolygonToIndices(mesh, treeSpaceVertices, polygonIndex, hashedTreeSpaceVertices, tempEdges, ref edgeCount);
-                if (edgeCount == 0) // Can happen when multiple vertices are collapsed on eachother / degenerate polygon
-                {
-                    validPolygons[totalSurfaceCount] = new ValidPolygon
-                    {
-                        basePlaneIndex = (ushort)polygonIndex,
-                        startEdgeIndex = (ushort)0,
-                        endEdgeIndex = (ushort)0
-                    };
-                    totalSurfaceCount++;
-                    continue;
-                }
-
-                for (int e = 0; e < edgeCount; e++)
-                {
-                    edges[totalEdgeCount] = tempEdges[e];
-                    totalEdgeCount++;
-                }
-
-                var endEdgeIndex = totalEdgeCount;
-                validPolygons[totalSurfaceCount] = new ValidPolygon
-                {
-                    basePlaneIndex  = (ushort)polygonIndex,
-                    startEdgeIndex  = (ushort)startEdgeIndex,
-                    endEdgeIndex    = (ushort)endEdgeIndex
-                };
-                totalSurfaceCount++;
-            }
-
-            // TODO: do this section as a separate pass where we first calculate worldspace vertices, 
-            //       then snap them all, then do this job
-
-            // NOTE: assumes brushIntersections is in the same order as the brushes are in the tree
-            ref var brushIntersections = ref brushesTouchedByBrushCache[nodeOrder].Value.brushIntersections;
-            for (int i = 0; i < brushIntersections.Length; i++)
-            {
-                var intersectingNodeOrder = brushIntersections[i].nodeIndexOrder.nodeOrder;
-                if (intersectingNodeOrder < nodeOrder)
-                    continue;
-
-                if (treeSpaceVerticesCache[intersectingNodeOrder] == BlobAssetReference<BrushTreeSpaceVerticesBlob>.Null)
-                    continue;
-
-                // In order, goes through the previous brushes in the tree, 
-                // and snaps any vertex that is almost the same in the next brush, with that vertex
-
-                // TODO: figure out a better way to do this that merges vertices to an average position instead, 
-                //       this will break down if too many vertices are close to each other
-                ref var intersectingTreeSpaceVertices = ref treeSpaceVerticesCache[intersectingNodeOrder].Value.treeSpaceVertices;
-                hashedTreeSpaceVertices.ReplaceIfExists(ref intersectingTreeSpaceVertices);
-            }
-
-
             Debug.Assert(localPlanes.Length > 0);
 
-            // TODO: the topology information could possibly just be used from the original mesh? (just with worldspace vertices?)
-            // TODO: preallocate some structure to store data in?
+            // a polygon without an area, or without a plane, has no edges
+            var totalEdgeCount = 0;
+            for (int p = 0; p < polygons.Length; p++)
+            {
+                if (polygons[p].edgeCount >= 3 && p < localPlanes.Length)
+                    totalEdgeCount += polygons[p].edgeCount;
+            }
 
-            var totalEdgeSize       = 16 + (totalEdgeCount    * UnsafeUtility.SizeOf<Edge>());
-            var totalPolygonSize    = 16 + (totalSurfaceCount * UnsafeUtility.SizeOf<BasePolygon>());
-            var totalSurfaceSize    = 16 + (totalSurfaceCount * UnsafeUtility.SizeOf<BaseSurface>());
-            var totalVertexSize     = 16 + (hashedTreeSpaceVertices.Length * UnsafeUtility.SizeOf<float3>());
+            var totalEdgeSize       = 16 + (totalEdgeCount           * UnsafeUtility.SizeOf<Edge>());
+            var totalPolygonSize    = 16 + (polygons.Length          * UnsafeUtility.SizeOf<BasePolygon>());
+            var totalSurfaceSize    = 16 + (polygons.Length          * UnsafeUtility.SizeOf<BaseSurface>());
+            var totalVertexSize     = 16 + (treeSpaceVertices.Length * UnsafeUtility.SizeOf<float3>());
             var totalSize           = totalEdgeSize + totalPolygonSize + totalSurfaceSize + totalVertexSize;
 
             using var builder = new BlobBuilder(Allocator.Temp, totalSize);
             ref var root = ref builder.ConstructRoot<BasePolygonsBlob>();
-            var polygonArray = builder.Allocate(ref root.polygons, totalSurfaceCount);
-            builder.Construct(ref root.edges,    edges   , totalEdgeCount);
-            builder.Construct(ref root.vertices, hashedTreeSpaceVertices);
-            var surfaceArray = builder.Allocate(ref root.surfaces, totalSurfaceCount);
-            for (int i = 0; i < totalSurfaceCount; i++)
+            var polygonArray = builder.Allocate(ref root.polygons, polygons.Length);
+            var edgeArray    = builder.Allocate(ref root.edges, totalEdgeCount);
+            builder.Construct(ref root.vertices, ref treeSpaceVertices);
+            var surfaceArray = builder.Allocate(ref root.surfaces, polygons.Length);
+            var edgeIndex = 0;
+            for (int p = 0; p < polygons.Length; p++)
             {
-                Debug.Assert(validPolygons[i].basePlaneIndex == i);
-                var polygon = polygons[validPolygons[i].basePlaneIndex];
-                polygonArray[i] = new BasePolygon()
+                ref var polygon = ref polygons[p];
+                var startEdgeIndex = edgeIndex;
+                if (polygon.edgeCount >= 3 && p < localPlanes.Length)
+                {
+                    var firstEdge = polygon.firstEdge;
+                    var lastEdge  = firstEdge + polygon.edgeCount;
+                    for (int e = firstEdge; e < lastEdge; e++)
+                    {
+                        var next = (e + 1 < lastEdge) ? e + 1 : firstEdge;
+                        edgeArray[edgeIndex] = new Edge
+                        {
+                            index1 = (ushort)halfEdges[e].vertexIndex,
+                            index2 = (ushort)halfEdges[next].vertexIndex
+                        };
+                        edgeIndex++;
+                    }
+                }
+                polygonArray[p] = new BasePolygon()
                 {
                     nodeIndexOrder  = indexOrder,
                     surfaceInfo     = new SurfaceInfo
                     {
-                        basePlaneIndex      = (ushort)validPolygons[i].basePlaneIndex,
+                        basePlaneIndex      = (ushort)p,
                         interiorCategory    = (byte)CategoryIndex.ValidAligned,
                     },
-                    startEdgeIndex  = validPolygons[i].startEdgeIndex,
-                    endEdgeIndex    = validPolygons[i].endEdgeIndex
+                    startEdgeIndex  = startEdgeIndex,
+                    endEdgeIndex    = edgeIndex
                 };
-                ref var localPlane = ref localPlanes[validPolygons[i].basePlaneIndex];
-                surfaceArray[i] = new BaseSurface
+                surfaceArray[p] = new BaseSurface
                 {
                     destinationFlags      = polygon.surface.destinationFlags,
                     destinationParameters = polygon.surface.parameters,
                     outputFlags           = polygon.surface.outputFlags,
                     UV0                   = polygon.surface.details.UV0,
-                    localPlane            = localPlane,
+                    localPlane            = p < localPlanes.Length ? localPlanes[p] : default,
                     descriptionIndex      = polygon.descriptionIndex,
                     hotspotLayout         = polygon.surface.hotspotLayout,
                     hotspotPinned         = polygon.surface.details.hotspot.pinnedTile,
@@ -298,6 +113,6 @@ namespace Chisel.Core
             }
             var basePolygonsBlob = builder.CreateBlobAssetReference<BasePolygonsBlob>(Allocator.Persistent); // Confirmed to be disposed
             basePolygonCache[nodeOrder] = basePolygonsBlob;
-		}
+        }
     }
-}   
+}
