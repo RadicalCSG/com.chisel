@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 
@@ -109,7 +110,7 @@ namespace Chisel.Core
                 planes[p] = CalculatePlane(in polygons[p], in halfEdges, in vertices);
         }
 
-        public unsafe static BrushMeshArrays GenerateSegmentedSubMesh(int horzSegments, int vertSegments, bool topCap, bool bottomCap, int topVertex, int bottomVertex,
+        public static BrushMeshArrays GenerateSegmentedSubMesh(int horzSegments, int vertSegments, bool topCap, bool bottomCap, int topVertex, int bottomVertex,
                                                                       in BlobBuilderArray<float3> segmentVertices,
                                                                       ref InternalChiselSurfaceArray internalSurfaceArray,
                                                                       in BlobBuilder builder,
@@ -159,8 +160,7 @@ namespace Chisel.Core
             var polygons        = builder.Allocate(ref root.polygons, assetPolygonCount);
             var halfEdges	    = builder.Allocate(ref root.halfEdges, halfEdgeCount);
 
-            // TODO: use NativeArray (safer)
-            var twins			= stackalloc int[horzSegments];
+            Span<int> twins	= stackalloc int[horzSegments];
 
             var edgeIndex		= 0;
             var polygonIndex	= 0;
@@ -266,24 +266,24 @@ namespace Chisel.Core
         }
 
 
-        public static unsafe BrushMeshArrays CreateExtrudedSubMesh(int segments, int segmentTopIndex, int segmentBottomIndex,
+        public static BrushMeshArrays CreateExtrudedSubMesh(int segments, int segmentTopIndex, int segmentBottomIndex,
                                                                    in BlobBuilderArray<float3>                       localVertices,
                                                                    in BlobAssetReference<InternalChiselSurfaceArray> internalSurfaceArrayBlob,
                                                                    in BlobBuilder builder, ref BrushMeshBlob root)
         {
-            return CreateExtrudedSubMesh(segments, null, 0, segmentTopIndex, segmentBottomIndex, in localVertices, in internalSurfaceArrayBlob, in builder, ref root);
+            return CreateExtrudedSubMesh(segments, default(ReadOnlySpan<int>), 0, segmentTopIndex, segmentBottomIndex, in localVertices, in internalSurfaceArrayBlob, in builder, ref root);
         }
 
-        public static unsafe BrushMeshArrays CreateExtrudedSubMesh(int segments, [ReadOnly] NativeArray<int> segmentDescriptionIndices, int segmentDescriptionLength, int segmentTopIndex, int segmentBottomIndex,
+        public static BrushMeshArrays CreateExtrudedSubMesh(int segments, [ReadOnly] NativeArray<int> segmentDescriptionIndices, int segmentDescriptionLength, int segmentTopIndex, int segmentBottomIndex,
                                                                    in BlobBuilderArray<float3>                       localVertices,
                                                                    in BlobAssetReference<InternalChiselSurfaceArray> internalSurfaceArrayBlob,
                                                                    in BlobBuilder builder, ref BrushMeshBlob root)
         {
-            return CreateExtrudedSubMesh(segments, (int*)segmentDescriptionIndices.GetUnsafePtr(), segmentDescriptionLength, segmentTopIndex, segmentBottomIndex,
+            return CreateExtrudedSubMesh(segments, segmentDescriptionIndices.AsReadOnlySpan(), segmentDescriptionLength, segmentTopIndex, segmentBottomIndex,
                                          in localVertices, in internalSurfaceArrayBlob, in builder, ref root);
         }
 
-        static unsafe BrushMeshArrays CreateExtrudedSubMesh(int segments, int* segmentDescriptionIndices, int segmentDescriptionLength, int segmentTopIndex, int segmentBottomIndex,
+        static BrushMeshArrays CreateExtrudedSubMesh(int segments, ReadOnlySpan<int> segmentDescriptionIndices, int segmentDescriptionLength, int segmentTopIndex, int segmentBottomIndex,
                                                             in BlobBuilderArray<float3>                       localVertices,
                                                             in BlobAssetReference<InternalChiselSurfaceArray> internalSurfaceArrayBlob,
                                                             in BlobBuilder builder, ref BrushMeshBlob root)
@@ -293,8 +293,8 @@ namespace Chisel.Core
             // TODO: vertex reverse winding when it's not clockwise
             // TODO: handle duplicate vertices, remove them or avoid them being created in the first place (maybe use indices?)
 
-            var segmentTopology = stackalloc SegmentTopology[segments];
-            var edgeIndices     = stackalloc int[segments * 2];
+            Span<SegmentTopology> segmentTopology = stackalloc SegmentTopology[segments];
+            Span<int> edgeIndices     = stackalloc int[segments * 2];
             var polygonCount    = 2;
             var edgeOffset      = segments + segments;
             for (int p = segments - 2, e = segments - 1, n = 0; n < segments; p = e, e = n, n++)
@@ -386,7 +386,7 @@ namespace Chisel.Core
 
             for (int s = 0, surfaceID = 2; s < segments; s++)
             {
-                var descriptionIndex = (segmentDescriptionIndices == null || s >= segmentDescriptionLength) ? s + 2 : (segmentDescriptionIndices[s]);
+                var descriptionIndex = (s >= segmentDescriptionLength) ? s + 2 : (segmentDescriptionIndices[s]);
                 var firstEdge = edgeIndices[(s * 2) + 0] - 1;
                 switch (segmentTopology[s])
                 {
@@ -667,7 +667,7 @@ namespace Chisel.Core
             return new BrushMeshArrays { localVertices = localVertices, polygons = polygons, halfEdges = halfEdges };
         }
 
-        public static unsafe BrushMeshArrays CreateExtrudedSubMesh([ReadOnly] NativeArray<float3> sideVertices, float3 extrusion,
+        public static BrushMeshArrays CreateExtrudedSubMesh([ReadOnly] NativeArray<float3> sideVertices, float3 extrusion,
                                                                    [ReadOnly] NativeArray<int> segmentDescriptionIndices,
                                                                    ref InternalChiselSurfaceArray internalSurfaceArray,
                                                                    in BlobBuilder builder, ref BrushMeshBlob root)
@@ -693,8 +693,8 @@ namespace Chisel.Core
                 return default;
 
             var segments		= sideVerticesLength;
-            var isSegmentConvex = stackalloc sbyte[segments]; // TODO: get rid of stackalloc
-            var edgeIndices		= stackalloc int[segments * 2];// TODO: get rid of stackalloc
+            Span<sbyte> isSegmentConvex = stackalloc sbyte[segments];
+            Span<int> edgeIndices		= stackalloc int[segments * 2];
 
             var localVertices = builder.Allocate(ref root.localVertices, segments * 2);
 
