@@ -1,6 +1,5 @@
 #define HAVE_SELF_CATEGORIES
 #define USE_OPTIMIZATIONS
-//#define SHOW_DEBUG_MESSAGES 
 using System;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -564,9 +563,6 @@ namespace Chisel.Core
                 output[outputLength] = new CategoryStackNode { NodeIDValue = processedNodeID.slotIndex.index, routingRow = CategoryRoutingRow.AllOutside };
                 outputLength++;
             }
-#if SHOW_DEBUG_MESSAGES
-            Dump(processedNodeID, output, outputLength);
-#endif
             return outputLength;
         }
 
@@ -992,24 +988,5 @@ namespace Chisel.Core
         }
 #endif
 
-#if SHOW_DEBUG_MESSAGES
-        static void Dump(int processedNodeID, NativeArray<CategoryStackNode> stack, int stackLength, int depth = 0)
-        {
-            var space = new String(' ', depth*4);
-            if (stackLength == 0)
-            {
-                Debug.Log($"{space}processedNode: {processedNodeID} stack.Count == 0");
-                return;
-            }
-            var stringBuilder = new System.Text.StringBuilder();
-            for (int i = 0; i < stackLength; i++)
-            {
-                if (i == 0 || stack[i - 1].nodeIndex != stack[i].nodeIndex)
-                    stringBuilder.AppendLine($"  --- nodeIndex: {stack[i].nodeIndex}");
-                stringBuilder.AppendLine($"\t{i,-3} -\t[{(int)stack[i].input,-3}]: {stack[i].routingRow.ToString(false)}");
-            }
-            Debug.LogWarning($"{space}processedNode: {processedNodeID}\n{stringBuilder.ToString()}");
-        }
-#endif
             }
 		}

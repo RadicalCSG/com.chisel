@@ -88,9 +88,6 @@ namespace Chisel.Editors
             ChiselSurfaceSelectionManager.HoverChanged -= OnSurfaceHoverChanged;
             ChiselSurfaceSelectionManager.HoverChanged += OnSurfaceHoverChanged;
 
-            ChiselNodeHierarchyManager.NodeHierarchyReset -= OnHierarchyReset;
-            ChiselNodeHierarchyManager.NodeHierarchyReset += OnHierarchyReset;
-
             ChiselNodeHierarchyManager.NodeHierarchyModified -= OnNodeHierarchyModified;
             ChiselNodeHierarchyManager.NodeHierarchyModified += OnNodeHierarchyModified;
 
@@ -211,26 +208,6 @@ namespace Chisel.Editors
         private static void OnNodeHierarchyModified()
         {
             ChiselOutlineRenderer.Instance.OnReset();
-
-            // Prevent infinite loops
-            if (Event.current != null &&
-                Event.current.type == EventType.Repaint)
-                return;
-
-            Editors.ChiselManagedHierarchyView.RepaintAll();
-
-            // THIS IS SLOW! DON'T DO THIS
-            //UnityEditorInternal.InternalEditorUtility.RepaintAllViews();
-        }
-
-        private static void OnHierarchyReset()
-        {
-            // Prevent infinite loops
-            if (Event.current != null &&
-                Event.current.type == EventType.Repaint)
-                return;
-            Editors.ChiselManagedHierarchyView.RepaintAll();
-            //Editors.ChiselInternalHierarchyView.RepaintAll(); 
         }
 
         private static void OnPrefabInstanceUpdated(GameObject instance)

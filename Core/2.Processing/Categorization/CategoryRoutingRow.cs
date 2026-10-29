@@ -335,9 +335,6 @@ namespace Chisel.Core
         public CategoryRoutingRow(int operationIndex, CategoryIndex left, in CategoryRoutingRow right)
 		{
 #if HAVE_SELF_CATEGORIES
-#if DEBUG_CATEGORIES
-            destination = new IntArray();
-#endif
 			var operationOffset = operationIndex * OperationStride;
 
 			// left = row, right = column
