@@ -296,7 +296,7 @@ namespace Chisel.Core
                     if (collider && surfaces[s].brushRenderBuffer.IsCreated)
                         buffer.Add(surfaces[s].brushRenderBuffer.Value.surfaces[surfaces[s].surfaceIndex].shapeHashValue);
                 }
-                sectionHashes[i] = xxHash3.Hash128(buffer.Ptr, buffer.Length);
+                sectionHashes[i] = buffer.Hash128();
                 hashed[i] = true;
             }
             finally
@@ -327,7 +327,7 @@ namespace Chisel.Core
                     buffer.Add(surfaces[s].surfaceIndex);
                 }
             }
-            return xxHash3.Hash64(buffer.Ptr, buffer.Length).x;
+            return buffer.Hash64().x;
         }
     }
 

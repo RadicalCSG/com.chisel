@@ -70,7 +70,7 @@ namespace Chisel.Core
         /// their targets without their EntityIds, since EntityIds change from session to session. The tree's own
         /// transformation is left out: moving a model moves its output without changing it.
         /// </summary>
-        public static unsafe Hash128 GetTreeInputHash(CSGTree tree, SurfaceParameterIdentity surfaceParameterIdentity)
+        public static Hash128 GetTreeInputHash(CSGTree tree, SurfaceParameterIdentity surfaceParameterIdentity)
         {
             if (!tree.Valid || surfaceParameterIdentity == null)
                 return default;
@@ -132,7 +132,7 @@ namespace Chisel.Core
 
                 AppendDecals(ref buffer, tree, brushOrder, identities, surfaceParameterIdentity);
 
-                var hash = xxHash3.Hash128(buffer.Ptr, buffer.Length);
+                var hash = buffer.Hash128();
                 return new Hash128(hash.x, hash.y, hash.z, hash.w);
             }
             finally
@@ -155,7 +155,7 @@ namespace Chisel.Core
         }
 
         // Field by field where a struct could have padding, whose bytes are whatever the memory held
-        static unsafe void AppendBrushMesh(ref UnsafeAppendBuffer buffer, NativeParallelHashMap<int, RefCountedBrushMeshBlob> brushMeshBlobs, int brushMeshHash,
+        static void AppendBrushMesh(ref UnsafeAppendBuffer buffer, NativeParallelHashMap<int, RefCountedBrushMeshBlob> brushMeshBlobs, int brushMeshHash,
                                            Dictionary<ulong, Hash128> identities, SurfaceParameterIdentity surfaceParameterIdentity)
         {
             if (!brushMeshBlobs.IsCreated ||
@@ -167,10 +167,10 @@ namespace Chisel.Core
             }
 
             ref var brushMesh = ref item.brushMeshBlob.Value;
-            AppendArray(ref buffer, brushMesh.localVertices.GetUnsafePtr(), brushMesh.localVertices.Length, UnsafeUtility.SizeOf<float3>());
-            AppendArray(ref buffer, brushMesh.halfEdges.GetUnsafePtr(), brushMesh.halfEdges.Length, UnsafeUtility.SizeOf<BrushMeshBlob.HalfEdge>());
-            AppendArray(ref buffer, brushMesh.halfEdgePolygonIndices.GetUnsafePtr(), brushMesh.halfEdgePolygonIndices.Length, sizeof(int));
-            AppendArray(ref buffer, brushMesh.localPlanes.GetUnsafePtr(), brushMesh.localPlanes.Length, UnsafeUtility.SizeOf<float4>());
+            AppendArray(ref buffer, ref brushMesh.localVertices);
+            AppendArray(ref buffer, ref brushMesh.halfEdges);
+            AppendArray(ref buffer, ref brushMesh.halfEdgePolygonIndices);
+            AppendArray(ref buffer, ref brushMesh.localPlanes);
             buffer.Add(brushMesh.localPlaneCount);
 
             ref var polygons = ref brushMesh.polygons;
@@ -194,11 +194,18 @@ namespace Chisel.Core
             }
         }
 
-        static unsafe void AppendArray(ref UnsafeAppendBuffer buffer, void* pointer, int length, int elementSize)
+        static void AppendArray<T>(ref UnsafeAppendBuffer buffer, ref Unity.Entities.BlobArray<T> array) where T : unmanaged
         {
-            buffer.Add(length);
-            if (length > 0)
-                buffer.Add(pointer, length * elementSize);
+            buffer.Add(array.Length);
+            if (array.Length > 0)
+                buffer.AddBytes(ref array);
+        }
+
+        static void AppendArray<T>(ref UnsafeAppendBuffer buffer, NativeArray<T> array) where T : unmanaged
+        {
+            buffer.Add(array.Length);
+            if (array.Length > 0)
+                buffer.AddBytes(array);
         }
 
         struct HashOrder : IComparer<uint4>
@@ -212,7 +219,7 @@ namespace Chisel.Core
             }
         }
 
-        static unsafe void AppendDecals(ref UnsafeAppendBuffer buffer, CSGTree tree, Dictionary<ulong, int> brushOrder,
+        static void AppendDecals(ref UnsafeAppendBuffer buffer, CSGTree tree, Dictionary<ulong, int> brushOrder,
                                         Dictionary<ulong, Hash128> identities, SurfaceParameterIdentity surfaceParameterIdentity)
         {
             if (!ChiselTreeLookup.Value.HasTree(tree))
@@ -263,10 +270,10 @@ namespace Chisel.Core
                         decalBuffer.Add(brushOrder.TryGetValue(target.brushEntityID, out var order) ? order : -1);
                         decalBuffer.Add(target.surfaceIndex);
                     }
-                    decalHashes[d] = xxHash3.Hash128(decalBuffer.Ptr, decalBuffer.Length);
+                    decalHashes[d] = decalBuffer.Hash128();
                 }
                 decalHashes.Sort(new HashOrder());
-                AppendArray(ref buffer, decalHashes.GetUnsafeReadOnlyPtr(), decalHashes.Length, UnsafeUtility.SizeOf<uint4>());
+                AppendArray(ref buffer, decalHashes);
             }
             finally
             {
