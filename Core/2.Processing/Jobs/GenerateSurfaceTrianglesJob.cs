@@ -64,59 +64,63 @@ namespace Chisel.Core
 			// a painted surface gets its paint's grid points as vertices, before anything is worked out from them
 			if (paint.TryGetRange(entityID, baseSurfaces[surf].descriptionIndex, out var subdivision))
 				PaintSubdivision.Subdivide(surfaceIndexList, ref uniqueVertexMapper, finalFaceNormal, paint, subdivision);
-			if (normalSmoothingAngle > 0.0001f)
+			// A vertex's normal takes those of the surfaces that meet it there and are smoothed with this one: the brush's
+			// surfaces in its smoothing group, and any surface within the model's smoothing angle
+			var smoothingGroup = baseSurfaces[surf].smoothingGroup;
+			var byAngle        = normalSmoothingAngle > 0.0001f;
+			if (byAngle || smoothingGroup != 0)
 			{
 				var renderVertices = uniqueVertexMapper.surfaceRenderVertices;
 				var positions      = uniqueVertexMapper.surfaceColliderVertices;
-				float smoothingCos = math.cos(math.radians(normalSmoothingAngle));
+				var smoothingCos   = byAngle ? math.cos(math.radians(normalSmoothingAngle)) : 2.0f;
 
-				var alignedPlanes = new NativeList<float4>(64, Allocator.Temp);
+				// (brush, surface) of each surface smoothed with this one, and its plane in the tree, normalized and
+				// facing as drawn
+				using var smoothedWith = new NativeList<int2>(64, Allocator.Temp);
+				using var planes       = new NativeList<float4>(64, Allocator.Temp);
 				for (int otherBrushIdx = 0; otherBrushIdx < basePolygonCache.Length; otherBrushIdx++)
 				{
 					if (!basePolygonCache[otherBrushIdx].IsCreated) continue;
 					ref var otherSurfaces = ref basePolygonCache[otherBrushIdx].Value.surfaces;
-					// Hoisted out of the vertex loop - this only varies per brush.
 					var otherNodeToTreeInvTrans = math.transpose(transformationCache[otherBrushIdx].treeToNode);
 
 					for (int otherSurf = 0; otherSurf < otherSurfaces.Length; otherSurf++)
 					{
-						// Skip ourselves (same brush, same surface)
 						if (otherBrushIdx == brushNodeOrder && otherSurf == surf) continue;
 
-						float4 otherPlaneTree = math.mul(otherNodeToTreeInvTrans, otherSurfaces[otherSurf].localPlane);
-
-						// If subtractive workflow, we must flip the neighbour normal effectively
-						// to compare "Inwards vs Inwards" rather than "Inwards vs Outwards"
-						float3 comparisonNormal = subtractiveWorkflow ? -otherPlaneTree.xyz : otherPlaneTree.xyz;
-						if (math.dot(finalFaceNormal, comparisonNormal) < smoothingCos)
+						var plane  = math.mul(otherNodeToTreeInvTrans, otherSurfaces[otherSurf].localPlane);
+						var length = math.length(plane.xyz);
+						if (!(length > 0)) continue;
+						plane /= length;
+						// inwards against inwards in the subtractive workflow
+						var drawnNormal = subtractiveWorkflow ? -plane.xyz : plane.xyz;
+						var inGroup = smoothingGroup != 0 && otherBrushIdx == brushNodeOrder && otherSurfaces[otherSurf].smoothingGroup == smoothingGroup;
+						if (!inGroup && math.dot(finalFaceNormal, drawnNormal) < smoothingCos)
 							continue;
-
-						// Kept RAW (normal + D as cached): the per-vertex test below needs the
-						// raw plane for the geometric distance, and negates it when accumulating.
-						alignedPlanes.Add(otherPlaneTree);
+						smoothedWith.Add(new int2(otherBrushIdx, otherSurf));
+						planes.Add(plane);
 					}
 				}
 
 				for (int v = 0; v < renderVertices.Length; v++)
 				{
-					float3 vertPos        = positions[v];
+					float3 position       = positions[v];
 					float3 smoothedNormal = finalFaceNormal;
-
-					for (int a = 0; a < alignedPlanes.Length; a++)
+					for (int a = 0; a < planes.Length; a++)
 					{
-						var otherPlaneTree = alignedPlanes[a];
-						// distance = dot(N_raw, P) + D_raw
-						float dist = math.dot(otherPlaneTree.xyz, vertPos) + otherPlaneTree.w;
-						if (math.abs(dist) < 0.005f)
-							smoothedNormal += subtractiveWorkflow ? -otherPlaneTree.xyz : otherPlaneTree.xyz;
+						var plane = planes[a];
+						if (math.abs(math.dot(plane.xyz, position) + plane.w) >= kSmoothingDistance)
+							continue;
+						// only a surface the vertex is on, not one whose plane goes through it somewhere else
+						if (!OnPolygon(ref basePolygonCache[smoothedWith[a].x].Value, smoothedWith[a].y, plane.xyz, position))
+							continue;
+						smoothedNormal += subtractiveWorkflow ? -plane.xyz : plane.xyz;
 					}
 
 					var rv = renderVertices[v];
 					rv.normal = math.normalizesafe(smoothedNormal, finalFaceNormal);
 					renderVertices[v] = rv;
 				}
-
-				alignedPlanes.Dispose();
 			}
 
 			var flags = baseSurfaces[surf].destinationFlags;
@@ -326,6 +330,33 @@ namespace Chisel.Core
 
 			if (HasBackFace(flags, outputFlags))
 				FinishBackFace(surf, entityID, flags, parms, outputFlags, surfaceIndexList, ref uniqueVertexMapper, builder, surfaceBuffers, slots);
+		}
+
+		// How far from a surface a vertex may be and still be on it, for smoothing
+		const float kSmoothingDistance = 0.005f;
+
+		// Whether a point on a polygon's plane is inside its outline (or on it), in the tree's space
+		static bool OnPolygon(ref BasePolygonsBlob blob, int polygonIndex, float3 normal, float3 point)
+		{
+			ref var polygon = ref blob.polygons[polygonIndex];
+			if (polygon.endEdgeIndex - polygon.startEdgeIndex < 3)
+				return false;
+			bool anyLeft = false, anyRight = false;
+			for (int e = polygon.startEdgeIndex; e < polygon.endEdgeIndex; e++)
+			{
+				var from  = blob.vertices[blob.edges[e].index1];
+				var to    = blob.vertices[blob.edges[e].index2];
+				var along = to - from;
+				var edgeLength = math.length(along);
+				if (!(edgeLength > 0)) continue;
+				// how far the point is from the edge's line, to one side or the other
+				var side = math.dot(math.cross(along, point - from), normal) / edgeLength;
+				if (side >  kSmoothingDistance) anyLeft  = true;
+				if (side < -kSmoothingDistance) anyRight = true;
+				if (anyLeft && anyRight)
+					return false;
+			}
+			return true;
 		}
 
 		// A double sided surface that is drawn: its back is drawn too (SurfaceOutputFlags.DoubleSided)

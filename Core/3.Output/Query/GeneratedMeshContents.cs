@@ -49,8 +49,9 @@ namespace Chisel.Core
 
 		/// <value>Normal for each vertex.</value>
 		/// <remarks>Each <seealso cref="Chisel.Core.BrushMesh.Polygon"/> has a <seealso cref="Chisel.Core.SurfaceDetails.smoothingGroup"/> field in its <seealso cref="Chisel.Core.SurfaceDetails"/>.
-		/// If the <seealso cref="Chisel.Core.SurfaceDetails.smoothingGroup"/> is set to something other than 0 the normal is calculated by; combining the normals of all the surfaces around each vertex that share the same <seealso cref="Chisel.Core.SurfaceDetails.smoothingGroup"/>.
+		/// If the <seealso cref="Chisel.Core.SurfaceDetails.smoothingGroup"/> is set to something other than 0 the normal is calculated by; combining the normals of all the surfaces of the same brush around each vertex that share the same <seealso cref="Chisel.Core.SurfaceDetails.smoothingGroup"/>.
 		/// If the <seealso cref="Chisel.Core.SurfaceDetails.smoothingGroup"/> is set to 0 the normal of the polygon is used.
+		/// The model's normal smoothing also combines the normals of the surfaces of any brush around a vertex that are within its angle.
 		/// <note>Can be null when the <see cref="description"/>  has no normals set in its <see cref="Chisel.Core.MeshQuery.UsedVertexChannels"/>.</note>
 		/// </remarks>
 		public NativeList<float3>       normals;
