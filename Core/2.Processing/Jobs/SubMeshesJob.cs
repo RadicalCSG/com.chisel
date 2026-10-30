@@ -638,6 +638,47 @@ namespace Chisel.Core
         }
     }
 
+    // The brushes to clean up, and the cache's results handed to the others (OutputMeshCleanup)
+    [BurstCompile(CompileSynchronously = true)]
+    struct PlanMeshCleanupJob : IJob
+    {
+        [NoAlias] public NativeList<BrushData> brushRenderData;
+        [NoAlias] public NativeParallelHashMap<CompactNodeID, MeshCleanupEntry> meshCleanupCache;
+        [NoAlias] public NativeList<MeshCleanupWork> work;
+
+        public void Execute()
+        {
+            OutputMeshCleanup.Plan(brushRenderData, meshCleanupCache, work);
+        }
+    }
+
+    [BurstCompile(CompileSynchronously = true)]
+    struct CleanMeshesJob : IJobParallelForDefer
+    {
+        [NoAlias, ReadOnly] public NativeArray<BrushData> brushRenderData;
+        [NoAlias] public NativeArray<MeshCleanupWork> work;
+
+        public void Execute(int index)
+        {
+            work[index] = OutputMeshCleanup.CleanPlanned(work[index], brushRenderData);
+        }
+    }
+
+    [BurstCompile(CompileSynchronously = true)]
+    struct FinishMeshCleanupJob : IJob
+    {
+        [NoAlias, ReadOnly] public NativeList<MeshCleanupWork> work;
+
+        [NoAlias] public NativeList<BrushData> brushRenderData;
+        [NoAlias] public NativeList<BlobAssetReference<ChiselBrushRenderBuffer>> patchedRenderBuffers;
+        [NoAlias] public NativeParallelHashMap<CompactNodeID, MeshCleanupEntry> meshCleanupCache;
+
+        public void Execute()
+        {
+            OutputMeshCleanup.Finish(brushRenderData, patchedRenderBuffers, work, meshCleanupCache);
+        }
+    }
+
     // Every query's surfaces grouped by key (SurfaceGroupKey): the groups in key order, brush order within a group. The
     // brushes in ranges (kRangeCount, in brush order), each range's buffers read once for all queries: its keys
     // (PrepareSubSectionKeysJob), where each range's part of a group goes (PrepareSubSectionsJob), its surfaces written there

@@ -253,6 +253,8 @@ namespace Chisel.Core
                 public NativeList<BlobAssetReference<ChiselBrushRenderBuffer>> patchedRenderBuffers;
                 // The model's hotspot groups and the brushes left to cut, written with brushRenderData
                 public HotspotCutState                      hotspotCut;
+                // The brushes the cleanup works on, written with brushRenderData (OutputMeshCleanup)
+                public NativeList<MeshCleanupWork>          meshCleanup;
                 // The surfaces the weld changed and the brushes to store again, written with brushRenderData
                 public WeldState                            weld;
                 // The model's hotspot groups before they are matched, written with brushRenderData
@@ -593,6 +595,7 @@ namespace Chisel.Core
                 Temporaries.subMeshSurfaces = new NativeArray<UnsafeList<SubMeshSurface>>(Temporaries.meshQueriesLength, defaultAllocator);
                 Temporaries.patchedRenderBuffers = new NativeList<BlobAssetReference<ChiselBrushRenderBuffer>>(defaultAllocator);
                 Temporaries.hotspotCut = HotspotCutState.Create(defaultAllocator);
+                Temporaries.meshCleanup = new NativeList<MeshCleanupWork>(defaultAllocator);
                 Temporaries.weld = WeldState.Create(defaultAllocator);
                 Temporaries.hotspotFind = FindState.Create(defaultAllocator);
                 
@@ -683,6 +686,7 @@ namespace Chisel.Core
                 if (t.subMeshSurfaces.IsCreated)                t.subMeshSurfaces.Dispose();
                 if (t.patchedRenderBuffers.IsCreated)           t.patchedRenderBuffers.Dispose();
                 t.hotspotCut.Dispose();
+                if (t.meshCleanup.IsCreated)                    t.meshCleanup.Dispose();
                 t.weld.Dispose();
                 t.hotspotFind.Dispose();
                 if (t.basePolygonDisposeList.IsCreated)         t.basePolygonDisposeList.Dispose();
@@ -2243,6 +2247,37 @@ namespace Chisel.Core
                     finishHotspotCutJob.Schedule(runInParallel,
                         JobHandles.Read(JobHandleType.decalVolumesJobHandle),
                         JobHandles.Write(JobHandleType.brushRenderDataJobHandle));
+
+                    // what the cuts added that doesn't change how anything looks, taken out again
+                    var planMeshCleanupJob = new PlanMeshCleanupJob
+                    {
+                        brushRenderData  = Temporaries.brushRenderData,
+                        meshCleanupCache = chiselLookupValues.meshCleanupCache,
+                        work             = Temporaries.meshCleanup
+                    };
+                    planMeshCleanupJob.Schedule(runInParallel,
+                        JobHandles.Read(JobHandleType.decalVolumesJobHandle),
+                        JobHandles.Write(JobHandleType.brushRenderDataJobHandle));
+
+                    var cleanMeshesJob = new CleanMeshesJob
+                    {
+                        brushRenderData = Temporaries.brushRenderData.AsDeferredJobArray(),
+                        work            = Temporaries.meshCleanup.AsDeferredJobArray()
+                    };
+                    cleanMeshesJob.Schedule(runInParallel, Temporaries.meshCleanup, 1,
+                        JobHandles.Read(JobHandleType.decalVolumesJobHandle),
+                        JobHandles.Write(JobHandleType.brushRenderDataJobHandle));
+
+                    var finishMeshCleanupJob = new FinishMeshCleanupJob
+                    {
+                        work                 = Temporaries.meshCleanup,
+                        brushRenderData      = Temporaries.brushRenderData,
+                        patchedRenderBuffers = Temporaries.patchedRenderBuffers,
+                        meshCleanupCache     = chiselLookupValues.meshCleanupCache
+                    };
+                    finishMeshCleanupJob.Schedule(runInParallel,
+                        JobHandles.Read(JobHandleType.decalVolumesJobHandle),
+                        JobHandles.Write(JobHandleType.brushRenderDataJobHandle));
                 }
                 #endregion
 
@@ -2910,6 +2945,8 @@ namespace Chisel.Core
                                                                                     JobHandles[JobHandleType.brushRenderDataJobHandle].readWriteBarrier)));
                 lastJobHandle.AddDependency(Temporaries.hotspotCut.Dispose(JobHandles[JobHandleType.brushRenderDataJobHandle].readWriteBarrier));
                 Temporaries.hotspotCut = default;
+                lastJobHandle.AddDependency(Temporaries.meshCleanup.Dispose(JobHandles[JobHandleType.brushRenderDataJobHandle].readWriteBarrier));
+                Temporaries.meshCleanup = default;
                 // nothing waits for the weld's working copies to be freed: the next update does, before it starts
                 s_PendingWeldFrees = JobHandle.CombineDependencies(s_PendingWeldFrees,
                                         Temporaries.weld.Dispose(JobHandles[JobHandleType.brushRenderDataJobHandle].readWriteBarrier));
