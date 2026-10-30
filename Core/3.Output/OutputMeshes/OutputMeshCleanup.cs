@@ -12,7 +12,17 @@ namespace Chisel.Core
         public ulong key;
         // Null when there was nothing to take out
         public BlobAssetReference<ChiselBrushRenderBuffer> result;
+        // Where the snap put the corners it moved (from, to); not created when it moved none
+        public UnsafeList<float3x2> snapMoves;
         public bool used;
+
+        public void Dispose()
+        {
+            if (result.IsCreated) result.Dispose();
+            if (snapMoves.IsCreated) snapMoves.Dispose();
+            result = default;
+            snapMoves = default;
+        }
     }
 
     // A brush to clean up, the brushes whose output touches its own (MeshCleanupState.neighbours from neighbourStart), and
@@ -23,6 +33,7 @@ namespace Chisel.Core
         public ulong key;
         public int neighbourStart, neighbourCount;
         public BlobAssetReference<ChiselBrushRenderBuffer> result;
+        public UnsafeList<float3x2> snapMoves;
     }
 
     // At the end of the output, after decals, the model's weld and the hotspot cut, each brush's surfaces are finished:
@@ -159,14 +170,20 @@ namespace Chisel.Core
         }
 
         // One planned brush; each is independent of the others
-        public static MeshCleanupWork CleanPlanned(MeshCleanupWork work, NativeArray<BrushData> brushes, NativeArray<int> neighbours)
+        public static unsafe MeshCleanupWork CleanPlanned(MeshCleanupWork work, NativeArray<BrushData> brushes, NativeArray<int> neighbours)
         {
             var source = brushes[work.brush].brushRenderBuffer;
             using var outlines = new NativeList<Outline>(256, Allocator.Temp);
             var box = BoundsOf(source);
             for (int n = 0; n < work.neighbourCount; n++)
                 OutlinesOf(brushes[neighbours[work.neighbourStart + n]].brushRenderBuffer, false, box, outlines);
-            work.result = Clean(source, outlines);
+            using var moves = new NativeList<float3x2>(Allocator.Temp);
+            work.result = Clean(source, outlines, moves);
+            if (moves.Length > 0)
+            {
+                work.snapMoves = new UnsafeList<float3x2>(moves.Length, Allocator.Persistent);
+                work.snapMoves.AddRange(moves.GetUnsafeReadOnlyPtr(), moves.Length);
+            }
             return work;
         }
 
@@ -287,11 +304,16 @@ namespace Chisel.Core
                 if (cached)
                 {
                     var nodeID = data.brushIndexOrder.compactNodeID;
-                    if (cache.TryGetValue(nodeID, out var old) && old.result.IsCreated)
-                        old.result.Dispose();
-                    cache[nodeID] = new MeshCleanupEntry { key = item.key, result = item.result, used = true };
-                } else if (item.result.IsCreated)
-                    patched.Add(item.result);
+                    if (cache.TryGetValue(nodeID, out var old))
+                        old.Dispose();
+                    cache[nodeID] = new MeshCleanupEntry { key = item.key, result = item.result, snapMoves = item.snapMoves, used = true };
+                } else
+                {
+                    if (item.result.IsCreated)
+                        patched.Add(item.result);
+                    if (item.snapMoves.IsCreated)
+                        item.snapMoves.Dispose();
+                }
                 if (!item.result.IsCreated)
                     continue;
                 data.brushRenderBuffer = item.result;
@@ -307,8 +329,8 @@ namespace Chisel.Core
             }
             foreach (var id in gone)
             {
-                if (cache.TryGetValue(id, out var dead) && dead.result.IsCreated)
-                    dead.result.Dispose();
+                if (cache.TryGetValue(id, out var dead))
+                    dead.Dispose();
                 cache.Remove(id);
             }
             using var left = cache.GetKeyArray(Allocator.Temp);
@@ -324,7 +346,8 @@ namespace Chisel.Core
         // brushes touching it (OutlinesOf). An outline edge no other drawn surface has is open: a corner of another
         // surface's outline on it is where they meet with a crack. One two surfaces share is left, or one of them would be
         // split without the other.
-        public static BlobAssetReference<ChiselBrushRenderBuffer> Clean(BlobAssetReference<ChiselBrushRenderBuffer> source, NativeList<Outline> others = default)
+        public static BlobAssetReference<ChiselBrushRenderBuffer> Clean(BlobAssetReference<ChiselBrushRenderBuffer> source, NativeList<Outline> others = default,
+                                                                        NativeList<float3x2> snapMoves = default)
         {
             if (!source.IsCreated)
                 return default;
@@ -403,11 +426,19 @@ namespace Chisel.Core
                                 var snapped = Snap(collider[v], cornersAt);
                                 if (math.all(snapped == collider[v]))
                                     continue;
+                                // a corner with another of its own surface a hair away is on a sliver, which is the weld's
+                                if (NearOwnCorner(collider, outlineCorner, v))
+                                    continue;
+                                if (snapMoves.IsCreated)
+                                    snapMoves.Add(new float3x2(collider[v], snapped));
                                 collider[v] = snapped;
                                 var vertex = render[v]; vertex.position = snapped; render[v] = vertex;
                                 var selected = select[v]; selected.position = snapped; select[v] = selected;
                                 split = true;
                             }
+                            // a triangle two of whose corners snapped onto one is left without area
+                            if (split)
+                                DropCollapsed(indices, collider);
                             split |= SplitOutline(indices, collider, select, render, onSurface.AsArray(), shared);
                         }
                         if (split)
@@ -485,6 +516,63 @@ namespace Chisel.Core
             {
                 builder.Dispose();
             }
+        }
+
+        static bool NearOwnCorner(NativeList<float3> positions, NativeList<bool> onOutline, int v)
+        {
+            var p = positions[v];
+            for (int u = 0; u < positions.Length; u++)
+            {
+                if (u == v || !onOutline[u] || math.all(positions[u] == p))
+                    continue;
+                if (math.distancesq(positions[u], p) <= kJunctionDistance * kJunctionDistance)
+                    return true;
+            }
+            return false;
+        }
+
+        // Takes out the triangles two of whose corners are at one position, and the pairs of triangles at the same three
+        // positions wound the other way round, which cover nothing
+        static void DropCollapsed(NativeList<int> indices, NativeList<float3> positions)
+        {
+            var count = indices.Length / 3;
+            NativeArray<bool> drop;
+            using var _drop = drop = new NativeArray<bool>(count, Allocator.Temp);
+            using var byCorners = new NativeParallelMultiHashMap<float3x3, int>(count + 1, Allocator.Temp);
+            for (int t = 0; t < count; t++)
+            {
+                var a = positions[indices[t * 3]]; var b = positions[indices[t * 3 + 1]]; var c = positions[indices[t * 3 + 2]];
+                if (math.all(a == b) || math.all(b == c) || math.all(c == a))
+                {
+                    drop[t] = true;
+                    continue;
+                }
+                var twin = -1;
+                for (int r = 0; r < 3 && twin < 0; r++)
+                {
+                    // the other way round, starting at each corner
+                    var key = r == 0 ? new float3x3(a, c, b) : (r == 1 ? new float3x3(c, b, a) : new float3x3(b, a, c));
+                    if (byCorners.TryGetFirstValue(key, out var other, out var iterator))
+                    {
+                        do { if (!drop[other]) twin = other; } while (twin < 0 && byCorners.TryGetNextValue(out other, ref iterator));
+                    }
+                }
+                if (twin >= 0)
+                {
+                    drop[t] = true;
+                    drop[twin] = true;
+                    continue;
+                }
+                byCorners.Add(new float3x3(a, b, c), t);
+            }
+            var kept = 0;
+            for (int t = 0; t < count; t++)
+            {
+                if (drop[t])
+                    continue;
+                indices[kept++] = indices[t * 3]; indices[kept++] = indices[t * 3 + 1]; indices[kept++] = indices[t * 3 + 2];
+            }
+            indices.Resize(kept, NativeArrayOptions.UninitializedMemory);
         }
 
         static void Load(ref ChiselSurfaceRenderBuffer from, NativeList<int> indices, NativeList<float3> collider, NativeList<SelectVertex> select, NativeList<RenderVertex> render)

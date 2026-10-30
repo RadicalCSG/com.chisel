@@ -288,10 +288,7 @@ namespace Chisel.Core
                 if (meshCleanupCache.IsCreated)
                 {
                     foreach (var entry in meshCleanupCache)
-                    {
-                        if (entry.Value.result.IsCreated)
-                            entry.Value.result.Dispose();
-                    }
+                        entry.Value.Dispose();
                     meshCleanupCache.Dispose();
                 }
                 meshCleanupCache = default;
