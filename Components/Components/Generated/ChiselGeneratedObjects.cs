@@ -316,10 +316,16 @@ namespace Chisel.Components
             if (!container)
                 return;
             var visibility = UnityEditor.SceneVisibilityManager.instance;
-            if (!visibility.IsPickingDisabledOnAllDescendants(container))
-                visibility.DisablePicking(container, true);
+            if (visibility.IsPickingDisabledOnAllDescendants(container))
+                return;
+            KeepingOutOfPicking = true;
+            try     { visibility.DisablePicking(container, true); }
+            finally { KeepingOutOfPicking = false; }
 #endif
         }
+
+        // Whether the picking that changes is only the generated objects', which says nothing about the brushes
+        public static bool KeepingOutOfPicking { get; private set; }
 
         GameObjectState UpdateContainers(GameObject modelGameObject, bool force = false)
         {
@@ -606,6 +612,8 @@ namespace Chisel.Components
                 Profiler.BeginSample("FindRenderables");
                 FindRenderables(model, gameObjectState, ref meshUpdates);
                 FindDebugRenderables(model, gameObjectState, ref meshUpdates);
+                // what was just made in the container is not covered by what was turned off before
+                KeepOutOfPicking(generatedDataContainer);
                 Profiler.EndSample();
 
                 Debug.Assert(!meshUpdates.vertexBufferContents.meshDescriptions.IsCreated ||

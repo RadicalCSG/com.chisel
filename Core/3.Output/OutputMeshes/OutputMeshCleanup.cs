@@ -175,10 +175,14 @@ namespace Chisel.Core
             var source = brushes[work.brush].brushRenderBuffer;
             using var outlines = new NativeList<Outline>(256, Allocator.Temp);
             var box = BoundsOf(source);
+            using var colliderOutlines = new NativeList<Outline>(256, Allocator.Temp);
             for (int n = 0; n < work.neighbourCount; n++)
+            {
                 OutlinesOf(brushes[neighbours[work.neighbourStart + n]].brushRenderBuffer, false, box, outlines);
+                OutlinesOf(brushes[neighbours[work.neighbourStart + n]].brushRenderBuffer, false, box, colliderOutlines, true);
+            }
             using var moves = new NativeList<float3x2>(Allocator.Temp);
-            work.result = Clean(source, outlines, moves);
+            work.result = Clean(source, outlines, moves, colliderOutlines);
             if (moves.Length > 0)
             {
                 work.snapMoves = new UnsafeList<float3x2>(moves.Length, Allocator.Persistent);
@@ -256,7 +260,8 @@ namespace Chisel.Core
         static bool Drawn(ref ChiselSurfaceRenderBuffer surface) => (surface.destinationFlags & SurfaceDestinationFlags.Renderable) != 0;
 
         // The outline edges of a brush's drawn surfaces within a box
-        static void OutlinesOf(BlobAssetReference<ChiselBrushRenderBuffer> buffer, bool own, MinMaxAABB box, NativeList<Outline> outlines)
+        // collider: the triangles of the surface's collider, where the cuts kept it apart from what is drawn
+        static void OutlinesOf(BlobAssetReference<ChiselBrushRenderBuffer> buffer, bool own, MinMaxAABB box, NativeList<Outline> outlines, bool collider = false)
         {
             if (!buffer.IsCreated)
                 return;
@@ -267,8 +272,9 @@ namespace Chisel.Core
                 ref var surface = ref surfaces[s];
                 if (surface.indexCount == 0 || !Drawn(ref surface) || !Overlap(surface.aabb, box))
                     continue;
-                ref var indices = ref surface.indices;
-                ref var vertices = ref surface.colliderVertices;
+                var kept = collider && surface.physicsIndices.Length > 0;
+                ref var indices = ref (kept ? ref surface.physicsIndices : ref surface.indices);
+                ref var vertices = ref (kept ? ref surface.physicsVertices : ref surface.colliderVertices);
                 edges.Clear();
                 for (int i = 0; i + 2 < indices.Length; i += 3)
                 {
@@ -347,7 +353,7 @@ namespace Chisel.Core
         // surface's outline on it is where they meet with a crack. One two surfaces share is left, or one of them would be
         // split without the other.
         public static BlobAssetReference<ChiselBrushRenderBuffer> Clean(BlobAssetReference<ChiselBrushRenderBuffer> source, NativeList<Outline> others = default,
-                                                                        NativeList<float3x2> snapMoves = default)
+                                                                        NativeList<float3x2> snapMoves = default, NativeList<Outline> othersColliders = default)
         {
             if (!source.IsCreated)
                 return default;
@@ -359,7 +365,8 @@ namespace Chisel.Core
             using var _select   = select   = new NativeList<SelectVertex>(Allocator.Temp);
             using var _render   = render   = new NativeList<RenderVertex>(Allocator.Temp);
             using var physicsIndices  = new NativeList<int>(Allocator.Temp);
-            using var physicsVertices = new NativeList<float3>(Allocator.Temp);
+            NativeList<float3> physicsVertices;
+            using var _physicsVertices = physicsVertices = new NativeList<float3>(Allocator.Temp);
             using var outlines  = new NativeList<Outline>(256, Allocator.Temp);
             using var onSurface = new NativeList<float3>(64, Allocator.Temp);
             if (others.IsCreated)
@@ -372,6 +379,26 @@ namespace Chisel.Core
                 var key = EdgeKey(outlines[o].from, outlines[o].to);
                 shared[key] = shared.TryGetValue(key, out var count) ? count + 1 : 1;
             }
+            // the same of the colliders, which aren't cut where only what is drawn is (the hotspot cut)
+            using var colliderOutlines = new NativeList<Outline>(256, Allocator.Temp);
+            if (othersColliders.IsCreated)
+            {
+                colliderOutlines.AddRange(othersColliders.AsArray());
+                OutlinesOf(source, true, BoundsOf(source), colliderOutlines, true);
+            } else
+                colliderOutlines.AddRange(outlines.AsArray());
+            NativeParallelHashMap<int3x2, int> colliderShared;
+            using var _colliderShared = colliderShared = new NativeParallelHashMap<int3x2, int>(colliderOutlines.Length + 16, Allocator.Temp);
+            for (int o = 0; o < colliderOutlines.Length; o++)
+            {
+                var key = EdgeKey(colliderOutlines[o].from, colliderOutlines[o].to);
+                colliderShared[key] = colliderShared.TryGetValue(key, out var count) ? count + 1 : 1;
+            }
+            using var onCollider = new NativeList<float3>(64, Allocator.Temp);
+            NativeList<SelectVertex> colliderSelect;
+            using var _colliderSelect = colliderSelect = new NativeList<SelectVertex>(Allocator.Temp);
+            NativeList<RenderVertex> colliderRender;
+            using var _colliderRender = colliderRender = new NativeList<RenderVertex>(Allocator.Temp);
             // the outlines' corners, to find the corners of other surfaces a hair away from one
             NativeParallelMultiHashMap<int3, float3> cornersAt;
             using var _cornersAt = cornersAt = new NativeParallelMultiHashMap<int3, float3>(outlines.Length * 2 + 16, Allocator.Temp);
@@ -400,7 +427,7 @@ namespace Chisel.Core
                     to.destinationFlags      = from.destinationFlags;
                     to.destinationParameters = from.destinationParameters;
                     to.outputFlags           = from.outputFlags;
-                    var split = false; var cleaned = false;
+                    var split = false; var cleaned = false; var colliderChanged = false;
                     if (from.paintSurface < 0 && from.indices.Length >= 3)
                     {
                         Load(ref from, indices, collider, select, render);
@@ -415,6 +442,16 @@ namespace Chisel.Core
                             if (math.all(outline.from >= box.Min) && math.all(outline.from <= box.Max)) onSurface.Add(Snap(outline.from, cornersAt));
                             if (math.all(outline.to   >= box.Min) && math.all(outline.to   <= box.Max)) onSurface.Add(Snap(outline.to, cornersAt));
                         }
+                        onCollider.Clear();
+                        for (int o = 0; o < colliderOutlines.Length; o++)
+                        {
+                            var outline = colliderOutlines[o];
+                            if (outline.surface == s)
+                                continue;
+                            if (math.all(outline.from >= box.Min) && math.all(outline.from <= box.Max)) onCollider.Add(Snap(outline.from, cornersAt));
+                            if (math.all(outline.to   >= box.Min) && math.all(outline.to   <= box.Max)) onCollider.Add(Snap(outline.to, cornersAt));
+                        }
+                        var snappedAny = false;
                         if (Drawn(ref from))
                         {
                             // corners a hair apart are one: the least of them by x, y and z, which every surface picks alike
@@ -435,16 +472,26 @@ namespace Chisel.Core
                                 var vertex = render[v]; vertex.position = snapped; render[v] = vertex;
                                 var selected = select[v]; selected.position = snapped; select[v] = selected;
                                 split = true;
+                                snappedAny = true;
                             }
                             // a triangle two of whose corners snapped onto one is left without area
                             if (split)
                                 DropCollapsed(indices, collider);
+                            // the collider: the same corners, split only where another collider has a corner
+                            if (from.physicsIndices.Length == 0)
+                            {
+                                Load(ref from, physicsIndices, physicsVertices, colliderSelect, colliderRender);
+                                for (int v = 0; v < physicsVertices.Length; v++)
+                                {
+                                    physicsVertices[v] = collider[v];
+                                    var vertex = colliderRender[v]; vertex.position = collider[v]; colliderRender[v] = vertex;
+                                    var selected = colliderSelect[v]; selected.position = collider[v]; colliderSelect[v] = selected;
+                                }
+                                if (snappedAny)
+                                    DropCollapsed(physicsIndices, physicsVertices);
+                                colliderChanged = snappedAny | SplitOutline(physicsIndices, physicsVertices, colliderSelect, colliderRender, onCollider.AsArray(), colliderShared);
+                            }
                             split |= SplitOutline(indices, collider, select, render, onSurface.AsArray(), shared);
-                        }
-                        if (split)
-                        {
-                            physicsIndices.Clear();  physicsIndices.AddRange(indices.AsArray());
-                            physicsVertices.Clear(); physicsVertices.AddRange(collider.AsArray());
                         }
                         cleaned = CleanSurface(indices, collider, select, render, split || from.physicsIndices.Length > 0);
                     }
@@ -465,18 +512,11 @@ namespace Chisel.Core
                         to.lightmapChart  = from.lightmapChart;
                         builder.Construct(ref to.physicsIndices,  ref from.physicsIndices);
                         builder.Construct(ref to.physicsVertices, ref from.physicsVertices);
-                    } else if (split)
+                    } else if (colliderChanged)
                     {
                         to.shapeHashValue = math.hash(new uint2(physicsVertices.Hash(), physicsIndices.Hash()));
-                        if (cleaned)
-                        {
-                            builder.Construct(ref to.physicsIndices,  physicsIndices);
-                            builder.Construct(ref to.physicsVertices, physicsVertices);
-                        } else
-                        {
-                            builder.Allocate(ref to.physicsIndices, 0);
-                            builder.Allocate(ref to.physicsVertices, 0);
-                        }
+                        builder.Construct(ref to.physicsIndices,  physicsIndices);
+                        builder.Construct(ref to.physicsVertices, physicsVertices);
                     } else
                     {
                         to.shapeHashValue = from.shapeHashValue;
