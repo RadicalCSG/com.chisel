@@ -676,6 +676,16 @@ namespace Chisel.Editors
                         if (SceneHandles.Disabled)
                             break;
 
+                        // The control ids of a mouse move don't always match those of the layout before it, so what is
+                        // hovered over can be stale: the layout just before this click knows what is under the mouse
+                        if (UnityEditor.HandleUtility.nearestControl == id && GUIUtility.hotControl == 0)
+                        {
+                            state.s_HoverOverPoint   = state.s_ClosestPoint;
+                            state.s_HoverOverTangent = state.s_ClosestTangent;
+                            state.s_HoverOverEdge    = state.s_ClosestEdge;
+                            state.s_HoverEdgePoint   = state.s_ClosestEdgePoint;
+                        }
+
                         if (state.s_HoverOverPoint == -1 && state.s_HoverOverTangent == -1 && state.s_HoverOverEdge == -1)
                             break;
 

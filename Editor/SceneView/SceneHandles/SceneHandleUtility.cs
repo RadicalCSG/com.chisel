@@ -13,11 +13,11 @@ namespace Chisel.Editors
             {
                 if (!GUI.enabled || (Tools.viewTool != ViewTool.None && Tools.viewTool != ViewTool.Pan))
                     return 0;
-                
+
                 if (GUIUtility.hotControl == 0)
                     return UnityEditor.HandleUtility.nearestControl;
-                
-                return GUIUtility.keyboardControl;
+
+				return GUIUtility.keyboardControl;
             }
         }
         
