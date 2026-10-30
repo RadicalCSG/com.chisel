@@ -308,6 +308,19 @@ namespace Chisel.Components
             UpdateContainers(model.gameObject);
         }
 
+        // Unity's own picking draws the generated meshes as well as Chisel's picking draws the brushes, at the same depth:
+        // either could be picked, so Unity's is kept off them (and the objects made in them later)
+        internal static void KeepOutOfPicking(GameObject container)
+        {
+#if UNITY_EDITOR
+            if (!container)
+                return;
+            var visibility = UnityEditor.SceneVisibilityManager.instance;
+            if (!visibility.IsPickingDisabledOnAllDescendants(container))
+                visibility.DisablePicking(container, true);
+#endif
+        }
+
         GameObjectState UpdateContainers(GameObject modelGameObject, bool force = false)
         {
             var modelTransform  = modelGameObject.transform;
@@ -317,6 +330,7 @@ namespace Chisel.Components
             lastAppliedState    = gameObjectState;
             hasAppliedState     = true;
             ChiselObjectUtility.UpdateContainerFlags(generatedDataContainer, gameObjectState);
+            KeepOutOfPicking(generatedDataContainer);
 
             var containerTransform = generatedDataContainer.transform;
             var colliderTransform = colliderContainer.transform;
