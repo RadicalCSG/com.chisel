@@ -295,8 +295,216 @@ namespace Chisel.Core.Tests
             Assert.That(cleaned.Clean(), Is.False, "a second cleanup finds nothing");
         }
 
+        static readonly float3[] kSquare = { A, B, C,  A, C, D };
+
+        static bool Split(Surface surface, params float3[] points)
+        {
+            using var array = new NativeArray<float3>(points, Allocator.Temp);
+            return OutputMeshCleanup.SplitOutline(surface.indices, surface.collider, surface.select, surface.render, array);
+        }
+
+        static void AssertNoTriangleWithoutArea(Surface surface)
+        {
+            for (int i = 0; i < surface.indices.Length; i += 3)
+            {
+                var a = surface.collider[surface.indices[i]]; var b = surface.collider[surface.indices[i + 1]]; var c = surface.collider[surface.indices[i + 2]];
+                Assert.That(math.cross(b - a, c - a).z, Is.GreaterThan(1e-6f), $"a triangle without area, or facing away: {a} {b} {c}");
+            }
+        }
+
+        // An edge running past another surface's corner draws a crack there (a T-junction)
+        [Test]
+        public void ACornerOnAnOutlineEdge_IsPutIntoIt()
+        {
+            using var before = new Surface(kSquare);
+            using var after  = new Surface(kSquare);
+            Assert.That(Split(after, Bottom), Is.True);
+            Assert.That(after.Uses(Bottom), Is.True);
+            Assert.That(after.TriangleCount, Is.EqualTo(3));
+            AssertNoTriangleWithoutArea(after);
+            AssertLooksTheSame(before, after, A.xy, C.xy);
+        }
+
+        // The corner's own position, so the two surfaces meet exactly there
+        [Test]
+        public void ACornerAHairOffTheEdge_IsPutIntoIt_WhereItIs()
+        {
+            var corner = new float3(1, -5e-5f, 0);
+            using var surface = new Surface(kSquare);
+            Assert.That(Split(surface, corner), Is.True);
+            Assert.That(surface.Uses(corner), Is.True);
+            AssertNoTriangleWithoutArea(surface);
+        }
+
+        [Test]
+        public void SeveralCornersOnEdges_AreAllPutIn()
+        {
+            var right = new float3(2, 1, 0); var top1 = new float3(0.5f, 2, 0); var top2 = new float3(1.5f, 2, 0);
+            using var before = new Surface(kSquare);
+            using var after  = new Surface(kSquare);
+            Assert.That(Split(after, top2, Bottom, right, top1), Is.True);
+            foreach (var corner in new[] { Bottom, right, top1, top2 })
+                Assert.That(after.Uses(corner), Is.True, $"{corner}");
+            AssertNoTriangleWithoutArea(after);
+            AssertLooksTheSame(before, after, A.xy, C.xy);
+        }
+
+        [Test]
+        public void ACornerAtAnEnd_AwayFromTheEdge_OrOnAnInsideEdge_IsLeft()
+        {
+            using var surface = new Surface(kSquare);
+            Assert.That(Split(surface, new float3(1e-4f, 0, 0), new float3(1, 0.01f, 0), new float3(1, -0.01f, 0), Centre), Is.False);
+            Assert.That(surface.TriangleCount, Is.EqualTo(2));
+        }
+
+        // An edge two surfaces share has no crack: splitting it on one side only would make one
+        [Test]
+        public void AnEdgeTwoSurfacesShare_IsLeft()
+        {
+            using var surface = new Surface(kSquare);
+            var shared = new NativeParallelHashMap<int3x2, int>(4, Allocator.Temp);
+            using var _shared = shared;
+            shared[OutputMeshCleanup.EdgeKey(A, B)] = 2;
+            using var points = new NativeArray<float3>(new[] { Bottom }, Allocator.Temp);
+            Assert.That(OutputMeshCleanup.SplitOutline(surface.indices, surface.collider, surface.select, surface.render, points, shared), Is.False);
+            Assert.That(surface.Uses(Bottom), Is.False);
+        }
+
+        // The weld leaves a needle (three corners on a line) where an edge meets several: it draws nothing, so it is cut
+        // however thin its pieces are
+        [Test]
+        public void ANeedle_IsCutAtTheCornerOnIt()
+        {
+            var far = new float3(1.5f, 0, 0);
+            var needle = new[] { A, far, B,  A, B, C };
+            using var surface = new Surface(needle);
+            Assert.That(Split(surface, new float3(0.5f, 0, 0)), Is.True);
+            Assert.That(surface.Uses(new float3(0.5f, 0, 0)), Is.True);
+            for (int i = 0; i < surface.indices.Length; i += 3)
+                Assert.That(surface.indices[i] != surface.indices[i + 1] && surface.indices[i + 1] != surface.indices[i + 2] && surface.indices[i] != surface.indices[i + 2], Is.True);
+        }
+
+        // Only what is drawn shows a crack: an edge only a surface of the collider shares is still open
+        [Test]
+        public void AnEdgeOnlyAHiddenSurfaceShares_IsStillSplit()
+        {
+            var hidden   = new[] { B, A, new float3(1, -1, 0) };
+            var touching = new[] { Bottom, new float3(1, 0, -1), new float3(2, 0, -1) };
+            var source = Brush(-1, 1, kSquare, hidden, touching);
+            try
+            {
+                var result = OutputMeshCleanup.Clean(source);
+                Assert.That(result.IsCreated, Is.True);
+                try
+                {
+                    ref var surface = ref result.Value.surfaces[0];
+                    var found = false;
+                    for (int i = 0; i < surface.indices.Length; i++)
+                        found |= math.all(surface.colliderVertices[surface.indices[i]] == Bottom);
+                    Assert.That(found, Is.True);
+                    Assert.That(result.Value.surfaces[1].indexCount, Is.EqualTo(3), "the hidden surface is left as it is");
+                }
+                finally
+                {
+                    result.Dispose();
+                }
+            }
+            finally
+            {
+                source.Dispose();
+            }
+        }
+
+        // Corners of two surfaces a hair apart (brushes a fraction of a millimetre off the grid) are one: the least of
+        // them, so each surface picks the same one on its own
+        [Test]
+        public void CornersAHairApart_BecomeOne()
+        {
+            var hairOff  = new float3(2.00002f, 0, 0);
+            var touching = new[] { hairOff, new float3(2.00002f, 0, -1), new float3(3, 0, -1) };
+            var source = Brush(-1, kSquare, touching);
+            try
+            {
+                var result = OutputMeshCleanup.Clean(source);
+                Assert.That(result.IsCreated, Is.True);
+                try
+                {
+                    ref var moved = ref result.Value.surfaces[1];
+                    var atB = false; var atHair = false;
+                    for (int i = 0; i < moved.indices.Length; i++)
+                    {
+                        var p = moved.colliderVertices[moved.indices[i]];
+                        atB    |= math.all(p == B);
+                        atHair |= math.all(p == hairOff);
+                    }
+                    Assert.That(atB, Is.True, "the corner a hair off moved onto the other");
+                    Assert.That(atHair, Is.False);
+                    ref var square = ref result.Value.surfaces[0];
+                    for (int i = 0; i < square.indices.Length; i++)
+                        Assert.That(math.all(square.colliderVertices[square.indices[i]] == hairOff), Is.False, "the least corner stays where it is");
+                }
+                finally
+                {
+                    result.Dispose();
+                }
+            }
+            finally
+            {
+                source.Dispose();
+            }
+        }
+
+        // Across brushes: a brush's surface takes the corner of a surface of the brush next to it
+        [Test]
+        public void ABrushsOutline_TakesTheCornerOfTheBrushNextToIt()
+        {
+            var touching = new[] { Bottom, new float3(1, 0, -1), new float3(2, 0, -1) };
+            var first  = Brush(-1, kSquare);
+            var second = Brush(-1, touching);
+            var brushes = new NativeList<BrushData>(Allocator.Temp);
+            var work    = new NativeList<MeshCleanupWork>(Allocator.Temp);
+            var patched = new NativeList<BlobAssetReference<ChiselBrushRenderBuffer>>(Allocator.Temp);
+            var neighbours = new NativeList<int>(Allocator.Temp);
+            try
+            {
+                brushes.Add(new BrushData { brushRenderBuffer = first });
+                brushes.Add(new BrushData { brushRenderBuffer = second });
+                OutputMeshCleanup.Plan(brushes, default, work, neighbours);
+                Assert.That(work.Length, Is.EqualTo(2));
+                Assert.That(work[0].neighbourCount, Is.EqualTo(1), "they touch");
+                for (int i = 0; i < work.Length; i++)
+                    work[i] = OutputMeshCleanup.CleanPlanned(work[i], brushes.AsArray(), neighbours.AsArray());
+                OutputMeshCleanup.Finish(brushes, patched, work, default);
+                ref var surface = ref brushes[0].brushRenderBuffer.Value.surfaces[0];
+                var found = false;
+                for (int i = 0; i < surface.indices.Length; i++)
+                    found |= math.all(surface.colliderVertices[surface.indices[i]] == Bottom);
+                Assert.That(found, Is.True, "the corner of the brush next to it is on its outline");
+                // the collider is split there too (what it draws, or the split triangles before the cleanup)
+                ref var colliderIndices  = ref (surface.physicsIndices.Length > 0 ? ref surface.physicsIndices  : ref surface.indices);
+                ref var colliderVertices = ref (surface.physicsIndices.Length > 0 ? ref surface.physicsVertices : ref surface.colliderVertices);
+                var inCollider = false;
+                for (int i = 0; i < colliderIndices.Length; i++)
+                    inCollider |= math.all(colliderVertices[colliderIndices[i]] == Bottom);
+                Assert.That(inCollider, Is.True, "the collider has the corner too");
+            }
+            finally
+            {
+                foreach (var result in patched)
+                    result.Dispose();
+                brushes.Dispose(); work.Dispose(); patched.Dispose(); neighbours.Dispose();
+                first.Dispose(); second.Dispose();
+            }
+        }
+
         // A brush's buffer of the given surfaces, each as Surface makes it
         static BlobAssetReference<ChiselBrushRenderBuffer> Brush(int paintedSurface, params float3[][] surfaces)
+        {
+            return Brush(paintedSurface, -1, surfaces);
+        }
+
+        // The same, with one surface only in the collider (hiddenSurface)
+        static BlobAssetReference<ChiselBrushRenderBuffer> Brush(int paintedSurface, int hiddenSurface, params float3[][] surfaces)
         {
             var builder = new BlobBuilder(Allocator.Temp);
             try
@@ -307,7 +515,8 @@ namespace Chisel.Core.Tests
                 {
                     using var surface = new Surface(surfaces[s]);
                     buffers[s].Construct(builder, surface.indices, surface.collider, surface.select, surface.render, s, s,
-                                         SurfaceDestinationFlags.Renderable | SurfaceDestinationFlags.Collidable, default, default);
+                                         s == hiddenSurface ? SurfaceDestinationFlags.Collidable
+                                                            : SurfaceDestinationFlags.Renderable | SurfaceDestinationFlags.Collidable, default, default);
                     if (s == paintedSurface)
                         buffers[s].paintSurface = s;
                 }
@@ -383,25 +592,26 @@ namespace Chisel.Core.Tests
             var brushes = new NativeList<BrushData>(Allocator.Temp);
             var work    = new NativeList<MeshCleanupWork>(Allocator.Temp);
             var patched = new NativeList<BlobAssetReference<ChiselBrushRenderBuffer>>(Allocator.Temp);
+            var neighbours = new NativeList<int>(Allocator.Temp);
             try
             {
                 brushes.Add(new BrushData { brushRenderBuffer = source });
-                OutputMeshCleanup.Plan(brushes, cache, work);
+                OutputMeshCleanup.Plan(brushes, cache, work, neighbours);
                 Assert.That(work.Length, Is.EqualTo(1));
                 for (int i = 0; i < work.Length; i++)
-                    work[i] = OutputMeshCleanup.CleanPlanned(work[i], brushes.AsArray());
+                    work[i] = OutputMeshCleanup.CleanPlanned(work[i], brushes.AsArray(), neighbours.AsArray());
                 OutputMeshCleanup.Finish(brushes, patched, work, cache);
                 var first = brushes[0].brushRenderBuffer;
                 Assert.That(first, Is.Not.EqualTo(source));
 
                 brushes[0] = new BrushData { brushRenderBuffer = source };
-                OutputMeshCleanup.Plan(brushes, cache, work);
+                OutputMeshCleanup.Plan(brushes, cache, work, neighbours);
                 Assert.That(work.Length, Is.EqualTo(0), "nothing to do again");
                 Assert.That(brushes[0].brushRenderBuffer, Is.EqualTo(first));
                 OutputMeshCleanup.Finish(brushes, patched, work, cache);
 
                 brushes.Clear();
-                OutputMeshCleanup.Plan(brushes, cache, work);
+                OutputMeshCleanup.Plan(brushes, cache, work, neighbours);
                 OutputMeshCleanup.Finish(brushes, patched, work, cache);
                 Assert.That(cache.Count(), Is.EqualTo(0));
                 Assert.That(patched.Length, Is.EqualTo(0));
@@ -417,6 +627,7 @@ namespace Chisel.Core.Tests
                 brushes.Dispose();
                 work.Dispose();
                 patched.Dispose();
+                neighbours.Dispose();
                 source.Dispose();
             }
         }
