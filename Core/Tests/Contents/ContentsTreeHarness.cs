@@ -51,6 +51,8 @@ namespace Chisel.Core.Tests
 		// Where the weld's last step moved the corners it moved at the last update (from, to; OutputModelWeld), what the
 		// exact judge checks and accounts for; settable to plant an error in a test
 		public List<float3x2> CollapseMoves { get; internal set; } = new List<float3x2>();
+		// Where the cleanup's snap put each brush's corners (OutputMeshCleanup.Clean), from the last update
+		public Dictionary<CompactNodeID, List<float3x2>> SnapMoves { get; internal set; } = new Dictionary<CompactNodeID, List<float3x2>>();
 		// The total area of the collider triangles the last delivered update made
 		public double ColliderArea { get; private set; }
 		public int ColliderVertexCount { get; private set; }
@@ -343,6 +345,19 @@ namespace Chisel.Core.Tests
 				{
 					foreach (var move in lookup.collapseMoves)
 						CollapseMoves.Add(move);
+				}
+				SnapMoves = new Dictionary<CompactNodeID, List<float3x2>>();
+				if (lookup.meshCleanupCache.IsCreated)
+				{
+					foreach (var entry in lookup.meshCleanupCache)
+					{
+						if (!entry.Value.snapMoves.IsCreated)
+							continue;
+						var moves = new List<float3x2>();
+						foreach (var move in entry.Value.snapMoves)
+							moves.Add(move);
+						SnapMoves[entry.Key] = moves;
+					}
 				}
 			}
 			LastUpdateReport = $"updated={updated}, " +

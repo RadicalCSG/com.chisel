@@ -1052,10 +1052,13 @@ namespace Chisel.Core.Tests
 		static void CheckMesh(Context context, ContentsTreeHarness harness)
 		{
 			var difference = new Dictionary<(int, int, int, int, int, int, int, int, int, int), int>();
+			var snaps = SnapsByNode(harness, out var allSnaps);
+			var snappedKeys = new HashSet<(int, int, int, int, int, int, int, int, int, int)>();
 			foreach (var brush in context.brushes)
 			{
 				if (brush.capture.parts == null)
 					continue;
+				snaps.TryGetValue(brush.node, out var snap);
 				foreach (var part in brush.capture.parts)
 				{
 					for (int t = 0; t + 2 < part.triangles.Length; t += 3)
@@ -1068,11 +1071,34 @@ namespace Chisel.Core.Tests
 							context.droppedByTheWeld++;
 							continue;
 						}
+						// the cleanup's snap, after the weld: a triangle two of whose corners it made one is taken out
+						var snapped = false;
+						if (snap != null)
+						{
+							var sa = Snapped(snap, a); var sb = Snapped(snap, b); var sc = Snapped(snap, c);
+							snapped = !sa.Equals(a) || !sb.Equals(b) || !sc.Equals(c);
+							a = sa; b = sb; c = sc;
+							if (snapped && (a.Equals(b) || b.Equals(c) || c.Equals(a)))
+								continue;
+						}
 						var key = part.category == CategoryIndex.SelfAligned ? TriangleKey(brush.index, a, b, c) : TriangleKey(brush.index, a, c, b);
 						difference.TryGetValue(key, out int count);
 						difference[key] = count + 1;
+						if (snapped)
+							snappedKeys.Add(key);
 					}
 				}
+			}
+			// and two triangles it made the same three corners wound the other way round cover nothing
+			foreach (var key in snappedKeys)
+			{
+				var twin = TriangleKey(key.Item1, math.asfloat(new int3(key.Item2, key.Item3, key.Item4)), math.asfloat(new int3(key.Item8, key.Item9, key.Item10)),
+									   math.asfloat(new int3(key.Item5, key.Item6, key.Item7)));
+				if (!difference.TryGetValue(key, out var count) || count <= 0 || !difference.TryGetValue(twin, out var twinCount) || twinCount <= 0)
+					continue;
+				var n = Math.Min(count, twinCount);
+				difference[key] = count - n;
+				difference[twin] = twinCount - n;
 			}
 			foreach (var triangle in harness.Triangles)
 			{
@@ -1083,7 +1109,7 @@ namespace Chisel.Core.Tests
 				difference.TryGetValue(key, out int count);
 				difference[key] = count - 1;
 			}
-			var collapse = new CollapseMap(context, harness);
+			var collapse = new CollapseMap(context, harness, allSnaps);
 			context.flippedByTheWeld = CancelFlippedNeedles(difference, collapse);
 			CancelModelWeld(difference, out context.splitByTheWeld, out context.pairedByTheWeld, out context.cancelledByTheWeld);
 			context.collapsedByTheWeld = CancelCollapse(difference, collapse);
@@ -1189,7 +1215,7 @@ namespace Chisel.Core.Tests
 		{
 			readonly Dictionary<float3, float3> moved = new();
 
-			public CollapseMap(Context context, ContentsTreeHarness harness)
+			public CollapseMap(Context context, ContentsTreeHarness harness, Dictionary<float3, float3> snaps = null)
 			{
 				var clusters = new Dictionary<float3, List<float3>>();
 				foreach (var move in harness.CollapseMoves)
@@ -1215,6 +1241,15 @@ namespace Chisel.Core.Tests
 					}
 					if (!(math.length(hi - lo) <= OutputModelWeld.kCollapseLength))
 						Problem(context, pair.Key, $"the weld collapsed corners {math.length(hi - lo)} across onto {Format(pair.Key)}, further than it collapses");
+				}
+				// the expected corners are where the cleanup's snap put them, after the weld
+				if (snaps == null || snaps.Count == 0)
+					return;
+				foreach (var move in new List<KeyValuePair<float3, float3>>(moved))
+				{
+					var from = Snapped(snaps, move.Key); var to = Snapped(snaps, move.Value);
+					if (from.Equals(move.Key) || !moved.ContainsKey(from))
+						moved[from] = to;
 				}
 			}
 
@@ -1265,6 +1300,29 @@ namespace Chisel.Core.Tests
 		}
 
 		static bool Less(float3 x, float3 y) => x.x != y.x ? x.x < y.x : (x.y != y.y ? x.y < y.y : x.z < y.z);
+
+		// Where the cleanup's snap put each brush's corners (ContentsTreeHarness.SnapMoves), by node; all: every brush's
+		static Dictionary<ContentsSceneNode, Dictionary<float3, float3>> SnapsByNode(ContentsTreeHarness harness, out Dictionary<float3, float3> all)
+		{
+			var byNode = new Dictionary<ContentsSceneNode, Dictionary<float3, float3>>();
+			all = new Dictionary<float3, float3>();
+			foreach (var pair in harness.SnapMoves)
+			{
+				var node = harness.NodeOf(pair.Key);
+				if (node == null)
+					continue;
+				var map = new Dictionary<float3, float3>();
+				foreach (var move in pair.Value)
+				{
+					map[move.c0 + 0.0f] = move.c1;
+					all[move.c0 + 0.0f] = move.c1;
+				}
+				byNode[node] = map;
+			}
+			return byNode;
+		}
+
+		static float3 Snapped(Dictionary<float3, float3> snap, float3 p) => snap != null && snap.TryGetValue(p + 0.0f, out var to) ? to : p;
 
 		static void CancelModelWeld(Dictionary<(int, int, int, int, int, int, int, int, int, int), int> difference, out int split, out int paired, out int cancelled)
 		{
