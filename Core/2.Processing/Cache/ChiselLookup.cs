@@ -60,6 +60,8 @@ namespace Chisel.Core
             public NativeList<float3x2>                                         collapseMoves;
             // What the hotspot cut made of each brush's surfaces, kept while its inputs stay the same (OutputHotspotSections.CutModel)
             public NativeParallelHashMap<CompactNodeID, HotspotCutEntry>        hotspotCutCache;
+            // What the cleanup made of each brush's buffer, kept while the buffer stays the same (OutputMeshCleanup)
+            public NativeParallelHashMap<CompactNodeID, MeshCleanupEntry>       meshCleanupCache;
             // what the weld did at the last update (OutputModelWeld.PrepareIncremental)
             public WeldMemory                                                   weldMemory;
             // what the hotspot stage found for each brush (HotspotStageMemory.Prepare)
@@ -103,6 +105,7 @@ namespace Chisel.Core
 				hotspotLayoutHashes         = new NativeList<uint>(4, Allocator.Persistent);
 				collapseMoves               = new NativeList<float3x2>(4, Allocator.Persistent);
 				hotspotCutCache             = new NativeParallelHashMap<CompactNodeID, HotspotCutEntry>(16, Allocator.Persistent);
+				meshCleanupCache            = new NativeParallelHashMap<CompactNodeID, MeshCleanupEntry>(16, Allocator.Persistent);
 				weldMemory                  = WeldMemory.Create(Allocator.Persistent);
 				hotspotStageMemory          = HotspotStageMemory.Create(Allocator.Persistent);
 				hotspotGroupMemory          = HotspotGroupMemory.Create(Allocator.Persistent);
@@ -282,6 +285,16 @@ namespace Chisel.Core
                     hotspotCutCache.Dispose();
                 }
                 hotspotCutCache = default;
+                if (meshCleanupCache.IsCreated)
+                {
+                    foreach (var entry in meshCleanupCache)
+                    {
+                        if (entry.Value.result.IsCreated)
+                            entry.Value.result.Dispose();
+                    }
+                    meshCleanupCache.Dispose();
+                }
+                meshCleanupCache = default;
                 weldMemory.Dispose();
                 weldMemory = default;
                 hotspotStageMemory.Dispose();

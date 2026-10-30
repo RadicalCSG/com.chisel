@@ -134,7 +134,32 @@ namespace Chisel.Components.Tests
                         return uvs[i];
                 }
             }
-            Assert.Fail($"no vertex at {position} with normal {normal}");
+            // a point the cleanup took out (its uvs interpolate exactly): what the triangle it is in draws there
+            foreach (var renderable in model.generated.renderables)
+            {
+                if (renderable == null || renderable.sharedMesh == null)
+                    continue;
+                var mesh = renderable.sharedMesh;
+                var vertices = mesh.vertices; var normals = mesh.normals; var uvs = mesh.uv;
+                var triangles = mesh.triangles;
+                for (int t = 0; t < triangles.Length; t += 3)
+                {
+                    float3 a = vertices[triangles[t]], b = vertices[triangles[t + 1]], c = vertices[triangles[t + 2]];
+                    if (math.dot((float3)normals[triangles[t]], normal) < 0.999f)
+                        continue;
+                    var n = math.cross(b - a, c - a);
+                    var area = math.dot(n, normal);
+                    if (!(area > 1e-8f) || math.abs(math.dot(position - a, normal)) > 1e-4f)
+                        continue;
+                    var wa = math.dot(math.cross(c - b, position - b), normal) / area;
+                    var wb = math.dot(math.cross(a - c, position - c), normal) / area;
+                    var wc = 1 - wa - wb;
+                    if (wa < -1e-5f || wb < -1e-5f || wc < -1e-5f)
+                        continue;
+                    return (float2)uvs[triangles[t]] * wa + (float2)uvs[triangles[t + 1]] * wb + (float2)uvs[triangles[t + 2]] * wc;
+                }
+            }
+            Assert.Fail($"nothing drawn at {position} with normal {normal}");
             return default;
         }
 

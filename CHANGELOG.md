@@ -1,6 +1,7 @@
 # Changelog
 
-## Unreleased
+## 0.9.0-preview
+- What decals and hotspot sections cut into the drawn meshes without changing how they look is taken out again
 - Normals are smoothed by smoothing group and by the model's smoothing angle without seams, however a surface is cut by other brushes, decals, paint or hotspot sections
 - The sphere, capsule and torus have a smoothing group, like the cylinder
 - A sphere's texture runs on from one face to the next

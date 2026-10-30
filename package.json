@@ -1,7 +1,7 @@
 {
   "name": "com.chisel",
   "displayName": "Chisel 3D Level Editor",
-  "version": "0.4.0-preview",
+  "version": "0.9.0-preview",
   "unity": "6000.6",
   "description": "A level editor for Unity built on real-time boolean (CSG) operations: add, subtract and intersect brushes to block out and build levels in the scene view.\n\nComes with generators for common shapes (boxes, cylinders, spheres, stairs, extruded and revolved shapes and more), hierarchical CSG, a subtractive workflow, decals, hotspot mapping, vertex paint and normal smoothing. Its materials are made for the Universal Render Pipeline.",
   "license": "MIT",
