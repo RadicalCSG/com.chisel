@@ -74,13 +74,20 @@ namespace Chisel.Editors
             return image;
         }
 
+        // An icon asked for that wasn't there (yet): on a new install the scripts run before the icons are imported, so
+        // what was made without them is made again once they are (ChiselEditorResourcesImport)
+        internal static bool s_AnyMissing;
+
         public static Texture2D[] LoadIconImages(string name)
         {
             var nameID = HashLowerInvariant(name);
             if (!s_IconImagesLookup.TryGetValue(nameID, out var iconImages))
             {
                 iconImages = LoadIconImagesInternal(name);
-                s_IconImagesLookup[nameID] = iconImages;
+                if (iconImages == null)
+                    s_AnyMissing = true;
+                else
+                    s_IconImagesLookup[nameID] = iconImages;
             }
             return iconImages;
         }
@@ -91,22 +98,43 @@ namespace Chisel.Editors
             var id = (nameID * 33) + (tooltip?.GetHashCode() ?? 0);
             if (!s_IconContentLookup.TryGetValue(id, out var contents))
             {
-                contents = GetIconContentInternal(name, tooltip ?? string.Empty);
-                s_IconContentLookup[id] = contents;
+                contents = GetIconContentInternal(name, tooltip ?? string.Empty, out var found);
+                if (found)
+                    s_IconContentLookup[id] = contents;
             }
             return contents;
         }
 
         public static GUIContent[] GetIconContentWithName(string name, string tooltip = null)
         {
-            var nameID = HashLowerInvariant(name); 
+            var nameID = HashLowerInvariant(name);
             var id = (nameID * 33) + (tooltip?.GetHashCode() ?? 0);
             if (!s_IconContentWithNameLookup.TryGetValue(id, out var contents))
             {
-                contents = GetIconContentWithNameInternal(name, tooltip ?? string.Empty);
-                s_IconContentWithNameLookup[id] = contents;
+                contents = GetIconContentWithNameInternal(name, tooltip ?? string.Empty, out var found);
+                if (found)
+                    s_IconContentWithNameLookup[id] = contents;
             }
             return contents;
+        }
+
+        // Whether an import brings icons that were asked for before they were there
+        internal static bool BringsMissingIcons(string[] importedAssets)
+        {
+            if (!s_AnyMissing || importedAssets == null)
+                return false;
+            foreach (var asset in importedAssets)
+            {
+                var path = FixSlashes(asset);
+                if (!path.EndsWith(kImageExtension, StringComparison.OrdinalIgnoreCase))
+                    continue;
+                foreach (var (localPath, _) in searchPaths)
+                {
+                    if (path.StartsWith(localPath + "/", StringComparison.OrdinalIgnoreCase))
+                        return true;
+                }
+            }
+            return false;
         }
 
         // TODO: add a AssetPostProcessor to detect if images changed/added/removed and remove those from the lookup
@@ -173,12 +201,15 @@ namespace Chisel.Editors
             return iconImages;
         }
 
-        static GUIContent[] GetIconContentInternal(string name, string tooltip)
+        static GUIContent[] GetIconContentInternal(string name, string tooltip, out bool found)
         {
 			tooltip ??= string.Empty;
 
             GUIContent[] contents;
             var images = LoadIconImagesInternal(name);
+            found = images != null;
+            if (!found)
+                s_AnyMissing = true;
             if (images == null)
                 contents = new GUIContent[] { new GUIContent(L10n.Tr(name), L10n.Tr(tooltip)), new GUIContent(L10n.Tr(name), L10n.Tr(tooltip)) };
             else
@@ -187,12 +218,15 @@ namespace Chisel.Editors
         }
 
 
-        static GUIContent[] GetIconContentWithNameInternal(string name, string tooltip = "")
+        static GUIContent[] GetIconContentWithNameInternal(string name, string tooltip, out bool found)
         {
             tooltip ??= string.Empty;
 
             GUIContent[] contents;
             var images = LoadIconImagesInternal(name);
+            found = images != null;
+            if (!found)
+                s_AnyMissing = true;
             if (images == null)
                 contents = new GUIContent[] { new GUIContent(name, tooltip), new GUIContent(name, tooltip) };
             else
@@ -201,9 +235,10 @@ namespace Chisel.Editors
         }
 
         [UnityEditor.Callbacks.DidReloadScripts]
-        public static void ClearCache() 
-        { 
-            s_ImagesLookup.Clear(); 
+        public static void ClearCache()
+        {
+            s_AnyMissing = false;
+            s_ImagesLookup.Clear();
             s_IconImagesLookup.Clear(); 
             s_IconContentLookup.Clear(); 
             s_IconContentWithNameLookup.Clear(); 
@@ -236,8 +271,8 @@ namespace Chisel.Editors
 				return new (string, string)[]
 					   {
 							(
-								System.IO.Path.Combine(packageInfo.assetPath, kEditorResourcesPath),
-								System.IO.Path.Combine(@"Assets/", kEditorResourcesPath)
+								FixSlashes(System.IO.Path.Combine(@"Assets/", kEditorResourcesPath)),
+								FixSlashes(System.IO.Path.Combine(Application.dataPath, kEditorResourcesPath))
                             )
 					   };
 			}
