@@ -1398,23 +1398,19 @@ namespace Chisel.Editors
         }
 
         public bool DoPathPointHandle(ref ChiselPathPoint pathPoint, string undoMessage = null)
-        {
-            switch (Tools.current)
+		{
+			switch (Tools.current)
             {
+                default:
                 case Tool.Move:     return DoPositionHandle(ref pathPoint.position, pathPoint.rotation, undoMessage);
                 case Tool.Rotate:   return DoRotationHandle(ref pathPoint.rotation, pathPoint.position, undoMessage);
                 case Tool.Scale:    return DoPlanarScaleHandle(ref pathPoint.scale, pathPoint.position, pathPoint.rotation, undoMessage);
-                default:
-                {
-                    // TODO: implement
-                    return false;
-                }
             }
         }
 
         public bool DoPositionHandle(ref Vector3 position, Quaternion rotation, string undoMessage = null)
-        {
-            EditorGUI.BeginChangeCheck();
+		{
+			EditorGUI.BeginChangeCheck();
             var newPosition = Chisel.Editors.SceneHandles.PositionHandle(position, rotation);
             if (!EditorGUI.EndChangeCheck())
                 return false;

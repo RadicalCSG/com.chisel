@@ -185,37 +185,49 @@ namespace Chisel.Editors
             var evt = Event.current;
             var type = evt.GetTypeForControl(centerId);
 
-            switch (type)
+			switch (type)
             {
                 case EventType.MouseDown:
-                {
-                    if (GUIUtility.hotControl != 0)
+				{
+					if (SceneHandles.InCameraOrbitMode)
+						break;
+
+					if (GUIUtility.hotControl != 0)
                         break;
 
-                    if ((UnityEditor.HandleUtility.nearestControl != centerId || evt.button != 0) &&
+					if ((UnityEditor.HandleUtility.nearestControl != centerId || evt.button != 0) &&
                         (GUIUtility.keyboardControl != centerId || evt.button != 2))
                         break;
 
-                    handleIDs.originalPosition = position;
+					handleIDs.originalPosition = position;
                     GUIUtility.hotControl = GUIUtility.keyboardControl = centerId;
                     evt.Use();
                     EditorGUIUtility.SetWantsMouseJumping(1);
                     break;
                 }
                 case EventType.MouseMove:
-                {
-                    handleIDs.originalPosition = position;
+				{
+					if (SceneHandles.InCameraOrbitMode)
+						break;
+
+					handleIDs.originalPosition = position;
                     break;
                 }
                 case EventType.MouseDrag:
-                {
-                    if (GUIUtility.hotControl != centerId)
+				{
+					if (SceneHandles.InCameraOrbitMode)
+						break;
+
+					if (GUIUtility.hotControl != centerId)
                         break;
                     break;
                 }
                 case EventType.MouseUp:
-                {
-                    if (GUIUtility.hotControl == centerId && (evt.button == 0 || evt.button == 2))
+				{
+					if (SceneHandles.InCameraOrbitMode)
+						break;
+
+					if (GUIUtility.hotControl == centerId && (evt.button == 0 || evt.button == 2))
                     {
                         GUIUtility.hotControl = 0;
                         GUIUtility.keyboardControl = 0;
