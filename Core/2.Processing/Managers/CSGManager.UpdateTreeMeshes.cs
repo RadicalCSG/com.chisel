@@ -255,6 +255,7 @@ namespace Chisel.Core
                 public HotspotCutState                      hotspotCut;
                 // The brushes the cleanup works on, written with brushRenderData (OutputMeshCleanup)
                 public NativeList<MeshCleanupWork>          meshCleanup;
+                public NativeList<int>                      meshCleanupNeighbours;
                 // The surfaces the weld changed and the brushes to store again, written with brushRenderData
                 public WeldState                            weld;
                 // The model's hotspot groups before they are matched, written with brushRenderData
@@ -596,6 +597,7 @@ namespace Chisel.Core
                 Temporaries.patchedRenderBuffers = new NativeList<BlobAssetReference<ChiselBrushRenderBuffer>>(defaultAllocator);
                 Temporaries.hotspotCut = HotspotCutState.Create(defaultAllocator);
                 Temporaries.meshCleanup = new NativeList<MeshCleanupWork>(defaultAllocator);
+                Temporaries.meshCleanupNeighbours = new NativeList<int>(defaultAllocator);
                 Temporaries.weld = WeldState.Create(defaultAllocator);
                 Temporaries.hotspotFind = FindState.Create(defaultAllocator);
                 
@@ -687,6 +689,7 @@ namespace Chisel.Core
                 if (t.patchedRenderBuffers.IsCreated)           t.patchedRenderBuffers.Dispose();
                 t.hotspotCut.Dispose();
                 if (t.meshCleanup.IsCreated)                    t.meshCleanup.Dispose();
+                if (t.meshCleanupNeighbours.IsCreated)          t.meshCleanupNeighbours.Dispose();
                 t.weld.Dispose();
                 t.hotspotFind.Dispose();
                 if (t.basePolygonDisposeList.IsCreated)         t.basePolygonDisposeList.Dispose();
@@ -2253,7 +2256,8 @@ namespace Chisel.Core
                     {
                         brushRenderData  = Temporaries.brushRenderData,
                         meshCleanupCache = chiselLookupValues.meshCleanupCache,
-                        work             = Temporaries.meshCleanup
+                        work             = Temporaries.meshCleanup,
+                        neighbours       = Temporaries.meshCleanupNeighbours
                     };
                     planMeshCleanupJob.Schedule(runInParallel,
                         JobHandles.Read(JobHandleType.decalVolumesJobHandle),
@@ -2262,6 +2266,7 @@ namespace Chisel.Core
                     var cleanMeshesJob = new CleanMeshesJob
                     {
                         brushRenderData = Temporaries.brushRenderData.AsDeferredJobArray(),
+                        neighbours      = Temporaries.meshCleanupNeighbours.AsDeferredJobArray(),
                         work            = Temporaries.meshCleanup.AsDeferredJobArray()
                     };
                     cleanMeshesJob.Schedule(runInParallel, Temporaries.meshCleanup, 1,
@@ -2947,6 +2952,8 @@ namespace Chisel.Core
                 Temporaries.hotspotCut = default;
                 lastJobHandle.AddDependency(Temporaries.meshCleanup.Dispose(JobHandles[JobHandleType.brushRenderDataJobHandle].readWriteBarrier));
                 Temporaries.meshCleanup = default;
+                lastJobHandle.AddDependency(Temporaries.meshCleanupNeighbours.Dispose(JobHandles[JobHandleType.brushRenderDataJobHandle].readWriteBarrier));
+                Temporaries.meshCleanupNeighbours = default;
                 // nothing waits for the weld's working copies to be freed: the next update does, before it starts
                 s_PendingWeldFrees = JobHandle.CombineDependencies(s_PendingWeldFrees,
                                         Temporaries.weld.Dispose(JobHandles[JobHandleType.brushRenderDataJobHandle].readWriteBarrier));

@@ -645,10 +645,11 @@ namespace Chisel.Core
         [NoAlias] public NativeList<BrushData> brushRenderData;
         [NoAlias] public NativeParallelHashMap<CompactNodeID, MeshCleanupEntry> meshCleanupCache;
         [NoAlias] public NativeList<MeshCleanupWork> work;
+        [NoAlias] public NativeList<int> neighbours;
 
         public void Execute()
         {
-            OutputMeshCleanup.Plan(brushRenderData, meshCleanupCache, work);
+            OutputMeshCleanup.Plan(brushRenderData, meshCleanupCache, work, neighbours);
         }
     }
 
@@ -656,11 +657,12 @@ namespace Chisel.Core
     struct CleanMeshesJob : IJobParallelForDefer
     {
         [NoAlias, ReadOnly] public NativeArray<BrushData> brushRenderData;
+        [NoAlias, ReadOnly] public NativeArray<int> neighbours;
         [NoAlias] public NativeArray<MeshCleanupWork> work;
 
         public void Execute(int index)
         {
-            work[index] = OutputMeshCleanup.CleanPlanned(work[index], brushRenderData);
+            work[index] = OutputMeshCleanup.CleanPlanned(work[index], brushRenderData, neighbours);
         }
     }
 
