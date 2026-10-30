@@ -15,7 +15,8 @@ namespace Chisel.Core.Tests
         // remove it.
         static bool FaceRemovedInside(int a, int b) => a == b || b == kSolid;
 
-        // Does b's face win a coplanar tie against a's? Solid first, then the order of the list.
+        // Does b's face win a coplanar tie against a carving brush's wall of type a? Solid first, then the order of
+        // the list. Between two brushes that don't carve the later brush's face wins.
         static bool TieGoesTo(int b, int a)
         {
             if (a == b)      return false;
@@ -41,7 +42,11 @@ namespace Chisel.Core.Tests
                 case CategoryIndex.Aligned:
                     if (carvingB)
                         return bCarvesA ? CategoryIndex.Inside : computed;
-                    return (!aCarvesB && TieGoesTo(b, a)) ? CategoryIndex.Inside : CategoryIndex.Outside;
+                    if (aCarvesB)
+                        return CategoryIndex.Outside;
+                    if (!carvingA)
+                        return bIsLater ? CategoryIndex.Inside : CategoryIndex.Outside;
+                    return TieGoesTo(b, a) ? CategoryIndex.Inside : CategoryIndex.Outside;
                 default:
                     return computed;
             }

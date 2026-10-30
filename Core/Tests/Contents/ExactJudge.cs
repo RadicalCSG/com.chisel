@@ -745,7 +745,7 @@ namespace Chisel.Core.Tests
 				else continue;
 				if (shape.relation == kAbove)
 					facing = -facing;
-				expected.Add(new ContentsComparison.Face { brush = shape.brush.node, facing = facing });
+				expected.Add(new ContentsComparison.Face { brush = shape.brush.node, facing = facing, order = shape.brush.index, carving = context.oracle.IsCarving(shape.brush.node) });
 			}
 
 			var found = new List<ContentsComparison.Face>();
