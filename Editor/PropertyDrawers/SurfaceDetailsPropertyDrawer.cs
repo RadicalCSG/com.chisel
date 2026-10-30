@@ -123,6 +123,15 @@ namespace Chisel.Editors
                     (TakesPaint(MaterialOf(property)) && PaintSpacingOf(property) != null ? kSpacing + EditorGUIUtility.singleLineHeight : 0);
         }
 
+        // The object read again, keeping what the inspector changed before it drew the surfaces (the contents, say) and
+        // hasn't applied yet
+        internal static void Refresh(SerializedObject serializedObject)
+        {
+            if (serializedObject.hasModifiedProperties)
+                serializedObject.ApplyModifiedProperties();
+            serializedObject.Update();
+        }
+
         public override void OnGUI(Rect position, SerializedProperty property, GUIContent label)
         {
             if (ChiselNodeEditorBase.InSceneSettingsContext)
@@ -141,7 +150,7 @@ namespace Chisel.Editors
             bool prevShowMixedValue = EditorGUI.showMixedValue;
             try
             {
-                property.serializedObject.Update();
+                Refresh(property.serializedObject);
                 var surfaces = SurfacesOf(property);
                 var wasWorld = ChiselTextureLockEdit.WorldSpaceOf(surfaces);
                 EditorGUI.BeginChangeCheck();
