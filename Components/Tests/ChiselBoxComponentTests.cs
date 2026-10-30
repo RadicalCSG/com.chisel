@@ -70,6 +70,24 @@ namespace Chisel.Components.Tests
             Assert.That(Vector3.Distance(expected, actual), Is.LessThan(1e-4f), $"{message}: expected {expected}, got {actual}");
         }
 
+        // Building the meshes from OnValidate makes Unity warn about SendMessage when the generated objects are made
+        [Test]
+        public void ModelOnValidate_LeavesTheMeshesToTheNextUpdate()
+        {
+            var box = Box(out var model);
+            box.Min = new float3(-1, -1, -1);
+            box.Max = new float3(1, 1, 1);
+            Update();
+            var before = DrawnBounds(model);
+
+            box.Max = new float3(3, 1, 1);
+            model.OnValidate();
+            AreEqual(before.size, DrawnBounds(model).size, "after the model's OnValidate");
+
+            Update();
+            AreEqual(new Vector3(4, 2, 2), DrawnBounds(model).size, "after the next update");
+        }
+
         [Test]
         public void MinAndMax_SetFromCode_ResizeTheBrush()
         {

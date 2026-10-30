@@ -424,10 +424,9 @@ namespace Chisel.Components
                 LightmapPaddingTexels = renderSettings.lightmapPaddingTexels,
                 LightmapMaxSize       = renderSettings.lightmapMaxSize
             });
+            // the editor's update builds the meshes again; building them from OnValidate makes Unity warn
             SetDirty();
             MarkAllBrushesDirty();
-            if (ChiselModelManager.Instance != null)
-                ChiselModelManager.Instance.UpdateModels();
         }
 
         protected override void OnValidateState()
@@ -439,6 +438,8 @@ namespace Chisel.Components
         public void SyncModelSettingsStore()
         {
             UpdateModelSettingsLookup();
+            if (ChiselModelManager.Instance != null)
+                ChiselModelManager.Instance.UpdateModels();
         }
 
 #if UNITY_EDITOR
