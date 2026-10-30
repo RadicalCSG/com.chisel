@@ -192,7 +192,7 @@ namespace Chisel.Components.Tests
         }
 
         // A grid of quarter-metre cells on the top: all of its 25 points are vertices, the top is the grid's 32 half cells,
-        // and the sides, which aren't painted, keep their two triangles each
+        // and the sides, which aren't painted, are only split where the top's grid points are on their edge
         [Test]
         public void APaintedSurface_IsSubdividedAtItsGridPointsInsideIt()
         {
@@ -223,7 +223,8 @@ namespace Chisel.Components.Tests
             }
             Assert.That(topVertices, Is.EqualTo(25), "every grid point");
             Assert.That(topTriangles, Is.EqualTo(32));
-            Assert.That(sideTriangles, Is.EqualTo(8), "the sides aren't cut");
+            // each side is split where the top's 3 grid points on their shared edge are, or they'd meet in T-junctions
+            Assert.That(sideTriangles, Is.EqualTo(8 + 4 * 3), "the sides are split at the top's grid points only");
             AssertValuesAt(mesh, VertexAttribute.Color, new Vector3(0.5f, 1, 0.5f), new Vector4(0, 0, 0, 1), "the middle point's own value");
         }
 

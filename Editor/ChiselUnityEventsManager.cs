@@ -113,6 +113,8 @@ namespace Chisel.Editors
 
         private static void OnPickingChanged()
 		{
+			if (Chisel.Components.ChiselGeneratedObjects.KeepingOutOfPicking)
+				return;
 			ChiselUnityVisibilityManager.SetDirty();
         }
 
