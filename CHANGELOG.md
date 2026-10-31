@@ -2,6 +2,7 @@
 
 ## 0.9.2-preview
 - With the GPU Resident Drawer on, a brush no longer vanishes when an edit changes how many triangles its material's mesh has
+- A corner snapped onto a corner a hair away moves alike in every brush that has it, so no crack opens between brushes
 
 ## 0.9.1-preview
 - Chisel installs from its own git URL, https://github.com/RadicalCSG/com.chisel.git: it adds Custom Asset Metadata by itself when it's missing, and the rest of Chisel compiles once it's there
