@@ -34,9 +34,6 @@ Metadata when a project doesn't have it, and Chisel's other assemblies only comp
 `CHISEL_ASSET_METADATA` define constraint, set by a version define on the package. An assembly that references Custom
 Asset Metadata, or one of Chisel's assemblies that do, needs that constraint and version define too.
 
-The older installer (`Installer~`) is a package of its own, kept so its URL keeps working. To work on it, add it to a
-project with a `file:` path to that folder; it does nothing there, so its tests can run.
-
 ## Where things are
 
 * `Core`: the CSG itself, the generators' shapes and everything that turns brushes into meshes. It doesn't use

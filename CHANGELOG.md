@@ -2,6 +2,7 @@
 
 ## 0.9.1-preview
 - Chisel installs from its own git URL, https://github.com/RadicalCSG/com.chisel.git: it adds Custom Asset Metadata by itself when it's missing, and the rest of Chisel compiles once it's there
+- Removed the Chisel Installer and its URL (?path=/Installer~)
 - A model saved in a prefab keeps its generated meshes in the prefab: instances draw them without overrides, an instance whose geometry is overridden builds its own, and the prefab only keeps the meshes it uses
 - Chisel's generated objects can be made in prefab mode
 - The editor's helper meshes for hidden brushes and picking aren't saved with the model anymore
