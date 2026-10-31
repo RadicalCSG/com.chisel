@@ -436,6 +436,16 @@ namespace Chisel.Core
                 cornersAt.Add(CellOf(outlines[o].to),   outlines[o].to);
             }
             using var outlineCorner = new NativeList<bool>(Allocator.Temp);
+            // the corners of every open outline edge, this brush's or another's: a corner another brush moves moves here too
+            NativeParallelHashSet<float3> openCorners;
+            using var _openCorners = openCorners = new NativeParallelHashSet<float3>(64, Allocator.Temp);
+            for (int o = 0; o < outlines.Length; o++)
+            {
+                if (shared[EdgeKey(outlines[o].from, outlines[o].to)] != 1)
+                    continue;
+                openCorners.Add(outlines[o].from);
+                openCorners.Add(outlines[o].to);
+            }
             // where each corner of the brush's drawn outlines moves: one position moves alike in every surface of the
             // brush, outline or not, so no surface keeps a corner another one moved
             NativeParallelHashMap<float3, float3> snapOf;
@@ -449,7 +459,7 @@ namespace Chisel.Core
                 OpenEdgeCorners(indices, collider, shared, outlineCorner);
                 for (int v = 0; v < render.Length; v++)
                 {
-                    if (!outlineCorner[v] || snapOf.ContainsKey(collider[v]))
+                    if (!(outlineCorner[v] || openCorners.Contains(collider[v])) || snapOf.ContainsKey(collider[v]))
                         continue;
                     var snapped = Snap(collider[v], cornersAt);
                     if (math.any(snapped != collider[v]))
