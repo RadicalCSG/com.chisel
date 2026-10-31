@@ -19,7 +19,15 @@
         ""
     ],
     "autoReferenced": true,
-    "defineConstraints": [],
-    "versionDefines": [],
+    "defineConstraints": [
+        "CHISEL_ASSET_METADATA"
+    ],
+    "versionDefines": [
+        {
+            "name": "com.custom_asset_metadata",
+            "expression": "0.0.0",
+            "define": "CHISEL_ASSET_METADATA"
+        }
+    ],
     "noEngineReferences": false
 }

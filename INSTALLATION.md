@@ -11,29 +11,25 @@ In the package manager press the **+** and select **Install package from git URL
 ---
 In the textbox type in
 
-https://github.com/RadicalCSG/com.chisel.git?path=/Installer~
+https://github.com/RadicalCSG/com.chisel.git
 
-And press enter. This installs the Chisel Installer, which installs Chisel and the packages it depends on, then
-removes itself.
+And press enter. Chisel then installs the package it depends on by itself; until that's there, only that small part
+of Chisel is compiled, and the rest follows once it is.
 
 ![URL Textbox](Documentation~/Images/package_manager_url.png)
 ---
 
 Chisel depends on [Custom Asset Metadata](https://github.com/RadicalCSG/CustomAssetMetadata), which is installed
-from git too: the Package Manager doesn't install a package's dependencies from git by itself, which is why the
-installer does. So git needs to be installed and on your path.
+from git too: the Package Manager doesn't install a package's dependencies from git by itself, which is why Chisel
+does. So git needs to be installed and on your path.
 
-### Without the installer
-
-Install these two git URLs the same way, in this order:
-
-1. https://github.com/RadicalCSG/CustomAssetMetadata.git
-2. https://github.com/RadicalCSG/com.chisel.git
+If Chisel can't install it, install it yourself the same way, with
+https://github.com/RadicalCSG/CustomAssetMetadata.git
 
 ### Updating from a version with Custom Asset Metadata inside it
 
-Older versions of Chisel had Custom Asset Metadata inside them, as a git submodule. Install the Chisel Installer
-as above: it installs Custom Asset Metadata and updates Chisel with it.
+Older versions of Chisel had Custom Asset Metadata inside them, as a git submodule. Install Chisel's URL again as
+above: it updates Chisel, which then installs Custom Asset Metadata.
 
 The first time you start up it might take some time, because Unity Burst compiles a lot of code.
 This should only happen once.

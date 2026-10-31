@@ -23,8 +23,15 @@
     ],
     "autoReferenced": false,
     "defineConstraints": [
-        "UNITY_INCLUDE_TESTS"
+        "UNITY_INCLUDE_TESTS",
+        "CHISEL_ASSET_METADATA"
     ],
-    "versionDefines": [],
+    "versionDefines": [
+        {
+            "name": "com.custom_asset_metadata",
+            "expression": "0.0.0",
+            "define": "CHISEL_ASSET_METADATA"
+        }
+    ],
     "noEngineReferences": false
 }
