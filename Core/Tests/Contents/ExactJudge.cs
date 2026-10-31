@@ -1054,6 +1054,8 @@ namespace Chisel.Core.Tests
 			var difference = new Dictionary<(int, int, int, int, int, int, int, int, int, int), int>();
 			var snaps = SnapsByNode(harness, out var allSnaps);
 			var snappedKeys = new HashSet<(int, int, int, int, int, int, int, int, int, int)>();
+			// where each snapped triangle's corners were before the snap, when the weld chose what to split
+			var unsnapped = new Dictionary<(int, int, int, int, int, int, int, int, int, int), Dictionary<float3, float3>>();
 			foreach (var brush in context.brushes)
 			{
 				if (brush.capture.parts == null)
@@ -1073,19 +1075,25 @@ namespace Chisel.Core.Tests
 						}
 						// the cleanup's snap, after the weld: a triangle two of whose corners it made one is taken out
 						var snapped = false;
+						Dictionary<float3, float3> before = null;
 						if (snap != null)
 						{
 							var sa = Snapped(snap, a); var sb = Snapped(snap, b); var sc = Snapped(snap, c);
 							snapped = !sa.Equals(a) || !sb.Equals(b) || !sc.Equals(c);
-							a = sa; b = sb; c = sc;
-							if (snapped && (a.Equals(b) || b.Equals(c) || c.Equals(a)))
+							if (snapped && (sa.Equals(sb) || sb.Equals(sc) || sc.Equals(sa)))
 								continue;
+							if (snapped)
+								before = new Dictionary<float3, float3> { [sa] = a, [sb] = b, [sc] = c };
+							a = sa; b = sb; c = sc;
 						}
 						var key = part.category == CategoryIndex.SelfAligned ? TriangleKey(brush.index, a, b, c) : TriangleKey(brush.index, a, c, b);
 						difference.TryGetValue(key, out int count);
 						difference[key] = count + 1;
 						if (snapped)
+						{
 							snappedKeys.Add(key);
+							unsnapped[key] = before;
+						}
 					}
 				}
 			}
@@ -1111,8 +1119,9 @@ namespace Chisel.Core.Tests
 			}
 			var collapse = new CollapseMap(context, harness, allSnaps);
 			context.flippedByTheWeld = CancelFlippedNeedles(difference, collapse);
-			CancelModelWeld(difference, out context.splitByTheWeld, out context.pairedByTheWeld, out context.cancelledByTheWeld);
+			CancelModelWeld(difference, unsnapped, out context.splitByTheWeld, out context.pairedByTheWeld, out context.cancelledByTheWeld);
 			context.collapsedByTheWeld = CancelCollapse(difference, collapse);
+			CancelFlippedQuads(difference);
 			foreach (var pair in difference)
 			{
 				if (pair.Value == 0)
@@ -1324,7 +1333,9 @@ namespace Chisel.Core.Tests
 
 		static float3 Snapped(Dictionary<float3, float3> snap, float3 p) => snap != null && snap.TryGetValue(p + 0.0f, out var to) ? to : p;
 
-		static void CancelModelWeld(Dictionary<(int, int, int, int, int, int, int, int, int, int), int> difference, out int split, out int paired, out int cancelled)
+		static void CancelModelWeld(Dictionary<(int, int, int, int, int, int, int, int, int, int), int> difference,
+									Dictionary<(int, int, int, int, int, int, int, int, int, int), Dictionary<float3, float3>> unsnapped,
+									out int split, out int paired, out int cancelled)
 		{
 			split = 0;
 			paired = 0;
@@ -1332,8 +1343,84 @@ namespace Chisel.Core.Tests
 			for (var progress = true; progress; )
 			{
 				progress  = CancelOppositesOnce(difference, ref cancelled);
-				progress |= CancelModelWeldOnce(difference, ref split, ref paired);
+				progress |= CancelModelWeldOnce(difference, unsnapped, ref split, ref paired);
 			}
+		}
+
+		// The cleanup's flip of a thin triangle (OutputMeshCleanup.FlipThinTriangles) on a surface it changed: two expected
+		// triangles p, q, r1 and q, p, r2 the mesh lacks, where it has r1, p, r2 and r2, q, r1 covering the same area
+		static void CancelFlippedQuads(Dictionary<(int, int, int, int, int, int, int, int, int, int), int> difference)
+		{
+			var byEdge = new Dictionary<(int, int3, int3), List<(int, int, int, int, int, int, int, int, int, int)>>();
+			foreach (var pair in difference)
+			{
+				if (pair.Value <= 0)
+					continue;
+				var c = CornersOf(pair.Key);
+				for (int e = 0; e < 3; e++)
+				{
+					var edge = (pair.Key.Item1, math.asint(c[e]), math.asint(c[(e + 1) % 3]));
+					if (!byEdge.TryGetValue(edge, out var list))
+						byEdge[edge] = list = new List<(int, int, int, int, int, int, int, int, int, int)>();
+					list.Add(pair.Key);
+				}
+			}
+			foreach (var first in new List<(int, int, int, int, int, int, int, int, int, int)>(difference.Keys))
+			{
+				var c = CornersOf(first);
+				for (int e = 0; e < 3 && difference[first] > 0; e++)
+				{
+					float3 p = c[e], q = c[(e + 1) % 3], r1 = c[(e + 2) % 3];
+					if (!byEdge.TryGetValue((first.Item1, math.asint(q), math.asint(p)), out var across))
+						continue;
+					foreach (var second in across)
+					{
+						if (second.Equals(first) || difference[first] <= 0 || difference[second] <= 0)
+							continue;
+						var s = CornersOf(second);
+						var r2 = !s[0].Equals(p) && !s[0].Equals(q) ? s[0] : (!s[1].Equals(p) && !s[1].Equals(q) ? s[1] : s[2]);
+						var flipA = TriangleKey(first.Item1, r1, p, r2);
+						var flipB = TriangleKey(first.Item1, r2, q, r1);
+						if (!difference.TryGetValue(flipA, out var countA) || countA >= 0 ||
+							!difference.TryGetValue(flipB, out var countB) || countB >= 0)
+							continue;
+						var before = Area(p, q, r1) + Area(q, p, r2);
+						var after  = Area(r1, p, r2) + Area(r2, q, r1);
+						if (math.abs(before - after) > 1e-6 * math.max(1.0, before))
+							continue;
+						difference[first]  -= 1;
+						difference[second] -= 1;
+						difference[flipA]   = countA + 1;
+						difference[flipB]   = countB + 1;
+						break;
+					}
+				}
+			}
+		}
+
+		static double Area(float3 a, float3 b, float3 c) => 0.5 * math.length(math.cross((double3)b - a, (double3)c - a));
+
+		static float3[] CornersOf((int, int, int, int, int, int, int, int, int, int) k) =>
+			new[] { math.asfloat(new int3(k.Item2, k.Item3, k.Item4)), math.asfloat(new int3(k.Item5, k.Item6, k.Item7)), math.asfloat(new int3(k.Item8, k.Item9, k.Item10)) };
+
+		static float3 Unsnapped(Dictionary<(int, int, int, int, int, int, int, int, int, int), Dictionary<float3, float3>> unsnapped,
+								(int, int, int, int, int, int, int, int, int, int) k, float3 p) =>
+			unsnapped != null && unsnapped.TryGetValue(k, out var before) && before.TryGetValue(p, out var was) ? was : p;
+
+		// A triangle as a needle read u, m, w, judged where its corners were before the snap (when the weld judged it), its
+		// corners where they are after
+		static bool AsNeedle(Dictionary<(int, int, int, int, int, int, int, int, int, int), Dictionary<float3, float3>> unsnapped,
+							 (int, int, int, int, int, int, int, int, int, int) k, out float3 u, out float3 m, out float3 w)
+		{
+			var corners = CornersOf(k);
+			var was = new[] { Unsnapped(unsnapped, k, corners[0]), Unsnapped(unsnapped, k, corners[1]), Unsnapped(unsnapped, k, corners[2]) };
+			u = m = w = default;
+			if (!ExactFloatLine.AsNeedle(was[0], was[1], was[2], out var wu, out var wm, out var ww))
+				return false;
+			u = corners[Array.IndexOf(was, wu)];
+			m = corners[Array.IndexOf(was, wm)];
+			w = corners[Array.IndexOf(was, ww)];
+			return true;
 		}
 
 		// The expected triangles the mesh lacks, by their positions alone (the key's brush -1)
@@ -1435,7 +1522,9 @@ namespace Chisel.Core.Tests
 			return false;
 		}
 
-		static bool CancelModelWeldOnce(Dictionary<(int, int, int, int, int, int, int, int, int, int), int> difference, ref int split, ref int paired)
+		static bool CancelModelWeldOnce(Dictionary<(int, int, int, int, int, int, int, int, int, int), int> difference,
+										Dictionary<(int, int, int, int, int, int, int, int, int, int), Dictionary<float3, float3>> unsnapped,
+										ref int split, ref int paired)
 		{
 			var progress = false;
 			var lacked = LackedByPositions(difference);
@@ -1446,8 +1535,7 @@ namespace Chisel.Core.Tests
 				if (pair.Value <= 0)
 					continue;
 				var k = pair.Key;
-				if (!ExactFloatLine.AsNeedle(math.asfloat(new int3(k.Item2, k.Item3, k.Item4)), math.asfloat(new int3(k.Item5, k.Item6, k.Item7)),
-											 math.asfloat(new int3(k.Item8, k.Item9, k.Item10)), out var nu, out var nm, out var nw))
+				if (!AsNeedle(unsnapped, k, out var nu, out var nm, out var nw))
 					continue;
 				if (!needles.TryGetValue((math.asint(nu), math.asint(nw)), out var list))
 					needles[(math.asint(nu), math.asint(nw))] = list = new List<((int, int, int, int, int, int, int, int, int, int) needle, float3 m)>();
@@ -1473,10 +1561,7 @@ namespace Chisel.Core.Tests
 			{
 				if (difference[needle] <= 0)
 					continue;
-				var a = math.asfloat(new int3(needle.Item2, needle.Item3, needle.Item4));
-				var b = math.asfloat(new int3(needle.Item5, needle.Item6, needle.Item7));
-				var c = math.asfloat(new int3(needle.Item8, needle.Item9, needle.Item10));
-				if (!ExactFloatLine.AsNeedle(a, b, c, out var u, out var m, out var w))
+				if (!AsNeedle(unsnapped, needle, out var u, out var m, out var w))
 					continue;
 				if (!byEdge.TryGetValue((math.asint(u), math.asint(w)), out var neighbours))
 					continue;
@@ -1488,7 +1573,7 @@ namespace Chisel.Core.Tests
 									math.asfloat(new int3(neighbour.Item5, neighbour.Item6, neighbour.Item7)),
 									math.asfloat(new int3(neighbour.Item8, neighbour.Item9, neighbour.Item10)) };
 					var d = !n[0].Equals(u) && !n[0].Equals(w) ? n[0] : (!n[1].Equals(u) && !n[1].Equals(w) ? n[1] : n[2]);
-					if (!ExactFloatLine.OnOneLine(u, w, d))
+					if (!ExactFloatLine.OnOneLine(Unsnapped(unsnapped, needle, u), Unsnapped(unsnapped, needle, w), Unsnapped(unsnapped, neighbour, d)))
 					{
 						var first  = TriangleKey(neighbour.Item1, u, m, d);
 						var second = TriangleKey(neighbour.Item1, m, w, d);
