@@ -223,6 +223,34 @@ namespace Chisel.Core
             return best;
         }
 
+        // Which vertices end an open outline edge of the surface: one no other drawn surface has, where a crack shows
+        static void OpenEdgeCorners(NativeList<int> indices, NativeList<float3> positions, NativeParallelHashMap<int3x2, int> shared, NativeList<bool> onOpenEdge)
+        {
+            OutlineCorners(indices, positions.Length, onOpenEdge);
+            for (int v = 0; v < onOpenEdge.Length; v++)
+                onOpenEdge[v] = false;
+            using var edges = new NativeParallelHashSet<int2>(indices.Length, Allocator.Temp);
+            for (int i = 0; i + 2 < indices.Length; i += 3)
+            {
+                edges.Add(new int2(indices[i], indices[i + 1]));
+                edges.Add(new int2(indices[i + 1], indices[i + 2]));
+                edges.Add(new int2(indices[i + 2], indices[i]));
+            }
+            for (int i = 0; i + 2 < indices.Length; i += 3)
+            {
+                for (int c = 0; c < 3; c++)
+                {
+                    var from = indices[i + c]; var to = indices[i + (c + 1) % 3];
+                    if (edges.Contains(new int2(to, from)))
+                        continue;
+                    if (shared.TryGetValue(EdgeKey(positions[from], positions[to]), out var count) && count > 1)
+                        continue;
+                    onOpenEdge[from] = true;
+                    onOpenEdge[to] = true;
+                }
+            }
+        }
+
         // Which vertices are on an outline edge of the surface
         static void OutlineCorners(NativeList<int> indices, int vertexCount, NativeList<bool> onOutline)
         {
@@ -408,6 +436,26 @@ namespace Chisel.Core
                 cornersAt.Add(CellOf(outlines[o].to),   outlines[o].to);
             }
             using var outlineCorner = new NativeList<bool>(Allocator.Temp);
+            // where each corner of the brush's drawn outlines moves: one position moves alike in every surface of the
+            // brush, outline or not, so no surface keeps a corner another one moved
+            NativeParallelHashMap<float3, float3> snapOf;
+            using var _snapOf = snapOf = new NativeParallelHashMap<float3, float3>(64, Allocator.Temp);
+            for (int s = 0; s < original.surfaces.Length; s++)
+            {
+                ref var from = ref original.surfaces[s];
+                if (from.paintSurface >= 0 || from.indices.Length < 3 || !Drawn(ref from))
+                    continue;
+                Load(ref from, indices, collider, select, render);
+                OpenEdgeCorners(indices, collider, shared, outlineCorner);
+                for (int v = 0; v < render.Length; v++)
+                {
+                    if (!outlineCorner[v] || snapOf.ContainsKey(collider[v]))
+                        continue;
+                    var snapped = Snap(collider[v], cornersAt);
+                    if (math.any(snapped != collider[v]))
+                        snapOf.TryAdd(collider[v], snapped);
+                }
+            }
             var builder = new BlobBuilder(Allocator.Temp);
             try
             {
@@ -455,16 +503,9 @@ namespace Chisel.Core
                         if (Drawn(ref from))
                         {
                             // corners a hair apart are one: the least of them by x, y and z, which every surface picks alike
-                            OutlineCorners(indices, render.Length, outlineCorner);
                             for (int v = 0; v < render.Length; v++)
                             {
-                                if (!outlineCorner[v])
-                                    continue;
-                                var snapped = Snap(collider[v], cornersAt);
-                                if (math.all(snapped == collider[v]))
-                                    continue;
-                                // a corner with another of its own surface a hair away is on a sliver, which is the weld's
-                                if (NearOwnCorner(collider, outlineCorner, v))
+                                if (!snapOf.TryGetValue(collider[v], out var snapped))
                                     continue;
                                 if (snapMoves.IsCreated)
                                     snapMoves.Add(new float3x2(collider[v], snapped));
@@ -556,19 +597,6 @@ namespace Chisel.Core
             {
                 builder.Dispose();
             }
-        }
-
-        static bool NearOwnCorner(NativeList<float3> positions, NativeList<bool> onOutline, int v)
-        {
-            var p = positions[v];
-            for (int u = 0; u < positions.Length; u++)
-            {
-                if (u == v || !onOutline[u] || math.all(positions[u] == p))
-                    continue;
-                if (math.distancesq(positions[u], p) <= kJunctionDistance * kJunctionDistance)
-                    return true;
-            }
-            return false;
         }
 
         // Takes out the triangles two of whose corners are at one position, and the pairs of triangles at the same three
