@@ -60,8 +60,8 @@ namespace Chisel.Components
         [System.NonSerialized] public bool containerApplied;
         [System.NonSerialized] public bool containerInBakedLight;
 #if UNITY_EDITOR
-        public Mesh             partialMesh;
-        public int              selectionMeshHashcode = ~0;
+        [System.NonSerialized] public Mesh partialMesh;
+        [System.NonSerialized] public int  selectionMeshHashcode = ~0;
         [System.NonSerialized] public bool selectionMeshDirty = true;
         [System.NonSerialized] public bool partialMeshDirty = true;
         [System.NonSerialized] int  partialMeshVisibilityVersion = -1;
@@ -71,7 +71,7 @@ namespace Chisel.Components
         public Mesh DrawnMesh => partialIsShared ? sharedMesh : partialMesh;
         // every brush in its mesh is shown (UpdateVisibilityMesh)
         public bool AllBrushesShown => partialIsShared;
-        public Mesh             selectionMesh;
+        [System.NonSerialized] public Mesh selectionMesh;
         [NonSerialized, HideInInspector]
         public bool             visible;
 #endif
@@ -127,6 +127,21 @@ namespace Chisel.Components
 #if UNITY_EDITOR
         const HideFlags kUnsavedMeshFlags = HideFlags.DontSaveInEditor | HideFlags.DontSaveInBuild;
 #endif
+
+        // A prefab instance draws the meshes the prefab keeps; before it builds its own, they are replaced by its own
+        internal void OwnMeshes()
+        {
+            if (ChiselObjectUtility.IsAsset(sharedMesh))
+            {
+                sharedMesh = new Mesh { name = meshFilter.gameObject.name };
+                meshFilter.sharedMesh = sharedMesh;
+#if UNITY_EDITOR
+                partialMeshDirty = true;
+                selectionMeshDirty = true;
+#endif
+            }
+            EnsureMeshesAllocated();
+        }
 
         void EnsureMeshesAllocated()
         {

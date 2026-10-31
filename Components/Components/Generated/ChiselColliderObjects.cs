@@ -63,6 +63,16 @@ namespace Chisel.Components
             ChiselObjectUtility.RemoveContainerFlags(meshCollider);
         }
 
+        // A prefab instance uses the collider mesh the prefab keeps; before it builds its own, it is replaced by its own
+        internal void OwnMesh()
+        {
+            if (!ChiselObjectUtility.IsAsset(sharedMesh))
+                return;
+            sharedMesh = new Mesh { name = ChiselGeneratedObjects.kGeneratedMeshColliderName };
+            // still empty: the bake gives the collider its mesh once it is filled (BakeColliders)
+            meshCollider.sharedMesh = null;
+        }
+
         public bool IsValid()
         {
             if (!sharedMesh ||

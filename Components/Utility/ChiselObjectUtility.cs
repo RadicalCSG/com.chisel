@@ -38,9 +38,30 @@ namespace Chisel.Components
     //TODO: Move this somewhere else
     public static class ChiselObjectUtility
     {
+        // A preview scene (prefab mode, prefab contents) can't be made the active one; parenting a new object to one of
+        // its objects puts it there anyway
+        static bool CanBeActive(UnityEngine.SceneManagement.Scene scene)
+        {
+#if UNITY_EDITOR
+            return !UnityEditor.SceneManagement.EditorSceneManager.IsPreviewScene(scene);
+#else
+            return true;
+#endif
+        }
+
+        // A mesh a prefab keeps as a sub-asset, or any other asset: never the generated objects' own to destroy or write to
+        public static bool IsAsset(UnityEngine.Object obj)
+        {
+#if UNITY_EDITOR
+            return obj && UnityEditor.EditorUtility.IsPersistent(obj);
+#else
+            return false;
+#endif
+        }
+
         public static void SafeDestroy(UnityEngine.Object obj)
         {
-            if (!obj)
+            if (!obj || IsAsset(obj))
                 return;
             obj.hideFlags = UnityEngine.HideFlags.None;
 #if UNITY_EDITOR
@@ -53,7 +74,7 @@ namespace Chisel.Components
 
         public static void SafeDestroyWithUndo(UnityEngine.Object obj)
         {
-            if (!obj)
+            if (!obj || IsAsset(obj))
                 return;
 #if UNITY_EDITOR
             if (!UnityEditor.EditorApplication.isPlaying)
@@ -155,7 +176,7 @@ namespace Chisel.Components
         {
             var parentScene = parent.gameObject.scene;
             var oldActiveScene = UnityEngine.SceneManagement.SceneManager.GetActiveScene();
-            if (parentScene != oldActiveScene)
+            if (parentScene != oldActiveScene && CanBeActive(parentScene))
                 UnityEngine.SceneManagement.SceneManager.SetActiveScene(parentScene);
             try
             {
@@ -179,7 +200,7 @@ namespace Chisel.Components
             }
             finally
             {
-                if (parentScene != oldActiveScene)
+                if (parentScene != oldActiveScene && CanBeActive(parentScene))
                     UnityEngine.SceneManagement.SceneManager.SetActiveScene(oldActiveScene);
             }
         }
@@ -188,7 +209,7 @@ namespace Chisel.Components
         {
             var parentScene = parent.gameObject.scene;
             var oldActiveScene = UnityEngine.SceneManagement.SceneManager.GetActiveScene();
-            if (parentScene != oldActiveScene)
+            if (parentScene != oldActiveScene && CanBeActive(parentScene))
                 UnityEngine.SceneManagement.SceneManager.SetActiveScene(parentScene);
             try
             {
@@ -212,7 +233,7 @@ namespace Chisel.Components
             } 
             finally
             {
-                if (parentScene != oldActiveScene)
+                if (parentScene != oldActiveScene && CanBeActive(parentScene))
                     UnityEngine.SceneManagement.SceneManager.SetActiveScene(oldActiveScene);
             }
         }
@@ -221,7 +242,7 @@ namespace Chisel.Components
         {
             var parentScene = parent.gameObject.scene;
             var oldActiveScene = UnityEngine.SceneManagement.SceneManager.GetActiveScene();
-            if (parentScene != oldActiveScene)
+            if (parentScene != oldActiveScene && CanBeActive(parentScene))
                 UnityEngine.SceneManagement.SceneManager.SetActiveScene(parentScene);
             try
             {
@@ -246,7 +267,7 @@ namespace Chisel.Components
             } 
             finally
             {
-                if (parentScene != oldActiveScene)
+                if (parentScene != oldActiveScene && CanBeActive(parentScene))
                     UnityEngine.SceneManagement.SceneManager.SetActiveScene(oldActiveScene);
             }
         }
