@@ -41,7 +41,7 @@ namespace Chisel.Editors
             var currentPath = Environment.CurrentDirectory; 
 			for (int i = 0; i < s_ResourceUnityPaths.Length; i++)
             {
-                if (!System.IO.File.Exists(s_ResourceFilePaths[i] + name))
+                if (s_ResourceFilePaths[i] != null && !System.IO.File.Exists(s_ResourceFilePaths[i] + name))
                     continue;
 				var path = s_ResourceUnityPaths[i] + name; 
 				var image = AssetDatabase.LoadAssetAtPath<Texture2D>(path);
@@ -249,33 +249,28 @@ namespace Chisel.Editors
         const string kEditorResourcesPath   = @"Editor Resources";
         const string kImageExtension        = @".png";
 
+		const string kPackageResourcesPath = "Packages/com.chisel/" + kEditorResourcesPath;
+
 		static (string, string)[] GetSearchPaths()
-        {
-            var assembly = System.Reflection.Assembly.GetExecutingAssembly(); 
-			var packageInfo = UnityEditor.PackageManager.PackageInfo.FindForAssembly(assembly);
-			if (packageInfo != null)
-			{
-				return new (string,string)[]
-                       {
-					        (
-								FixSlashes(System.IO.Path.Combine(packageInfo.assetPath, kEditorResourcesPath)),
-								FixSlashes(System.IO.Path.GetFullPath(System.IO.Path.Combine(packageInfo.resolvedPath, kEditorResourcesPath)))
-                            ),
-							(
-								FixSlashes(System.IO.Path.Combine(@"Assets/", kEditorResourcesPath)),
-								FixSlashes(System.IO.Path.Combine(Application.dataPath, kEditorResourcesPath))
-                            )
-					   };
-			} else
-			{
-				return new (string, string)[]
-					   {
-							(
-								FixSlashes(System.IO.Path.Combine(@"Assets/", kEditorResourcesPath)),
-								FixSlashes(System.IO.Path.Combine(Application.dataPath, kEditorResourcesPath))
-                            )
-					   };
-			}
+		{
+			var packageInfo = UnityEditor.PackageManager.PackageInfo.FindForAssembly(System.Reflection.Assembly.GetExecutingAssembly());
+			return SearchPathsFor(packageInfo?.resolvedPath);
+		}
+
+		// The package's own path comes first, also when the package manager doesn't know the package yet (a new install):
+		// its folder on disk is then unknown, and its icons are looked for by their Unity path alone
+		internal static (string, string)[] SearchPathsFor(string packageResolvedPath)
+		{
+			var packageFilePath = string.IsNullOrEmpty(packageResolvedPath) ? null
+								: FixSlashes(System.IO.Path.GetFullPath(System.IO.Path.Combine(packageResolvedPath, kEditorResourcesPath)));
+			return new (string, string)[]
+				   {
+						(kPackageResourcesPath, packageFilePath),
+						(
+							FixSlashes(System.IO.Path.Combine(@"Assets/", kEditorResourcesPath)),
+							FixSlashes(System.IO.Path.Combine(Application.dataPath, kEditorResourcesPath))
+						)
+				   };
 		}
 
         readonly static (string, string)[] searchPaths = GetSearchPaths();
@@ -288,12 +283,12 @@ namespace Chisel.Editors
 
             foreach((string localPath, string filePath) in searchPaths) 
             {
-                if (System.IO.Directory.Exists(filePath))
+                if ((filePath == null || System.IO.Directory.Exists(filePath)))
 				{
                     if (foundPaths.Add(localPath))
                     {
                         unityPaths.Add(localPath + "/");
-                        filePaths.Add(filePath + "/");
+                        filePaths.Add(filePath == null ? null : filePath + "/");
                     }
                 }
             }
