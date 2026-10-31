@@ -395,5 +395,159 @@ namespace Chisel.Components.Tests
                 SceneVisibilityManager.instance.Show(hidden.gameObject, false);
             }
         }
+
+        static Material MaterialAsset(string name)
+        {
+            var material = new Material(Shader.Find("Universal Render Pipeline/Lit") ?? Shader.Find("Standard")) { name = name };
+            AssetDatabase.CreateAsset(material, $"{kFolder}/{name}.mat");
+            return material;
+        }
+
+        static void SetMaterial(ChiselGeneratorComponent generator, Material material)
+        {
+            foreach (var surface in generator.SurfaceDefinition.surfaces)
+                surface.SetMaterial(material);
+            generator.OnValidate();
+        }
+
+        static bool Draws(ChiselModelComponent model, Material material)
+        {
+            foreach (var renderable in model.generated.renderables)
+            {
+                if (renderable == null || renderable.invalid || renderable.sharedMesh == null || renderable.sharedMesh.vertexCount == 0)
+                    continue;
+                if (renderable.meshRenderer.sharedMaterials.Contains(material))
+                    return true;
+            }
+            return false;
+        }
+
+        [Test]
+        public void APrefabVariant_KeepsItsOwnMeshes_AndLeavesTheBasesAlone()
+        {
+            var basePrefab = BoxPrefab("base", new float3(-1, 0, -1), new float3(1, 2, 1));
+            var baseMeshes = MeshSubAssets(basePrefab);
+
+            var instance = (GameObject)PrefabUtility.InstantiatePrefab(basePrefab);
+            roots.Add(instance);
+            instance.GetComponentInChildren<ChiselBoxComponent>().Max = new float3(1, 4, 1);
+            Update();
+            var variant = Save(instance, "variant");
+
+            Assert.That(PrefabUtility.GetPrefabAssetType(variant), Is.EqualTo(PrefabAssetType.Variant));
+            var variantModel = variant.GetComponent<ChiselModelComponent>();
+            AreEqual(new Vector3(2, 4, 2), DrawnBounds(variantModel).size, "the variant's own geometry");
+            Assert.That(MeshSubAssets(variant), Is.EquivalentTo(GeneratedMeshes(variantModel).Distinct()), "the variant keeps exactly the meshes it uses");
+            Assert.That(MeshSubAssets(basePrefab), Is.EquivalentTo(baseMeshes), "the base's meshes");
+            AreEqual(new Vector3(2, 2, 2), DrawnBounds(basePrefab.GetComponent<ChiselModelComponent>()).size, "the base is unchanged");
+
+            var model = Instantiate(variant);
+            AreEqual(new Vector3(2, 4, 2), DrawnBounds(model).size, "an instance of the variant");
+            Assert.That(GeneratedMeshes(model), Is.EquivalentTo(GeneratedMeshes(variantModel)), "drawn with the variant's meshes");
+            Assert.That(Overrides(model), Is.Empty, "overrides on an unchanged instance of the variant");
+        }
+
+        [Test]
+        public void ABrushPrefab_PlacedInAModel_IsBuiltByThatModel()
+        {
+            var brushRoot = new GameObject("brush");
+            roots.Add(brushRoot);
+            var box = brushRoot.AddComponent<ChiselBoxComponent>();
+            box.Min = new float3(-1, 0, -1);
+            box.Max = new float3(1, 2, 1);
+            var brushPrefab = Save(brushRoot, "brush");
+            Assert.That(MeshSubAssets(brushPrefab), Is.Empty, "a prefab without a model keeps no meshes");
+
+            var model = BoxModel("level", new float3(5, 0, -1), new float3(7, 2, 1)).GetComponent<ChiselModelComponent>();
+            var placed = (GameObject)PrefabUtility.InstantiatePrefab(brushPrefab);
+            placed.transform.SetParent(model.transform, false);
+            Update();
+            var bounds = DrawnBounds(model);
+            AreEqual(new Vector3(3, 1, 0), bounds.center, "the model draws its own box and the placed one");
+            AreEqual(new Vector3(8, 2, 2), bounds.size, "both boxes");
+            Assert.That(PrefabUtility.GetAddedGameObjects(placed), Is.Empty, "nothing added inside the placed prefab");
+        }
+
+        [Test]
+        public void AMaterialOverrideOnAnInstance_IsDrawnByIt_AndNotByThePrefab()
+        {
+            var original = MaterialAsset("original");
+            var other    = MaterialAsset("other");
+            var root     = BoxModel("material", new float3(-1, 0, -1), new float3(1, 2, 1));
+            SetMaterial(root.GetComponentInChildren<ChiselBoxComponent>(), original);
+            Update();
+            var prefab       = Save(root, "material");
+            var prefabMeshes = MeshSubAssets(prefab);
+            var model        = Instantiate(prefab);
+            var untouched    = Instantiate(prefab);
+            Assert.That(Draws(model, original), Is.True, "the prefab's material");
+
+            var box = model.GetComponentInChildren<ChiselBoxComponent>();
+            Undo.RecordObject(box, "Material");
+            SetMaterial(box, other);
+            PrefabUtility.RecordPrefabInstancePropertyModifications(box);
+            Update();
+            Assert.That(Draws(model, other), Is.True, "the overridden material");
+            Assert.That(Draws(model, original), Is.False, "not the prefab's anymore");
+            Assert.That(Draws(untouched, original), Is.True, "another instance keeps the prefab's");
+            Assert.That(MeshSubAssets(prefab), Is.EquivalentTo(prefabMeshes), "the prefab's meshes");
+            Assert.That(Draws(prefab.GetComponent<ChiselModelComponent>(), original), Is.True, "the prefab draws its own material");
+        }
+
+        [Test]
+        public void UndoingAnOverride_DrawsThePrefabsGeometryAgain()
+        {
+            var prefab = BoxPrefab("undone", new float3(-1, 0, -1), new float3(1, 2, 1));
+            var model  = Instantiate(prefab);
+            var box    = model.GetComponentInChildren<ChiselBoxComponent>();
+
+            Undo.IncrementCurrentGroup();
+            Undo.RecordObject(box, "Resize");
+            box.Max = new float3(1, 5, 1);
+            PrefabUtility.RecordPrefabInstancePropertyModifications(box);
+            Undo.IncrementCurrentGroup();
+            Update();
+            AreEqual(new Vector3(2, 5, 2), DrawnBounds(model).size, "overridden");
+
+            Undo.PerformUndo();
+            Update();
+            AreEqual(new Vector3(2, 2, 2), DrawnBounds(model).size, "undone");
+            Undo.PerformRedo();
+            Update();
+            AreEqual(new Vector3(2, 5, 2), DrawnBounds(model).size, "redone");
+        }
+
+        [Test]
+        public void SavingInPrefabMode_StoresTheMeshesOfWhatWasEdited()
+        {
+            var prefab = BoxPrefab("stage", new float3(-1, 0, -1), new float3(1, 2, 1));
+            var model  = Instantiate(prefab);
+            var path   = AssetDatabase.GetAssetPath(prefab);
+
+            var stage = UnityEditor.SceneManagement.PrefabStageUtility.OpenPrefab(path);
+            try
+            {
+                Assert.That(stage, Is.Not.Null, "prefab mode opened");
+                Update();
+                var stageModel = stage.prefabContentsRoot.GetComponent<ChiselModelComponent>();
+                AreEqual(new Vector3(2, 2, 2), DrawnBounds(stageModel).size, "the model in prefab mode");
+                stage.prefabContentsRoot.GetComponentInChildren<ChiselBoxComponent>().Max = new float3(3, 2, 1);
+                Update();
+                AreEqual(new Vector3(4, 2, 2), DrawnBounds(stageModel).size, "edited in prefab mode");
+                PrefabUtility.SaveAsPrefabAsset(stage.prefabContentsRoot, path);
+            }
+            finally
+            {
+                UnityEditor.SceneManagement.StageUtility.GoToMainStage();
+            }
+            Update();
+
+            prefab = AssetDatabase.LoadAssetAtPath<GameObject>(path);
+            AreEqual(new Vector3(4, 2, 2), DrawnBounds(prefab.GetComponent<ChiselModelComponent>()).size, "the prefab's own meshes");
+            Assert.That(MeshSubAssets(prefab), Is.EquivalentTo(GeneratedMeshes(prefab.GetComponent<ChiselModelComponent>()).Distinct()),
+                        "the prefab keeps exactly the meshes it uses");
+            AreEqual(new Vector3(4, 2, 2), DrawnBounds(model).size, "its instance");
+            Assert.That(Overrides(model), Is.Empty, "overrides after saving in prefab mode");
+        }
     }
 }
