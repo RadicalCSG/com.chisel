@@ -35,6 +35,16 @@ namespace Chisel.Editors.Tests
             Assert.That(ChiselEditorResources.GetIconContent("csg_additive", "tip"), Is.SameAs(first));
         }
 
+        // On a new install the package manager may not know the package yet when the scripts first run: its icons are
+        // still looked for, and their import is still noticed, by the package's own path
+        [Test]
+        public void WithoutThePackagesFolder_ItsIconsAreStillLookedFor()
+        {
+            var paths = ChiselEditorResources.SearchPathsFor(null);
+            Assert.That(paths[0].Item1 + "/Icons/", Is.EqualTo(kIconsPath));
+            Assert.That(paths[0].Item2, Is.Null, "no folder on disk to check");
+        }
+
         // Once icons were missing, the import that brings Chisel's icons has what was made without them made again
         [Test]
         public void ImportingChiselsIcons_AfterSomeWereMissing_IsNoticed()
