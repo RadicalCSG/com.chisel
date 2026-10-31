@@ -681,6 +681,7 @@ namespace Chisel.Components
                     var instance = (meshUpdate.type == ChiselMeshType.DebugVisualization)
                                  ? debugVisualizationRenderables[meshUpdate.objectIndex]
                                  : renderables[meshUpdate.objectIndex];
+                    instance.OwnMeshes();
                     foundMeshes.Add(instance.sharedMesh);
                 }
                 Profiler.EndSample();
@@ -712,6 +713,7 @@ namespace Chisel.Components
                     Profiler.EndSample();
 
                     var instance = colliderObjects[colliderIndex];
+                    instance.OwnMesh();
                     foundMeshes.Add(instance.sharedMesh);
                     //colliderObjectUpdates.Add(new ChiselColliderObjectUpdate { meshIndex = colliderMeshUpdate.meshIndex, });
                 }
