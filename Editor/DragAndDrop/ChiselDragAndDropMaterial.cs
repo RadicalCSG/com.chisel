@@ -39,7 +39,7 @@ namespace Chisel.Editors
             return new ChiselDragAndDropMaterial(dragMaterial);
         }
 
-        void UndoPrevSurfaceReference()
+        internal void UndoPrevSurfaceReference()
         {
             if (prevSurfaceReferences == null)
                 return;
@@ -53,7 +53,7 @@ namespace Chisel.Editors
         }
 
 
-        void ApplyMaterialToSurface(SurfaceReference[] surfaceReferences)
+        internal void ApplyMaterialToSurface(SurfaceReference[] surfaceReferences)
         {
             if (surfaceReferences == null ||
                 surfaceReferences.Length == 0)
@@ -69,13 +69,16 @@ namespace Chisel.Editors
             var tempNodes = HashSetPool<ChiselNodeComponent>.Get();
             try
             {
+                // every material is read before any is changed: surfaces can share one (a generator's surfaces made
+                // from one surface of its definition), and a later one would read the dragged material as its own
                 for (int i = 0; i < surfaceReferences.Length; i++)
                 {
                     tempNodes.Add(surfaceReferences[i].node);
-                    prevMaterials[i] = surfaceReferences[i].Surface.RenderMaterial;
+                    prevMaterials[i] = surfaceReferences[i].RenderMaterial;
                     prevSurfaceReferences[i] = surfaceReferences[i];
-                    surfaceReferences[i].RenderMaterial = dragMaterial;
                 }
+                for (int i = 0; i < surfaceReferences.Length; i++)
+                    surfaceReferences[i].RenderMaterial = dragMaterial;
                 prevNodes = tempNodes.ToArray();
             }
             finally
