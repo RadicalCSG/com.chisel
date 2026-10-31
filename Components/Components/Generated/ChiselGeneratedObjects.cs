@@ -767,7 +767,7 @@ namespace Chisel.Components
                 Profiler.EndSample();
 
                 Profiler.BeginSample("Renderers.Update");
-                ChiselRenderObjects.UpdateSettings(renderMeshUpdates, renderObjectUpdates, gameObjectStates, ref meshUpdates.vertexBufferContents);
+                ChiselRenderObjects.UpdateSettings(renderMeshUpdates, renderObjectUpdates, gameObjectStates, foundMeshes, ref meshUpdates.vertexBufferContents);
                 Profiler.EndSample();
 
                 // the model's shadow settings reach the renderers whose meshes were kept too

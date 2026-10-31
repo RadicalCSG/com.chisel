@@ -765,7 +765,21 @@ namespace Chisel.Components
         }
 
 
-        public static void UpdateSettings(List<ChiselMeshUpdate> meshUpdates, List<ChiselRenderObjectUpdate> objectUpdates, Dictionary<ChiselModelComponent, GameObjectState> gameObjectStates, ref VertexBufferContents vertexBufferContents)
+        // The GPU Resident Drawer reads a mesh's index counts only when its renderer is registered, and keeps drawing
+        // those while the mesh changes: a mesh whose counts change is replaced, which registers its renderer again
+        static bool IndexCountsChange(Mesh mesh, int subMeshCount, int triangleCount)
+        {
+            if (mesh.subMeshCount == 0)
+                return false;
+            if (mesh.subMeshCount != subMeshCount)
+                return true;
+            long indexCount = 0;
+            for (int s = 0; s < mesh.subMeshCount; s++)
+                indexCount += mesh.GetIndexCount(s);
+            return indexCount != (long)triangleCount * 3;
+        }
+
+        public static void UpdateSettings(List<ChiselMeshUpdate> meshUpdates, List<ChiselRenderObjectUpdate> objectUpdates, Dictionary<ChiselModelComponent, GameObjectState> gameObjectStates, List<Mesh> foundMeshes, ref VertexBufferContents vertexBufferContents)
         {
             Profiler.BeginSample("UpdateSettings");
             for (int u = 0; u < objectUpdates.Count; u++)
@@ -775,6 +789,19 @@ namespace Chisel.Components
                 var instance        = objectUpdate.instance;
                 var contentsIndex   = meshUpdate.contentsIndex;
                 var sharedMesh      = instance.sharedMesh;
+
+                var triangleLookup  = vertexBufferContents.subMeshTriangleLookups[contentsIndex];
+                var triangleCount   = triangleLookup.IsCreated ? triangleLookup.Value.triangleCount : 0;
+                var subMeshCount    = vertexBufferContents.subMeshSections[contentsIndex].endIndex -
+                                      vertexBufferContents.subMeshSections[contentsIndex].startIndex;
+                var foundIndex      = foundMeshes.IndexOf(sharedMesh);
+                if (foundIndex >= 0 && IndexCountsChange(sharedMesh, subMeshCount, triangleCount))
+                {
+                    var replacement = new Mesh { name = sharedMesh.name, hideFlags = sharedMesh.hideFlags };
+                    foundMeshes[foundIndex] = replacement;
+                    ChiselObjectUtility.SafeDestroy(sharedMesh);
+                    instance.sharedMesh = sharedMesh = replacement;
+                }
 
                 if (sharedMesh.subMeshCount > 0)
                 {
