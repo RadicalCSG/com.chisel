@@ -98,6 +98,49 @@ namespace Chisel.Components
             ChiselDecalManager.SetDirty();
         }
 
+        // How far a shape drawn on a surface reaches either side of it
+        public const float kSurfaceShapeDepth = 0.02f;
+
+        /// <summary>
+        /// A shape drawn on a surface: an opaque polygon decal limited to that surface, a child of its brush, lying on the
+        /// surface's plane and projecting into it, with the surface's texture coordinates. outline is in world space, on
+        /// the surface, either way round; worldNormal is the surface's. Null for an outline of fewer than three points.
+        /// </summary>
+        public static ChiselDecalComponent CreateOnSurface(ChiselNodeComponent brush, int surfaceIndex, Material material,
+                                                           Vector3 worldNormal, IReadOnlyList<Vector3> outline)
+        {
+            if (brush == null || outline == null || outline.Count < 3 || worldNormal.sqrMagnitude < 1e-12f)
+                return null;
+            var normal = worldNormal.normalized;
+            var center = Vector3.zero;
+            foreach (var point in outline)
+                center += point;
+            center /= outline.Count;
+            var right = outline[1] - outline[0];
+            right -= normal * Vector3.Dot(right, normal);
+            if (right.sqrMagnitude < 1e-12f)
+                right = Vector3.Cross(normal, Mathf.Abs(normal.x) < 0.9f ? Vector3.right : Vector3.up);
+            var up = Vector3.Cross(-normal, right.normalized);
+
+            var gameObject = new GameObject(kNodeTypeName);
+            gameObject.transform.SetPositionAndRotation(center, Quaternion.LookRotation(-normal, up));
+            gameObject.transform.SetParent(brush.transform, true);
+            var decal = gameObject.AddComponent<ChiselDecalComponent>();
+            decal.material = material;
+            decal.shape    = ChiselDecalShape.Polygon;
+            var decalSettings = ChiselDecalSettings.Default;
+            decalSettings.transparent = false;
+            decalSettings.surfaceUVs  = true;
+            decalSettings.size        = new float3(1, 1, kSurfaceShapeDepth * 2);
+            decal.settings = decalSettings;
+            decal.targets.Add(new ChiselDecalSurfaceTarget { brush = brush, surfaceIndex = surfaceIndex });
+            var toDecal = gameObject.transform.worldToLocalMatrix;
+            foreach (var point in outline)
+                decal.polygon.Add(toDecal.MultiplyPoint3x4(point));
+            ChiselDecalManager.SetDirty();
+            return decal;
+        }
+
         /// <summary>A box decal projects through its box; a trim decal lies on the edge between its first two targets
         /// (size.x: the image's length along the edge, size.y: its height across both surfaces), and its transform isn't used.</summary>
         public ChiselDecalShape Shape

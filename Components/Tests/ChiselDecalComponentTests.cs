@@ -173,6 +173,52 @@ namespace Chisel.Components.Tests
             Assert.That(UpAreas(model).decal, Is.EqualTo(0.24).Within(1e-4));
         }
 
+        static readonly Vector3[] kLOnA =
+        {
+            new(-0.9f, 0, -0.4f), new(-0.1f, 0, -0.4f), new(-0.1f, 0, 0), new(-0.5f, 0, 0), new(-0.5f, 0, 0.4f), new(-0.9f, 0, 0.4f)
+        };
+        const double kLOnAArea = 0.48;
+
+        [Test]
+        public void ShapeDrawnOnASurface_IsADecalOfItsBrush_ReplacingTheShape([Values(false, true)] bool clockwise)
+        {
+            const int kTop = 0;
+            var model = Floors(out var a, out _, out var unused);
+            Object.DestroyImmediate(unused.gameObject);
+            var outline = new List<Vector3>(kLOnA);
+            if (clockwise)
+                outline.Reverse();
+
+            var decal = ChiselDecalComponent.CreateOnSurface(a, kTop, decalMaterial, Vector3.up, outline);
+            Assert.That(decal.transform.parent, Is.EqualTo(a.transform));
+            Assert.That(decal.Shape, Is.EqualTo(ChiselDecalShape.Polygon));
+            Assert.That(decal.Targets.Count, Is.EqualTo(1));
+            Assert.That(decal.Targets[0].brush, Is.EqualTo(a));
+            Assert.That(decal.Targets[0].surfaceIndex, Is.EqualTo(kTop));
+            Update();
+
+            var (decalArea, otherArea) = UpAreas(model);
+            Assert.That(decalArea, Is.EqualTo(kLOnAArea).Within(1e-4));
+            Assert.That(otherArea, Is.EqualTo(2 - kLOnAArea).Within(1e-4));
+        }
+
+        // Drawn across two floors, it is only on the surface it was drawn on
+        [Test]
+        public void ShapeDrawnOnASurface_StaysOnThatSurface()
+        {
+            const int kTop = 0;
+            var model = Floors(out var a, out _, out var unused);
+            Object.DestroyImmediate(unused.gameObject);
+            var outline = new[] { new Vector3(-0.5f, 0, -0.2f), new Vector3(0.5f, 0, -0.2f), new Vector3(0.5f, 0, 0.2f), new Vector3(-0.5f, 0, 0.2f) };
+
+            ChiselDecalComponent.CreateOnSurface(a, kTop, decalMaterial, Vector3.up, outline);
+            Update();
+
+            var (decalArea, otherArea) = UpAreas(model);
+            Assert.That(decalArea, Is.EqualTo(0.2).Within(1e-4), "only the half on A");
+            Assert.That(otherArea, Is.EqualTo(1.8).Within(1e-4));
+        }
+
         // A floor anywhere in the box takes the decal, also when the box's center is below it
         [Test]
         public void Decal_IsDrawnOnTheFloors_WhereverTheyAreInItsBox([Values(-0.2f, -0.1f, 0f, 0.1f, 0.2f)] float height)
