@@ -1,5 +1,6 @@
 using System;
 using System.Runtime.CompilerServices;
+using Unity.Collections;
 using Unity.Mathematics;
 
 namespace Chisel.Core
@@ -13,7 +14,8 @@ namespace Chisel.Core
         AngleLimited = 1 << 2,
         Omni         = 1 << 3,
         OmniCube     = 1 << 4,
-        Fades        = 1 << 5
+        Fades        = 1 << 5,
+        SurfaceUVs   = 1 << 6
     }
 
     // The six planes around a decal's volume, in tree space. Their normals point inwards and are unit length, so
@@ -102,6 +104,16 @@ namespace Chisel.Core
         public int                      targetStart;
         public int                      targetCount;
 
+        // A polygon decal's convex parts, in the update's part array; planes is then the box round its outline
+        public int                      partStart;
+        public int                      partCount;
+
+        public readonly bool IsPolygon
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            get { return partCount > 0; }
+        }
+
         public readonly bool IsTransparent
         {
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -121,6 +133,12 @@ namespace Chisel.Core
             get { return (flags & DecalVolumeFlags.Fades) != 0; }
         }
 
+        public readonly bool UsesSurfaceUVs
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            get { return (flags & DecalVolumeFlags.SurfaceUVs) != 0; }
+        }
+
         // An omni-directional decal has no volume of its own: each surface it reaches gets one (OnSurface)
         public readonly bool IsOmni
         {
@@ -131,13 +149,38 @@ namespace Chisel.Core
         // False for a decal that cannot draw anything: no material, a flat box, a transformation without an inverse.
         public static bool TryCreate(in ChiselDecalInstance instance, out DecalVolume volume)
         {
+            return TryCreate(instance, default, default, out volume);
+        }
+
+        // A polygon decal's outline is given separately, and its convex parts are added to parts (partStart, partCount)
+        public static bool TryCreate(in ChiselDecalInstance instance, NativeArray<float2> outline, NativeList<DecalPlanes> parts,
+                                     out DecalVolume volume)
+        {
             volume = default;
             var settings = instance.settings;
             if (instance.renderMaterial == 0 ||
                 (instance.destinationFlags & SurfaceDestinationFlags.Renderable) == 0)
                 return false;
 
-            var size = math.abs((double3)settings.size);
+            var size   = math.abs((double3)settings.size);
+            var center = (double3)settings.center;
+            var isPolygon = settings.projection == ChiselDecalProjection.Polygon;
+            using var convexParts = new NativeList<int4>(isPolygon ? 4 : 1, Allocator.Temp);
+            if (isPolygon)
+            {
+                // the box round the outline
+                if (!parts.IsCreated || !ChiselDecalOutline.ConvexParts(outline, convexParts))
+                    return false;
+                var min = (double2)outline[0];
+                var max = min;
+                for (int i = 1; i < outline.Length; i++)
+                {
+                    min = math.min(min, outline[i]);
+                    max = math.max(max, outline[i]);
+                }
+                center.xy = (min + max) * 0.5;
+                size.xy   = max - min;
+            }
             if (!math.all(math.isfinite(size)) || !math.all(size > kMinSize))
                 return false;
 
@@ -153,14 +196,13 @@ namespace Chisel.Core
                 return false;
             var treeToDecal = math.inverse(decalToTree);
 
-            var center      = (double3)settings.center;
             var halfSize    = size * 0.5;
             var perspective = settings.projection == ChiselDecalProjection.Perspective &&
                               settings.fieldOfView >= ChiselDecalSettings.kMinFieldOfView &&
                               settings.fieldOfView <= ChiselDecalSettings.kMaxFieldOfView;
             var nearZ = center.z - halfSize.z;
             var farZ  = center.z + halfSize.z;
-            var slant = math.all(math.isfinite(settings.endSlant)) ? (double2)settings.endSlant : double2.zero;
+            var slant = !isPolygon && math.all(math.isfinite(settings.endSlant)) ? (double2)settings.endSlant : double2.zero;
 
             var local = new DecalPlanes();
             double focal = 0, apexZ = 0, slopeX = 0, slopeY = 0;
@@ -190,17 +232,33 @@ namespace Chisel.Core
             local.p4 = new double4(0, 0,  1, -nearZ);
             local.p5 = new double4(0, 0, -1,  farZ);
 
-            // A point p in tree space is decal space treeToDecal * p, so a decal space plane q becomes
-            // transpose(treeToDecal) * q in tree space.
             var planeToTree = math.transpose(treeToDecal);
-            var planes = new DecalPlanes();
-            for (int i = 0; i < DecalPlanes.kCount; i++)
+            if (!ToTree(planeToTree, local, out var planes))
+                return false;
+
+            // A polygon is cut part by part: each part's sides, inside to the left of each edge (a triangle's fourth
+            // side repeats its third), between the box's near and far planes
+            var partStart = parts.IsCreated ? parts.Length : 0;
+            if (isPolygon)
             {
-                var plane  = math.mul(planeToTree, local[i]);
-                var length = math.length(plane.xyz);
-                if (!(length > 1e-12))
-                    return false;
-                planes[i] = plane / length;
+                for (int p = 0; p < convexParts.Length; p++)
+                {
+                    var corners = convexParts[p];
+                    var count   = corners.w < 0 ? 3 : 4;
+                    var side    = local;
+                    for (int c = 0; c < 4; c++)
+                    {
+                        var from = corners[math.min(c, count - 1)];
+                        var to   = corners[(math.min(c, count - 1) + 1) % count];
+                        side[c] = EdgePlane(outline[from], outline[to]);
+                    }
+                    if (!ToTree(planeToTree, side, out var partPlanes))
+                    {
+                        parts.ResizeUninitialized(partStart);
+                        return false;
+                    }
+                    parts.Add(partPlanes);
+                }
             }
 
             // The corners of the near and far faces
@@ -227,6 +285,7 @@ namespace Chisel.Core
             if (perspective)          flags |= DecalVolumeFlags.Perspective;
             if (settings.transparent) flags |= DecalVolumeFlags.Transparent;
             if (settings.Fades)       flags |= DecalVolumeFlags.Fades;
+            if (settings.surfaceUVs)  flags |= DecalVolumeFlags.SurfaceUVs;
             var cosMaxAngle = -1.0;
             if (settings.maxAngle < 180.0f)
             {
@@ -260,9 +319,35 @@ namespace Chisel.Core
                 apex            = perspective ? math.mul(decalToTree, new double4(center.xy, apexZ, 1)).xyz : double3.zero,
                 planes          = planes,
                 boundsMin       = (float3)(boundsMin - kPlaneEpsilon),
-                boundsMax       = (float3)(boundsMax + kPlaneEpsilon)
+                boundsMax       = (float3)(boundsMax + kPlaneEpsilon),
+                partStart       = partStart,
+                partCount       = isPolygon ? convexParts.Length : 0
             };
             return true;
+        }
+
+        // Decal space planes in tree space: a point p in tree space is decal space treeToDecal * p, so a decal space
+        // plane q becomes transpose(treeToDecal) * q
+        static bool ToTree(double4x4 planeToTree, in DecalPlanes local, out DecalPlanes planes)
+        {
+            planes = new DecalPlanes();
+            for (int i = 0; i < DecalPlanes.kCount; i++)
+            {
+                var plane  = math.mul(planeToTree, local[i]);
+                var length = math.length(plane.xyz);
+                if (!(length > 1e-12))
+                    return false;
+                planes[i] = plane / length;
+            }
+            return true;
+        }
+
+        // The plane through a and b, perpendicular to the decal's XY plane, with its inside to the left of a to b
+        static double4 EdgePlane(double2 a, double2 b)
+        {
+            var direction = b - a;
+            var normal    = new double2(-direction.y, direction.x);
+            return new double4(normal, 0, -math.dot(normal, a));
         }
 
         static bool TryCreateOmni(in ChiselDecalInstance instance, double4x4 decalToTree, double3 size, out DecalVolume volume)
@@ -284,6 +369,7 @@ namespace Chisel.Core
             if (cube)                 flags |= DecalVolumeFlags.OmniCube;
             if (settings.transparent) flags |= DecalVolumeFlags.Transparent;
             if (settings.Fades)       flags |= DecalVolumeFlags.Fades;
+            if (settings.surfaceUVs)  flags |= DecalVolumeFlags.SurfaceUVs;
             var uvScale = settings.uvScale;
             if (math.all(uvScale == float2.zero))
                 uvScale = new float2(1, 1);

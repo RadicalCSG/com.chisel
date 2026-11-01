@@ -24,7 +24,9 @@ namespace Chisel.Components
     {
         Box,
         /// <summary>On the edge between its first and second target: the image's lower half on the first, its upper half on the second</summary>
-        Trim
+        Trim,
+        /// <summary>The outline <see cref="ChiselDecalComponent.Polygon"/> in the decal's XY plane, reaching as deep as its box</summary>
+        Polygon
     }
 
     /// <summary>How a trim decal fills its edge</summary>
@@ -64,6 +66,7 @@ namespace Chisel.Components
         [SerializeField] bool trimMirror = false;
         [SerializeField] int imageTile = 0;
         [SerializeField] Vector2 repeat = Vector2.one;
+        [SerializeField] List<Vector2> polygon = new();
 
         // Per pair of targets, the edge a trim decal lies on: the edge's number along the first surface's outline, times
         // two, plus one when it is the second surface's; -1 (or missing) to find it from where the decal is
@@ -82,6 +85,131 @@ namespace Chisel.Components
         public const string kTrimMirrorName = nameof(trimMirror);
         public const string kImageTileName  = nameof(imageTile);
         public const string kRepeatName     = nameof(repeat);
+        public const string kPolygonName    = nameof(polygon);
+
+        /// <summary>A polygon decal's outline, in the decal's XY plane, either way round</summary>
+        public IReadOnlyList<Vector2> Polygon => polygon;
+
+        public void SetPolygon(IEnumerable<Vector2> points)
+        {
+            polygon.Clear();
+            if (points != null)
+                polygon.AddRange(points);
+            ChiselDecalManager.SetDirty();
+        }
+
+        /// <summary>
+        /// A polygon decal made into a brush on its surface, with the decal's material: extruded height out of the surface
+        /// (adding), or into it for a negative height (subtracting). The brush comes right after the decal's brush, so it
+        /// adds to or cuts into it. The decal is left as it is. Null when it isn't a polygon decal on a brush.
+        /// </summary>
+        public ChiselExtrudedShapeComponent ExtrudeIntoBrush(float height)
+        {
+            if (shape != ChiselDecalShape.Polygon || polygon.Count < 3 || !(Mathf.Abs(height) > 1e-5f))
+                return null;
+            var brush = targets.Count > 0 && targets[0].brush ? targets[0].brush :
+                        transform.parent ? transform.parent.GetComponent<ChiselNodeComponent>() : null;
+            if (brush == null)
+                return null;
+
+            // the extruded shape's outline lies in its XZ plane and is extruded along its Y: the surface's normal
+            var normal   = -transform.forward;
+            var frame    = Matrix4x4.TRS(transform.position, Quaternion.LookRotation(transform.up, normal), Vector3.one);
+            var toFrame  = frame.inverse;
+            var points   = new CurveControlPoint2D[polygon.Count];
+            var twiceArea = 0.0f;
+            for (int i = 0; i < polygon.Count; i++)
+            {
+                var local = toFrame.MultiplyPoint3x4(transform.TransformPoint(polygon[i]));
+                points[i] = new CurveControlPoint2D(local.x, local.z);
+            }
+            for (int i = 0; i < points.Length; i++)
+            {
+                var a = points[i].position;
+                var b = points[(i + 1) % points.Length].position;
+                twiceArea += a.x * b.y - b.x * a.y;
+            }
+            // the same way round whichever way it was drawn
+            if (twiceArea < 0)
+                System.Array.Reverse(points);
+
+            var parent    = brush.transform.parent;
+            var extruded  = ChiselComponentFactory.Create(typeof(ChiselExtrudedShapeComponent), ChiselExtrudedShapeComponent.kNodeTypeName,
+                                                          parent, frame) as ChiselExtrudedShapeComponent;
+            if (extruded == null)
+                return null;
+            if (parent == brush.transform.parent)
+                extruded.transform.SetSiblingIndex(brush.transform.GetSiblingIndex() + 1);
+            extruded.definition.Reset();
+            extruded.SurfaceDefinition?.Reset();
+            extruded.definition.path  = new ChiselPath(ChiselPath.Default);
+            extruded.definition.shape = new Curve2D(points);
+            SetExtrusionHeight(extruded, height);
+            if (material != null && extruded.SurfaceDefinition?.surfaces != null)
+            {
+                foreach (var surface in extruded.SurfaceDefinition.surfaces)
+                    surface.SetMaterial(material);
+            }
+            extruded.ResetTreeNodes();
+            return extruded;
+        }
+
+        /// <summary>How far a brush <see cref="ExtrudeIntoBrush"/> made reaches out of its surface (into it below zero),
+        /// adding or cutting to match</summary>
+        public static void SetExtrusionHeight(ChiselExtrudedShapeComponent extruded, float height)
+        {
+            if (extruded == null)
+                return;
+            extruded.Operation = height > 0 ? CSGOperationType.Additive : CSGOperationType.Subtractive;
+            extruded.definition.path.segments[1].position = ChiselPathPoint.DefaultDirection * height;
+            extruded.OnValidate();
+            // as the placement tools do while dragging, so it is built again
+            extruded.ClearHashes();
+        }
+
+        // How far a shape drawn on a surface reaches either side of it
+        public const float kSurfaceShapeDepth = 0.02f;
+
+        /// <summary>
+        /// A shape drawn on a surface: an opaque polygon decal limited to that surface, a child of its brush, lying on the
+        /// surface's plane and projecting into it, with the surface's texture coordinates. outline is in world space, on
+        /// the surface, either way round; worldNormal is the surface's, and worldRight the direction in it the decal's X
+        /// takes (the surface's grid's; zero: along the outline's first edge). Null for an outline of fewer than three points.
+        /// </summary>
+        public static ChiselDecalComponent CreateOnSurface(ChiselNodeComponent brush, int surfaceIndex, Material material,
+                                                           Vector3 worldNormal, IReadOnlyList<Vector3> outline, Vector3 worldRight = default)
+        {
+            if (brush == null || outline == null || outline.Count < 3 || worldNormal.sqrMagnitude < 1e-12f)
+                return null;
+            var normal = worldNormal.normalized;
+            var center = Vector3.zero;
+            foreach (var point in outline)
+                center += point;
+            center /= outline.Count;
+            var right = worldRight.sqrMagnitude > 1e-12f ? worldRight : outline[1] - outline[0];
+            right -= normal * Vector3.Dot(right, normal);
+            if (right.sqrMagnitude < 1e-12f)
+                right = Vector3.Cross(normal, Mathf.Abs(normal.x) < 0.9f ? Vector3.right : Vector3.up);
+            var up = Vector3.Cross(-normal, right.normalized);
+
+            var gameObject = new GameObject(kNodeTypeName);
+            gameObject.transform.SetPositionAndRotation(center, Quaternion.LookRotation(-normal, up));
+            gameObject.transform.SetParent(brush.transform, true);
+            var decal = gameObject.AddComponent<ChiselDecalComponent>();
+            decal.material = material;
+            decal.shape    = ChiselDecalShape.Polygon;
+            var decalSettings = ChiselDecalSettings.Default;
+            decalSettings.transparent = false;
+            decalSettings.surfaceUVs  = true;
+            decalSettings.size        = new float3(1, 1, kSurfaceShapeDepth * 2);
+            decal.settings = decalSettings;
+            decal.targets.Add(new ChiselDecalSurfaceTarget { brush = brush, surfaceIndex = surfaceIndex });
+            var toDecal = gameObject.transform.worldToLocalMatrix;
+            foreach (var point in outline)
+                decal.polygon.Add(toDecal.MultiplyPoint3x4(point));
+            ChiselDecalManager.SetDirty();
+            return decal;
+        }
 
         /// <summary>A box decal projects through its box; a trim decal lies on the edge between its first two targets
         /// (size.x: the image's length along the edge, size.y: its height across both surfaces), and its transform isn't used.</summary>
@@ -323,6 +451,17 @@ namespace Chisel.Components
         {
             if (shape == ChiselDecalShape.Box)
                 DrawVolume();
+            else if (shape == ChiselDecalShape.Polygon)
+                DrawPolygon();
+        }
+
+        void DrawPolygon()
+        {
+            Gizmos.color  = kGizmoColor;
+            Gizmos.matrix = transform.localToWorldMatrix;
+            for (int i = 0; i < polygon.Count; i++)
+                Gizmos.DrawLine(polygon[i], polygon[(i + 1) % polygon.Count]);
+            Gizmos.matrix = Matrix4x4.identity;
         }
 
         void DrawVolume()

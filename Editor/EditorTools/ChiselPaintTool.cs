@@ -94,9 +94,6 @@ namespace Chisel.Editors
         public override GUIContent toolbarIcon => s_ToolbarIcon ??= new GUIContent(ChiselEditorResources.LoadIconImages("paint_tool")?[0],
                                                                                    "Chisel Paint Tool: paint vertex data onto surfaces, in the modes of their shaders' paint profiles");
 
-        [MenuItem("Tools/Chisel/Paint")]
-        static void Activate() => ToolManager.SetActiveTool<ChiselPaintTool>();
-
         struct Hit
         {
             public bool                      valid;

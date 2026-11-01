@@ -216,6 +216,144 @@ namespace Chisel.Core.Tests
             }
         }
 
+        // A polygon decal projecting down: its outline is world (x, z)
+        static ContentsTreeHarness BuildWithPolygon(ContentsScene scene, float2[] outline, bool transparent, bool surfaceUVs)
+        {
+            var decal = Decal(1, float3.zero, kDown, new float3(1, 1, 0.5f), transparent, projection: ChiselDecalProjection.Polygon);
+            decal.settings.surfaceUVs = surfaceUVs;
+            decal.outlineCount        = outline.Length;
+            var harness = ContentsTreeHarness.Build(scene);
+            using var decals   = new NativeArray<ChiselDecalInstance>(new[] { decal }, Allocator.Temp);
+            using var outlines = new NativeArray<float2>(outline, Allocator.Temp);
+            harness.Tree.SetDecals(decals, default, outlines);
+            Assert.That(harness.Update(), Is.True, "the CSG update did not run");
+            Assert.That(harness.Delivered, Is.True, "no meshes were delivered: " + harness.LastUpdateReport);
+            return harness;
+        }
+
+        // Off the floor's corners and diagonals, so the cuts make corners inside the outline; its area is 3
+        static readonly float2[] kLShape =
+        {
+            new float2(-0.9f, -1.1f), new float2(1.1f, -1.1f), new float2(1.1f, -0.1f),
+            new float2( 0.1f, -0.1f), new float2(0.1f,  0.9f), new float2(-0.9f, 0.9f)
+        };
+
+        static float2[] Reversed(float2[] outline)
+        {
+            var reversed = (float2[])outline.Clone();
+            Array.Reverse(reversed);
+            return reversed;
+        }
+
+        static bool InsideOutline(float2[] outline, double2 point)
+        {
+            var inside = false;
+            for (int i = 0, j = outline.Length - 1; i < outline.Length; j = i++)
+            {
+                var a = (double2)outline[i];
+                var b = (double2)outline[j];
+                if ((a.y > point.y) != (b.y > point.y) &&
+                    point.x < (b.x - a.x) * (point.y - a.y) / (b.y - a.y) + a.x)
+                    inside = !inside;
+            }
+            return inside;
+        }
+
+        static bool OnOutline(float2[] outline, float2 point)
+        {
+            for (int i = 0; i < outline.Length; i++)
+            {
+                var a = outline[i];
+                var b = outline[(i + 1) % outline.Length];
+                var t = math.saturate(math.dot(point - a, b - a) / math.lengthsq(b - a));
+                if (math.distance(point, a + (b - a) * t) < 1e-4f)
+                    return true;
+            }
+            return false;
+        }
+
+        [Test]
+        public void PolygonDecal_CoversOnlyItsOutline([Values(false, true)] bool clockwise, [Values(false, true)] bool transparent)
+        {
+            var scene = new ContentsScene().Add(Box("floor", new float3(-2, -1, -2), new float3(2, 0, 2)));
+            using var harness = BuildWithPolygon(scene, clockwise ? Reversed(kLShape) : kLShape, transparent, false);
+
+            Assert.That(AreaOfMaterial(harness, kDecalMaterial), Is.EqualTo(3.0).Within(kAreaTolerance));
+            Assert.That(SurfaceArea(harness, new float3(0, 1, 0)), Is.EqualTo(transparent ? 16.0 : 13.0).Within(kAreaTolerance),
+                        transparent ? "the floor is all still there" : "the floor under the outline is gone");
+
+            foreach (var point in FloorSamples(-2, 2))
+            {
+                var coverage = CoverageAt(harness, point.x, point.y, 0);
+                var inDecal  = InsideOutline(kLShape, point);
+                coverage.TryGetValue(kDecalMaterial, out var decal);
+                Assert.That(decal, Is.EqualTo(inDecal ? 1 : 0), $"decal at {point}");
+                Assert.That(CountOf(coverage) - decal, Is.EqualTo(transparent || !inDecal ? 1 : 0), $"floor at {point}");
+            }
+        }
+
+        // One decal, so the mesh cleanup takes out every corner the cuts made inside the outline
+        [Test]
+        public void PolygonDecal_HasNoCornersInsideItsOutline([Values(false, true)] bool transparent)
+        {
+            var scene = new ContentsScene().Add(Box("floor", new float3(-2, -1, -2), new float3(2, 0, 2)));
+            using var harness = BuildWithPolygon(scene, kLShape, transparent, false);
+
+            var corners   = new HashSet<float2>();
+            var triangles = 0;
+            foreach (var triangle in harness.Triangles)
+            {
+                if (triangle.material != kDecalMaterial)
+                    continue;
+                triangles++;
+                foreach (var corner in new[] { triangle.a.xz, triangle.b.xz, triangle.c.xz })
+                {
+                    Assert.That(OnOutline(kLShape, corner), Is.True, $"a corner at {corner} inside the outline");
+                    corners.Add(corner);
+                }
+            }
+            Assert.That(triangles, Is.EqualTo(corners.Count - 2), "a triangle for each corner on the outline, less two");
+        }
+
+        [Test]
+        public void DecalWithSurfaceUVs_HasTheSurfacesTextureCoordinates([Values(false, true)] bool surfaceUVs)
+        {
+            var scene = new ContentsScene().Add(Box("floor", new float3(-2, -1, -2), new float3(2, 0, 2)));
+            using var harness = BuildWithPolygon(scene, new[] { new float2(-1, -1), new float2(1.5f, -1), new float2(-1, 1) }, false, surfaceUVs);
+
+            // every corner of the outline is also a corner of the floor round it
+            var floorUVs = new List<(float3 position, float2 uv)>();
+            foreach (var triangle in harness.Triangles)
+            {
+                if (triangle.material == kDecalMaterial || triangle.Normal.y < 0.99f)
+                    continue;
+                floorUVs.Add((triangle.a, triangle.uvA));
+                floorUVs.Add((triangle.b, triangle.uvB));
+                floorUVs.Add((triangle.c, triangle.uvC));
+            }
+
+            var compared = 0;
+            var allSame  = true;
+            foreach (var triangle in harness.Triangles)
+            {
+                if (triangle.material != kDecalMaterial)
+                    continue;
+                foreach (var (position, uv) in new[] { (triangle.a, triangle.uvA), (triangle.b, triangle.uvB), (triangle.c, triangle.uvC) })
+                {
+                    foreach (var floor in floorUVs)
+                    {
+                        if (math.distance(floor.position, position) > 1e-4f)
+                            continue;
+                        compared++;
+                        allSame &= math.distance(floor.uv, uv) < 1e-4f;
+                    }
+                }
+            }
+            Assert.That(compared, Is.GreaterThan(0), "no corner of the decal is a corner of the floor");
+            Assert.That(allSame, Is.EqualTo(surfaceUVs), surfaceUVs ? "the decal has the floor's texture coordinates"
+                                                                    : "the decal has its image's texture coordinates");
+        }
+
         [Test]
         public void Surface_FacingAwayFromTheDecal_TakesIt_UnlessTheMaxAngleIsBelow90([Values(180f, 89f)] float maxAngle)
         {

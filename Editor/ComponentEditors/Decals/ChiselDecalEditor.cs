@@ -36,7 +36,17 @@ namespace Chisel.Editors
         static readonly GUIContent kUVOffsetContent      = new GUIContent("UV Offset");
         static readonly GUIContent kBoxShapeContent      = new GUIContent("Box", "The image is projected through the box.");
         static readonly GUIContent kTrimShapeContent     = new GUIContent("Trim", "The image lies on the edge between two surfaces, its lower half on the first, its upper half on the second.");
-        static readonly GUIContent[] kShapeOptions       = { kBoxShapeContent, kTrimShapeContent };
+        static readonly GUIContent kPolygonShapeContent  = new GUIContent("Polygon", "The image fills an outline drawn on a surface (the Surface Shape tool), and replaces or covers only that surface.");
+        internal static readonly GUIContent[] kShapeOptions       = { kBoxShapeContent, kTrimShapeContent, kPolygonShapeContent };
+        internal static readonly GUIContent[] kProjectionOptions  = { new GUIContent("Orthographic"), new GUIContent("Perspective"), new GUIContent("Omni") };
+        static readonly GUIContent kTargetBrushContent   = new GUIContent("Brush", "The brush whose surface the shape is drawn on.");
+        static readonly GUIContent kTargetSurfaceContent = new GUIContent("Surface", "The brush's surface the shape is on, as its surface array numbers them.");
+        static readonly GUIContent kDepthContent         = new GUIContent("Depth", "How far the shape reaches either side of its surface, together.");
+        static readonly GUIContent kSurfaceUVsContent    = new GUIContent("Surface UVs", "The texture coordinates of the surface it is on instead of the image's, so its material lines up with the surface's texturing.");
+        static readonly GUIContent kExtrudeHeightContent = new GUIContent("Extrude Height", "How far Extrude Out and Push In take the shape out of or into its surface.");
+        static readonly GUIContent kExtrudeOutContent    = new GUIContent("Extrude Out", "The shape becomes a brush on its surface, Extrude Height tall, that adds to its brush.");
+        static readonly GUIContent kPushInContent        = new GUIContent("Push In", "The shape becomes a brush, Extrude Height deep, that cuts into its brush.");
+        const string kNoTargetMessage = "The shape isn't on a surface: set the brush it is drawn on.";
         static readonly GUIContent[] kTrimFillOptions    =
         {
             new GUIContent("Stretch", "One image over the whole edge."),
@@ -89,9 +99,12 @@ namespace Chisel.Editors
                 EditorGUILayout.HelpBox(kNoMaterialMessage, MessageType.Info);
 
             var shape    = serializedObject.FindProperty(ChiselDecalComponent.kShapeName);
-            EnumToggles(shape, kShapeContent, kShapeOptions, 2);
-            var trim = !shape.hasMultipleDifferentValues && shape.enumValueIndex == (int)ChiselDecalShape.Trim;
-            if (trim)
+            EnumToggles(shape, kShapeContent, kShapeOptions, 3);
+            var trim    = !shape.hasMultipleDifferentValues && shape.enumValueIndex == (int)ChiselDecalShape.Trim;
+            var polygon = !shape.hasMultipleDifferentValues && shape.enumValueIndex == (int)ChiselDecalShape.Polygon;
+            if (polygon)
+                PolygonFields(settings);
+            else if (trim)
             {
                 EnumToggles(serializedObject.FindProperty(ChiselDecalComponent.kTrimFillName), kTrimFillContent, kTrimFillOptions, 2);
                 var size = settings.FindPropertyRelative(nameof(ChiselDecalSettings.size));
@@ -100,7 +113,7 @@ namespace Chisel.Editors
             } else
             {
                 var projection = settings.FindPropertyRelative(nameof(ChiselDecalSettings.projection));
-                EditorGUILayout.PropertyField(projection, kProjectionContent);
+                ProjectionField(projection);
                 var omni = !projection.hasMultipleDifferentValues && projection.enumValueIndex == (int)ChiselDecalProjection.Omni;
                 if (projection.hasMultipleDifferentValues || projection.enumValueIndex == (int)ChiselDecalProjection.Perspective)
                 {
@@ -147,6 +160,76 @@ namespace Chisel.Editors
             }
 
             serializedObject.ApplyModifiedProperties();
+        }
+
+        // A box decal's projections; a polygon decal's own is set from its shape
+        static void ProjectionField(SerializedProperty projection)
+        {
+            var rect = EditorGUILayout.GetControlRect();
+            using (new EditorGUI.PropertyScope(rect, kProjectionContent, projection))
+            {
+                var index = projection.hasMultipleDifferentValues ? -1 : projection.enumValueIndex;
+                EditorGUI.BeginChangeCheck();
+                index = EditorGUI.Popup(rect, kProjectionContent, index < kProjectionOptions.Length ? index : 0, kProjectionOptions);
+                if (EditorGUI.EndChangeCheck())
+                    projection.enumValueIndex = index;
+            }
+        }
+
+        // A polygon decal: the surface it is drawn on, how deep it reaches, and its texturing
+        void PolygonFields(SerializedProperty settings)
+        {
+            var targetList = serializedObject.FindProperty(ChiselDecalComponent.kTargetsName);
+            if (!serializedObject.isEditingMultipleObjects)
+            {
+                if (targetList.arraySize == 0)
+                {
+                    targetList.arraySize = 1;
+                    targetList.GetArrayElementAtIndex(0).FindPropertyRelative(nameof(ChiselDecalSurfaceTarget.surfaceIndex)).intValue = 0;
+                }
+                var first = targetList.GetArrayElementAtIndex(0);
+                var brush = first.FindPropertyRelative(nameof(ChiselDecalSurfaceTarget.brush));
+                EditorGUILayout.PropertyField(brush, kTargetBrushContent);
+                EditorGUILayout.PropertyField(first.FindPropertyRelative(nameof(ChiselDecalSurfaceTarget.surfaceIndex)), kTargetSurfaceContent);
+                if (brush.objectReferenceValue == null)
+                    EditorGUILayout.HelpBox(kNoTargetMessage, MessageType.Warning);
+            }
+            var depth = settings.FindPropertyRelative(nameof(ChiselDecalSettings.size)).FindPropertyRelative("z");
+            EditorGUILayout.PropertyField(depth, kDepthContent);
+            EditorGUILayout.Slider(settings.FindPropertyRelative(nameof(ChiselDecalSettings.maxAngle)), 0, 180, kMaxAngleContent);
+            EditorGUILayout.PropertyField(settings.FindPropertyRelative(nameof(ChiselDecalSettings.surfaceUVs)), kSurfaceUVsContent);
+
+            if (serializedObject.isEditingMultipleObjects)
+                return;
+            s_ExtrudeHeight = Mathf.Max(0.001f, EditorGUILayout.FloatField(kExtrudeHeightContent, s_ExtrudeHeight));
+            using (new EditorGUILayout.HorizontalScope())
+            {
+                EditorGUILayout.PrefixLabel(GUIContent.none);
+                var height = 0f;
+                if (GUILayout.Button(kExtrudeOutContent, EditorStyles.miniButtonLeft))
+                    height = s_ExtrudeHeight;
+                if (GUILayout.Button(kPushInContent, EditorStyles.miniButtonRight))
+                    height = -s_ExtrudeHeight;
+                // the decal is gone: nothing more of this inspector
+                if (height != 0 && ExtrudeIntoBrush((ChiselDecalComponent)target, height) != null)
+                    GUIUtility.ExitGUI();
+            }
+        }
+
+        static float s_ExtrudeHeight = 0.25f;
+
+        // The shape becomes a brush that adds to or cuts into its surface, in place of the decal: one undo
+        internal static ChiselExtrudedShapeComponent ExtrudeIntoBrush(ChiselDecalComponent decal, float height)
+        {
+            var group = Undo.GetCurrentGroup();
+            var extruded = decal.ExtrudeIntoBrush(height);
+            if (extruded == null)
+                return null;
+            Undo.DestroyObjectImmediate(decal.gameObject);
+            Undo.CollapseUndoOperations(group);
+            Undo.SetCurrentGroupName(height > 0 ? "Extrude Surface Shape" : "Push In Surface Shape");
+            Selection.activeGameObject = extruded.gameObject;
+            return extruded;
         }
 
         // The image: the whole texture, or a tile picked from the material's hotspot layout (only with a layout)
@@ -271,11 +354,153 @@ namespace Chisel.Editors
             }
         }
 
+        // Unity's move handle, hidden while a polygon decal shows its own
+        static bool s_HidTools;
+
+        static void HideTools()
+        {
+            if (Tools.hidden)
+                return;
+            Tools.hidden = true;
+            s_HidTools = true;
+        }
+
+        static void RestoreTools()
+        {
+            if (!s_HidTools)
+                return;
+            Tools.hidden = false;
+            s_HidTools = false;
+        }
+
+        void OnDisable() => RestoreTools();
+
+        static readonly int kExtrudeHandleHash = "ChiselDecalExtrude".GetHashCode();
+        // how far the extrude arrow is dragged out of the surface (into it: below zero)
+        static float s_DragHeight;
+
+        // Arrows along the surface, in the surface's space whatever the handle rotation, and a square to slide it in the
+        // surface's plane; the arrow out of the surface extrudes the shape when let go, out of it or into it
+        static void SurfaceHandles(ChiselDecalComponent decal)
+        {
+            var transform = decal.transform;
+            var position  = transform.position;
+            var right     = transform.right;
+            var up        = transform.up;
+            var normal    = -transform.forward;
+            var size      = HandleUtility.GetHandleSize(position);
+            var snap      = EditorSnapSettings.move;
+
+            EditorGUI.BeginChangeCheck();
+            Handles.color = Handles.xAxisColor;
+            var alongRight = Handles.Slider(position, right, size, Handles.ArrowHandleCap, snap.x);
+            Handles.color = Handles.yAxisColor;
+            var alongUp = Handles.Slider(position, up, size, Handles.ArrowHandleCap, snap.y);
+            Handles.color = Handles.zAxisColor;
+            var squareOffset = (right + up) * (size * 0.25f);
+            var inPlane = Handles.Slider2D(position + squareOffset, normal, right, up, size * 0.12f, Handles.RectangleHandleCap,
+                                           new Vector2(snap.x, snap.y)) - squareOffset;
+            if (EditorGUI.EndChangeCheck())
+            {
+                Undo.RecordObject(transform, "Move Surface Shape");
+                transform.position = position + (alongRight - position) + (alongUp - position) + (inPlane - position);
+            }
+
+            var id = GUIUtility.GetControlID(kExtrudeHandleHash, FocusType.Passive);
+            var wasDragging = GUIUtility.hotControl == id;
+            Handles.color = kHandleColor;
+            // while dragged the arrow is where it was dragged to: the slider only moves it on drag events
+            var at  = wasDragging ? position + normal * s_DragHeight : position;
+            var tip = Handles.Slider(id, at, Vector3.zero, normal, size, Handles.ArrowHandleCap, snap.y);
+            if (GUIUtility.hotControl == id)
+            {
+                s_DragHeight = Vector3.Dot(tip - position, normal);
+                DragExtrusion(decal, s_DragHeight);
+                DrawExtrusion(decal, normal * s_DragHeight);
+            } else if (wasDragging)
+            {
+                s_DragHeight = 0;
+                if (FinishExtrusion(decal))
+                    GUIUtility.ExitGUI();
+            }
+        }
+
+        // The outline of the brush being dragged, over it
+        static void DrawExtrusion(ChiselDecalComponent decal, Vector3 offset)
+        {
+            var outline = decal.Polygon;
+            if (outline.Count < 3 || Event.current.type != EventType.Repaint)
+                return;
+            Handles.color = kHandleColor;
+            for (int i = 0; i < outline.Count; i++)
+            {
+                var a = decal.transform.TransformPoint(outline[i]);
+                var b = decal.transform.TransformPoint(outline[(i + 1) % outline.Count]);
+                Handles.DrawLine(a + offset, b + offset);
+                Handles.DrawLine(a, a + offset);
+            }
+        }
+
+        // The brush being dragged out of or into the surface, from the undo group it began in
+        static ChiselExtrudedShapeComponent s_Dragged;
+        static int s_DragUndoGroup = -1;
+
+        // The brush is made as soon as the arrow leaves the surface, and follows it
+        static void DragExtrusion(ChiselDecalComponent decal, float height)
+        {
+            if (Event.current.type == EventType.Layout || Event.current.type == EventType.Repaint)
+                return;
+            if (s_Dragged == null)
+            {
+                if (!(Mathf.Abs(height) > 1e-3f))
+                    return;
+                s_DragUndoGroup = Undo.GetCurrentGroup();
+                s_Dragged = decal.ExtrudeIntoBrush(height);
+                return;
+            }
+            Undo.RecordObject(s_Dragged, "Extrude Surface Shape");
+            // never flat: it is taken away when let go on the surface
+            ChiselDecalComponent.SetExtrusionHeight(s_Dragged, Mathf.Abs(height) > 1e-3f ? height : (height < 0 ? -1e-3f : 1e-3f));
+        }
+
+        // Let go: the brush in the shape's place, one undo; let go on the surface: no brush
+        static bool FinishExtrusion(ChiselDecalComponent decal)
+        {
+            var extruded = s_Dragged;
+            var height   = extruded ? extruded.definition.path.segments[1].position.y : 0;
+            s_Dragged = null;
+            if (extruded == null)
+                return false;
+            if (!(Mathf.Abs(height) > 1e-3f + 1e-6f))
+            {
+                Undo.RevertAllDownToGroup(s_DragUndoGroup);
+                return true;
+            }
+            Undo.DestroyObjectImmediate(decal.gameObject);
+            Undo.CollapseUndoOperations(s_DragUndoGroup);
+            Undo.SetCurrentGroupName(height > 0 ? "Extrude Surface Shape" : "Push In Surface Shape");
+            Selection.activeGameObject = extruded.gameObject;
+            return true;
+        }
+
         void OnSceneGUI()
         {
             var decal = target as ChiselDecalComponent;
             if (decal == null)
                 return;
+
+            // a polygon decal lies on its surface: it moves in the surface's plane, and out of it is extruding
+            if (decal.Shape == ChiselDecalShape.Polygon)
+            {
+                if (Tools.current == Tool.Move && !serializedObject.isEditingMultipleObjects)
+                {
+                    HideTools();
+                    SurfaceHandles(decal);
+                } else
+                    RestoreTools();
+                return;
+            }
+            RestoreTools();
 
             // a trim decal follows its edge, not its transform: its outline shows where it lies
             if (decal.Shape == ChiselDecalShape.Trim)

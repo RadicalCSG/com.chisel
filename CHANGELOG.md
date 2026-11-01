@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.9.3-preview
+- Draw shapes on surfaces with the Surface Shape tool: click a shape's corners on a surface, snapped to its grid, and it becomes a region of that surface with its own material (a polygon decal of the surface's brush)
+- A shape on a surface can be extruded out of it or pushed into it, as a brush that adds to or cuts into its brush (Extrude Out, Push In in the decal's inspector)
+- Polygon decals: a decal of any outline that doesn't cross itself, which can keep the texture coordinates of the surface it is on
+- The decal inspector offers the Polygon shape, with the surface it is on
+- An opaque decal on a long hotspot mapped wall leaves the wall's panels far from it as they were
+- The paint tool is only in the scene view's tools, no longer in the Tools menu
+
 ## 0.9.2-preview
 - Chisel uses Unity's grid instead of drawing its own: it moves and rotates Unity's grid to where it snaps
 - Chisel snaps at the grid size, rotation and scale steps of Unity's snap settings, also after a domain reload

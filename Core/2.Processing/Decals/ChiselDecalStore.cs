@@ -40,7 +40,8 @@ namespace Chisel.Core
 
         static bool IsEmpty(in MinMaxAABB bounds) => math.any(bounds.Min > bounds.Max);
 
-        public static void SetDecals(CSGTree tree, NativeArray<ChiselDecalInstance> decals, NativeArray<ChiselDecalTarget> targets)
+        public static void SetDecals(CSGTree tree, NativeArray<ChiselDecalInstance> decals, NativeArray<ChiselDecalTarget> targets,
+                                     NativeArray<float2> outlines)
         {
             if (!tree.Valid)
                 return;
@@ -96,12 +97,33 @@ namespace Chisel.Core
                 sorted[i] = decal;
             }
 
+            // The outlines packed the same way; one reaching outside the array is no outline
+            var outlineCount = outlines.IsCreated ? outlines.Length : 0;
+            NativeList<float2> packedOutlines;
+            using var _packedOutlines = packedOutlines = new NativeList<float2>(math.max(1, outlineCount), Allocator.Temp);
+            for (int i = 0; i < sorted.Length; i++)
+            {
+                var decal = sorted[i];
+                var start = decal.outlineStart;
+                var wanted = decal.outlineCount;
+                decal.outlineStart = packedOutlines.Length;
+                decal.outlineCount = 0;
+                if (wanted > 0 && start >= 0 && start + wanted <= outlineCount)
+                {
+                    packedOutlines.AddRange(outlines.GetSubArray(start, wanted));
+                    decal.outlineCount = wanted;
+                }
+                sorted[i] = decal;
+            }
+
             using var bounds  = new NativeList<MinMaxAABB>(sorted.Length, Allocator.Temp);
             NativeList<DecalVolume> volumes;
             using var _volumes = volumes = new NativeList<DecalVolume>(sorted.Length, Allocator.Temp);
+            data.decalVolumeParts.Clear();
             for (int i = 0; i < sorted.Length; i++)
             {
-                if (DecalVolume.TryCreate(sorted[i], out var volume))
+                var outline = packedOutlines.AsArray().GetSubArray(sorted[i].outlineStart, sorted[i].outlineCount);
+                if (DecalVolume.TryCreate(sorted[i], outline, data.decalVolumeParts, out var volume))
                 {
                     volume.sequence    = sequences[i];
                     volume.targetStart = sorted[i].targetStart;
@@ -116,6 +138,7 @@ namespace Chisel.Core
             var oldDecals  = data.decalInstances;
             var oldBounds  = data.decalBounds;
             var oldTargets = data.decalTargets;
+            var oldOutlines = data.decalOutlines;
             var oldSequences = data.decalSequences;
             var changedBefore = data.changedDecalBounds.Length;
             // the decals there before and now: their sequence before and now, their index before and now
@@ -137,7 +160,7 @@ namespace Chisel.Core
                     n++;
                 } else
                 {
-                    if (!SameDecal(oldDecals[o], oldTargets, sorted[n], packedTargets))
+                    if (!SameDecal(oldDecals[o], oldTargets, oldOutlines, sorted[n], packedTargets, packedOutlines))
                     {
                         AddChanged(data, oldBounds[o]);
                         AddChanged(data, bounds[n]);
@@ -178,6 +201,8 @@ namespace Chisel.Core
             data.decalBounds.AddRange(bounds.AsArray());
             data.decalTargets.Clear();
             data.decalTargets.AddRange(packedTargets.AsArray());
+            data.decalOutlines.Clear();
+            data.decalOutlines.AddRange(packedOutlines.AsArray());
 
             // The volumes stack lowest first; their targets are packed again in that order
             volumes.Sort(new ByStackingOrder());
@@ -198,19 +223,26 @@ namespace Chisel.Core
                 tree.SetDirty();
         }
 
-        // The same decal, apart from where its targets sit in the array
-        static bool SameDecal(ChiselDecalInstance a, NativeList<ChiselDecalTarget> aTargets,
-                              ChiselDecalInstance b, NativeList<ChiselDecalTarget> bTargets)
+        // The same decal, apart from where its targets and outline sit in their arrays
+        static bool SameDecal(ChiselDecalInstance a, NativeList<ChiselDecalTarget> aTargets, NativeList<float2> aOutlines,
+                              ChiselDecalInstance b, NativeList<ChiselDecalTarget> bTargets, NativeList<float2> bOutlines)
         {
-            if (a.targetCount != b.targetCount)
+            if (a.targetCount != b.targetCount || a.outlineCount != b.outlineCount)
                 return false;
             for (int t = 0; t < a.targetCount; t++)
             {
                 if (!aTargets[a.targetStart + t].Equals(bTargets[b.targetStart + t]))
                     return false;
             }
-            a.targetStart = 0;
-            b.targetStart = 0;
+            for (int p = 0; p < a.outlineCount; p++)
+            {
+                if (math.any(aOutlines[a.outlineStart + p] != bOutlines[b.outlineStart + p]))
+                    return false;
+            }
+            a.targetStart  = 0;
+            b.targetStart  = 0;
+            a.outlineStart = 0;
+            b.outlineStart = 0;
             return a.Equals(b);
         }
 

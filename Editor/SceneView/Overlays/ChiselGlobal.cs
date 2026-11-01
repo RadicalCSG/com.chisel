@@ -26,7 +26,8 @@ namespace Chisel.Editors
                 typeof(ChiselUVRotateTool),
                 typeof(ChiselUVScaleTool),
                 typeof(ChiselUVConnectTool),
-                typeof(ChiselPaintTool)
+                typeof(ChiselPaintTool),
+                typeof(ChiselSurfaceShapeTool)
             };
         }
 

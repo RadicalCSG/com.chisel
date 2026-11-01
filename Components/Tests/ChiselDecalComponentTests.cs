@@ -134,6 +134,179 @@ namespace Chisel.Components.Tests
             return (decal, other);
         }
 
+        // An L, (x, z) on the floors
+        static readonly Vector2[] kLShape =
+        {
+            new(-0.8f, -0.4f), new(0.8f, -0.4f), new(0.8f, 0), new(0, 0), new(0, 0.4f), new(-0.8f, 0.4f)
+        };
+        const double kLShapeArea = 0.96;
+
+        [Test]
+        public void PolygonDecal_ReplacesItsOutlineOfTheFloors()
+        {
+            const double kFloors = 2;
+            var model = Floors(out _, out _, out var decal);
+            decal.Shape = ChiselDecalShape.Polygon;
+            decal.SetPolygon(kLShape);
+            Update();
+
+            var (decalArea, otherArea) = UpAreas(model);
+            Assert.That(decalArea, Is.EqualTo(kLShapeArea).Within(1e-4), "the decal covers its outline, also where it is concave");
+            Assert.That(otherArea, Is.EqualTo(kFloors - kLShapeArea).Within(1e-4), "and the floors under it are gone");
+        }
+
+        [Test]
+        public void PolygonDecal_OnABrush_MovesWithIt()
+        {
+            var model = Floors(out var a, out _, out var decal);
+            decal.transform.SetParent(a.transform, true);
+            decal.Shape = ChiselDecalShape.Polygon;
+            decal.SetPolygon(new[] { new Vector2(-0.8f, -0.4f), new Vector2(-0.2f, -0.4f), new Vector2(-0.2f, 0.4f) });
+            decal.SetTargets(new[] { new ChiselDecalSurfaceTarget { brush = a, surfaceIndex = ChiselDecalSurfaceTarget.kAllSurfaces } });
+            Update();
+            Assert.That(UpAreas(model).decal, Is.EqualTo(0.24).Within(1e-4));
+
+            // up, out of the other floor's way: the decal is still all on it
+            a.transform.localPosition += new Vector3(0, 0.5f, 0);
+            ChiselNodeHierarchyManager.UpdateTreeNodeTransformation(a);
+            Update();
+            Assert.That(UpAreas(model).decal, Is.EqualTo(0.24).Within(1e-4));
+        }
+
+        static readonly Vector3[] kLOnA =
+        {
+            new(-0.9f, 0, -0.4f), new(-0.1f, 0, -0.4f), new(-0.1f, 0, 0), new(-0.5f, 0, 0), new(-0.5f, 0, 0.4f), new(-0.9f, 0, 0.4f)
+        };
+        const double kLOnAArea = 0.48;
+
+        [Test]
+        public void ShapeDrawnOnASurface_IsADecalOfItsBrush_ReplacingTheShape([Values(false, true)] bool clockwise)
+        {
+            const int kTop = 0;
+            var model = Floors(out var a, out _, out var unused);
+            Object.DestroyImmediate(unused.gameObject);
+            var outline = new List<Vector3>(kLOnA);
+            if (clockwise)
+                outline.Reverse();
+
+            var decal = ChiselDecalComponent.CreateOnSurface(a, kTop, decalMaterial, Vector3.up, outline);
+            Assert.That(decal.transform.parent, Is.EqualTo(a.transform));
+            Assert.That(decal.Shape, Is.EqualTo(ChiselDecalShape.Polygon));
+            Assert.That(decal.Targets.Count, Is.EqualTo(1));
+            Assert.That(decal.Targets[0].brush, Is.EqualTo(a));
+            Assert.That(decal.Targets[0].surfaceIndex, Is.EqualTo(kTop));
+            Update();
+
+            var (decalArea, otherArea) = UpAreas(model);
+            Assert.That(decalArea, Is.EqualTo(kLOnAArea).Within(1e-4));
+            Assert.That(otherArea, Is.EqualTo(2 - kLOnAArea).Within(1e-4));
+        }
+
+        // The area of the drawn upward triangles at height y
+        static double UpAreaAt(ChiselModelComponent model, float y)
+        {
+            double area = 0;
+            foreach (var r in model.generated.renderables)
+            {
+                if (r == null || !r.Valid || r.sharedMesh == null || r.sharedMesh.vertexCount == 0)
+                    continue;
+                const SurfaceDestinationFlags kDrawsAndCasts = SurfaceDestinationFlags.RenderShadowReceiveAndCasting;
+                if ((r.query & kDrawsAndCasts) != kDrawsAndCasts)
+                    continue;
+                var vertices = r.sharedMesh.vertices;
+                for (int s = 0; s < r.sharedMesh.subMeshCount; s++)
+                {
+                    var triangles = r.sharedMesh.GetTriangles(s);
+                    for (int t = 0; t < triangles.Length; t += 3)
+                    {
+                        var a = vertices[triangles[t]];
+                        var normal = Vector3.Cross(vertices[triangles[t + 1]] - a, vertices[triangles[t + 2]] - a);
+                        if (normal.normalized.y < 0.99f || Mathf.Abs(a.y - y) > 1e-3f)
+                            continue;
+                        area += normal.magnitude * 0.5;
+                    }
+                }
+            }
+            return area;
+        }
+
+        // A shape made into a brush: out of its surface it adds a block of its outline, into it a hole of its outline
+        [Test]
+        public void ShapeExtrudedIntoABrush_AddsOrCutsItsOutline([Values(0.5f, -0.25f)] float height, [Values(false, true)] bool clockwise)
+        {
+            const int kTop = 0;
+            var model = Floors(out var a, out _, out var unused);
+            Object.DestroyImmediate(unused.gameObject);
+            var outline = new List<Vector3>(kLOnA);
+            if (clockwise)
+                outline.Reverse();
+            var decal = ChiselDecalComponent.CreateOnSurface(a, kTop, decalMaterial, Vector3.up, outline);
+
+            var extruded = decal.ExtrudeIntoBrush(height);
+            Assert.That(extruded, Is.Not.Null);
+            created.Add(extruded.gameObject);
+            Assert.That(extruded.Operation, Is.EqualTo(height > 0 ? CSGOperationType.Additive : CSGOperationType.Subtractive));
+            Assert.That(extruded.transform.parent, Is.EqualTo(a.transform.parent));
+            Assert.That(extruded.transform.GetSiblingIndex(), Is.EqualTo(a.transform.GetSiblingIndex() + 1), "right after its brush");
+            Object.DestroyImmediate(decal.gameObject);
+            Update();
+
+            Assert.That(UpAreaAt(model, height), Is.EqualTo(kLOnAArea).Within(1e-4), height > 0 ? "the block's top" : "the hole's floor");
+            Assert.That(UpAreaAt(model, 0), Is.EqualTo(2 - kLOnAArea).Within(1e-4), "the floors round it");
+        }
+
+        // Its axes are the surface's grid's, given, not its outline's: it lies in the surface's plane space
+        [Test]
+        public void ShapeDrawnOnASurface_TakesTheGridsAxes()
+        {
+            var model = Floors(out var a, out _, out var unused);
+            Object.DestroyImmediate(unused.gameObject);
+            var slanted = new[] { new Vector3(-0.9f, 0, -0.4f), new Vector3(-0.3f, 0, -0.1f), new Vector3(-0.6f, 0, 0.4f) };
+
+            var decal = ChiselDecalComponent.CreateOnSurface(a, 0, decalMaterial, Vector3.up, slanted, Vector3.forward);
+            Assert.That(Vector3.Angle(decal.transform.right, Vector3.forward), Is.LessThan(1e-3f), "its x along the grid's");
+            Assert.That(Vector3.Angle(decal.transform.forward, Vector3.down), Is.LessThan(1e-3f), "into the surface");
+            Update();
+            Assert.That(UpAreas(model).decal, Is.EqualTo(0.195).Within(1e-4), "still its outline");
+        }
+
+        // Dragged from out of the surface to into it, the brush cuts instead of adding
+        [Test]
+        public void ExtrudedBrush_DraggedIntoTheSurface_CutsIt()
+        {
+            var model = Floors(out var a, out _, out var unused);
+            Object.DestroyImmediate(unused.gameObject);
+            var decal = ChiselDecalComponent.CreateOnSurface(a, 0, decalMaterial, Vector3.up, kLOnA);
+            var extruded = decal.ExtrudeIntoBrush(0.5f);
+            created.Add(extruded.gameObject);
+            Object.DestroyImmediate(decal.gameObject);
+            Update();
+            Assert.That(UpAreaAt(model, 0.5f), Is.EqualTo(kLOnAArea).Within(1e-4));
+
+            ChiselDecalComponent.SetExtrusionHeight(extruded, -0.25f);
+            Update();
+            Assert.That(extruded.Operation, Is.EqualTo(CSGOperationType.Subtractive));
+            Assert.That(UpAreaAt(model, 0.5f), Is.EqualTo(0).Within(1e-4), "no block any more");
+            Assert.That(UpAreaAt(model, -0.25f), Is.EqualTo(kLOnAArea).Within(1e-4), "a hole instead");
+        }
+
+        // Drawn across two floors, it is only on the surface it was drawn on
+        [Test]
+        public void ShapeDrawnOnASurface_StaysOnThatSurface()
+        {
+            const int kTop = 0;
+            var model = Floors(out var a, out _, out var unused);
+            Object.DestroyImmediate(unused.gameObject);
+            var outline = new[] { new Vector3(-0.5f, 0, -0.2f), new Vector3(0.5f, 0, -0.2f), new Vector3(0.5f, 0, 0.2f), new Vector3(-0.5f, 0, 0.2f) };
+
+            ChiselDecalComponent.CreateOnSurface(a, kTop, decalMaterial, Vector3.up, outline);
+            Update();
+
+            var (decalArea, otherArea) = UpAreas(model);
+            Assert.That(decalArea, Is.EqualTo(0.2).Within(1e-4), "only the half on A");
+            Assert.That(otherArea, Is.EqualTo(1.8).Within(1e-4));
+        }
+
         // A floor anywhere in the box takes the decal, also when the box's center is below it
         [Test]
         public void Decal_IsDrawnOnTheFloors_WhereverTheyAreInItsBox([Values(-0.2f, -0.1f, 0f, 0.1f, 0.2f)] float height)

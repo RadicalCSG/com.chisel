@@ -28,6 +28,8 @@ namespace Chisel.Core
 		[NoAlias, ReadOnly] public NativeArray<DecalVolume> decalVolumes;
 		// The surfaces decals are limited to (DecalVolume.targetStart/targetCount)
 		[NoAlias, ReadOnly] public NativeArray<ChiselDecalTarget> decalTargets;
+		// The polygon decals' convex parts (DecalVolume.partStart/partCount)
+		[NoAlias, ReadOnly] public NativeArray<DecalPlanes> decalParts;
 		// Hotspot layouts (ChiselHotspotStore.Gather): every layout's tiles, and where a layout's are (by id - 1)
 		[NoAlias, ReadOnly] public NativeArray<HotspotTileData>   hotspotTiles;
 		[NoAlias, ReadOnly] public NativeArray<HotspotLayoutData> hotspotLayouts;
@@ -201,7 +203,7 @@ namespace Chisel.Core
 					candidates = onSurfaceIndices;
 				}
 				decalCut = decalBuilder.Build(surfaceIndexList, uniqueVertexMapper.surfaceRenderVertices,
-											  uniqueVertexMapper.surfaceSelectVertices, volumes, candidates, targeted, flags);
+											  uniqueVertexMapper.surfaceSelectVertices, volumes, decalParts, candidates, targeted, flags);
 				if (onSurface.IsCreated)
 				{
 					onSurface.Dispose();
@@ -218,6 +220,12 @@ namespace Chisel.Core
 					if (volume.IsTransparent)
 						decalParms.parameter2 = 0;
 					surfaceCorners.ApplyNormals(decalOutput.renderVertices);
+					if (volume.UsesSurfaceUVs)
+					{
+						MeshAlgorithms.ComputeUVs(decalOutput.renderVertices, uvMat);
+						if (cornerUVs)
+							surfaceCorners.ApplyUVs(decalOutput.renderVertices);
+					}
 					MeshAlgorithms.ComputeTangents(decalOutput.indices, decalOutput.renderVertices);
 					MeshAlgorithms.ComputeLightmapCoordinates(decalOutput.renderVertices, finalFaceNormal);
 					var slot = baseSurfaceCount + candidateStart + k;

@@ -39,6 +39,9 @@ namespace Chisel.Core
             public NativeList<ChiselDecalTarget>                                decalTargets;
             public NativeList<DecalVolume>                                      decalVolumes;
             public NativeList<ChiselDecalTarget>                                decalVolumeTargets;
+            // the polygon decals' outlines (ChiselDecalInstance.outlineStart), and their convex parts (DecalVolume.partStart)
+            public NativeList<float2>                                           decalOutlines;
+            public NativeList<DecalPlanes>                                      decalVolumeParts;
             public NativeList<MinMaxAABB>                                       changedDecalBounds;
             // The surfaces connected or disconnected by hand (ChiselHotspotLinkStore)
             public NativeList<HotspotLink>                                      hotspotLinks;
@@ -116,6 +119,8 @@ namespace Chisel.Core
 				renderMeshHashes            = new NativeParallelHashMap<RenderMeshKey, uint4>(16, Allocator.Persistent);
 				decalTargets                = new NativeList<ChiselDecalTarget>(16, Allocator.Persistent);
 				decalVolumeTargets          = new NativeList<ChiselDecalTarget>(16, Allocator.Persistent);
+				decalOutlines               = new NativeList<float2>(16, Allocator.Persistent);
+				decalVolumeParts            = new NativeList<DecalPlanes>(16, Allocator.Persistent);
 				changedDecalBounds          = new NativeList<MinMaxAABB>(16, Allocator.Persistent);
             }
 
@@ -256,6 +261,10 @@ namespace Chisel.Core
                 if (decalVolumeTargets.IsCreated) decalVolumeTargets.Dispose();
                 decalTargets = default;
                 decalVolumeTargets = default;
+                if (decalOutlines.IsCreated)      decalOutlines.Dispose();
+                if (decalVolumeParts.IsCreated)   decalVolumeParts.Dispose();
+                decalOutlines = default;
+                decalVolumeParts = default;
                 if (changedDecalBounds.IsCreated) changedDecalBounds.Dispose();
                 if (hotspotLinks.IsCreated)       hotspotLinks.Dispose();
                 hotspotLinks = default;
