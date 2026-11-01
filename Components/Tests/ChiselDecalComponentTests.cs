@@ -202,6 +202,59 @@ namespace Chisel.Components.Tests
             Assert.That(otherArea, Is.EqualTo(2 - kLOnAArea).Within(1e-4));
         }
 
+        // The area of the drawn upward triangles at height y
+        static double UpAreaAt(ChiselModelComponent model, float y)
+        {
+            double area = 0;
+            foreach (var r in model.generated.renderables)
+            {
+                if (r == null || !r.Valid || r.sharedMesh == null || r.sharedMesh.vertexCount == 0)
+                    continue;
+                const SurfaceDestinationFlags kDrawsAndCasts = SurfaceDestinationFlags.RenderShadowReceiveAndCasting;
+                if ((r.query & kDrawsAndCasts) != kDrawsAndCasts)
+                    continue;
+                var vertices = r.sharedMesh.vertices;
+                for (int s = 0; s < r.sharedMesh.subMeshCount; s++)
+                {
+                    var triangles = r.sharedMesh.GetTriangles(s);
+                    for (int t = 0; t < triangles.Length; t += 3)
+                    {
+                        var a = vertices[triangles[t]];
+                        var normal = Vector3.Cross(vertices[triangles[t + 1]] - a, vertices[triangles[t + 2]] - a);
+                        if (normal.normalized.y < 0.99f || Mathf.Abs(a.y - y) > 1e-3f)
+                            continue;
+                        area += normal.magnitude * 0.5;
+                    }
+                }
+            }
+            return area;
+        }
+
+        // A shape made into a brush: out of its surface it adds a block of its outline, into it a hole of its outline
+        [Test]
+        public void ShapeExtrudedIntoABrush_AddsOrCutsItsOutline([Values(0.5f, -0.25f)] float height, [Values(false, true)] bool clockwise)
+        {
+            const int kTop = 0;
+            var model = Floors(out var a, out _, out var unused);
+            Object.DestroyImmediate(unused.gameObject);
+            var outline = new List<Vector3>(kLOnA);
+            if (clockwise)
+                outline.Reverse();
+            var decal = ChiselDecalComponent.CreateOnSurface(a, kTop, decalMaterial, Vector3.up, outline);
+
+            var extruded = decal.ExtrudeIntoBrush(height);
+            Assert.That(extruded, Is.Not.Null);
+            created.Add(extruded.gameObject);
+            Assert.That(extruded.Operation, Is.EqualTo(height > 0 ? CSGOperationType.Additive : CSGOperationType.Subtractive));
+            Assert.That(extruded.transform.parent, Is.EqualTo(a.transform.parent));
+            Assert.That(extruded.transform.GetSiblingIndex(), Is.EqualTo(a.transform.GetSiblingIndex() + 1), "right after its brush");
+            Object.DestroyImmediate(decal.gameObject);
+            Update();
+
+            Assert.That(UpAreaAt(model, height), Is.EqualTo(kLOnAArea).Within(1e-4), height > 0 ? "the block's top" : "the hole's floor");
+            Assert.That(UpAreaAt(model, 0), Is.EqualTo(2 - kLOnAArea).Within(1e-4), "the floors round it");
+        }
+
         // Drawn across two floors, it is only on the surface it was drawn on
         [Test]
         public void ShapeDrawnOnASurface_StaysOnThatSurface()

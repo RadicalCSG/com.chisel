@@ -91,6 +91,31 @@ namespace Chisel.Editors.Tests
             }
         }
 
+        // Extruding replaces the shape with a brush, and one undo brings the shape back
+        [Test]
+        public void ExtrudedShape_IsOneUndo()
+        {
+            var floor = Floor();
+            var decal = ChiselSurfaceShapeTool.Create(floor, 0, null, Vector3.up, kSquare);
+            Undo.IncrementCurrentGroup();
+            var selection = Selection.objects;
+            try
+            {
+                var extruded = ChiselDecalEditor.ExtrudeIntoBrush(decal, 0.5f);
+                Undo.IncrementCurrentGroup();
+                Assert.That(extruded, Is.Not.Null);
+                Assert.That(DecalOf(floor), Is.Null, "the shape is the brush now");
+
+                Undo.PerformUndo();
+                Assert.That(DecalOf(floor), Is.Not.Null, "undo brings the shape back");
+                Assert.That(root.GetComponentInChildren<ChiselExtrudedShapeComponent>(true), Is.Null, "and takes the brush away");
+            }
+            finally
+            {
+                Selection.objects = selection;
+            }
+        }
+
         [Test]
         public void DrawnShape_IsUndoneAndRedone()
         {

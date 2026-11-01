@@ -98,6 +98,64 @@ namespace Chisel.Components
             ChiselDecalManager.SetDirty();
         }
 
+        /// <summary>
+        /// A polygon decal made into a brush on its surface, with the decal's material: extruded height out of the surface
+        /// (adding), or into it for a negative height (subtracting). The brush comes right after the decal's brush, so it
+        /// adds to or cuts into it. The decal is left as it is. Null when it isn't a polygon decal on a brush.
+        /// </summary>
+        public ChiselExtrudedShapeComponent ExtrudeIntoBrush(float height)
+        {
+            if (shape != ChiselDecalShape.Polygon || polygon.Count < 3 || !(Mathf.Abs(height) > 1e-5f))
+                return null;
+            var brush = targets.Count > 0 && targets[0].brush ? targets[0].brush :
+                        transform.parent ? transform.parent.GetComponent<ChiselNodeComponent>() : null;
+            if (brush == null)
+                return null;
+
+            // the extruded shape's outline lies in its XZ plane and is extruded along its Y: the surface's normal
+            var normal   = -transform.forward;
+            var frame    = Matrix4x4.TRS(transform.position, Quaternion.LookRotation(transform.up, normal), Vector3.one);
+            var toFrame  = frame.inverse;
+            var points   = new CurveControlPoint2D[polygon.Count];
+            var twiceArea = 0.0f;
+            for (int i = 0; i < polygon.Count; i++)
+            {
+                var local = toFrame.MultiplyPoint3x4(transform.TransformPoint(polygon[i]));
+                points[i] = new CurveControlPoint2D(local.x, local.z);
+            }
+            for (int i = 0; i < points.Length; i++)
+            {
+                var a = points[i].position;
+                var b = points[(i + 1) % points.Length].position;
+                twiceArea += a.x * b.y - b.x * a.y;
+            }
+            // the same way round whichever way it was drawn
+            if (twiceArea < 0)
+                System.Array.Reverse(points);
+
+            var parent    = brush.transform.parent;
+            var extruded  = ChiselComponentFactory.Create(typeof(ChiselExtrudedShapeComponent), ChiselExtrudedShapeComponent.kNodeTypeName,
+                                                          parent, frame) as ChiselExtrudedShapeComponent;
+            if (extruded == null)
+                return null;
+            if (parent == brush.transform.parent)
+                extruded.transform.SetSiblingIndex(brush.transform.GetSiblingIndex() + 1);
+            extruded.definition.Reset();
+            extruded.SurfaceDefinition?.Reset();
+            extruded.Operation = height > 0 ? CSGOperationType.Additive : CSGOperationType.Subtractive;
+            extruded.definition.path  = new ChiselPath(ChiselPath.Default);
+            extruded.definition.shape = new Curve2D(points);
+            extruded.definition.path.segments[1].position = ChiselPathPoint.DefaultDirection * height;
+            extruded.OnValidate();
+            if (material != null && extruded.SurfaceDefinition?.surfaces != null)
+            {
+                foreach (var surface in extruded.SurfaceDefinition.surfaces)
+                    surface.SetMaterial(material);
+            }
+            extruded.ResetTreeNodes();
+            return extruded;
+        }
+
         // How far a shape drawn on a surface reaches either side of it
         public const float kSurfaceShapeDepth = 0.02f;
 

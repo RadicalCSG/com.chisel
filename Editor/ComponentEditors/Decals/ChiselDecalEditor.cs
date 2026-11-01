@@ -43,6 +43,9 @@ namespace Chisel.Editors
         static readonly GUIContent kTargetSurfaceContent = new GUIContent("Surface", "The brush's surface the shape is on, as its surface array numbers them.");
         static readonly GUIContent kDepthContent         = new GUIContent("Depth", "How far the shape reaches either side of its surface, together.");
         static readonly GUIContent kSurfaceUVsContent    = new GUIContent("Surface UVs", "The texture coordinates of the surface it is on instead of the image's, so its material lines up with the surface's texturing.");
+        static readonly GUIContent kExtrudeHeightContent = new GUIContent("Extrude Height", "How far Extrude Out and Push In take the shape out of or into its surface.");
+        static readonly GUIContent kExtrudeOutContent    = new GUIContent("Extrude Out", "The shape becomes a brush on its surface, Extrude Height tall, that adds to its brush.");
+        static readonly GUIContent kPushInContent        = new GUIContent("Push In", "The shape becomes a brush, Extrude Height deep, that cuts into its brush.");
         const string kNoTargetMessage = "The shape isn't on a surface: set the brush it is drawn on.";
         static readonly GUIContent[] kTrimFillOptions    =
         {
@@ -195,6 +198,38 @@ namespace Chisel.Editors
             EditorGUILayout.PropertyField(depth, kDepthContent);
             EditorGUILayout.Slider(settings.FindPropertyRelative(nameof(ChiselDecalSettings.maxAngle)), 0, 180, kMaxAngleContent);
             EditorGUILayout.PropertyField(settings.FindPropertyRelative(nameof(ChiselDecalSettings.surfaceUVs)), kSurfaceUVsContent);
+
+            if (serializedObject.isEditingMultipleObjects)
+                return;
+            s_ExtrudeHeight = Mathf.Max(0.001f, EditorGUILayout.FloatField(kExtrudeHeightContent, s_ExtrudeHeight));
+            using (new EditorGUILayout.HorizontalScope())
+            {
+                EditorGUILayout.PrefixLabel(GUIContent.none);
+                var height = 0f;
+                if (GUILayout.Button(kExtrudeOutContent, EditorStyles.miniButtonLeft))
+                    height = s_ExtrudeHeight;
+                if (GUILayout.Button(kPushInContent, EditorStyles.miniButtonRight))
+                    height = -s_ExtrudeHeight;
+                // the decal is gone: nothing more of this inspector
+                if (height != 0 && ExtrudeIntoBrush((ChiselDecalComponent)target, height) != null)
+                    GUIUtility.ExitGUI();
+            }
+        }
+
+        static float s_ExtrudeHeight = 0.25f;
+
+        // The shape becomes a brush that adds to or cuts into its surface, in place of the decal: one undo
+        internal static ChiselExtrudedShapeComponent ExtrudeIntoBrush(ChiselDecalComponent decal, float height)
+        {
+            var group = Undo.GetCurrentGroup();
+            var extruded = decal.ExtrudeIntoBrush(height);
+            if (extruded == null)
+                return null;
+            Undo.DestroyObjectImmediate(decal.gameObject);
+            Undo.CollapseUndoOperations(group);
+            Undo.SetCurrentGroupName(height > 0 ? "Extrude Surface Shape" : "Push In Surface Shape");
+            Selection.activeGameObject = extruded.gameObject;
+            return extruded;
         }
 
         // The image: the whole texture, or a tile picked from the material's hotspot layout (only with a layout)
