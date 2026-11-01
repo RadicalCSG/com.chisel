@@ -397,8 +397,8 @@ namespace Chisel.Editors
             Handles.color = Handles.yAxisColor;
             var alongUp = Handles.Slider(position, up, size, Handles.ArrowHandleCap, snap.y);
             Handles.color = Handles.zAxisColor;
-            var squareOffset = (right + up) * (size * 0.25f);
-            var inPlane = Handles.Slider2D(position + squareOffset, normal, right, up, size * 0.12f, Handles.RectangleHandleCap,
+            var squareOffset = (right + up) * (size * 0.2f);
+            var inPlane = Handles.Slider2D(position + squareOffset, normal, right, up, size * 0.1f, PlaneHandleCap,
                                            new Vector2(snap.x, snap.y)) - squareOffset;
             if (EditorGUI.EndChangeCheck())
             {
@@ -427,7 +427,31 @@ namespace Chisel.Editors
             }
         }
 
-        static readonly int kCornerHandleHash = "ChiselDecalCorner".GetHashCode();
+        // A filled square, as Unity's move gizmo has between two of its arrows: brighter while hovered or dragged
+        static void PlaneHandleCap(int controlID, Vector3 position, Quaternion rotation, float size, EventType eventType)
+        {
+            switch (eventType)
+            {
+                case EventType.Layout:
+                case EventType.MouseMove:
+                    HandleUtility.AddControl(controlID, HandleUtility.DistanceToRectangle(position, rotation, size));
+                    break;
+                case EventType.Repaint:
+                {
+                    var right = rotation * Vector3.right * size;
+                    var up    = rotation * Vector3.up * size;
+                    var corners = new[] { position - right - up, position + right - up, position + right + up, position - right + up };
+                    var active  = GUIUtility.hotControl == controlID || HandleUtility.nearestControl == controlID;
+                    var outline = Handles.color;
+                    var face    = outline;
+                    face.a = active ? 0.5f : 0.2f;
+                    Handles.DrawSolidRectangleWithOutline(corners, face, outline);
+                    break;
+                }
+            }
+        }
+
+        static readonly int kCornerHandleHash ="ChiselDecalCorner".GetHashCode();
         static readonly List<Vector2> s_Corners = new();
         static readonly List<Vector3> s_Outline = new();
         // How near (in pixels) the surface's corners and edges pull a dragged corner onto them
