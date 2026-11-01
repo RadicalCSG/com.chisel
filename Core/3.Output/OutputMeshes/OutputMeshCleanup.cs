@@ -481,6 +481,7 @@ namespace Chisel.Core
                     to.decalEntityID         = from.decalEntityID;
                     to.decalStack            = from.decalStack;
                     to.decalFades            = from.decalFades;
+                    to.decalHidesBorder      = from.decalHidesBorder;
                     to.paintSurface          = from.paintSurface;
                     to.destinationFlags      = from.destinationFlags;
                     to.destinationParameters = from.destinationParameters;

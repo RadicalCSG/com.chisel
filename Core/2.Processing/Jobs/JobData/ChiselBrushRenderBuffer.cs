@@ -19,6 +19,8 @@ namespace Chisel.Core
         public int                          decalStack;
         // a transparent decal's piece that fades (DecalVolume.Fades): its mesh is its decal's own
         public bool                         decalFades;
+        // an opaque decal's piece that the hotspot mapping of its surface draws no border round (ChiselDecalSettings.hotspotBorder)
+        public bool                         decalHidesBorder;
         // a painted surface's index, which its paint is found by with its brush's entity (ChiselPaintLookup); -1 without
         public int                          paintSurface;
 		public SurfaceDestinationFlags      destinationFlags;
@@ -200,6 +202,7 @@ namespace Chisel.Core
 				this.decalEntityID = 0;
 				this.decalStack = 0;
 				this.decalFades = false;
+				this.decalHidesBorder = false;
 				this.paintSurface = -1;
 				this.destinationFlags = destinationFlags;
 				this.destinationParameters = destinationParameters;
@@ -227,6 +230,7 @@ namespace Chisel.Core
 			this.decalEntityID = 0;
 			this.decalStack = 0;
 			this.decalFades = false;
+			this.decalHidesBorder = false;
 			this.paintSurface = -1;
 
 			this.destinationFlags = destinationFlags;

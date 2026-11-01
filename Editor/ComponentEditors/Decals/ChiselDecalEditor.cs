@@ -43,6 +43,7 @@ namespace Chisel.Editors
         static readonly GUIContent kTargetSurfaceContent = new GUIContent("Surface", "The brush's surface the shape is on, as its surface array numbers them.");
         static readonly GUIContent kDepthContent         = new GUIContent("Depth", "How far the shape reaches either side of its surface, together.");
         static readonly GUIContent kSurfaceUVsContent    = new GUIContent("Surface UVs", "The texture coordinates of the surface it is on instead of the image's, so its material lines up with the surface's texturing.");
+        static readonly GUIContent kHotspotBorderContent = new GUIContent("Hotspot Border", "On a hotspot mapped surface: its border runs round the decal too, as round a hole in it. Off, the mapping goes on under the decal as if it weren't there.");
         static readonly GUIContent kExtrudeHeightContent = new GUIContent("Extrude Height", "How far Extrude Out and Push In take the shape out of or into its surface.");
         static readonly GUIContent kExtrudeOutContent    = new GUIContent("Extrude Out", "The shape becomes a brush on its surface, Extrude Height tall, that adds to its brush.");
         static readonly GUIContent kPushInContent        = new GUIContent("Push In", "The shape becomes a brush, Extrude Height deep, that cuts into its brush.");
@@ -95,6 +96,9 @@ namespace Chisel.Editors
             // opaque decals replace the surface below, so only transparent ones fade
             if (transparent.boolValue || transparent.hasMultipleDifferentValues)
                 EditorGUILayout.PropertyField(settings.FindPropertyRelative(nameof(ChiselDecalSettings.fadeDistance)), kFadeDistanceContent);
+            // an opaque decal cuts its surface: a hotspot mapped one could draw its border round it
+            if (!transparent.boolValue || transparent.hasMultipleDifferentValues)
+                EditorGUILayout.PropertyField(settings.FindPropertyRelative(nameof(ChiselDecalSettings.hotspotBorder)), kHotspotBorderContent);
             if (material.objectReferenceValue == null && !material.hasMultipleDifferentValues)
                 EditorGUILayout.HelpBox(kNoMaterialMessage, MessageType.Info);
 
@@ -595,7 +599,7 @@ namespace Chisel.Editors
             // a polygon decal lies on its surface: it moves in the surface's plane, and out of it is extruding
             if (decal.Shape == ChiselDecalShape.Polygon)
             {
-                if (Tools.current == Tool.Move && targets.Length == 1)
+                if (Tools.current == Tool.Move)
                 {
                     HideTools();
                     SurfaceHandles(decal);

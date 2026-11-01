@@ -104,6 +104,10 @@ namespace Chisel.Core
         /// its material lines up with the surface's texturing.</summary>
         public bool surfaceUVs;
 
+        /// <summary>An opaque decal on a hotspot mapped surface: the surface's border runs round it too, as round a hole in
+        /// it. Without, the hotspot mapping goes on under it as if it weren't there.</summary>
+        public bool hotspotBorder;
+
         /// <summary>The shear <see cref="skew"/> describes, from the decal's unsheared space to its space</summary>
         public static float4x4 SkewMatrix(float2 skew)
         {
@@ -166,7 +170,8 @@ namespace Chisel.Core
                    (imageTurns & 3) == (other.imageTurns & 3) &&
                    math.all(endSlant == other.endSlant) &&
                    math.all(skew == other.skew) &&
-                   surfaceUVs == other.surfaceUVs;
+                   surfaceUVs == other.surfaceUVs &&
+                   hotspotBorder == other.hotspotBorder;
         }
 
         public override readonly bool Equals(object obj) => obj is ChiselDecalSettings other && Equals(other);
@@ -181,7 +186,7 @@ namespace Chisel.Core
             hash = math.hash(new uint3(hash, math.hash(endSlant), (uint)(imageTurns & 3)));
             hash = math.hash(new uint3(hash, math.hash(skew), (uint)reach));
             hash = math.hash(new uint2(hash, math.hash(fadeDistance)));
-            hash = math.hash(new uint2(hash, surfaceUVs ? 1u : 0u));
+            hash = math.hash(new uint3(hash, surfaceUVs ? 1u : 0u, hotspotBorder ? 1u : 0u));
             return (int)hash;
         }
     }
