@@ -142,11 +142,9 @@ namespace Chisel.Components
                 extruded.transform.SetSiblingIndex(brush.transform.GetSiblingIndex() + 1);
             extruded.definition.Reset();
             extruded.SurfaceDefinition?.Reset();
-            extruded.Operation = height > 0 ? CSGOperationType.Additive : CSGOperationType.Subtractive;
             extruded.definition.path  = new ChiselPath(ChiselPath.Default);
             extruded.definition.shape = new Curve2D(points);
-            extruded.definition.path.segments[1].position = ChiselPathPoint.DefaultDirection * height;
-            extruded.OnValidate();
+            SetExtrusionHeight(extruded, height);
             if (material != null && extruded.SurfaceDefinition?.surfaces != null)
             {
                 foreach (var surface in extruded.SurfaceDefinition.surfaces)
@@ -154,6 +152,19 @@ namespace Chisel.Components
             }
             extruded.ResetTreeNodes();
             return extruded;
+        }
+
+        /// <summary>How far a brush <see cref="ExtrudeIntoBrush"/> made reaches out of its surface (into it below zero),
+        /// adding or cutting to match</summary>
+        public static void SetExtrusionHeight(ChiselExtrudedShapeComponent extruded, float height)
+        {
+            if (extruded == null)
+                return;
+            extruded.Operation = height > 0 ? CSGOperationType.Additive : CSGOperationType.Subtractive;
+            extruded.definition.path.segments[1].position = ChiselPathPoint.DefaultDirection * height;
+            extruded.OnValidate();
+            // as the placement tools do while dragging, so it is built again
+            extruded.ClearHashes();
         }
 
         // How far a shape drawn on a surface reaches either side of it

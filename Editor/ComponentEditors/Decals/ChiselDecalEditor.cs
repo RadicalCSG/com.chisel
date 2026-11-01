@@ -409,34 +409,61 @@ namespace Chisel.Editors
             var id = GUIUtility.GetControlID(kExtrudeHandleHash, FocusType.Passive);
             var wasDragging = GUIUtility.hotControl == id;
             Handles.color = kHandleColor;
-            var tip = Handles.Slider(id, position, Vector3.zero, normal, size, Handles.ArrowHandleCap, snap.y);
+            // while dragged the arrow is where it was dragged to: the slider only moves it on drag events
+            var at  = wasDragging ? position + normal * s_DragHeight : position;
+            var tip = Handles.Slider(id, at, Vector3.zero, normal, size, Handles.ArrowHandleCap, snap.y);
             if (GUIUtility.hotControl == id)
             {
                 s_DragHeight = Vector3.Dot(tip - position, normal);
-                DrawExtrusion(decal, normal * s_DragHeight);
+                DragExtrusion(decal, s_DragHeight);
             } else if (wasDragging)
             {
-                var height = s_DragHeight;
                 s_DragHeight = 0;
-                if (Mathf.Abs(height) > 1e-3f && ExtrudeIntoBrush(decal, height) != null)
+                if (FinishExtrusion(decal))
                     GUIUtility.ExitGUI();
             }
         }
 
-        // The prism the shape would become
-        static void DrawExtrusion(ChiselDecalComponent decal, Vector3 offset)
+        // The brush being dragged out of or into the surface, from the undo group it began in
+        static ChiselExtrudedShapeComponent s_Dragged;
+        static int s_DragUndoGroup = -1;
+
+        // The brush is made as soon as the arrow leaves the surface, and follows it
+        static void DragExtrusion(ChiselDecalComponent decal, float height)
         {
-            var outline = decal.Polygon;
-            if (outline.Count < 3 || Event.current.type != EventType.Repaint)
+            if (Event.current.type == EventType.Layout || Event.current.type == EventType.Repaint)
                 return;
-            Handles.color = kHandleColor;
-            for (int i = 0; i < outline.Count; i++)
+            if (s_Dragged == null)
             {
-                var a = decal.transform.TransformPoint(outline[i]);
-                var b = decal.transform.TransformPoint(outline[(i + 1) % outline.Count]);
-                Handles.DrawLine(a + offset, b + offset);
-                Handles.DrawLine(a, a + offset);
+                if (!(Mathf.Abs(height) > 1e-3f))
+                    return;
+                s_DragUndoGroup = Undo.GetCurrentGroup();
+                s_Dragged = decal.ExtrudeIntoBrush(height);
+                return;
             }
+            Undo.RecordObject(s_Dragged, "Extrude Surface Shape");
+            // never flat: it is taken away when let go on the surface
+            ChiselDecalComponent.SetExtrusionHeight(s_Dragged, Mathf.Abs(height) > 1e-3f ? height : (height < 0 ? -1e-3f : 1e-3f));
+        }
+
+        // Let go: the brush in the shape's place, one undo; let go on the surface: no brush
+        static bool FinishExtrusion(ChiselDecalComponent decal)
+        {
+            var extruded = s_Dragged;
+            var height   = extruded ? extruded.definition.path.segments[1].position.y : 0;
+            s_Dragged = null;
+            if (extruded == null)
+                return false;
+            if (!(Mathf.Abs(height) > 1e-3f + 1e-6f))
+            {
+                Undo.RevertAllDownToGroup(s_DragUndoGroup);
+                return true;
+            }
+            Undo.DestroyObjectImmediate(decal.gameObject);
+            Undo.CollapseUndoOperations(s_DragUndoGroup);
+            Undo.SetCurrentGroupName(height > 0 ? "Extrude Surface Shape" : "Push In Surface Shape");
+            Selection.activeGameObject = extruded.gameObject;
+            return true;
         }
 
         void OnSceneGUI()

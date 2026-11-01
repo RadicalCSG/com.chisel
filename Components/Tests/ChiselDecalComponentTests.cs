@@ -270,6 +270,26 @@ namespace Chisel.Components.Tests
             Assert.That(UpAreas(model).decal, Is.EqualTo(0.195).Within(1e-4), "still its outline");
         }
 
+        // Dragged from out of the surface to into it, the brush cuts instead of adding
+        [Test]
+        public void ExtrudedBrush_DraggedIntoTheSurface_CutsIt()
+        {
+            var model = Floors(out var a, out _, out var unused);
+            Object.DestroyImmediate(unused.gameObject);
+            var decal = ChiselDecalComponent.CreateOnSurface(a, 0, decalMaterial, Vector3.up, kLOnA);
+            var extruded = decal.ExtrudeIntoBrush(0.5f);
+            created.Add(extruded.gameObject);
+            Object.DestroyImmediate(decal.gameObject);
+            Update();
+            Assert.That(UpAreaAt(model, 0.5f), Is.EqualTo(kLOnAArea).Within(1e-4));
+
+            ChiselDecalComponent.SetExtrusionHeight(extruded, -0.25f);
+            Update();
+            Assert.That(extruded.Operation, Is.EqualTo(CSGOperationType.Subtractive));
+            Assert.That(UpAreaAt(model, 0.5f), Is.EqualTo(0).Within(1e-4), "no block any more");
+            Assert.That(UpAreaAt(model, -0.25f), Is.EqualTo(kLOnAArea).Within(1e-4), "a hole instead");
+        }
+
         // Drawn across two floors, it is only on the surface it was drawn on
         [Test]
         public void ShapeDrawnOnASurface_StaysOnThatSurface()
