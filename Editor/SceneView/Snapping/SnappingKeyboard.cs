@@ -127,9 +127,11 @@ namespace Chisel.Editors
         [Shortcut(ToggleShowGridName, typeof(SceneView), ChiselKeyboardDefaults.ToggleShowGridKey, ChiselKeyboardDefaults.ToggleShowGridModifiers, displayName = ToggleShowGridName)]
         public static void ToggleGridVisibility()
         {
-            ChiselEditorSettings.ShowGrid = !ChiselEditorSettings.ShowGrid;
-            ChiselEditorSettings.Save();
-            SceneView.RepaintAll();
+            var sceneView = SceneView.lastActiveSceneView;
+            if (!sceneView)
+                return;
+            sceneView.showGrid = !sceneView.showGrid;
+            sceneView.Repaint();
         }
     }
 }
