@@ -35,10 +35,10 @@ namespace Chisel.Editors
         static Hit s_Surface;
         static readonly List<ChiselIntersection> s_Intersections = new();
 
-        public override void OnActivated()          { Reset(); }
-        public override void OnWillBeDeactivated()  { Reset(); }
+        public override void OnActivated()          { ClearDrawing(); }
+        public override void OnWillBeDeactivated()  { ClearDrawing(); }
 
-        static void Reset()
+        static void ClearDrawing()
         {
             s_Points.Clear();
             s_Surface = default;
@@ -100,7 +100,7 @@ namespace Chisel.Editors
                 for (int i = 0; i < count - 2; i++)
                     outline.Add(transformation.MultiplyPoint3x4(s_Points[i]));
                 var surface = s_Surface;
-                Reset();
+                ClearDrawing();
                 if (surface.valid)
                     Create(surface.brush, surface.surfaceIndex, surface.material, surface.normal, outline, transformation.GetColumn(0));
                 GUIUtility.ExitGUI();
