@@ -416,11 +416,28 @@ namespace Chisel.Editors
             {
                 s_DragHeight = Vector3.Dot(tip - position, normal);
                 DragExtrusion(decal, s_DragHeight);
+                DrawExtrusion(decal, normal * s_DragHeight);
             } else if (wasDragging)
             {
                 s_DragHeight = 0;
                 if (FinishExtrusion(decal))
                     GUIUtility.ExitGUI();
+            }
+        }
+
+        // The outline of the brush being dragged, over it
+        static void DrawExtrusion(ChiselDecalComponent decal, Vector3 offset)
+        {
+            var outline = decal.Polygon;
+            if (outline.Count < 3 || Event.current.type != EventType.Repaint)
+                return;
+            Handles.color = kHandleColor;
+            for (int i = 0; i < outline.Count; i++)
+            {
+                var a = decal.transform.TransformPoint(outline[i]);
+                var b = decal.transform.TransformPoint(outline[(i + 1) % outline.Count]);
+                Handles.DrawLine(a + offset, b + offset);
+                Handles.DrawLine(a, a + offset);
             }
         }
 
