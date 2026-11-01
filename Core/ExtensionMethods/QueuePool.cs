@@ -4,6 +4,9 @@ using UnityEngine.Pool;
 
 namespace Chisel.Components
 {
+#if UNITY_6000_7_OR_NEWER
+	[Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
+#endif
 	public class QueuePool<T>
 	{
 		internal readonly static ObjectPool<Queue<T>> s_Pool = new(() => new Queue<T>(), null, delegate (Queue<T> l)

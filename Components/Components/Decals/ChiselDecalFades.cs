@@ -12,6 +12,9 @@ namespace Chisel.Components
     /// takes up on screen, so the distances hold at <see cref="kFieldOfView"/> and scale with the camera's field of view.
     /// The material's shader has to support LOD cross-fading, as URP's Lit does, with LOD Cross Fade on in the pipeline asset.
     /// </summary>
+#if UNITY_6000_7_OR_NEWER
+    [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
+#endif
     public static class ChiselDecalFades
     {
         public const float kFieldOfView = 60.0f;

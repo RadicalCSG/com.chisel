@@ -5,6 +5,9 @@ using UnityEditor.Overlays;
 namespace Chisel.Editors
 {
     [Overlay(typeof(SceneView), ChiselSurfaceOverlay.kOverlayTitle)]
+#if UNITY_6000_7_OR_NEWER
+    [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
+#endif
     public class ChiselSurfaceOverlay : IMGUIOverlay, ITransientOverlay
     {
         const string kOverlayTitle = "Surface Options";

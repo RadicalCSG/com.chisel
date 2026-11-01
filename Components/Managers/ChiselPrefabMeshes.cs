@@ -8,6 +8,9 @@ namespace Chisel.Components
     // A prefab keeps the meshes its models generated, as sub-assets of the prefab: a mesh that isn't an asset is lost when
     // a prefab is saved, and its instances would have nothing to draw. Each time a prefab with a model is saved, the meshes
     // its generated objects use are added to it, and the meshes it kept that nothing uses anymore are taken out of it.
+#if UNITY_6000_7_OR_NEWER
+    [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
+#endif
     sealed class ChiselPrefabMeshes : AssetPostprocessor
     {
         const string kPrefabExtension = ".prefab";

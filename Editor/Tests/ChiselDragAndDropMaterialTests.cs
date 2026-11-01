@@ -10,6 +10,9 @@ namespace Chisel.Editors.Tests
     // Dragging a material over surfaces shows it there, and puts the old materials back when the drag moves on or is
     // cancelled
     [TestFixture]
+#if UNITY_6000_7_OR_NEWER
+    [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
+#endif
     public class ChiselDragAndDropMaterialTests
     {
         readonly List<Object> created = new();

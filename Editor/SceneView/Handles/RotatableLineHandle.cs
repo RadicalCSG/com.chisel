@@ -5,6 +5,9 @@ using Snapping = Chisel.Editors.Snapping;
 
 namespace Chisel.Editors
 {
+#if UNITY_6000_7_OR_NEWER
+    [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
+#endif
     public static class RotatableLineHandle
     {
         readonly static int kRotatedEdge2DHash = "RotatedEdge2D".GetHashCode();

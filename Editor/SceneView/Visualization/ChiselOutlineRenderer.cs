@@ -16,6 +16,9 @@ namespace Chisel.Editors
         Surface = 4
     }
 
+#if UNITY_6000_7_OR_NEWER
+    [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
+#endif
     public sealed class ChiselOutlineRenderer : ScriptableObject
     {
         #region BrushOutline

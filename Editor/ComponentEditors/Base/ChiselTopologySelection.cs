@@ -107,6 +107,9 @@ namespace Chisel.Editors
         }
     }
 
+#if UNITY_6000_7_OR_NEWER
+    [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
+#endif
     public class ChiselTopologySelectionManager : ScriptableObject, ISerializationCallbackReceiver
     {
         #region Instance

@@ -14,6 +14,9 @@ namespace Chisel.Editors
     // Dragging from a hotspot mapped surface onto another connects the two: the other takes the first one's material, and
     // loses its own links when it had another hotspot material. Dragging between two that are connected disconnects them.
     // Clicking an edge of a hotspot mapped surface (it lights up under the mouse) hides the border along it, or brings it back.
+#if UNITY_6000_7_OR_NEWER
+    [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
+#endif
     sealed class ChiselUVConnectTool : ChiselEditToolBase
     {
         const string kToolName = "UV Connect";

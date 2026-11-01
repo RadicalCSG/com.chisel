@@ -23,6 +23,9 @@ namespace Chisel.Core
         public int LightmapMaxSize;
     }
      
+#if UNITY_6000_7_OR_NEWER
+    [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
+#endif
     public static class ModelSettingsStore
     {
         static readonly Dictionary<ulong, ModelSettings> s_Settings = new();
@@ -169,6 +172,9 @@ namespace Chisel.Core
 
         static JobHandle s_PendingWeldFrees;
 
+#if UNITY_6000_7_OR_NEWER
+        [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
+#endif
         internal struct TreeUpdate
         {
             // this round makes every tree's meshes again (DebugVisualizations)

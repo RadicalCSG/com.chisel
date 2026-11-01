@@ -28,6 +28,9 @@ namespace Chisel.Components
     // 3. Separate building/updating the components from building a combined (physics) materials/mesh/render setting.
     // 4. Move the colliders to a single GameObject.
     [Serializable]
+#if UNITY_6000_7_OR_NEWER
+    [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
+#endif
     public class ChiselGeneratedObjects
     {
         public const string kGeneratedContainerName = "‹[generated]›";

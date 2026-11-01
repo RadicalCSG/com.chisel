@@ -11,6 +11,9 @@ namespace Chisel.Editors
 {
     [CustomEditor(typeof(ChiselBrushComponent))]
     [CanEditMultipleObjects]
+#if UNITY_6000_7_OR_NEWER
+    [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
+#endif
     public sealed class ChiselBrushEditor : ChiselGeneratorEditor<ChiselBrushComponent>
     {
         readonly static Dictionary<ChiselBrushComponent, ChiselEditableOutline> s_ActiveOutlines = new();

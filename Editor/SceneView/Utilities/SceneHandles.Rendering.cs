@@ -3,6 +3,9 @@ using Chisel.Core;
 
 namespace Chisel.Editors
 {
+#if UNITY_6000_7_OR_NEWER
+    [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
+#endif
     public static class HandleRendering
     {
         public const float kPointScale = 0.05f;

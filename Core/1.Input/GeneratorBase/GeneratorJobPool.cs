@@ -29,6 +29,9 @@ namespace Chisel.Core
 
     // TODO: move to core
     [BurstCompile(CompileSynchronously = true)]
+#if UNITY_6000_7_OR_NEWER
+    [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
+#endif
     public class GeneratorJobPoolManager : System.IDisposable
     {
         System.Collections.Generic.HashSet<IGeneratorJobPool> generatorPools = new();

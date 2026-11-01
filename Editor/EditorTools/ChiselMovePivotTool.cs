@@ -11,6 +11,9 @@ using UnityEngine.Pool;
 namespace Chisel.Editors
 {
     //[EditorTool("Chisel " + kToolName + " Tool", typeof(ChiselNode))]
+#if UNITY_6000_7_OR_NEWER
+    [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
+#endif
     class ChiselMovePivotTool : ChiselEditToolBase
     {
         const string kToolName = "Move Pivot";

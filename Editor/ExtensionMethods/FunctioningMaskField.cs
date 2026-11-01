@@ -13,6 +13,9 @@ namespace Chisel.Editors
         readonly static GUIContent kAllContent   = new("All");
         readonly static GUIContent kMixedContent = new("Mixed ...");
 
+#if UNITY_6000_7_OR_NEWER
+        [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
+#endif
         private class EnumValues
         {
             public readonly GUIContent[]    flagContents;

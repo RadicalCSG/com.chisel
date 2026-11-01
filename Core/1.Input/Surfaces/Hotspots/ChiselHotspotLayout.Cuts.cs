@@ -13,6 +13,9 @@ namespace Chisel.Core
 
     // Editing the layout as lines: tiles are split by new lines, lines move and are removed again. The tiles' points
     // follow from the cuts (UpdateTiles). Tiles no line makes (shapes drawn or imported over them) keep their points.
+#if UNITY_6000_7_OR_NEWER
+    [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
+#endif
     public sealed partial class ChiselHotspotLayout
     {
         public bool HasCuts => cuts.Count > 0;

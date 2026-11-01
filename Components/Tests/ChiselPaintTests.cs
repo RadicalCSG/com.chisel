@@ -10,6 +10,9 @@ namespace Chisel.Components.Tests
     // Surface paint (ChiselSurfacePaint): a grid of values on a surface, written to the vertex attribute it names in the
     // render meshes of its material
     [TestFixture]
+#if UNITY_6000_7_OR_NEWER
+    [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
+#endif
     public class ChiselPaintTests
     {
         readonly List<Object> created = new();

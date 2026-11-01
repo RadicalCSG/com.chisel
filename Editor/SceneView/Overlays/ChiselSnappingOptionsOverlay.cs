@@ -7,6 +7,9 @@ namespace Chisel.Editors
 {
     // TODO: add tooltips
     [Overlay(typeof(SceneView), ChiselSnappingOptionsOverlay.kOverlayTitle)]
+#if UNITY_6000_7_OR_NEWER
+    [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
+#endif
     public class ChiselSnappingOptionsOverlay : IMGUIOverlay
     {
         const string kOverlayTitle = "Chisel Snap Values";

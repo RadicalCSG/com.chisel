@@ -10,6 +10,9 @@ using Chisel.Components;
 
 namespace Chisel.Editors
 {
+#if UNITY_6000_7_OR_NEWER
+    [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
+#endif
     public static class ChiselNodeDetailsManager
     {
 		static readonly Dictionary<Type, IChiselNodeDetails> s_NodeDetailsLookup = new();
@@ -58,6 +61,9 @@ namespace Chisel.Editors
             return s_GeneratorDefaultDetails.GetHierarchyIconForGenericNode(node);
         }
 
+#if UNITY_6000_7_OR_NEWER
+        [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
+#endif
         class HierarchyMessageHandler : IChiselMessageHandler
 		{
 			public MessageDestination Destination

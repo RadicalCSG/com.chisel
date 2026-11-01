@@ -9,6 +9,9 @@ namespace Chisel.Editors
 {
     // Unity members Chisel uses that have no public API. Each feature that needs some looks them up once through these;
     // one Unity no longer has logs a warning naming it and the feature, which then turns itself off.
+#if UNITY_6000_7_OR_NEWER
+    [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
+#endif
     static class ChiselUnityInternals
     {
         const BindingFlags kAll = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.Instance | BindingFlags.FlattenHierarchy;

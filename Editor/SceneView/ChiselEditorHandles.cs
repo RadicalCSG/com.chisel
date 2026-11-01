@@ -21,6 +21,9 @@ namespace Chisel.Editors
     // TODO: rewrite all "editors" to use new handle solution
     // TODO: move brush "editor" to handles
     // TODO: add support for "editors" to have an init/shutdown/update part so we can cache handles
+#if UNITY_6000_7_OR_NEWER
+    [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
+#endif
     public sealed class ChiselEditorHandles : IChiselHandles
     {
         public void Start(ChiselNodeComponent generator, SceneView sceneView = null)

@@ -37,6 +37,9 @@ namespace Chisel.Editors
         Custom  = 8
     }
 
+#if UNITY_6000_7_OR_NEWER
+    [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
+#endif
     public class Grid
     {
         public static event Action GridModified;

@@ -10,6 +10,9 @@ namespace Chisel.Editors
     }
 
     // TODO: Move all singletons over to this ..
+#if UNITY_6000_7_OR_NEWER
+    [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
+#endif
     public class SingletonManager<DataType, SingletonInstanceType> : ScriptableObject, ISerializationCallbackReceiver
         where DataType				: ISingletonData, new()
         where SingletonInstanceType : SingletonManager<DataType,SingletonInstanceType>

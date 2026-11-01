@@ -7,6 +7,9 @@ using UnityEngine;
 namespace Chisel.Components
 {
     // TODO: rename
+#if UNITY_6000_7_OR_NEWER
+    [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
+#endif
     public sealed class ChiselComponentFactory
 	{
 		public static T AddComponent<T>(GameObject gameObject) where T : ChiselNodeComponent

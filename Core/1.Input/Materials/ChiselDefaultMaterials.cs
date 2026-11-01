@@ -5,6 +5,9 @@ using UnityEngine.Rendering;
 
 namespace Chisel.Core
 {
+#if UNITY_6000_7_OR_NEWER
+	[Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
+#endif
 	public sealed class ChiselDefaultMaterials : ScriptableObject
 	{
 		#region Instance

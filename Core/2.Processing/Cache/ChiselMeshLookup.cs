@@ -20,6 +20,9 @@ namespace Chisel.Core
 		}
 	}
 
+#if UNITY_6000_7_OR_NEWER
+    [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
+#endif
     internal sealed class ChiselMeshLookup : ScriptableObject
     {
         public class Data

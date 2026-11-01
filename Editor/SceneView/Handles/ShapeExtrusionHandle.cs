@@ -16,6 +16,9 @@ namespace Chisel.Editors
         Modified
     }
 
+#if UNITY_6000_7_OR_NEWER
+    [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
+#endif
     public static class ShapeExtrusionHandle
     {
         static Matrix4x4		    s_Transformation = Matrix4x4.identity;

@@ -85,6 +85,9 @@ namespace Chisel.Core
     }
 
     [Serializable]
+#if UNITY_6000_7_OR_NEWER
+    [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
+#endif
     public class ChiselSphereDefinition : SerializedBrushGenerator<ChiselSphere>
     {
         public const string kNodeTypeName = "Sphere";

@@ -7,6 +7,9 @@ namespace Chisel.Components
     /// The project's paint profiles: one per shader whose surfaces can be painted, in one asset, edited in
     /// Project Settings > Chisel > Paint
     /// </summary>
+#if UNITY_6000_7_OR_NEWER
+    [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
+#endif
     public sealed class ChiselPaintSettings : ScriptableObject
     {
         public const string kAssetPath = "Assets/Chisel/ChiselPaintSettings.asset";

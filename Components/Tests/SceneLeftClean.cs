@@ -5,6 +5,9 @@ using UnityEngine.SceneManagement;
 
 namespace Chisel.Components.Tests
 {
+#if UNITY_6000_7_OR_NEWER
+    [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
+#endif
     static class SceneLeftClean
     {
         static readonly MethodInfo s_ClearSceneDirtiness = typeof(EditorSceneManager).GetMethod("ClearSceneDirtiness",

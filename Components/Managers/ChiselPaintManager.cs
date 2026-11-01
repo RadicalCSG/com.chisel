@@ -11,6 +11,9 @@ namespace Chisel.Components
     /// in the model's space, and rebuilds the brushes whose paint changed. Called before the trees are built. Only the
     /// generators that said their paint changed, or that moved, are looked at.
     /// </summary>
+#if UNITY_6000_7_OR_NEWER
+    [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
+#endif
     public static class ChiselPaintManager
     {
         // a generator whose paint a tree has: which tree, and the generator's space in its model's as the paint was given in

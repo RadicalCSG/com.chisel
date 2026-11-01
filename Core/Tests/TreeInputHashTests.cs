@@ -7,6 +7,9 @@ using UnityEngine;
 namespace Chisel.Core.Tests
 {
 	[TestFixture]
+#if UNITY_6000_7_OR_NEWER
+	[Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
+#endif
 	public class TreeInputHashTests
 	{
 		static readonly SurfaceParameterIdentity kByParameter = parameter => new Hash128((uint)parameter, (uint)(parameter >> 32), 1, 2);

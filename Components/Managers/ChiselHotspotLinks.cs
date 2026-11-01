@@ -32,6 +32,9 @@ namespace Chisel.Components
     // Connecting and disconnecting surfaces by hand: two touching surfaces of one model are mapped as one, even when their
     // frames differ, or never; along the edge they share a border can be shown or hidden. The newest link between two
     // surfaces counts, and it counts only while they touch.
+#if UNITY_6000_7_OR_NEWER
+    [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
+#endif
     public static class ChiselHotspotLinks
     {
         static readonly List<CSGTreeBrush> s_Brushes = new();

@@ -7,6 +7,9 @@ using UnityEngine;
 
 namespace Chisel.Editors
 {
+#if UNITY_6000_7_OR_NEWER
+    [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
+#endif
     public class ChiselSyncSelection : ScriptableObject, ISerializationCallbackReceiver
     {
         static ChiselSyncSelection s_Instance;

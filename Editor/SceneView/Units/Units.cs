@@ -21,6 +21,9 @@ namespace Chisel.Editors
         Pixels
     }
 
+#if UNITY_6000_7_OR_NEWER
+    [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
+#endif
     public static class Units
     {
         public static DistanceUnit	ActiveDistanceUnit	= DistanceUnit.Meters;

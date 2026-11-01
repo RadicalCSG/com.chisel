@@ -108,6 +108,9 @@ namespace Chisel.Core
     }
 
     [Serializable]
+#if UNITY_6000_7_OR_NEWER
+    [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
+#endif
     public class ChiselRevolvedShapeDefinition : SerializedBranchGenerator<ChiselRevolvedShape>
     {
         public const string kNodeTypeName = "Revolved Shape";

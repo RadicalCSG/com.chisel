@@ -23,6 +23,9 @@ namespace Chisel.Editors
     }
 
     [CustomEditor(typeof(ChiselModelComponent))]
+#if UNITY_6000_7_OR_NEWER
+    [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
+#endif
     public sealed class ChiselModelEditor : ChiselNodeEditor<ChiselModelComponent>
     {
         [MenuItem(kGameObjectMenuModelPath + ChiselModelComponent.kNodeTypeName, false, kGameObjectMenuModelPriority)]

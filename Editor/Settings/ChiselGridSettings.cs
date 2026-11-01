@@ -71,6 +71,9 @@ namespace Chisel.Editors
     }
 
     // The scene view's grid opacity and plane have no public API: they are read from its internals
+#if UNITY_6000_7_OR_NEWER
+    [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
+#endif
     static class ChiselSceneViewGrid
     {
         const string kFeature = "following the scene view's grid opacity and plane";

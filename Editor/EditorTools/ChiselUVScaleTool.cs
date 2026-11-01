@@ -13,6 +13,9 @@ namespace Chisel.Editors
     // TODO: hovering on surfaces in inspector should highlight in scene
 
     //[EditorTool("Chisel " + kToolName + " Tool", typeof(ChiselNode))]
+#if UNITY_6000_7_OR_NEWER
+    [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
+#endif
     sealed class ChiselUVScaleTool : ChiselEditToolBase
     {
         const string kToolName = "UV Scale";

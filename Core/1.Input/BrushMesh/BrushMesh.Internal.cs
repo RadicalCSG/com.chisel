@@ -5,6 +5,9 @@ using UnityEngine;
 
 namespace Chisel.Core
 {
+#if UNITY_6000_7_OR_NEWER
+    [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
+#endif
     sealed partial class BrushMesh
     {
         private sealed class Triangle

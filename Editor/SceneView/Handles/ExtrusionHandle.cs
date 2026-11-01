@@ -13,6 +13,9 @@ namespace Chisel.Editors
         Modified
     }
 
+#if UNITY_6000_7_OR_NEWER
+    [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
+#endif
     public static class ExtrusionHandle
     {
         internal readonly static int kHeightSizingHash = "HeightSizingHash".GetHashCode();

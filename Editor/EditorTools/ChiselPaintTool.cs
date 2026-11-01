@@ -11,6 +11,9 @@ namespace Chisel.Editors
     /// Paints the surface under the mouse in a mode of the paint profile of its material's shader: a color, or a named
     /// value, with a round brush. Only the surface that is hit is painted; a stroke is one undo.
     /// </summary>
+#if UNITY_6000_7_OR_NEWER
+    [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
+#endif
     sealed class ChiselPaintTool : EditorTool
     {
         const string kModeTooltip = "A surface takes this mode when the paint profile of its shader has a mode of this name";

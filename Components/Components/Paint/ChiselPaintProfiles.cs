@@ -5,6 +5,9 @@ using UnityEngine;
 namespace Chisel.Components
 {
     /// <summary>The project's paint profiles (<see cref="ChiselPaintSettings"/>), by the shader they are for</summary>
+#if UNITY_6000_7_OR_NEWER
+    [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
+#endif
     public static class ChiselPaintProfiles
     {
         static Dictionary<Shader, ChiselPaintProfile> s_ByShader;

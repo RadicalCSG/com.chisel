@@ -12,6 +12,9 @@ namespace Chisel.Components
     /// This class defines an intersection into a specific brush
     /// </summary>
     [Serializable, StructLayout(LayoutKind.Sequential, Pack = 4)]
+#if UNITY_6000_7_OR_NEWER
+    [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
+#endif
     public struct ChiselIntersection
     {
         public ChiselModelComponent	model;

@@ -6,6 +6,9 @@ namespace Chisel.Editors
 {
     public enum PreviewMesh { Sphere, Cube, Plane, Cylinder, Capsule }
 
+#if UNITY_6000_7_OR_NEWER
+    [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
+#endif
     public static class PreviewTextureManager
     {
         const string kPreviewMeshKey = "Chisel.MaterialPreviewMesh";

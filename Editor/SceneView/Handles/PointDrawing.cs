@@ -8,6 +8,9 @@ namespace Chisel.Editors
 {
     // TODO: need to snap to edges
     // TODO: need to snap to vertices
+#if UNITY_6000_7_OR_NEWER
+    [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
+#endif
     public sealed class PointDrawing
     {
         public const float kDistanceEpsilon = 0.001f;

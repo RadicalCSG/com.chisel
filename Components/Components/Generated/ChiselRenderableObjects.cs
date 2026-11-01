@@ -34,6 +34,9 @@ namespace Chisel.Components
 
 
     [Serializable]
+#if UNITY_6000_7_OR_NEWER
+    [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
+#endif
     public class ChiselRenderObjects
     {
         [HideInInspector] [SerializeField] internal bool invalid = false;

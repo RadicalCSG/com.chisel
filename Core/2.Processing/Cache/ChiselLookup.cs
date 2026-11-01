@@ -8,6 +8,9 @@ using Unity.Mathematics;
 
 namespace Chisel.Core
 {
+#if UNITY_6000_7_OR_NEWER
+    [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
+#endif
     internal sealed class ChiselTreeLookup : ScriptableObject
     {
         public class Data

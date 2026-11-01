@@ -6,6 +6,9 @@ using UnityEngine.UIElements;
 
 namespace Chisel.Components
 {
+#if UNITY_6000_7_OR_NEWER
+    [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
+#endif
     public abstract class ChiselBrushGeneratorComponent<DefinitionType, Generator> : ChiselNodeGeneratorComponent<DefinitionType>
         where Generator      : unmanaged, IBrushGenerator
         where DefinitionType : SerializedBrushGenerator<Generator>, new()
@@ -57,6 +60,9 @@ namespace Chisel.Components
 		}
 	}
 
+#if UNITY_6000_7_OR_NEWER
+    [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
+#endif
     public abstract class ChiselBranchGeneratorComponent<Generator, DefinitionType> : ChiselNodeGeneratorComponent<DefinitionType>
         where Generator      : unmanaged, IBranchGenerator
         where DefinitionType : SerializedBranchGenerator<Generator>, new()

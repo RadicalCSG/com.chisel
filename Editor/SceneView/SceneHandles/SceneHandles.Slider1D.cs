@@ -121,6 +121,9 @@ namespace Chisel.Editors
 
 
 
+#if UNITY_6000_7_OR_NEWER
+        [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
+#endif
         public class Slider1D
         {
             private static readonly Snapping1D	s_Snapping1D = new();

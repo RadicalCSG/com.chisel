@@ -6,6 +6,9 @@ using BigInteger = System.Numerics.BigInteger;
 
 namespace Chisel.Core.Tests
 {
+#if UNITY_6000_7_OR_NEWER
+	[Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
+#endif
 	static class ExactJudge
 	{
 
