@@ -287,7 +287,7 @@ namespace Chisel.Core
                                                      out var brushMeshBlob,
                                                      allocator))// Indirect
 							return false;
-                        brushMeshes[subMeshIndex] = brushMeshBlob;
+                        brushMeshes[subMeshIndex] = DescribedAs(brushMeshBlob, ChiselSpiralStairs.SurfaceSides.OuterSurface);
                         //brushContainer.operations[subMeshIndex] = CSGOperationType.Intersecting;
                     }
 
@@ -302,7 +302,7 @@ namespace Chisel.Core
                                                      out var brushMeshBlob,
                                                      allocator))// Indirect
 							return false;
-                        brushMeshes[subMeshIndex] = brushMeshBlob;
+                        brushMeshes[subMeshIndex] = DescribedAs(brushMeshBlob, ChiselSpiralStairs.SurfaceSides.InnerSurface);
                         //brushContainer.operations[subMeshIndex] = CSGOperationType.Subtractive;
                     }
 
@@ -359,7 +359,7 @@ namespace Chisel.Core
                                                  in outerCylinderSurfaceDefinitionBlob,
                                                  out var brushMeshBlob, allocator))// Indirect
 						return false;
-                    brushMeshes[subMeshIndex] = brushMeshBlob;
+                    brushMeshes[subMeshIndex] = DescribedAs(brushMeshBlob, ChiselSpiralStairs.SurfaceSides.OuterSurface);
                     //brushContainer.operations[subMeshIndex] = CSGOperationType.Intersecting;
                 }
 
@@ -370,11 +370,21 @@ namespace Chisel.Core
                                                  in innerCylinderSurfaceDefinitionBlob,
                                                  out var brushMeshBlob, allocator))// Indirect
 						return false;
-                    brushMeshes[subMeshIndex] = brushMeshBlob;
+                    brushMeshes[subMeshIndex] = DescribedAs(brushMeshBlob, ChiselSpiralStairs.SurfaceSides.InnerSurface);
                     //brushContainer.operations[subMeshIndex] = CSGOperationType.Subtractive;
                 }
                 return true;
             }
+        }
+
+        // A cylinder's polygons count its own surfaces, made here from one of the stairs': each is given that surface's
+        // place in the stairs' definition
+        static BlobAssetReference<BrushMeshBlob> DescribedAs(BlobAssetReference<BrushMeshBlob> brushMesh, ChiselSpiralStairs.SurfaceSides side)
+        {
+            ref var polygons = ref brushMesh.Value.polygons;
+            for (int p = 0; p < polygons.Length; p++)
+                polygons[p].descriptionIndex = (int)side;
+            return brushMesh;
         }
     }
 }
