@@ -31,7 +31,7 @@ namespace Chisel.Editors
         public static bool				MoveSnapping	{ get { return BoundsSnapping || PivotSnapping; } }
         public static bool				BoundsSnapping  { get { return Snapping.BoundsSnappingEnabled; } set { Snapping.BoundsSnappingEnabled = value; } }
         public static bool				PivotSnapping   { get { return Snapping.PivotSnappingEnabled; } set { Snapping.PivotSnappingEnabled = value; } }
-        public static float				UniformSnapSize { get { return ChiselGridSettings.Size.x; } set { Grid.DefaultGrid.Spacing = ChiselGridSettings.Size = new UnityEngine.Vector3(value, value, value); } }
+        public static float				UniformSnapSize { get { return Snapping.MoveSnappingSteps.x; } set { Snapping.MoveSnappingSteps = new UnityEngine.Vector3(value, value, value); } }
 
         public static bool				ShowAllAxi      { get; set; } = false;
         public static DistanceUnit		DistanceUnit	{ get; set; } = DistanceUnit.Meters;
@@ -42,10 +42,10 @@ namespace Chisel.Editors
         public static DrawModeFlags		HelperSurfaceFlags { get; set; } = DrawModeFlags.Default;
 
         public static bool				RotateSnapping  { get { return Snapping.RotateSnappingEnabled; } set { Snapping.RotateSnappingEnabled = value; } }
-        public static float 			RotateSnap      { get; set; } = 30.0f;
+        public static float 			RotateSnap      { get { return Snapping.RotateSnappingStep; } set { Snapping.RotateSnappingStep = value; } }
 
         public static bool				ScaleSnapping   { get { return Snapping.ScaleSnappingEnabled; } set { Snapping.ScaleSnappingEnabled = value; } }
-        public static float 			ScaleSnap       { get; set; } = 1.0f;
+        public static float 			ScaleSnap       { get { return Snapping.ScaleSnappingStep; } set { Snapping.ScaleSnappingStep = value; } }
 
         readonly static Dictionary<string, bool> s_InToolBoxSettings = new();
 
@@ -64,10 +64,8 @@ namespace Chisel.Editors
             HelperSurfaceFlags = (DrawModeFlags)EditorPrefs.GetInt("HelperSurfaceFlags", (int)DrawModeFlags.Default);
 
             RotateSnapping	= EditorPrefs.GetBool ("RotateSnapping",	true);
-			RotateSnap      = EditorPrefs.GetFloat("RotationSnap",		15.0f);
 
             ScaleSnapping	= EditorPrefs.GetBool ("ScaleSnapping",		true);
-            ScaleSnap		= EditorPrefs.GetFloat("ScaleSnap",			0.1f);
 
             Snapping.SnapSettings = (SnapSettings)EditorPrefs.GetInt("SnapSettings", (int)SnapSettings.All);
             Snapping.TransformSettings = (ActiveTransformSnapping)EditorPrefs.GetInt("TransformSettings", (int)ActiveTransformSnapping.All);
@@ -101,10 +99,8 @@ namespace Chisel.Editors
             EditorPrefs.SetInt("HelperSurfaceFlags", (int)HelperSurfaceFlags);
 
             EditorPrefs.SetBool("RotateSnapping",	RotateSnapping);
-            EditorPrefs.SetFloat("RotationSnap",    RotateSnap);
 
             EditorPrefs.SetBool("ScaleSnapping",	ScaleSnapping);
-            EditorPrefs.SetFloat("ScaleSnap",		ScaleSnap);
 
             EditorPrefs.SetInt("SnapSettings",	    (int)Snapping.SnapSettings);
             EditorPrefs.SetInt("TransformSettings",	(int)Snapping.TransformSettings);

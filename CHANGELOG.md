@@ -2,6 +2,8 @@
 
 ## 0.9.2-preview
 - Chisel uses Unity's grid instead of drawing its own: it moves and rotates Unity's grid to where it snaps
+- Chisel snaps at the grid size, rotation and scale steps of Unity's snap settings, also after a domain reload
+- Removed the Chisel Snap Values overlay: its steps are the ones in Unity's snap settings
 - ChiselContentsVolume.ContentsAt tells what contents a point is in (water, Solid, nothing), as the CSG decides it; it is kept with the model's meshes, so a player can ask too
 - With the GPU Resident Drawer on, a brush no longer vanishes when an edit changes how many triangles its material's mesh has
 - A corner snapped onto a corner a hair away moves alike in every brush that has it, so no crack opens between brushes
