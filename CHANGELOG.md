@@ -4,6 +4,8 @@
 - A shape's corners on its surface's edges stay on them when the brush is resized or skewed; drawing and dragging corners snaps them to the surface's corners and edges, and corners can be added and taken away
 - A shape on a surface moves along it with surface-space arrows and a square between them, whatever the handle rotation
 - The hotspot mapping draws no border round an opaque decal unless the decal's Hotspot Border is on
+- With the GPU Resident Drawer on, adding many brushes at once no longer draws missing meshes (invalid Mesh ID errors, walls without shadows or not drawn)
+- A trim decal or anything else that looks at a brush made this update no longer logs "Invalid ID 0"
 - A decal and the surface round it keep no corners where the surface's triangles crossed the decal's outline, and the squares of a surface keep their diagonal however the cuts round them change
 - Draw shapes on surfaces with the Surface Shape tool: click a shape's corners on a surface, snapped to its grid, and it becomes a region of that surface with its own material (a polygon decal of the surface's brush)
 - A shape on a surface can be extruded out of it or pushed into it, as a brush that adds to or cuts into its brush (Extrude Out, Push In in the decal's inspector)
