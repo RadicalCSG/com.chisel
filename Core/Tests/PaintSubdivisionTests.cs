@@ -9,7 +9,7 @@ namespace Chisel.Core.Tests
     public sealed class PaintSubdivisionTests
     {
         // A square of side 2 in the xz plane at offset, two triangles, and a grid of cells x cells over it exactly
-        static void Subdivide(float3 offset, bool otherDiagonal, int cells, out int vertexCount, out int triangleCount, out float minAngle, out string worst, out string offGrid)
+        static void Subdivide(float3 offset, bool otherDiagonal, int cells, out int vertexCount, out int triangleCount, out float minAngle, out string worst, out string offGrid, out int otherWay)
         {
             var mapper = new UniqueVertexMapper
             {
@@ -45,6 +45,19 @@ namespace Chisel.Core.Tests
                     offGrid += " " + (mapper.surfaceColliderVertices[v] - offset);
             }
             triangleCount = indices.Length / 3;
+            // edges across a cell from its lower right corner to its upper left one, in cells
+            otherWay      = 0;
+            for (int t = 0; t < indices.Length; t += 3)
+            {
+                for (int k = 0; k < 3; k++)
+                {
+                    var from = math.round((mapper.surfaceColliderVertices[indices[t + k]] - offset) / size);
+                    var to   = math.round((mapper.surfaceColliderVertices[indices[t + (k + 1) % 3]] - offset) / size);
+                    var step = (to - from).xz;
+                    if (math.all(math.abs(step) == 1) && step.x != step.y)
+                        otherWay++;
+                }
+            }
             minAngle      = 180;
             worst         = null;
             for (int t = 0; t < indices.Length; t += 3)
@@ -71,7 +84,7 @@ namespace Chisel.Core.Tests
         [Test]
         public void EveryGridPointInside_IsAVertex_AndNoTriangleIsASliver([Values(false, true)] bool otherDiagonal, [Values(0, 5000)] float offset)
         {
-            Subdivide(new float3(offset, offset * 0.5f, -offset), otherDiagonal, 20, out var vertices, out var triangles, out var minAngle, out var worst, out var offGrid);
+            Subdivide(new float3(offset, offset * 0.5f, -offset), otherDiagonal, 20, out var vertices, out var triangles, out var minAngle, out var worst, out var offGrid, out _);
             Assert.That(vertices, Is.EqualTo(21 * 21), "not on a grid point:" + offGrid);
             Assert.That(triangles, Is.EqualTo(2 * 20 * 20));
             Assert.That(minAngle, Is.GreaterThan(30), "no sliver; the thinnest: " + worst);
@@ -81,10 +94,19 @@ namespace Chisel.Core.Tests
         [Test]
         public void AGridOfTheMostPoints_IsSubdividedAsASmallOneIs()
         {
-            Subdivide(float3.zero, false, 63, out var vertices, out var triangles, out var minAngle, out var worst, out var offGrid);
+            Subdivide(float3.zero, false, 63, out var vertices, out var triangles, out var minAngle, out var worst, out var offGrid, out _);
             Assert.That(vertices, Is.EqualTo(PaintSubdivision.kMaxPoints), "not on a grid point:" + offGrid);
             Assert.That(triangles, Is.EqualTo(2 * 63 * 63));
             Assert.That(minAngle, Is.GreaterThan(30), "no sliver; the thinnest: " + worst);
+        }
+
+        // A whole cell's corners are on one circle: which way it is split must not depend on how the surface was cut or
+        // where it is, or resizing it flips its cells
+        [Test]
+        public void EveryCell_IsSplitTheSameWay([Values(false, true)] bool otherDiagonal, [Values(0, 5000)] float offset)
+        {
+            Subdivide(new float3(offset, offset * 0.5f, -offset), otherDiagonal, 20, out _, out _, out _, out _, out _, out var otherWay);
+            Assert.That(otherWay, Is.EqualTo(0), "edges across a cell from its lower right corner to its upper left one");
         }
     }
 }

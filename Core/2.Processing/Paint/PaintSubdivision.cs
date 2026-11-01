@@ -19,6 +19,7 @@ namespace Chisel.Core
             if (range.count <= 0 || indices.Length < 3)
                 return;
             var snap = float.PositiveInfinity;
+            var gridLayer = -1;
             using var points = new NativeList<float3>(64, Allocator.Temp);
             using var seen   = new NativeParallelHashSet<int3>(64, Allocator.Temp);
             for (int l = range.start; l < range.start + range.count; l++)
@@ -28,6 +29,8 @@ namespace Chisel.Core
                 // only a surface in the grid's plane, or parallel to it
                 if (math.abs(math.dot(normal, surfaceNormal)) < 0.999f)
                     continue;
+                if (gridLayer < 0)
+                    gridLayer = l;
                 snap = math.min(snap, kSnap * math.min(math.length(layer.cellU), math.length(layer.cellV)));
                 for (int j = 0; j < layer.resolution.y && points.Length < kMaxPoints; j++)
                 {
@@ -59,6 +62,7 @@ namespace Chisel.Core
                 triangulation.Insert(ref mapper, crossings[p]);
             for (int p = 0; p < points.Length; p++)
                 triangulation.Insert(ref mapper, points[p]);
+            triangulation.FixCellDiagonals(ref mapper, paint.layers[gridLayer]);
             triangulation.Dispose();
         }
 
@@ -297,6 +301,47 @@ namespace Chisel.Core
                     SetTriangle(u, d, b, v);
                     pending.Add(new int2(a, d));
                     pending.Add(new int2(d, b));
+                }
+            }
+
+            // A whole grid cell's four corners are on one circle, so Delaunay leaves its diagonal to the order the points
+            // came in, which changes as the surface does: every whole cell is split from its lowest corner (in grid
+            // cells) to the one across from it instead
+            public void FixCellDiagonals(ref UniqueVertexMapper mapper, in ChiselPaintLayer layer)
+            {
+                var none = new int2(int.MinValue);
+                NativeArray<int2> cells;
+                using var _cells = cells = new NativeArray<int2>(mapper.surfaceColliderVertices.Length, Allocator.Temp);
+                for (int v = 0; v < cells.Length; v++)
+                {
+                    var place   = GridCoordinates(layer, mapper.surfaceColliderVertices[v]);
+                    var rounded = math.round(place);
+                    cells[v] = math.all(math.abs(place - rounded) < kSnap) ? (int2)rounded : none;
+                }
+                for (int t = 0; t + 2 < indices.Length; t += 3)
+                {
+                    for (int k = 0; k < 3; k++)
+                    {
+                        int a = indices[t + k], b = indices[t + (k + 1) % 3], c = indices[t + (k + 2) % 3];
+                        if (math.any(cells[a] == none) || math.any(cells[b] == none) || math.any(cells[c] == none))
+                            continue;
+                        // a and b across a cell the other way: (1, -1) or (-1, 1) apart
+                        var step = cells[b] - cells[a];
+                        if (!(math.all(math.abs(step) == 1) && step.x != step.y))
+                            continue;
+                        var u = FindEdge(b, a, out var d);
+                        if (u < 0 || math.any(cells[d] == none))
+                            continue;
+                        // c and d are the cell's lowest corner and the one across from it
+                        var lowest = math.min(cells[a], cells[b]);
+                        if (!(math.all(cells[c] == lowest) && math.all(cells[d] == lowest + 1)) &&
+                            !(math.all(cells[d] == lowest) && math.all(cells[c] == lowest + 1)))
+                            continue;
+                        // (a, b, c) and (b, a, d) become (c, a, d) and (d, b, c)
+                        SetTriangle(t, c, a, d);
+                        SetTriangle(u, d, b, c);
+                        break;
+                    }
                 }
             }
 
