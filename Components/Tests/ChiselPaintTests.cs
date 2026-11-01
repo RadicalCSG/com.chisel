@@ -393,6 +393,62 @@ namespace Chisel.Components.Tests
             Assert.That(box.SurfacePaint.Count, Is.EqualTo(1));
         }
 
+        // Halving the spacing keeps every painted point a point, and doubling it again keeps only those: the paint comes back
+        // exactly as it was
+        [Test]
+        public void HalvingThenDoublingThePaintSpacing_GivesBackThePaint()
+        {
+            var model = Model();
+            var box   = Box(model, Vector3.zero);
+            var top   = SurfaceFacing(box, new float3(0, 1, 0));
+            var paint = ChiselPaintBrush.PaintFor(box, top, ChiselPaintMode.Color("Color"));
+            box.SurfaceDefinition.surfaces[top].paintSpacing = paint.spacing;
+            var random = new Unity.Mathematics.Random(146);
+            for (int j = 0; j < paint.resolution.y; j++)
+            {
+                for (int i = 0; i < paint.resolution.x; i++)
+                    paint[i, j] = random.NextFloat4();
+            }
+            box.SetSurfacePaint(paint);
+
+            box.SurfaceDefinition.surfaces[top].paintSpacing = paint.spacing * 0.5f;
+            Assert.That(ChiselPaintBrush.Respace(box), Is.True, "halved");
+            var halved = box.GetSurfacePaint(top, ChiselPaintAttribute.Color);
+            Assert.That(halved.resolution, Is.EqualTo(paint.resolution * 2 - Vector2Int.one), "every old point and one between each two");
+
+            box.SurfaceDefinition.surfaces[top].paintSpacing = paint.spacing;
+            Assert.That(ChiselPaintBrush.Respace(box), Is.True, "doubled");
+            var doubled = box.GetSurfacePaint(top, ChiselPaintAttribute.Color);
+            Assert.That(doubled.resolution, Is.EqualTo(paint.resolution));
+            for (int j = 0; j < paint.resolution.y; j++)
+            {
+                for (int i = 0; i < paint.resolution.x; i++)
+                {
+                    Assert.That(halved[i * 2, j * 2], Is.EqualTo(paint[i, j]), $"halved, point {i * 2}, {j * 2}");
+                    Assert.That(doubled[i, j], Is.EqualTo(paint[i, j]), $"doubled back, point {i}, {j}");
+                }
+            }
+        }
+
+        // A surface too big for a grid of its spacing gets one of twice, four times... the spacing, so it still lines up
+        // with it, and halving and doubling keep working
+        [Test]
+        public void AGridTooBigForItsSpacing_GrowsByDoubling()
+        {
+            var model = Model();
+            var box   = Box(model, Vector3.zero);
+            box.Min = new float3(-50, 0, -50);
+            box.Max = new float3(50, 1, 50);
+            Update();
+            var top   = SurfaceFacing(box, new float3(0, 1, 0));
+            var paint = ChiselPaintBrush.PaintFor(box, top, ChiselPaintMode.Color("Color"));
+            Assert.That(paint.resolution.x * paint.resolution.y, Is.LessThanOrEqualTo(ChiselPaintBrush.kMaxGridPoints));
+            var times = paint.cellU.magnitude / paint.spacing;
+            Assert.That(times, Is.GreaterThan(1), "the grid at the spacing has too many points");
+            Assert.That(Mathf.Abs(Mathf.Log(times, 2) - Mathf.Round(Mathf.Log(times, 2))), Is.LessThan(1e-4f),
+                        $"the cells are {times} times the spacing, not a power of two");
+        }
+
         // A fill sets the whole surface, wherever it is clicked and whatever the brush's radius
         [Test]
         public void AFill_SetsTheWholeSurface()

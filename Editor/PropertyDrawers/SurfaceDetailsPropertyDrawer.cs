@@ -24,13 +24,25 @@ namespace Chisel.Editors
             return material && ChiselPaintProfiles.Find(material.shader) != null;
         }
 
-        // A paint spacing field; 0 (not set) shows the default
+        static readonly GUIContent kHalveSpacingContents  = new("/2", "Twice as many points: every point painted now keeps its paint");
+        static readonly GUIContent kDoubleSpacingContents = new("x2", "Half as many points: the ones kept keep their paint");
+        const float kSpacingButtonWidth = 26;
+
+        // A paint spacing field; 0 (not set) shows the default. Halving or doubling it keeps the points that stay exactly.
         public static void PaintSpacingField(Rect position, SerializedProperty spacingProp, GUIContent label)
         {
             EditorGUI.BeginProperty(position, label, spacingProp);
             EditorGUI.showMixedValue = spacingProp.hasMultipleDifferentValues;
             EditorGUI.BeginChangeCheck();
-            var spacing = EditorGUI.FloatField(position, label, spacingProp.floatValue > 0 ? spacingProp.floatValue : ChiselSurface.kDefaultPaintSpacing);
+            var current    = spacingProp.floatValue > 0 ? spacingProp.floatValue : ChiselSurface.kDefaultPaintSpacing;
+            var fieldRect  = new Rect(position.x, position.y, position.width - 2 * kSpacingButtonWidth, position.height);
+            var halveRect  = new Rect(fieldRect.xMax, position.y, kSpacingButtonWidth, position.height);
+            var doubleRect = new Rect(halveRect.xMax, position.y, kSpacingButtonWidth, position.height);
+            var spacing = EditorGUI.FloatField(fieldRect, label, current);
+            if (GUI.Button(halveRect, kHalveSpacingContents, EditorStyles.miniButtonLeft))
+                spacing = current * 0.5f;
+            if (GUI.Button(doubleRect, kDoubleSpacingContents, EditorStyles.miniButtonRight))
+                spacing = current * 2;
             if (EditorGUI.EndChangeCheck())
                 spacingProp.floatValue = Mathf.Max(0.01f, spacing);
             EditorGUI.showMixedValue = false;

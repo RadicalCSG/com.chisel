@@ -113,7 +113,7 @@ namespace Chisel.Components
                 resolution = new Vector2Int(Mathf.CeilToInt(size.x / cellSize) + 1, Mathf.CeilToInt(size.y / cellSize) + 1);
                 if (resolution.x * resolution.y <= kMaxGridPoints)
                     break;
-                cellSize *= 1.25f;
+                cellSize *= 2;
             }
             var planePoint = s_Corners[0];
             var origin = planePoint + (min.x - Vector3.Dot(planePoint, axisU)) * axisU + (min.y - Vector3.Dot(planePoint, axisV)) * axisV;
@@ -247,7 +247,7 @@ namespace Chisel.Components
             // grow the cells until the grid fits
             while (resolution.x * resolution.y > kMaxGridPoints && scale < 1e3f)
             {
-                scale *= 1.25f;
+                scale *= 2;
                 var size = new Vector2((resolution.x - 1) * paint.cellU.magnitude, (resolution.y - 1) * paint.cellV.magnitude);
                 cellU = paint.cellU * scale;
                 cellV = paint.cellV * scale;
