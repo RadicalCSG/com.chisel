@@ -17,11 +17,8 @@ namespace Chisel.Editors
     sealed class ChiselSurfaceShapeTool : EditorTool
     {
         static GUIContent s_ToolbarIcon;
-        public override GUIContent toolbarIcon => s_ToolbarIcon ??= new GUIContent("Surface Shape",
+        public override GUIContent toolbarIcon => s_ToolbarIcon ??= new GUIContent(ChiselEditorResources.LoadIconImages("free_draw")?[0],
                                                                                    "Chisel Surface Shape Tool: draw a shape on a surface, a region of it with its own material");
-
-        [MenuItem("Tools/Chisel/Surface Shape")]
-        static void Activate() => ToolManager.SetActiveTool<ChiselSurfaceShapeTool>();
 
         struct Hit
         {
