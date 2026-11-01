@@ -17,6 +17,15 @@ namespace Chisel.Core
         [HideInInspector]
         public BrushMesh        brushOutline;
 
+        // A brush added as a component is a cube, from (0, 0, 0) to (1, 1, 1) like a new box, until it is given another
+        // shape; only Reset gives it, so a brush saved before it had planes keeps its outline
+        static float4[] DefaultPlanes() => new[]
+        {
+            new float4(-1, 0, 0, 0), new float4(1, 0, 0, -1),
+            new float4(0, -1, 0, 0), new float4(0, 1, 0, -1),
+            new float4(0, 0, -1, 0), new float4(0, 0, 1, -1)
+        };
+
         [HideInInspector]
         public float4[]         inputPlanes;
         // the planes the outline was derived from: a changed or newly given brush derives it again, an unchanged one not
@@ -83,7 +92,8 @@ namespace Chisel.Core
         {
 			ResetValidState();
             brushOutline = null;
-            inputPlanes = null;
+            inputPlanes = DefaultPlanes();
+            derivedFromHash = 0;
 		}
 
         public bool EnsurePlanarPolygons()

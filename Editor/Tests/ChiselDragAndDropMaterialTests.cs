@@ -44,7 +44,7 @@ namespace Chisel.Editors.Tests
 
         static readonly System.Type[] kGenerators =
         {
-            typeof(ChiselBoxComponent), typeof(ChiselCapsuleComponent), typeof(ChiselCylinderComponent),
+            typeof(ChiselBoxComponent), typeof(ChiselBrushComponent), typeof(ChiselCapsuleComponent), typeof(ChiselCylinderComponent),
             typeof(ChiselExtrudedShapeComponent), typeof(ChiselHemisphereComponent), typeof(ChiselLinearStairsComponent),
             typeof(ChiselPathedStairsComponent), typeof(ChiselRevolvedShapeComponent), typeof(ChiselSphereComponent),
             typeof(ChiselSpiralStairsComponent), typeof(ChiselStadiumComponent), typeof(ChiselTorusComponent)
