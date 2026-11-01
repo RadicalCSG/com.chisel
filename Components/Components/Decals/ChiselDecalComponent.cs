@@ -67,6 +67,8 @@ namespace Chisel.Components
         [SerializeField] int imageTile = 0;
         [SerializeField] Vector2 repeat = Vector2.one;
         [SerializeField] List<Vector2> polygon = new();
+        // per corner of the polygon: the edge of its surface it is held on, if any
+        [SerializeField] List<ChiselDecalCornerAnchor> anchors = new();
 
         // Per pair of targets, the edge a trim decal lies on: the edge's number along the first surface's outline, times
         // two, plus one when it is the second surface's; -1 (or missing) to find it from where the decal is
@@ -95,7 +97,27 @@ namespace Chisel.Components
             polygon.Clear();
             if (points != null)
                 polygon.AddRange(points);
+            AnchorCorners();
             ChiselDecalManager.SetDirty();
+        }
+
+        /// <summary>The edge of its surface a polygon decal's corner is held on (see <see cref="ChiselSurfaceShapes"/>)</summary>
+        public ChiselDecalCornerAnchor AnchorOf(int corner)
+        {
+            return corner >= 0 && corner < anchors.Count ? anchors[corner] : ChiselDecalCornerAnchor.None;
+        }
+
+        // Every corner that lies on an edge of its surface is held on it; the others are held nowhere
+        void AnchorCorners()
+        {
+            anchors.Clear();
+            var plane = default(Plane);
+            var outline = new List<Vector3>();
+            var onSurface = targets.Count > 0 && targets[0].brush != null &&
+                            ChiselSurfaceShapes.SurfaceOutline(targets[0].brush, targets[0].surfaceIndex, outline, out plane);
+            foreach (var corner in polygon)
+                anchors.Add(onSurface ? ChiselSurfaceShapes.AnchorOf(outline, plane.ClosestPointOnPlane(transform.TransformPoint(corner)))
+                                      : ChiselDecalCornerAnchor.None);
         }
 
         /// <summary>
@@ -112,15 +134,18 @@ namespace Chisel.Components
             if (brush == null)
                 return null;
 
-            // the extruded shape's outline lies in its XZ plane and is extruded along its Y: the surface's normal
-            var normal   = -transform.forward;
-            var frame    = Matrix4x4.TRS(transform.position, Quaternion.LookRotation(transform.up, normal), Vector3.one);
+            // where its surface has it now; the extruded shape's outline lies in its XZ plane and is extruded along its Y:
+            // the surface's normal
+            var corners  = new List<Vector2>(polygon.Count);
+            ChiselSurfaceShapes.Resolve(this, out var onSurface, corners);
+            var normal   = -onSurface.GetColumn(2).normalized;
+            var frame    = Matrix4x4.TRS(onSurface.GetColumn(3), Quaternion.LookRotation(onSurface.GetColumn(1), normal), Vector3.one);
             var toFrame  = frame.inverse;
-            var points   = new CurveControlPoint2D[polygon.Count];
+            var points   = new CurveControlPoint2D[corners.Count];
             var twiceArea = 0.0f;
-            for (int i = 0; i < polygon.Count; i++)
+            for (int i = 0; i < corners.Count; i++)
             {
-                var local = toFrame.MultiplyPoint3x4(transform.TransformPoint(polygon[i]));
+                var local = toFrame.MultiplyPoint3x4(onSurface.MultiplyPoint3x4(corners[i]));
                 points[i] = new CurveControlPoint2D(local.x, local.z);
             }
             for (int i = 0; i < points.Length; i++)
@@ -207,6 +232,7 @@ namespace Chisel.Components
             var toDecal = gameObject.transform.worldToLocalMatrix;
             foreach (var point in outline)
                 decal.polygon.Add(toDecal.MultiplyPoint3x4(point));
+            decal.AnchorCorners();
             ChiselDecalManager.SetDirty();
             return decal;
         }
@@ -455,12 +481,15 @@ namespace Chisel.Components
                 DrawPolygon();
         }
 
+        // where its surface has it now
         void DrawPolygon()
         {
+            var corners = new List<Vector2>(polygon.Count);
+            ChiselSurfaceShapes.Resolve(this, out var frame, corners);
             Gizmos.color  = kGizmoColor;
-            Gizmos.matrix = transform.localToWorldMatrix;
-            for (int i = 0; i < polygon.Count; i++)
-                Gizmos.DrawLine(polygon[i], polygon[(i + 1) % polygon.Count]);
+            Gizmos.matrix = frame;
+            for (int i = 0; i < corners.Count; i++)
+                Gizmos.DrawLine(corners[i], corners[(i + 1) % corners.Count]);
             Gizmos.matrix = Matrix4x4.identity;
         }
 
