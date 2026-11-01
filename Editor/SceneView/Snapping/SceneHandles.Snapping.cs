@@ -375,49 +375,47 @@ namespace Chisel.Editors
         {
             get
             {
-                return Grid.DefaultGrid.Spacing;
+                return UnityEditor.EditorSnapSettings.gridSize;
             }
             set
             {
-                if (Grid.DefaultGrid.Spacing == value)
+                if (UnityEditor.EditorSnapSettings.gridSize == value)
                     return;
-                Grid.DefaultGrid.Spacing = value;
+                UnityEditor.EditorSnapSettings.gridSize = value;
 				SnappingSettingsModified?.Invoke();
 			}
         }
         #endregion
-        
+
         #region RotateSnappingStep
-        private static float	s_RotateSnappingStep = 15.0f;
         public static float		RotateSnappingStep
         {
             get
             {
-                return s_RotateSnappingStep;
+                return UnityEditor.EditorSnapSettings.rotate;
             }
             set
             {
-                if (s_RotateSnappingStep == value)
+                if (UnityEditor.EditorSnapSettings.rotate == value)
                     return;
-                s_RotateSnappingStep = value;
+                UnityEditor.EditorSnapSettings.rotate = value;
 				SnappingSettingsModified?.Invoke();
 			}
         }
         #endregion
-        
+
         #region ScaleSnappingStep
-        private static float	s_ScaleSnappingStep = 0.1f;
         public static float		ScaleSnappingStep
         {
             get
             {
-                return s_ScaleSnappingStep;
+                return UnityEditor.EditorSnapSettings.scale;
             }
             set
             {
-                if (s_ScaleSnappingStep == value)
+                if (UnityEditor.EditorSnapSettings.scale == value)
                     return;
-                s_ScaleSnappingStep = value;
+                UnityEditor.EditorSnapSettings.scale = value;
 				SnappingSettingsModified?.Invoke();
 			}
         }

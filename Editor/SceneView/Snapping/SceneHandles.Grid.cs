@@ -133,7 +133,15 @@ namespace Chisel.Editors
 
         public bool Hide { get; internal set; }
 
-        Vector3 spacing = Vector3.one;
+        Vector3 m_Spacing = Vector3.one;
+
+        // The default grid snaps at the size of Unity's grid
+        Vector3 spacing
+        {
+            get { return this == s_DefaultGrid ? Snapping.MoveSnappingSteps : m_Spacing; }
+            set { if (this == s_DefaultGrid) Snapping.MoveSnappingSteps = value; else m_Spacing = value; }
+        }
+
         public Vector3 Spacing
         {
             get
@@ -142,16 +150,12 @@ namespace Chisel.Editors
             }
             set
             {
-                var spacingX = UnityEngine.Mathf.Max(kMinSpacing, value.x);
-                var spacingY = UnityEngine.Mathf.Max(kMinSpacing, value.y);
-                var spacingZ = UnityEngine.Mathf.Max(kMinSpacing, value.z);
-                if (spacing.x == spacingX && 
-                    spacing.y == spacingY && 
-                    spacing.z == spacingZ)
+                var newSpacing = new Vector3(UnityEngine.Mathf.Max(kMinSpacing, value.x),
+                                             UnityEngine.Mathf.Max(kMinSpacing, value.y),
+                                             UnityEngine.Mathf.Max(kMinSpacing, value.z));
+                if (spacing == newSpacing)
                     return;
-                spacing.x = spacingX;
-                spacing.y = spacingY;
-                spacing.z = spacingZ;
+                spacing = newSpacing;
                 if (this == ActiveGrid)
                     GridModified?.Invoke();
             }
@@ -159,41 +163,17 @@ namespace Chisel.Editors
         public float SpacingX
         {
             get { return spacing.x; }
-            set
-            {
-                var spacingX = UnityEngine.Mathf.Max(kMinSpacing, value); ;
-                if (spacing.x == spacingX)
-                    return;
-                spacing.x = spacingX;
-                if (this == ActiveGrid)
-                    GridModified?.Invoke();
-            }
+            set { var newSpacing = spacing; newSpacing.x = value; Spacing = newSpacing; }
         }
         public float SpacingY
         {
             get { return spacing.y; }
-            set
-            {
-                var spacingY = UnityEngine.Mathf.Max(kMinSpacing, value);
-                if (spacing.y == spacingY)
-                    return;
-                spacing.y = spacingY;
-                if (this == ActiveGrid)
-                    GridModified?.Invoke();
-            }
+            set { var newSpacing = spacing; newSpacing.y = value; Spacing = newSpacing; }
         }
         public float SpacingZ
         {
             get { return spacing.z; }
-            set
-            {
-                var spacingZ = UnityEngine.Mathf.Max(kMinSpacing, value);
-                if (spacing.z == spacingZ)
-                    return;
-                spacing.z = spacingZ;
-                if (this == ActiveGrid)
-                    GridModified?.Invoke();
-            }
+            set { var newSpacing = spacing; newSpacing.z = value; Spacing = newSpacing; }
         }
 
         Matrix4x4 gridToWorldSpace = Matrix4x4.identity;
