@@ -816,6 +816,11 @@ namespace Chisel.Core
                 var changed = mesh.MergeEqualVertices();
                 mesh.Connect();
                 changed |= mesh.RemoveInteriorVertices();
+                if (mesh.RemoveSeamVertices())
+                {
+                    changed = true;
+                    mesh.RemoveInteriorVertices();
+                }
                 if (cut || changed)
                     changed |= mesh.FlipThinTriangles();
                 if (changed)
@@ -1042,6 +1047,151 @@ namespace Chisel.Core
                         for (int i = 0; i < filled.Length; i++)
                             AddTriangle(filled[i]);
                         removed[v] = true;
+                        passChanged = true;
+                    }
+                    changed |= passChanged;
+                    if (!passChanged)
+                        break;
+                }
+                return changed;
+            }
+
+            // The triangles around a vertex on an edge of the mesh, and the vertices around it in order from the one its
+            // open edge goes out to (first) to the one its other open edge comes in from (last)
+            readonly bool OpenFanOf(int v, NativeList<int> fan, NativeList<int> ring)
+            {
+                fan.Clear();
+                ring.Clear();
+                var t = cornerOf[v];
+                if (t < 0 || !alive[t] || !math.any(triangles[t] == v))
+                    return false;
+                // back to the triangle whose edge out of v has nothing across it
+                for (int steps = 0; ; steps++)
+                {
+                    if (steps > kMaxFan)
+                        return false;
+                    var corner = Starting(triangles[t], v);
+                    if (!edgeOf.TryGetValue(new int2(corner.y, v), out var before))
+                        break;
+                    t = before;
+                }
+                var start = Starting(triangles[t], v);
+                fan.Add(t);
+                ring.Add(start.y);
+                var next = start.z;
+                while (true)
+                {
+                    if (ring.Length > kMaxFan)
+                        return false;
+                    ring.Add(next);
+                    if (!edgeOf.TryGetValue(new int2(v, next), out var across))
+                        return true;
+                    if (across == fan[0])
+                        return false;
+                    fan.Add(across);
+                    next = Starting(triangles[across], v).z;
+                }
+            }
+
+            // Whether v lies on the straight line from a to b, between them
+            readonly bool Between(int a, int v, int b)
+            {
+                var from = collider[a]; var to = collider[b]; var at = collider[v];
+                var line = to - from;
+                var lengthSq = math.lengthsq(line);
+                if (!(lengthSq > 1e-12f))
+                    return false;
+                var t = math.dot(at - from, line) / lengthSq;
+                if (!(t > 0 && t < 1))
+                    return false;
+                return math.length(from + line * t - at) <= kPlaneDistance;
+            }
+
+            // A vertex on a seam inside the surface (where its attributes jump, as on a hotspot section line) is taken out
+            // where, on every side of the seam, it lies on a straight line and everything interpolates: all of its copies at
+            // once, so the seam stays closed. The copies' open edges must meet each other, or it is on the surface's outline.
+            public bool RemoveSeamVertices()
+            {
+                var changed = false;
+                using var byPosition = new NativeParallelMultiHashMap<float3, int>(render.Length, Allocator.Temp);
+                for (int v = 0; v < render.Length; v++)
+                {
+                    if (sameAs[v] == v)
+                        byPosition.Add(collider[v], v);
+                }
+                using var copies = new NativeList<int>(4, Allocator.Temp);
+                using var fan    = new NativeList<int>(16, Allocator.Temp);
+                using var ring   = new NativeList<int>(16, Allocator.Temp);
+                using var points = new NativeList<int>(16, Allocator.Temp);
+                using var flat   = new NativeList<float2>(16, Allocator.Temp);
+                using var filled = new NativeList<int3>(16, Allocator.Temp);
+                using var fans   = new NativeList<int>(32, Allocator.Temp);
+                using var fills  = new NativeList<int3>(32, Allocator.Temp);
+                using var ends   = new NativeList<int2>(4, Allocator.Temp);
+                NativeArray<bool> done;
+                using var _done = done = new NativeArray<bool>(render.Length, Allocator.Temp);
+                for (int pass = 0; pass < 4; pass++)
+                {
+                    var passChanged = false;
+                    for (int v = 0; v < render.Length; v++)
+                    {
+                        if (done[v] || locked[v] || sameAs[v] != v)
+                            continue;
+                        copies.Clear();
+                        if (byPosition.TryGetFirstValue(collider[v], out var copy, out var iterator))
+                        {
+                            do { copies.Add(copy); } while (byPosition.TryGetNextValue(out copy, ref iterator));
+                        }
+                        if (copies.Length < 2)
+                            continue;
+
+                        fans.Clear();
+                        fills.Clear();
+                        ends.Clear();
+                        var removable = true;
+                        for (int c = 0; c < copies.Length && removable; c++)
+                        {
+                            var at = copies[c];
+                            removable = !done[at] && !locked[at] && OpenFanOf(at, fan, ring) && ring.Length >= 3 && !HasRepeats(ring) &&
+                                        Between(ring[0], at, ring[ring.Length - 1]);
+                            if (!removable)
+                                break;
+                            points.Clear();
+                            points.AddRange(ring.AsArray());
+                            points.Add(at);
+                            removable = Interpolates(fan, points, out var frame);
+                            if (!removable)
+                                break;
+                            flat.Clear();
+                            for (int i = 0; i < ring.Length; i++)
+                                flat.Add(frame.ToPlane(collider[ring[i]]));
+                            removable = Fill(ring, flat, filled);
+                            if (!removable)
+                                break;
+                            fans.AddRange(fan.AsArray());
+                            fills.AddRange(filled.AsArray());
+                            ends.Add(new int2(ring[0], ring[ring.Length - 1]));
+                        }
+                        if (!removable)
+                            continue;
+
+                        // each copy's open edge out ends where another's open edge in starts
+                        for (int c = 0; c < ends.Length && removable; c++)
+                        {
+                            var meets = false;
+                            for (int o = 0; o < ends.Length && !meets; o++)
+                                meets = o != c && math.all(collider[ends[c].x] == collider[ends[o].y]);
+                            removable = meets;
+                        }
+                        if (!removable)
+                            continue;
+
+                        for (int i = 0; i < fans.Length; i++)
+                            RemoveTriangle(fans[i]);
+                        for (int i = 0; i < fills.Length; i++)
+                            AddTriangle(fills[i]);
+                        for (int c = 0; c < copies.Length; c++)
+                            done[copies[c]] = true;
                         passChanged = true;
                     }
                     changed |= passChanged;

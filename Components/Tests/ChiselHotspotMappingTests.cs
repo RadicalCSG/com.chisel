@@ -1285,6 +1285,78 @@ namespace Chisel.Components.Tests
             return count;
         }
 
+        // How many drawn triangles face this way with their middle at x beyond minX
+        static int TrianglesFacingBeyond(ChiselModelComponent model, float3 normal, float minX)
+        {
+            return TrianglesFacingBeyond(model, normal, minX, null);
+        }
+
+        static int TrianglesFacingBeyond(ChiselModelComponent model, float3 normal, float minX, System.Text.StringBuilder list)
+        {
+            var count = 0;
+            foreach (var renderable in model.generated.renderables)
+            {
+                if (renderable == null || renderable.sharedMesh == null)
+                    continue;
+                var mesh = renderable.sharedMesh;
+                var normals = mesh.normals;
+                var vertices = mesh.vertices;
+                for (int sub = 0; sub < mesh.subMeshCount; sub++)
+                {
+                    var triangles = mesh.GetTriangles(sub);
+                    for (int i = 0; i + 2 < triangles.Length; i += 3)
+                    {
+                        var middle = (vertices[triangles[i]] + vertices[triangles[i + 1]] + vertices[triangles[i + 2]]) / 3;
+                        if (math.dot((float3)normals[triangles[i]], normal) > 0.999f && middle.x > minX)
+                        {
+                            count++;
+                            list?.Append($"{vertices[triangles[i]]:F3} {vertices[triangles[i + 1]]:F3} {vertices[triangles[i + 2]]:F3}\n");
+                        }
+                    }
+                }
+            }
+            return count;
+        }
+
+        // An opaque decal at one end of a wall, across two of its brushes, leaves the wall's other end as it was
+        [Test]
+        public void OpaqueDecal_LeavesTheWallFarFromItAsItWas([Values(false, true)] bool polygon)
+        {
+            var b1 = layout.tiles[2];
+            b1.border = 32;
+            layout.tiles[2] = b1;
+            var model = Model();
+            // a long wall, its front repeated panels
+            var wall = Box(model, new float3(-20, 0, -0.125f), new float3(20, 3, 0.125f));
+            Update();
+            var beforeList = new System.Text.StringBuilder();
+            var before = TrianglesFacingBeyond(model, kFront, 10, beforeList);
+            Assert.That(before, Is.GreaterThan(0));
+
+            var decalMaterial = new Material(ChiselProjectSettings.DefaultWallMaterial);
+            var front = FrontOf(wall);
+            if (polygon)
+            {
+                var outline = new[] { new Vector3(-0.5f, 0.7f, -0.125f), new Vector3(1.3f, 0.7f, -0.125f), new Vector3(1.3f, 2.1f, -0.125f), new Vector3(-0.5f, 2.1f, -0.125f) };
+                ChiselDecalComponent.CreateOnSurface(wall, front.descriptionIndex, decalMaterial, Vector3.back, outline);
+            } else
+            {
+                var go = new GameObject("Decal");
+                go.transform.SetParent(model.transform, false);
+                go.transform.SetPositionAndRotation(new Vector3(0.4f, 1.4f, -0.125f), Quaternion.LookRotation(Vector3.forward, Vector3.up));
+                var decal = go.AddComponent<ChiselDecalComponent>();
+                decal.Material    = decalMaterial;
+                decal.Size        = new Vector3(1.8f, 1.4f, 0.1f);
+                decal.Transparent = false;
+            }
+            Update();
+
+            var afterList = new System.Text.StringBuilder();
+            Assert.That(TrianglesFacingBeyond(model, kFront, 10, afterList), Is.EqualTo(before),
+                        "the panels far from the decal are drawn with as many triangles\nbefore:\n" + beforeList + "after:\n" + afterList);
+            Object.DestroyImmediate(decalMaterial);
+        }
+
         [Test]
         public void AWallWhoseCutWouldDrawMoreThanItsBudget_IsDrawnUncut()
         {
