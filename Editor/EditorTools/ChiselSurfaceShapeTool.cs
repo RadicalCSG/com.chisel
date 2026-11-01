@@ -101,17 +101,18 @@ namespace Chisel.Editors
                 var surface = s_Surface;
                 Reset();
                 if (surface.valid)
-                    Create(surface, outline);
+                    Create(surface.brush, surface.surfaceIndex, surface.material, surface.normal, outline);
                 GUIUtility.ExitGUI();
             }
         }
 
-        static void Create(Hit surface, List<Vector3> outline)
+        internal static ChiselDecalComponent Create(ChiselNodeComponent brush, int surfaceIndex, Material material, Vector3 normal, List<Vector3> outline)
         {
-            var decal = ChiselDecalComponent.CreateOnSurface(surface.brush, surface.surfaceIndex, surface.material, surface.normal, outline);
+            var decal = ChiselDecalComponent.CreateOnSurface(brush, surfaceIndex, material, normal, outline);
             if (decal == null)
-                return;
+                return null;
             Undo.RegisterCreatedObjectUndo(decal.gameObject, "Draw Surface Shape");
+            return decal;
         }
     }
 }
