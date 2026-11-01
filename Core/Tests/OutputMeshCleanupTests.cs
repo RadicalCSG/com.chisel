@@ -122,6 +122,27 @@ namespace Chisel.Core.Tests
 
         static float Cross(float2 a, float2 b) => a.x * b.y - a.y * b.x;
 
+        // A square's two diagonals are as good as each other: which one it gets must not depend on the order its triangles
+        // came in, or a surface's squares flip back and forth as the cuts around them change
+        [Test]
+        public void RemovedVertex_IsFilledTheSameWay_WhateverOrderItsTrianglesCameIn()
+        {
+            bool? diagonalAC = null;
+            for (int start = 0; start < 4; start++)
+            {
+                var corners = new float3[kFan.Length];
+                for (int i = 0; i < kFan.Length; i++)
+                    corners[i] = kFan[(i + start * 3) % kFan.Length];
+                using var surface = new Surface(corners);
+                Assert.That(surface.Clean(), Is.True);
+                Assert.That(surface.TriangleCount, Is.EqualTo(2));
+                var ac = surface.HasEdge(A, C);
+                Assert.That(ac || surface.HasEdge(B, D), Is.True);
+                diagonalAC ??= ac;
+                Assert.That(ac, Is.EqualTo(diagonalAC.Value), $"starting at triangle {start}");
+            }
+        }
+
         // Every attribute at every point of the square what it was
         static void AssertLooksTheSame(Surface before, Surface after, float2 min, float2 max)
         {

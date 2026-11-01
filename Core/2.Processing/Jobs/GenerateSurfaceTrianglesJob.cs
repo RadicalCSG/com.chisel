@@ -209,6 +209,17 @@ namespace Chisel.Core
 					onSurface.Dispose();
 					onSurfaceIndices.Dispose();
 				}
+				if (decalCut)
+				{
+					// what is left of the surface, with its attributes before the decals next to it are cleaned against it
+					var remaining = decalBuilder.surface;
+					surfaceCorners.ApplyNormals(remaining.renderVertices);
+					MeshAlgorithms.ComputeUVs(remaining.renderVertices, uvMat);
+					if (cornerUVs)
+						surfaceCorners.ApplyUVs(remaining.renderVertices);
+					MeshAlgorithms.ComputeTangents(remaining.renderVertices, finalFaceNormal, uvMat);
+					MeshAlgorithms.ComputeLightmapCoordinates(remaining.renderVertices, finalFaceNormal);
+				}
 				for (int k = 0; k < candidateCount; k++)
 				{
 					var decalOutput = decalBuilder.decals[k];
@@ -228,6 +239,13 @@ namespace Chisel.Core
 					}
 					MeshAlgorithms.ComputeTangents(decalOutput.indices, decalOutput.renderVertices);
 					MeshAlgorithms.ComputeLightmapCoordinates(decalOutput.renderVertices, finalFaceNormal);
+					// where the surface's triangles crossed the decal's outline, both have corners that change nothing
+					if (decalCut && !volume.IsTransparent)
+					{
+						var remaining = decalBuilder.surface;
+						OutputMeshCleanup.CleanSharedOutline(decalOutput.indices, decalOutput.colliderVertices, decalOutput.selectVertices, decalOutput.renderVertices,
+															 remaining.indices, remaining.colliderVertices, remaining.selectVertices, remaining.renderVertices);
+					}
 					var slot = baseSurfaceCount + candidateStart + k;
 					surfaceBuffers[slot].Construct(builder, decalOutput.indices, decalOutput.colliderVertices,
 												   decalOutput.selectVertices, decalOutput.renderVertices,
@@ -245,12 +263,6 @@ namespace Chisel.Core
 			{
 				// An opaque decal took part of this surface: the rest of it is drawn instead
 				var remaining = decalBuilder.surface;
-				surfaceCorners.ApplyNormals(remaining.renderVertices);
-				MeshAlgorithms.ComputeUVs(remaining.renderVertices, uvMat);
-				if (cornerUVs)
-					surfaceCorners.ApplyUVs(remaining.renderVertices);
-				MeshAlgorithms.ComputeTangents(remaining.renderVertices, finalFaceNormal, uvMat);
-				MeshAlgorithms.ComputeLightmapCoordinates(remaining.renderVertices, finalFaceNormal);
 				buf.Construct(builder, remaining.indices, remaining.colliderVertices,
 							  remaining.selectVertices, remaining.renderVertices,
 							  surf, surf, flags & ~SurfaceDestinationFlags.Collidable, parms, outputFlags);

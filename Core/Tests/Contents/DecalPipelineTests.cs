@@ -292,6 +292,41 @@ namespace Chisel.Core.Tests
             }
         }
 
+        static bool IsOutlineCorner(float2[] outline, float2 point)
+        {
+            foreach (var corner in outline)
+            {
+                if (math.distance(corner, point) < 1e-4f)
+                    return true;
+            }
+            return false;
+        }
+
+        // Where the floor's triangles crossed the outline, neither the decal nor the floor round it keeps a corner: only
+        // the outline's own corners are left on it
+        [Test]
+        public void OpaquePolygonDecal_KeepsOnlyItsOwnCornersOnItsOutline()
+        {
+            var scene = new ContentsScene().Add(Box("floor", new float3(-2, -1, -2), new float3(2, 0, 2)));
+            using var harness = BuildWithPolygon(scene, kLShape, transparent: false, surfaceUVs: false);
+
+            var decalTriangles = 0;
+            foreach (var triangle in harness.Triangles)
+            {
+                if (triangle.Normal.y < 0.99f || math.abs(triangle.a.y) > 0.01f)
+                    continue;
+                if (triangle.material == kDecalMaterial)
+                    decalTriangles++;
+                foreach (var corner in new[] { triangle.a.xz, triangle.b.xz, triangle.c.xz })
+                {
+                    if (OnOutline(kLShape, corner))
+                        Assert.That(IsOutlineCorner(kLShape, corner), Is.True,
+                                    $"a corner at {corner} on the outline ({(triangle.material == kDecalMaterial ? "decal" : "floor")})");
+                }
+            }
+            Assert.That(decalTriangles, Is.EqualTo(kLShape.Length - 2), "a triangle for each of its corners, less two");
+        }
+
         // One decal, so the mesh cleanup takes out every corner the cuts made inside the outline
         [Test]
         public void PolygonDecal_HasNoCornersInsideItsOutline([Values(false, true)] bool transparent)
