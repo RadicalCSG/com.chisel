@@ -168,5 +168,30 @@ namespace Chisel.Core.Tests
 			SetDecals(harness.Tree, Decal(1, new float3(1, 1.5f, 0)));
 			Assert.That(HashOf(harness), Is.Not.EqualTo(before));
 		}
+
+		static void SetPolygonDecal(CSGTree tree, float2[] outline, bool surfaceUVs)
+		{
+			var decal = Decal(1, new float3(1, 1, 0));
+			decal.settings.projection = ChiselDecalProjection.Polygon;
+			decal.settings.surfaceUVs = surfaceUVs;
+			decal.outlineCount        = outline.Length;
+			using var decals   = new NativeArray<ChiselDecalInstance>(new[] { decal }, Allocator.Temp);
+			using var outlines = new NativeArray<float2>(outline, Allocator.Temp);
+			tree.SetDecals(decals, default, outlines);
+		}
+
+		[Test]
+		public void ChangingADecalsOutlineOrSurfaceUVs_ChangesTheHash([Values(false, true)] bool changeOutline)
+		{
+			var triangle = new[] { new float2(0, 0), new float2(1, 0), new float2(0, 1) };
+			using var harness = ContentsTreeHarness.Build(TwoBoxes());
+			SetPolygonDecal(harness.Tree, triangle, false);
+			var before = HashOf(harness);
+			if (changeOutline)
+				SetPolygonDecal(harness.Tree, new[] { new float2(0, 0), new float2(1, 0), new float2(0, 2) }, false);
+			else
+				SetPolygonDecal(harness.Tree, triangle, true);
+			Assert.That(HashOf(harness), Is.Not.EqualTo(before));
+		}
 	}
 }

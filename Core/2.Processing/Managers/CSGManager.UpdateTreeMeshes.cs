@@ -290,6 +290,7 @@ namespace Chisel.Core
                 // Decals (ChiselDecalStore): this update's copy of the tree's decals, and where they changed
                 public NativeArray<DecalVolume>             decalVolumes;
                 public NativeArray<ChiselDecalTarget>       decalTargets;
+                public NativeArray<DecalPlanes>             decalParts;
                 public NativeArray<MinMaxAABB>              changedDecalBounds;
 
                 // Hotspot layouts (ChiselHotspotStore), as they are this update
@@ -551,6 +552,7 @@ namespace Chisel.Core
                 // The decals, and where they changed since the last update. The next update starts from here.
                 Temporaries.decalVolumes                    = new NativeArray<DecalVolume>(chiselLookupValues.decalVolumes.AsArray(), defaultAllocator);
                 Temporaries.decalTargets                    = new NativeArray<ChiselDecalTarget>(chiselLookupValues.decalVolumeTargets.AsArray(), defaultAllocator);
+                Temporaries.decalParts                      = new NativeArray<DecalPlanes>(chiselLookupValues.decalVolumeParts.AsArray(), defaultAllocator);
                 Temporaries.changedDecalBounds              = new NativeArray<MinMaxAABB>(chiselLookupValues.changedDecalBounds.AsArray(), defaultAllocator);
                 chiselLookupValues.changedDecalBounds.Clear();
 
@@ -673,6 +675,7 @@ namespace Chisel.Core
                 if (t.exactBounds.IsCreated)                    t.exactBounds.Dispose();
                 if (t.decalVolumes.IsCreated)                   t.decalVolumes.Dispose();
                 if (t.decalTargets.IsCreated)                   t.decalTargets.Dispose();
+                if (t.decalParts.IsCreated)                     t.decalParts.Dispose();
                 if (t.changedDecalBounds.IsCreated)             t.changedDecalBounds.Dispose();
                 if (t.changedHotspotLayouts.IsCreated)          t.changedHotspotLayouts.Dispose();
                 if (t.hotspotTiles.IsCreated)                   t.hotspotTiles.Dispose();
@@ -1962,6 +1965,7 @@ namespace Chisel.Core
                         normalSmoothingAngle      = normalSmoothingAngle,
                         decalVolumes              = Temporaries.decalVolumes,
                         decalTargets              = Temporaries.decalTargets,
+                        decalParts                = Temporaries.decalParts,
                         hotspotTiles              = Temporaries.hotspotTiles,
                         hotspotLayouts            = Temporaries.hotspotLayouts,
                         hotspotVariants           = Temporaries.hotspotVariants,
@@ -2829,6 +2833,7 @@ namespace Chisel.Core
                 lastJobHandle.AddDependency(Temporaries.decalVolumes                 .SafeDispose(JobHandles[JobHandleType.decalVolumesJobHandle].readWriteBarrier));
                 lastJobHandle.AddDependency(Temporaries.changedDecalBounds           .SafeDispose(JobHandles[JobHandleType.decalVolumesJobHandle].readWriteBarrier));
                 lastJobHandle.AddDependency(Temporaries.decalTargets                 .SafeDispose(JobHandles[JobHandleType.decalVolumesJobHandle].readWriteBarrier));
+                lastJobHandle.AddDependency(Temporaries.decalParts                   .SafeDispose(JobHandles[JobHandleType.decalVolumesJobHandle].readWriteBarrier));
                 lastJobHandle.AddDependency(Temporaries.hotspotTiles                 .SafeDispose(JobHandles[JobHandleType.decalVolumesJobHandle].readWriteBarrier));
                 lastJobHandle.AddDependency(Temporaries.hotspotLayouts               .SafeDispose(JobHandles[JobHandleType.decalVolumesJobHandle].readWriteBarrier));
                 lastJobHandle.AddDependency(Temporaries.hotspotLinks                 .SafeDispose(JobHandles[JobHandleType.decalVolumesJobHandle].readWriteBarrier));

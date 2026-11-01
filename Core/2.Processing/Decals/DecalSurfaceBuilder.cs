@@ -98,6 +98,10 @@ namespace Chisel.Core
     {
         UnsafeList<DecalPiece> pieces;
         UnsafeList<DecalPiece> nextPieces;
+        UnsafeList<DecalPiece> partPieces;
+        UnsafeList<DecalPiece> partNext;
+        // the polygon decals' parts, for the Build going on
+        NativeArray<DecalPlanes> parts;
 
         // What remains of the surface itself, when an opaque decal reached it
         public DecalSurfaceOutput surface;
@@ -110,6 +114,8 @@ namespace Chisel.Core
             {
                 pieces     = new UnsafeList<DecalPiece>(16, allocator),
                 nextPieces = new UnsafeList<DecalPiece>(16, allocator),
+                partPieces = new UnsafeList<DecalPiece>(16, allocator),
+                partNext   = new UnsafeList<DecalPiece>(16, allocator),
                 surface    = DecalSurfaceOutput.Create(allocator),
                 decals     = new UnsafeList<DecalSurfaceOutput>(4, allocator)
             };
@@ -144,9 +150,10 @@ namespace Chisel.Core
         }
 
         public bool Build(NativeList<int> triangles, NativeList<RenderVertex> renderVertices, NativeList<SelectVertex> selectVertices,
-                          NativeArray<DecalVolume> volumes, UnsafeList<int> candidates, UnsafeList<byte> targeted,
-                          SurfaceDestinationFlags surfaceFlags)
+                          NativeArray<DecalVolume> volumes, NativeArray<DecalPlanes> parts, UnsafeList<int> candidates,
+                          UnsafeList<byte> targeted, SurfaceDestinationFlags surfaceFlags)
         {
+            this.parts = parts;
             surface.Clear();
             while (decals.Length < candidates.Length)
                 decals.Add(DecalSurfaceOutput.Create(Allocator.Temp));
@@ -188,7 +195,7 @@ namespace Chisel.Core
                     owner = -1
                 });
 
-                // Opaque decals, top first
+                // Opaque decals, top first; a polygon part by part, all of it the same decal's
                 for (int j = candidates.Length - 1; j >= 0; j--)
                 {
                     var volume = volumePointer + candidates[j];
@@ -198,34 +205,17 @@ namespace Chisel.Core
                     var takes = targeted[j] != 0 &&
                                 volume->GetDestinationFlags(surfaceFlags) != SurfaceDestinationFlags.None &&
                                 volume->Accepts(faceNormal, centroid);
-                    var sink = new PieceSink { list = (UnsafeList<DecalPiece>*)UnsafeUtility.AddressOf(ref nextPieces), insideOwner = takes ? j : -1 };
-                    nextPieces.Clear();
-                    for (int p = 0; p < pieces.Length; p++)
+                    if (!volume->IsPolygon)
+                        CutOpaque(volume, j, takes, &source);
+                    else
                     {
-                        var piece = pieces[p];
-                        if (!volume->Overlaps(piece.Min, piece.Max))
+                        var part = *volume;
+                        for (int k = 0; k < volume->partCount; k++)
                         {
-                            nextPieces.Add(piece);
-                            continue;
-                        }
-                        if (DecalClipping.Split(*volume, piece, ref sink))
-                            continue;
-
-                        // The cut failed: keep the piece, and draw the decal over it instead of in its place
-                        nextPieces.Add(piece);
-                        if (takes && piece.owner < 0)
-                        {
-                            var overlay = new OutputSink
-                            {
-                                output = (DecalSurfaceOutput*)decals.Ptr + j,
-                                source = &source,
-                                volume = volume,
-                                offset = ChiselDecalSettings.kDefaultSurfaceOffset
-                            };
-                            DecalClipping.AddInside(*volume, piece, j, ref overlay);
+                            part.planes = parts[volume->partStart + k];
+                            CutOpaque(&part, j, takes, &source);
                         }
                     }
-                    (pieces, nextPieces) = (nextPieces, pieces);
                     cut = true;
                 }
 
@@ -262,17 +252,102 @@ namespace Chisel.Core
                             continue;
                         if (!volume->Overlaps(piece.Min, piece.Max))
                             continue;
-                        DecalClipping.AddInside(*volume, piece, j, ref sink);
+                        if (volume->IsPolygon)
+                            AddInsidePolygon(volume, piece, j, ref sink);
+                        else
+                            DecalClipping.AddInside(*volume, piece, j, ref sink);
                     }
                 }
             }
             return cut;
         }
 
+        // Cuts the pieces by one opaque volume: what is inside becomes decal j's when it takes it. A piece already
+        // decal j's (another part of its polygon took it) stays as it is.
+        void CutOpaque(DecalVolume* volume, int j, bool takes, DecalTriangleSource* source)
+        {
+            var sink = new PieceSink { list = (UnsafeList<DecalPiece>*)UnsafeUtility.AddressOf(ref nextPieces), insideOwner = takes ? j : -1 };
+            nextPieces.Clear();
+            for (int p = 0; p < pieces.Length; p++)
+            {
+                var piece = pieces[p];
+                if ((takes && piece.owner == j) || !volume->Overlaps(piece.Min, piece.Max))
+                {
+                    nextPieces.Add(piece);
+                    continue;
+                }
+                if (DecalClipping.Split(*volume, piece, ref sink))
+                    continue;
+
+                // The cut failed: keep the piece, and draw the decal over it instead of in its place
+                nextPieces.Add(piece);
+                if (takes && piece.owner < 0)
+                {
+                    var overlay = new OutputSink
+                    {
+                        output = (DecalSurfaceOutput*)decals.Ptr + j,
+                        source = source,
+                        volume = volume,
+                        offset = ChiselDecalSettings.kDefaultSurfaceOffset
+                    };
+                    DecalClipping.AddInside(*volume, piece, j, ref overlay);
+                }
+            }
+            (pieces, nextPieces) = (nextPieces, pieces);
+        }
+
+        // Splits a piece by one part, sending what is inside to the output and keeping what is outside for the next part
+        struct PartSink : IDecalPieceSink
+        {
+            public UnsafeList<DecalPiece>* outside;
+            public OutputSink              inside;
+
+            public void Add(in DecalPiece piece, bool isInside)
+            {
+                if (isInside)
+                    inside.Add(piece, true);
+                else
+                    outside->Add(piece);
+            }
+        }
+
+        // A transparent polygon over a piece: its parts one after another, each cutting what the ones before left
+        void AddInsidePolygon(DecalVolume* volume, in DecalPiece piece, int j, ref OutputSink sink)
+        {
+            partPieces.Clear();
+            partPieces.Add(piece);
+            var part = *volume;
+            var partOutput = sink;
+            partOutput.volume = &part;
+            for (int k = 0; k < volume->partCount && partPieces.Length > 0; k++)
+            {
+                part.planes = parts[volume->partStart + k];
+                partNext.Clear();
+                var split = new PartSink { outside = (UnsafeList<DecalPiece>*)UnsafeUtility.AddressOf(ref partNext), inside = partOutput };
+                for (int p = 0; p < partPieces.Length; p++)
+                {
+                    var current = partPieces[p];
+                    if (!part.Overlaps(current.Min, current.Max))
+                    {
+                        partNext.Add(current);
+                        continue;
+                    }
+                    if (DecalClipping.Split(part, current, ref split))
+                        continue;
+                    // The cut failed: draw what is inside over it, and keep it for the other parts
+                    DecalClipping.AddInside(part, current, j, ref partOutput);
+                    partNext.Add(current);
+                }
+                (partPieces, partNext) = (partNext, partPieces);
+            }
+        }
+
         public void Dispose()
         {
             if (pieces.IsCreated)     pieces.Dispose();
             if (nextPieces.IsCreated) nextPieces.Dispose();
+            if (partPieces.IsCreated) partPieces.Dispose();
+            if (partNext.IsCreated)   partNext.Dispose();
             surface.Dispose();
             if (decals.IsCreated)
             {

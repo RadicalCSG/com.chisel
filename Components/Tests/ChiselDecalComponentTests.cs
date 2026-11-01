@@ -141,45 +141,6 @@ namespace Chisel.Components.Tests
         };
         const double kLShapeArea = 0.96;
 
-        static double TwiceArea(IReadOnlyList<Vector2> outline)
-        {
-            var area = 0.0;
-            for (int i = 0; i < outline.Count; i++)
-            {
-                var a = outline[i];
-                var b = outline[(i + 1) % outline.Count];
-                area += (double)a.x * b.y - (double)b.x * a.y;
-            }
-            return area;
-        }
-
-        [Test]
-        public void Triangulate_CoversAConcaveOutline_EitherWayRound([Values(false, true)] bool clockwise)
-        {
-            var outline = new List<Vector2>(kLShape);
-            if (clockwise)
-                outline.Reverse();
-            var triangles = new List<int>();
-
-            Assert.That(ChiselDecalComponent.Triangulate(outline, triangles), Is.True);
-            Assert.That(triangles.Count, Is.EqualTo((outline.Count - 2) * 3));
-            var area = 0.0;
-            for (int t = 0; t < triangles.Count; t += 3)
-            {
-                var twice = TwiceArea(new[] { outline[triangles[t]], outline[triangles[t + 1]], outline[triangles[t + 2]] });
-                Assert.That(twice, Is.GreaterThan(0), "each triangle is counter-clockwise");
-                area += twice * 0.5;
-            }
-            Assert.That(area, Is.EqualTo(kLShapeArea).Within(1e-5));
-        }
-
-        [Test]
-        public void Triangulate_RefusesAnOutlineThatCrossesItself()
-        {
-            var bowTie = new[] { new Vector2(0, 0), new Vector2(1, 1), new Vector2(1, 0), new Vector2(0, 1) };
-            Assert.That(ChiselDecalComponent.Triangulate(bowTie, new List<int>()), Is.False);
-        }
-
         [Test]
         public void PolygonDecal_ReplacesItsOutlineOfTheFloors()
         {

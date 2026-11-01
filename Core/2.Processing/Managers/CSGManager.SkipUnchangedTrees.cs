@@ -237,6 +237,7 @@ namespace Chisel.Core
             var data    = ChiselTreeLookup.Value[tree];
             var decals  = data.decalInstances;
             var targets = data.decalTargets;
+            var outlines = data.decalOutlines;
             if (!decals.IsCreated || decals.Length == 0)
             {
                 buffer.Add(0);
@@ -267,6 +268,10 @@ namespace Chisel.Core
                     decalBuffer.Add(settings.skew);
                     decalBuffer.Add((int)settings.reach);
                     decalBuffer.Add(settings.fadeDistance);
+                    decalBuffer.Add(settings.surfaceUVs ? 1 : 0);
+                    decalBuffer.Add(decal.outlineCount);
+                    for (int p = 0; p < decal.outlineCount; p++)
+                        decalBuffer.Add(outlines[decal.outlineStart + p]);
                     decalBuffer.Add(GetIdentity(identities, surfaceParameterIdentity, decal.renderMaterial));
                     decalBuffer.Add((int)decal.destinationFlags);
                     decalBuffer.Add(decal.targetCount);

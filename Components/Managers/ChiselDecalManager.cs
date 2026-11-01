@@ -58,6 +58,8 @@ namespace Chisel.Components
             public readonly List<ChiselDecalTarget>   targets = new();
             public readonly List<ChiselDecalInstance> previous = new();
             public readonly List<ChiselDecalTarget>   previousTargets = new();
+            public readonly List<float2>              outlines = new();
+            public readonly List<float2>              previousOutlines = new();
         }
 
         // a decal's image can be a tile of its material's hotspot layout
@@ -280,6 +282,7 @@ namespace Chisel.Components
                     var state = s_Models[model];
                     state.decals.Clear();
                     state.targets.Clear();
+                    state.outlines.Clear();
                 }
 
                 foreach (var decal in s_Ordered)
@@ -316,10 +319,12 @@ namespace Chisel.Components
                 foreach (var model in s_ModelList)
                 {
                     var state = s_Models[model];
-                    if (!s_Dirty && Same(state.decals, state.previous) && Same(state.targets, state.previousTargets))
+                    if (!s_Dirty && Same(state.decals, state.previous) && Same(state.targets, state.previousTargets) &&
+                        Same(state.outlines, state.previousOutlines))
                         continue;
-                    var decals  = new NativeArray<ChiselDecalInstance>(state.decals.Count, Allocator.Temp);
-                    var targets = new NativeArray<ChiselDecalTarget>(state.targets.Count, Allocator.Temp);
+                    var decals   = new NativeArray<ChiselDecalInstance>(state.decals.Count, Allocator.Temp);
+                    var targets  = new NativeArray<ChiselDecalTarget>(state.targets.Count, Allocator.Temp);
+                    var outlines = new NativeArray<float2>(state.outlines.Count, Allocator.Temp);
                     try
                     {
                         for (int i = 0; i < state.decals.Count; i++)
@@ -329,17 +334,22 @@ namespace Chisel.Components
                         }
                         for (int i = 0; i < state.targets.Count; i++)
                             targets[i] = state.targets[i];
-                        state.tree.SetDecals(decals, targets);
+                        for (int i = 0; i < state.outlines.Count; i++)
+                            outlines[i] = state.outlines[i];
+                        state.tree.SetDecals(decals, targets, outlines);
                     }
                     finally
                     {
                         decals.Dispose();
                         targets.Dispose();
+                        outlines.Dispose();
                     }
                     state.previous.Clear();
                     state.previous.AddRange(state.decals);
                     state.previousTargets.Clear();
                     state.previousTargets.AddRange(state.targets);
+                    state.previousOutlines.Clear();
+                    state.previousOutlines.AddRange(state.outlines);
                 }
                 s_Dirty = false;
             }
@@ -460,7 +470,16 @@ namespace Chisel.Components
         {
             Describe(decal, decalState, state.worldToLocal, s_Tiles);
             foreach (var tile in s_Tiles)
-                Add(state, tile, decalState.targets);
+            {
+                var described = tile;
+                if (described.outlineCount > 0)
+                {
+                    described.outlineStart = state.outlines.Count;
+                    foreach (var point in decal.Polygon)
+                        state.outlines.Add(point);
+                }
+                Add(state, described, decalState.targets);
+            }
         }
 
         /// <summary>
@@ -485,13 +504,14 @@ namespace Chisel.Components
                 renderMaterial   = decalState.renderMaterial,
                 destinationFlags = decalState.destinationFlags
             };
+            // a polygon decal is one decal, its outline added with it (AddBox)
             if (decal.Shape == ChiselDecalShape.Polygon)
             {
-                DescribePolygon(decal, decalState, instance, rect, userScale, tiles);
-                return;
+                settings.projection = ChiselDecalProjection.Polygon;
+                instance.outlineCount = decal.Polygon.Count;
             }
 
-            // a perspective or omni-directional decal's image isn't a box to cut into tiles: it is drawn once
+            // a perspective, omni-directional or polygon decal's image isn't a box to cut into tiles: it is drawn once
             var perspective = settings.projection != ChiselDecalProjection.Orthographic;
             if (!sheet || perspective)
             {
@@ -527,45 +547,6 @@ namespace Chisel.Components
                     instance.settings = tile;
                     tiles.Add(instance);
                 }
-            }
-        }
-
-        static readonly List<int> s_PolygonTriangles = new();
-
-        // A polygon decal's instances: a triangle decal for each triangle of its outline, the image spanning the outline's bounds
-        static void DescribePolygon(ChiselDecalComponent decal, DecalState decalState, ChiselDecalInstance instance,
-                                    Rect rect, float2 userScale, List<ChiselDecalInstance> tiles)
-        {
-            var outline = decal.Polygon;
-            if (!ChiselDecalComponent.Triangulate(outline, s_PolygonTriangles))
-                return;
-            var settings = decal.Settings;
-            var min = (float2)outline[0];
-            var max = min;
-            foreach (var point in outline)
-            {
-                min = math.min(min, point);
-                max = math.max(max, point);
-            }
-            var polygonSize = math.max(max - min, new float2(1e-6f));
-            for (int t = 0, piece = 0; t + 2 < s_PolygonTriangles.Count && piece < ChiselTrimDecals.MaxPieces; t += 3, piece++)
-            {
-                var a = (float2)outline[s_PolygonTriangles[t]];
-                var b = (float2)outline[s_PolygonTriangles[t + 1]];
-                var c = (float2)outline[s_PolygonTriangles[t + 2]];
-                var triangleMin  = math.min(a, math.min(b, c));
-                var triangleSize = math.max(a, math.max(b, c)) - triangleMin;
-                // where the triangle's image lies in the outline's
-                ChiselDecalSettings.TurnMapping(triangleSize / polygonSize, (triangleMin - min) / polygonSize, settings.imageTurns,
-                                                out var imageScale, out var imageOffset);
-                var tile = settings;
-                tile.projection = ChiselDecalProjection.Triangle;
-                tile.triangle   = new float2x3(a, b, c);
-                tile.uvScale    = userScale * (float2)rect.size * imageScale;
-                tile.uvOffset   = (float2)settings.uvOffset + userScale * ((float2)rect.position + (float2)rect.size * imageOffset);
-                instance.entityID = ChiselTrimDecals.PieceEntityID(decalState.entityID, piece);
-                instance.settings = tile;
-                tiles.Add(instance);
             }
         }
 

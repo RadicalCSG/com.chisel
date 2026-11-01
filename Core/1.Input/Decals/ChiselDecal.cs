@@ -19,9 +19,9 @@ namespace Chisel.Core
         /// texture.</summary>
         Omni         = 2,
 
-        /// <summary>Like <see cref="Orthographic"/>, but only within the triangle <see cref="ChiselDecalSettings.triangle"/>
-        /// instead of the whole box. Its image spans the triangle's bounds.</summary>
-        Triangle     = 3
+        /// <summary>Like <see cref="Orthographic"/>, but only within an outline in the decal's XY plane (see
+        /// <see cref="ChiselDecalInstance.outlineStart"/>) instead of the whole box. Its image spans the outline's bounds.</summary>
+        Polygon      = 3
     }
 
     /// <summary>Which surfaces an omni-directional decal reaches: those passing within the decal's reach of its center.</summary>
@@ -100,10 +100,6 @@ namespace Chisel.Core
         /// sides (x moves with y), y leans its top and bottom (y moves with x). The shear is about the decal's origin.</summary>
         public float2 skew;
 
-        /// <summary>The corners of a <see cref="ChiselDecalProjection.Triangle"/> decal, in the decal's XY plane. It reaches
-        /// size.z deep around center.z; the rest of center and size isn't used.</summary>
-        public float2x3 triangle;
-
         /// <summary>The decal's pieces take the texture coordinates of the surface they are on instead of the image's, so
         /// its material lines up with the surface's texturing.</summary>
         public bool surfaceUVs;
@@ -170,7 +166,6 @@ namespace Chisel.Core
                    (imageTurns & 3) == (other.imageTurns & 3) &&
                    math.all(endSlant == other.endSlant) &&
                    math.all(skew == other.skew) &&
-                   triangle.Equals(other.triangle) &&
                    surfaceUVs == other.surfaceUVs;
         }
 
@@ -186,7 +181,7 @@ namespace Chisel.Core
             hash = math.hash(new uint3(hash, math.hash(endSlant), (uint)(imageTurns & 3)));
             hash = math.hash(new uint3(hash, math.hash(skew), (uint)reach));
             hash = math.hash(new uint2(hash, math.hash(fadeDistance)));
-            hash = math.hash(new uint3(hash, math.hash(triangle), surfaceUVs ? 1u : 0u));
+            hash = math.hash(new uint2(hash, surfaceUVs ? 1u : 0u));
             return (int)hash;
         }
     }
@@ -244,6 +239,14 @@ namespace Chisel.Core
         public int targetStart;
         public int targetCount;
 
+        /// <summary>
+        /// A <see cref="ChiselDecalProjection.Polygon"/> decal's outline: <c>outlines[outlineStart .. outlineStart + outlineCount - 1]</c>
+        /// of the outlines handed to <see cref="CSGTreeDecalExtensions.SetDecals(CSGTree, NativeArray{ChiselDecalInstance}, NativeArray{ChiselDecalTarget}, NativeArray{float2})"/>,
+        /// in the decal's XY plane, either way round. It must not cross itself, and has no holes.
+        /// </summary>
+        public int outlineStart;
+        public int outlineCount;
+
         public readonly bool Equals(ChiselDecalInstance other)
         {
             return entityID == other.entityID &&
@@ -252,7 +255,9 @@ namespace Chisel.Core
                    renderMaterial == other.renderMaterial &&
                    destinationFlags == other.destinationFlags &&
                    targetStart == other.targetStart &&
-                   targetCount == other.targetCount;
+                   targetCount == other.targetCount &&
+                   outlineStart == other.outlineStart &&
+                   outlineCount == other.outlineCount;
         }
 
         public override readonly bool Equals(object obj) => obj is ChiselDecalInstance other && Equals(other);
@@ -264,6 +269,7 @@ namespace Chisel.Core
             hash = math.hash(new uint2(hash, (uint)settings.GetHashCode()));
             hash = math.hash(new uint4(hash, (uint)renderMaterial, (uint)(renderMaterial >> 32), (uint)destinationFlags));
             hash = math.hash(new uint3(hash, (uint)targetStart, (uint)targetCount));
+            hash = math.hash(new uint3(hash, (uint)outlineStart, (uint)outlineCount));
             return (int)hash;
         }
     }
@@ -292,7 +298,7 @@ namespace Chisel.Core
         /// </summary>
         public static void SetDecals(this CSGTree tree, NativeArray<ChiselDecalInstance> decals)
         {
-            ChiselDecalStore.SetDecals(tree, decals, default);
+            ChiselDecalStore.SetDecals(tree, decals, default, default);
         }
 
         /// <summary>
@@ -301,13 +307,23 @@ namespace Chisel.Core
         /// </summary>
         public static void SetDecals(this CSGTree tree, NativeArray<ChiselDecalInstance> decals, NativeArray<ChiselDecalTarget> targets)
         {
-            ChiselDecalStore.SetDecals(tree, decals, targets);
+            ChiselDecalStore.SetDecals(tree, decals, targets, default);
+        }
+
+        /// <summary>
+        /// Replaces all decals of the tree at once, with the surfaces some of them are limited to and the outlines of the
+        /// polygon decals (see <see cref="ChiselDecalInstance.outlineStart"/>).
+        /// </summary>
+        public static void SetDecals(this CSGTree tree, NativeArray<ChiselDecalInstance> decals, NativeArray<ChiselDecalTarget> targets,
+                                     NativeArray<float2> outlines)
+        {
+            ChiselDecalStore.SetDecals(tree, decals, targets, outlines);
         }
 
         /// <summary>Removes all decals from the tree.</summary>
         public static void ClearDecals(this CSGTree tree)
         {
-            ChiselDecalStore.SetDecals(tree, default, default);
+            ChiselDecalStore.SetDecals(tree, default, default, default);
         }
 
         /// <summary>How many decals the tree has.</summary>
