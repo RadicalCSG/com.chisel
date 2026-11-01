@@ -162,10 +162,11 @@ namespace Chisel.Components
         /// <summary>
         /// A shape drawn on a surface: an opaque polygon decal limited to that surface, a child of its brush, lying on the
         /// surface's plane and projecting into it, with the surface's texture coordinates. outline is in world space, on
-        /// the surface, either way round; worldNormal is the surface's. Null for an outline of fewer than three points.
+        /// the surface, either way round; worldNormal is the surface's, and worldRight the direction in it the decal's X
+        /// takes (the surface's grid's; zero: along the outline's first edge). Null for an outline of fewer than three points.
         /// </summary>
         public static ChiselDecalComponent CreateOnSurface(ChiselNodeComponent brush, int surfaceIndex, Material material,
-                                                           Vector3 worldNormal, IReadOnlyList<Vector3> outline)
+                                                           Vector3 worldNormal, IReadOnlyList<Vector3> outline, Vector3 worldRight = default)
         {
             if (brush == null || outline == null || outline.Count < 3 || worldNormal.sqrMagnitude < 1e-12f)
                 return null;
@@ -174,7 +175,7 @@ namespace Chisel.Components
             foreach (var point in outline)
                 center += point;
             center /= outline.Count;
-            var right = outline[1] - outline[0];
+            var right = worldRight.sqrMagnitude > 1e-12f ? worldRight : outline[1] - outline[0];
             right -= normal * Vector3.Dot(right, normal);
             if (right.sqrMagnitude < 1e-12f)
                 right = Vector3.Cross(normal, Mathf.Abs(normal.x) < 0.9f ? Vector3.right : Vector3.up);

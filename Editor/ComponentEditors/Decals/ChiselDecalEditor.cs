@@ -354,11 +354,109 @@ namespace Chisel.Editors
             }
         }
 
+        // Unity's move handle, hidden while a polygon decal shows its own
+        static bool s_HidTools;
+
+        static void HideTools()
+        {
+            if (Tools.hidden)
+                return;
+            Tools.hidden = true;
+            s_HidTools = true;
+        }
+
+        static void RestoreTools()
+        {
+            if (!s_HidTools)
+                return;
+            Tools.hidden = false;
+            s_HidTools = false;
+        }
+
+        void OnDisable() => RestoreTools();
+
+        static readonly int kExtrudeHandleHash = "ChiselDecalExtrude".GetHashCode();
+        // how far the extrude arrow is dragged out of the surface (into it: below zero)
+        static float s_DragHeight;
+
+        // Arrows along the surface, in the surface's space whatever the handle rotation, and a square to slide it in the
+        // surface's plane; the arrow out of the surface extrudes the shape when let go, out of it or into it
+        static void SurfaceHandles(ChiselDecalComponent decal)
+        {
+            var transform = decal.transform;
+            var position  = transform.position;
+            var right     = transform.right;
+            var up        = transform.up;
+            var normal    = -transform.forward;
+            var size      = HandleUtility.GetHandleSize(position);
+            var snap      = EditorSnapSettings.move;
+
+            EditorGUI.BeginChangeCheck();
+            Handles.color = Handles.xAxisColor;
+            var alongRight = Handles.Slider(position, right, size, Handles.ArrowHandleCap, snap.x);
+            Handles.color = Handles.yAxisColor;
+            var alongUp = Handles.Slider(position, up, size, Handles.ArrowHandleCap, snap.y);
+            Handles.color = Handles.zAxisColor;
+            var squareOffset = (right + up) * (size * 0.25f);
+            var inPlane = Handles.Slider2D(position + squareOffset, normal, right, up, size * 0.12f, Handles.RectangleHandleCap,
+                                           new Vector2(snap.x, snap.y)) - squareOffset;
+            if (EditorGUI.EndChangeCheck())
+            {
+                Undo.RecordObject(transform, "Move Surface Shape");
+                transform.position = position + (alongRight - position) + (alongUp - position) + (inPlane - position);
+            }
+
+            var id = GUIUtility.GetControlID(kExtrudeHandleHash, FocusType.Passive);
+            var wasDragging = GUIUtility.hotControl == id;
+            Handles.color = kHandleColor;
+            var tip = Handles.Slider(id, position, Vector3.zero, normal, size, Handles.ArrowHandleCap, snap.y);
+            if (GUIUtility.hotControl == id)
+            {
+                s_DragHeight = Vector3.Dot(tip - position, normal);
+                DrawExtrusion(decal, normal * s_DragHeight);
+            } else if (wasDragging)
+            {
+                var height = s_DragHeight;
+                s_DragHeight = 0;
+                if (Mathf.Abs(height) > 1e-3f && ExtrudeIntoBrush(decal, height) != null)
+                    GUIUtility.ExitGUI();
+            }
+        }
+
+        // The prism the shape would become
+        static void DrawExtrusion(ChiselDecalComponent decal, Vector3 offset)
+        {
+            var outline = decal.Polygon;
+            if (outline.Count < 3 || Event.current.type != EventType.Repaint)
+                return;
+            Handles.color = kHandleColor;
+            for (int i = 0; i < outline.Count; i++)
+            {
+                var a = decal.transform.TransformPoint(outline[i]);
+                var b = decal.transform.TransformPoint(outline[(i + 1) % outline.Count]);
+                Handles.DrawLine(a + offset, b + offset);
+                Handles.DrawLine(a, a + offset);
+            }
+        }
+
         void OnSceneGUI()
         {
             var decal = target as ChiselDecalComponent;
             if (decal == null)
                 return;
+
+            // a polygon decal lies on its surface: it moves in the surface's plane, and out of it is extruding
+            if (decal.Shape == ChiselDecalShape.Polygon)
+            {
+                if (Tools.current == Tool.Move && !serializedObject.isEditingMultipleObjects)
+                {
+                    HideTools();
+                    SurfaceHandles(decal);
+                } else
+                    RestoreTools();
+                return;
+            }
+            RestoreTools();
 
             // a trim decal follows its edge, not its transform: its outline shows where it lies
             if (decal.Shape == ChiselDecalShape.Trim)
@@ -368,9 +466,6 @@ namespace Chisel.Editors
                 DrawTrimOutline(decal);
                 return;
             }
-            // a polygon decal has no box to handle: its outline is its gizmo
-            if (decal.Shape == ChiselDecalShape.Polygon)
-                return;
             var settings = decal.Settings;
             // the box handle in the decal's unsheared space, so a skewed decal's handle is its parallelogram
             var skew = settings.projection == ChiselDecalProjection.Omni ? Unity.Mathematics.float2.zero : settings.skew;

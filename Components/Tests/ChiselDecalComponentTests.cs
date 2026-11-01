@@ -255,6 +255,21 @@ namespace Chisel.Components.Tests
             Assert.That(UpAreaAt(model, 0), Is.EqualTo(2 - kLOnAArea).Within(1e-4), "the floors round it");
         }
 
+        // Its axes are the surface's grid's, given, not its outline's: it lies in the surface's plane space
+        [Test]
+        public void ShapeDrawnOnASurface_TakesTheGridsAxes()
+        {
+            var model = Floors(out var a, out _, out var unused);
+            Object.DestroyImmediate(unused.gameObject);
+            var slanted = new[] { new Vector3(-0.9f, 0, -0.4f), new Vector3(-0.3f, 0, -0.1f), new Vector3(-0.6f, 0, 0.4f) };
+
+            var decal = ChiselDecalComponent.CreateOnSurface(a, 0, decalMaterial, Vector3.up, slanted, Vector3.forward);
+            Assert.That(Vector3.Angle(decal.transform.right, Vector3.forward), Is.LessThan(1e-3f), "its x along the grid's");
+            Assert.That(Vector3.Angle(decal.transform.forward, Vector3.down), Is.LessThan(1e-3f), "into the surface");
+            Update();
+            Assert.That(UpAreas(model).decal, Is.EqualTo(0.195).Within(1e-4), "still its outline");
+        }
+
         // Drawn across two floors, it is only on the surface it was drawn on
         [Test]
         public void ShapeDrawnOnASurface_StaysOnThatSurface()
