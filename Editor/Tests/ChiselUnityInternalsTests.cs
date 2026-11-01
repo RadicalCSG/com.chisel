@@ -15,7 +15,6 @@ namespace Chisel.Editors.Tests
         public void EveryFeatureThatNeedsUnityInternals_FindsThem()
         {
             Assert.That(ChiselRectSelection.Valid, Is.True, "rect selection");
-            Assert.That(ChiselSceneViewGrid.Available, Is.True, "scene view grid");
             Assert.That(ChiselMeshPicking.Available, Is.True, "mesh picking");
             Assert.That(ChiselLightmappingInternals.Available, Is.True, "lightmapping warnings");
             Assert.That(ChiselUnityInternals.Missing.Where(missing => !missing.Contains(kTestFeature)), Is.Empty);

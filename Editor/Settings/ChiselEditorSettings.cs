@@ -12,9 +12,6 @@ namespace Chisel.Editors
 #endif
     public static class ChiselEditorSettings
     {
-        // View Options
-        public static bool				ShowGrid		= true;
-        
         public static bool				AxisLockX		{ get { return Snapping.AxisLockX; } set { Snapping.AxisLockX = value; } }
         public static bool				AxisLockY		{ get { return Snapping.AxisLockY; } set { Snapping.AxisLockY = value; } }
         public static bool				AxisLockZ		{ get { return Snapping.AxisLockZ; } set { Snapping.AxisLockZ = value; } }
@@ -72,7 +69,6 @@ namespace Chisel.Editors
             ScaleSnapping	= EditorPrefs.GetBool ("ScaleSnapping",		true);
             ScaleSnap		= EditorPrefs.GetFloat("ScaleSnap",			0.1f);
 
-            ShowGrid 		= EditorPrefs.GetBool ("ShowGrid",			true);
             Snapping.SnapSettings = (SnapSettings)EditorPrefs.GetInt("SnapSettings", (int)SnapSettings.All);
             Snapping.TransformSettings = (ActiveTransformSnapping)EditorPrefs.GetInt("TransformSettings", (int)ActiveTransformSnapping.All);
 
@@ -112,8 +108,6 @@ namespace Chisel.Editors
 
             EditorPrefs.SetInt("SnapSettings",	    (int)Snapping.SnapSettings);
             EditorPrefs.SetInt("TransformSettings",	(int)Snapping.TransformSettings);
-
-            EditorPrefs.SetBool("ShowGrid",   		ShowGrid);
 
             var values = new StringBuilder();
             foreach (var pair in s_InToolBoxSettings)
