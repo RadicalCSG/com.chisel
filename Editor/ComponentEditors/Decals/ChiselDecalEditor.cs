@@ -36,7 +36,14 @@ namespace Chisel.Editors
         static readonly GUIContent kUVOffsetContent      = new GUIContent("UV Offset");
         static readonly GUIContent kBoxShapeContent      = new GUIContent("Box", "The image is projected through the box.");
         static readonly GUIContent kTrimShapeContent     = new GUIContent("Trim", "The image lies on the edge between two surfaces, its lower half on the first, its upper half on the second.");
-        static readonly GUIContent[] kShapeOptions       = { kBoxShapeContent, kTrimShapeContent };
+        static readonly GUIContent kPolygonShapeContent  = new GUIContent("Polygon", "The image fills an outline drawn on a surface (the Surface Shape tool), and replaces or covers only that surface.");
+        internal static readonly GUIContent[] kShapeOptions       = { kBoxShapeContent, kTrimShapeContent, kPolygonShapeContent };
+        internal static readonly GUIContent[] kProjectionOptions  = { new GUIContent("Orthographic"), new GUIContent("Perspective"), new GUIContent("Omni") };
+        static readonly GUIContent kTargetBrushContent   = new GUIContent("Brush", "The brush whose surface the shape is drawn on.");
+        static readonly GUIContent kTargetSurfaceContent = new GUIContent("Surface", "The brush's surface the shape is on, as its surface array numbers them.");
+        static readonly GUIContent kDepthContent         = new GUIContent("Depth", "How far the shape reaches either side of its surface, together.");
+        static readonly GUIContent kSurfaceUVsContent    = new GUIContent("Surface UVs", "The texture coordinates of the surface it is on instead of the image's, so its material lines up with the surface's texturing.");
+        const string kNoTargetMessage = "The shape isn't on a surface: set the brush it is drawn on.";
         static readonly GUIContent[] kTrimFillOptions    =
         {
             new GUIContent("Stretch", "One image over the whole edge."),
@@ -89,9 +96,12 @@ namespace Chisel.Editors
                 EditorGUILayout.HelpBox(kNoMaterialMessage, MessageType.Info);
 
             var shape    = serializedObject.FindProperty(ChiselDecalComponent.kShapeName);
-            EnumToggles(shape, kShapeContent, kShapeOptions, 2);
-            var trim = !shape.hasMultipleDifferentValues && shape.enumValueIndex == (int)ChiselDecalShape.Trim;
-            if (trim)
+            EnumToggles(shape, kShapeContent, kShapeOptions, 3);
+            var trim    = !shape.hasMultipleDifferentValues && shape.enumValueIndex == (int)ChiselDecalShape.Trim;
+            var polygon = !shape.hasMultipleDifferentValues && shape.enumValueIndex == (int)ChiselDecalShape.Polygon;
+            if (polygon)
+                PolygonFields(settings);
+            else if (trim)
             {
                 EnumToggles(serializedObject.FindProperty(ChiselDecalComponent.kTrimFillName), kTrimFillContent, kTrimFillOptions, 2);
                 var size = settings.FindPropertyRelative(nameof(ChiselDecalSettings.size));
@@ -100,7 +110,7 @@ namespace Chisel.Editors
             } else
             {
                 var projection = settings.FindPropertyRelative(nameof(ChiselDecalSettings.projection));
-                EditorGUILayout.PropertyField(projection, kProjectionContent);
+                ProjectionField(projection);
                 var omni = !projection.hasMultipleDifferentValues && projection.enumValueIndex == (int)ChiselDecalProjection.Omni;
                 if (projection.hasMultipleDifferentValues || projection.enumValueIndex == (int)ChiselDecalProjection.Perspective)
                 {
@@ -147,6 +157,44 @@ namespace Chisel.Editors
             }
 
             serializedObject.ApplyModifiedProperties();
+        }
+
+        // A box decal's projections; a polygon decal's own is set from its shape
+        static void ProjectionField(SerializedProperty projection)
+        {
+            var rect = EditorGUILayout.GetControlRect();
+            using (new EditorGUI.PropertyScope(rect, kProjectionContent, projection))
+            {
+                var index = projection.hasMultipleDifferentValues ? -1 : projection.enumValueIndex;
+                EditorGUI.BeginChangeCheck();
+                index = EditorGUI.Popup(rect, kProjectionContent, index < kProjectionOptions.Length ? index : 0, kProjectionOptions);
+                if (EditorGUI.EndChangeCheck())
+                    projection.enumValueIndex = index;
+            }
+        }
+
+        // A polygon decal: the surface it is drawn on, how deep it reaches, and its texturing
+        void PolygonFields(SerializedProperty settings)
+        {
+            var targetList = serializedObject.FindProperty(ChiselDecalComponent.kTargetsName);
+            if (!serializedObject.isEditingMultipleObjects)
+            {
+                if (targetList.arraySize == 0)
+                {
+                    targetList.arraySize = 1;
+                    targetList.GetArrayElementAtIndex(0).FindPropertyRelative(nameof(ChiselDecalSurfaceTarget.surfaceIndex)).intValue = 0;
+                }
+                var first = targetList.GetArrayElementAtIndex(0);
+                var brush = first.FindPropertyRelative(nameof(ChiselDecalSurfaceTarget.brush));
+                EditorGUILayout.PropertyField(brush, kTargetBrushContent);
+                EditorGUILayout.PropertyField(first.FindPropertyRelative(nameof(ChiselDecalSurfaceTarget.surfaceIndex)), kTargetSurfaceContent);
+                if (brush.objectReferenceValue == null)
+                    EditorGUILayout.HelpBox(kNoTargetMessage, MessageType.Warning);
+            }
+            var depth = settings.FindPropertyRelative(nameof(ChiselDecalSettings.size)).FindPropertyRelative("z");
+            EditorGUILayout.PropertyField(depth, kDepthContent);
+            EditorGUILayout.Slider(settings.FindPropertyRelative(nameof(ChiselDecalSettings.maxAngle)), 0, 180, kMaxAngleContent);
+            EditorGUILayout.PropertyField(settings.FindPropertyRelative(nameof(ChiselDecalSettings.surfaceUVs)), kSurfaceUVsContent);
         }
 
         // The image: the whole texture, or a tile picked from the material's hotspot layout (only with a layout)
@@ -285,6 +333,9 @@ namespace Chisel.Editors
                 DrawTrimOutline(decal);
                 return;
             }
+            // a polygon decal has no box to handle: its outline is its gizmo
+            if (decal.Shape == ChiselDecalShape.Polygon)
+                return;
             var settings = decal.Settings;
             // the box handle in the decal's unsheared space, so a skewed decal's handle is its parallelogram
             var skew = settings.projection == ChiselDecalProjection.Omni ? Unity.Mathematics.float2.zero : settings.skew;

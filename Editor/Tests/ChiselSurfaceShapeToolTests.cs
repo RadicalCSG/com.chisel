@@ -43,6 +43,15 @@ namespace Chisel.Editors.Tests
             new Vector3(-0.25f, 0, -0.25f), new Vector3(0.25f, 0, -0.25f), new Vector3(0.25f, 0, 0.25f), new Vector3(-0.25f, 0, 0.25f)
         };
 
+        // Every shape can be chosen in the inspector; Polygon is a projection only a polygon decal is given
+        [Test]
+        public void Inspector_OffersEveryShape_AndNoPolygonProjection()
+        {
+            Assert.That(ChiselDecalEditor.kShapeOptions.Length, Is.EqualTo(System.Enum.GetValues(typeof(ChiselDecalShape)).Length));
+            Assert.That(ChiselDecalEditor.kShapeOptions[(int)ChiselDecalShape.Polygon].text, Is.EqualTo("Polygon"));
+            Assert.That(ChiselDecalEditor.kProjectionOptions.Length, Is.EqualTo((int)Chisel.Core.ChiselDecalProjection.Polygon));
+        }
+
         // The target is saved with the scene: what the serialized object holds, not only the field
         [Test]
         public void DrawnShape_KeepsItsBrushAsTarget()
