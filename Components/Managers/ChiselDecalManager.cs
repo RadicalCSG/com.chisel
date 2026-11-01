@@ -47,6 +47,9 @@ namespace Chisel.Components
             public ChiselModelComponent    trimModel;
             public readonly List<ChiselDecalInstance> trimPieces = new();
             public readonly List<ChiselDecalTarget[]> trimTargets = new();
+            // a polygon decal: where its surface has its corners now (ChiselSurfaceShapes.Resolve), in localToWorld's XY
+            public ChiselDecalComponent polygonDecal;
+            public readonly List<Vector2> corners = new();
         }
 
         sealed class ModelState
@@ -254,7 +257,8 @@ namespace Chisel.Components
                             entityID         = EntityId.ToULong(decal.GetEntityId()),
                             renderMaterial   = EntityId.ToULong(decal.Material.GetEntityId()),
                             destinationFlags = GetDestinationFlags(decal.Material),
-                            targets          = targets
+                            targets          = targets,
+                            polygonDecal     = decal.Shape == ChiselDecalShape.Polygon ? decal : null
                         };
                     }
                 }
@@ -267,6 +271,17 @@ namespace Chisel.Components
                     if (decalState.transform == null)
                         continue;
                     var localToWorld = decalState.transform.localToWorldMatrix;
+                    // a polygon decal follows its surface: its plane, and the edges its corners are on
+                    if (decalState.polygonDecal != null)
+                    {
+                        ChiselSurfaceShapes.Resolve(decalState.polygonDecal, out localToWorld, s_Corners);
+                        if (!SameCorners(s_Corners, decalState.corners))
+                        {
+                            decalState.corners.Clear();
+                            decalState.corners.AddRange(s_Corners);
+                            changed = true;
+                        }
+                    }
                     if (!localToWorld.Equals(decalState.localToWorld))
                     {
                         decalState.localToWorld = localToWorld;
@@ -466,6 +481,20 @@ namespace Chisel.Components
 
         static readonly List<ChiselDecalInstance> s_Tiles = new();
 
+        static readonly List<Vector2> s_Corners = new();
+
+        static bool SameCorners(List<Vector2> a, List<Vector2> b)
+        {
+            if (a.Count != b.Count)
+                return false;
+            for (int i = 0; i < a.Count; i++)
+            {
+                if (a[i] != b[i])
+                    return false;
+            }
+            return true;
+        }
+
         static void AddBox(ModelState state, ChiselDecalComponent decal, DecalState decalState)
         {
             Describe(decal, decalState, state.worldToLocal, s_Tiles);
@@ -475,7 +504,7 @@ namespace Chisel.Components
                 if (described.outlineCount > 0)
                 {
                     described.outlineStart = state.outlines.Count;
-                    foreach (var point in decal.Polygon)
+                    foreach (var point in decalState.corners)
                         state.outlines.Add(point);
                 }
                 Add(state, described, decalState.targets);
@@ -508,7 +537,7 @@ namespace Chisel.Components
             if (decal.Shape == ChiselDecalShape.Polygon)
             {
                 settings.projection = ChiselDecalProjection.Polygon;
-                instance.outlineCount = decal.Polygon.Count;
+                instance.outlineCount = decalState.corners.Count;
             }
 
             // a perspective, omni-directional or polygon decal's image isn't a box to cut into tiles: it is drawn once

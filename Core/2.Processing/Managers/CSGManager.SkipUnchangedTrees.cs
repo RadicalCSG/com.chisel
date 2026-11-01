@@ -269,6 +269,7 @@ namespace Chisel.Core
                     decalBuffer.Add((int)settings.reach);
                     decalBuffer.Add(settings.fadeDistance);
                     decalBuffer.Add(settings.surfaceUVs ? 1 : 0);
+                    decalBuffer.Add(settings.hotspotBorder ? 1 : 0);
                     decalBuffer.Add(decal.outlineCount);
                     for (int p = 0; p < decal.outlineCount; p++)
                         decalBuffer.Add(outlines[decal.outlineStart + p]);

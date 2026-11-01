@@ -400,6 +400,51 @@ namespace Chisel.Core
             while (bordersOf.TryGetNextValue(out corner, ref iterator));
         }
 
+        // The outline of each opaque decal's pieces on a surface (decalHidesBorder) as rules of no border, older than any
+        // given by hand: the hotspot mapping goes on under a decal as if it weren't there
+        public static void AddDecalEdges(ref ChiselBrushRenderBuffer buffer, int surface, NativeList<HotspotBorderCorner> rules)
+        {
+            if (surface < 0 || surface >= buffer.surfaces.Length)
+                return;
+            var baseSurface = buffer.surfaces[surface].baseSurfaceIndex;
+            for (int s = 0; s < buffer.surfaces.Length; s++)
+            {
+                ref var piece = ref buffer.surfaces[s];
+                if (s == surface || !piece.decalHidesBorder || piece.baseSurfaceIndex != baseSurface || piece.indices.Length < 3)
+                    continue;
+                var edges = new UnsafeHashSet<int2>(piece.indices.Length, Allocator.Temp);
+                try
+                {
+                    for (int t = 0; t + 2 < piece.indices.Length; t += 3)
+                    {
+                        for (int k = 0; k < 3; k++)
+                            edges.Add(new int2(piece.indices[t + k], piece.indices[t + (k + 1) % 3]));
+                    }
+                    for (int t = 0; t + 2 < piece.indices.Length; t += 3)
+                    {
+                        for (int k = 0; k < 3; k++)
+                        {
+                            var a = piece.indices[t + k]; var b = piece.indices[t + (k + 1) % 3];
+                            if (edges.Contains(new int2(b, a)))
+                                continue;
+                            rules.Add(new HotspotBorderCorner
+                            {
+                                position = piece.colliderVertices[a],
+                                end      = piece.colliderVertices[b],
+                                segment  = true,
+                                rule     = int.MinValue,
+                                border   = -1
+                            });
+                        }
+                    }
+                }
+                finally
+                {
+                    edges.Dispose();
+                }
+            }
+        }
+
         // The groups of the model's surfaces (groupOf: (brush, surface) -> group; unfoldOf: how a surface not in its group's
         // first plane is unfolded into it) and their sections, flat; bordersOf: where links put or leave out a border (Borders)
         public static void Find(NativeList<BrushData> brushes, NativeArray<HotspotTileData> tiles, NativeArray<HotspotLayoutData> layouts, NativeArray<HotspotLink> links,
@@ -1288,6 +1333,7 @@ namespace Chisel.Core
                 for (int m = 0; m < members.Length; m++)
                 {
                     BordersOf(candidates[members[m]], bordersOf, memberRules);
+                    AddDecalEdges(ref brushes[candidates[members[m]].x].brushRenderBuffer.Value, candidates[members[m]].y, memberRules);
                     for (int i = 0; i < memberRules.Length; i++)
                     {
                         var corner = memberRules[i];
@@ -1381,6 +1427,7 @@ namespace Chisel.Core
                     buffer.Add(surface.indices.Length);
                     buffer.AddBytes(ref surface.indices);
                     BordersOf(at, bordersOf, rules);
+                    AddDecalEdges(ref brushes[at.x].brushRenderBuffer.Value, at.y, rules);
                     buffer.Add(rules.Length);
                     for (int i = 0; i < rules.Length; i++)
                     {

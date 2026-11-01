@@ -99,7 +99,17 @@ namespace Chisel.Components.Tests
             Assert.That(IndexCount(after.sharedMesh), Is.Not.EqualTo(count), "the overlap changes the index count");
             Assert.That(after.sharedMesh, Is.Not.SameAs(mesh), "a new mesh, so its renderer is registered again");
             Assert.That(after.meshFilter.sharedMesh, Is.SameAs(after.sharedMesh), "the renderer draws the new mesh");
-            Assert.That(mesh == null, Is.True, "the old mesh is destroyed");
+            // the drawer draws the renders before it takes the new mesh with the old one (its shadow pass)
+            Assert.That(mesh != null, Is.True, "the old mesh is still there after the update that replaced it");
+            if (UnityEngine.Rendering.GraphicsSettings.currentRenderPipeline == null)
+                return;
+            moved.Min = new float3(10, 0, 0);
+            moved.Max = new float3(12, 2, 2);
+            Update();
+            Assert.That(mesh != null, Is.True, "and after more updates without a render");
+            for (int render = 0; render < ChiselRenderObjects.kRendersBeforeDestroy; render++)
+                ChiselRenderObjects.OnRendered(default, null);
+            Assert.That(mesh == null, Is.True, "and destroyed once enough renders have passed");
         }
 
         [Test]

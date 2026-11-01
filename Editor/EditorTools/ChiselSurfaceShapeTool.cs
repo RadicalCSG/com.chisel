@@ -35,10 +35,10 @@ namespace Chisel.Editors
         static Hit s_Surface;
         static readonly List<ChiselIntersection> s_Intersections = new();
 
-        public override void OnActivated()          { Reset(); }
-        public override void OnWillBeDeactivated()  { Reset(); }
+        public override void OnActivated()          { ClearDrawing(); }
+        public override void OnWillBeDeactivated()  { ClearDrawing(); }
 
-        static void Reset()
+        static void ClearDrawing()
         {
             s_Points.Clear();
             s_Surface = default;
@@ -81,6 +81,7 @@ namespace Chisel.Editors
                 s_Surface = Pick(evt.mousePosition);
 
             PointDrawing.PointDrawHandle(dragArea, ref s_Points, out var transformation, out _, releaseOnMouseUp: true, SceneHandles.OutlinedDotHandleCap);
+            SnapToSurfaceOutline(transformation);
 
             if (evt.type == EventType.Repaint && s_Points.Count > 1)
             {
@@ -99,11 +100,29 @@ namespace Chisel.Editors
                 for (int i = 0; i < count - 2; i++)
                     outline.Add(transformation.MultiplyPoint3x4(s_Points[i]));
                 var surface = s_Surface;
-                Reset();
+                ClearDrawing();
                 if (surface.valid)
                     Create(surface.brush, surface.surfaceIndex, surface.material, surface.normal, outline, transformation.GetColumn(0));
                 GUIUtility.ExitGUI();
             }
+        }
+
+        static readonly List<Vector3> s_SurfaceOutline = new();
+        // How near (in pixels) the surface's corners and edges pull the corner being placed onto them
+        const float kSnapPixels = 10;
+
+        // The corner following the mouse onto the surface's corner or edge it is near: a corner on an edge stays on it
+        static void SnapToSurfaceOutline(Matrix4x4 transformation)
+        {
+            if (s_Points.Count == 0 || !s_Surface.valid ||
+                !ChiselSurfaceShapes.SurfaceOutline(s_Surface.brush, s_Surface.surfaceIndex, s_SurfaceOutline, out _))
+                return;
+            var last  = s_Points.Count - 1;
+            var world = transformation.MultiplyPoint3x4(s_Points[last]);
+            var reach = HandleUtility.GetHandleSize(world) * kSnapPixels / 80.0f;
+            if (!ChiselSurfaceShapes.NearestOnOutline(s_SurfaceOutline, world, reach, reach * 1.5f, out var snapped))
+                return;
+            s_Points[last] = transformation.inverse.MultiplyPoint3x4(snapped);
         }
 
         // right: the direction on the surface the decal's X takes, its drawing grid's

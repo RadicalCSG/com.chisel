@@ -782,6 +782,53 @@ namespace Chisel.Components
             return indexCount != (long)triangleCount * 3;
         }
 
+        // How many renders a replaced mesh outlives: the GPU Resident Drawer draws the renders before it takes the new one
+        // with the mesh it had (its shadow pass), several updates can come before a render
+        internal const int kRendersBeforeDestroy = 2;
+
+        // Meshes replaced, with how many renders they still wait for. Kept when play mode is entered without a domain
+        // reload: they are still waiting for those renders.
+        static readonly List<(Mesh mesh, int renders)> s_Replaced = new();
+        static bool s_WaitingForRenders;
+
+        // A mesh replaced on a renderer: destroyed once the drawer can no longer draw it; at once without a render
+        // pipeline, which has no GPU Resident Drawer
+        static void Retire(Mesh mesh)
+        {
+            if (GraphicsSettings.currentRenderPipeline == null)
+            {
+                ChiselObjectUtility.SafeDestroy(mesh);
+                return;
+            }
+            s_Replaced.Add((mesh, kRendersBeforeDestroy));
+            if (!s_WaitingForRenders)
+            {
+                RenderPipelineManager.endContextRendering += OnRendered;
+                s_WaitingForRenders = true;
+            }
+        }
+
+        // After a render: a replaced mesh that has waited for enough of them is destroyed
+        internal static void OnRendered(ScriptableRenderContext context, List<Camera> cameras)
+        {
+            for (int i = s_Replaced.Count - 1; i >= 0; i--)
+            {
+                var (mesh, renders) = s_Replaced[i];
+                if (renders > 1)
+                {
+                    s_Replaced[i] = (mesh, renders - 1);
+                    continue;
+                }
+                ChiselObjectUtility.SafeDestroy(mesh);
+                s_Replaced.RemoveAt(i);
+            }
+            if (s_Replaced.Count == 0 && s_WaitingForRenders)
+            {
+                RenderPipelineManager.endContextRendering -= OnRendered;
+                s_WaitingForRenders = false;
+            }
+        }
+
         public static void UpdateSettings(List<ChiselMeshUpdate> meshUpdates, List<ChiselRenderObjectUpdate> objectUpdates, Dictionary<ChiselModelComponent, GameObjectState> gameObjectStates, List<Mesh> foundMeshes, ref VertexBufferContents vertexBufferContents)
         {
             Profiler.BeginSample("UpdateSettings");
@@ -802,7 +849,7 @@ namespace Chisel.Components
                 {
                     var replacement = new Mesh { name = sharedMesh.name, hideFlags = sharedMesh.hideFlags };
                     foundMeshes[foundIndex] = replacement;
-                    ChiselObjectUtility.SafeDestroy(sharedMesh);
+                    Retire(sharedMesh);
                     instance.sharedMesh = sharedMesh = replacement;
                 }
 

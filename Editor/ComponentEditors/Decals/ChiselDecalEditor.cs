@@ -43,6 +43,7 @@ namespace Chisel.Editors
         static readonly GUIContent kTargetSurfaceContent = new GUIContent("Surface", "The brush's surface the shape is on, as its surface array numbers them.");
         static readonly GUIContent kDepthContent         = new GUIContent("Depth", "How far the shape reaches either side of its surface, together.");
         static readonly GUIContent kSurfaceUVsContent    = new GUIContent("Surface UVs", "The texture coordinates of the surface it is on instead of the image's, so its material lines up with the surface's texturing.");
+        static readonly GUIContent kHotspotBorderContent = new GUIContent("Hotspot Border", "On a hotspot mapped surface: its border runs round the decal too, as round a hole in it. Off, the mapping goes on under the decal as if it weren't there.");
         static readonly GUIContent kExtrudeHeightContent = new GUIContent("Extrude Height", "How far Extrude Out and Push In take the shape out of or into its surface.");
         static readonly GUIContent kExtrudeOutContent    = new GUIContent("Extrude Out", "The shape becomes a brush on its surface, Extrude Height tall, that adds to its brush.");
         static readonly GUIContent kPushInContent        = new GUIContent("Push In", "The shape becomes a brush, Extrude Height deep, that cuts into its brush.");
@@ -95,6 +96,9 @@ namespace Chisel.Editors
             // opaque decals replace the surface below, so only transparent ones fade
             if (transparent.boolValue || transparent.hasMultipleDifferentValues)
                 EditorGUILayout.PropertyField(settings.FindPropertyRelative(nameof(ChiselDecalSettings.fadeDistance)), kFadeDistanceContent);
+            // an opaque decal cuts its surface: a hotspot mapped one could draw its border round it
+            if (!transparent.boolValue || transparent.hasMultipleDifferentValues)
+                EditorGUILayout.PropertyField(settings.FindPropertyRelative(nameof(ChiselDecalSettings.hotspotBorder)), kHotspotBorderContent);
             if (material.objectReferenceValue == null && !material.hasMultipleDifferentValues)
                 EditorGUILayout.HelpBox(kNoMaterialMessage, MessageType.Info);
 
@@ -397,14 +401,16 @@ namespace Chisel.Editors
             Handles.color = Handles.yAxisColor;
             var alongUp = Handles.Slider(position, up, size, Handles.ArrowHandleCap, snap.y);
             Handles.color = Handles.zAxisColor;
-            var squareOffset = (right + up) * (size * 0.25f);
-            var inPlane = Handles.Slider2D(position + squareOffset, normal, right, up, size * 0.12f, Handles.RectangleHandleCap,
+            var squareOffset = (right + up) * (size * 0.2f);
+            var inPlane = Handles.Slider2D(position + squareOffset, normal, right, up, size * 0.1f, PlaneHandleCap,
                                            new Vector2(snap.x, snap.y)) - squareOffset;
             if (EditorGUI.EndChangeCheck())
             {
                 Undo.RecordObject(transform, "Move Surface Shape");
                 transform.position = position + (alongRight - position) + (alongUp - position) + (inPlane - position);
             }
+
+            CornerHandles(decal);
 
             var id = GUIUtility.GetControlID(kExtrudeHandleHash, FocusType.Passive);
             var wasDragging = GUIUtility.hotControl == id;
@@ -423,6 +429,107 @@ namespace Chisel.Editors
                 if (FinishExtrusion(decal))
                     GUIUtility.ExitGUI();
             }
+        }
+
+        // A filled square, as Unity's move gizmo has between two of its arrows: brighter while hovered or dragged
+        static void PlaneHandleCap(int controlID, Vector3 position, Quaternion rotation, float size, EventType eventType)
+        {
+            switch (eventType)
+            {
+                case EventType.Layout:
+                case EventType.MouseMove:
+                    HandleUtility.AddControl(controlID, HandleUtility.DistanceToRectangle(position, rotation, size));
+                    break;
+                case EventType.Repaint:
+                {
+                    var right = rotation * Vector3.right * size;
+                    var up    = rotation * Vector3.up * size;
+                    var corners = new[] { position - right - up, position + right - up, position + right + up, position - right + up };
+                    var active  = GUIUtility.hotControl == controlID || HandleUtility.nearestControl == controlID;
+                    var outline = Handles.color;
+                    var face    = outline;
+                    face.a = active ? 0.5f : 0.2f;
+                    Handles.DrawSolidRectangleWithOutline(corners, face, outline);
+                    break;
+                }
+            }
+        }
+
+        static readonly int kCornerHandleHash ="ChiselDecalCorner".GetHashCode();
+        static readonly List<Vector2> s_Corners = new();
+        static readonly List<Vector3> s_Outline = new();
+        // How near (in pixels) the surface's corners and edges pull a dragged corner onto them
+        const float kSnapPixels = 10;
+
+        // A shape's corners where its surface has them: dragged along the surface (onto its edges and corners, where they
+        // stay), Ctrl-click takes one away, the dot halfway along a side adds one there
+        static void CornerHandles(ChiselDecalComponent decal)
+        {
+            ChiselSurfaceShapes.Resolve(decal, out var frame, s_Corners);
+            var count = s_Corners.Count;
+            if (count < 3)
+                return;
+            var normal  = -(Vector3)frame.GetColumn(2).normalized;
+            var right   = ((Vector3)frame.GetColumn(0)).normalized;
+            var up      = ((Vector3)frame.GetColumn(1)).normalized;
+            var targets = decal.Targets;
+            var onSurface = targets.Count > 0 && targets[0].brush != null &&
+                            ChiselSurfaceShapes.SurfaceOutline(targets[0].brush, targets[0].surfaceIndex, s_Outline, out _);
+            var snap = EditorSnapSettings.move;
+            var evt  = Event.current;
+
+            for (int i = 0; i < count; i++)
+            {
+                var world = frame.MultiplyPoint3x4(s_Corners[i]);
+                var size  = HandleUtility.GetHandleSize(world);
+                var id    = GUIUtility.GetControlID(kCornerHandleHash, FocusType.Passive);
+                if (evt.type == EventType.MouseDown && evt.button == 0 && (evt.control || evt.command) &&
+                    HandleUtility.nearestControl == id && count > 3)
+                {
+                    evt.Use();
+                    s_Corners.RemoveAt(i);
+                    SetCorners(decal, frame, "Remove Surface Shape Corner");
+                    GUIUtility.ExitGUI();
+                }
+                Handles.color = decal.AnchorOf(i).IsAnchored ? Handles.selectedColor : kHandleColor;
+                EditorGUI.BeginChangeCheck();
+                var moved = Handles.Slider2D(id, world, Vector3.zero, normal, right, up, size * 0.06f, Handles.DotHandleCap,
+                                             new Vector2(snap.x, snap.y), false);
+                if (EditorGUI.EndChangeCheck())
+                {
+                    var reach = size * kSnapPixels / 80.0f;
+                    if (onSurface && ChiselSurfaceShapes.NearestOnOutline(s_Outline, moved, reach, reach * 1.5f, out var snapped))
+                        moved = snapped;
+                    s_Corners[i] = frame.inverse.MultiplyPoint3x4(moved);
+                    SetCorners(decal, frame, "Move Surface Shape Corner");
+                }
+            }
+
+            for (int i = 0; i < count; i++)
+            {
+                var a = frame.MultiplyPoint3x4(s_Corners[i]);
+                var b = frame.MultiplyPoint3x4(s_Corners[(i + 1) % count]);
+                var middle = (a + b) * 0.5f;
+                var size = HandleUtility.GetHandleSize(middle);
+                Handles.color = kHandleColor;
+                if (Handles.Button(middle, Quaternion.LookRotation(normal), size * 0.03f, size * 0.05f, Handles.DotHandleCap))
+                {
+                    s_Corners.Insert(i + 1, frame.inverse.MultiplyPoint3x4(middle));
+                    SetCorners(decal, frame, "Add Surface Shape Corner");
+                    GUIUtility.ExitGUI();
+                }
+            }
+        }
+
+        // The corners, in the frame their surface has them in, as the decal's own: anchored again where they lie on edges
+        static void SetCorners(ChiselDecalComponent decal, Matrix4x4 frame, string undoName)
+        {
+            var toDecal = decal.transform.worldToLocalMatrix * frame;
+            var corners = new List<Vector2>(s_Corners.Count);
+            foreach (var corner in s_Corners)
+                corners.Add(toDecal.MultiplyPoint3x4(corner));
+            Undo.RecordObject(decal, undoName);
+            decal.SetPolygon(corners);
         }
 
         // The outline of the brush being dragged, over it
@@ -492,7 +599,7 @@ namespace Chisel.Editors
             // a polygon decal lies on its surface: it moves in the surface's plane, and out of it is extruding
             if (decal.Shape == ChiselDecalShape.Polygon)
             {
-                if (Tools.current == Tool.Move && !serializedObject.isEditingMultipleObjects)
+                if (Tools.current == Tool.Move)
                 {
                     HideTools();
                     SurfaceHandles(decal);

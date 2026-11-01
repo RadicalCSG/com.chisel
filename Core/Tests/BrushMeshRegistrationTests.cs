@@ -90,6 +90,13 @@ namespace Chisel.Core.Tests
 							$"{what}: plane {p} registered as {blob.localPlanes[p]}, the mesh gave {given[p]}");
 		}
 
+		// A generator made this update has no mesh yet: asking for it gives none, which is no error
+		[Test]
+		public void ABrushWithoutAMeshYet_GivesNoBlob_AndLogsNothing()
+		{
+			Assert.That(BrushMeshManager.GetBrushMeshBlob(default(BrushMeshInstance)).IsCreated, Is.False);
+		}
+
 		[Test]
 		public void GivenPlanes_AreThePlanesRegistered_BothWays()
 		{

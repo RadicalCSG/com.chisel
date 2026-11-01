@@ -669,6 +669,9 @@ namespace Chisel.Core
 
         public static BlobAssetReference<BrushMeshBlob> GetBrushMeshBlob(Int32 brushMeshHash)
         {
+            // a brush that has no mesh yet (a generator made this update) has none to give
+            if (brushMeshHash == BrushMeshInstance.InvalidEntityID)
+                return BlobAssetReference<BrushMeshBlob>.Null;
             if (!AssertBrushMeshIDValid(brushMeshHash))
                 return BlobAssetReference<BrushMeshBlob>.Null;
             var brushMeshBlobCache = ChiselMeshLookup.Value.brushMeshBlobCache;

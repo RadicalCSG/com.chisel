@@ -15,7 +15,8 @@ namespace Chisel.Core
         Omni         = 1 << 3,
         OmniCube     = 1 << 4,
         Fades        = 1 << 5,
-        SurfaceUVs   = 1 << 6
+        SurfaceUVs   = 1 << 6,
+        HotspotBorder = 1 << 7
     }
 
     // The six planes around a decal's volume, in tree space. Their normals point inwards and are unit length, so
@@ -131,6 +132,13 @@ namespace Chisel.Core
         {
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             get { return (flags & DecalVolumeFlags.Fades) != 0; }
+        }
+
+        // an opaque decal the hotspot mapping of its surface draws a border round
+        public readonly bool HasHotspotBorder
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            get { return (flags & DecalVolumeFlags.HotspotBorder) != 0; }
         }
 
         public readonly bool UsesSurfaceUVs
@@ -286,6 +294,7 @@ namespace Chisel.Core
             if (settings.transparent) flags |= DecalVolumeFlags.Transparent;
             if (settings.Fades)       flags |= DecalVolumeFlags.Fades;
             if (settings.surfaceUVs)  flags |= DecalVolumeFlags.SurfaceUVs;
+            if (settings.hotspotBorder) flags |= DecalVolumeFlags.HotspotBorder;
             var cosMaxAngle = -1.0;
             if (settings.maxAngle < 180.0f)
             {

@@ -290,6 +290,69 @@ namespace Chisel.Components.Tests
             Assert.That(UpAreaAt(model, -0.25f), Is.EqualTo(kLOnAArea).Within(1e-4), "a hole instead");
         }
 
+        static readonly Vector3[] kSquareOutline = { new(0, 0, 0), new(2, 0, 0), new(2, 0, 1), new(0, 0, 1) };
+
+        [Test]
+        public void AnchorOf_FindsTheEdgeAndHowFarAlong_OrACorner()
+        {
+            var onEdge = ChiselSurfaceShapes.AnchorOf(kSquareOutline, new Vector3(0.5f, 0, 0));
+            Assert.That(onEdge.edge, Is.EqualTo(0));
+            Assert.That(onEdge.along, Is.EqualTo(0.25f).Within(1e-5f));
+            var corner = ChiselSurfaceShapes.AnchorOf(kSquareOutline, new Vector3(2, 0, 1));
+            Assert.That(corner.edge, Is.EqualTo(2));
+            Assert.That(corner.along, Is.EqualTo(0).Within(1e-5f));
+            Assert.That(ChiselSurfaceShapes.AnchorOf(kSquareOutline, new Vector3(1, 0, 0.5f)).IsAnchored, Is.False, "inside: held nowhere");
+
+            var wider = new[] { new Vector3(0, 0, 0), new Vector3(4, 0, 0), new Vector3(4, 0, 1), new Vector3(0, 0, 1) };
+            Assert.That(ChiselSurfaceShapes.PositionOf(wider, onEdge), Is.EqualTo(new Vector3(1, 0, 0)), "a quarter along the wider edge");
+        }
+
+        [Test]
+        public void NearestOnOutline_PrefersACorner_ThenAnEdge()
+        {
+            Assert.That(ChiselSurfaceShapes.NearestOnOutline(kSquareOutline, new Vector3(1.95f, 0, 0.05f), 0.1f, 0.1f, out var corner), Is.True);
+            Assert.That(corner, Is.EqualTo(new Vector3(2, 0, 0)));
+            Assert.That(ChiselSurfaceShapes.NearestOnOutline(kSquareOutline, new Vector3(1, 0, 0.05f), 0.1f, 0.1f, out var edge), Is.True);
+            Assert.That(edge, Is.EqualTo(new Vector3(1, 0, 0)));
+            Assert.That(ChiselSurfaceShapes.NearestOnOutline(kSquareOutline, new Vector3(1, 0, 0.5f), 0.1f, 0.1f, out _), Is.False);
+        }
+
+        // A stripe from one end of a surface to the other stays from end to end when the brush gets wider; a corner off
+        // the edges stays where it was
+        [Test]
+        public void StripeAcrossASurface_FollowsItsEdges_WhenTheBrushChanges([Values(false, true)] bool freeCorner)
+        {
+            const int kTop = 0;
+            var root = new GameObject("stripe test");
+            created.Add(root);
+            var model = root.AddComponent<ChiselModelComponent>();
+            var box = Box("box", model.transform, Vector3.zero);
+            Update();
+            var outline = new List<Vector3>();
+            Assert.That(ChiselSurfaceShapes.SurfaceOutline(box, kTop, outline, out var plane), Is.True);
+            var min = outline[0]; var max = outline[0];
+            foreach (var corner in outline) { min = Vector3.Min(min, corner); max = Vector3.Max(max, corner); }
+            var middleZ = (min.z + max.z) * 0.5f;
+            var stripe = new List<Vector3>
+            {
+                new(min.x, max.y, middleZ - 0.1f), new(max.x, max.y, middleZ - 0.1f),
+                new(max.x, max.y, middleZ + 0.1f), new(freeCorner ? min.x + 0.25f : min.x, max.y, middleZ + 0.1f)
+            };
+            var decal = ChiselDecalComponent.CreateOnSurface(box, kTop, decalMaterial, plane.normal, stripe);
+            Assert.That(decal.AnchorOf(0).IsAnchored && decal.AnchorOf(1).IsAnchored && decal.AnchorOf(2).IsAnchored, Is.True);
+            Assert.That(decal.AnchorOf(3).IsAnchored, Is.Not.EqualTo(freeCorner));
+            Update();
+            var width = max.x - min.x;
+            var before = width * 0.2 - (freeCorner ? 0.25 * 0.2 * 0.5 : 0);
+            Assert.That(UpAreas(model).decal, Is.EqualTo(before).Within(1e-4));
+
+            // twice as wide, to the right
+            box.Max = new Vector3(box.Max.x + width, box.Max.y, box.Max.z);
+            Update();
+            var after = 2 * width * 0.2 - (freeCorner ? 0.25 * 0.2 * 0.5 : 0);
+            Assert.That(UpAreas(model).decal, Is.EqualTo(after).Within(1e-4), "the stripe is as wide as the box");
+        }
+
         // Drawn across two floors, it is only on the surface it was drawn on
         [Test]
         public void ShapeDrawnOnASurface_StaysOnThatSurface()

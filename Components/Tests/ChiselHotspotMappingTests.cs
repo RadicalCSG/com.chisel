@@ -1285,6 +1285,40 @@ namespace Chisel.Components.Tests
             return count;
         }
 
+        // An opaque decal leaves the hotspot mapping round it as it was, unless it asks for the surface's border round it
+        [Test]
+        public void OpaqueDecal_HasNoHotspotBorderRoundIt_UnlessItAsksForOne([Values(false, true)] bool hotspotBorder)
+        {
+            var b1 = layout.tiles[2];
+            b1.border = 32;
+            layout.tiles[2] = b1;
+            var model = Model();
+            Box(model, new float3(-2, 0, -0.125f), new float3(2, 2, 0.125f));
+            // just outside the decal's left edge, within a border's width of it
+            var nearEdge = new float3(-0.55f, 1, -0.125f);
+            var before = UVAt(model, nearEdge, kFront);
+
+            var decalMaterial = new Material(ChiselProjectSettings.DefaultWallMaterial);
+            var go = new GameObject("Decal");
+            go.transform.SetParent(model.transform, false);
+            go.transform.SetPositionAndRotation(new Vector3(0, 1, -0.125f), Quaternion.LookRotation(Vector3.forward, Vector3.up));
+            var decal = go.AddComponent<ChiselDecalComponent>();
+            decal.Material    = decalMaterial;
+            decal.Size        = new Vector3(1, 0.6f, 0.1f);
+            decal.Transparent = false;
+            var settings = decal.Settings;
+            settings.hotspotBorder = hotspotBorder;
+            decal.Settings = settings;
+            Update();
+
+            var after = UVAt(model, nearEdge, kFront);
+            if (hotspotBorder)
+                Assert.That(math.distance(after, before), Is.GreaterThan(1e-3f), "the border runs round the decal");
+            else
+                AreEqual(before, after, "the mapping goes on under the decal");
+            Object.DestroyImmediate(decalMaterial);
+        }
+
         // How many drawn triangles face this way with their middle at x beyond minX
         static int TrianglesFacingBeyond(ChiselModelComponent model, float3 normal, float minX)
         {

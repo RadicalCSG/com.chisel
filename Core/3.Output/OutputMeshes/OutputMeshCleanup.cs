@@ -481,6 +481,7 @@ namespace Chisel.Core
                     to.decalEntityID         = from.decalEntityID;
                     to.decalStack            = from.decalStack;
                     to.decalFades            = from.decalFades;
+                    to.decalHidesBorder      = from.decalHidesBorder;
                     to.paintSurface          = from.paintSurface;
                     to.destinationFlags      = from.destinationFlags;
                     to.destinationParameters = from.destinationParameters;
@@ -769,7 +770,7 @@ namespace Chisel.Core
                 flat.Clear();
                 for (int r = 0; r < ring.Length; r++)
                     flat.Add(new float2(math.dot(collider[ring[r]] - pa, u), math.dot(collider[ring[r]] - pa, v)));
-                if (!(math.lengthsq(normal) > 0) || !SurfaceMesh.Fill(ring, flat, filled))
+                if (!(math.lengthsq(normal) > 0) || !SurfaceMesh.Fill(ring, flat, filled, collider))
                 {
                     // left as it was
                     render.Resize(added, NativeArrayOptions.UninitializedMemory);
@@ -831,6 +832,49 @@ namespace Chisel.Core
             {
                 mesh.Dispose();
             }
+        }
+
+        // Two surfaces made from one, side by side (a decal and what is left of the surface round it): a corner on the line
+        // between them is taken out of both where it lies on a straight line on both sides and everything interpolates on
+        // each. Only where the two go all the way round it between them: a corner on the surface's own outline is shared
+        // with its neighbours, and stays. False when there was nothing.
+        public static bool CleanSharedOutline(NativeList<int> aIndices, NativeList<float3> aCollider, NativeList<SelectVertex> aSelect, NativeList<RenderVertex> aRender,
+                                              NativeList<int> bIndices, NativeList<float3> bCollider, NativeList<SelectVertex> bSelect, NativeList<RenderVertex> bRender)
+        {
+            if (!Valid(aIndices, aCollider, aSelect, aRender) || !Valid(bIndices, bCollider, bSelect, bRender))
+                return false;
+            var a = new SurfaceMesh(aIndices, aCollider, aSelect, aRender);
+            var b = new SurfaceMesh(bIndices, bCollider, bSelect, bRender);
+            try
+            {
+                a.MergeEqualVertices();
+                b.MergeEqualVertices();
+                a.Connect();
+                b.Connect();
+                if (!SurfaceMesh.RemoveSharedSeamVertices(ref a, ref b))
+                    return false;
+                a.Write(aIndices, aCollider, aSelect, aRender);
+                b.Write(bIndices, bCollider, bSelect, bRender);
+                return true;
+            }
+            finally
+            {
+                a.Dispose();
+                b.Dispose();
+            }
+        }
+
+        static bool Valid(NativeList<int> indices, NativeList<float3> collider, NativeList<SelectVertex> select, NativeList<RenderVertex> render)
+        {
+            var vertexCount = render.Length;
+            if (indices.Length < 3 || indices.Length % 3 != 0 || collider.Length != vertexCount || select.Length != vertexCount)
+                return false;
+            for (int i = 0; i < indices.Length; i++)
+            {
+                if (indices[i] < 0 || indices[i] >= vertexCount)
+                    return false;
+            }
+            return true;
         }
 
         // A surface's triangles, with which triangle each directed edge belongs to
@@ -1040,7 +1084,7 @@ namespace Chisel.Core
                         flat.Clear();
                         for (int i = 0; i < ring.Length; i++)
                             flat.Add(frame.ToPlane(collider[ring[i]]));
-                        if (!Fill(ring, flat, filled))
+                        if (!Fill(ring, flat, filled, collider))
                             continue;
                         for (int i = 0; i < fan.Length; i++)
                             RemoveTriangle(fan[i]);
@@ -1165,7 +1209,7 @@ namespace Chisel.Core
                             flat.Clear();
                             for (int i = 0; i < ring.Length; i++)
                                 flat.Add(frame.ToPlane(collider[ring[i]]));
-                            removable = Fill(ring, flat, filled);
+                            removable = Fill(ring, flat, filled, collider);
                             if (!removable)
                                 break;
                             fans.AddRange(fan.AsArray());
@@ -1199,6 +1243,71 @@ namespace Chisel.Core
                         break;
                 }
                 return changed;
+            }
+
+            // A corner of a with one copy in b, each with its open fan: taken out of both where their open edges meet each
+            // other's and both lie straight and interpolate (CleanSharedOutline)
+            public static bool RemoveSharedSeamVertices(ref SurfaceMesh a, ref SurfaceMesh b)
+            {
+                var changed = false;
+                using var inB = new NativeParallelHashMap<float3, int>(b.render.Length, Allocator.Temp);
+                for (int v = 0; v < b.render.Length; v++)
+                {
+                    if (b.sameAs[v] == v)
+                        inB.TryAdd(b.collider[v], v);
+                }
+                using var fanA   = new NativeList<int>(16, Allocator.Temp);
+                using var ringA  = new NativeList<int>(16, Allocator.Temp);
+                using var fanB   = new NativeList<int>(16, Allocator.Temp);
+                using var ringB  = new NativeList<int>(16, Allocator.Temp);
+                using var points = new NativeList<int>(16, Allocator.Temp);
+                using var flat   = new NativeList<float2>(16, Allocator.Temp);
+                using var fillA  = new NativeList<int3>(16, Allocator.Temp);
+                using var fillB  = new NativeList<int3>(16, Allocator.Temp);
+                NativeArray<bool> done;
+                using var _done = done = new NativeArray<bool>(a.render.Length, Allocator.Temp);
+                for (int pass = 0; pass < 4; pass++)
+                {
+                    var passChanged = false;
+                    for (int v = 0; v < a.render.Length; v++)
+                    {
+                        if (done[v] || a.locked[v] || a.sameAs[v] != v || !inB.TryGetValue(a.collider[v], out var w) || b.locked[w])
+                            continue;
+                        if (!a.OpenSide(v, fanA, ringA, points, flat, fillA) || !b.OpenSide(w, fanB, ringB, points, flat, fillB))
+                            continue;
+                        // between them they go all the way round it
+                        if (!math.all(a.collider[ringA[0]] == b.collider[ringB[ringB.Length - 1]]) ||
+                            !math.all(a.collider[ringA[ringA.Length - 1]] == b.collider[ringB[0]]))
+                            continue;
+                        for (int i = 0; i < fanA.Length; i++) a.RemoveTriangle(fanA[i]);
+                        for (int i = 0; i < fillA.Length; i++) a.AddTriangle(fillA[i]);
+                        for (int i = 0; i < fanB.Length; i++) b.RemoveTriangle(fanB[i]);
+                        for (int i = 0; i < fillB.Length; i++) b.AddTriangle(fillB[i]);
+                        done[v] = true;
+                        passChanged = true;
+                    }
+                    changed |= passChanged;
+                    if (!passChanged)
+                        break;
+                }
+                return changed;
+            }
+
+            // A corner on the mesh's open edge that lies straight between its neighbours there, with everything around it
+            // interpolating: its triangles, its neighbours in order and what fills the hole without it
+            bool OpenSide(int v, NativeList<int> fan, NativeList<int> ring, NativeList<int> points, NativeList<float2> flat, NativeList<int3> filled)
+            {
+                if (!OpenFanOf(v, fan, ring) || ring.Length < 3 || HasRepeats(ring) || !Between(ring[0], v, ring[ring.Length - 1]))
+                    return false;
+                points.Clear();
+                points.AddRange(ring.AsArray());
+                points.Add(v);
+                if (!Interpolates(fan, points, out var frame))
+                    return false;
+                flat.Clear();
+                for (int i = 0; i < ring.Length; i++)
+                    flat.Add(frame.ToPlane(collider[ring[i]]));
+                return Fill(ring, flat, filled, collider);
             }
 
             static bool HasRepeats(NativeList<int> ring)
@@ -1293,8 +1402,38 @@ namespace Chisel.Core
             }
 
             // The polygon around a removed vertex filled with triangles: its fattest corner cut off first each time (ear
-            // clipping), or else, where that leaves three corners in a line last, the fattest fan from one of its corners
-            public static bool Fill(NativeList<int> ring, NativeList<float2> points, NativeList<int3> filled)
+            // clipping), or else, where that leaves three corners in a line last, the fattest fan from one of its corners.
+            // Corners about as fat as each other go in the order from its least corner (by x, y, z of positions), so the
+            // same polygon is filled the same way whichever corner it came in from.
+            public static bool Fill(NativeList<int> ring, NativeList<float2> points, NativeList<int3> filled, NativeList<float3> positions)
+            {
+                var least = 0;
+                for (int i = 1; i < ring.Length; i++)
+                {
+                    if (Less(positions[ring[i]], positions[ring[least]]))
+                        least = i;
+                }
+                using var startRing   = new NativeList<int>(ring.Length, Allocator.Temp);
+                using var startPoints = new NativeList<float2>(ring.Length, Allocator.Temp);
+                for (int i = 0; i < ring.Length; i++)
+                {
+                    startRing.Add(ring[(least + i) % ring.Length]);
+                    startPoints.Add(points[(least + i) % ring.Length]);
+                }
+                return Fill(startRing, startPoints, filled);
+            }
+
+            static bool Less(float3 a, float3 b)
+            {
+                if (a.x != b.x) return a.x < b.x;
+                if (a.y != b.y) return a.y < b.y;
+                return a.z < b.z;
+            }
+
+            // How much fatter a corner has to be to be taken before one that comes first
+            const float kTieAngle = 1e-4f;
+
+            static bool Fill(NativeList<int> ring, NativeList<float2> points, NativeList<int3> filled)
             {
                 if (Clip(ring, points, filled))
                     return true;
@@ -1303,7 +1442,7 @@ namespace Chisel.Core
                 for (int apex = 0; apex < ring.Length; apex++)
                 {
                     var angle = Fan(apex, ring, points, fan);
-                    if (angle > bestAngle)
+                    if (angle > bestAngle + kTieAngle)
                     {
                         bestAngle = angle;
                         filled.Clear();
@@ -1365,7 +1504,7 @@ namespace Chisel.Core
                         if (blocked)
                             continue;
                         var angle = SmallestAngle(points[prev], points[self], points[next]);
-                        if (angle > kMinAngle && angle > bestAngle) { bestAngle = angle; best = i; }
+                        if (angle > kMinAngle && angle > bestAngle + kTieAngle) { bestAngle = angle; best = i; }
                     }
                     if (best < 0)
                         return false;

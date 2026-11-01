@@ -441,6 +441,7 @@ namespace Chisel.Core
                         continue;
                     }
                     HotspotGroups.BordersOf(new int2(brush, s), bordersOf, rules);
+                    HotspotGroups.AddDecalEdges(ref source.Value, s, rules);
                     buffer.Add(2 + rules.Length);
                     for (int r = 0; r < rules.Length; r++)
                         buffer.Add(rules[r]);
@@ -495,6 +496,7 @@ namespace Chisel.Core
                     to.decalEntityID         = from.decalEntityID;
                     to.decalStack            = from.decalStack;
                     to.decalFades            = from.decalFades;
+                    to.decalHidesBorder      = from.decalHidesBorder;
                     to.paintSurface          = from.paintSurface;
                     to.destinationFlags      = from.destinationFlags;
                     to.destinationParameters = from.destinationParameters;
@@ -535,6 +537,7 @@ namespace Chisel.Core
                     var sections = HotspotSections.Create(Allocator.Temp);
                     using var rules = new NativeList<HotspotBorderCorner>(4, Allocator.Temp);
                     HotspotGroups.BordersOf(new int2(brush, s), bordersOf, rules);
+                    HotspotGroups.AddDecalEdges(ref original, s, rules);
                     // around what the surface draws (its border, its interior), unless it is a triangle (exact already) or
                     // repeats
                     var built = input.count == 4 && !input.Repeated
