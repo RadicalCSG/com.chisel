@@ -68,6 +68,9 @@ namespace Chisel.Editors
 			}
 		}
 
+#if UNITY_6000_7_OR_NEWER
+        [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
+#endif
         public class Slider2D
 		{
 			private static readonly Snapping2D s_Snapping2D = new();

@@ -4,6 +4,9 @@ using UnityEngine;
 namespace Chisel.Core.Tests
 {
     [TestFixture]
+#if UNITY_6000_7_OR_NEWER
+    [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
+#endif
     public class ChiselMeshLookupTests
     {
         static readonly System.Reflection.FieldInfo kInstance = typeof(ChiselMeshLookup).GetField("instance", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);

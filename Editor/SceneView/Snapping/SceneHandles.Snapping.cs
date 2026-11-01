@@ -43,6 +43,9 @@ namespace Chisel.Editors
         All                     = ~0
     }
 
+#if UNITY_6000_7_OR_NEWER
+    [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
+#endif
     public static class Snapping
     {
         public static event Action SnappingSettingsModified;
@@ -673,6 +676,9 @@ namespace Chisel.Editors
     }
 
     // TODO: better naming
+#if UNITY_6000_7_OR_NEWER
+    [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
+#endif
     public class Snapping1D
     {
         private Vector2			startMousePosition; 

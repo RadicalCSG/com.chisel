@@ -5,6 +5,9 @@ using UnityEditor;
 namespace Chisel.Editors
 {
     [CustomPropertyDrawer(typeof(HideFoldoutAttribute))]
+#if UNITY_6000_7_OR_NEWER
+    [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
+#endif
     public sealed class HideFoldoutPropertyDrawer : PropertyDrawer
 	{
 #if !UNITY_2023_1_OR_NEWER

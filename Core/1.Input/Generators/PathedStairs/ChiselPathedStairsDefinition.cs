@@ -116,6 +116,9 @@ namespace Chisel.Core
     }
 
     [Serializable]
+#if UNITY_6000_7_OR_NEWER
+    [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
+#endif
     public class ChiselPathedStairsDefinition : SerializedBranchGenerator<ChiselPathedStairs>
     {
         public const string kNodeTypeName = "Pathed Stairs";

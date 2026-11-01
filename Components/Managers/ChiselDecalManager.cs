@@ -11,6 +11,9 @@ namespace Chisel.Components
     /// <summary>
     /// Synchronizes active decals with each model's CSG tree.
     /// </summary>
+#if UNITY_6000_7_OR_NEWER
+    [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
+#endif
     public static class ChiselDecalManager
     {
         static readonly HashSet<ChiselDecalComponent> s_Decals = new();

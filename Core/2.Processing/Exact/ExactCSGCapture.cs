@@ -5,6 +5,9 @@ using Unity.Mathematics;
 
 namespace Chisel.Core
 {
+#if UNITY_6000_7_OR_NEWER
+    [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
+#endif
     static class ExactCSGCapture
     {
         // One part of one face: the triangles drawn with one category, over the face's output vertices.

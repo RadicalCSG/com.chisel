@@ -5,6 +5,9 @@ namespace Chisel.Editors
 {
     // What the model inspector warns about in its lightmapping settings, as Unity's own renderer inspector does: these
     // checks are internal to Unity
+#if UNITY_6000_7_OR_NEWER
+    [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
+#endif
     static class ChiselLightmappingInternals
     {
         const string kFeature = "the model inspector's lightmapping warnings";

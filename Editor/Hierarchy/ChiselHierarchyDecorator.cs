@@ -10,6 +10,9 @@ using UnityEngine.UIElements;
 namespace Chisel.Editors
 {
     [InitializeOnLoad]
+#if UNITY_6000_7_OR_NEWER
+    [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
+#endif
     public static class ChiselHierarchyDecorator
     {
         const string kWarningBadgeName = "chisel-warning-badge";

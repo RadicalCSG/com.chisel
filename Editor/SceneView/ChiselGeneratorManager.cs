@@ -15,6 +15,9 @@ namespace Chisel.Editors
         public void OnBeforeSerialize() {}
     }
 
+#if UNITY_6000_7_OR_NEWER
+    [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
+#endif
     public class ChiselGeneratorManager : SingletonManager<ChiselEditModeData, ChiselGeneratorManager>
     {
         internal static ChiselPlacementToolInstance[] s_GeneratorModes;

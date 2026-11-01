@@ -15,6 +15,9 @@ namespace Chisel.Components
     }
 
     [Serializable, BurstCompile(CompileSynchronously = true)]
+#if UNITY_6000_7_OR_NEWER
+    [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
+#endif
     public class ChiselColliderObjects
     {
         public ulong            surfaceParameter;

@@ -4,6 +4,9 @@ using UnityEngine;
 
 namespace Chisel.Core
 {
+#if UNITY_6000_7_OR_NEWER
+	[Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
+#endif
 	public sealed class ChiselContentsList : ScriptableObject
 	{
 		public const int    kSolidIndex  = 0;

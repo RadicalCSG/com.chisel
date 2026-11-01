@@ -27,6 +27,9 @@ namespace Chisel.Components
     /// a dab does to the grid points under it. A dab weighs each point by the brush's strength, fully within its hardness
     /// (a part of its radius) and falling off smoothly to its edge.
     /// </summary>
+#if UNITY_6000_7_OR_NEWER
+    [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
+#endif
     public static class ChiselPaintBrush
     {
         /// <summary>Most grid points a surface gets: the cells grow until it fits (PaintSubdivision takes as many)</summary>

@@ -17,6 +17,9 @@ using UnityEngine.SceneManagement;
 
 namespace Chisel.Editors
 {
+#if UNITY_6000_7_OR_NEWER
+	[Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
+#endif
 	public sealed class ChiselDrawModes
 	{
 		const string kChiselSection	= "Chisel";

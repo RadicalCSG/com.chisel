@@ -5,6 +5,9 @@ namespace Chisel.Editors
 {
     // Where a ray hits a mesh, any mesh, also one that isn't readable: Unity's HandleUtility.IntersectRayMesh, which is
     // internal
+#if UNITY_6000_7_OR_NEWER
+    [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
+#endif
     static class ChiselMeshPicking
     {
         const string kFeature = "placing on meshes that aren't Chisel's";

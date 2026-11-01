@@ -24,6 +24,9 @@ namespace Chisel.Editors
     // outlines of surfaces repeated as a last resort and of surfaces that are all border; optionally the drawn triangles'
     // edges, the seams where the uvs jump, the outlines of groups of surfaces mapped as one, and the links made by hand
     // (with or without the rest).
+#if UNITY_6000_7_OR_NEWER
+    [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
+#endif
     public static class ChiselHotspotDiagnosticsView
     {
         public struct Summary

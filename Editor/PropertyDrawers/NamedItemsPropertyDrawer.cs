@@ -6,6 +6,9 @@ namespace Chisel.Editors
 {
     // TODO: see if we can get this to work on any array instead
     [CustomPropertyDrawer(typeof(NamedItemsAttribute))]
+#if UNITY_6000_7_OR_NEWER
+    [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
+#endif
     public sealed class NamedItemsPropertyDrawer : PropertyDrawer
     {
         readonly static GUIContent kMissingSurfacesContents             = new("This generator is not set up properly and doesn't have the correct number of surfaces.");

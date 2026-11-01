@@ -6,6 +6,9 @@ namespace Chisel.Editors
 {
     
     [CustomPropertyDrawer(typeof(ChiselSurfaceArray))]
+#if UNITY_6000_7_OR_NEWER
+    [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
+#endif
     public sealed class ChiselSurfaceDefinitionPropertyDrawer : PropertyDrawer
     {
 		// TODO: make these shared resources since this name is used in several places (with identical context)

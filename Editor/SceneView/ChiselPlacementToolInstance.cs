@@ -91,6 +91,9 @@ namespace Chisel.Editors
         }
     }
 
+#if UNITY_6000_7_OR_NEWER
+    [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
+#endif
     public abstract class ChiselPlacementToolInstance 
     {
         public abstract string  ToolName        { get; }

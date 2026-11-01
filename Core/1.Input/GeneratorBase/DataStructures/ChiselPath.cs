@@ -7,6 +7,9 @@ namespace Chisel.Core
 {
     // TODO: turn into an asset so we can share it between multiple generators??
     [Serializable]
+#if UNITY_6000_7_OR_NEWER
+    [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
+#endif
     public class ChiselPath
     {
         const int kLatestVersion = 1;
@@ -50,6 +53,9 @@ namespace Chisel.Core
 
 
 	[Serializable]
+#if UNITY_6000_7_OR_NEWER
+	[Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
+#endif
 	public struct ChiselPathPoint
 	{
 		static Vector3 kDefaultDirection = Vector3.up;

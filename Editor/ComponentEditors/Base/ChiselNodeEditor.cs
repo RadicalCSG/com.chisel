@@ -10,6 +10,9 @@ using UnityEngine.Pool;
 
 namespace Chisel.Editors
 {
+#if UNITY_6000_7_OR_NEWER
+    [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
+#endif
     public abstract class ChiselNodeEditorBase : Editor
 	{
 		protected const string kGameObjectMenuPath              = "GameObject/Chisel/";
@@ -177,6 +180,9 @@ namespace Chisel.Editors
 		}
 	}
 
+#if UNITY_6000_7_OR_NEWER
+    [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
+#endif
     public abstract class ChiselNodeEditor<T> : ChiselNodeEditorBase
         where T : ChiselNodeComponent
     {
@@ -660,6 +666,9 @@ namespace Chisel.Editors
         }
     }
 
+#if UNITY_6000_7_OR_NEWER
+    [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
+#endif
     public class ChiselDefaultGeneratorDetails : IChiselNodeDetails
     {
         const string kAdditiveIconName          = "csg_" + nameof(CSGOperationType.Additive);
@@ -730,6 +739,9 @@ namespace Chisel.Editors
         }
     }
 
+#if UNITY_6000_7_OR_NEWER
+    [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
+#endif
     public abstract class ChiselGeneratorEditor<T> : ChiselNodeEditor<T>
         where T : ChiselGeneratorComponent
     {

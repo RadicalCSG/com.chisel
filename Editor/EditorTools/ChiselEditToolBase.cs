@@ -5,6 +5,9 @@ using UnityEngine;
  
 namespace Chisel.Editors
 {
+#if UNITY_6000_7_OR_NEWER
+    [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
+#endif
     abstract class ChiselEditToolBase : EditorTool, IChiselToolMode
     {
         // Serialize this value to set a default value in the Inspector.

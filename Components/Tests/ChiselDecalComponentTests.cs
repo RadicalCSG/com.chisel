@@ -7,6 +7,9 @@ using UnityEngine;
 namespace Chisel.Components.Tests
 {
     [TestFixture]
+#if UNITY_6000_7_OR_NEWER
+    [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
+#endif
     public class ChiselDecalComponentTests
     {
         readonly List<Object> created = new();

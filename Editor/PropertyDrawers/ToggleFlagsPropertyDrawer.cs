@@ -8,6 +8,9 @@ using UnityEditor;
 namespace Chisel.Editors
 {
     [CustomPropertyDrawer(typeof(ToggleFlagsAttribute))]
+#if UNITY_6000_7_OR_NEWER
+    [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
+#endif
     public sealed class ToggleFlagsPropertyDrawer : PropertyDrawer
     {
         readonly static int kToggleFlagsHashCode = nameof(ToggleFlagsPropertyDrawer).GetHashCode();

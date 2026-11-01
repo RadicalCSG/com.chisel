@@ -7,6 +7,9 @@ using UnityEngine;
 namespace Chisel.Editors
 {
 	// The project's paint profiles: a list of the shaders that can be painted, and the modes of the one chosen
+#if UNITY_6000_7_OR_NEWER
+	[Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
+#endif
 	static class ChiselPaintSettingsGUI
 	{
 		static readonly GUIContent kExplanation = EditorGUIUtility.TrTextContent(

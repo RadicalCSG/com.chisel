@@ -19,6 +19,9 @@ namespace Chisel.Core
     /// </summary>
     public delegate Hash128 SurfaceParameterIdentity(ulong surfaceParameter);
 
+#if UNITY_6000_7_OR_NEWER
+    [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
+#endif
     static partial class CompactHierarchyManager
     {
         // Bump when GetTreeInputHash hashes something else, or the same things differently

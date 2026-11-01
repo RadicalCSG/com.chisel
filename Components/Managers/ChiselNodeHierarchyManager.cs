@@ -29,6 +29,9 @@ using UnityEngine.SceneManagement;
 namespace Chisel.Components
 {
     // TODO: rewrite this, shouldn't be static & have more control over lifetime
+#if UNITY_6000_7_OR_NEWER
+    [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
+#endif
     public static class ChiselNodeHierarchyManager
 	{
 		[RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]

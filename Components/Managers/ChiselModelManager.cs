@@ -9,6 +9,9 @@ using Unity.Jobs;
 
 namespace Chisel.Components
 {
+#if UNITY_6000_7_OR_NEWER
+    [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
+#endif
     public class ChiselModelManager : ScriptableObject, ISerializationCallbackReceiver
 	{
 		public const string kGeneratedDefaultModelName = "‹[default-model]›";

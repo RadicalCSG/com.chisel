@@ -9,6 +9,9 @@ namespace Chisel.Editors
 {
     // A surface's texture placement, as the surface options and the brush inspector show it: for a hotspot material its
     // HotspotSurface in the rows a planar mapping has (translation, scale, rotation) and the tile it keeps
+#if UNITY_6000_7_OR_NEWER
+    [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
+#endif
     public static class HotspotTransformGUI
     {
         const float kSpacing = 2;

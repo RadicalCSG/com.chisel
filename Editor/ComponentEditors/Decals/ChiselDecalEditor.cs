@@ -8,6 +8,9 @@ using UnityEngine;
 namespace Chisel.Editors
 {
     [CustomEditor(typeof(ChiselDecalComponent)), CanEditMultipleObjects]
+#if UNITY_6000_7_OR_NEWER
+    [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
+#endif
     public sealed class ChiselDecalEditor : Editor
     {
         const string kCreateMenuPath = "GameObject/Chisel/Create Decal";

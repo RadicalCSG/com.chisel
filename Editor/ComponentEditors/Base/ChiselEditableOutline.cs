@@ -13,6 +13,9 @@ namespace Chisel.Editors
     // TODO: lots of different responsibilities in here, we should try and separate responsibilities 
     //       into multiple classes to make it easier to understand 
     //       (but at the same time be careful to not over-engineer and make it too abstract)
+#if UNITY_6000_7_OR_NEWER
+    [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
+#endif
     public class ChiselEditableOutline
     {
         public ChiselEditableOutline(ChiselBrushComponent brush)

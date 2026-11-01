@@ -8,6 +8,9 @@ namespace Chisel.Editors
     // Connected hotspot surfaces are mapped as one, on the first one's settings (HotspotGroups), and coplanar ones stay
     // connected only while their frames agree: an edit to how the texture lies on one of them goes to all of them, so
     // turning one turns the group instead of tearing it off
+#if UNITY_6000_7_OR_NEWER
+    [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
+#endif
     static class ChiselHotspotGroupEdit
     {
         static readonly List<ChiselGeneratorComponent> s_Generators = new();

@@ -132,6 +132,9 @@ namespace Chisel.Core
     }
 
     [Serializable]
+#if UNITY_6000_7_OR_NEWER
+    [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
+#endif
     public class ChiselCapsuleDefinition : SerializedBrushGenerator<ChiselCapsule>
     {
         public const string kNodeTypeName = "Capsule";

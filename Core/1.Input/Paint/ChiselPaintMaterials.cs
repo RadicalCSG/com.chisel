@@ -20,6 +20,9 @@ namespace Chisel.Core
     /// attributes, at their defaults where nothing is painted. Materials are registered as surfaces take them; what
     /// their shaders take comes from <see cref="Resolver"/>.
     /// </summary>
+#if UNITY_6000_7_OR_NEWER
+    [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
+#endif
     public static class ChiselPaintMaterials
     {
         /// <summary>Adds the attributes a material's shader takes paint in, with their defaults</summary>

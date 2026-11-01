@@ -5,6 +5,9 @@ using System.Buffers;
 
 namespace Chisel.Editors
 {
+#if UNITY_6000_7_OR_NEWER
+    [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
+#endif
     public sealed partial class SceneHandleUtility
     {
         public static int FocusControl

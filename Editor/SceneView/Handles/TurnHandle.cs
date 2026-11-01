@@ -10,6 +10,9 @@ namespace Chisel.Editors
         AntiClockWise
     }
 
+#if UNITY_6000_7_OR_NEWER
+    [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
+#endif
     public static class TurnHandle
     {
 		readonly static GUIContent kClockWiseRotation     = new("↻");

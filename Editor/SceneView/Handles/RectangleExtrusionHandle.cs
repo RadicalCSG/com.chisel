@@ -6,6 +6,9 @@ using Grid = Chisel.Editors.Grid;
 
 namespace Chisel.Editors
 {
+#if UNITY_6000_7_OR_NEWER
+    [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
+#endif
     public static class RectangleExtrusionHandle
     {
         static Matrix4x4		s_Transformation = Matrix4x4.identity;

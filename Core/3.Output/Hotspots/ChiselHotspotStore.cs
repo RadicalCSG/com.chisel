@@ -7,6 +7,9 @@ namespace Chisel.Core
     // The hotspot layouts surfaces use, by the id a surface carries (InternalChiselSurface.hotspotLayout, 0 for none)
     // A layout is registered once for each set of materials drawn on it: a material with variants (the material first,
     // then its variants) gets an id of its own, so its surfaces can be given any of them
+#if UNITY_6000_7_OR_NEWER
+    [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
+#endif
     public static class ChiselHotspotStore
     {
         static readonly List<ChiselHotspotLayout>                    s_Layouts   = new();

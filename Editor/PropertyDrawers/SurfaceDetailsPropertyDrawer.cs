@@ -7,6 +7,9 @@ using UnityEditor;
 namespace Chisel.Editors
 {
     [CustomPropertyDrawer(typeof(SurfaceDetails))]
+#if UNITY_6000_7_OR_NEWER
+    [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
+#endif
     public sealed class SurfaceDetailsPropertyDrawer : PropertyDrawer
     {
         const float kSpacing = 2;

@@ -10,6 +10,9 @@ namespace Chisel.Core
 {
     // Sizes and offsets of the structs every brush blob is made of. Native code compiled for
     // another layout than the managed one writes blobs that managed code misreads.
+#if UNITY_6000_7_OR_NEWER
+    [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
+#endif
     public struct BrushMeshBlobLayout
     {
         public int polygonSize;

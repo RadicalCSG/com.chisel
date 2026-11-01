@@ -14,6 +14,9 @@ namespace Chisel.Editors
     [Serializable]
     public enum SelectionType { Replace, Additive, Subtractive };
 
+#if UNITY_6000_7_OR_NEWER
+    [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
+#endif
     internal static class ChiselRectSelection
     {
         public static bool  Valid			{ get { return s_ReflectionSucceeded; } }
@@ -123,6 +126,9 @@ namespace Chisel.Editors
     }
 
     // TODO: clean up, rename
+#if UNITY_6000_7_OR_NEWER
+    [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
+#endif
     internal static class ChiselRectSelectionManager
     {
         static HashSet<CSGTreeNode> s_RectFoundTreeNodes	= new();

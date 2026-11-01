@@ -39,6 +39,9 @@ namespace Chisel.Editors
         }
     }
 
+#if UNITY_6000_7_OR_NEWER
+    [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
+#endif
     sealed class ChiselUVToolCommon : ScriptableObject
     {
         #region Instance

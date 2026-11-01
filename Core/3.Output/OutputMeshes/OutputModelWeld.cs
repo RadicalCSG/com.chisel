@@ -135,6 +135,9 @@ namespace Chisel.Core
         public void Execute() { WeldState.FreeWork(work); }
     }
 
+#if UNITY_6000_7_OR_NEWER
+    [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
+#endif
     internal static partial class OutputModelWeld
     {
         // Edges shorter than this are collapsed, the last step across the model: where many planes

@@ -8,6 +8,9 @@ namespace Chisel.Editors
 {
     [CustomPropertyDrawer(typeof(ConditionalNameAttribute))]
     [CustomPropertyDrawer(typeof(ConditionalHideAttribute))]
+#if UNITY_6000_7_OR_NEWER
+    [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
+#endif
     public class ConditionalFieldAttributeDrawer : PropertyDrawer
 	{
         readonly static Dictionary<int, string> s_PathLookup = new();
