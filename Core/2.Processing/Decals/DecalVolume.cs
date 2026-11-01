@@ -13,7 +13,8 @@ namespace Chisel.Core
         AngleLimited = 1 << 2,
         Omni         = 1 << 3,
         OmniCube     = 1 << 4,
-        Fades        = 1 << 5
+        Fades        = 1 << 5,
+        SurfaceUVs   = 1 << 6
     }
 
     // The six planes around a decal's volume, in tree space. Their normals point inwards and are unit length, so
@@ -121,6 +122,12 @@ namespace Chisel.Core
             get { return (flags & DecalVolumeFlags.Fades) != 0; }
         }
 
+        public readonly bool UsesSurfaceUVs
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            get { return (flags & DecalVolumeFlags.SurfaceUVs) != 0; }
+        }
+
         // An omni-directional decal has no volume of its own: each surface it reaches gets one (OnSurface)
         public readonly bool IsOmni
         {
@@ -137,7 +144,28 @@ namespace Chisel.Core
                 (instance.destinationFlags & SurfaceDestinationFlags.Renderable) == 0)
                 return false;
 
-            var size = math.abs((double3)settings.size);
+            var size   = math.abs((double3)settings.size);
+            var center = (double3)settings.center;
+            var isTriangle = settings.projection == ChiselDecalProjection.Triangle;
+            double2 cornerA = default, cornerB = default, cornerC = default;
+            if (isTriangle)
+            {
+                // counter-clockwise, and the box round it
+                cornerA = settings.triangle.c0;
+                cornerB = settings.triangle.c1;
+                cornerC = settings.triangle.c2;
+                var ab = cornerB - cornerA;
+                var ac = cornerC - cornerA;
+                var twiceArea = ab.x * ac.y - ab.y * ac.x;
+                if (!math.isfinite(twiceArea) || !(math.abs(twiceArea) > kMinSize * kMinSize))
+                    return false;
+                if (twiceArea < 0)
+                    (cornerB, cornerC) = (cornerC, cornerB);
+                var min = math.min(cornerA, math.min(cornerB, cornerC));
+                var max = math.max(cornerA, math.max(cornerB, cornerC));
+                center.xy = (min + max) * 0.5;
+                size.xy   = max - min;
+            }
             if (!math.all(math.isfinite(size)) || !math.all(size > kMinSize))
                 return false;
 
@@ -153,14 +181,13 @@ namespace Chisel.Core
                 return false;
             var treeToDecal = math.inverse(decalToTree);
 
-            var center      = (double3)settings.center;
             var halfSize    = size * 0.5;
             var perspective = settings.projection == ChiselDecalProjection.Perspective &&
                               settings.fieldOfView >= ChiselDecalSettings.kMinFieldOfView &&
                               settings.fieldOfView <= ChiselDecalSettings.kMaxFieldOfView;
             var nearZ = center.z - halfSize.z;
             var farZ  = center.z + halfSize.z;
-            var slant = math.all(math.isfinite(settings.endSlant)) ? (double2)settings.endSlant : double2.zero;
+            var slant = !isTriangle && math.all(math.isfinite(settings.endSlant)) ? (double2)settings.endSlant : double2.zero;
 
             var local = new DecalPlanes();
             double focal = 0, apexZ = 0, slopeX = 0, slopeY = 0;
@@ -177,6 +204,14 @@ namespace Chisel.Core
                 local.p1 = new double4(-1, 0, slopeX,  center.x - slopeX * apexZ);
                 local.p2 = new double4( 0, 1, slopeY, -center.y - slopeY * apexZ);
                 local.p3 = new double4( 0,-1, slopeY,  center.y - slopeY * apexZ);
+            } else
+            if (isTriangle)
+            {
+                // inside is left of each edge; the fourth side plane repeats the third
+                local.p0 = EdgePlane(cornerA, cornerB);
+                local.p1 = EdgePlane(cornerB, cornerC);
+                local.p2 = EdgePlane(cornerC, cornerA);
+                local.p3 = local.p2;
             } else
             {
                 // the ends lean by endSlant: x >= start + slant.x * y, x <= end + slant.y * y
@@ -227,6 +262,7 @@ namespace Chisel.Core
             if (perspective)          flags |= DecalVolumeFlags.Perspective;
             if (settings.transparent) flags |= DecalVolumeFlags.Transparent;
             if (settings.Fades)       flags |= DecalVolumeFlags.Fades;
+            if (settings.surfaceUVs)  flags |= DecalVolumeFlags.SurfaceUVs;
             var cosMaxAngle = -1.0;
             if (settings.maxAngle < 180.0f)
             {
@@ -265,6 +301,14 @@ namespace Chisel.Core
             return true;
         }
 
+        // The plane through a and b, perpendicular to the decal's XY plane, with its inside to the left of a to b
+        static double4 EdgePlane(double2 a, double2 b)
+        {
+            var direction = b - a;
+            var normal    = new double2(-direction.y, direction.x);
+            return new double4(normal, 0, -math.dot(normal, a));
+        }
+
         static bool TryCreateOmni(in ChiselDecalInstance instance, double4x4 decalToTree, double3 size, out DecalVolume volume)
         {
             volume = default;
@@ -284,6 +328,7 @@ namespace Chisel.Core
             if (cube)                 flags |= DecalVolumeFlags.OmniCube;
             if (settings.transparent) flags |= DecalVolumeFlags.Transparent;
             if (settings.Fades)       flags |= DecalVolumeFlags.Fades;
+            if (settings.surfaceUVs)  flags |= DecalVolumeFlags.SurfaceUVs;
             var uvScale = settings.uvScale;
             if (math.all(uvScale == float2.zero))
                 uvScale = new float2(1, 1);

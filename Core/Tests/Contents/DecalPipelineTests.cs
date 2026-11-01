@@ -216,6 +216,77 @@ namespace Chisel.Core.Tests
             }
         }
 
+        // A triangle decal projecting down: its corners are world (x, z)
+        static ChiselDecalInstance TriangleDecal(ulong id, float2 a, float2 b, float2 c, bool surfaceUVs)
+        {
+            var decal = Decal(id, float3.zero, kDown, new float3(1, 1, 0.5f), transparent: false,
+                              projection: ChiselDecalProjection.Triangle);
+            decal.settings.triangle   = new float2x3(a, b, c);
+            decal.settings.surfaceUVs = surfaceUVs;
+            return decal;
+        }
+
+        [Test]
+        public void OpaqueTriangleDecal_ReplacesOnlyTheTriangle([Values(false, true)] bool clockwise)
+        {
+            var scene = new ContentsScene().Add(Box("floor", new float3(-2, -1, -2), new float3(2, 0, 2)));
+            var a = new float2(-1, -1);
+            var b = new float2(1.5f, -1);
+            var c = new float2(-1, 1);
+            using var harness = BuildAndUpdate(scene, clockwise ? TriangleDecal(1, a, c, b, false) : TriangleDecal(1, a, b, c, false));
+
+            Assert.That(AreaOf(harness, kDecalMaterial, new float3(0, 1, 0)), Is.EqualTo(2.5).Within(kAreaTolerance));
+            Assert.That(SurfaceArea(harness, new float3(0, 1, 0)), Is.EqualTo(13.5).Within(kAreaTolerance), "the floor under the triangle is gone");
+
+            foreach (var point in FloorSamples(-2, 2))
+            {
+                var coverage = CoverageAt(harness, point.x, point.y, 0);
+                var inDecal  = Contains2D(a, b, c, point);
+                coverage.TryGetValue(kDecalMaterial, out var decal);
+                Assert.That(CountOf(coverage), Is.EqualTo(1), $"exactly one triangle at {point}");
+                Assert.That(decal, Is.EqualTo(inDecal ? 1 : 0), $"decal at {point}");
+            }
+        }
+
+        [Test]
+        public void DecalWithSurfaceUVs_HasTheSurfacesTextureCoordinates([Values(false, true)] bool surfaceUVs)
+        {
+            var scene = new ContentsScene().Add(Box("floor", new float3(-2, -1, -2), new float3(2, 0, 2)));
+            using var harness = BuildAndUpdate(scene, TriangleDecal(1, new float2(-1, -1), new float2(1.5f, -1), new float2(-1, 1), surfaceUVs));
+
+            // every corner of the triangle is also a corner of the floor round it
+            var floorUVs = new List<(float3 position, float2 uv)>();
+            foreach (var triangle in harness.Triangles)
+            {
+                if (triangle.material == kDecalMaterial || triangle.Normal.y < 0.99f)
+                    continue;
+                floorUVs.Add((triangle.a, triangle.uvA));
+                floorUVs.Add((triangle.b, triangle.uvB));
+                floorUVs.Add((triangle.c, triangle.uvC));
+            }
+
+            var compared = 0;
+            var allSame  = true;
+            foreach (var triangle in harness.Triangles)
+            {
+                if (triangle.material != kDecalMaterial)
+                    continue;
+                foreach (var (position, uv) in new[] { (triangle.a, triangle.uvA), (triangle.b, triangle.uvB), (triangle.c, triangle.uvC) })
+                {
+                    foreach (var floor in floorUVs)
+                    {
+                        if (math.distance(floor.position, position) > 1e-4f)
+                            continue;
+                        compared++;
+                        allSame &= math.distance(floor.uv, uv) < 1e-4f;
+                    }
+                }
+            }
+            Assert.That(compared, Is.GreaterThan(0), "no corner of the decal is a corner of the floor");
+            Assert.That(allSame, Is.EqualTo(surfaceUVs), surfaceUVs ? "the decal has the floor's texture coordinates"
+                                                                    : "the decal has its image's texture coordinates");
+        }
+
         [Test]
         public void Surface_FacingAwayFromTheDecal_TakesIt_UnlessTheMaxAngleIsBelow90([Values(180f, 89f)] float maxAngle)
         {

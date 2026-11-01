@@ -485,6 +485,12 @@ namespace Chisel.Components
                 renderMaterial   = decalState.renderMaterial,
                 destinationFlags = decalState.destinationFlags
             };
+            if (decal.Shape == ChiselDecalShape.Polygon)
+            {
+                DescribePolygon(decal, decalState, instance, rect, userScale, tiles);
+                return;
+            }
+
             // a perspective or omni-directional decal's image isn't a box to cut into tiles: it is drawn once
             var perspective = settings.projection != ChiselDecalProjection.Orthographic;
             if (!sheet || perspective)
@@ -521,6 +527,45 @@ namespace Chisel.Components
                     instance.settings = tile;
                     tiles.Add(instance);
                 }
+            }
+        }
+
+        static readonly List<int> s_PolygonTriangles = new();
+
+        // A polygon decal's instances: a triangle decal for each triangle of its outline, the image spanning the outline's bounds
+        static void DescribePolygon(ChiselDecalComponent decal, DecalState decalState, ChiselDecalInstance instance,
+                                    Rect rect, float2 userScale, List<ChiselDecalInstance> tiles)
+        {
+            var outline = decal.Polygon;
+            if (!ChiselDecalComponent.Triangulate(outline, s_PolygonTriangles))
+                return;
+            var settings = decal.Settings;
+            var min = (float2)outline[0];
+            var max = min;
+            foreach (var point in outline)
+            {
+                min = math.min(min, point);
+                max = math.max(max, point);
+            }
+            var polygonSize = math.max(max - min, new float2(1e-6f));
+            for (int t = 0, piece = 0; t + 2 < s_PolygonTriangles.Count && piece < ChiselTrimDecals.MaxPieces; t += 3, piece++)
+            {
+                var a = (float2)outline[s_PolygonTriangles[t]];
+                var b = (float2)outline[s_PolygonTriangles[t + 1]];
+                var c = (float2)outline[s_PolygonTriangles[t + 2]];
+                var triangleMin  = math.min(a, math.min(b, c));
+                var triangleSize = math.max(a, math.max(b, c)) - triangleMin;
+                // where the triangle's image lies in the outline's
+                ChiselDecalSettings.TurnMapping(triangleSize / polygonSize, (triangleMin - min) / polygonSize, settings.imageTurns,
+                                                out var imageScale, out var imageOffset);
+                var tile = settings;
+                tile.projection = ChiselDecalProjection.Triangle;
+                tile.triangle   = new float2x3(a, b, c);
+                tile.uvScale    = userScale * (float2)rect.size * imageScale;
+                tile.uvOffset   = (float2)settings.uvOffset + userScale * ((float2)rect.position + (float2)rect.size * imageOffset);
+                instance.entityID = ChiselTrimDecals.PieceEntityID(decalState.entityID, piece);
+                instance.settings = tile;
+                tiles.Add(instance);
             }
         }
 

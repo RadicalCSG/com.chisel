@@ -24,7 +24,9 @@ namespace Chisel.Components
     {
         Box,
         /// <summary>On the edge between its first and second target: the image's lower half on the first, its upper half on the second</summary>
-        Trim
+        Trim,
+        /// <summary>The outline <see cref="ChiselDecalComponent.Polygon"/> in the decal's XY plane, reaching as deep as its box</summary>
+        Polygon
     }
 
     /// <summary>How a trim decal fills its edge</summary>
@@ -64,6 +66,7 @@ namespace Chisel.Components
         [SerializeField] bool trimMirror = false;
         [SerializeField] int imageTile = 0;
         [SerializeField] Vector2 repeat = Vector2.one;
+        [SerializeField] List<Vector2> polygon = new();
 
         // Per pair of targets, the edge a trim decal lies on: the edge's number along the first surface's outline, times
         // two, plus one when it is the second surface's; -1 (or missing) to find it from where the decal is
@@ -82,6 +85,102 @@ namespace Chisel.Components
         public const string kTrimMirrorName = nameof(trimMirror);
         public const string kImageTileName  = nameof(imageTile);
         public const string kRepeatName     = nameof(repeat);
+        public const string kPolygonName    = nameof(polygon);
+
+        /// <summary>A polygon decal's outline, in the decal's XY plane, either way round</summary>
+        public IReadOnlyList<Vector2> Polygon => polygon;
+
+        public void SetPolygon(IEnumerable<Vector2> points)
+        {
+            polygon.Clear();
+            if (points != null)
+                polygon.AddRange(points);
+            ChiselDecalManager.SetDirty();
+        }
+
+        /// <summary>
+        /// Splits a simple polygon (an outline that doesn't cross itself, either way round) into triangles: three indices
+        /// into it each. False when it can't, for an outline that crosses itself or has fewer than three corners.
+        /// </summary>
+        public static bool Triangulate(IReadOnlyList<Vector2> outline, List<int> triangles)
+        {
+            triangles.Clear();
+            var count = outline.Count;
+            if (count < 3)
+                return false;
+
+            var twiceArea = 0.0;
+            for (int i = 0; i < count; i++)
+            {
+                var a = outline[i];
+                var b = outline[(i + 1) % count];
+                twiceArea += (double)a.x * b.y - (double)b.x * a.y;
+            }
+            if (Math.Abs(twiceArea) < 1e-12)
+                return false;
+
+            // counter-clockwise
+            var remaining = new List<int>(count);
+            for (int i = 0; i < count; i++)
+                remaining.Add(twiceArea > 0 ? i : count - 1 - i);
+
+            while (remaining.Count > 3)
+            {
+                var clipped = false;
+                for (int i = 0; i < remaining.Count; i++)
+                {
+                    var prev = remaining[(i + remaining.Count - 1) % remaining.Count];
+                    var curr = remaining[i];
+                    var next = remaining[(i + 1) % remaining.Count];
+                    if (!IsEar(outline, remaining, prev, curr, next))
+                        continue;
+                    triangles.Add(prev);
+                    triangles.Add(curr);
+                    triangles.Add(next);
+                    remaining.RemoveAt(i);
+                    clipped = true;
+                    break;
+                }
+                if (!clipped)
+                {
+                    triangles.Clear();
+                    return false;
+                }
+            }
+            if (Cross(outline[remaining[0]], outline[remaining[1]], outline[remaining[2]]) > 0)
+            {
+                triangles.Add(remaining[0]);
+                triangles.Add(remaining[1]);
+                triangles.Add(remaining[2]);
+            }
+            return triangles.Count > 0;
+        }
+
+        static double Cross(Vector2 a, Vector2 b, Vector2 c)
+        {
+            return ((double)b.x - a.x) * ((double)c.y - a.y) - ((double)b.y - a.y) * ((double)c.x - a.x);
+        }
+
+        // A corner that turns left, with no other corner inside or on its triangle
+        static bool IsEar(IReadOnlyList<Vector2> outline, List<int> remaining, int prev, int curr, int next)
+        {
+            var a = outline[prev];
+            var b = outline[curr];
+            var c = outline[next];
+            if (Cross(a, b, c) <= 1e-12)
+                return false;
+            foreach (var index in remaining)
+            {
+                if (index == prev || index == curr || index == next)
+                    continue;
+                var p = outline[index];
+                if (p == a || p == b || p == c)
+                    continue;
+                if (Cross(a, b, p) >= 0 && Cross(b, c, p) >= 0 && Cross(c, a, p) >= 0)
+                    return false;
+            }
+            return true;
+        }
 
         /// <summary>A box decal projects through its box; a trim decal lies on the edge between its first two targets
         /// (size.x: the image's length along the edge, size.y: its height across both surfaces), and its transform isn't used.</summary>
@@ -323,6 +422,17 @@ namespace Chisel.Components
         {
             if (shape == ChiselDecalShape.Box)
                 DrawVolume();
+            else if (shape == ChiselDecalShape.Polygon)
+                DrawPolygon();
+        }
+
+        void DrawPolygon()
+        {
+            Gizmos.color  = kGizmoColor;
+            Gizmos.matrix = transform.localToWorldMatrix;
+            for (int i = 0; i < polygon.Count; i++)
+                Gizmos.DrawLine(polygon[i], polygon[(i + 1) % polygon.Count]);
+            Gizmos.matrix = Matrix4x4.identity;
         }
 
         void DrawVolume()

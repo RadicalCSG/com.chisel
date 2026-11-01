@@ -134,6 +134,84 @@ namespace Chisel.Components.Tests
             return (decal, other);
         }
 
+        // An L, (x, z) on the floors
+        static readonly Vector2[] kLShape =
+        {
+            new(-0.8f, -0.4f), new(0.8f, -0.4f), new(0.8f, 0), new(0, 0), new(0, 0.4f), new(-0.8f, 0.4f)
+        };
+        const double kLShapeArea = 0.96;
+
+        static double TwiceArea(IReadOnlyList<Vector2> outline)
+        {
+            var area = 0.0;
+            for (int i = 0; i < outline.Count; i++)
+            {
+                var a = outline[i];
+                var b = outline[(i + 1) % outline.Count];
+                area += (double)a.x * b.y - (double)b.x * a.y;
+            }
+            return area;
+        }
+
+        [Test]
+        public void Triangulate_CoversAConcaveOutline_EitherWayRound([Values(false, true)] bool clockwise)
+        {
+            var outline = new List<Vector2>(kLShape);
+            if (clockwise)
+                outline.Reverse();
+            var triangles = new List<int>();
+
+            Assert.That(ChiselDecalComponent.Triangulate(outline, triangles), Is.True);
+            Assert.That(triangles.Count, Is.EqualTo((outline.Count - 2) * 3));
+            var area = 0.0;
+            for (int t = 0; t < triangles.Count; t += 3)
+            {
+                var twice = TwiceArea(new[] { outline[triangles[t]], outline[triangles[t + 1]], outline[triangles[t + 2]] });
+                Assert.That(twice, Is.GreaterThan(0), "each triangle is counter-clockwise");
+                area += twice * 0.5;
+            }
+            Assert.That(area, Is.EqualTo(kLShapeArea).Within(1e-5));
+        }
+
+        [Test]
+        public void Triangulate_RefusesAnOutlineThatCrossesItself()
+        {
+            var bowTie = new[] { new Vector2(0, 0), new Vector2(1, 1), new Vector2(1, 0), new Vector2(0, 1) };
+            Assert.That(ChiselDecalComponent.Triangulate(bowTie, new List<int>()), Is.False);
+        }
+
+        [Test]
+        public void PolygonDecal_ReplacesItsOutlineOfTheFloors()
+        {
+            const double kFloors = 2;
+            var model = Floors(out _, out _, out var decal);
+            decal.Shape = ChiselDecalShape.Polygon;
+            decal.SetPolygon(kLShape);
+            Update();
+
+            var (decalArea, otherArea) = UpAreas(model);
+            Assert.That(decalArea, Is.EqualTo(kLShapeArea).Within(1e-4), "the decal covers its outline, also where it is concave");
+            Assert.That(otherArea, Is.EqualTo(kFloors - kLShapeArea).Within(1e-4), "and the floors under it are gone");
+        }
+
+        [Test]
+        public void PolygonDecal_OnABrush_MovesWithIt()
+        {
+            var model = Floors(out var a, out _, out var decal);
+            decal.transform.SetParent(a.transform, true);
+            decal.Shape = ChiselDecalShape.Polygon;
+            decal.SetPolygon(new[] { new Vector2(-0.8f, -0.4f), new Vector2(-0.2f, -0.4f), new Vector2(-0.2f, 0.4f) });
+            decal.SetTargets(new[] { new ChiselDecalSurfaceTarget { brush = a, surfaceIndex = ChiselDecalSurfaceTarget.kAllSurfaces } });
+            Update();
+            Assert.That(UpAreas(model).decal, Is.EqualTo(0.24).Within(1e-4));
+
+            // up, out of the other floor's way: the decal is still all on it
+            a.transform.localPosition += new Vector3(0, 0.5f, 0);
+            ChiselNodeHierarchyManager.UpdateTreeNodeTransformation(a);
+            Update();
+            Assert.That(UpAreas(model).decal, Is.EqualTo(0.24).Within(1e-4));
+        }
+
         // A floor anywhere in the box takes the decal, also when the box's center is below it
         [Test]
         public void Decal_IsDrawnOnTheFloors_WhereverTheyAreInItsBox([Values(-0.2f, -0.1f, 0f, 0.1f, 0.2f)] float height)

@@ -17,7 +17,11 @@ namespace Chisel.Core
         /// <summary>From the center out in every direction, like Source's infodecal: every surface the decal reaches
         /// takes the whole image, laid flat on it round the point nearest the center, turned with the surface's
         /// texture.</summary>
-        Omni         = 2
+        Omni         = 2,
+
+        /// <summary>Like <see cref="Orthographic"/>, but only within the triangle <see cref="ChiselDecalSettings.triangle"/>
+        /// instead of the whole box. Its image spans the triangle's bounds.</summary>
+        Triangle     = 3
     }
 
     /// <summary>Which surfaces an omni-directional decal reaches: those passing within the decal's reach of its center.</summary>
@@ -96,6 +100,14 @@ namespace Chisel.Core
         /// sides (x moves with y), y leans its top and bottom (y moves with x). The shear is about the decal's origin.</summary>
         public float2 skew;
 
+        /// <summary>The corners of a <see cref="ChiselDecalProjection.Triangle"/> decal, in the decal's XY plane. It reaches
+        /// size.z deep around center.z; the rest of center and size isn't used.</summary>
+        public float2x3 triangle;
+
+        /// <summary>The decal's pieces take the texture coordinates of the surface they are on instead of the image's, so
+        /// its material lines up with the surface's texturing.</summary>
+        public bool surfaceUVs;
+
         /// <summary>The shear <see cref="skew"/> describes, from the decal's unsheared space to its space</summary>
         public static float4x4 SkewMatrix(float2 skew)
         {
@@ -157,7 +169,9 @@ namespace Chisel.Core
                    math.all(uvOffset == other.uvOffset) &&
                    (imageTurns & 3) == (other.imageTurns & 3) &&
                    math.all(endSlant == other.endSlant) &&
-                   math.all(skew == other.skew);
+                   math.all(skew == other.skew) &&
+                   triangle.Equals(other.triangle) &&
+                   surfaceUVs == other.surfaceUVs;
         }
 
         public override readonly bool Equals(object obj) => obj is ChiselDecalSettings other && Equals(other);
@@ -172,6 +186,7 @@ namespace Chisel.Core
             hash = math.hash(new uint3(hash, math.hash(endSlant), (uint)(imageTurns & 3)));
             hash = math.hash(new uint3(hash, math.hash(skew), (uint)reach));
             hash = math.hash(new uint2(hash, math.hash(fadeDistance)));
+            hash = math.hash(new uint3(hash, math.hash(triangle), surfaceUVs ? 1u : 0u));
             return (int)hash;
         }
     }

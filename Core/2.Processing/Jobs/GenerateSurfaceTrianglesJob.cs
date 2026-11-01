@@ -218,6 +218,12 @@ namespace Chisel.Core
 					if (volume.IsTransparent)
 						decalParms.parameter2 = 0;
 					surfaceCorners.ApplyNormals(decalOutput.renderVertices);
+					if (volume.UsesSurfaceUVs)
+					{
+						MeshAlgorithms.ComputeUVs(decalOutput.renderVertices, uvMat);
+						if (cornerUVs)
+							surfaceCorners.ApplyUVs(decalOutput.renderVertices);
+					}
 					MeshAlgorithms.ComputeTangents(decalOutput.indices, decalOutput.renderVertices);
 					MeshAlgorithms.ComputeLightmapCoordinates(decalOutput.renderVertices, finalFaceNormal);
 					var slot = baseSurfaceCount + candidateStart + k;
