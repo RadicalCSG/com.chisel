@@ -2293,6 +2293,17 @@ namespace Chisel.Core
                     finishMeshCleanupJob.Schedule(runInParallel,
                         JobHandles.Read(JobHandleType.decalVolumesJobHandle),
                         JobHandles.Write(JobHandleType.brushRenderDataJobHandle));
+
+                    // the smoothed surfaces' normals, from the triangles as they are drawn
+                    var smoothNormalsJob = new SmoothNormalsJob
+                    {
+                        normalSmoothingAngle = normalSmoothingAngle,
+                        brushRenderData      = Temporaries.brushRenderData,
+                        patchedRenderBuffers = Temporaries.patchedRenderBuffers
+                    };
+                    smoothNormalsJob.Schedule(runInParallel,
+                        JobHandles.Read(JobHandleType.decalVolumesJobHandle),
+                        JobHandles.Write(JobHandleType.brushRenderDataJobHandle));
                 }
                 #endregion
 

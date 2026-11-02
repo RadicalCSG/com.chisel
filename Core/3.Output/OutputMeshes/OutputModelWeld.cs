@@ -1247,6 +1247,7 @@ namespace Chisel.Core
                     to.decalFades            = from.decalFades;
                     to.decalHidesBorder      = from.decalHidesBorder;
                     to.paintSurface          = from.paintSurface;
+                    to.smoothingGroup        = from.smoothingGroup;
                     to.destinationFlags      = from.destinationFlags;
                     to.destinationParameters = from.destinationParameters;
                     to.outputFlags           = from.outputFlags;

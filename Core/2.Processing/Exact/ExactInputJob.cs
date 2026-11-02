@@ -88,7 +88,7 @@ namespace Chisel.Core
         }
 
         // Widens the box to contain the exact corner: each coordinate rounded down for the minimum and up for the maximum.
-        static void Include(ref MinMaxAABB box, in ExactVertex corner)
+        public static void Include(ref MinMaxAABB box, in ExactVertex corner)
         {
             var min = new float3(ExactPredicates.DirectedToFloat(corner.X, corner.W, false),
                                  ExactPredicates.DirectedToFloat(corner.Y, corner.W, false),

@@ -178,6 +178,8 @@ namespace Chisel.Core
             // only when given: nothing for the brushes without them
             if (brushMesh.halfEdgeUVs.Length > 0)
                 AppendArray(ref buffer, ref brushMesh.halfEdgeUVs);
+            if (brushMesh.halfEdgeNormals.Length > 0)
+                AppendArray(ref buffer, ref brushMesh.halfEdgeNormals);
 
             ref var polygons = ref brushMesh.polygons;
             buffer.Add(polygons.Length);

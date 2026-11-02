@@ -1,5 +1,6 @@
 using System;
 using System.Runtime.CompilerServices;
+using Unity.Mathematics;
 
 namespace Chisel.Core
 {
@@ -28,6 +29,7 @@ namespace Chisel.Core
         public byte alignedCategory;
         public byte reverseAlignedCategory;
         public bool routes;             // whether it has a lookup in the routing table
+        public MinMaxAABB bounds;       // contains the brush (ExactBrush.bounds)
     }
 
     // A point on an output edge, with the exact value the triangulator works on and the float it is emitted as.
@@ -111,6 +113,7 @@ namespace Chisel.Core
         public ExactList<ExactLineEvent>    events;
         public ExactList<int>               order;
         public ExactList<ExactInterval>     intervals;          // per touching brush, for the current line
+        public ExactList<byte>              nearFace;           // per touching brush: its bounds meet the face's, so it can meet the face
         public ExactList<int>               lookupRegion;       // per routing lookup: region index or -1
         public ExactList<int>               regionOrientation;  // per region, for the current line
         public ExactList<byte>              leftInside;         // per region: membership of the left side
@@ -138,6 +141,7 @@ namespace Chisel.Core
                 events              = new ExactList<ExactLineEvent>(64),
                 order               = new ExactList<int>(64),
                 intervals           = new ExactList<ExactInterval>(16),
+                nearFace            = new ExactList<byte>(16),
                 lookupRegion        = new ExactList<int>(16),
                 regionOrientation   = new ExactList<int>(16),
                 leftInside          = new ExactList<byte>(16),
@@ -152,7 +156,7 @@ namespace Chisel.Core
         public void Dispose()
         {
             planes.Dispose(); polygonPool.Dispose(); signs.Dispose(); regions.Dispose(); lines.Dispose(); owners.Dispose();
-            events.Dispose(); order.Dispose(); intervals.Dispose(); lookupRegion.Dispose(); regionOrientation.Dispose();
+            events.Dispose(); order.Dispose(); intervals.Dispose(); nearFace.Dispose(); lookupRegion.Dispose(); regionOrientation.Dispose();
             leftInside.Dispose(); rightInside.Dispose(); vertices.Dispose(); alignedEdges.Dispose(); reverseAlignedEdges.Dispose();
             discardedEdges.Dispose();
         }
@@ -411,10 +415,21 @@ namespace Chisel.Core
             var face = planes[faceId];
             regions.Add(new ExactRegion { polygon = polygon, brush = -1, category = 0 });
 
+            // A brush whose bounds miss the face's misses the face: it cuts no region and has no interval on its lines
+            var faceBounds = new MinMaxAABB { Min = new float3(float.PositiveInfinity), Max = new float3(float.NegativeInfinity) };
+            for (int e = 0; e < polygon.count; e++)
+                ExactBrushes.Include(ref faceBounds, polygonPool[polygon.offset + e].start);
+            nearFace.Clear();
+            for (int t = 0; t < touching.Length; t++)
+            {
+                var bounds = touching[t].bounds;
+                nearFace.Add((byte)(math.all(bounds.Min <= faceBounds.Max) && math.all(bounds.Max >= faceBounds.Min) ? 1 : 0));
+            }
+
             for (int t = 0; t < touching.Length; t++)
             {
                 ref var brush = ref touching[t];
-                if (!brush.routes)
+                if (!brush.routes || nearFace[t] == 0)
                     continue;
                 // Face to face with this face? Then it lies on one side of it and only its other planes cut the face.
                 int coplanar = 0;
@@ -557,6 +572,11 @@ namespace Chisel.Core
             for (int t = 0; t < touching.Length; t++)
             {
                 ref var brush = ref touching[t];
+                if (nearFace[t] == 0)
+                {
+                    intervals.Add(new ExactInterval { entry = -1, exit = -1 });
+                    continue;
+                }
                 var entry = faceEntry; var exit = faceExit;
                 bool meets = Bounds(face, line, brush.planeOffset, brush.planeCount, false, faceEntry.point, ref entry, ref exit, ref failure);
                 if (failure != ExactFaceFailure.None)

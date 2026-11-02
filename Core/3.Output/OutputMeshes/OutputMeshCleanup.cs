@@ -95,6 +95,28 @@ namespace Chisel.Core
 
         static bool Overlap(MinMaxAABB a, MinMaxAABB b) => math.all(a.Min <= b.Max) && math.all(b.Min <= a.Max);
 
+        // Whether a surface of one brush comes within kJunctionDistance of a surface of the other: a brush's bounds can
+        // meet many brushes none of its surfaces comes near (a box's sides and the columns over its top)
+        static bool SurfacesTouch(BlobAssetReference<ChiselBrushRenderBuffer> a, BlobAssetReference<ChiselBrushRenderBuffer> b)
+        {
+            ref var aSurfaces = ref a.Value.surfaces;
+            ref var bSurfaces = ref b.Value.surfaces;
+            for (int i = 0; i < aSurfaces.Length; i++)
+            {
+                if (aSurfaces[i].indexCount == 0)
+                    continue;
+                var box = aSurfaces[i].aabb;
+                box.Min -= kJunctionDistance;
+                box.Max += kJunctionDistance;
+                for (int j = 0; j < bSurfaces.Length; j++)
+                {
+                    if (bSurfaces[j].indexCount != 0 && Overlap(box, bSurfaces[j].aabb))
+                        return true;
+                }
+            }
+            return false;
+        }
+
         struct ByMinX : System.Collections.Generic.IComparer<int>
         {
             public NativeArray<MinMaxAABB> boxes;
@@ -129,7 +151,7 @@ namespace Chisel.Core
                 for (int j = i + 1; j < order.Length && boxes[order[j]].Min.x <= boxes[a].Max.x; j++)
                 {
                     var b = order[j];
-                    if (!Overlap(boxes[a], boxes[b]))
+                    if (!Overlap(boxes[a], boxes[b]) || !SurfacesTouch(brushes[a].brushRenderBuffer, brushes[b].brushRenderBuffer))
                         continue;
                     touching.Add(a, b);
                     touching.Add(b, a);
@@ -483,6 +505,7 @@ namespace Chisel.Core
                     to.decalFades            = from.decalFades;
                     to.decalHidesBorder      = from.decalHidesBorder;
                     to.paintSurface          = from.paintSurface;
+                    to.smoothingGroup        = from.smoothingGroup;
                     to.destinationFlags      = from.destinationFlags;
                     to.destinationParameters = from.destinationParameters;
                     to.outputFlags           = from.outputFlags;
@@ -591,6 +614,10 @@ namespace Chisel.Core
                     {
                         var entry = from.surfaces[e];
                         ref var stored = ref surfaces[entry.surfaceIndex];
+                        // a surface left with no triangle is left out, as when the brush's buffer was made: its vertices
+                        // would be counted into the mesh but never written
+                        if (stored.vertexCount == 0 || stored.indexCount == 0)
+                            continue;
                         entry.vertexCount       = stored.vertexCount;
                         entry.indexCount        = stored.indexCount;
                         entry.geometryHashValue = stored.geometryHashValue;

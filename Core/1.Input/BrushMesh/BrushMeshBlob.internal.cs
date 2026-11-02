@@ -55,6 +55,9 @@ namespace Chisel.Core
         // By half edge, the uv its polygon has at its vertex, when the generator gives them (empty otherwise): the polygon's
         // uvs in between are interpolated from these, so faces meet exactly where a flat mapping can't make them
         public BlobArray<float2>    halfEdgeUVs;
+        // By half edge, the normal its polygon has at its vertex, facing as its plane does, when the generator gives them
+        // (empty otherwise): used in place of the smoothing's, interpolated in between
+        public BlobArray<float3>    halfEdgeNormals;
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static int CalculateHashCode([NoAlias, ReadOnly] ref BrushMeshBlob blob)
@@ -79,7 +82,8 @@ namespace Chisel.Core
                    SameBits(ref a.halfEdgePolygonIndices, ref b.halfEdgePolygonIndices) &&
                    SameBits(ref a.polygons, ref b.polygons) &&
                    SameBits(ref a.localPlanes, ref b.localPlanes) &&
-                   SameBits(ref a.halfEdgeUVs, ref b.halfEdgeUVs);
+                   SameBits(ref a.halfEdgeUVs, ref b.halfEdgeUVs) &&
+                   SameBits(ref a.halfEdgeNormals, ref b.halfEdgeNormals);
         }
 
         static unsafe bool SameBits<T>(ref BlobArray<T> a, ref BlobArray<T> b) where T : unmanaged

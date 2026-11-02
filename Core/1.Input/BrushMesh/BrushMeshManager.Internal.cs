@@ -195,6 +195,10 @@ namespace Chisel.Core
             }
 
             builder.Construct(ref root.halfEdgePolygonIndices, brushMesh.halfEdgePolygonIndices);
+            if (brushMesh.halfEdgeUVs != null && brushMesh.halfEdgeUVs.Length == brushMesh.halfEdges.Length)
+                builder.Construct(ref root.halfEdgeUVs, brushMesh.halfEdgeUVs);
+            if (brushMesh.halfEdgeNormals != null && brushMesh.halfEdgeNormals.Length == brushMesh.halfEdges.Length)
+                builder.Construct(ref root.halfEdgeNormals, brushMesh.halfEdgeNormals);
             var polygonArray = builder.Allocate(ref root.polygons, brushMesh.polygons.Length);
             for (int p = 0; p < brushMesh.polygons.Length; p++)
             {
@@ -234,6 +238,18 @@ namespace Chisel.Core
             public float4*              planes;
             public int                  planesLength;
             public ulong                planesGCHandle;
+
+            // the uvs of the mesh's half edges; null (length 0) when its polygons are mapped flat
+            [NativeDisableUnsafePtrRestriction, NoAlias]
+            public float2*              halfEdgeUVs;
+            public int                  halfEdgeUVsLength;
+            public ulong                halfEdgeUVsGCHandle;
+
+            // the normals of the mesh's half edges; null (length 0) when they are smoothed
+            [NativeDisableUnsafePtrRestriction, NoAlias]
+            public float3*              halfEdgeNormals;
+            public int                  halfEdgeNormalsLength;
+            public ulong                halfEdgeNormalsGCHandle;
         }
 
         static void RegisterBrushMeshes(in NativeList<BrushMeshPointers> brushMeshPointers, in NativeArray<CSGTreeBrush> nativeTreeBrushes, in NativeArray<BlobAssetReference<BrushMeshBlob>> brushMeshBlobs)
@@ -354,6 +370,32 @@ namespace Chisel.Core
                             temp.planesGCHandle  = 0;
                         }
 
+                        if (brushMesh.halfEdgeUVs != null && brushMesh.halfEdgeUVs.Length == brushMesh.halfEdges.Length)
+                        {
+                            var uvsHandle = GCHandle.Alloc(brushMesh.halfEdgeUVs, GCHandleType.Pinned);
+                            temp.halfEdgeUVs         = (float2*)uvsHandle.AddrOfPinnedObject();
+                            temp.halfEdgeUVsLength   = brushMesh.halfEdgeUVs.Length;
+                            temp.halfEdgeUVsGCHandle = (ulong)GCHandle.ToIntPtr(uvsHandle).ToInt64();
+                        } else
+                        {
+                            temp.halfEdgeUVs         = null;
+                            temp.halfEdgeUVsLength   = 0;
+                            temp.halfEdgeUVsGCHandle = 0;
+                        }
+
+                        if (brushMesh.halfEdgeNormals != null && brushMesh.halfEdgeNormals.Length == brushMesh.halfEdges.Length)
+                        {
+                            var normalsHandle = GCHandle.Alloc(brushMesh.halfEdgeNormals, GCHandleType.Pinned);
+                            temp.halfEdgeNormals         = (float3*)normalsHandle.AddrOfPinnedObject();
+                            temp.halfEdgeNormalsLength   = brushMesh.halfEdgeNormals.Length;
+                            temp.halfEdgeNormalsGCHandle = (ulong)GCHandle.ToIntPtr(normalsHandle).ToInt64();
+                        } else
+                        {
+                            temp.halfEdgeNormals         = null;
+                            temp.halfEdgeNormalsLength   = 0;
+                            temp.halfEdgeNormalsGCHandle = 0;
+                        }
+
                         brushMeshPointers[i] = temp;
                     }
                 }
@@ -363,12 +405,22 @@ namespace Chisel.Core
                 NativeList<InternalChiselSurface> surfaces;
 				using var _surfaces = surfaces = new NativeList<InternalChiselSurface>(surfacesOffset, defaultAllocator);
                 surfaces.ResizeUninitialized(surfacesOffset);
+                // brushes made with the same surfaces (the columns of a displaced surface) have them converted once
+                ChiselSurface[] lastArray = null;
+                var lastOffset = 0;
                 for (int i = 0; i < brushMeshPointers.Length; i++)
                 {
                     var index          = brushMeshPointers[i].index;
                     var surfaceArray   = surfaceArrays[index].surfaces;
                     var surfacesLength = brushMeshPointers[i].surfacesLength;
                     var offset         = brushMeshPointers[i].surfacesOffset;
+                    if (surfaceArray == lastArray)
+                    {
+                        NativeArray<InternalChiselSurface>.Copy(surfaces.AsArray(), lastOffset, surfaces.AsArray(), offset, surfacesLength);
+                        continue;
+                    }
+                    lastArray  = surfaceArray;
+                    lastOffset = offset;
                     for (int s = 0, o = offset; s < surfacesLength; s++, o++)
                     {
                         var surface = surfaceArray[s];
@@ -415,6 +467,10 @@ namespace Chisel.Core
                             GCHandle.FromIntPtr(new IntPtr((long)brushMeshPointers[i].halfEdgesGCHandle)).Free();
                             if (brushMeshPointers[i].planesGCHandle != 0)
                                 GCHandle.FromIntPtr(new IntPtr((long)brushMeshPointers[i].planesGCHandle)).Free();
+                            if (brushMeshPointers[i].halfEdgeUVsGCHandle != 0)
+                                GCHandle.FromIntPtr(new IntPtr((long)brushMeshPointers[i].halfEdgeUVsGCHandle)).Free();
+                            if (brushMeshPointers[i].halfEdgeNormalsGCHandle != 0)
+                                GCHandle.FromIntPtr(new IntPtr((long)brushMeshPointers[i].halfEdgeNormalsGCHandle)).Free();
                         }
                     } finally { Profiler.EndSample(); }
                 }
@@ -524,6 +580,19 @@ namespace Chisel.Core
                         localPlanes[p] = CalculatePlane(dstPolygons[p], in dstVertices, in dstHalfEdges);
                 }
                 
+                if (brushMesh.halfEdgeUVsLength == brushMesh.halfEdgesLength && brushMesh.halfEdgeUVsLength > 0)
+                {
+                    var halfEdgeUVs = builder.Allocate(ref root.halfEdgeUVs, brushMesh.halfEdgeUVsLength);
+                    for (int e = 0; e < brushMesh.halfEdgeUVsLength; e++)
+                        halfEdgeUVs[e] = brushMesh.halfEdgeUVs[e];
+                }
+                if (brushMesh.halfEdgeNormalsLength == brushMesh.halfEdgesLength && brushMesh.halfEdgeNormalsLength > 0)
+                {
+                    var halfEdgeNormals = builder.Allocate(ref root.halfEdgeNormals, brushMesh.halfEdgeNormalsLength);
+                    for (int e = 0; e < brushMesh.halfEdgeNormalsLength; e++)
+                        halfEdgeNormals[e] = brushMesh.halfEdgeNormals[e];
+                }
+
                 var halfEdgePolygonIndices = builder.Allocate(ref root.halfEdgePolygonIndices, brushMesh.halfEdgesLength);
                 for (int p = 0; p < brushMesh.polygonsLength; p++)
                 {

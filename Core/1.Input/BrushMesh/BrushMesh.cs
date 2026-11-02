@@ -53,6 +53,16 @@ namespace Chisel.Core
                 planes = new float4[other.planes.Length];
                 Array.Copy(other.planes, this.planes, other.planes.Length);
             }
+            if (other.halfEdgeUVs != null)
+            {
+                halfEdgeUVs = new float2[other.halfEdgeUVs.Length];
+                Array.Copy(other.halfEdgeUVs, this.halfEdgeUVs, other.halfEdgeUVs.Length);
+            }
+            if (other.halfEdgeNormals != null)
+            {
+                halfEdgeNormals = new float3[other.halfEdgeNormals.Length];
+                Array.Copy(other.halfEdgeNormals, this.halfEdgeNormals, other.halfEdgeNormals.Length);
+            }
         }
 
         /// <summary>Defines the polygon of a <see cref="Chisel.Core.BrushMesh"/>.</summary>
@@ -107,5 +117,13 @@ namespace Chisel.Core
 
         /// <value>The surfaces of this <see cref="Chisel.Core.BrushMesh"/>.</value> 
         public float4[]	    planes;
+
+        /// <summary>By half edge, the uv its polygon has at its vertex (one per half edge), or null to map every polygon
+        /// flat by its plane. Only for a mesh made in code: it is not saved.</summary>
+        [NonSerialized] public float2[] halfEdgeUVs;
+
+        /// <summary>By half edge, the normal its polygon has at its vertex, facing the way the polygon's plane does, or null
+        /// to have them smoothed as the surface's smoothing asks. Only for a mesh made in code: it is not saved.</summary>
+        [NonSerialized] public float3[] halfEdgeNormals;
     }
 }

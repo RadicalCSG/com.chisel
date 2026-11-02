@@ -87,7 +87,11 @@ namespace Chisel.Core
 		public PhysicsMaterial		   PhysicsMaterial  { get { var metadata = chiselMaterial.ResolveSurfaceMetadata(); return (metadata != null) ? metadata.physicsMaterial : ChiselProjectSettings.DefaultPhysicsMaterial; } }
 		// Normalized on the way out rather than on the way in, so that what the metadata stores is
 		// left exactly as authored and only what the pipeline acts on is corrected.
-		public SurfaceDestinationFlags DestinationFlags { get { var metadata = chiselMaterial.ResolveSurfaceMetadata(); return ((metadata != null) ? metadata.destinationFlags : SurfaceDestinationFlags.Default).Normalize(); } }
+		public SurfaceDestinationFlags DestinationFlags { get { if (excluded) return SurfaceDestinationFlags.None; var metadata = chiselMaterial.ResolveSurfaceMetadata(); return ((metadata != null) ? metadata.destinationFlags : SurfaceDestinationFlags.Default).Normalize(); } }
+
+		// Never output, whatever its material says: the faces a generator's brushes have between them, that are never
+		// seen, take a copy of their surface that is. The CSG does no work on them. Not saved.
+		[NonSerialized] internal bool excluded;
 		public SurfaceOutputFlags      OutputFlags      { get { var metadata = chiselMaterial.ResolveSurfaceMetadata(); return (metadata != null) ? metadata.outputFlags : SurfaceOutputFlags.Default; } }
 		public ChiselHotspotLayout     HotspotLayout    { get { var metadata = chiselMaterial.ResolveSurfaceMetadata(); return (metadata != null) ? metadata.hotspotLayout : null; } }
 		public System.Collections.Generic.List<Material> HotspotVariants { get { var metadata = chiselMaterial.ResolveSurfaceMetadata(); return (metadata != null) ? metadata.hotspotVariants : null; } }
@@ -126,6 +130,8 @@ namespace Chisel.Core
 
 				uint hash = surfaceDetails.Hash();				
                 hash = math.hash(new uint3(hash, materialHashcode, surfaceMetadataHashcode));
+                if (excluded)
+                    hash = math.hash(new uint2(hash, 1u));
                 return (int)hash;
             }
         }

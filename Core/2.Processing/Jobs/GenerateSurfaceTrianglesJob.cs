@@ -251,6 +251,7 @@ namespace Chisel.Core
 												   decalOutput.selectVertices, decalOutput.renderVertices,
 												   slot, surf, volume.GetDestinationFlags(flags), decalParms, outputFlags);
 					surfaceBuffers[slot].decalEntityID = volume.entityID;
+						surfaceBuffers[slot].smoothingGroup = baseSurfaces[surf].smoothingGroup;
 					surfaceBuffers[slot].decalHidesBorder = !volume.IsTransparent && !volume.HasHotspotBorder;
 					// the volumes stack lowest first
 					if (volume.IsTransparent)
@@ -286,6 +287,7 @@ namespace Chisel.Core
 						uniqueVertexMapper.surfaceSelectVertices,
 						uniqueVertexMapper.surfaceRenderVertices,
 						surf, surf, flags, parms, outputFlags);
+			buf.smoothingGroup = baseSurfaces[surf].smoothingGroup;
 			buf.sectionInput = sectionInput;
 			buf.hotspot       = hotspotInfo;
 			buf.hotspotSource = hotspotSource;
@@ -407,11 +409,15 @@ namespace Chisel.Core
 				for (int v = 0; v < vertices.Length; v++)
 				{
 					var vertex = vertices[v];
+					// a reverse aligned face (one of a subtractive brush) is drawn turned round, and so is its normal
+					var reversed = math.dot(vertex.normal, faceNormal) < 0;
 					Weigh(vertex.position);
 					var normal = float3.zero;
 					for (int i = 0; i < weights.Length; i++)
 						normal += normals[i] * weights[i];
 					vertex.normal = math.normalizesafe(normal, faceNormal);
+					if (reversed)
+						vertex.normal = -vertex.normal;
 					vertices[v] = vertex;
 				}
 			}
@@ -451,7 +457,8 @@ namespace Chisel.Core
 			var smoothingGroup = baseSurfaces[surf].smoothingGroup;
 			var byAngle        = normalSmoothingAngle > 0.0001f;
 			ref var blob = ref basePolygonCache[brushNodeOrder].Value;
-			var wantsNormals   = byAngle || smoothingGroup != 0;
+			var givenNormals   = baseSurfaces[surf].cornerNormals && blob.edgeNormals.Length == blob.edges.Length;
+			var wantsNormals   = byAngle || smoothingGroup != 0 || givenNormals;
 			var wantsUVs       = baseSurfaces[surf].cornerUVs && blob.edgeUVs.Length == blob.edges.Length;
 			if (!wantsNormals && !wantsUVs)
 				return result;
@@ -477,6 +484,19 @@ namespace Chisel.Core
 			if (!wantsNormals)
 				return result;
 			result.normals = new NativeList<float3>(cornerCount, Allocator.Temp);
+			if (givenNormals)
+			{
+				// the generator's own, from the brush's space into the tree's (by the inverse transpose of the brush's
+				// transformation), turned with the face where the workflow turns it
+				var nodeToTreeInvTrans = math.transpose(new float3x3(transformationCache[brushNodeOrder].treeToNode));
+				for (int e = polygon.startEdgeIndex; e < polygon.endEdgeIndex; e++)
+				{
+					var normal = math.normalizesafe(math.mul(nodeToTreeInvTrans, blob.edgeNormals[e]), finalFaceNormal);
+					result.normals.Add(subtractiveWorkflow ? -normal : normal);
+				}
+				result.smooth = true;
+				return result;
+			}
 			var positions = result.corners;
 			var smoothingCos   = byAngle ? math.cos(math.radians(normalSmoothingAngle)) : 2.0f;
 
@@ -530,10 +550,15 @@ namespace Chisel.Core
 					var normal = subtractiveWorkflow ? -plane.xyz : plane.xyz;
 					var brush  = nearby[a].x;
 					var group  = basePolygonCache[brush].Value.surfaces[nearby[a].y].smoothingGroup;
-					// a surface of another brush in the same plane is the same surface
+					// a face of a subtractive brush is drawn turned round: one in this one's smoothing group that faces
+					// well away from it is that (a wall between two brushes, across the surface, is not)
+					if (group != 0 && group == smoothingGroup && math.dot(normal, finalFaceNormal) < -0.5f)
+						normal = -normal;
+					// a surface of another brush in the same plane, in the same smoothing group, is the same surface; one in
+					// another group is not, or which of the two came first would decide what is smoothed
 					var same   = false;
 					for (int f = 0; f < faces.Length && !same; f++)
-						same = faces[f].brush != brush && math.dot(faces[f].normal, normal) > 0.99999f;
+						same = faces[f].brush != brush && faces[f].group == group && math.dot(faces[f].normal, normal) > 0.99999f;
 					if (!same)
 						faces.Add(new SmoothingFace { normal = normal, brush = brush, entity = EntityOf(brush), group = group });
 				}

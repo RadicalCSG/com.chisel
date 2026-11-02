@@ -208,7 +208,8 @@ namespace Chisel.Core
                             insideCategory         = (byte)ContentsRules.Rewrite(CategoryIndex.Inside,         processedContents.Contents, processedContents.Carving, otherContents.Contents, otherContents.Carving, otherContents.Intersecting, later),
                             alignedCategory        = (byte)ContentsRules.Rewrite(CategoryIndex.Aligned,        processedContents.Contents, processedContents.Carving, otherContents.Contents, otherContents.Carving, otherContents.Intersecting, later),
                             reverseAlignedCategory = (byte)ContentsRules.Rewrite(CategoryIndex.ReverseAligned, processedContents.Contents, processedContents.Carving, otherContents.Contents, otherContents.Carving, otherContents.Intersecting, later),
-                            routes = false
+                            routes = false,
+                            bounds = exactBrushCache[otherOrder].Value.bounds
                         };
 
                         // Its lookup in the routing table, if it has one
@@ -228,7 +229,9 @@ namespace Chisel.Core
 
                 for (int surface = 0; surface < surfaceCount; surface++)
                 {
-                    if (!valid || surface >= faceCount)
+                    // a face that is never output (SurfaceDestinationFlags.None) has nothing to draw: its plane still
+                    // bounds the brush, which is all the other brushes need of it
+                    if (!valid || surface >= faceCount || mesh.polygons[surface].surface.destinationFlags == SurfaceDestinationFlags.None)
                     {
                         Write(0);
                         continue;

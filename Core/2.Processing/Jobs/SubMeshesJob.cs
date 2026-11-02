@@ -681,6 +681,21 @@ namespace Chisel.Core
         }
     }
 
+    // The normals of the smoothed surfaces, made from what is drawn (OutputSmoothNormals)
+    [BurstCompile(CompileSynchronously = true)]
+    struct SmoothNormalsJob : IJob
+    {
+        [NoAlias, ReadOnly] public float normalSmoothingAngle;
+
+        [NoAlias] public NativeList<BrushData> brushRenderData;
+        [NoAlias] public NativeList<BlobAssetReference<ChiselBrushRenderBuffer>> patchedRenderBuffers;
+
+        public void Execute()
+        {
+            OutputSmoothNormals.Smooth(brushRenderData, patchedRenderBuffers, normalSmoothingAngle);
+        }
+    }
+
     // Every query's surfaces grouped by key (SurfaceGroupKey): the groups in key order, brush order within a group. The
     // brushes in ranges (kRangeCount, in brush order), each range's buffers read once for all queries: its keys
     // (PrepareSubSectionKeysJob), where each range's part of a group goes (PrepareSubSectionsJob), its surfaces written there

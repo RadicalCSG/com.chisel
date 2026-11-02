@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 
 using Unity.Entities;
 using Unity.Mathematics;
@@ -50,6 +50,8 @@ namespace Chisel.Core
         public bool     textureInWorld;
         // its uvs are interpolated from the ones its generator gave its corners (BasePolygonsBlob.edgeUVs)
         public bool     cornerUVs;
+        // its normals are interpolated from the ones its generator gave its corners (BasePolygonsBlob.edgeNormals), not smoothed
+        public bool     cornerNormals;
     }
 
     struct BasePolygonsBlob
@@ -60,5 +62,8 @@ namespace Chisel.Core
         public BlobArray<BaseSurface> surfaces;
         // By edge, the uv its polygon has at the edge's first vertex, when the brush's generator gave them (empty otherwise)
         public BlobArray<float2>      edgeUVs;
+        // By edge, the normal its polygon has at the edge's first vertex, in the brush's own space, when the brush's generator
+        // gave them (empty otherwise)
+        public BlobArray<float3>      edgeNormals;
     }
 }

@@ -43,5 +43,36 @@ namespace Chisel.Components
             set { if (math.all(value == definition.settings.Size)) return; definition.settings.Size = value; OnValidateState(); }
         }
         #endregion
+
+        public override bool SupportsDisplacement => true;
+
+        protected override Core.ChiselBox OwnBrushGenerator(Core.ChiselBox settings)
+        {
+            var min = math.min(settings.Min, settings.Max);
+            var max = math.max(settings.Min, settings.Max);
+            // in the order of BrushMeshFactory.BoxSides
+            max.y -= DisplacedInset(0);
+            min.y += DisplacedInset(1);
+            max.x -= DisplacedInset(2);
+            min.x += DisplacedInset(3);
+            min.z += DisplacedInset(4);
+            max.z -= DisplacedInset(5);
+            settings.bounds = new MinMaxAABB { Min = min, Max = max };
+            return settings;
+        }
+
+        protected override bool GetDisplacementOutline(System.Collections.Generic.List<float4> planes, System.Collections.Generic.List<int> surfaces)
+        {
+            var min = math.min(definition.settings.Min, definition.settings.Max);
+            var max = math.max(definition.settings.Min, definition.settings.Max);
+            // in the order of BrushMeshFactory.BoxSides, the surface each is
+            planes.Add(new float4( 0,  1,  0, -max.y)); surfaces.Add(0);
+            planes.Add(new float4( 0, -1,  0,  min.y)); surfaces.Add(1);
+            planes.Add(new float4( 1,  0,  0, -max.x)); surfaces.Add(2);
+            planes.Add(new float4(-1,  0,  0,  min.x)); surfaces.Add(3);
+            planes.Add(new float4( 0,  0, -1,  min.z)); surfaces.Add(4);
+            planes.Add(new float4( 0,  0,  1, -max.z)); surfaces.Add(5);
+            return true;
+        }
     }
 }

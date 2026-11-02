@@ -151,7 +151,9 @@ namespace Chisel.Editors
             return -1;
         }
 
-        static bool Paintable(Hit hit) => hit.valid && ModeIndex(hit.profile) >= 0;
+        static bool Displacing => s_ModeName == ChiselPaintBrush.kDisplacementName;
+
+        static bool Paintable(Hit hit) => hit.valid && (Displacing ? hit.generator.SupportsDisplacement : ModeIndex(hit.profile) >= 0);
 
         public override void OnToolGUI(EditorWindow window)
         {
@@ -237,6 +239,12 @@ namespace Chisel.Editors
 
         static void Sample(Hit hit)
         {
+            if (Displacing)
+            {
+                var heights = hit.generator.GetSurfaceDisplacement(hit.surfaceIndex);
+                s_Value = heights != null ? heights.Sample(hit.generator.transform.InverseTransformPoint(hit.point)).x : 0;
+                return;
+            }
             var index = ModeIndex(hit.profile);
             if (index < 0)
                 return;
@@ -263,6 +271,11 @@ namespace Chisel.Editors
 
         static void Dab(Hit hit)
         {
+            if (Displacing)
+            {
+                Displace(hit);
+                return;
+            }
             var index = ModeIndex(hit.profile);
             if (index < 0)
                 return;
@@ -288,6 +301,25 @@ namespace Chisel.Editors
             }
         }
 
+        static void Displace(Hit hit)
+        {
+            if (s_Operation == ChiselPaintOperation.Fill && !s_Filled.Add((hit.generator, hit.surfaceIndex)))
+                return;
+            Undo.RecordObject(hit.generator, "Chisel Displace");
+            var heights = ChiselPaintBrush.DisplacementFor(hit.generator, hit.surfaceIndex);
+            if (heights == null)
+                return;
+            var scale  = hit.generator.transform.lossyScale;
+            var radius = s_Radius / Mathf.Max(Mathf.Abs(scale.x), Mathf.Max(Mathf.Abs(scale.y), Mathf.Abs(scale.z)), 1e-5f);
+            var center = hit.generator.transform.InverseTransformPoint(hit.point);
+            var strength = s_Strength * ChiselPaintBrush.kDisplacementRate;
+            if (ChiselPaintBrush.Dab(heights, ChiselPaintBrush.kDisplacementMode, s_Operation, Vector4.one * s_Value, center, radius, strength, s_Hardness))
+            {
+                hit.generator.DisplacementChanged();
+                EditorUtility.SetDirty(hit.generator);
+            }
+        }
+
         static GUIStyle s_TooltipStyle;
 
         // Over a surface that can't be painted: no brush, a cursor that says so, and why next to it
@@ -299,7 +331,8 @@ namespace Chisel.Editors
                 return;
             // solid, as a tooltip is: a panel's color with a border round it
             s_TooltipStyle ??= new GUIStyle(EditorStyles.label) { padding = new RectOffset(6, 6, 3, 3), wordWrap = false };
-            var content = new GUIContent(!hit.shader         ? "The surface\nhas no shader\nto paint for"
+            var content = new GUIContent(Displacing          ? "Only a box or a brush\ncan be displaced"
+                                       : !hit.shader         ? "The surface\nhas no shader\nto paint for"
                                        : hit.profile == null ? $"The shader {hit.shader.name}\nis not set up to be paintable\nit has no paint profile"
                                                              : $"The shader {hit.shader.name}\nhas no paint mode \"{s_ModeName}\"\nin its paint profile");
             var size = s_TooltipStyle.CalcSize(content);
@@ -320,6 +353,11 @@ namespace Chisel.Editors
         // The mode of the chosen name: the last painted surface's, else the first profile's that has one
         static bool ChosenMode(out ChiselPaintMode mode)
         {
+            if (Displacing)
+            {
+                mode = ChiselPaintBrush.kDisplacementMode;
+                return true;
+            }
             var index = ModeIndex(s_Last.profile);
             if (index >= 0)
             {
@@ -352,11 +390,9 @@ namespace Chisel.Editors
                         s_ModeNames.Add(name);
                 }
             }
-            if (s_ModeNames.Count == 0)
-            {
-                EditorGUILayout.HelpBox("The project has no paint profiles.", MessageType.None);
-                return;
-            }
+            // whatever the shaders, a surface can be displaced
+            s_ModeNames.Remove(ChiselPaintBrush.kDisplacementName);
+            s_ModeNames.Add(ChiselPaintBrush.kDisplacementName);
             if (!s_ModeNames.Contains(s_ModeName))
                 s_ModeName = s_ModeNames[0];
 

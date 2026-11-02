@@ -518,6 +518,32 @@ namespace Chisel.Core.Tests
             }
         }
 
+        // A brush within another's bounds, but far from all its surfaces, is not its neighbour: it can't change its outline
+        [Test]
+        public void ABrushWithinAnothersBoundsButFarFromItsSurfaces_IsNotItsNeighbour()
+        {
+            var far    = new float3(10, 10, 0);
+            var first  = Brush(-1, new[] { A, B, D }, new[] { far, far + new float3(-2, 0, 0), far + new float3(0, -2, 0) });
+            var second = Brush(-1, new[] { new float3(5, 5, 0), new float3(6, 5, 0), new float3(5, 6, 0) });
+            var brushes = new NativeList<BrushData>(Allocator.Temp);
+            var work    = new NativeList<MeshCleanupWork>(Allocator.Temp);
+            var neighbours = new NativeList<int>(Allocator.Temp);
+            try
+            {
+                brushes.Add(new BrushData { brushRenderBuffer = first });
+                brushes.Add(new BrushData { brushRenderBuffer = second });
+                OutputMeshCleanup.Plan(brushes, default, work, neighbours);
+                Assert.That(work.Length, Is.EqualTo(2));
+                Assert.That(work[0].neighbourCount, Is.EqualTo(0));
+                Assert.That(work[1].neighbourCount, Is.EqualTo(0));
+            }
+            finally
+            {
+                brushes.Dispose(); work.Dispose(); neighbours.Dispose();
+                first.Dispose(); second.Dispose();
+            }
+        }
+
         // A brush's buffer of the given surfaces, each as Surface makes it
         static BlobAssetReference<ChiselBrushRenderBuffer> Brush(int paintedSurface, params float3[][] surfaces)
         {
@@ -576,6 +602,33 @@ namespace Chisel.Core.Tests
                     Assert.That(result.Value.querySurfaces[0].surfaces[0].indexCount, Is.EqualTo(6), "the meshes are sized for what is drawn");
                     Assert.That(result.Value.surfaces[1].indexCount, Is.EqualTo(3), "a surface with nothing to take out is as it was");
                     Assert.That(result.Value.surfaces[1].physicsIndices.Length, Is.EqualTo(0));
+                }
+                finally
+                {
+                    result.Dispose();
+                }
+            }
+            finally
+            {
+                source.Dispose();
+            }
+        }
+
+        // A surface the cleanup leaves no triangle of is not in the meshes: its vertices would be counted but never written
+        [Test]
+        public void ASurfaceLeftWithNoTriangle_IsLeftOutOfTheMeshes()
+        {
+            var source = Brush(-1, kFan, new[] { A, A + new float3(1e-6f, 0, 0), C });
+            try
+            {
+                var result = OutputMeshCleanup.Clean(source);
+                Assert.That(result.IsCreated, Is.True);
+                try
+                {
+                    Assert.That(result.Value.surfaces[1].indexCount, Is.Zero, "the triangle without area is gone");
+                    ref var entries = ref result.Value.querySurfaces[0].surfaces;
+                    for (int e = 0; e < entries.Length; e++)
+                        Assert.That(entries[e].surfaceIndex, Is.Not.EqualTo(1));
                 }
                 finally
                 {
