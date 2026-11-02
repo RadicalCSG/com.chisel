@@ -486,15 +486,18 @@ namespace Chisel.Core.Tests
             var work    = new NativeList<MeshCleanupWork>(Allocator.Temp);
             var patched = new NativeList<BlobAssetReference<ChiselBrushRenderBuffer>>(Allocator.Temp);
             var neighbours = new NativeList<int>(Allocator.Temp);
+            var outlineBrushes = new NativeList<int>(Allocator.Temp);
+            var outlines = new NativeList<OutputMeshCleanup.BrushOutlines>(Allocator.Temp);
             try
             {
                 brushes.Add(new BrushData { brushRenderBuffer = first });
                 brushes.Add(new BrushData { brushRenderBuffer = second });
-                OutputMeshCleanup.Plan(brushes, default, work, neighbours);
+                OutputMeshCleanup.Plan(brushes, default, work, neighbours, outlineBrushes);
+                OutputMeshCleanup.Outlines(brushes, outlineBrushes, outlines);
                 Assert.That(work.Length, Is.EqualTo(2));
                 Assert.That(work[0].neighbourCount, Is.EqualTo(1), "they touch");
                 for (int i = 0; i < work.Length; i++)
-                    work[i] = OutputMeshCleanup.CleanPlanned(work[i], brushes.AsArray(), neighbours.AsArray());
+                    work[i] = OutputMeshCleanup.CleanPlanned(work[i], brushes.AsArray(), neighbours.AsArray(), outlines.AsArray());
                 OutputMeshCleanup.Finish(brushes, patched, work, default);
                 ref var surface = ref brushes[0].brushRenderBuffer.Value.surfaces[0];
                 var found = false;
@@ -513,7 +516,36 @@ namespace Chisel.Core.Tests
             {
                 foreach (var result in patched)
                     result.Dispose();
-                brushes.Dispose(); work.Dispose(); patched.Dispose(); neighbours.Dispose();
+                brushes.Dispose(); work.Dispose(); patched.Dispose(); neighbours.Dispose(); outlineBrushes.Dispose(); foreach (var o in outlines) o.Dispose(); outlines.Dispose();
+                first.Dispose(); second.Dispose();
+            }
+        }
+
+        // A brush within another's bounds, but far from all its surfaces, is not its neighbour: it can't change its outline
+        [Test]
+        public void ABrushWithinAnothersBoundsButFarFromItsSurfaces_IsNotItsNeighbour()
+        {
+            var far    = new float3(10, 10, 0);
+            var first  = Brush(-1, new[] { A, B, D }, new[] { far, far + new float3(-2, 0, 0), far + new float3(0, -2, 0) });
+            var second = Brush(-1, new[] { new float3(5, 5, 0), new float3(6, 5, 0), new float3(5, 6, 0) });
+            var brushes = new NativeList<BrushData>(Allocator.Temp);
+            var work    = new NativeList<MeshCleanupWork>(Allocator.Temp);
+            var neighbours = new NativeList<int>(Allocator.Temp);
+            var outlineBrushes = new NativeList<int>(Allocator.Temp);
+            var outlines = new NativeList<OutputMeshCleanup.BrushOutlines>(Allocator.Temp);
+            try
+            {
+                brushes.Add(new BrushData { brushRenderBuffer = first });
+                brushes.Add(new BrushData { brushRenderBuffer = second });
+                OutputMeshCleanup.Plan(brushes, default, work, neighbours, outlineBrushes);
+                OutputMeshCleanup.Outlines(brushes, outlineBrushes, outlines);
+                Assert.That(work.Length, Is.EqualTo(2));
+                Assert.That(work[0].neighbourCount, Is.EqualTo(0));
+                Assert.That(work[1].neighbourCount, Is.EqualTo(0));
+            }
+            finally
+            {
+                brushes.Dispose(); work.Dispose(); neighbours.Dispose(); outlineBrushes.Dispose(); foreach (var o in outlines) o.Dispose(); outlines.Dispose();
                 first.Dispose(); second.Dispose();
             }
         }
@@ -588,6 +620,33 @@ namespace Chisel.Core.Tests
             }
         }
 
+        // A surface the cleanup leaves no triangle of is not in the meshes: its vertices would be counted but never written
+        [Test]
+        public void ASurfaceLeftWithNoTriangle_IsLeftOutOfTheMeshes()
+        {
+            var source = Brush(-1, kFan, new[] { A, A + new float3(1e-6f, 0, 0), C });
+            try
+            {
+                var result = OutputMeshCleanup.Clean(source);
+                Assert.That(result.IsCreated, Is.True);
+                try
+                {
+                    Assert.That(result.Value.surfaces[1].indexCount, Is.Zero, "the triangle without area is gone");
+                    ref var entries = ref result.Value.querySurfaces[0].surfaces;
+                    for (int e = 0; e < entries.Length; e++)
+                        Assert.That(entries[e].surfaceIndex, Is.Not.EqualTo(1));
+                }
+                finally
+                {
+                    result.Dispose();
+                }
+            }
+            finally
+            {
+                source.Dispose();
+            }
+        }
+
         // Its paint is added per vertex when its mesh is made
         [Test]
         public void APaintedSurface_IsLeftAsItIs()
@@ -614,25 +673,30 @@ namespace Chisel.Core.Tests
             var work    = new NativeList<MeshCleanupWork>(Allocator.Temp);
             var patched = new NativeList<BlobAssetReference<ChiselBrushRenderBuffer>>(Allocator.Temp);
             var neighbours = new NativeList<int>(Allocator.Temp);
+            var outlineBrushes = new NativeList<int>(Allocator.Temp);
+            var outlines = new NativeList<OutputMeshCleanup.BrushOutlines>(Allocator.Temp);
             try
             {
                 brushes.Add(new BrushData { brushRenderBuffer = source });
-                OutputMeshCleanup.Plan(brushes, cache, work, neighbours);
+                OutputMeshCleanup.Plan(brushes, cache, work, neighbours, outlineBrushes);
+                OutputMeshCleanup.Outlines(brushes, outlineBrushes, outlines);
                 Assert.That(work.Length, Is.EqualTo(1));
                 for (int i = 0; i < work.Length; i++)
-                    work[i] = OutputMeshCleanup.CleanPlanned(work[i], brushes.AsArray(), neighbours.AsArray());
+                    work[i] = OutputMeshCleanup.CleanPlanned(work[i], brushes.AsArray(), neighbours.AsArray(), outlines.AsArray());
                 OutputMeshCleanup.Finish(brushes, patched, work, cache);
                 var first = brushes[0].brushRenderBuffer;
                 Assert.That(first, Is.Not.EqualTo(source));
 
                 brushes[0] = new BrushData { brushRenderBuffer = source };
-                OutputMeshCleanup.Plan(brushes, cache, work, neighbours);
+                OutputMeshCleanup.Plan(brushes, cache, work, neighbours, outlineBrushes);
+                OutputMeshCleanup.Outlines(brushes, outlineBrushes, outlines);
                 Assert.That(work.Length, Is.EqualTo(0), "nothing to do again");
                 Assert.That(brushes[0].brushRenderBuffer, Is.EqualTo(first));
                 OutputMeshCleanup.Finish(brushes, patched, work, cache);
 
                 brushes.Clear();
-                OutputMeshCleanup.Plan(brushes, cache, work, neighbours);
+                OutputMeshCleanup.Plan(brushes, cache, work, neighbours, outlineBrushes);
+                OutputMeshCleanup.Outlines(brushes, outlineBrushes, outlines);
                 OutputMeshCleanup.Finish(brushes, patched, work, cache);
                 Assert.That(cache.Count(), Is.EqualTo(0));
                 Assert.That(patched.Length, Is.EqualTo(0));
@@ -648,7 +712,7 @@ namespace Chisel.Core.Tests
                 brushes.Dispose();
                 work.Dispose();
                 patched.Dispose();
-                neighbours.Dispose();
+                neighbours.Dispose(); outlineBrushes.Dispose(); foreach (var o in outlines) o.Dispose(); outlines.Dispose();
                 source.Dispose();
             }
         }

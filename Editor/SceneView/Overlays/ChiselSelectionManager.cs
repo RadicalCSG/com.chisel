@@ -193,7 +193,8 @@ namespace Chisel.Editors
 									 ? extraPickingData.renderObjects.DescriptionForPicking(model, extraPickingData.descriptionIndex)
 									 : extraPickingData.selectionDescription;
 
-			var treeBrush = CSGTreeBrush.Find(selectionDescription.brushNodeID);
+			// what was drawn can be of a brush that has gone since (a displaced surface makes its columns again as it is painted)
+			var treeBrush = CSGTreeBrush.FindNoErrors(selectionDescription.brushNodeID);
             if (treeBrush == CSGTreeBrush.Invalid)
 				return ChiselIntersection.None;
 

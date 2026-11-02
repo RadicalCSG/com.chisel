@@ -616,6 +616,15 @@ namespace Chisel.Core.Tests
 			weld.Weld("and away again", new[] { (0, solid), (1, chain), (2, away), (3, far) }, 2, 3);
 		}
 
+		// Buffers are compared byte for byte; padding in a query's entry is left as whatever was there
+		[Test]
+		public void AQuerySurface_HasNoPadding()
+		{
+			var fields = typeof(ChiselQuerySurface).GetFields(System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public);
+			var size = fields.Sum(f => System.Runtime.InteropServices.Marshal.SizeOf(f.FieldType));
+			Assert.That(Unity.Collections.LowLevel.Unsafe.UnsafeUtility.SizeOf<ChiselQuerySurface>(), Is.EqualTo(size));
+		}
+
 		[Test]
 		public void AddingRemovingAndReorderingBrushes_TheIncrementalWeld_IsTheFullWeld()
 		{

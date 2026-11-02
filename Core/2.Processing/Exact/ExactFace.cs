@@ -1,5 +1,6 @@
 using System;
 using System.Runtime.CompilerServices;
+using Unity.Mathematics;
 
 namespace Chisel.Core
 {
@@ -28,6 +29,7 @@ namespace Chisel.Core
         public byte alignedCategory;
         public byte reverseAlignedCategory;
         public bool routes;             // whether it has a lookup in the routing table
+        public MinMaxAABB bounds;       // contains the brush (ExactBrush.bounds)
     }
 
     // A point on an output edge, with the exact value the triangulator works on and the float it is emitted as.
@@ -111,6 +113,9 @@ namespace Chisel.Core
         public ExactList<ExactLineEvent>    events;
         public ExactList<int>               order;
         public ExactList<ExactInterval>     intervals;          // per touching brush, for the current line
+        public ExactList<byte>              nearFace;           // per touching brush: its bounds meet the face's, so it can meet the face
+        public ExactList<byte>              coverage;           // per touching brush: kMisses, kCovers or kCuts the face
+        public ExactList<byte>              coveredCategory;    // per touching brush: the category it gives the part it covers
         public ExactList<int>               lookupRegion;       // per routing lookup: region index or -1
         public ExactList<int>               regionOrientation;  // per region, for the current line
         public ExactList<byte>              leftInside;         // per region: membership of the left side
@@ -138,6 +143,9 @@ namespace Chisel.Core
                 events              = new ExactList<ExactLineEvent>(64),
                 order               = new ExactList<int>(64),
                 intervals           = new ExactList<ExactInterval>(16),
+                nearFace            = new ExactList<byte>(16),
+                coverage            = new ExactList<byte>(16),
+                coveredCategory     = new ExactList<byte>(16),
                 lookupRegion        = new ExactList<int>(16),
                 regionOrientation   = new ExactList<int>(16),
                 leftInside          = new ExactList<byte>(16),
@@ -152,7 +160,7 @@ namespace Chisel.Core
         public void Dispose()
         {
             planes.Dispose(); polygonPool.Dispose(); signs.Dispose(); regions.Dispose(); lines.Dispose(); owners.Dispose();
-            events.Dispose(); order.Dispose(); intervals.Dispose(); lookupRegion.Dispose(); regionOrientation.Dispose();
+            events.Dispose(); order.Dispose(); intervals.Dispose(); nearFace.Dispose(); coverage.Dispose(); coveredCategory.Dispose(); lookupRegion.Dispose(); regionOrientation.Dispose();
             leftInside.Dispose(); rightInside.Dispose(); vertices.Dispose(); alignedEdges.Dispose(); reverseAlignedEdges.Dispose();
             discardedEdges.Dispose();
         }
@@ -281,7 +289,15 @@ namespace Chisel.Core
                 return ExactFaceFailure.InvalidPlane;
 
             int boundBase = planes.Length;
-            failure = BuildRegions(faceId, faceCount, boundBase, ref touching);
+            failure = BuildRegions(faceId, faceCount, boundBase, ref touching, out bool uniform);
+            if (failure == ExactFaceFailure.None && regions.Length > 0)
+            {
+                // No brush cuts the face, so all of it routes the same way: one that is not drawn has nothing to write
+                if (uniform && !collectDiscarded && !IsDrawn(RouteUniform(ref lookupBrush, ref routingRows, ref lookupStart, ref lookupEnd)))
+                    regions.Clear();
+                else
+                    failure = CutRegions(faceId, ref touching);
+            }
             if (failure != ExactFaceFailure.None || regions.Length == 0)
             {
                 planes.Resize(boundBase);
@@ -402,19 +418,92 @@ namespace Chisel.Core
             return failure;
         }
 
-        // Region 0 is the face; after it, one region per routing touching brush that covers part of the face.
-        ExactFaceFailure BuildRegions(int faceId, int faceCount, int boundBase, ref ExactList<ExactTouchingBrush> touching)
+        // Region 0 is the face; the regions of the brushes that cut it are added by CutRegions.
+        ExactFaceFailure BuildRegions(int faceId, int faceCount, int boundBase, ref ExactList<ExactTouchingBrush> touching, out bool uniform)
         {
+            uniform = false;
             var failure = FacePolygon(faceId, faceCount, boundBase, out var polygon);
             if (failure != ExactFaceFailure.None || polygon.IsEmpty)
                 return failure;
             var face = planes[faceId];
             regions.Add(new ExactRegion { polygon = polygon, brush = -1, category = 0 });
 
+            // A brush whose bounds miss the face's misses the face: it cuts no region and has no interval on its lines
+            var faceBounds = new MinMaxAABB { Min = new float3(float.PositiveInfinity), Max = new float3(float.NegativeInfinity) };
+            for (int e = 0; e < polygon.count; e++)
+                ExactBrushes.Include(ref faceBounds, polygonPool[polygon.offset + e].start);
+            nearFace.Clear();
+            for (int t = 0; t < touching.Length; t++)
+            {
+                var bounds = touching[t].bounds;
+                nearFace.Add((byte)(math.all(bounds.Min <= faceBounds.Max) && math.all(bounds.Max >= faceBounds.Min) ? 1 : 0));
+            }
+
+            // Whether each brush misses, covers or cuts the face, from where the face's corners lie
+            uniform = true;
+            coverage.Clear(); coveredCategory.Clear();
+            for (int t = 0; t < touching.Length; t++)
+            {
+                byte kind = kMisses, category = 0;
+                ref var brush = ref touching[t];
+                if (brush.routes && nearFace[t] != 0)
+                    kind = Coverage(face, polygon, ref brush, out category);
+                coverage.Add(kind);
+                coveredCategory.Add(category);
+                if (kind == kCuts)
+                    uniform = false;
+            }
+            return ExactFaceFailure.None;
+        }
+
+        const byte kMisses = 0, kCovers = 1, kCuts = 2;
+
+        // A brush covers the face when every corner is within all its planes that do not lie in the face, and misses it
+        // when all corners are on the outside of one of them: then it makes no region, or one that is all of the face.
+        byte Coverage(in ExactPlane face, ExactPolygonRange polygon, ref ExactTouchingBrush brush, out byte category)
+        {
+            category = 0;
+            int coplanar = 0;
+            for (int p = 0; p < brush.planeCount; p++)
+            {
+                int same = ExactPredicates.SamePlane(face, planes[brush.planeOffset + p]);
+                if (same == 0) continue;
+                if (coplanar != 0 && coplanar != same) return kMisses;     // flat brush: covers nothing
+                coplanar = same;
+            }
+            bool covers = true;
+            for (int p = 0; p < brush.planeCount; p++)
+            {
+                var plane = planes[brush.planeOffset + p];
+                if (ExactPredicates.SamePlane(face, plane) != 0)
+                    continue;
+                bool anyInside = false, allInside = true;
+                for (int e = 0; e < polygon.count; e++)
+                {
+                    int side = ExactPredicates.Side(plane, polygonPool[polygon.offset + e].start);
+                    if (side < 0) anyInside = true;
+                    if (side > 0) allInside = false;
+                }
+                if (!anyInside)
+                    return kMisses;
+                if (!allInside)
+                    covers = false;
+            }
+            if (!covers)
+                return kCuts;
+            category = coplanar > 0 ? brush.alignedCategory : (coplanar < 0 ? brush.reverseAlignedCategory : brush.insideCategory);
+            return kCovers;
+        }
+
+        // Region 0 is the face, made by BuildRegions; after it, one region per routing touching brush that covers part of it.
+        ExactFaceFailure CutRegions(int faceId, ref ExactList<ExactTouchingBrush> touching)
+        {
+            var failure = ExactFaceFailure.None;
+            var face = planes[faceId];
             for (int t = 0; t < touching.Length; t++)
             {
                 ref var brush = ref touching[t];
-                if (!brush.routes)
+                if (!brush.routes || nearFace[t] == 0)
                     continue;
                 // Face to face with this face? Then it lies on one side of it and only its other planes cut the face.
                 int coplanar = 0;
@@ -465,6 +554,18 @@ namespace Chisel.Core
             if (a.planeId == b.planeId)
                 return 0;
             return ExactPredicates.CompareAlongLine(a.point, b.plane, b.directionSign);
+        }
+
+        // Both ends of the segment strictly outside one of the brush's planes: the segment misses the brush
+        bool Separated(ref ExactTouchingBrush brush, in ExactVertex from, in ExactVertex to)
+        {
+            for (int p = 0; p < brush.planeCount; p++)
+            {
+                var plane = planes[brush.planeOffset + p];
+                if (ExactPredicates.Side(plane, from) > 0 && ExactPredicates.Side(plane, to) > 0)
+                    return true;
+            }
+            return false;
         }
 
         bool Bounds(in ExactPlane face, in ExactLine line, int offset, int count, bool skipLinePlanes, in ExactVertex reference,
@@ -557,6 +658,16 @@ namespace Chisel.Core
             for (int t = 0; t < touching.Length; t++)
             {
                 ref var brush = ref touching[t];
+                if (nearFace[t] == 0)
+                {
+                    intervals.Add(new ExactInterval { entry = -1, exit = -1 });
+                    continue;
+                }
+                if (Separated(ref brush, faceEntry.point, faceExit.point))
+                {
+                    intervals.Add(new ExactInterval { entry = -1, exit = -1 });
+                    continue;
+                }
                 var entry = faceEntry; var exit = faceExit;
                 bool meets = Bounds(face, line, brush.planeOffset, brush.planeCount, false, faceEntry.point, ref entry, ref exit, ref failure);
                 if (failure != ExactFaceFailure.None)
@@ -712,6 +823,31 @@ namespace Chisel.Core
             e.vertexIndex = vertices.Length;
             vertices.Add(new ExactOutputVertex { vertex = e.point, x = x, y = y, z = z });
             return e.vertexIndex;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        static bool IsDrawn(int category)
+        {
+            return category == (int)CategoryIndex.SelfAligned || category == (int)CategoryIndex.SelfReverseAligned;
+        }
+
+        // The category routing gives all of a face no brush cuts, from the brushes that cover it.
+        int RouteUniform(ref ExactList<int> lookupBrush, ref ExactList<ushort> routingRows, ref ExactList<int> lookupStart, ref ExactList<int> lookupEnd)
+        {
+            int input = 0;
+            for (int k = 0; k < lookupStart.Length; k++)
+            {
+                int row = lookupStart[k] + input;
+                if (row < lookupStart[k] || row >= lookupEnd[k])
+                {
+                    routingErrors++;
+                    continue;
+                }
+                int b = lookupBrush[k];
+                int category = b >= 0 && coverage[b] == kCovers ? coveredCategory[b] : (int)CategoryIndex.Outside;
+                input = routingRows[row * kCategoryCount + category];
+            }
+            return input;
         }
 
         // The category routing gives a piece of the face, from its membership in each region.

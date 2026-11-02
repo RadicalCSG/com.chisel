@@ -420,14 +420,14 @@ namespace Chisel.Components
             if (rebuildBrushMeshes.TryGetValue(component, out int index))
             {
                 rebuildTreeBrushes[index] = brush;
-                rebuildTreeBrushOutlines[index] = component.definition.BrushOutline;
-                rebuildSurfaceDefinitions[index] = component.surfaceArray;
+                rebuildTreeBrushOutlines[index] = component.OwnBrushOutline;
+                rebuildSurfaceDefinitions[index] = component.OwnBrushSurfaces;
             } else
             {
                 rebuildBrushMeshes[component] = rebuildTreeBrushOutlines.Count;
                 rebuildTreeBrushes.Add(brush);
-                rebuildTreeBrushOutlines.Add(component.definition.BrushOutline);
-                rebuildSurfaceDefinitions.Add(component.surfaceArray);
+                rebuildTreeBrushOutlines.Add(component.OwnBrushOutline);
+                rebuildSurfaceDefinitions.Add(component.OwnBrushSurfaces);
             }
             rebuildTreeNodes.Add(component);
         }

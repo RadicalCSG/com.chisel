@@ -16,19 +16,43 @@ namespace Chisel.Core
     [BurstCompile(CompileSynchronously = true)]
     struct CacheRemappingJob : IJob
     {
-        #region IndexOrderComparer - Sort index order to ensure consistency
-        struct IndexOrderComparer : System.Collections.Generic.IComparer<int2>
+        // A cache's entries moved from their old order (x) to their new one (y), those without one (-1) disposed; an order
+        // nothing moves to is left empty, for the brush made there
+        static void Remap<T>(NativeList<BlobAssetReference<T>> cache, NativeArray<int2> remap) where T : unmanaged
         {
-            public int Compare(int2 a, int2 b)
+            var old = new NativeArray<BlobAssetReference<T>>(remap.Length, Allocator.Temp);
+            for (int n = 0; n < remap.Length; n++)
             {
-                int yCompare = a.y.CompareTo(b.y);
-                if (yCompare != 0)
-                    return yCompare;
-                return a.x.CompareTo(b.x);
+                old[n] = cache[n];
+                cache[n] = default;
             }
+            for (int n = 0; n < remap.Length; n++)
+            {
+                var destination = remap[n].y;
+                if (destination >= 0)
+                    cache[destination] = old[n];
+                else if (old[n].IsCreated)
+                    old[n].Dispose();
+            }
+            old.Dispose();
         }
-		readonly static IndexOrderComparer kIndexOrderComparer = new();
-        #endregion
+
+        static void RemapValues<T>(NativeList<T> cache, NativeArray<int2> remap) where T : unmanaged
+        {
+            var old = new NativeArray<T>(remap.Length, Allocator.Temp);
+            for (int n = 0; n < remap.Length; n++)
+            {
+                old[n] = cache[n];
+                cache[n] = default;
+            }
+            for (int n = 0; n < remap.Length; n++)
+            {
+                var destination = remap[n].y;
+                if (destination >= 0)
+                    cache[destination] = old[n];
+            }
+            old.Dispose();
+        }
 
 		[NoAlias, ReadOnly] public CompactHierarchy.ReadOnly    compactHierarchy;
 		[NoAlias, ReadOnly] public NativeList<int>              nodeIDValueToNodeOrder;
@@ -97,6 +121,9 @@ namespace Chisel.Core
 
 				if (needRemapping)
 				{
+					using var inTree = new NativeParallelHashSet<CompactNodeID>(math.max(16, brushes.Length), Allocator.Temp);
+					for (int b = 0; b < brushes.Length; b++)
+						inTree.Add(brushes[b]);
 					for (int b = 0; b < removedBrushes.Length; b++)
 					{
 						var indexOrder = removedBrushes[b];
@@ -117,56 +144,13 @@ namespace Chisel.Core
 								continue;
 
 							// TODO: investigate how a brush can be "valid" but not be part of treeBrushes
-							if (!brushes.Contains(otherBrushID))
+							if (!inTree.Contains(otherBrushID))
 								continue;
 
 							var otherBrushIDValue = otherBrushID.slotIndex.index;
 							var otherBrushOrder = nodeIDValueToNodeOrder[otherBrushIDValue - nodeIDValueToNodeOrderOffset];
 							var otherIndexOrder = new IndexOrder { compactNodeID = otherBrushID, nodeOrder = otherBrushOrder };
 							brushesThatNeedIndirectUpdateHashMap.Add(otherIndexOrder);
-						}
-					}
-
-					// Cannot rely on unity code. Sorting does not work. do you guys not test anything??
-					//remapOldOrderToNewOrder.Sort(indexOrderComparer);
-
-					// TODO: OPTIMIZE!
-					for (int a = 0; a < remapOldOrderToNewOrder.Length - 1; a++)
-					{
-						var val_a = remapOldOrderToNewOrder[a];
-						for (int b = a + 1; b < remapOldOrderToNewOrder.Length; b++)
-						{
-							var val_b = remapOldOrderToNewOrder[b];
-							var compare = kIndexOrderComparer.Compare(val_a, val_b);
-							if (compare >= 0)
-								continue;
-
-							remapOldOrderToNewOrder[b] = val_a;
-							remapOldOrderToNewOrder[a] = val_b;
-							val_a = val_b;
-						}
-					}
-					for (int n = 0; n < previousBrushIDValuesLength; n++)
-					{
-						var overwrittenValue = remapOldOrderToNewOrder[n].y;
-						var originValue = remapOldOrderToNewOrder[n].x;
-						if (overwrittenValue == originValue)
-							continue;
-						// TODO: OPTIMIZE!
-						for (int n2 = n + 1; n2 < previousBrushIDValuesLength; n2++)
-						{
-							var tmp = remapOldOrderToNewOrder[n2];
-							if (tmp.x == overwrittenValue)
-							{
-								if (tmp.y == originValue ||
-									tmp.y >= previousBrushIDValuesLength)
-								{
-									remapOldOrderToNewOrder[n2] = new int2(-1, -1);
-									break;
-								}
-								remapOldOrderToNewOrder[n2] = new int2(originValue, tmp.y);
-								break;
-							}
 						}
 					}
 
@@ -187,38 +171,15 @@ namespace Chisel.Core
 					if (exactBrushCache.Length < maxCount)
 						exactBrushCache.Resize(maxCount, NativeArrayOptions.ClearMemory);
 
-					for (int n = 0; n < previousBrushIDValuesLength; n++)
-					{
-						var source = remapOldOrderToNewOrder[n].x;
-						var destination = remapOldOrderToNewOrder[n].y;
-						if (source == -1)
-							continue;
-
-						if (source == destination)
-							continue;
-
-						if (destination == -1)
-						{
-							{ var tmp = basePolygonCache[source]; basePolygonCache[source] = default; if (tmp.IsCreated) tmp.Dispose(); }
-							{ var tmp = routingTableCache[source]; routingTableCache[source] = default; if (tmp.IsCreated) tmp.Dispose(); }
-							{ var tmp = transformationCache[source]; transformationCache[source] = default; }
-							{ var tmp = brushRenderBufferCache[source]; brushRenderBufferCache[source] = default; if (tmp.IsCreated) tmp.Dispose(); }
-							{ var tmp = treeSpaceVerticesCache[source]; treeSpaceVerticesCache[source] = default; if (tmp.IsCreated) tmp.Dispose(); }
-							{ var tmp = brushTreeSpaceBoundCache[source]; brushTreeSpaceBoundCache[source] = default; }
-							{ var tmp = brushesTouchedByBrushCache[source]; brushesTouchedByBrushCache[source] = default; if (tmp.IsCreated) tmp.Dispose(); }
-							{ var tmp = exactBrushCache[source]; exactBrushCache[source] = default; if (tmp.IsCreated) tmp.Dispose(); }
-							continue;
-						}
-
-						(basePolygonCache[source], basePolygonCache[destination]) = (basePolygonCache[destination], basePolygonCache[source]);
-						(routingTableCache[source], routingTableCache[destination]) = (routingTableCache[destination], routingTableCache[source]);
-						(transformationCache[source], transformationCache[destination]) = (transformationCache[destination], transformationCache[source]);
-						(brushRenderBufferCache[source], brushRenderBufferCache[destination]) = (brushRenderBufferCache[destination], brushRenderBufferCache[source]);
-						(treeSpaceVerticesCache[source], treeSpaceVerticesCache[destination]) = (treeSpaceVerticesCache[destination], treeSpaceVerticesCache[source]);
-						(brushTreeSpaceBoundCache[source], brushTreeSpaceBoundCache[destination]) = (brushTreeSpaceBoundCache[destination], brushTreeSpaceBoundCache[source]);
-						(brushesTouchedByBrushCache[source], brushesTouchedByBrushCache[destination]) = (brushesTouchedByBrushCache[destination], brushesTouchedByBrushCache[source]);
-						(exactBrushCache[source], exactBrushCache[destination]) = (exactBrushCache[destination], exactBrushCache[source]);
-					}
+					// every entry to its new order, those of removed brushes disposed
+					Remap(basePolygonCache, remapOldOrderToNewOrder);
+					Remap(routingTableCache, remapOldOrderToNewOrder);
+					RemapValues(transformationCache, remapOldOrderToNewOrder);
+					Remap(brushRenderBufferCache, remapOldOrderToNewOrder);
+					Remap(treeSpaceVerticesCache, remapOldOrderToNewOrder);
+					RemapValues(brushTreeSpaceBoundCache, remapOldOrderToNewOrder);
+					Remap(brushesTouchedByBrushCache, remapOldOrderToNewOrder);
+					Remap(exactBrushCache, remapOldOrderToNewOrder);
 				}
             }
 

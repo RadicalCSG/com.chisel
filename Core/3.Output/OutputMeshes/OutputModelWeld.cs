@@ -39,6 +39,9 @@ namespace Chisel.Core
         public NativeList<OutputModelWeld.CollapseDecision> decisions;
         // the triangles this update welds (OutputModelWeld.PrepareIncremental); all of them unless it says otherwise
         public WeldScope scope;
+        // the brushes the incremental weld makes again, and what it made of each (OutputModelWeld.RemakeBrush)
+        public NativeList<int> remake;
+        public NativeList<OutputModelWeld.Remade> remade;
 
         public static WeldState Create(Allocator allocator)
         {
@@ -55,7 +58,9 @@ namespace Chisel.Core
                 decisionCounts  = new NativeList<int>(16, allocator),
                 decisionOffsets = new NativeList<int>(16, allocator),
                 decisions       = new NativeList<OutputModelWeld.CollapseDecision>(16, allocator),
-                scope           = WeldScope.Create(allocator)
+                scope           = WeldScope.Create(allocator),
+                remake          = new NativeList<int>(16, allocator),
+                remade          = new NativeList<OutputModelWeld.Remade>(16, allocator)
             };
         }
 
@@ -67,6 +72,14 @@ namespace Chisel.Core
             copies.Clear();
             edgeCounts.Clear(); edgeOffsets.Clear(); shortPairs.Clear(); keptCorners.Clear(); movedTo.Clear();
             decisionCounts.Clear(); decisionOffsets.Clear(); decisions.Clear();
+            FreeRemade(remade);
+            remake.Clear(); remade.Clear();
+        }
+
+        internal static void FreeRemade(NativeList<OutputModelWeld.Remade> remade)
+        {
+            for (int r = 0; r < remade.Length; r++)
+                remade[r].Free();
         }
 
         internal static void FreeWork(NativeList<OutputModelWeld.Working> work)
@@ -100,17 +113,23 @@ namespace Chisel.Core
             if (decisionOffsets.IsCreated) decisionOffsets.Dispose();
             if (decisions.IsCreated)       decisions.Dispose();
             scope.Dispose();
+            if (remade.IsCreated)
+            {
+                FreeRemade(remade);
+                remade.Dispose();
+            }
+            if (remake.IsCreated)          remake.Dispose();
         }
 
         public Unity.Jobs.JobHandle Dispose(Unity.Jobs.JobHandle dependency)
         {
             if (work.IsCreated)
-                dependency = Unity.Jobs.IJobExtensions.Schedule(new FreeWeldWorkJob { work = work }, dependency);
+                dependency = Unity.Jobs.IJobExtensions.Schedule(new FreeWeldWorkJob { work = work, remade = remade }, dependency);
             var a = work.IsCreated      ? work.Dispose(dependency)      : dependency;
             var b = workIndex.IsCreated ? workIndex.Dispose(dependency) : dependency;
             var c = copies.IsCreated    ? copies.Dispose(dependency)    : dependency;
             var d = dependency;
-            var handles = new NativeArray<Unity.Jobs.JobHandle>(11, Allocator.Temp);
+            var handles = new NativeArray<Unity.Jobs.JobHandle>(13, Allocator.Temp);
             handles[0] = Unity.Jobs.JobHandle.CombineDependencies(a, b, c);
             handles[1] = d;
             handles[2] = edgeCounts.IsCreated      ? edgeCounts.Dispose(dependency)      : dependency;
@@ -122,6 +141,8 @@ namespace Chisel.Core
             handles[8] = decisionOffsets.IsCreated ? decisionOffsets.Dispose(dependency) : dependency;
             handles[9] = decisions.IsCreated       ? decisions.Dispose(dependency)       : dependency;
             handles[10] = scope.Dispose(dependency);
+            handles[11] = remake.IsCreated ? remake.Dispose(dependency) : dependency;
+            handles[12] = remade.IsCreated ? remade.Dispose(dependency) : dependency;
             var all = Unity.Jobs.JobHandle.CombineDependencies(handles);
             handles.Dispose();
             return all;
@@ -132,7 +153,13 @@ namespace Chisel.Core
     struct FreeWeldWorkJob : Unity.Jobs.IJob
     {
         public NativeList<OutputModelWeld.Working> work;
-        public void Execute() { WeldState.FreeWork(work); }
+        public NativeList<OutputModelWeld.Remade>  remade;
+        public void Execute()
+        {
+            WeldState.FreeWork(work);
+            if (remade.IsCreated)
+                WeldState.FreeRemade(remade);
+        }
     }
 
 #if UNITY_6000_7_OR_NEWER
@@ -158,6 +185,28 @@ namespace Chisel.Core
             // the input triangles its splits started from (WeldMemory)
             public UnsafeList<int>          splitRoots;
             public readonly bool CollapseOnly => !indices.IsCreated;
+        }
+
+        // What the incremental weld made of a brush: its surfaces the weld changed, its final entries, and whether those
+        // are what it had
+        internal struct Remade
+        {
+            public UnsafeList<Working>   work;
+            public UnsafeList<WeldEntry> final;
+            public bool                  same;
+
+            public void Free()
+            {
+                if (work.IsCreated)
+                {
+                    for (int w = 0; w < work.Length; w++)
+                        FreeWorking(work[w]);
+                    work.Dispose();
+                }
+                if (final.IsCreated)
+                    final.Dispose();
+                work = default; final = default;
+            }
         }
 
         // What the collapse does to a surface: drops a triangle (index), or moves a corner (index) to
@@ -1247,6 +1296,7 @@ namespace Chisel.Core
                     to.decalFades            = from.decalFades;
                     to.decalHidesBorder      = from.decalHidesBorder;
                     to.paintSurface          = from.paintSurface;
+                    to.smoothingGroup        = from.smoothingGroup;
                     to.destinationFlags      = from.destinationFlags;
                     to.destinationParameters = from.destinationParameters;
                     to.outputFlags           = from.outputFlags;

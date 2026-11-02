@@ -23,6 +23,9 @@ namespace Chisel.Core
         public bool                         decalHidesBorder;
         // a painted surface's index, which its paint is found by with its brush's entity (ChiselPaintLookup); -1 without
         public int                          paintSurface;
+        // Its smoothing group (0 for none): its normals are smoothed with the surfaces of the same group and entity around it,
+        // from the triangles that are drawn (OutputSmoothNormals)
+        public uint                         smoothingGroup;
 		public SurfaceDestinationFlags      destinationFlags;
 		public SurfaceDestinationParameters destinationParameters;
 		// How many lightmap texels the surface gets (SurfaceOutputFlags.NoLightmap, SingleLightmapTexel)
@@ -204,6 +207,7 @@ namespace Chisel.Core
 				this.decalFades = false;
 				this.decalHidesBorder = false;
 				this.paintSurface = -1;
+				this.smoothingGroup = 0;
 				this.destinationFlags = destinationFlags;
 				this.destinationParameters = destinationParameters;
 				this.outputFlags = outputFlags;
@@ -232,6 +236,7 @@ namespace Chisel.Core
 			this.decalFades = false;
 			this.decalHidesBorder = false;
 			this.paintSurface = -1;
+			this.smoothingGroup = 0;
 
 			this.destinationFlags = destinationFlags;
 			this.destinationParameters = destinationParameters;
@@ -292,6 +297,8 @@ namespace Chisel.Core
 		}
     };
 
+	// No padding: buffers are compared byte for byte (OutputModelWeld.SameBuffer), and padding is never written
+	[System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential, Pack = 4)]
 	internal struct ChiselQuerySurface
     {
         public int	surfaceIndex;

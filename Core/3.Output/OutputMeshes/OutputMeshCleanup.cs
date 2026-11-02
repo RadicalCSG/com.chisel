@@ -25,8 +25,8 @@ namespace Chisel.Core
         }
     }
 
-    // A brush to clean up, the brushes whose output touches its own (MeshCleanupState.neighbours from neighbourStart), and
-    // what the cleanup made of it
+    // A brush to clean up, the brushes whose output touches its own (their outlines' slots, in neighbours from
+    // neighbourStart), and what the cleanup made of it
     internal struct MeshCleanupWork
     {
         public int brush;
@@ -95,20 +95,48 @@ namespace Chisel.Core
 
         static bool Overlap(MinMaxAABB a, MinMaxAABB b) => math.all(a.Min <= b.Max) && math.all(b.Min <= a.Max);
 
+        // Whether a surface of one brush comes within kJunctionDistance of a surface of the other: a brush's bounds can
+        // meet many brushes none of its surfaces comes near (a box's sides and the columns over its top)
+        static bool SurfacesTouch(BlobAssetReference<ChiselBrushRenderBuffer> a, BlobAssetReference<ChiselBrushRenderBuffer> b)
+        {
+            ref var aSurfaces = ref a.Value.surfaces;
+            ref var bSurfaces = ref b.Value.surfaces;
+            for (int i = 0; i < aSurfaces.Length; i++)
+            {
+                if (aSurfaces[i].indexCount == 0)
+                    continue;
+                var box = aSurfaces[i].aabb;
+                box.Min -= kJunctionDistance;
+                box.Max += kJunctionDistance;
+                for (int j = 0; j < bSurfaces.Length; j++)
+                {
+                    if (bSurfaces[j].indexCount != 0 && Overlap(box, bSurfaces[j].aabb))
+                        return true;
+                }
+            }
+            return false;
+        }
+
         struct ByMinX : System.Collections.Generic.IComparer<int>
         {
             public NativeArray<MinMaxAABB> boxes;
             public readonly int Compare(int x, int y) => boxes[x].Min.x.CompareTo(boxes[y].Min.x);
         }
 
-        // The brushes to clean up (work, with the brushes whose output touches theirs in neighbours); the others get what
-        // the cache kept for them. A brush is cleaned up again when it or a brush touching it changed.
+        // The brushes to clean up (work, with the brushes whose output touches theirs in neighbours, by their slot in
+        // outlineBrushes); the others get what the cache kept for them. A brush is cleaned up again when it or a brush
+        // touching it changed. Each brush in outlineBrushes has its outlines made once (Outlines), for all it touches.
         public static void Plan(NativeList<BrushData> brushes, NativeParallelHashMap<CompactNodeID, MeshCleanupEntry> cache, NativeList<MeshCleanupWork> work,
-                                NativeList<int> neighbours)
+                                NativeList<int> neighbours, NativeList<int> outlineBrushes)
         {
             work.Clear();
             neighbours.Clear();
+            outlineBrushes.Clear();
             var count = brushes.Length;
+            NativeArray<int> slotOf;
+            using var _slotOf = slotOf = new NativeArray<int>(count, Allocator.Temp);
+            for (int b = 0; b < count; b++)
+                slotOf[b] = -1;
             NativeArray<ulong> keys; NativeArray<MinMaxAABB> boxes;
             using var _keys  = keys  = new NativeArray<ulong>(count, Allocator.Temp);
             using var _boxes = boxes = new NativeArray<MinMaxAABB>(count, Allocator.Temp);
@@ -129,7 +157,7 @@ namespace Chisel.Core
                 for (int j = i + 1; j < order.Length && boxes[order[j]].Min.x <= boxes[a].Max.x; j++)
                 {
                     var b = order[j];
-                    if (!Overlap(boxes[a], boxes[b]))
+                    if (!Overlap(boxes[a], boxes[b]) || !SurfacesTouch(brushes[a].brushRenderBuffer, brushes[b].brushRenderBuffer))
                         continue;
                     touching.Add(a, b);
                     touching.Add(b, a);
@@ -165,12 +193,75 @@ namespace Chisel.Core
                     continue;
                 }
                 work.Add(new MeshCleanupWork { brush = b, key = key, neighbourStart = neighbours.Length, neighbourCount = around.Length });
-                neighbours.AddRange(around.AsArray());
+                foreach (var neighbour in around)
+                {
+                    if (slotOf[neighbour] < 0)
+                    {
+                        slotOf[neighbour] = outlineBrushes.Length;
+                        outlineBrushes.Add(neighbour);
+                    }
+                    neighbours.Add(slotOf[neighbour]);
+                }
             }
         }
 
-        // One planned brush; each is independent of the others
-        public static unsafe MeshCleanupWork CleanPlanned(MeshCleanupWork work, NativeArray<BrushData> brushes, NativeArray<int> neighbours)
+        // The outline edges of a brush's drawn surfaces, and of what of them collides
+        internal struct BrushOutlines : IDisposable
+        {
+            public UnsafeList<Outline> drawn, colliders;
+
+            public void Dispose()
+            {
+                if (drawn.IsCreated) drawn.Dispose();
+                if (colliders.IsCreated) colliders.Dispose();
+                drawn = default;
+                colliders = default;
+            }
+        }
+
+        static readonly MinMaxAABB kEverywhere = new() { Min = new float3(float.NegativeInfinity), Max = new float3(float.PositiveInfinity) };
+
+        // The outlines of one brush that brushes cleaned up next to it look at (Plan's outlineBrushes); each is
+        // independent of the others
+        public static unsafe BrushOutlines Outlines(BlobAssetReference<ChiselBrushRenderBuffer> buffer)
+        {
+            using var drawn     = new NativeList<Outline>(256, Allocator.Temp);
+            using var colliders = new NativeList<Outline>(256, Allocator.Temp);
+            OutlinesOf(buffer, false, kEverywhere, drawn);
+            OutlinesOf(buffer, false, kEverywhere, colliders, true);
+            var outlines = new BrushOutlines
+            {
+                drawn     = new UnsafeList<Outline>(math.max(1, drawn.Length), Allocator.Persistent),
+                colliders = new UnsafeList<Outline>(math.max(1, colliders.Length), Allocator.Persistent)
+            };
+            outlines.drawn.AddRange(drawn.GetUnsafeReadOnlyPtr(), drawn.Length);
+            outlines.colliders.AddRange(colliders.GetUnsafeReadOnlyPtr(), colliders.Length);
+            return outlines;
+        }
+
+        // Plan's outlineBrushes' outlines, one after the other (the jobs make them in parallel)
+        public static void Outlines(NativeList<BrushData> brushes, NativeList<int> outlineBrushes, NativeList<BrushOutlines> outlines)
+        {
+            for (int i = 0; i < outlines.Length; i++)
+                outlines[i].Dispose();
+            outlines.Clear();
+            foreach (var brush in outlineBrushes)
+                outlines.Add(Outlines(brushes[brush].brushRenderBuffer));
+        }
+
+        static void AddWithin(in UnsafeList<Outline> from, MinMaxAABB box, NativeList<Outline> to)
+        {
+            for (int i = 0; i < from.Length; i++)
+            {
+                var outline = from[i];
+                if (Overlap(new MinMaxAABB { Min = math.min(outline.from, outline.to), Max = math.max(outline.from, outline.to) }, box))
+                    to.Add(outline);
+            }
+        }
+
+        // One planned brush, with its neighbours' outlines (Outlines, by slot); each is independent of the others
+        public static unsafe MeshCleanupWork CleanPlanned(MeshCleanupWork work, NativeArray<BrushData> brushes, NativeArray<int> neighbours,
+                                                          NativeArray<BrushOutlines> brushOutlines)
         {
             var source = brushes[work.brush].brushRenderBuffer;
             using var outlines = new NativeList<Outline>(256, Allocator.Temp);
@@ -178,8 +269,9 @@ namespace Chisel.Core
             using var colliderOutlines = new NativeList<Outline>(256, Allocator.Temp);
             for (int n = 0; n < work.neighbourCount; n++)
             {
-                OutlinesOf(brushes[neighbours[work.neighbourStart + n]].brushRenderBuffer, false, box, outlines);
-                OutlinesOf(brushes[neighbours[work.neighbourStart + n]].brushRenderBuffer, false, box, colliderOutlines, true);
+                var neighbour = brushOutlines[neighbours[work.neighbourStart + n]];
+                AddWithin(neighbour.drawn, box, outlines);
+                AddWithin(neighbour.colliders, box, colliderOutlines);
             }
             using var moves = new NativeList<float3x2>(Allocator.Temp);
             work.result = Clean(source, outlines, moves, colliderOutlines);
@@ -483,6 +575,7 @@ namespace Chisel.Core
                     to.decalFades            = from.decalFades;
                     to.decalHidesBorder      = from.decalHidesBorder;
                     to.paintSurface          = from.paintSurface;
+                    to.smoothingGroup        = from.smoothingGroup;
                     to.destinationFlags      = from.destinationFlags;
                     to.destinationParameters = from.destinationParameters;
                     to.outputFlags           = from.outputFlags;
@@ -591,6 +684,10 @@ namespace Chisel.Core
                     {
                         var entry = from.surfaces[e];
                         ref var stored = ref surfaces[entry.surfaceIndex];
+                        // a surface left with no triangle is left out, as when the brush's buffer was made: its vertices
+                        // would be counted into the mesh but never written
+                        if (stored.vertexCount == 0 || stored.indexCount == 0)
+                            continue;
                         entry.vertexCount       = stored.vertexCount;
                         entry.indexCount        = stored.indexCount;
                         entry.geometryHashValue = stored.geometryHashValue;

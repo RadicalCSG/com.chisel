@@ -85,6 +85,7 @@ namespace Chisel.Core
             //NativeCollectionHelpers.EnsureCapacityAndClear(ref scratch_brushIntersection, intersectionCount);
 
             {
+                // in node order already (GatherBrushIntersectionPairsJob sorts them)
                 for (int i = 0; i < intersectionCount; i++)
                 {
                     var touchingBrush = brushIntersectionsWith[intersectionOffset + i];
@@ -104,24 +105,6 @@ namespace Chisel.Core
                         bottomUpStart   = brushAncestorLegend[otherBottomUpIDValue].ancestorStartIDValue, 
                         bottomUpEnd     = brushAncestorLegend[otherBottomUpIDValue].ancestorEndIDValue
                     });
-                }
-                for (int b0 = 0; b0 < scratch_brushIntersection.Length; b0++)
-                {
-                    var brushIntersection0 = scratch_brushIntersection[b0];
-                    ref var nodeIndexOrder0 = ref brushIntersection0.nodeIndexOrder;
-                    for (int b1 = b0 + 1; b1 < scratch_brushIntersection.Length; b1++)
-                    {
-                        var brushIntersection1 = scratch_brushIntersection[b1];
-                        ref var nodeIndexOrder1 = ref brushIntersection1.nodeIndexOrder;
-                        if (nodeIndexOrder0.nodeOrder > nodeIndexOrder1.nodeOrder)
-                        {
-                            var t = nodeIndexOrder0;
-                            nodeIndexOrder0 = nodeIndexOrder1;
-                            nodeIndexOrder1 = t;
-                        }
-                        scratch_brushIntersection[b1] = brushIntersection1;
-                    }
-                    scratch_brushIntersection[b0] = brushIntersection0;
                 }
             }
 

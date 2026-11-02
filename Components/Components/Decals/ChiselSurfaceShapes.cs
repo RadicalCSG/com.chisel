@@ -36,9 +36,9 @@ namespace Chisel.Components
         {
             outline.Clear();
             plane = default;
-            if (brush == null || brush.TopTreeNode.Type != CSGNodeType.Brush)
+            if (brush is not ChiselGeneratorComponent generator)
                 return false;
-            var treeBrush = (CSGTreeBrush)brush.TopTreeNode;
+            var treeBrush = generator.OwnBrush;
             // a brush without its mesh yet has no surfaces
             if (!treeBrush.Valid || !treeBrush.BrushMesh.Valid)
                 return false;

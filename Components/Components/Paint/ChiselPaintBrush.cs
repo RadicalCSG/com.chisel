@@ -49,7 +49,8 @@ namespace Chisel.Components
             if (!model)
                 return false;
             var modelToGenerator = (model.transform.worldToLocalMatrix * generator.transform.localToWorldMatrix).inverse;
-            AddOutline(generator.TopTreeNode, surfaceIndex, modelToGenerator, corners, ref normal);
+            // a displaced surface's columns are not the surface its paint grid is laid on
+            AddOutline(generator.SupportsDisplacement ? generator.OwnBrush : generator.TopTreeNode, surfaceIndex, modelToGenerator, corners, ref normal);
             if (corners.Count < 3 || normal == Vector3.zero)
                 return false;
             normal.Normalize();
@@ -212,7 +213,7 @@ namespace Chisel.Components
 
         // The grid with whole cells added on the sides where the corners are beyond it, its points kept; false when they
         // are all on it. Too many points for one grid: larger cells, resampled.
-        static bool Grown(ChiselSurfacePaint paint, List<Vector3> corners, out ChiselSurfacePaint grown)
+        internal static bool Grown(ChiselSurfacePaint paint, List<Vector3> corners, out ChiselSurfacePaint grown)
         {
             grown = null;
             const float kOnTheGrid = 1e-3f;    // in cells
@@ -298,6 +299,33 @@ namespace Chisel.Components
                 generator.PaintChanged();
             }
             return paint;
+        }
+
+        /// <summary>The mode that paints a surface's displacement, whatever its shader: heights along its normal</summary>
+        public const string kDisplacementName = "Displacement";
+        public const float  kMaxDisplacement  = 16;
+        /// <summary>How much of the brush's strength a displacement dab has: heights are built up over a stroke, as a
+        /// dab comes with every move of the mouse</summary>
+        public const float  kDisplacementRate = 0.1f;
+        public static readonly ChiselPaintMode kDisplacementMode =
+            ChiselPaintMode.Value(kDisplacementName, ChiselPaintAttribute.Color, ChiselPaintComponents.X, 0, -kMaxDisplacement, kMaxDisplacement);
+
+        /// <summary>
+        /// The heights the displacement mode writes on a surface, made with a grid of the surface's paint spacing when it
+        /// has none. Null when the generator can't be displaced.
+        /// </summary>
+        public static ChiselSurfacePaint DisplacementFor(ChiselGeneratorComponent generator, int surfaceIndex)
+        {
+            if (!generator || !generator.SupportsDisplacement)
+                return null;
+            var heights = generator.GetSurfaceDisplacement(surfaceIndex);
+            if (heights != null && heights.IsValid)
+                return heights;
+            heights = CreateGrid(generator, surfaceIndex, kDisplacementMode.attribute, kDisplacementMode.components,
+                                 kDisplacementMode.defaultValue, SpacingOf(generator, surfaceIndex));
+            if (heights != null)
+                generator.SetSurfaceDisplacement(heights);
+            return heights;
         }
 
         /// <summary>How much a dab counts at a distance from its middle: strength within hardness of the radius, then

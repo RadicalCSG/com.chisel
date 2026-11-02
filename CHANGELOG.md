@@ -1,6 +1,9 @@
 # Changelog
 
 ## 0.9.3-preview
+- Paint displacement: the paint tool raises and lowers a box's or brush's surfaces, and the brush follows as columns that add to it or cut into it, with smooth normals and the surface's texture coordinates
+- Painting a displaced surface rebuilds only what the dab changed
+- Undoing a paint stroke on a displaced box no longer throws an exception
 - A shape's corners on its surface's edges stay on them when the brush is resized or skewed; drawing and dragging corners snaps them to the surface's corners and edges, and corners can be added and taken away
 - A shape on a surface moves along it with surface-space arrows and a square between them, whatever the handle rotation
 - The hotspot mapping draws no border round an opaque decal unless the decal's Hotspot Border is on

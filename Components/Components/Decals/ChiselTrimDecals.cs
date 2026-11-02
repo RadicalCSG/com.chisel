@@ -570,7 +570,7 @@ namespace Chisel.Components
                 if (generator == clicked || generator.hierarchyItem.Model != model || !generator.TopTreeNode.Valid ||
                     generator.TopTreeNode.Type != CSGNodeType.Brush)
                     continue;
-                var brush = (CSGTreeBrush)generator.TopTreeNode;
+                var brush = generator.OwnBrush;
                 var blob  = BrushMeshManager.GetBrushMeshBlob(brush.BrushMesh);
                 if (!blob.IsCreated)
                     continue;
@@ -666,7 +666,7 @@ namespace Chisel.Components
             {
                 if (generator.hierarchyItem.Model != model || !generator.TopTreeNode.Valid || generator.TopTreeNode.Type != CSGNodeType.Brush)
                     continue;
-                var brush = (CSGTreeBrush)generator.TopTreeNode;
+                var brush = generator.OwnBrush;
                 var blob  = BrushMeshManager.GetBrushMeshBlob(brush.BrushMesh);
                 if (!blob.IsCreated)
                     continue;
@@ -719,7 +719,7 @@ namespace Chisel.Components
             {
                 if (generator.hierarchyItem.Model != model || !generator.TopTreeNode.Valid || generator.TopTreeNode.Type != CSGNodeType.Brush)
                     continue;
-                var brush = (CSGTreeBrush)generator.TopTreeNode;
+                var brush = generator.OwnBrush;
                 var blob  = BrushMeshManager.GetBrushMeshBlob(brush.BrushMesh);
                 if (!blob.IsCreated)
                     continue;
