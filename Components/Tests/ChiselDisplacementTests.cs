@@ -140,19 +140,98 @@ namespace Chisel.Components.Tests
             Assert.That(pushed.Exists(c => Inside(c, underneath)), Is.True, "solid just below the lowered surface");
         }
 
+        // Past a side that is displaced too (the box's front, +z, plane 5) the top's columns go on: that side's own
+        // displaced surface bounds them, in the generator's branch. Past one that isn't, there is nothing to displace.
         [Test]
-        public void ARaisedNeighbour_MovesTheSideItSharesOut()
+        public void PastADisplacedSide_TheColumnsGoOn([Values] bool frontDisplaced)
         {
-            // the box's front (+z, plane 5) is raised by 0.25: the top's columns reach out over it
             var columns = new List<ChiselDisplacementColumn>();
             var grid = ChiselSurfacePaint.Create(0, Core.ChiselPaintAttribute.Color, Core.ChiselPaintComponents.X, Vector4.zero,
-                                                 new Vector3(0, 1, 0), Vector3.right, Vector3.forward, new Vector2Int(3, 4));
+                                                 new Vector3(0, 1, 0), Vector3.right, Vector3.forward, new Vector2Int(3, 5));
             for (int i = 0; i < grid.PointCount; i++)
                 grid[i] = new Vector4(0.5f, 0, 0, 0);
-            ChiselDisplacement.Columns(grid, Vector3.up, kBox, columns, (side, point) => side == 5 ? 0.25f : 0);
-            var corner = new float3(0.6f, 1.25f, 2.1f);
-            Assert.That(columns.Exists(c => Inside(c, corner)), Is.True, "the corner over the raised front is filled");
-            Assert.That(columns.Exists(c => Inside(c, new float3(0.6f, 1.25f, 2.3f))), Is.False, "and no further than the front is raised");
+            var endsAt = new[] { true, true, true, true, true, !frontDisplaced };
+            ChiselDisplacement.Columns(grid, Vector3.up, kBox, columns, endsAt: endsAt);
+            // the cells from z = 3 on are wholly past the front
+            Assert.That(columns.Exists(c => Inside(c, new float3(0.6f, 1.25f, 3.1f))), Is.EqualTo(frontDisplaced));
+            Assert.That(columns.Exists(c => Inside(c, new float3(0.6f, 1.25f, 1.9f))), Is.True, "over the top itself");
+        }
+
+        // Columns made with the cells kept from before are the columns made from nothing: after a height changes, and after
+        // the sides it ends at change
+        [Test]
+        public void ColumnsMadeWithACache_AreTheColumnsMadeWithout()
+        {
+            var box = new float4[]
+            {
+                new(-1, 0, 0, 0), new(1, 0, 0, -4), new(0, -1, 0, 0), new(0, 1, 0, -1), new(0, 0, -1, 0), new(0, 0, 1, -4)
+            };
+            var grid = ChiselSurfacePaint.Create(0, Core.ChiselPaintAttribute.Color, Core.ChiselPaintComponents.X, Vector4.zero,
+                                                 new Vector3(0, 1, 0), Vector3.right, Vector3.forward, new Vector2Int(5, 5));
+            for (int i = 0; i < grid.PointCount; i++)
+                grid[i] = new Vector4(i % 3 == 0 ? 0 : 0.1f + 0.37f * ((i * 7) % 5) - 0.6f * (i % 2), 0, 0, 0);
+            var cache = new ChiselDisplacementCache();
+            var cached = new List<ChiselDisplacementColumn>();
+            var fresh  = new List<ChiselDisplacementColumn>();
+            ChiselDisplacement.Columns(grid, Vector3.up, box, cached, cache: cache);
+
+            void Same(string what, bool[] endsAt)
+            {
+                ChiselDisplacement.Columns(grid, Vector3.up, box, cached, endsAt: endsAt, cache: cache);
+                ChiselDisplacement.Columns(grid, Vector3.up, box, fresh, endsAt: endsAt);
+                Assert.That(cached.Count, Is.EqualTo(fresh.Count), what);
+                for (int c = 0; c < fresh.Count; c++)
+                {
+                    Assert.That(cached[c].key, Is.EqualTo(fresh[c].key), $"{what}: column {c}");
+                    Assert.That(cached[c].planes, Is.EqualTo(fresh[c].planes), $"{what}: column {c}");
+                }
+            }
+            grid[12] = new Vector4(-0.45f, 0, 0, 0);
+            Same("a height changed", null);
+            Same("the sides it ends at changed", new[] { true, true, true, true, true, false });
+        }
+
+        // Neighbouring columns share the plane of the wall between them, exactly, the one pointing the other way
+        [Test]
+        public void NeighbouringColumns_ShareTheirWallsPlaneExactly()
+        {
+            var grid = ChiselSurfacePaint.Create(0, Core.ChiselPaintAttribute.Color, Core.ChiselPaintComponents.X, Vector4.zero,
+                                                 new Vector3(0, 1, 0), Vector3.right * 0.4f, Vector3.forward * 0.4f, new Vector2Int(6, 6));
+            for (int i = 0; i < grid.PointCount; i++)
+                grid[i] = new Vector4(0.37f * ((i * 7) % 5) - 0.6f * (i % 2), 0, 0, 0);
+            var columns = new List<ChiselDisplacementColumn>();
+            ChiselDisplacement.Columns(grid, Vector3.up, kBox, columns);
+            // the raised and the cut columns over triangles, by their corners on the surface (y = 1, the grid is flat)
+            var prisms = columns.FindAll(c => c.corners != null && c.group != ChiselDisplacement.kPushed);
+            static int SharedCorners(ChiselDisplacementColumn a, ChiselDisplacementColumn b)
+            {
+                var count = 0;
+                for (int i = 0; i < 3; i++)
+                    for (int j = 0; j < 3; j++)
+                        count += math.distance(a.corners[i].xz, b.corners[j].xz) < 1e-5f ? 1 : 0;
+                return count;
+            }
+            var shared = 0;
+            for (int a = 0; a < prisms.Count; a++)
+            {
+                for (int b = a + 1; b < prisms.Count; b++)
+                {
+                    // columns side by side over neighbouring triangles: the wall between them is one plane, exactly
+                    if (SharedCorners(prisms[a], prisms[b]) < 2)
+                        continue;
+                    for (int wa = 0; wa < 3; wa++)
+                    {
+                        for (int wb = 0; wb < 3; wb++)
+                        {
+                            if (!math.all(math.abs(prisms[a].planes[wa] + prisms[b].planes[wb]) < 1e-4f))
+                                continue;
+                            Assert.That(prisms[a].planes[wa], Is.EqualTo(-prisms[b].planes[wb]));
+                            shared++;
+                        }
+                    }
+                }
+            }
+            Assert.That(shared, Is.GreaterThan(0));
         }
 
         // The grid has points past the box's side (x = 2) that were never painted: the top goes on to the side as it is

@@ -754,6 +754,8 @@ namespace Chisel.Core
         // jobs did it: what they made is kept.
         public static void RecordIncremental(NativeList<BrushData> brushes, ref WeldMemory memory, ref WeldState state, NativeList<float3x2> moves)
         {
+            state.remake.Clear();
+            state.remade.Clear();
             if (state.scope.all.Value)
             {
                 RecordFull(brushes, ref memory, ref state, moves);
@@ -868,7 +870,7 @@ namespace Chisel.Core
                     moves.Add(pair.Value);
             }
 
-            // every brush near them made again; one the same as it was keeps its buffer
+            // every brush near them made again (RemakeBrush, FinishRemake); one the same as it was keeps its buffer
             foreach (var key in surfaces)
                 memory.brushes.ElementAt(memory.slotOfBrush[(int)(key >> 32)]).dirty = true;
             WeldState.FreeWork(state.work);
@@ -876,46 +878,76 @@ namespace Chisel.Core
             state.workIndex.Clear();
             state.copies.Clear();
             state.decisions.Clear();
-            var final = new NativeList<WeldEntry>(64, Allocator.Temp);
             for (int b = 0; b < brushes.Length; b++)
             {
-                ref var brush = ref memory.brushes.ElementAt(memory.slotOfBrush[b]);
-                if (!brush.dirty)
-                    continue;
-                var first = state.work.Length;
-                final.Clear();
-                ref var surfacesOf = ref brushes[b].brushRenderBuffer.Value.surfaces;
-                for (int s = 0; s < surfacesOf.Length; s++)
+                if (memory.brushes.ElementAt(memory.slotOfBrush[b]).dirty)
+                    state.remake.Add(b);
+            }
+            state.remade.Resize(state.remake.Length, NativeArrayOptions.ClearMemory);
+            surfaces.Dispose(); points.Dispose(); brushOfSlot.Dispose();
+        }
+
+        // One brush of remake made again from its buffer, its rounds and the moves, into remadeOf (brushes run apart: it
+        // only reads the memory)
+        public static void RemakeBrush(int r, NativeArray<BrushData> brushes, in WeldMemory memory, NativeArray<int> remake, NativeArray<Remade> remadeOf)
+        {
+            var b = remake[r];
+            var brush = memory.brushes[memory.slotOfBrush[b]];
+            // freed within this update (FinishRemake, FreeWeldWorkJob)
+            var remade = new Remade { work = new UnsafeList<Working>(4, Allocator.TempJob) };
+            var final = new NativeList<WeldEntry>(64, Allocator.Temp);
+            ref var surfacesOf = ref brushes[b].brushRenderBuffer.Value.surfaces;
+            for (int s = 0; s < surfacesOf.Length; s++)
+            {
+                var copy = SurfaceAfterRounds(ref surfacesOf[s], in brush, b, s, Allocator.TempJob);
+                if (!Collapse(memory.moves, ref copy) && !HasRounds(ref brush, s))
                 {
-                    var copy = AfterRounds(brushes, ref memory, ref state, b, s, Allocator.Persistent, out _);
-                    if (!Collapse(ref memory, ref copy) && !HasRounds(ref brush, s))
-                    {
-                        FreeWorking(copy);
-                        continue;
-                    }
-                    copy.brush = b;
-                    copy.surface = s;
-                    state.workIndex.TryAdd(Key(b, s), state.work.Length);
-                    state.work.Add(copy);
-                    Diff(ref surfacesOf[s], copy, final);
-                }
-                if (!brush.changed && SameEntries(brush.final, final))
-                {
-                    brush.dirty = false;
-                    for (int w = first; w < state.work.Length; w++)
-                    {
-                        state.workIndex.Remove(Key(b, state.work[w].surface));
-                        FreeWorking(state.work[w]);
-                    }
-                    state.work.ResizeUninitialized(first);
+                    FreeWorking(copy);
                     continue;
                 }
-                SetFinal(ref brush, final);
-                if (state.work.Length > first)
-                    state.copies.Add(new WeldCopy { brush = b });
+                remade.work.Add(copy);
+                Diff(ref surfacesOf[s], copy, final);
+            }
+            remade.same = !brush.changed && SameEntries(brush.final, final);
+            if (!remade.same)
+            {
+                remade.final = new UnsafeList<WeldEntry>(final.Length, Allocator.TempJob);
+                for (int i = 0; i < final.Length; i++)
+                    remade.final.Add(final[i]);
             }
             final.Dispose();
-            surfaces.Dispose(); points.Dispose(); brushOfSlot.Dispose();
+            remadeOf[r] = remade;
+        }
+
+        // What RemakeBrush made, taken in brush by brush as the weld's work and stored again
+        public static void FinishRemake(ref WeldMemory memory, ref WeldState state)
+        {
+            for (int r = 0; r < state.remake.Length; r++)
+            {
+                var b = state.remake[r];
+                ref var brush = ref memory.brushes.ElementAt(memory.slotOfBrush[b]);
+                var remade = state.remade[r];
+                if (remade.same)
+                {
+                    brush.dirty = false;
+                    remade.Free();
+                    continue;
+                }
+                SetFinal(ref brush, remade.final);
+                for (int w = 0; w < remade.work.Length; w++)
+                {
+                    var copy = remade.work[w];
+                    state.workIndex.TryAdd(Key(b, copy.surface), state.work.Length);
+                    state.work.Add(copy);
+                }
+                if (remade.work.Length > 0)
+                    state.copies.Add(new WeldCopy { brush = b });
+                // the work is the state's now
+                remade.work.Dispose();
+                remade.final.Dispose();
+            }
+            state.remake.Clear();
+            state.remade.Clear();
         }
 
         // Welding everything: the moves the collapse made, and what the weld made of every brush
@@ -953,6 +985,15 @@ namespace Chisel.Core
                 SetFinal(ref brush, final);
             }
             final.Dispose();
+        }
+
+        static void SetFinal(ref WeldBrush brush, UnsafeList<WeldEntry> final)
+        {
+            if (!brush.final.IsCreated)
+                brush.final = new UnsafeList<WeldEntry>(final.Length, Allocator.Persistent);
+            brush.final.Clear();
+            for (int i = 0; i < final.Length; i++)
+                brush.final.Add(final[i]);
         }
 
         static void SetFinal(ref WeldBrush brush, NativeList<WeldEntry> final)
@@ -1021,13 +1062,19 @@ namespace Chisel.Core
         {
             var w = Find(state.workIndex, b, s);
             ref var source = ref brushes[b].brushRenderBuffer.Value.surfaces[s];
-            var copy = new Working { brush = b, surface = s };
             if (w >= 0 && allocator == Allocator.Temp && !state.work[w].CollapseOnly)
             {
                 temporary = false;
                 return state.work[w];
             }
             temporary = true;
+            return SurfaceAfterRounds(ref source, memory.brushes[memory.slotOfBrush[b]], b, s, allocator);
+        }
+
+        // A surface of a brush's buffer with what the rounds did to it
+        static unsafe Working SurfaceAfterRounds(ref ChiselSurfaceRenderBuffer source, in WeldBrush brush, int b, int s, Allocator allocator)
+        {
+            var copy = new Working { brush = b, surface = s };
             copy.indices  = new UnsafeList<int>(source.indices.Length, allocator);
             copy.collider = new UnsafeList<float3>(source.colliderVertices.Length, allocator);
             copy.select   = new UnsafeList<SelectVertex>(source.selectVertices.Length, allocator);
@@ -1036,7 +1083,6 @@ namespace Chisel.Core
             copy.collider.AddRange(source.colliderVertices.GetUnsafePtr(), source.colliderVertices.Length);
             copy.select  .AddRange(source.selectVertices.GetUnsafePtr(),   source.selectVertices.Length);
             copy.render  .AddRange(source.renderVertices.GetUnsafePtr(),   source.renderVertices.Length);
-            ref var brush = ref memory.brushes.ElementAt(memory.slotOfBrush[b]);
             for (int e = 0; brush.entries.IsCreated && e < brush.entries.Length; e++)
             {
                 var entry = brush.entries[e];
@@ -1074,17 +1120,17 @@ namespace Chisel.Core
 
         // The collapse of one surface as the rounds left it (DecideCollapse, ApplyCollapse): a triangle with a corner that
         // moves and left without area dropped, the corners of the triangles left that move moved; false when nothing moves
-        static bool Collapse(ref WeldMemory memory, ref Working copy)
+        static bool Collapse(NativeParallelHashMap<int3, float3x2> moves, ref Working copy)
         {
             var count = copy.collider.Length;
-            if (count == 0 || memory.moves.Count() == 0)
+            if (count == 0 || moves.IsEmpty)
                 return false;
             var targets = new NativeArray<float3>(count, Allocator.Temp);
             var movedAt = new NativeArray<bool>(count, Allocator.Temp);
             var any = false;
             for (int v = 0; v < count; v++)
             {
-                if (!memory.moves.TryGetValue(Bits(copy.collider[v] + 0.0f), out var move))
+                if (!moves.TryGetValue(Bits(copy.collider[v] + 0.0f), out var move))
                     continue;
                 targets[v] = move.c1;
                 movedAt[v] = true;
@@ -1314,6 +1360,9 @@ namespace Chisel.Core
                 RecordRounds(brushes, ref memory, ref state);
                 Collapse(brushes, ref state, moves);
                 RecordIncremental(brushes, ref memory, ref state, moves);
+                for (int r = 0; r < state.remake.Length; r++)
+                    RemakeBrush(r, brushes.AsArray(), in memory, state.remake.AsArray(), state.remade.AsArray());
+                FinishRemake(ref memory, ref state);
                 var copies = state.copies.AsArray();
                 for (int i = 0; i < copies.Length; i++)
                     copies[i] = CopyPlanned(copies[i], brushes.AsArray(), state.work, state.workIndex, state.decisions, default);

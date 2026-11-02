@@ -171,6 +171,7 @@ namespace Chisel.Core
                 if (valid && touchedRef.IsCreated)
                 {
                     ref var intersections = ref touchedRef.Value.brushIntersections;
+                    int lastOrder = -1;
                     for (int i = 0; i < intersections.Length; i++)
                     {
                         var intersection = intersections[i];
@@ -182,10 +183,16 @@ namespace Chisel.Core
                         var otherMesh = brushMeshLookup[otherOrder];
                         if (!otherMesh.IsCreated)
                             continue;
-                        // the same brush listed twice is one brush
+                        // the same brush listed twice is one brush: in node order (StoreBrushIntersectionsJob) that is the
+                        // one before it, else any before it
                         bool duplicate = false;
-                        for (int t = 0; t < touching.Length && !duplicate; t++)
-                            duplicate = touching[t].nodeOrder == otherOrder;
+                        if (otherOrder > lastOrder)
+                            lastOrder = otherOrder;
+                        else
+                        {
+                            for (int t = 0; t < touching.Length && !duplicate; t++)
+                                duplicate = touching[t].nodeOrder == otherOrder;
+                        }
                         if (duplicate)
                             continue;
                         // A brush without volume covers nothing, and one that takes no part covers nothing either, the

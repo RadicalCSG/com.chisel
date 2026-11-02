@@ -185,7 +185,8 @@ namespace Chisel.Core
     }
 
     // The collapse's steps that see the whole model: 0 where each brush's short edges go, 1 the clusters, 2 where each
-    // brush's decisions go, 3 the decisions carried out, and what the weld did kept (OutputModelWeld.RecordIncremental)
+    // brush's decisions go, 3 the decisions carried out, and what the weld did kept (OutputModelWeld.RecordIncremental),
+    // 4 the brushes RemakeWeldedBrushesJob made again taken in
     [BurstCompile(CompileSynchronously = true)]
     struct CollapseStepJob : IJob
     {
@@ -206,7 +207,24 @@ namespace Chisel.Core
                     OutputModelWeld.ApplyCollapse(brushRenderData, ref weld);
                     OutputModelWeld.RecordIncremental(brushRenderData, ref weldMemory, ref weld, collapseMoves);
                     break;
+                case 4: OutputModelWeld.FinishRemake(ref weldMemory, ref weld); break;
             }
+        }
+    }
+
+    // The brushes the incremental weld makes again, each on its own (OutputModelWeld.RemakeBrush)
+    [BurstCompile(CompileSynchronously = true)]
+    struct RemakeWeldedBrushesJob : IJobParallelForDefer
+    {
+        [NoAlias, ReadOnly] public NativeArray<BrushData> brushRenderData;
+        [NoAlias, ReadOnly] public WeldMemory             weldMemory;
+        [NoAlias, ReadOnly] public NativeArray<int>       remake;
+        [NativeDisableParallelForRestriction]
+        [NoAlias] public NativeArray<OutputModelWeld.Remade> remade;
+
+        public void Execute(int r)
+        {
+            OutputModelWeld.RemakeBrush(r, brushRenderData, in weldMemory, remake, remade);
         }
     }
 
@@ -646,10 +664,27 @@ namespace Chisel.Core
         [NoAlias] public NativeParallelHashMap<CompactNodeID, MeshCleanupEntry> meshCleanupCache;
         [NoAlias] public NativeList<MeshCleanupWork> work;
         [NoAlias] public NativeList<int> neighbours;
+        [NoAlias] public NativeList<int> outlineBrushes;
+        [NoAlias] public NativeList<OutputMeshCleanup.BrushOutlines> outlines;
 
         public void Execute()
         {
-            OutputMeshCleanup.Plan(brushRenderData, meshCleanupCache, work, neighbours);
+            OutputMeshCleanup.Plan(brushRenderData, meshCleanupCache, work, neighbours, outlineBrushes);
+            outlines.Resize(outlineBrushes.Length, NativeArrayOptions.ClearMemory);
+        }
+    }
+
+    // The outlines of the brushes next to the ones cleaned up, each made once (OutputMeshCleanup.Outlines)
+    [BurstCompile(CompileSynchronously = true)]
+    struct MeshCleanupOutlinesJob : IJobParallelForDefer
+    {
+        [NoAlias, ReadOnly] public NativeArray<BrushData> brushRenderData;
+        [NoAlias, ReadOnly] public NativeArray<int> outlineBrushes;
+        [NoAlias] public NativeArray<OutputMeshCleanup.BrushOutlines> outlines;
+
+        public void Execute(int index)
+        {
+            outlines[index] = OutputMeshCleanup.Outlines(brushRenderData[outlineBrushes[index]].brushRenderBuffer);
         }
     }
 
@@ -658,11 +693,12 @@ namespace Chisel.Core
     {
         [NoAlias, ReadOnly] public NativeArray<BrushData> brushRenderData;
         [NoAlias, ReadOnly] public NativeArray<int> neighbours;
+        [NoAlias, ReadOnly] public NativeArray<OutputMeshCleanup.BrushOutlines> outlines;
         [NoAlias] public NativeArray<MeshCleanupWork> work;
 
         public void Execute(int index)
         {
-            work[index] = OutputMeshCleanup.CleanPlanned(work[index], brushRenderData, neighbours);
+            work[index] = OutputMeshCleanup.CleanPlanned(work[index], brushRenderData, neighbours, outlines);
         }
     }
 
@@ -674,10 +710,14 @@ namespace Chisel.Core
         [NoAlias] public NativeList<BrushData> brushRenderData;
         [NoAlias] public NativeList<BlobAssetReference<ChiselBrushRenderBuffer>> patchedRenderBuffers;
         [NoAlias] public NativeParallelHashMap<CompactNodeID, MeshCleanupEntry> meshCleanupCache;
+        [NoAlias] public NativeList<OutputMeshCleanup.BrushOutlines> outlines;
 
         public void Execute()
         {
             OutputMeshCleanup.Finish(brushRenderData, patchedRenderBuffers, work, meshCleanupCache);
+            for (int i = 0; i < outlines.Length; i++)
+                outlines[i].Dispose();
+            outlines.Clear();
         }
     }
 

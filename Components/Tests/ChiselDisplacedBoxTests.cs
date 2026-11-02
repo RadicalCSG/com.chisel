@@ -556,6 +556,175 @@ namespace Chisel.Components.Tests
             Assert.That(box.OwnBrush.Valid, Is.True);
         }
 
+        // Where the drawn surfaces leave a hole: every stretch of a triangle's edge no other triangle has. An edge running
+        // past the corners of the triangles across it (a T-junction) is split at them first, so only gaps are left.
+        static string OpenEdges(ChiselModelComponent model)
+        {
+            const float kScale = 20000, kOnEdge = 1e-4f;
+            Vector3Int Key(Vector3 p) => new Vector3Int(Mathf.RoundToInt(p.x * kScale), Mathf.RoundToInt(p.y * kScale), Mathf.RoundToInt(p.z * kScale));
+            var edges  = new List<(Vector3 a, Vector3 b)>();
+            var points = new Dictionary<Vector3Int, Vector3>();
+            foreach (var renderable in model.generated.renderables)
+            {
+                if (renderable == null || renderable.sharedMesh == null)
+                    continue;
+                var mesh = renderable.sharedMesh;
+                var v = mesh.vertices;
+                for (int s = 0; s < mesh.subMeshCount; s++)
+                {
+                    var t = mesh.GetTriangles(s);
+                    for (int i = 0; i + 2 < t.Length; i += 3)
+                    {
+                        for (int c = 0; c < 3; c++)
+                        {
+                            edges.Add((v[t[i + c]], v[t[i + (c + 1) % 3]]));
+                            points[Key(v[t[i + c]])] = v[t[i + c]];
+                        }
+                    }
+                }
+            }
+            // the corners by cell, to find the ones on an edge
+            const float kCell = 0.1f;
+            Vector3Int CellOf(Vector3 p) => Vector3Int.FloorToInt(p / kCell);
+            var cells = new Dictionary<Vector3Int, List<Vector3>>();
+            foreach (var p in points.Values)
+            {
+                if (!cells.TryGetValue(CellOf(p), out var list))
+                    cells[CellOf(p)] = list = new List<Vector3>();
+                list.Add(p);
+            }
+            var count = new Dictionary<(Vector3Int, Vector3Int), int>();
+            var on = new List<float>();
+            foreach (var (a, b) in edges)
+            {
+                var d = b - a;
+                var length = d.magnitude;
+                if (length < kOnEdge)
+                    continue;
+                on.Clear();
+                on.Add(0); on.Add(1);
+                var min = Vector3Int.FloorToInt(Vector3.Min(a, b) / kCell) - Vector3Int.one;
+                var max = Vector3Int.FloorToInt(Vector3.Max(a, b) / kCell) + Vector3Int.one;
+                for (int x = min.x; x <= max.x; x++)
+                for (int y = min.y; y <= max.y; y++)
+                for (int z = min.z; z <= max.z; z++)
+                {
+                    if (!cells.TryGetValue(new Vector3Int(x, y, z), out var list))
+                        continue;
+                    foreach (var p in list)
+                    {
+                        var along = Vector3.Dot(p - a, d) / (length * length);
+                        if (along * length <= kOnEdge || (1 - along) * length <= kOnEdge)
+                            continue;
+                        if (Vector3.Distance(a + d * along, p) < kOnEdge)
+                            on.Add(along);
+                    }
+                }
+                on.Sort();
+                for (int i = 0; i + 1 < on.Count; i++)
+                {
+                    var ka = Key(a + d * on[i]); var kb = Key(a + d * on[i + 1]);
+                    if (ka == kb) continue;
+                    var k = (ka.x != kb.x ? ka.x < kb.x : ka.y != kb.y ? ka.y < kb.y : ka.z < kb.z) ? (ka, kb) : (kb, ka);
+                    count.TryGetValue(k, out var n); count[k] = n + 1;
+                }
+            }
+            var text = new System.Text.StringBuilder();
+            foreach (var (k, n) in count)
+                if (n == 1 && text.Length < 6000)
+                    text.AppendLine($"open {((Vector3)k.Item1 / kScale).ToString("F4")} - {((Vector3)k.Item2 / kScale).ToString("F4")}");
+            return text.ToString();
+        }
+
+        // A dab over the box's edge, raising or lowering it there: the box is still closed, the tops of neighbouring
+        // columns meeting a hair apart over a sliver of the wall between them
+        [Test]
+        public void ADabOverTheEdge_LeavesNoGap([Values(1.8f, 1.95f, 2.0f)] float x, [Values(1, -1)] int sign)
+        {
+            var box = Box(out var model);
+            var heights = ChiselPaintBrush.DisplacementFor(box, 0);
+            ChiselPaintBrush.Dab(heights, ChiselPaintBrush.kDisplacementMode, sign > 0 ? ChiselPaintOperation.Add : ChiselPaintOperation.Subtract, Vector4.one * 0.3f, new Vector3(x, 1, 1), 0.6f, 1, 0.5f);
+            box.DisplacementChanged();
+            Update();
+            Assert.That(OpenEdges(model), Is.Empty);
+        }
+
+        // The brush of the scene where gaps showed, its top and its slanted side both painted: where the two meet
+        [Test]
+        public void ATopAndASidePainted_MeetWithoutGaps([Values] bool placedAsInTheScene, [Values] bool asLoaded)
+        {
+            var root = new GameObject("displaced brush test");
+            roots.Add(root);
+            var model = root.AddComponent<ChiselModelComponent>();
+            var go = new GameObject("brush");
+            go.transform.SetParent(root.transform, false);
+            var brush = go.AddComponent<ChiselBrushComponent>();
+            var he = new[] { (1,11),(0,6),(4,21),(5,16),(3,13),(0,22),(1,1),(2,10),(6,19),(2,14),(1,7),(5,0),(3,23),(2,4),(6,9),(7,18),(4,3),(7,20),(6,15),(5,8),(4,17),(0,2),(3,5),(7,12) };
+            var mesh = new BrushMesh
+            {
+                vertices = new float3[] { new(-0.75f,0,0.7500001f), new(-0.75f,0,-0.7500001f), new(0.75f,0,-0.7500001f), new(1.7608f,0,1.1f),
+                                          new(-0.75f,1.5f,0.7500001f), new(-0.75f,1.5f,-0.7500001f), new(0.75f,1.5f,-0.7500001f), new(1.7608f,1.5f,1.1f) },
+                halfEdges = System.Array.ConvertAll(he, h => new BrushMesh.HalfEdge { vertexIndex = h.Item1, twinIndex = h.Item2 }),
+                polygons  = new BrushMesh.Polygon[6],
+                planes    = new float4[] { new(-1,0,0,-0.75f), new(0,-1,0,0), new(0,0,-1,-0.7500001f), new(0.87755454f,0,-0.4794768f,-1.0177736f),
+                                           new(0,1,0,-1.5f), new(-0.13806282f,0,0.9904235f,-0.84636486f) }
+            };
+            for (int p = 0; p < 6; p++)
+                mesh.polygons[p] = new BrushMesh.Polygon { firstEdge = p * 4, edgeCount = 4, descriptionIndex = p };
+            mesh.UpdateHalfEdgePolygonIndices();
+            brush.BrushMesh = mesh;
+            brush.PivotOffset = new Vector3(0, -0.75f, 0);
+            if (placedAsInTheScene)
+            {
+                go.transform.localPosition = new Vector3(2.5f, -0.25f, -36.5f);
+                go.transform.localRotation = new Quaternion(0, 0.98094183f, 0, 0.19430204f);
+            }
+            Update();
+
+            var top = ChiselSurfacePaint.Create(4, ChiselPaintAttribute.Color, ChiselPaintComponents.X, Vector4.zero,
+                                                new Vector3(-1.000001f, 0.75f, 1.35f), new Vector3(0.25f, 0, 0), new Vector3(0, 0, -0.25f), new Vector2Int(13, 10));
+            var topValues = new float[] {
+                0f, 0f, 0f, 0.004747027f, -0.0039969683f, 0f, 0.039344184f, 0.116438866f, 0.14516263f, 0.060942702f, 0f, 0f, 0f,
+                0f, 0f, 0f, 0.004747027f, -0.0039969683f, 0f, 0.0678989f, 0.11869353f, 0.16324003f, 0.06228424f, 0f, 0f, 0f,
+                0f, 0f, 0.044912025f, -0.10547235f, -0.28255486f, -0.18017301f, 0.09231745f, 0.14348304f, -0.028899636f, -0.00082530826f, 0.014256874f, 0f, 0f,
+                0f, 0f, 0.14031222f, 0.037851516f, 0.030189645f, -0.2187822f, 0.17236868f, 0.09313612f, -0.10500312f, -0.24004588f, -0.05675938f, 0f, 0f,
+                0.0017982334f, 0.0017982334f, 0.19584718f, 0.22195318f, 0.15527588f, 0.06425437f, 0.24236254f, 0.08862278f, -0.005194608f, -0.3201245f, -0.0582996f, 0f, 0f,
+                0f, 0f, 0.019158699f, 0.35790694f, 0.30369824f, 0.12548257f, 0.2669736f, 0.26954445f, 0.16025771f, -0.045555227f, 0f, 0f, 0f,
+                0f, 0f, -0.0012308806f, -0.0068365126f, 0.02903774f, -0.0015187673f, -0.08897506f, 0.058648326f, 0.09025221f, 0.000009468198f, 0f, 0f, 0f,
+                0f, 0f, 0f, 0f, -0.00086853205f, 0.009835089f, 0.03168268f, 0.061383404f, 0.005816713f, 0f, 0f, 0f, 0f,
+                0f, 0f, 0f, 0f, 0f, 0f, 0.0077910344f, 0f, 0f, 0f, 0f, 0f, 0f,
+                0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f };
+            for (int i = 0; i < topValues.Length; i++)
+                top[i] = new Vector4(topValues[i], 0, 0, 0);
+            var side = ChiselSurfacePaint.Create(5, ChiselPaintAttribute.Color, ChiselPaintComponents.X, Vector4.zero,
+                                                 new Vector3(1.7607994f, 0.74899995f, 1.1f), new Vector3(-0.24760588f, 0, -0.034515698f), new Vector3(0, -0.25f, 0), new Vector2Int(12, 7));
+            var sideValues = new float[] {
+                0f, 0f, 0.00018745066f, 0.1271496f, 0.142625f, 0.14225072f, 0.0048181238f, 0f, 0f, 0f, 0f, 0f, 0f,
+                0f, 0f, 0.093378514f, 0.13965455f, 0.1085732f, 0.005631715f, 0f, 0f, 0f, 0f, 0f, 0f, 0f,
+                0f, 0.00084564986f, 0.030190367f, 0.015945716f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f,
+                0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f,
+                0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f,
+                0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f,
+                0f, 0f, 0f, 0f, 0f, 0f };
+            for (int i = 0; i < sideValues.Length; i++)
+                side[i] = new Vector4(sideValues[i], 0, 0, 0);
+            brush.SetSurfaceDisplacement(top);
+            brush.SetSurfaceDisplacement(side);
+            if (asLoaded)
+            {
+                // as the scene has them when it is opened: the grids as they were saved, not grown over what their
+                // neighbours reach, which only painting does
+                var field = typeof(ChiselGeneratorComponent).GetField("surfaceDisplacement", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+                var stored = (List<ChiselSurfacePaint>)field.GetValue(brush);
+                stored.Clear();
+                stored.Add(top);
+                stored.Add(side);
+                brush.SetDirty();
+            }
+            Update();
+            Assert.That(OpenEdges(model), Is.Empty);
+        }
+
         // A displaced box whose own brush is gone (as an undo can leave it) is made again, not left broken
         [Test]
         public void ADisplacedBoxThatLostItsOwnBrush_IsMadeAgain()
@@ -567,7 +736,8 @@ namespace Chisel.Components.Tests
             Assert.DoesNotThrow(() => box.SetDirty());
             Update();
             Assert.That(box.OwnBrush.Valid, Is.True);
-            Assert.That(((Core.CSGTreeBranch)box.TopTreeNode).Count, Is.EqualTo(1 + ChiselDisplacement.kGroupCount));
+            // its own brush, the one displaced surface's raised columns, what is cut, what pushes out
+            Assert.That(((Core.CSGTreeBranch)box.TopTreeNode).Count, Is.EqualTo(1 + 1 + 2));
         }
 
         // The faces between a generator's brushes take a copy of their surface that is never output, whatever its material says

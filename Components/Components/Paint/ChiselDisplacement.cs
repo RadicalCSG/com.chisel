@@ -40,6 +40,83 @@ namespace Chisel.Components
     /// <see cref="kMinThickness"/> to the brush's opposite side it pushes that side out. Flat cells with nothing displaced
     /// round them are one column together, a rectangle of them. All are convex.
     /// </summary>
+    /// <summary>The columns of a displaced surface's cells, kept between calls of <see cref="ChiselDisplacement.Columns"/></summary>
+    public sealed class ChiselDisplacementCache
+    {
+        // everything the columns are made from besides the heights, exactly; a change to it forgets every cell
+        float[] made;
+        readonly Dictionary<int2, Cell> cells = new();
+
+        sealed class Cell
+        {
+            public float[] heights;
+            public ChiselDisplacementColumn[] raised, cut, pushed;
+        }
+
+        internal void Begin(ChiselSurfacePaint grid, float3 n, IReadOnlyList<float4> brushPlanes, int[] ends)
+        {
+            var values = new List<float>
+            {
+                grid.origin.x, grid.origin.y, grid.origin.z, grid.cellU.x, grid.cellU.y, grid.cellU.z,
+                grid.cellV.x, grid.cellV.y, grid.cellV.z, grid.resolution.x, grid.resolution.y, n.x, n.y, n.z
+            };
+            foreach (var plane in brushPlanes)
+            {
+                values.Add(plane.x); values.Add(plane.y); values.Add(plane.z); values.Add(plane.w);
+            }
+            values.Add(-1);
+            foreach (var end in ends)
+                values.Add(end);
+            var now = values.ToArray();
+            if (made != null && SameBits(made, now))
+                return;
+            made = now;
+            cells.Clear();
+        }
+
+        // the heights of the 4 by 4 grid points round a cell (from its lowest corner), which its columns come from
+        static float[] Round(ChiselSurfacePaint grid, int2 cell)
+        {
+            var size = grid.resolution;
+            var heights = new float[16];
+            for (int j = 0, k = 0; j < 4; j++)
+            {
+                for (int i = 0; i < 4; i++, k++)
+                    heights[k] = grid[math.clamp(cell.x - 1 + i, 0, size.x - 1), math.clamp(cell.y - 1 + j, 0, size.y - 1)].x;
+            }
+            return heights;
+        }
+
+        static bool SameBits(float[] a, float[] b)
+        {
+            if (a.Length != b.Length)
+                return false;
+            for (int i = 0; i < a.Length; i++)
+            {
+                if (math.asuint(a[i]) != math.asuint(b[i]))
+                    return false;
+            }
+            return true;
+        }
+
+        internal bool TryGet(ChiselSurfacePaint grid, int2 cell, List<ChiselDisplacementColumn> raised, List<ChiselDisplacementColumn> cut,
+                             List<ChiselDisplacementColumn> pushed)
+        {
+            if (!cells.TryGetValue(cell, out var known) || !SameBits(known.heights, Round(grid, cell)))
+                return false;
+            raised.AddRange(known.raised);
+            cut.AddRange(known.cut);
+            pushed.AddRange(known.pushed);
+            return true;
+        }
+
+        internal void Set(ChiselSurfacePaint grid, int2 cell, ChiselDisplacementColumn[] raised, ChiselDisplacementColumn[] cut,
+                          ChiselDisplacementColumn[] pushed)
+        {
+            cells[cell] = new Cell { heights = Round(grid, cell), raised = raised, cut = cut, pushed = pushed };
+        }
+    }
+
     public static class ChiselDisplacement
     {
         /// <summary>Heights closer to 0 than this leave the surface as it is: a column's top tilted less than that over a
@@ -56,13 +133,16 @@ namespace Chisel.Components
 
         /// <summary>
         /// The columns of a displaced surface, in the order its generator's branch takes them: what is raised (or flat),
-        /// then what is cut, then what pushes the opposite side out. normal points out of the surface; brushPlanes are the brush's own
-        /// (its thickness under a point is how far along -normal its other planes are). Every column is cut to the brush's
-        /// sides, each moved out by the height its own surface is displaced by there (sideHeight, by plane and point), so
-        /// displaced surfaces that share an edge meet.
+        /// then what is cut, then what pushes the opposite side out. normal points out of the surface; brushPlanes are the
+        /// brush's own (its thickness under a point is how far along -normal its other planes are). The raised and the cut
+        /// columns are prisms over the grid's triangles that nothing cuts: whatever bounds them (the brush's sides, the
+        /// other displaced surfaces) is intersected with them in the generator's branch. Columns that share a face share
+        /// its plane exactly, so the exact CSG sees one plane there. A triangle wholly beyond a side in endsAt (by plane,
+        /// all sides when null) has nothing to displace; the columns that push out are cut to the sides. cache: the columns
+        /// of the cells made before, kept for the next call (a cell is made again only when the heights round it changed).
         /// </summary>
         public static void Columns(ChiselSurfacePaint heights, Vector3 normal, IReadOnlyList<float4> brushPlanes, List<ChiselDisplacementColumn> columns,
-                                   System.Func<int, float3, float> sideHeight = null, bool prepared = false)
+                                   bool prepared = false, IReadOnlyList<bool> endsAt = null, ChiselDisplacementCache cache = null)
         {
             columns.Clear();
             if (heights == null || !heights.IsValid || heights.resolution.x < 2 || heights.resolution.y < 2)
@@ -76,20 +156,48 @@ namespace Chisel.Components
             }
             if (!prepared)
                 heights = ContinuedPastTheEdges(heights, brushPlanes, sides);
-            var context = new Context { grid = heights, n = n, brushPlanes = brushPlanes, sides = sides.ToArray(), sideHeight = sideHeight };
+            var origin = PointOf(heights, int2.zero);
+            var ends   = new List<int>();
+            foreach (var side in sides)
+            {
+                if (endsAt == null || (side < endsAt.Count && endsAt[side]))
+                    ends.Add(side);
+            }
+            var context = new Context
+            {
+                grid        = heights,
+                n           = n,
+                brushPlanes = brushPlanes,
+                sides       = sides.ToArray(),
+                ends        = ends.ToArray(),
+                // the surface, where the raised columns start (just under it) and where the cut ones end (just over it)
+                surface     = new float4( n, -math.dot(n, origin)),
+                under       = new float4(-n,  math.dot(n, origin - n * kOverlap)),
+                over        = new float4( n, -math.dot(n, origin + n * kOverlap)),
+                acrossU     = math.normalize(math.cross((float3)heights.cellU, n)),
+                acrossV     = math.normalize(math.cross((float3)heights.cellV, n)),
+                acrossUV    = math.normalize(math.cross((float3)heights.cellU + (float3)heights.cellV, n))
+            };
             var raised  = new List<ChiselDisplacementColumn>();
             var cut     = new List<ChiselDisplacementColumn>();
             var pushed  = new List<ChiselDisplacementColumn>();
             var size    = heights.resolution;
             var merged  = FlatRectangles(context, raised);
+            cache?.Begin(context.grid, n, brushPlanes, context.ends);
             for (int j = 0; j + 1 < size.y; j++)
             {
                 for (int i = 0; i + 1 < size.x; i++)
                 {
                     if (merged[j * size.x + i])
                         continue;
+                    var cell = new int2(i, j);
+                    if (cache != null && cache.TryGet(heights, cell, raised, cut, pushed))
+                        continue;
+                    int r = raised.Count, c = cut.Count, u = pushed.Count;
                     Triangle(context, new int2(i, j), new int2(i + 1, j), new int2(i + 1, j + 1), raised, cut, pushed);
                     Triangle(context, new int2(i, j), new int2(i + 1, j + 1), new int2(i, j + 1), raised, cut, pushed);
+                    cache?.Set(heights, cell, raised.GetRange(r, raised.Count - r).ToArray(), cut.GetRange(c, cut.Count - c).ToArray(),
+                               pushed.GetRange(u, pushed.Count - u).ToArray());
                 }
             }
             columns.AddRange(raised);
@@ -156,8 +264,31 @@ namespace Chisel.Components
             public float3                           n;
             public IReadOnlyList<float4>            brushPlanes;
             public int[]                            sides;
-            public System.Func<int, float3, float>  sideHeight;
+            // the sides beyond which a triangle has nothing to displace
+            public int[]                            ends;
+            public float4                           surface, under, over;
+            // the directions out of the walls along the grid's lines and the cells' diagonals
+            public float3                           acrossU, acrossV, acrossUV;
         }
+
+        // The plane of a wall along the grid's line from a to b (neighbouring points, or a cell's diagonal), the same
+        // for every column on that line: made from the line's first point, pointing either way
+        static float4 LinePlane(in Context context, int2 a, int2 b)
+        {
+            var grid = context.grid;
+            if (a.y == b.y)
+                return Through(context.acrossU, PointOf(grid, new int2(0, a.y)));
+            if (a.x == b.x)
+                return Through(context.acrossV, PointOf(grid, new int2(a.x, 0)));
+            // a diagonal from its first point on the grid's edge
+            var start = math.min(a, b);
+            return Through(context.acrossUV, PointOf(grid, start - math.min(start.x, start.y)));
+        }
+
+        static float4 Through(float3 normal, float3 point) => new float4(normal, -math.dot(normal, point));
+
+        // The plane pointing away from a point inside: the plane as it is, or exactly reversed
+        static float4 Outwards(float4 plane, float3 inside) => math.dot(plane.xyz, inside) + plane.w > 0 ? -plane : plane;
 
         // The heights the columns are made from: those within kFlat of 0 are 0, and the grid's points beyond the surface's
         // edges take the height of the nearest point on it, so the surface goes on past an edge as it is there, instead
@@ -236,9 +367,6 @@ namespace Chisel.Components
                 for (int i = 0; i < cells.x; i++)
                     flat[j * size.x + i] = Mergeable(context, i, j);
             }
-            var sidePlanes = new float4[context.sides.Length];
-            for (int s = 0; s < sidePlanes.Length; s++)
-                sidePlanes[s] = context.brushPlanes[context.sides[s]];
             for (int j = 0; j < cells.y; j++)
             {
                 for (int i = 0; i < cells.x; i++)
@@ -261,19 +389,24 @@ namespace Chisel.Components
                     for (int y = j; y <= top; y++)
                         for (int x = i; x <= right; x++)
                             taken[y * size.x + x] = true;
-                    var corners = new[] { PointOf(grid, new int2(i, j)), PointOf(grid, new int2(right + 1, j)),
-                                          PointOf(grid, new int2(right + 1, top + 1)), PointOf(grid, new int2(i, top + 1)) };
-                    raised.Add(Keyed(Cut(FlatColumn(corners, context.n), sidePlanes, context.sides), 4, kRaised, 0));
+                    var corners = new[] { new int2(i, j), new int2(right + 1, j), new int2(right + 1, top + 1), new int2(i, top + 1) };
+                    var rectangle = FlatColumn(context, corners);
+                    var points = new float3[8];
+                    for (int c = 0; c < 4; c++)
+                    {
+                        points[c]     = PointOf(grid, corners[c]);
+                        points[4 + c] = points[c] - context.n * kOverlap;
+                    }
+                    raised.Add(Keyed(CutToEnds(context, rectangle, points), 4, kRaised, 0));
                 }
             }
             return taken;
         }
 
-        // A cell is merged when the heights it and the cells round it are made from (its 4 by 4 points) are all 0, and its
-        // corners are inside the brush's sides, which aren't moved there
+        // A cell is merged when the heights it and the cells round it are made from (its 4 by 4 points) are all 0, and
+        // it is not wholly beyond a side it ends at
         static bool Mergeable(in Context context, int i, int j)
         {
-            const float kInside = 1e-4f;
             var grid = context.grid;
             var size = grid.resolution;
             for (int y = j - 1; y <= j + 2; y++)
@@ -284,74 +417,47 @@ namespace Chisel.Components
                         return false;
                 }
             }
-            var p = new float3x3(PointOf(grid, new int2(i, j)), PointOf(grid, new int2(i + 1, j)), PointOf(grid, new int2(i + 1, j + 1)));
-            var q = new float3x3(p.c0, p.c2, PointOf(grid, new int2(i, j + 1)));
-            foreach (var side in context.sides)
-            {
-                var plane = context.brushPlanes[side];
-                if (math.any(new float4(math.dot(plane.xyz, p.c0), math.dot(plane.xyz, p.c1), math.dot(plane.xyz, p.c2), math.dot(plane.xyz, q.c2)) + plane.w > kInside))
-                    return false;
-                if (math.any(MovedSide(context, side, p) != plane) || math.any(MovedSide(context, side, q) != plane))
-                    return false;
-            }
-            return true;
+            return !Beyond(context, PointOf(grid, new int2(i, j)), PointOf(grid, new int2(i + 1, j)), PointOf(grid, new int2(i + 1, j + 1))) ||
+                   !Beyond(context, PointOf(grid, new int2(i, j)), PointOf(grid, new int2(i + 1, j + 1)), PointOf(grid, new int2(i, j + 1)));
         }
 
-        // The flat column over a convex outline on the surface (its corners in order round it), from just under the
-        // surface up to it: its walls, then its top and its bottom
-        static ChiselDisplacementColumn FlatColumn(float3[] corners, float3 n)
+        // Whether a triangle on the surface is wholly beyond a side it ends at
+        static bool Beyond(in Context context, float3 a, float3 b, float3 c)
         {
+            foreach (var side in context.ends)
+            {
+                var plane = context.brushPlanes[side];
+                if (math.all(new float3(math.dot(plane.xyz, a), math.dot(plane.xyz, b), math.dot(plane.xyz, c)) + plane.w > 1e-4f))
+                    return true;
+            }
+            return false;
+        }
+
+        // The flat column over a rectangle of cells (its corners in order round it), from just under the surface up to
+        // it: its walls, then its top and its bottom
+        static ChiselDisplacementColumn FlatColumn(in Context context, int2[] corners)
+        {
+            var grid   = context.grid;
             var count  = corners.Length;
             var planes = new float4[count + 2];
+            var points = new float3[count];
             var centre = float3.zero;
-            foreach (var corner in corners)
-                centre += corner;
-            centre /= count;
-            var min = corners[0]; var max = corners[0];
             for (int e = 0; e < count; e++)
             {
-                var a = corners[e];
-                var b = corners[(e + 1) % count];
-                var side = math.normalize(math.cross(b - a, n));
-                if (math.dot(side, centre - a) > 0)
-                    side = -side;
-                planes[e] = new float4(side, -math.dot(side, a));
-                min = math.min(min, math.min(a, a - n * kOverlap));
-                max = math.max(max, a);
+                points[e] = PointOf(grid, corners[e]);
+                centre   += points[e];
             }
-            planes[count]     = new float4( n, -math.dot( n, corners[0]));
-            planes[count + 1] = new float4(-n,  math.dot( n, corners[0] - n * kOverlap));
+            centre /= count;
+            var min = points[0]; var max = points[0];
+            for (int e = 0; e < count; e++)
+            {
+                planes[e] = Outwards(LinePlane(context, corners[e], corners[(e + 1) % count]), centre);
+                min = math.min(min, math.min(points[e], points[e] - context.n * kOverlap));
+                max = math.max(max, points[e]);
+            }
+            planes[count]     = context.surface;
+            planes[count + 1] = context.under;
             return new ChiselDisplacementColumn { additive = true, planes = planes, ownPlanes = count + 2, boundsMin = min - 1e-3f, boundsMax = max + 1e-3f };
-        }
-        // A side of the brush moved out by its surface's heights along the stretch of its edge the triangle is beside: a
-        // plane through those two points, keeping the side's slope
-        static float4 MovedSide(in Context context, int side, float3x3 p)
-        {
-            var plane = context.brushPlanes[side];
-            if (context.sideHeight == null)
-                return plane;
-            var normal = math.normalizesafe(plane.xyz);
-            var along  = math.normalizesafe(math.cross(context.n, normal));
-            if (math.all(along == 0))
-                return plane;
-            var centre = (p.c0 + p.c1 + p.c2) / 3;
-            var onSide = centre - normal * (math.dot(plane.xyz, centre) + plane.w) / math.max(math.length(plane.xyz), 1e-6f);
-            var t      = new float3(math.dot(along, p.c0), math.dot(along, p.c1), math.dot(along, p.c2)) - math.dot(along, onSide);
-            var a      = onSide + along * math.cmin(t);
-            var b      = onSide + along * math.cmax(t);
-            var ha     = context.sideHeight(side, a);
-            var hb     = context.sideHeight(side, b);
-            if (math.abs(ha) <= kFlat && math.abs(hb) <= kFlat)
-                return plane;
-            var pa = a + normal * ha;
-            var pb = b + normal * hb;
-            var slope = math.cross(normal, along);
-            var moved = math.normalizesafe(math.cross(pb - pa, slope));
-            if (math.all(moved == 0))
-                moved = normal;
-            if (math.dot(moved, normal) < 0)
-                moved = -moved;
-            return new float4(moved, -math.dot(moved, pa));
         }
 
         static float3 PointOf(ChiselSurfacePaint grid, int2 at)
@@ -361,80 +467,142 @@ namespace Chisel.Components
 
         static float HeightOf(ChiselSurfacePaint grid, int2 at) => grid[at.x, at.y].x;
 
+        // A corner of a part of a triangle: at a corner of the triangle (edge = -1), or on one of its edges
+        struct PartCorner
+        {
+            public float3 point;
+            public float  height;
+            public int    corner, edge;
+            // whether it is on the triangle's edge e, from its corner e to e + 1
+            public readonly bool On(int e) => edge == e || (edge < 0 && (corner == e || (corner + 2) % 3 == e));
+        }
+
         static void Triangle(in Context context, int2 ia, int2 ib, int2 ic,
                              List<ChiselDisplacementColumn> raised, List<ChiselDisplacementColumn> cut, List<ChiselDisplacementColumn> pushed)
         {
             var grid = context.grid;
-            var n    = context.n;
             var p = new float3x3(PointOf(grid, ia), PointOf(grid, ib), PointOf(grid, ic));
-            var sidePlanes = new float4[context.sides.Length];
-            for (int s = 0; s < sidePlanes.Length; s++)
-            {
-                var side = sidePlanes[s] = MovedSide(context, context.sides[s], p);
-                // a triangle wholly beyond a side has nothing to displace
-                if (math.all(new float3(math.dot(side.xyz, p.c0), math.dot(side.xyz, p.c1), math.dot(side.xyz, p.c2)) + side.w > 1e-4f))
-                    return;
-            }
+            if (Beyond(context, p.c0, p.c1, p.c2))
+                return;
+            var index = new[] { ia, ib, ic };
+            // the planes of its edges, from corner e to e + 1
+            var edges = new float4[3];
+            for (int e = 0; e < 3; e++)
+                edges[e] = LinePlane(context, index[e], index[(e + 1) % 3]);
             var h = new float3(HeightOf(grid, ia), HeightOf(grid, ib), HeightOf(grid, ic));
             var around = Around(grid, math.min(ia, math.min(ib, ic)));
             if (!(math.any(h > kFlat) && math.any(h < -kFlat)))
             {
-                Piece(context, p, h, around, sidePlanes, raised, cut, pushed);
+                Piece(context, p, h, edges, around, raised, cut, pushed);
                 return;
             }
 
             // raised at a corner and lowered at another: the part raised and the part lowered, apart along where it is
             // at the surface, meet there (each clamped to the surface over the other part would leave a step between them)
-            var points  = new List<float3>(4);
-            var heights = new List<float>(4);
+            var all = new List<PartCorner>(5);
+            for (int c = 0; c < 3; c++)
+            {
+                var d = (c + 1) % 3;
+                all.Add(new PartCorner { point = p[c], height = h[c], corner = c, edge = -1 });
+                if ((h[c] > 0 && h[d] < 0) || (h[c] < 0 && h[d] > 0))
+                {
+                    // from the edge's first grid point, so the triangle on its other side has the same point
+                    int from = c, to = d;
+                    if (index[d].y < index[c].y || (index[d].y == index[c].y && index[d].x < index[c].x))
+                        (from, to) = (d, c);
+                    all.Add(new PartCorner { point = math.lerp(p[from], p[to], h[from] / (h[from] - h[to])), height = 0, corner = -1, edge = c });
+                }
+            }
+            // the line the two parts meet along, through the two points at the surface that aren't on one edge: one plane,
+            // the one both parts' walls there are on
+            var meet = float4.zero;
+            for (int a = 0; a < all.Count && meet.Equals(float4.zero); a++)
+            {
+                for (int b = a + 1; b < all.Count && meet.Equals(float4.zero); b++)
+                {
+                    if (all[a].height != 0 || all[b].height != 0 || SharedEdge(all[a], all[b]) >= 0)
+                        continue;
+                    meet = Through(math.normalize(math.cross(all[b].point - all[a].point, context.n)), all[a].point);
+                }
+            }
+            var part = new List<int>(4);
             for (int sign = 1; sign >= -1; sign -= 2)
             {
-                points.Clear();
-                heights.Clear();
-                for (int i = 0; i < 3; i++)
+                part.Clear();
+                for (int c = 0; c < all.Count; c++)
                 {
-                    var j = (i + 1) % 3;
-                    if (h[i] * sign >= 0)
-                    {
-                        points.Add(p[i]);
-                        heights.Add(h[i]);
-                    }
-                    if ((h[i] > 0 && h[j] < 0) || (h[i] < 0 && h[j] > 0))
-                    {
-                        points.Add(math.lerp(p[i], p[j], h[i] / (h[i] - h[j])));
-                        heights.Add(0);
-                    }
+                    if (all[c].height * sign >= 0)
+                        part.Add(c);
                 }
-                // a triangle, or a four sided part as two (its displaced top is flat across both)
-                for (int k = 1; k + 1 < points.Count; k++)
+                // a triangle, or a four sided part as two (its displaced top is flat across both) apart along one diagonal
+                var diagonal = part.Count == 4 ? Through(math.normalize(math.cross(all[part[2]].point - all[part[0]].point, context.n)), all[part[0]].point) : float4.zero;
+                for (int k = 1; k + 1 < part.Count; k++)
                 {
-                    Piece(context, new float3x3(points[0], points[k], points[k + 1]), new float3(heights[0], heights[k], heights[k + 1]),
-                          around, sidePlanes, raised, cut, pushed);
+                    var corners = new[] { part[0], part[k], part[k + 1] };
+                    var walls   = new float4[3];
+                    for (int e = 0; e < 3; e++)
+                    {
+                        int from = corners[e], to = corners[(e + 1) % 3];
+                        var on   = SharedEdge(all[from], all[to]);
+                        if (on >= 0)
+                            walls[e] = edges[on];
+                        else if (part.Count == 4 && ((from == part[0] && to == part[2]) || (from == part[2] && to == part[0])))
+                            walls[e] = diagonal;
+                        else
+                            walls[e] = meet;
+                    }
+                    Piece(context, new float3x3(all[corners[0]].point, all[corners[1]].point, all[corners[2]].point),
+                          new float3(all[corners[0]].height, all[corners[1]].height, all[corners[2]].height), walls, around, raised, cut, pushed);
                 }
             }
         }
 
-        // The columns over a triangle on the surface, its heights at its corners all raised (or flat), or all lowered
-        static void Piece(in Context context, float3x3 p, float3 h, uint around, float4[] sidePlanes,
+        // The edge of the triangle both corners are on, or -1
+        static int SharedEdge(in PartCorner a, in PartCorner b)
+        {
+            for (int e = 0; e < 3; e++)
+            {
+                if (a.On(e) && b.On(e))
+                    return e;
+            }
+            return -1;
+        }
+
+        // The columns over a triangle on the surface, its heights at its corners all raised (or flat), or all lowered;
+        // edges: the planes its walls are on, from corner e to e + 1, either way round
+        static void Piece(in Context context, float3x3 p, float3 h, float4[] edges, uint around,
                           List<ChiselDisplacementColumn> raised, List<ChiselDisplacementColumn> cut, List<ChiselDisplacementColumn> pushed)
         {
             var n    = context.n;
             // a part of no area, where it touches the surface at a corner
             if (math.lengthsq(math.cross(p.c1 - p.c0, p.c2 - p.c0)) < 1e-12f)
                 return;
+            var centre = (p.c0 + p.c1 + p.c2) / 3;
+            var walls  = new float4[3];
+            for (int e = 0; e < 3; e++)
+                walls[e] = Outwards(edges[e], centre);
             var up   = math.max(h, 0);
             var down = math.max(-h, 0);
-            // the surface itself, from where the generator's own brush has it moved in to: raised, or where it is lowered
-            // up to the surface, which what is cut takes away from again (else where the lowered surface comes up to the
-            // surface the brush's own face, just under it, would show)
-            raised.Add(Keyed(Cut(Column(p, n, -kOverlap, up, true), sidePlanes, context.sides), kTop, kRaised, around));
+            // the surface itself, from just under it: raised, or where it is lowered up to the surface, which what is cut
+            // takes away from again (else where the lowered surface comes up to the surface the brush's own face, just
+            // under it, would show)
+            var top = math.all(up == 0) ? context.surface : Cap(p, n, up, true);
+            var column = Column(p, n, -kOverlap, up, true, walls, top, context.under);
+            raised.Add(Keyed(CutToEnds(context, column, column.corners), kTop, kRaised, around));
             if (!math.any(down > kFlat))
                 return;
-            cut.Add(Keyed(Cut(Column(p, n, -down, kOverlap, false), sidePlanes, context.sides), kBottom, kLowered, around));
+            // what is cut ends where what pushes out starts: one plane, either way round
+            var bottom = Cap(p, n, -down, false);
+            cut.Add(Keyed(Column(p, n, -down, kOverlap, false, walls, context.over, bottom), kBottom, kLowered, around));
             var brushPlanes = context.brushPlanes;
             var thickness = new float3(Thickness(p.c0, n, brushPlanes), Thickness(p.c1, n, brushPlanes), Thickness(p.c2, n, brushPlanes));
-            if (math.any(down + kMinThickness > thickness))
-                pushed.Add(Keyed(Cut(Column(p, n, -(down + kMinThickness), -down, true), sidePlanes, context.sides), kBottom, kPushed, around));
+            if (!math.any(down + kMinThickness > thickness))
+                return;
+            var sidePlanes = new float4[context.sides.Length];
+            for (int s = 0; s < sidePlanes.Length; s++)
+                sidePlanes[s] = brushPlanes[context.sides[s]];
+            pushed.Add(Keyed(Cut(Column(p, n, -(down + kMinThickness), -down, true, walls, -bottom, Cap(p, n, -(down + kMinThickness), false)),
+                                 sidePlanes, context.sides), kBottom, kPushed, around));
         }
 
         const int kTop    = 3;
@@ -467,6 +635,29 @@ namespace Chisel.Components
             return hash;
         }
 
+        // A raised column cut to the brush's sides it ends at that it reaches past (points: its corners): past them there
+        // is nothing. Those are the brush's own planes, so the column ends exactly where the brush does.
+        static ChiselDisplacementColumn CutToEnds(in Context context, ChiselDisplacementColumn column, float3[] points)
+        {
+            List<int> crossing = null;
+            foreach (var side in context.ends)
+            {
+                var plane  = context.brushPlanes[side];
+                var length = math.length(plane.xyz);
+                var inside = true;
+                foreach (var point in points)
+                    inside &= math.dot(plane.xyz, point) + plane.w < -kSideMargin * length;
+                if (!inside)
+                    (crossing ??= new List<int>()).Add(side);
+            }
+            if (crossing == null)
+                return column;
+            var sidePlanes = new float4[crossing.Count];
+            for (int s = 0; s < sidePlanes.Length; s++)
+                sidePlanes[s] = context.brushPlanes[crossing[s]];
+            return Cut(column, sidePlanes, crossing.ToArray());
+        }
+
         static ChiselDisplacementColumn Cut(ChiselDisplacementColumn column, float4[] sidePlanes, int[] sides)
         {
             var planes = new float4[column.planes.Length + sidePlanes.Length];
@@ -477,29 +668,17 @@ namespace Chisel.Components
             return column;
         }
 
-        static ChiselDisplacementColumn Column(float3x3 p, float3 n, float lower, float3 upper, bool additive)
-            => Column(p, n, new float3(lower), upper, additive);
+        static ChiselDisplacementColumn Column(float3x3 p, float3 n, float lower, float3 upper, bool additive, float4[] walls, float4 top, float4 bottom)
+            => Column(p, n, new float3(lower), upper, additive, walls, top, bottom);
 
-        static ChiselDisplacementColumn Column(float3x3 p, float3 n, float3 lower, float upper, bool additive)
-            => Column(p, n, lower, new float3(upper), additive);
+        static ChiselDisplacementColumn Column(float3x3 p, float3 n, float3 lower, float upper, bool additive, float4[] walls, float4 top, float4 bottom)
+            => Column(p, n, lower, new float3(upper), additive, walls, top, bottom);
 
-        // The column over triangle p (on the surface) along n, from lower to upper at each corner
-        static ChiselDisplacementColumn Column(float3x3 p, float3 n, float3 lower, float3 upper, bool additive)
+        // The column over triangle p (on the surface) along n, from lower to upper at each corner: its walls (from corner
+        // e to e + 1), its top and its bottom, all pointing out of it
+        static ChiselDisplacementColumn Column(float3x3 p, float3 n, float3 lower, float3 upper, bool additive, float4[] walls, float4 top, float4 bottom)
         {
-            var planes = new float4[5];
-            var centre = (p.c0 + p.c1 + p.c2) / 3;
-            for (int e = 0; e < 3; e++)
-            {
-                var a = p[e];
-                var b = p[(e + 1) % 3];
-                var side = math.normalize(math.cross(b - a, n));
-                if (math.dot(side, centre - a) > 0)
-                    side = -side;
-                planes[e] = new float4(side, -math.dot(side, a));
-            }
-            planes[3] = Cap(p, n, upper, true);
-            planes[4] = Cap(p, n, lower, false);
-
+            var planes = new[] { walls[0], walls[1], walls[2], top, bottom };
             var min = math.min(math.min(p.c0, p.c1), p.c2);
             var max = math.max(math.max(p.c0, p.c1), p.c2);
             for (int k = 0; k < 3; k++)

@@ -262,6 +262,8 @@ namespace Chisel.Core
                 // The brushes the cleanup works on, written with brushRenderData (OutputMeshCleanup)
                 public NativeList<MeshCleanupWork>          meshCleanup;
                 public NativeList<int>                      meshCleanupNeighbours;
+                public NativeList<int>                      meshCleanupOutlineBrushes;
+                public NativeList<OutputMeshCleanup.BrushOutlines> meshCleanupOutlines;
                 // The surfaces the weld changed and the brushes to store again, written with brushRenderData
                 public WeldState                            weld;
                 // The model's hotspot groups before they are matched, written with brushRenderData
@@ -606,6 +608,8 @@ namespace Chisel.Core
                 Temporaries.hotspotCut = HotspotCutState.Create(defaultAllocator);
                 Temporaries.meshCleanup = new NativeList<MeshCleanupWork>(defaultAllocator);
                 Temporaries.meshCleanupNeighbours = new NativeList<int>(defaultAllocator);
+                Temporaries.meshCleanupOutlineBrushes = new NativeList<int>(defaultAllocator);
+                Temporaries.meshCleanupOutlines = new NativeList<OutputMeshCleanup.BrushOutlines>(defaultAllocator);
                 Temporaries.weld = WeldState.Create(defaultAllocator);
                 Temporaries.hotspotFind = FindState.Create(defaultAllocator);
                 
@@ -699,6 +703,13 @@ namespace Chisel.Core
                 t.hotspotCut.Dispose();
                 if (t.meshCleanup.IsCreated)                    t.meshCleanup.Dispose();
                 if (t.meshCleanupNeighbours.IsCreated)          t.meshCleanupNeighbours.Dispose();
+                if (t.meshCleanupOutlineBrushes.IsCreated)      t.meshCleanupOutlineBrushes.Dispose();
+                if (t.meshCleanupOutlines.IsCreated)
+                {
+                    for (int i = 0; i < t.meshCleanupOutlines.Length; i++)
+                        t.meshCleanupOutlines[i].Dispose();
+                    t.meshCleanupOutlines.Dispose();
+                }
                 t.weld.Dispose();
                 t.hotspotFind.Dispose();
                 if (t.basePolygonDisposeList.IsCreated)         t.basePolygonDisposeList.Dispose();
@@ -2084,6 +2095,21 @@ namespace Chisel.Core
                                 JobHandles.Read(JobHandleType.decalVolumesJobHandle),
                                 JobHandles.Write(JobHandleType.brushRenderDataJobHandle));
                         }
+                        // the brushes the incremental weld makes again, apart, then taken in
+                        var remakeJob = new RemakeWeldedBrushesJob
+                        {
+                            brushRenderData = Temporaries.brushRenderData.AsDeferredJobArray(),
+                            weldMemory      = chiselLookupValues.weldMemory,
+                            remake          = weld.remake.AsDeferredJobArray(),
+                            remade          = weld.remade.AsDeferredJobArray()
+                        };
+                        remakeJob.Schedule(runInParallel, weld.remake, 1,
+                            JobHandles.Read(JobHandleType.decalVolumesJobHandle),
+                            JobHandles.Write(JobHandleType.brushRenderDataJobHandle));
+                        var finishJob = new CollapseStepJob { step = 4, brushRenderData = Temporaries.brushRenderData, collapseMoves = chiselLookupValues.collapseMoves, weld = weld, weldMemory = chiselLookupValues.weldMemory };
+                        finishJob.Schedule(runInParallel,
+                            JobHandles.Read(JobHandleType.decalVolumesJobHandle),
+                            JobHandles.Write(JobHandleType.brushRenderDataJobHandle));
                     }
 
                     var copyWeldedBrushesJob = new CopyWeldedBrushesJob
@@ -2267,9 +2293,21 @@ namespace Chisel.Core
                         brushRenderData  = Temporaries.brushRenderData,
                         meshCleanupCache = chiselLookupValues.meshCleanupCache,
                         work             = Temporaries.meshCleanup,
-                        neighbours       = Temporaries.meshCleanupNeighbours
+                        neighbours       = Temporaries.meshCleanupNeighbours,
+                        outlineBrushes   = Temporaries.meshCleanupOutlineBrushes,
+                        outlines         = Temporaries.meshCleanupOutlines
                     };
                     planMeshCleanupJob.Schedule(runInParallel,
+                        JobHandles.Read(JobHandleType.decalVolumesJobHandle),
+                        JobHandles.Write(JobHandleType.brushRenderDataJobHandle));
+
+                    var meshCleanupOutlinesJob = new MeshCleanupOutlinesJob
+                    {
+                        brushRenderData = Temporaries.brushRenderData.AsDeferredJobArray(),
+                        outlineBrushes  = Temporaries.meshCleanupOutlineBrushes.AsDeferredJobArray(),
+                        outlines        = Temporaries.meshCleanupOutlines.AsDeferredJobArray()
+                    };
+                    meshCleanupOutlinesJob.Schedule(runInParallel, Temporaries.meshCleanupOutlineBrushes, 4,
                         JobHandles.Read(JobHandleType.decalVolumesJobHandle),
                         JobHandles.Write(JobHandleType.brushRenderDataJobHandle));
 
@@ -2277,6 +2315,7 @@ namespace Chisel.Core
                     {
                         brushRenderData = Temporaries.brushRenderData.AsDeferredJobArray(),
                         neighbours      = Temporaries.meshCleanupNeighbours.AsDeferredJobArray(),
+                        outlines        = Temporaries.meshCleanupOutlines.AsDeferredJobArray(),
                         work            = Temporaries.meshCleanup.AsDeferredJobArray()
                     };
                     cleanMeshesJob.Schedule(runInParallel, Temporaries.meshCleanup, 1,
@@ -2288,7 +2327,8 @@ namespace Chisel.Core
                         work                 = Temporaries.meshCleanup,
                         brushRenderData      = Temporaries.brushRenderData,
                         patchedRenderBuffers = Temporaries.patchedRenderBuffers,
-                        meshCleanupCache     = chiselLookupValues.meshCleanupCache
+                        meshCleanupCache     = chiselLookupValues.meshCleanupCache,
+                        outlines             = Temporaries.meshCleanupOutlines
                     };
                     finishMeshCleanupJob.Schedule(runInParallel,
                         JobHandles.Read(JobHandleType.decalVolumesJobHandle),
@@ -2976,6 +3016,11 @@ namespace Chisel.Core
                 Temporaries.meshCleanup = default;
                 lastJobHandle.AddDependency(Temporaries.meshCleanupNeighbours.Dispose(JobHandles[JobHandleType.brushRenderDataJobHandle].readWriteBarrier));
                 Temporaries.meshCleanupNeighbours = default;
+                lastJobHandle.AddDependency(Temporaries.meshCleanupOutlineBrushes.Dispose(JobHandles[JobHandleType.brushRenderDataJobHandle].readWriteBarrier));
+                Temporaries.meshCleanupOutlineBrushes = default;
+                // what the outlines held, the finishing job let go of
+                lastJobHandle.AddDependency(Temporaries.meshCleanupOutlines.Dispose(JobHandles[JobHandleType.brushRenderDataJobHandle].readWriteBarrier));
+                Temporaries.meshCleanupOutlines = default;
                 // nothing waits for the weld's working copies to be freed: the next update does, before it starts
                 s_PendingWeldFrees = JobHandle.CombineDependencies(s_PendingWeldFrees,
                                         Temporaries.weld.Dispose(JobHandles[JobHandleType.brushRenderDataJobHandle].readWriteBarrier));

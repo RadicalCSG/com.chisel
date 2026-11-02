@@ -255,36 +255,78 @@ namespace Chisel.Components
             var surfaces = new System.Collections.Generic.List<int>();
             if (!GetDisplacementOutline(planes, surfaces))
                 return false;
-            var corners = new System.Collections.Generic.List<Vector3>();
             var changed = false;
             for (int d = 0; d < surfaceDisplacement.Count; d++)
             {
-                var heights = surfaceDisplacement[d];
-                if (heights == null || !heights.IsValid || !ChiselPaintBrush.SurfaceOutline(this, heights.surfaceIndex, corners, out _))
-                    continue;
-                var reach = new System.Collections.Generic.List<Vector3>(corners);
-                for (int p = 0; p < planes.Count; p++)
-                {
-                    if (surfaces[p] == heights.surfaceIndex)
-                        continue;
-                    var raised = MaxHeight(GetSurfaceDisplacement(surfaces[p]));
-                    if (raised <= ChiselDisplacement.kFlat)
-                        continue;
-                    // the plane in the generator's space, where the grids are
-                    var normal = new Vector3(planes[p].x, planes[p].y, planes[p].z);
-                    var w      = planes[p].w - Vector3.Dot(normal, pivotOffset);
-                    foreach (var corner in corners)
-                    {
-                        if (Mathf.Abs(Vector3.Dot(normal, corner) + w) < 1e-3f)
-                            reach.Add(corner + normal.normalized * raised);
-                    }
-                }
-                if (!ChiselPaintBrush.Grown(heights, reach, out var grown))
+                if (!Covering(surfaceDisplacement[d], planes, surfaces, out var grown))
                     continue;
                 surfaceDisplacement[d] = grown;
                 changed = true;
             }
             return changed;
+        }
+
+        // The grid grown over where the neighbouring surfaces, raised, move the edges it shares with them out to; false
+        // when it covers that already. The columns are made from that: where a surface's columns reach past a
+        // neighbour's grid, they would end at the neighbour's face that is never drawn, and leave a hole.
+        bool Covering(ChiselSurfacePaint heights, System.Collections.Generic.List<Unity.Mathematics.float4> planes,
+                      System.Collections.Generic.List<int> surfaces, out ChiselSurfacePaint grown)
+        {
+            grown = heights;
+            if (heights == null || !heights.IsValid)
+                return false;
+            var face = surfaces.IndexOf(heights.surfaceIndex);
+            if (face < 0)
+                return false;
+            // the planes in the generator's space, where the grids are
+            var inGenerator = new Unity.Mathematics.float4[planes.Count];
+            for (int p = 0; p < planes.Count; p++)
+            {
+                var plane  = planes[p];
+                plane     /= Unity.Mathematics.math.length(plane.xyz);
+                plane.w   -= Vector3.Dot(new Vector3(plane.x, plane.y, plane.z), pivotOffset);
+                inGenerator[p] = plane;
+            }
+            // the surface's corners, each where it meets two other faces, and the faces each is on
+            var corners = new System.Collections.Generic.List<(Vector3 point, int a, int b)>();
+            for (int a = 0; a < inGenerator.Length; a++)
+            {
+                for (int b = a + 1; b < inGenerator.Length; b++)
+                {
+                    if (a == face || b == face || !Corner(inGenerator[face], inGenerator[a], inGenerator[b], out var point))
+                        continue;
+                    var inside = true;
+                    foreach (var plane in inGenerator)
+                        inside &= Unity.Mathematics.math.dot(plane.xyz, point) + plane.w < 1e-4f;
+                    if (inside)
+                        corners.Add(((Vector3)point, a, b));
+                }
+            }
+            var reach = new System.Collections.Generic.List<Vector3>();
+            foreach (var (point, _, _) in corners)
+                reach.Add(point);
+            foreach (var (point, a, b) in corners)
+            {
+                foreach (var p in new[] { a, b })
+                {
+                    var raised = MaxHeight(GetSurfaceDisplacement(surfaces[p]));
+                    if (raised > ChiselDisplacement.kFlat)
+                        reach.Add(point + (Vector3)inGenerator[p].xyz * raised);
+                }
+            }
+            return reach.Count > 0 && ChiselPaintBrush.Grown(heights, reach, out grown);
+        }
+
+        // Where three planes meet; false when two of them are parallel
+        static bool Corner(Unity.Mathematics.float4 a, Unity.Mathematics.float4 b, Unity.Mathematics.float4 c, out Unity.Mathematics.float3 point)
+        {
+            var bc = Unity.Mathematics.math.cross(b.xyz, c.xyz);
+            var determinant = Unity.Mathematics.math.dot(a.xyz, bc);
+            point = default;
+            if (Mathf.Abs(determinant) < 1e-6f)
+                return false;
+            point = (-a.w * bc - b.w * Unity.Mathematics.math.cross(c.xyz, a.xyz) - c.w * Unity.Mathematics.math.cross(a.xyz, b.xyz)) / determinant;
+            return true;
         }
 
         // What a displaced surface without a smoothing group of its own is smoothed in, one for every surface
@@ -433,157 +475,384 @@ namespace Chisel.Components
             return own;
         }
 
-        /// <summary>The columns of the displaced surfaces, as the brushes after the own brush in the branch</summary>
+        /// <summary>
+        /// The columns of the displaced surfaces, as the brushes after the own brush in the branch. The brush is the
+        /// intersection of its faces' half spaces, and displaced it is the intersection of their displaced ones, which
+        /// the exact CSG makes as it is:
+        /// - for each displaced surface a composite of its raised columns, those reaching past a side that isn't displaced
+        ///   cut to it, intersected with each other displaced surface's displaced half space (that surface's columns
+        ///   again, on a brush up to just under it), so where two displaced surfaces meet each ends at the other
+        /// - then what is cut, and what pushes the opposite side out
+        /// </summary>
         protected void UpdateDisplacementColumns()
         {
             var branch = (CSGTreeBranch)Node;
             if (!branch.Valid || SurfaceDefinition == null)
                 return;
 
-            var outlinePlanes  = new System.Collections.Generic.List<Unity.Mathematics.float4>();
+            var outlinePlanes   = new System.Collections.Generic.List<Unity.Mathematics.float4>();
             var outlineSurfaces = new System.Collections.Generic.List<int>();
-            var columns         = new System.Collections.Generic.List<ChiselDisplacementColumn>();
-            var allColumns      = new System.Collections.Generic.List<ChiselDisplacementColumn>();
-            var columnSurfaces  = new System.Collections.Generic.List<int>();
-            // by displaced surface, its heights as the columns are made from them, and its normal
-            var prepared        = new System.Collections.Generic.Dictionary<int, (ChiselSurfacePaint heights, Unity.Mathematics.float3 normal)>();
+            // by displaced surface (in the order of the layout), its columns, its heights as they are made from them and
+            // its normal
+            var displaced = new System.Collections.Generic.List<int>();
+            var columns   = new System.Collections.Generic.List<System.Collections.Generic.List<ChiselDisplacementColumn>>();
+            var prepared  = new System.Collections.Generic.Dictionary<int, (ChiselSurfacePaint heights, Unity.Mathematics.float3 normal)>();
             if (GetDisplacementOutline(outlinePlanes, outlineSurfaces))
             {
+                // a triangle beyond a side has nothing to displace, unless that side is displaced too: there it reaches
+                // that side's displaced surface
+                var endsAt = new bool[outlinePlanes.Count];
+                for (int p = 0; p < endsAt.Length; p++)
+                    endsAt[p] = !Displaced(outlineSurfaces[p]);
                 foreach (var heights in surfaceDisplacement)
                 {
-                    if (heights == null)
+                    if (heights == null || !heights.IsValid || displaced.Contains(heights.surfaceIndex))
                         continue;
                     var plane = outlineSurfaces.IndexOf(heights.surfaceIndex);
                     if (plane < 0)
                         continue;
                     var normal = outlinePlanes[plane].xyz;
-                    var surfaceHeights = ChiselDisplacement.Prepared(InBrushSpace(heights), new Vector3(normal.x, normal.y, normal.z), outlinePlanes);
+                    // grown over what the neighbours reach, whether or not the grid stored was
+                    var covering = Covering(heights, outlinePlanes, outlineSurfaces, out var grown) ? grown : heights;
+                    var surfaceHeights = ChiselDisplacement.Prepared(InBrushSpace(covering), new Vector3(normal.x, normal.y, normal.z), outlinePlanes);
                     prepared[heights.surfaceIndex] = (surfaceHeights, Unity.Mathematics.math.normalize(normal));
-                    ChiselDisplacement.Columns(surfaceHeights, new Vector3(normal.x, normal.y, normal.z), outlinePlanes, columns,
-                                               (side, point) => GetSurfaceDisplacement(outlineSurfaces[side])?.Sample((Vector3)point + pivotOffset).x ?? 0,
-                                               prepared: true);
-                    foreach (var column in columns)
-                    {
-                        allColumns.Add(column);
-                        columnSurfaces.Add(heights.surfaceIndex);
-                    }
+                    var made = new System.Collections.Generic.List<ChiselDisplacementColumn>();
+                    displacementCaches ??= new System.Collections.Generic.Dictionary<int, ChiselDisplacementCache>();
+                    if (!displacementCaches.TryGetValue(heights.surfaceIndex, out var cache))
+                        displacementCaches[heights.surfaceIndex] = cache = new ChiselDisplacementCache();
+                    ChiselDisplacement.Columns(surfaceHeights, new Vector3(normal.x, normal.y, normal.z), outlinePlanes, made, prepared: true, endsAt: endsAt, cache: cache);
+                    displaced.Add(heights.surfaceIndex);
+                    columns.Add(made);
                 }
             }
 
-            var tree    = branch.Tree;
-            var entityId = branch.EntityId;
             var brushSurfaces      = BrushSurfaces;
             var columnSurfaceArray = WithWalls(brushSurfaces, out var wallsFrom);
             // what every column's brush is made with besides its own planes: a change to it makes them all again
             var madeWith = (uint)(columnSurfaceArray?.GetHashCode() ?? 0);
-            EnsureColumnGroups(branch);
+            EnsureDisplacementLayout(branch, displaced);
 
-            // a column made before keeps its brush, as it is: only the new ones are made and registered
-            var brushes  = new System.Collections.Generic.List<CSGTreeBrush>();
-            var meshes   = new System.Collections.Generic.List<BrushMesh>();
-            var surfaces = new System.Collections.Generic.List<ChiselSurfaceArray>();
-            var made     = new System.Collections.Generic.Dictionary<uint, CSGTreeBrush>();
-            for (int g = 0; g < ChiselDisplacement.kGroupCount; g++)
+            var update = new ColumnUpdate
             {
-                var group = (CSGTreeBranch)branch[1 + g];
-                made.Clear();
-                foreach (var (key, brush) in columnBrushes[g])
+                generator          = this,
+                tree               = branch.Tree,
+                entityId           = branch.EntityId,
+                madeWith           = madeWith,
+                wallsFrom          = wallsFrom,
+                outlinePlanes      = outlinePlanes,
+                outlineSurfaces    = outlineSurfaces,
+                brushSurfaces      = brushSurfaces,
+                columnSurfaceArray = columnSurfaceArray,
+                prepared           = prepared
+            };
+            var lowered = new System.Collections.Generic.List<(ChiselDisplacementColumn, int)>();
+            var pushed  = new System.Collections.Generic.List<(ChiselDisplacementColumn, int)>();
+            for (int d = 0; d < displaced.Count; d++)
+            {
+                foreach (var column in columns[d])
                 {
-                    if (!brush.Valid)
-                        continue;
-                    if (!made.TryAdd(key, brush))
-                        brush.Destroy();
+                    if (column.group == ChiselDisplacement.kLowered)
+                        lowered.Add((column, displaced[d]));
+                    else if (column.group == ChiselDisplacement.kPushed)
+                        pushed.Add((column, displaced[d]));
                 }
-                var kept = new System.Collections.Generic.List<(uint key, CSGTreeBrush brush)>();
-                for (int c = 0; c < allColumns.Count; c++)
-                {
-                    var column = allColumns[c];
-                    if (column.group != g)
-                        continue;
-                    var key = Unity.Mathematics.math.hash(new Unity.Mathematics.uint3(column.key, madeWith, (uint)columnSurfaces[c]));
-                    if (made.Remove(key, out var existing))
-                    {
-                        if (existing.Contents != contents)
-                            existing.Contents = contents;
-                        kept.Add((key, existing));
-                        continue;
-                    }
-                    var mesh = ChiselDisplacement.ColumnMesh(column);
-                    if (mesh == null || mesh.polygons == null || mesh.polygons.Length < BrushMesh.kMinimumPolygons)
-                        continue;
-                    mesh.halfEdgeUVs     = FlatUVs(mesh, column, columnSurfaces[c], outlinePlanes, outlineSurfaces, brushSurfaces);
-                    mesh.halfEdgeNormals = SurfaceNormals(mesh, column, prepared[columnSurfaces[c]]);
-                    // CreateFromPlanes numbers a face by its plane: the column's top and bottom are of the displaced surface,
-                    // its walls of the surface's copy that isn't smoothed, and the brush's sides it is cut to keep theirs
-                    for (int p = 0; p < mesh.polygons.Length; p++)
-                        mesh.polygons[p].descriptionIndex = SurfaceOfColumnFace(mesh.polygons[p].descriptionIndex, column, columnSurfaces[c], outlineSurfaces, wallsFrom);
-
-                    // within a group the columns are all added together: the order they are in doesn't count
-                    var created = tree.CreateBrush(entityId: entityId, operation: CSGOperationType.Additive);
-                    created.Contents = contents;
-                    group.Add(created);
-                    kept.Add((key, created));
-                    brushes.Add(created);
-                    meshes.Add(mesh);
-                    surfaces.Add(columnSurfaceArray);
-                }
-                foreach (var gone in made.Values)
-                    gone.Destroy();
-                columnBrushes[g] = kept;
             }
-            ColumnsMade = brushes.Count;
-            if (brushes.Count > 0)
-                BrushMeshManager.ConvertBrushMeshesToBrushMeshInstances(brushes, meshes, surfaces);
+            for (int d = 0; d < displaced.Count; d++)
+            {
+                var surface = displaced[d];
+                var raised  = Group(columns[d], surface, ChiselDisplacement.kRaised);
+                update.Sync(displacementLayout.raised[d], raised);
+                for (int o = 0, i = 0; o < displaced.Count; o++)
+                {
+                    if (o == d)
+                        continue;
+                    var other = displacementLayout.others[d][i++];
+                    update.Sync(other.under,   BoundingPlanes(outlinePlanes, outlineSurfaces, displaced[o]), displaced[o]);
+                    update.Sync(other.raised,  Group(columns[o], displaced[o], ChiselDisplacement.kRaised));
+                    update.Sync(other.lowered, Group(columns[o], displaced[o], ChiselDisplacement.kLowered));
+                }
+            }
+            update.Sync(displacementLayout.lowered, lowered);
+            update.Sync(displacementLayout.pushed,  pushed);
+
+            ColumnsMade = update.brushes.Count;
+            if (update.brushes.Count > 0)
+                BrushMeshManager.ConvertBrushMeshesToBrushMeshInstances(update.brushes, update.meshes, update.surfaces);
+        }
+
+        // Whether a surface of this generator is displaced, by any height
+        bool Displaced(int surfaceIndex)
+        {
+            var heights = GetSurfaceDisplacement(surfaceIndex);
+            if (heights == null || !heights.IsValid)
+                return false;
+            for (int i = 0; i < heights.PointCount; i++)
+            {
+                if (Mathf.Abs(heights[i].x) > ChiselDisplacement.kFlat)
+                    return true;
+            }
+            return false;
+        }
+
+        static System.Collections.Generic.List<(ChiselDisplacementColumn, int)> Group(System.Collections.Generic.List<ChiselDisplacementColumn> columns, int surface, int group)
+        {
+            var found = new System.Collections.Generic.List<(ChiselDisplacementColumn, int)>();
+            foreach (var column in columns)
+            {
+                if (column.group == group)
+                    found.Add((column, surface));
+            }
+            return found;
+        }
+
+        /// <summary>How far another displaced surface's plane is moved out in the brush a displaced half space stands on:
+        /// past its highest point, in steps, so painting rarely changes that brush</summary>
+        const float kBoundsStep = 0.25f;
+
+        // The brush a displaced surface's (under's) displaced half space stands on: the generator's own, that surface's
+        // face just under it, the other displaced faces moved out past all their columns. Its faces of displaced surfaces
+        // are never output.
+        Unity.Mathematics.float4[] BoundingPlanes(System.Collections.Generic.List<Unity.Mathematics.float4> outlinePlanes, System.Collections.Generic.List<int> outlineSurfaces, int under)
+        {
+            var planes = new Unity.Mathematics.float4[outlinePlanes.Count];
+            for (int p = 0; p < planes.Length; p++)
+            {
+                var plane  = outlinePlanes[p];
+                var length = Unity.Mathematics.math.length(plane.xyz);
+                plane /= length;
+                var surface = outlineSurfaces[p];
+                if (surface == under)
+                    plane.w += ChiselDisplacement.kOverlap;
+                else if (GetSurfaceDisplacement(surface) is { } heights && heights.IsValid)
+                    plane.w -= (Mathf.Floor((MaxHeight(heights) + ChiselDisplacement.kOverlap) / kBoundsStep) + 1) * kBoundsStep;
+                planes[p] = plane;
+            }
+            return planes;
         }
 
         // How many column brushes the last update of the columns made, rather than kept
         internal int ColumnsMade { get; private set; }
 
-        // The column brushes of a displaced generator's branch, by group (ChiselDisplacement.kCleared and on), with the
-        // key each was made for; made again with the branch
-        [System.NonSerialized] System.Collections.Generic.List<(uint key, CSGTreeBrush brush)>[] columnBrushes;
-
-        // How each group of columns is taken: what is cut is taken away
-        static CSGOperationType GroupOperation(int group) =>
-            group == ChiselDisplacement.kLowered ? CSGOperationType.Subtractive : CSGOperationType.Additive;
-
-        // After the generator's own brush, a branch for each group of columns, which is what the columns go in
-        void EnsureColumnGroups(CSGTreeBranch branch)
+        // A displaced generator's branch after its own brush, made again when the surfaces displaced change
+        sealed class DisplacementLayout
         {
-            var whole = branch.Count == 1 + ChiselDisplacement.kGroupCount && columnBrushes != null;
-            for (int g = 0; g < ChiselDisplacement.kGroupCount && whole; g++)
-                whole = ((CSGTreeBranch)branch[1 + g]).Valid;
+            public int[] surfaces;
+            // by displaced surface, the composite of its raised columns, and the other displaced surfaces' displaced
+            // half spaces they are intersected with
+            public BrushSet[] raised;
+            public OtherSurface[][] others;
+            public BrushSet lowered, pushed;
+        }
+
+        // Another displaced surface's displaced half space, intersected with a surface's raised columns
+        struct OtherSurface
+        {
+            public BrushSet under, raised, lowered;
+        }
+
+        // A composite's brushes, each with the key it was made for
+        sealed class BrushSet
+        {
+            public CSGTreeBranch node;
+            public System.Collections.Generic.List<(uint key, CSGTreeBrush brush)> brushes = new();
+        }
+
+        [System.NonSerialized] DisplacementLayout displacementLayout;
+        // by displaced surface, the columns of its cells as the last update made them
+        [System.NonSerialized] System.Collections.Generic.Dictionary<int, ChiselDisplacementCache> displacementCaches;
+
+        // The composites of the layout for these displaced surfaces, made again when they changed
+        void EnsureDisplacementLayout(CSGTreeBranch branch, System.Collections.Generic.List<int> displaced)
+        {
+            var count = displaced.Count;
+            var whole = displacementLayout != null && displacementLayout.surfaces.Length == count &&
+                        branch.Count == 1 + count + 2 && displacementLayout.lowered.node.Valid && displacementLayout.pushed.node.Valid;
+            for (int d = 0; d < count && whole; d++)
+                whole = displacementLayout.surfaces[d] == displaced[d] && displacementLayout.raised[d].node.Valid;
             if (whole)
                 return;
             for (int i = branch.Count - 1; i >= 1; i--)
             {
                 var child = branch[i];
                 branch.RemoveAt(i);
-                child.DestroyChildren();
-                child.Destroy();
+                DestroyDeep(child);
             }
             var tree     = branch.Tree;
             var entityId = branch.EntityId;
-            columnBrushes = new System.Collections.Generic.List<(uint, CSGTreeBrush)>[ChiselDisplacement.kGroupCount];
-            for (int g = 0; g < ChiselDisplacement.kGroupCount; g++)
+            BrushSet Composite(CSGTreeBranch parent, CSGOperationType operation)
             {
-                branch.Add(tree.CreateBranch(entityId: entityId, operation: GroupOperation(g)));
-                columnBrushes[g] = new System.Collections.Generic.List<(uint, CSGTreeBrush)>();
+                var node = tree.CreateBranch(entityId: entityId, operation: operation);
+                parent.Add(node);
+                return new BrushSet { node = node };
+            }
+            var layout = new DisplacementLayout
+            {
+                surfaces = displaced.ToArray(),
+                raised   = new BrushSet[count],
+                others   = new OtherSurface[count][]
+            };
+            for (int d = 0; d < count; d++)
+            {
+                var part = tree.CreateBranch(entityId: entityId, operation: CSGOperationType.Additive);
+                branch.Add(part);
+                // the columns first: what comes after them is intersected with them
+                layout.raised[d] = Composite(part, CSGOperationType.Additive);
+                layout.others[d] = new OtherSurface[count - 1];
+                for (int o = 0; o < count - 1; o++)
+                {
+                    var half = tree.CreateBranch(entityId: entityId, operation: CSGOperationType.Intersecting);
+                    part.Add(half);
+                    layout.others[d][o] = new OtherSurface
+                    {
+                        under   = Composite(half, CSGOperationType.Additive),
+                        raised  = Composite(half, CSGOperationType.Additive),
+                        lowered = Composite(half, CSGOperationType.Subtractive)
+                    };
+                }
+            }
+            layout.lowered = Composite(branch, CSGOperationType.Subtractive);
+            layout.pushed  = Composite(branch, CSGOperationType.Additive);
+            displacementLayout = layout;
+        }
+
+        static void DestroyDeep(CSGTreeNode node)
+        {
+            if (node.Type == CSGNodeType.Branch)
+            {
+                var branch = (CSGTreeBranch)node;
+                for (int i = branch.Count - 1; i >= 0; i--)
+                    DestroyDeep(branch[i]);
+            }
+            node.Destroy();
+        }
+
+        // What one update of the columns makes: the brushes it created, their meshes and surfaces
+        sealed class ColumnUpdate
+        {
+            public ChiselGeneratorComponent generator;
+            public CSGTree tree;
+            public UnityEngine.EntityId entityId;
+            public uint madeWith;
+            public int wallsFrom;
+            public System.Collections.Generic.List<Unity.Mathematics.float4> outlinePlanes;
+            public System.Collections.Generic.List<int> outlineSurfaces;
+            public ChiselSurfaceArray brushSurfaces, columnSurfaceArray;
+            public System.Collections.Generic.Dictionary<int, (ChiselSurfacePaint heights, Unity.Mathematics.float3 normal)> prepared;
+            public readonly System.Collections.Generic.List<CSGTreeBrush> brushes = new();
+            public readonly System.Collections.Generic.List<BrushMesh> meshes = new();
+            public readonly System.Collections.Generic.List<ChiselSurfaceArray> surfaces = new();
+            // a column's mesh, for every composite it is in
+            readonly System.Collections.Generic.Dictionary<uint, BrushMesh> made = new();
+
+            // The set's brushes made the columns: one made before keeps its brush as it is, the others are made, the ones
+            // left over destroyed
+            public void Sync(BrushSet set, System.Collections.Generic.List<(ChiselDisplacementColumn column, int surface)> wanted)
+            {
+                var old = new System.Collections.Generic.Dictionary<uint, CSGTreeBrush>();
+                foreach (var (key, brush) in set.brushes)
+                {
+                    if (!brush.Valid)
+                        continue;
+                    if (!old.TryAdd(key, brush))
+                        brush.Destroy();
+                }
+                var kept = new System.Collections.Generic.List<(uint, CSGTreeBrush)>();
+                foreach (var (column, surface) in wanted)
+                {
+                    var key = Unity.Mathematics.math.hash(new Unity.Mathematics.uint3(column.key, madeWith, (uint)surface));
+                    if (old.Remove(key, out var existing))
+                    {
+                        if (existing.Contents != generator.contents)
+                            existing.Contents = generator.contents;
+                        kept.Add((key, existing));
+                        continue;
+                    }
+                    if (!made.TryGetValue(key, out var mesh))
+                    {
+                        mesh = ChiselDisplacement.ColumnMesh(column);
+                        if (mesh != null && mesh.polygons != null && mesh.polygons.Length >= BrushMesh.kMinimumPolygons)
+                        {
+                            mesh.halfEdgeUVs     = FlatUVs(mesh, column, surface, outlinePlanes, outlineSurfaces, brushSurfaces);
+                            mesh.halfEdgeNormals = SurfaceNormals(mesh, column, prepared[surface]);
+                            // CreateFromPlanes numbers a face by its plane: the column's top and bottom are of the displaced
+                            // surface, its walls of the surface's copy that isn't smoothed, and the brush's sides it is cut to
+                            // keep theirs
+                            for (int p = 0; p < mesh.polygons.Length; p++)
+                                mesh.polygons[p].descriptionIndex = SurfaceOfColumnFace(mesh.polygons[p].descriptionIndex, column, surface, outlineSurfaces, wallsFrom);
+                        } else
+                            mesh = null;
+                        made[key] = mesh;
+                    }
+                    if (mesh == null)
+                        continue;
+                    Add(set, key, mesh, kept);
+                }
+                foreach (var gone in old.Values)
+                    gone.Destroy();
+                set.brushes = kept;
+            }
+
+            // The set's one brush, made from these planes (the outline's, by its surfaces): only made again when they
+            // change. Its faces of displaced surfaces, and the one of under, are never output.
+            public void Sync(BrushSet set, Unity.Mathematics.float4[] planes, int under)
+            {
+                var key = madeWith;
+                foreach (var plane in planes)
+                    key = Unity.Mathematics.math.hash(new Unity.Mathematics.uint2(key, Unity.Mathematics.math.hash(plane)));
+                key = Unity.Mathematics.math.hash(new Unity.Mathematics.uint2(key, (uint)under));
+                if (set.brushes.Count == 1 && set.brushes[0].key == key && set.brushes[0].brush.Valid)
+                    return;
+                foreach (var (_, brush) in set.brushes)
+                {
+                    if (brush.Valid)
+                        brush.Destroy();
+                }
+                set.brushes = new System.Collections.Generic.List<(uint, CSGTreeBrush)>();
+                var bounds = new Bounds();
+                foreach (var plane in planes)
+                    bounds.Encapsulate(new Vector3(plane.x, plane.y, plane.z) * -plane.w);
+                bounds.Expand(bounds.size.magnitude + 1);
+                var temporarySurfaces = new ChiselSurfaceArray();
+                BrushMeshFactory.CreateFromPlanes(planes, bounds, ref temporarySurfaces, out var mesh);
+                if (mesh == null || mesh.polygons == null || mesh.polygons.Length < BrushMesh.kMinimumPolygons)
+                    return;
+                for (int p = 0; p < mesh.polygons.Length; p++)
+                {
+                    var plane   = mesh.polygons[p].descriptionIndex;
+                    var surface = plane >= 0 && plane < outlineSurfaces.Count ? outlineSurfaces[plane] : 0;
+                    var hidden  = surface == under || generator.GetSurfaceDisplacement(surface) is { } heights && heights.IsValid;
+                    mesh.polygons[p].descriptionIndex = hidden && wallsFrom >= 0 ? 2 * wallsFrom + surface : surface;
+                }
+                Add(set, key, mesh, set.brushes);
+            }
+
+            void Add(BrushSet set, uint key, BrushMesh mesh, System.Collections.Generic.List<(uint, CSGTreeBrush)> into)
+            {
+                // within a composite the brushes are all added (or all taken away) together: their order doesn't count
+                var created = tree.CreateBrush(entityId: entityId, operation: CSGOperationType.Additive);
+                created.Contents = generator.contents;
+                set.node.Add(created);
+                into.Add((key, created));
+                brushes.Add(created);
+                meshes.Add(mesh);
+                surfaces.Add(columnSurfaceArray);
             }
         }
 
 
-        // The surface of a face of a column (numbered by its plane): a face of its own that is never seen takes the copy
-        // of the displaced surface that is never output (from 2 * wallsFrom on), which the CSG does no work on and
-        // smoothing doesn't count. The walls of what pushes the opposite side out can be seen where it ends: they take
-        // the copy that is drawn but isn't smoothed with the surface (from wallsFrom on).
+        // The surface of a face of a column (numbered by its plane: its walls, then its top and its bottom). Its walls take
+        // the copy of the displaced surface that is drawn but isn't smoothed with it (from wallsFrom on): two neighbours'
+        // tops are planes of their own, which the exact CSG makes meet a hair apart, with a sliver of the wall between
+        // them that closes the surface, and the sliver has to be drawn. Its other face that is never seen, inside the
+        // generator's own brush or past the surface, takes the copy that is never output (from 2 * wallsFrom on), which
+        // the CSG does no work on and smoothing doesn't count.
         static int SurfaceOfColumnFace(int plane, in ChiselDisplacementColumn column, int surface,
                                        System.Collections.Generic.List<int> outlineSurfaces, int wallsFrom)
         {
             if (plane >= column.ownPlanes && column.sides != null && plane - column.ownPlanes < column.sides.Length)
                 return outlineSurfaces[column.sides[plane - column.ownPlanes]];
             if (plane >= 0 && plane < column.ownPlanes && plane != column.seenFace && wallsFrom >= 0)
-                return column.group == ChiselDisplacement.kPushed ? wallsFrom + surface : 2 * wallsFrom + surface;
+                return plane < column.ownPlanes - 2 ? wallsFrom + surface : 2 * wallsFrom + surface;
             return surface;
         }
 
