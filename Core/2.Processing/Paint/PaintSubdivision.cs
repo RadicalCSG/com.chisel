@@ -10,7 +10,8 @@ namespace Chisel.Core
     {
         // Most points one surface gets; a grid of tiny cells on a big surface stops here
         public const int kMaxPoints = 4096;
-        // How close to an edge or a corner a grid point counts as on it, in parts of the grid's cell
+        // How close to an edge or a corner a grid point counts as on it, in parts of the grid's cell, and never less than
+        // the mesh cleanup's kJunctionDistance: it takes corners closer than that for one
         const float kSnap = 0.05f;
 
         public static void Subdivide(NativeList<int> indices, ref UniqueVertexMapper mapper, float3 surfaceNormal,
@@ -44,6 +45,7 @@ namespace Chisel.Core
             }
             if (points.Length == 0)
                 return;
+            snap = math.max(snap, OutputMeshCleanup.kJunctionDistance);
 
             // where the grid's lines cross the outline, before the points: an outline that isn't along the grid's lines
             // is cut where they meet it
@@ -76,7 +78,9 @@ namespace Chisel.Core
                 for (int k = 0; k < 3; k++)
                     edges.Add(new int2(indices[t + k], indices[t + (k + 1) % 3]));
             }
-            const double kAwayFromEnds = 0.05;  // in cells
+            const double kAwayFromEnds = 0.05;  // in cells, and never less than kJunctionDistance (kSnap)
+            var away = new double2(math.max(kAwayFromEnds, OutputMeshCleanup.kJunctionDistance / math.max(math.length(layer.cellU), 1e-9f)),
+                                   math.max(kAwayFromEnds, OutputMeshCleanup.kJunctionDistance / math.max(math.length(layer.cellV), 1e-9f)));
             for (int t = 0; t + 2 < indices.Length; t += 3)
             {
                 for (int k = 0; k < 3 && crossings.Length < kMaxPoints; k++)
@@ -91,9 +95,9 @@ namespace Chisel.Core
                     {
                         var lo = math.min(from[axis], to[axis]);
                         var hi = math.max(from[axis], to[axis]);
-                        if (!(hi - lo > 2 * kAwayFromEnds))
+                        if (!(hi - lo > 2 * away[axis]))
                             continue;
-                        for (var line = math.ceil(lo + kAwayFromEnds); line < hi - kAwayFromEnds && crossings.Length < kMaxPoints; line++)
+                        for (var line = math.ceil(lo + away[axis]); line < hi - away[axis] && crossings.Length < kMaxPoints; line++)
                         {
                             var along = (line - from[axis]) / (to[axis] - from[axis]);
                             crossings.Add((float3)math.lerp((double3)positions[a], (double3)positions[b], along));

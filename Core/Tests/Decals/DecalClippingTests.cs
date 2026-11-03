@@ -106,6 +106,24 @@ namespace Chisel.Core.Tests
             Assert.That(total, Is.EqualTo(Area(triangle)).Within(kAreaTolerance + 1e-9 * Area(triangle)), "the pieces don't cover the triangle");
         }
 
+        // A side of the volume half a millimetre from a corner: the cut puts no point that close to it, the mesh cleanup
+        // would take the two for one on one side of the edge and not the other
+        [Test]
+        public void ASideJustPastACorner_PutsNoPointNextToIt()
+        {
+            var volume   = UnitBox(transparent: false);
+            var corner   = new double3(0.5005, 0.1, 0.2);
+            var triangle = Triangle(corner, new double3(-0.3, 0.1, -0.4), new double3(-0.2, 0.1, 0.45));
+            foreach (var (piece, _) in Split(volume, triangle))
+            {
+                foreach (var vertex in new[] { piece.v0, piece.v1, piece.v2 })
+                {
+                    var apart = math.distance(vertex.position, corner);
+                    Assert.That(apart == 0 || apart >= OutputMeshCleanup.kJunctionDistance, Is.True, $"a point {apart} from the corner");
+                }
+            }
+        }
+
         // Where a cut fails the piece is kept whole, but with the points a cut puts on its edges: the piece across each
         // edge, cut, meets it there instead of at a T-junction
         [Test]
