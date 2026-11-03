@@ -57,6 +57,63 @@ namespace Chisel.Components
             return true;
         }
 
+        /// <summary>How far apart two surfaces' planes can be and still be one surface to the brush</summary>
+        public const float kSamePlane = 1e-3f;
+
+        /// <summary>
+        /// The surfaces a displacement dab round a point (in the world) reaches: the one it is on, and each surface of another
+        /// displaceable generator of the same model in the same plane, facing the same way, that comes within radius of the
+        /// point. A dab that crosses from one onto the other raises both alike, so they meet where they touch.
+        /// </summary>
+        public static void DisplacedInReach(ChiselGeneratorComponent generator, int surfaceIndex, Vector3 point, float radius,
+                                            List<(ChiselGeneratorComponent generator, int surfaceIndex)> reached)
+        {
+            reached.Clear();
+            reached.Add((generator, surfaceIndex));
+            var model   = generator ? generator.hierarchyItem?.Model : null;
+            var outline = new List<Vector3>();
+            if (!model || !ChiselSurfaceShapes.SurfaceOutline(generator, surfaceIndex, outline, out var plane))
+                return;
+            foreach (var other in model.GetComponentsInChildren<ChiselGeneratorComponent>())
+            {
+                if (other == generator || !other.SupportsDisplacement)
+                    continue;
+                var count = other.SurfaceDefinition?.surfaces?.Length ?? 0;
+                for (int s = 0; s < count; s++)
+                {
+                    if (!ChiselSurfaceShapes.SurfaceOutline(other, s, outline, out var otherPlane) ||
+                        Vector3.Dot(otherPlane.normal, plane.normal) < 0.999f ||
+                        Mathf.Abs(plane.GetDistanceToPoint(outline[0])) > kSamePlane)
+                        continue;
+                    if (DistanceInPlane(plane.ClosestPointOnPlane(point), outline, plane.normal) <= radius)
+                        reached.Add((other, s));
+                }
+            }
+        }
+
+        // How far a point in a polygon's plane is from it: 0 inside, otherwise from its nearest edge
+        static float DistanceInPlane(Vector3 point, List<Vector3> polygon, Vector3 normal)
+        {
+            var inside = true; var nearest = float.PositiveInfinity;
+            for (int i = 0; i < polygon.Count; i++)
+            {
+                var a = polygon[i]; var b = polygon[(i + 1) % polygon.Count];
+                var side = Vector3.Dot(Vector3.Cross(b - a, point - a), normal);
+                inside &= side >= 0;
+                var ab = b - a;
+                var t  = Mathf.Clamp01(Vector3.Dot(point - a, ab) / Mathf.Max(ab.sqrMagnitude, 1e-12f));
+                nearest = Mathf.Min(nearest, Vector3.Distance(point, a + ab * t));
+            }
+            // either way round
+            if (!inside)
+            {
+                inside = true;
+                for (int i = 0; i < polygon.Count && inside; i++)
+                    inside &= Vector3.Dot(Vector3.Cross(polygon[(i + 1) % polygon.Count] - polygon[i], point - polygon[i]), normal) <= 0;
+            }
+            return inside ? 0 : nearest;
+        }
+
         static void AddOutline(CSGTreeNode node, int surfaceIndex, Matrix4x4 treeToGenerator, List<Vector3> corners, ref Vector3 normal)
         {
             if (!node.Valid)

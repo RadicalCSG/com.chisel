@@ -44,9 +44,14 @@ Every feature is documented in the [wiki](https://github.com/RadicalCSG/com.chis
     <td width="33%"><b><a href="https://github.com/RadicalCSG/com.chisel/wiki/Trim-Decals">Trim decals</a></b><br>Decals that wrap the edge between two surfaces and follow it as brushes change.</td>
   </tr>
   <tr>
-    <td><b>Vertex painting</b><br>Paint directly onto CSG surfaces.</td>
+    <td><b><a href="https://github.com/RadicalCSG/com.chisel/wiki/Vertex-Painting">Vertex painting</a></b><br>Paint colors and values directly onto CSG surfaces.</td>
     <td><b><a href="https://github.com/RadicalCSG/com.chisel/wiki/Double-Sided-Surfaces">Double-sided surfaces</a></b><br>A material can draw its surfaces from behind too.</td>
     <td><b><a href="https://github.com/RadicalCSG/com.chisel/wiki/Normal-Smoothing">Normal smoothing</a></b><br>Smooth shading across CSG surfaces.</td>
+  </tr>
+  <tr>
+    <td><b><a href="https://github.com/RadicalCSG/com.chisel/wiki/Displacement-Painting">Displacement painting</a></b><br>Paint heights onto a box or brush. It stays real CSG.</td>
+    <td><b><a href="https://github.com/RadicalCSG/com.chisel/wiki/Decals#polygon-decals">Polygon decals</a></b><br>Draw a shape on a surface. Give it its own material, or extrude it.</td>
+    <td></td>
   </tr>
 </table>
 
@@ -71,12 +76,12 @@ Every feature is documented in the [wiki](https://github.com/RadicalCSG/com.chis
   <tr>
     <td width="33%"><b><a href="https://github.com/RadicalCSG/com.chisel/wiki/Prefabs">Prefabs</a></b><br>Drop a window onto a wall and its hole comes with it.</td>
     <td width="33%"><b><a href="https://github.com/RadicalCSG/com.chisel/wiki/Drawing-2D-Shapes">2D shapes</a></b><br>Draw on CSG surfaces, bend lines into curves, extrude.</td>
-    <td width="33%"><b>Forgiving brushes</b><br>Brushes stay visible and editable while their shape is invalid.</td>
+    <td width="33%"><b><a href="https://github.com/RadicalCSG/com.chisel/wiki/Snapping">Snapping</a></b><br>Snap the pivot or bounds of what you move to grid lines.</td>
   </tr>
   <tr>
-    <td><b><a href="https://github.com/RadicalCSG/com.chisel/wiki/Snapping">Snapping</a></b><br>Snap the pivot or bounds of what you move to grid lines.</td>
     <td><b><a href="https://github.com/RadicalCSG/com.chisel/wiki/Grid">Rotatable grid</a></b><br>Move and rotate the grid to work at any angle.</td>
     <td><b><a href="https://github.com/RadicalCSG/com.chisel/wiki/Debug-Visualizations">Debug visualizations</a></b><br>See hidden, shadow-only, collider and CSG-discarded surfaces.</td>
+    <td></td>
   </tr>
 </table>
 
