@@ -79,6 +79,50 @@ namespace Chisel.Core.Tests
 
         static float Angle(float3 o, float3 p, float3 q) => math.degrees(math.acos(math.clamp(math.dot(math.normalize(p - o), math.normalize(q - o)), -1, 1)));
 
+        // Cells of 5 mm whose lines run 0.6 mm inside the outline: a grid point that close to an edge is on it, and no
+        // crossing is put that close to a corner, or the mesh cleanup would take the two for one on one side only
+        [Test]
+        public void TinyCellsNextToTheOutline_PutNoTwoVerticesWithinAMillimetre()
+        {
+            var mapper = new UniqueVertexMapper
+            {
+                surfaceColliderVertices = new NativeList<float3>(Allocator.Temp),
+                surfaceSelectVertices   = new NativeList<SelectVertex>(Allocator.Temp),
+                surfaceRenderVertices   = new NativeList<RenderVertex>(Allocator.Temp)
+            };
+            using var indices = new NativeList<int>(Allocator.Temp);
+            try
+            {
+                const float side = 0.1f, cell = 0.005f, inside = 0.0006f;
+                foreach (var corner in new[] { new float3(0, 0, 0), new float3(0, 0, side), new float3(side, 0, side), new float3(side, 0, 0) })
+                {
+                    mapper.surfaceColliderVertices.Add(corner);
+                    mapper.surfaceSelectVertices.Add(new SelectVertex { position = corner });
+                    mapper.surfaceRenderVertices.Add(new RenderVertex { position = corner, normal = new float3(0, 1, 0) });
+                }
+                indices.Add(0); indices.Add(1); indices.Add(2); indices.Add(0); indices.Add(2); indices.Add(3);
+                NativeArray<ChiselPaintLayer> layers;
+                using var _layers = layers = new NativeArray<ChiselPaintLayer>(1, Allocator.Temp);
+                using var values  = new NativeArray<float>(1, Allocator.Temp);
+                layers[0] = new ChiselPaintLayer { origin = new float3(inside, 0, inside), cellU = new float3(cell, 0, 0), cellV = new float3(0, 0, cell), resolution = new int2(20, 20) };
+                PaintSubdivision.Subdivide(indices, ref mapper, new float3(0, 1, 0), new ChiselPaintLookup { layers = layers, values = values },
+                                           new ChiselPaintRange { start = 0, count = 1 });
+                var vertices = mapper.surfaceColliderVertices;
+                Assert.That(vertices.Length, Is.GreaterThan(100), "the grid's points");
+                for (int a = 0; a < vertices.Length; a++)
+                {
+                    for (int b = a + 1; b < vertices.Length; b++)
+                        Assert.That(math.distance(vertices[a], vertices[b]), Is.GreaterThanOrEqualTo(OutputMeshCleanup.kJunctionDistance * 0.999f), $"{vertices[a]} and {vertices[b]}");
+                }
+            }
+            finally
+            {
+                mapper.surfaceColliderVertices.Dispose();
+                mapper.surfaceSelectVertices.Dispose();
+                mapper.surfaceRenderVertices.Dispose();
+            }
+        }
+
         // All 21 x 21 points, the outline's too: the triangles are the grid's half cells, whichever way the square was cut and
         // however far from the origin it is
         [Test]

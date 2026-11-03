@@ -279,8 +279,11 @@ namespace Chisel.Core
                 if (DecalClipping.Split(*volume, piece, ref sink))
                     continue;
 
-                // The cut failed: keep the piece, and draw the decal over it instead of in its place
-                nextPieces.Add(piece);
+                // The cut failed: keep the piece with the points where the volume crosses its edges (so the cut piece
+                // across an edge still meets it), and draw the decal over it instead of in its place
+                var kept = new PieceSink { list = (UnsafeList<DecalPiece>*)UnsafeUtility.AddressOf(ref nextPieces), insideOwner = piece.owner };
+                if (!DecalClipping.KeepWithEdgePoints(*volume, piece, ref kept))
+                    nextPieces.Add(piece);
                 if (takes && piece.owner < 0)
                 {
                     var overlay = new OutputSink

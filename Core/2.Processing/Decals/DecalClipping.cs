@@ -126,6 +126,8 @@ namespace Chisel.Core
     internal static class DecalClipping
     {
         const double kEpsilon = DecalVolume.kPlaneEpsilon;
+        // No new point closer than this to a corner of the triangle: the mesh cleanup would take the two for one
+        const double kNearCorner = OutputMeshCleanup.kJunctionDistance;
         // Pieces smaller than this (in square units) are dropped as rounding.
         public const double kMinArea = 1e-10;
 
@@ -176,7 +178,8 @@ namespace Chisel.Core
             var length = math.length(q - p);
             if (!(length > 0))
                 return 0;
-            var tolerance = kEpsilon / length;
+            // a crossing this close to an end is the end: the mesh cleanup takes corners closer than kNearCorner for one
+            var tolerance = kNearCorner / length;
 
             double t0 = 0, t1 = 0;
             var count = 0;
@@ -258,18 +261,22 @@ namespace Chisel.Core
         }
 
         // Replaces points that lie on one of the boundary's points by that point, and drops the repeats this makes,
-        // so the pieces inside and outside share exactly the boundary's points.
-        internal static void SnapTo(ref DecalClipPolygon polygon, ref DecalClipPolygon boundary)
+        // so the pieces inside and outside share exactly the boundary's points. A corner of the piece (in corners) takes
+        // the points within kNearCorner of it, as the boundary has no point of its own that close to one (GetEdgePoints).
+        internal static void SnapTo(ref DecalClipPolygon polygon, ref DecalClipPolygon boundary, in DecalPiece corners)
         {
             var result = new DecalClipPolygon { Overflowed = polygon.Overflowed };
             var epsilonSqr = kEpsilon * kEpsilon;
+            var nearSqr    = kNearCorner * kNearCorner;
             for (int v = 0; v < polygon.Count; v++)
             {
                 var vertex = polygon[v];
                 for (int b = 0; b < boundary.Count; b++)
                 {
                     var candidate = boundary[b];
-                    if (math.distancesq(vertex.position, candidate.position) <= epsilonSqr)
+                    var corner = Same(candidate.position, corners.v0.position) || Same(candidate.position, corners.v1.position) ||
+                                 Same(candidate.position, corners.v2.position);
+                    if (math.distancesq(vertex.position, candidate.position) <= (corner ? nearSqr : epsilonSqr))
                     {
                         vertex = candidate;
                         break;
@@ -358,6 +365,24 @@ namespace Chisel.Core
             return true;
         }
 
+        /// <summary>
+        /// The piece as it is, outside the volume, fanned with the points where the volume crosses its edges: what is
+        /// kept where a cut failed, so the piece on the other side of an edge, cut, still meets it there. False when its
+        /// edges cross the volume at more points than a polygon holds.
+        /// </summary>
+        public static bool KeepWithEdgePoints<TSink>(in DecalVolume volume, in DecalPiece piece, ref TSink sink)
+            where TSink : struct, IDecalPieceSink
+        {
+            var boundary = new DecalClipPolygon();
+            AddEdge(ref boundary, volume, piece.v0, piece.v1);
+            AddEdge(ref boundary, volume, piece.v1, piece.v2);
+            AddEdge(ref boundary, volume, piece.v2, piece.v0);
+            if (boundary.Overflowed)
+                return false;
+            AddPolygon(ref boundary, piece.owner, false, ref sink);
+            return true;
+        }
+
         public static bool Split<TSink>(in DecalVolume volume, in DecalPiece piece, ref TSink sink)
             where TSink : struct, IDecalPieceSink
         {
@@ -401,7 +426,7 @@ namespace Chisel.Core
 
             var inner = boundary;
             Clip(ref inner, volume);
-            SnapTo(ref inner, ref boundary);
+            SnapTo(ref inner, ref boundary, piece);
             if (inner.Overflowed)
             {
                 failure = DecalSplitFailure.TooManyPoints;

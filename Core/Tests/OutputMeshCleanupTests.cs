@@ -641,6 +641,42 @@ namespace Chisel.Core.Tests
             }
         }
 
+        // The hotspot cut gives each piece its own vertices: an edge two of them share by position only is inside the
+        // surface, not on its outline
+        [Test]
+        public void AnInsideEdge_WhoseTrianglesHaveTheirOwnVertices_IsNoOutline()
+        {
+            BlobAssetReference<ChiselBrushRenderBuffer> source;
+            var builder = new BlobBuilder(Allocator.Temp);
+            try
+            {
+                ref var root = ref builder.ConstructRoot<ChiselBrushRenderBuffer>();
+                var buffers = builder.Allocate(ref root.surfaces, 1);
+                using var surface = new Surface(kSquare, shared: false);
+                Assert.That(surface.render.Length, Is.EqualTo(6), "the two triangles share no vertex");
+                buffers[0].destinationFlags = SurfaceDestinationFlags.Renderable | SurfaceDestinationFlags.Collidable;
+                buffers[0].paintSurface = -1;
+                buffers[0].Store(builder, surface.indices, surface.collider, surface.select, surface.render);
+                builder.Allocate(ref root.querySurfaces, 0);
+                root.surfaceCount = 1;
+                source = builder.CreateBlobAssetReference<ChiselBrushRenderBuffer>(Allocator.Persistent);
+            }
+            finally
+            {
+                builder.Dispose();
+            }
+            var outlines = OutputMeshCleanup.Outlines(source);
+            try
+            {
+                Assert.That(outlines.drawn.Length, Is.EqualTo(4), "the square's four sides, not its diagonal");
+            }
+            finally
+            {
+                outlines.Dispose();
+                source.Dispose();
+            }
+        }
+
         [Test]
         public void ABrushsCleanedSurface_KeepsItsColliderAndLightmapLayout()
         {

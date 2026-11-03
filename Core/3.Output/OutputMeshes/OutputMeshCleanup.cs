@@ -320,22 +320,16 @@ namespace Chisel.Core
         // Which vertices end an open outline edge of the surface: one no other drawn surface has, where a crack shows
         static void OpenEdgeCorners(NativeList<int> indices, NativeList<float3> positions, NativeParallelHashMap<int3x2, int> shared, NativeList<bool> onOpenEdge)
         {
-            OutlineCorners(indices, positions.Length, onOpenEdge);
-            for (int v = 0; v < onOpenEdge.Length; v++)
-                onOpenEdge[v] = false;
-            using var edges = new NativeParallelHashSet<int2>(indices.Length, Allocator.Temp);
-            for (int i = 0; i + 2 < indices.Length; i += 3)
-            {
-                edges.Add(new int2(indices[i], indices[i + 1]));
-                edges.Add(new int2(indices[i + 1], indices[i + 2]));
-                edges.Add(new int2(indices[i + 2], indices[i]));
-            }
+            onOpenEdge.Clear();
+            onOpenEdge.Resize(positions.Length, NativeArrayOptions.ClearMemory);
+            using var edges = new NativeParallelHashSet<float3x2>(indices.Length, Allocator.Temp);
+            AddEdges(indices, positions, edges);
             for (int i = 0; i + 2 < indices.Length; i += 3)
             {
                 for (int c = 0; c < 3; c++)
                 {
                     var from = indices[i + c]; var to = indices[i + (c + 1) % 3];
-                    if (edges.Contains(new int2(to, from)))
+                    if (edges.Contains(new float3x2(positions[to], positions[from])))
                         continue;
                     if (shared.TryGetValue(EdgeKey(positions[from], positions[to]), out var count) && count > 1)
                         continue;
@@ -345,28 +339,16 @@ namespace Chisel.Core
             }
         }
 
-        // Which vertices are on an outline edge of the surface
-        static void OutlineCorners(NativeList<int> indices, int vertexCount, NativeList<bool> onOutline)
+        // A surface's edges by the positions of their ends, the way round each triangle runs them: an edge none runs the
+        // other way is on the outline, whether or not the triangles on either side share their vertices (the hotspot cut
+        // gives each piece its own)
+        static void AddEdges(NativeList<int> indices, NativeList<float3> positions, NativeParallelHashSet<float3x2> edges)
         {
-            onOutline.Clear();
-            onOutline.Resize(vertexCount, NativeArrayOptions.ClearMemory);
-            using var edges = new NativeParallelHashSet<int2>(indices.Length, Allocator.Temp);
             for (int i = 0; i + 2 < indices.Length; i += 3)
             {
-                edges.Add(new int2(indices[i], indices[i + 1]));
-                edges.Add(new int2(indices[i + 1], indices[i + 2]));
-                edges.Add(new int2(indices[i + 2], indices[i]));
-            }
-            for (int i = 0; i + 2 < indices.Length; i += 3)
-            {
-                for (int c = 0; c < 3; c++)
-                {
-                    var from = indices[i + c]; var to = indices[i + (c + 1) % 3];
-                    if (edges.Contains(new int2(to, from)))
-                        continue;
-                    onOutline[from] = true;
-                    onOutline[to] = true;
-                }
+                edges.Add(new float3x2(positions[indices[i]],     positions[indices[i + 1]]));
+                edges.Add(new float3x2(positions[indices[i + 1]], positions[indices[i + 2]]));
+                edges.Add(new float3x2(positions[indices[i + 2]], positions[indices[i]]));
             }
         }
 
@@ -388,7 +370,8 @@ namespace Chisel.Core
             if (!buffer.IsCreated)
                 return;
             ref var surfaces = ref buffer.Value.surfaces;
-            using var edges = new NativeParallelHashSet<int2>(64, Allocator.Temp);
+            // by the positions of their ends (AddEdges)
+            using var edges = new NativeParallelHashSet<float3x2>(64, Allocator.Temp);
             for (int s = 0; s < surfaces.Length; s++)
             {
                 ref var surface = ref surfaces[s];
@@ -400,18 +383,18 @@ namespace Chisel.Core
                 edges.Clear();
                 for (int i = 0; i + 2 < indices.Length; i += 3)
                 {
-                    edges.Add(new int2(indices[i], indices[i + 1]));
-                    edges.Add(new int2(indices[i + 1], indices[i + 2]));
-                    edges.Add(new int2(indices[i + 2], indices[i]));
+                    edges.Add(new float3x2(vertices[indices[i]],     vertices[indices[i + 1]]));
+                    edges.Add(new float3x2(vertices[indices[i + 1]], vertices[indices[i + 2]]));
+                    edges.Add(new float3x2(vertices[indices[i + 2]], vertices[indices[i]]));
                 }
                 for (int i = 0; i + 2 < indices.Length; i += 3)
                 {
                     for (int c = 0; c < 3; c++)
                     {
                         var from = indices[i + c]; var to = indices[i + (c + 1) % 3];
-                        if (edges.Contains(new int2(to, from)))
-                            continue;
                         var a = vertices[from]; var b = vertices[to];
+                        if (edges.Contains(new float3x2(b, a)))
+                            continue;
                         if (!Overlap(new MinMaxAABB { Min = math.min(a, b), Max = math.max(a, b) }, box))
                             continue;
                         outlines.Add(new Outline { from = a, to = b, surface = own ? s : -1 });
