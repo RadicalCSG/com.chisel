@@ -132,7 +132,7 @@ namespace Chisel.Core.Tests
 
         // Decals placed at random over the top and its edges, alone and overlapping
         [Test]
-        public void RandomDecals_LeaveTheModelClosed([Range(0, 39)] int seed)
+        public void RandomDecals_LeaveTheModelClosed([Range(0, 199)] int seed)
         {
             var random = new Random((uint)(seed * 7919 + 13));
             var count  = 1 + seed % 3;

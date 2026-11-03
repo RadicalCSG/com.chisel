@@ -383,6 +383,23 @@ namespace Chisel.Core.Tests
             AssertNoTriangleWithoutArea(surface);
         }
 
+        // Many corners along one edge, a hair off its line either way: the fill only there is takes angles finer than
+        // the tie between two fills
+        [Test]
+        public void ManyCornersAlongAnEdge_EachAHairOffIt_AreAllPutIn()
+        {
+            var a = new float3(0, 0, 0); var b = new float3(2.181319f, 0, 0); var c = new float3(0.007163098f, 0.1247946f, 0);
+            var corners = new[]
+            {
+                new float3(2.1511562f, 0.0017313212f, 0), new float3(2.1484752f, 0.001885213f, 0), new float3(2.0263617f, 0.008894414f, 0),
+                new float3(0.40829733f, 0.10176986f, 0), new float3(0.28618386f, 0.10877906f, 0), new float3(0.28350273f, 0.10893296f, 0)
+            };
+            using var surface = new Surface(new[] { a, b, c });
+            Assert.That(Split(surface, corners), Is.True);
+            foreach (var corner in corners)
+                Assert.That(surface.Uses(corner), Is.True, $"{corner}");
+        }
+
         [Test]
         public void SeveralCornersOnEdges_AreAllPutIn()
         {
@@ -401,6 +418,16 @@ namespace Chisel.Core.Tests
         {
             using var surface = new Surface(kSquare);
             Assert.That(Split(surface, new float3(1e-4f, 0, 0), new float3(1, 0.01f, 0), new float3(1, -0.01f, 0), Centre), Is.False);
+            Assert.That(surface.TriangleCount, Is.EqualTo(2));
+        }
+
+        // The triangles either side of an inside edge with each their own vertices there (the hotspot cut gives each piece
+        // its own): it is still inside, and a corner near it is left
+        [Test]
+        public void ACornerOnAnInsideEdge_WhoseTrianglesHaveTheirOwnVertices_IsLeft()
+        {
+            using var surface = new Surface(kSquare, shared: false);
+            Assert.That(Split(surface, Centre + new float3(2e-4f, -2e-4f, 0)), Is.False);
             Assert.That(surface.TriangleCount, Is.EqualTo(2));
         }
 
