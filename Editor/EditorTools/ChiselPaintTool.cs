@@ -305,20 +305,31 @@ namespace Chisel.Editors
         {
             if (s_Operation == ChiselPaintOperation.Fill && !s_Filled.Add((hit.generator, hit.surfaceIndex)))
                 return;
-            Undo.RecordObject(hit.generator, "Chisel Displace");
-            var heights = ChiselPaintBrush.DisplacementFor(hit.generator, hit.surfaceIndex);
-            if (heights == null)
-                return;
-            var scale  = hit.generator.transform.lossyScale;
-            var radius = s_Radius / Mathf.Max(Mathf.Abs(scale.x), Mathf.Max(Mathf.Abs(scale.y), Mathf.Abs(scale.z)), 1e-5f);
-            var center = hit.generator.transform.InverseTransformPoint(hit.point);
+            // a fill is of the surface it is on; a dab reaches the surfaces next to it in its plane as well
+            s_Reached.Clear();
+            if (s_Operation == ChiselPaintOperation.Fill)
+                s_Reached.Add((hit.generator, hit.surfaceIndex));
+            else
+                ChiselPaintBrush.DisplacedInReach(hit.generator, hit.surfaceIndex, hit.point, s_Radius, s_Reached);
             var strength = s_Strength * ChiselPaintBrush.kDisplacementRate;
-            if (ChiselPaintBrush.Dab(heights, ChiselPaintBrush.kDisplacementMode, s_Operation, Vector4.one * s_Value, center, radius, strength, s_Hardness))
+            foreach (var (generator, surfaceIndex) in s_Reached)
             {
-                hit.generator.DisplacementChanged();
-                EditorUtility.SetDirty(hit.generator);
+                Undo.RecordObject(generator, "Chisel Displace");
+                var heights = ChiselPaintBrush.DisplacementFor(generator, surfaceIndex);
+                if (heights == null)
+                    continue;
+                var scale  = generator.transform.lossyScale;
+                var radius = s_Radius / Mathf.Max(Mathf.Abs(scale.x), Mathf.Max(Mathf.Abs(scale.y), Mathf.Abs(scale.z)), 1e-5f);
+                var center = generator.transform.InverseTransformPoint(hit.point);
+                if (ChiselPaintBrush.Dab(heights, ChiselPaintBrush.kDisplacementMode, s_Operation, Vector4.one * s_Value, center, radius, strength, s_Hardness))
+                {
+                    generator.DisplacementChanged();
+                    EditorUtility.SetDirty(generator);
+                }
             }
         }
+
+        static readonly List<(ChiselGeneratorComponent, int)> s_Reached = new();
 
         static GUIStyle s_TooltipStyle;
 
