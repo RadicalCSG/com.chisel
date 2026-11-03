@@ -149,6 +149,27 @@ namespace Chisel.Core.Tests
             AssertClosed(harness);
         }
 
+        // A polygon over an edge, taken by the top but not by the side past its angle: the side is cut by every part, so
+        // the top has to be too, or the two have different points on the edge between them
+        [TestCase(0.2f)]
+        [TestCase(-0.35f)]
+        [TestCase(0.6f)]
+        public void APolygonDecalOverAnEdge_TakenOnOneSideOnly_LeavesTheModelClosed(float turn)
+        {
+            float2[] lShape =
+            {
+                new float2(-0.9f, -1.1f), new float2(1.1f, -1.1f), new float2(1.1f, -0.1f),
+                new float2( 0.1f, -0.1f), new float2(0.1f,  0.9f), new float2(-0.9f, 0.9f)
+            };
+            // about 22 degrees from the top's normal, 68 from the side's
+            var slanted = math.mul(quaternion.LookRotation(math.normalize(new float3(-0.4f, -1, 0)), new float3(0, 0, 1)), quaternion.RotateZ(turn));
+            var decal = Decal(1, new float3(2, 0, 0.3f), slanted, new float3(1, 1, 1.2f), ChiselDecalProjection.Polygon);
+            decal.outlineCount = lShape.Length;
+            decal.settings.maxAngle = 50;
+            using var harness = Build(new[] { decal }, lShape);
+            AssertClosed(harness);
+        }
+
         [Test]
         public void ADecalOverAnEdge_LeavesTheModelClosed()
         {
