@@ -88,12 +88,9 @@ namespace Chisel.Core
             if (captureExact) capture.Write(value);
         }
 
-        void WriteVertex(in ExactOutputVertex vertex)
+        void CaptureVertex(in ExactOutputVertex vertex)
         {
             var position = new float3(vertex.x, vertex.y, vertex.z);
-            output.Write(position);
-            if (!captureExact)
-                return;
             capture.Write(vertex.vertex.X);
             capture.Write(vertex.vertex.Y);
             capture.Write(vertex.vertex.Z);
@@ -245,7 +242,7 @@ namespace Chisel.Core
                     }
                     Count(ExactCSGStat.Faces);
                     builder.routingErrors = 0;
-                    var failure = builder.BuildFace(surface, faceCount, ref touching, ref routingRows, ref lookupStart, ref lookupEnd, ref lookupBrush);
+                    var failure = builder.BuildFace(surface, ref exactBrushCache[brushNodeOrder].Value, ref touching, ref routingRows, ref lookupStart, ref lookupEnd, ref lookupBrush);
                     Count(ExactCSGStat.RoutingOutOfRange, builder.routingErrors);
                     if (failure != ExactFaceFailure.None)
                     {
@@ -256,7 +253,14 @@ namespace Chisel.Core
 
                     int partCount = (builder.alignedEdges.Length > 0 ? 1 : 0) + (builder.reverseAlignedEdges.Length > 0 ? 1 : 0) +
                                     (builder.discardedEdges.Length > 0 ? 1 : 0);
+                    // the face's vertices once, the parts' triangles index them (the capture has them by part)
                     Write(partCount);
+                    if (partCount > 0)
+                    {
+                        output.Write(builder.vertices.Length);
+                        for (int v = 0; v < builder.vertices.Length; v++)
+                            output.Write(new float3(builder.vertices[v].x, builder.vertices[v].y, builder.vertices[v].z));
+                    }
                     for (int pass = 0; pass < 3; pass++)
                     {
                         ref var edges = ref (pass == 0 ? ref builder.alignedEdges : ref (pass == 1 ? ref builder.reverseAlignedEdges : ref builder.discardedEdges));
@@ -273,9 +277,12 @@ namespace Chisel.Core
                         }
                         // the discarded part is written as Inside (GenerateSurfaceTrianglesJob.kDiscardedPart)
                         Write((int)(pass == 0 ? CategoryIndex.SelfAligned : pass == 1 ? CategoryIndex.SelfReverseAligned : CategoryIndex.Inside));
-                        Write(builder.vertices.Length);
-                        for (int v = 0; v < builder.vertices.Length; v++)
-                            WriteVertex(builder.vertices[v]);
+                        if (captureExact)
+                        {
+                            capture.Write(builder.vertices.Length);
+                            for (int v = 0; v < builder.vertices.Length; v++)
+                                CaptureVertex(builder.vertices[v]);
+                        }
                         Write(triangles.Length);
                         for (int t = 0; t < triangles.Length; t++)
                             Write(triangles[t]);

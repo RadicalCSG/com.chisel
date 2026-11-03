@@ -116,6 +116,7 @@ namespace Chisel.Core
         public ExactList<byte>              nearFace;           // per touching brush: its bounds meet the face's, so it can meet the face
         public ExactList<byte>              coverage;           // per touching brush: kMisses, kCovers or kCuts the face
         public ExactList<byte>              coveredCategory;    // per touching brush: the category it gives the part it covers
+        public ExactList<sbyte>             planeSame;          // per plane: SamePlane with the face (Coverage), where it was asked
         public ExactList<int>               lookupRegion;       // per routing lookup: region index or -1
         public ExactList<int>               regionOrientation;  // per region, for the current line
         public ExactList<byte>              leftInside;         // per region: membership of the left side
@@ -146,6 +147,7 @@ namespace Chisel.Core
                 nearFace            = new ExactList<byte>(16),
                 coverage            = new ExactList<byte>(16),
                 coveredCategory     = new ExactList<byte>(16),
+                planeSame           = new ExactList<sbyte>(64),
                 lookupRegion        = new ExactList<int>(16),
                 regionOrientation   = new ExactList<int>(16),
                 leftInside          = new ExactList<byte>(16),
@@ -160,7 +162,7 @@ namespace Chisel.Core
         public void Dispose()
         {
             planes.Dispose(); polygonPool.Dispose(); signs.Dispose(); regions.Dispose(); lines.Dispose(); owners.Dispose();
-            events.Dispose(); order.Dispose(); intervals.Dispose(); nearFace.Dispose(); coverage.Dispose(); coveredCategory.Dispose(); lookupRegion.Dispose(); regionOrientation.Dispose();
+            events.Dispose(); order.Dispose(); intervals.Dispose(); nearFace.Dispose(); coverage.Dispose(); coveredCategory.Dispose(); planeSame.Dispose(); lookupRegion.Dispose(); regionOrientation.Dispose();
             leftInside.Dispose(); rightInside.Dispose(); vertices.Dispose(); alignedEdges.Dispose(); reverseAlignedEdges.Dispose();
             discardedEdges.Dispose();
         }
@@ -274,7 +276,7 @@ namespace Chisel.Core
 
         // ---- the face ---------------------------------------------------------------------------------------------
 
-        public ExactFaceFailure BuildFace(int faceId, int faceCount,
+        public ExactFaceFailure BuildFace(int faceId, ref ExactBrush own,
                                           ref ExactList<ExactTouchingBrush> touching,
                                           ref ExactList<ushort> routingRows,
                                           ref ExactList<int> lookupStart, ref ExactList<int> lookupEnd,
@@ -289,7 +291,7 @@ namespace Chisel.Core
                 return ExactFaceFailure.InvalidPlane;
 
             int boundBase = planes.Length;
-            failure = BuildRegions(faceId, faceCount, boundBase, ref touching, out bool uniform);
+            failure = BuildRegions(faceId, ref own, ref touching, out bool uniform);
             if (failure == ExactFaceFailure.None && regions.Length > 0)
             {
                 // No brush cuts the face, so all of it routes the same way: one that is not drawn has nothing to write
@@ -388,7 +390,9 @@ namespace Chisel.Core
             return ExactFaceFailure.None;
         }
 
-        public ExactFaceFailure PolytopeCorners(ref ExactList<ExactVertex> corners)
+        // The corners of the polytope the planes enclose, and each face's polygon (offset and count into faceEdges; none
+        // when the face has no area)
+        public ExactFaceFailure PolytopeCorners(ref ExactList<ExactVertex> corners, ref ExactList<int2> faces, ref ExactList<ExactPolygonEdge> faceEdges)
         {
             int first = corners.Length;
             int faceCount = planes.Length;
@@ -398,6 +402,7 @@ namespace Chisel.Core
                 polygonPool.Clear();
                 var result = FacePolygon(f, faceCount, faceCount, out var polygon);
                 planes.Resize(faceCount);
+                faces.Add(new int2(faceEdges.Length, result == ExactFaceFailure.None ? polygon.count : 0));
                 if (result != ExactFaceFailure.None)
                 {
                     if (failure == ExactFaceFailure.None)
@@ -406,6 +411,7 @@ namespace Chisel.Core
                 }
                 for (int e = 0; e < polygon.count; e++)
                 {
+                    faceEdges.Add(polygonPool[polygon.offset + e]);
                     var start = polygonPool[polygon.offset + e].start;
                     bool known = false;
                     for (int c = first; c < corners.Length && !known; c++)
@@ -418,20 +424,22 @@ namespace Chisel.Core
             return failure;
         }
 
-        // Region 0 is the face; the regions of the brushes that cut it are added by CutRegions.
-        ExactFaceFailure BuildRegions(int faceId, int faceCount, int boundBase, ref ExactList<ExactTouchingBrush> touching, out bool uniform)
+        // Region 0 is the face, as the brush's exact input made it (ExactBrush.faces); the regions of the brushes that cut
+        // it are added by CutRegions.
+        ExactFaceFailure BuildRegions(int faceId, ref ExactBrush own, ref ExactList<ExactTouchingBrush> touching, out bool uniform)
         {
             uniform = false;
-            var failure = FacePolygon(faceId, faceCount, boundBase, out var polygon);
-            if (failure != ExactFaceFailure.None || polygon.IsEmpty)
-                return failure;
+            var range = own.faces[faceId];
+            if (range.y < 3)
+                return ExactFaceFailure.None;
+            var polygon = new ExactPolygonRange { offset = polygonPool.Length, count = range.y };
+            for (int e = 0; e < range.y; e++)
+                polygonPool.Add(own.faceEdges[range.x + e]);
             var face = planes[faceId];
             regions.Add(new ExactRegion { polygon = polygon, brush = -1, category = 0 });
 
             // A brush whose bounds miss the face's misses the face: it cuts no region and has no interval on its lines
-            var faceBounds = new MinMaxAABB { Min = new float3(float.PositiveInfinity), Max = new float3(float.NegativeInfinity) };
-            for (int e = 0; e < polygon.count; e++)
-                ExactBrushes.Include(ref faceBounds, polygonPool[polygon.offset + e].start);
+            var faceBounds = own.faceBounds[faceId];
             nearFace.Clear();
             for (int t = 0; t < touching.Length; t++)
             {
@@ -442,6 +450,7 @@ namespace Chisel.Core
             // Whether each brush misses, covers or cuts the face, from where the face's corners lie
             uniform = true;
             coverage.Clear(); coveredCategory.Clear();
+            planeSame.Resize(planes.Length);
             for (int t = 0; t < touching.Length; t++)
             {
                 byte kind = kMisses, category = 0;
@@ -459,7 +468,9 @@ namespace Chisel.Core
         const byte kMisses = 0, kCovers = 1, kCuts = 2;
 
         // A brush covers the face when every corner is within all its planes that do not lie in the face, and misses it
-        // when all corners are on the outside of one of them: then it makes no region, or one that is all of the face.
+        // when all corners are on the outside of one of them: then it makes no region, or one that is all of the face
+        // (clipping the face to its planes, CutRegions, would keep all of it or none). category: what the part it covers
+        // carries, when it covers or cuts the face.
         byte Coverage(in ExactPlane face, ExactPolygonRange polygon, ref ExactTouchingBrush brush, out byte category)
         {
             category = 0;
@@ -467,6 +478,7 @@ namespace Chisel.Core
             for (int p = 0; p < brush.planeCount; p++)
             {
                 int same = ExactPredicates.SamePlane(face, planes[brush.planeOffset + p]);
+                planeSame[brush.planeOffset + p] = (sbyte)same;
                 if (same == 0) continue;
                 if (coplanar != 0 && coplanar != same) return kMisses;     // flat brush: covers nothing
                 coplanar = same;
@@ -475,7 +487,7 @@ namespace Chisel.Core
             for (int p = 0; p < brush.planeCount; p++)
             {
                 var plane = planes[brush.planeOffset + p];
-                if (ExactPredicates.SamePlane(face, plane) != 0)
+                if (planeSame[brush.planeOffset + p] != 0)
                     continue;
                 bool anyInside = false, allInside = true;
                 for (int e = 0; e < polygon.count; e++)
@@ -489,48 +501,38 @@ namespace Chisel.Core
                 if (!allInside)
                     covers = false;
             }
-            if (!covers)
-                return kCuts;
             category = coplanar > 0 ? brush.alignedCategory : (coplanar < 0 ? brush.reverseAlignedCategory : brush.insideCategory);
-            return kCovers;
+            return covers ? kCovers : kCuts;
         }
 
-        // Region 0 is the face, made by BuildRegions; after it, one region per routing touching brush that covers part of it.
+        // Region 0 is the face, made by BuildRegions; after it, one region per routing touching brush that covers part of
+        // it: all of the face for one that covers it, the face clipped to the planes (that are not the face's) of one
+        // that cuts it (BuildRegions found which).
         ExactFaceFailure CutRegions(int faceId, ref ExactList<ExactTouchingBrush> touching)
         {
             var failure = ExactFaceFailure.None;
             var face = planes[faceId];
             for (int t = 0; t < touching.Length; t++)
             {
+                if (coverage[t] == kMisses)
+                    continue;
                 ref var brush = ref touching[t];
-                if (!brush.routes || nearFace[t] == 0)
-                    continue;
-                // Face to face with this face? Then it lies on one side of it and only its other planes cut the face.
-                int coplanar = 0;
-                for (int p = 0; p < brush.planeCount; p++)
-                {
-                    int same = ExactPredicates.SamePlane(face, planes[brush.planeOffset + p]);
-                    if (same == 0) continue;
-                    if (coplanar != 0 && coplanar != same) { coplanar = 2; break; }   // flat brush: covers nothing
-                    coplanar = same;
-                }
-                if (coplanar == 2)
-                    continue;
                 var region = regions[0].polygon;
-                for (int p = 0; p < brush.planeCount && !region.IsEmpty; p++)
+                if (coverage[t] == kCuts)
                 {
-                    int id = brush.planeOffset + p;
-                    var plane = planes[id];
-                    if (ExactPredicates.SamePlane(face, plane) != 0)
+                    for (int p = 0; p < brush.planeCount && !region.IsEmpty; p++)
+                    {
+                        int id = brush.planeOffset + p;
+                        if (planeSame[id] != 0)
+                            continue;
+                        region = Clip(region, face, planes[id], id, ref failure);
+                    }
+                    if (failure != ExactFaceFailure.None)
+                        return failure;
+                    if (region.IsEmpty)
                         continue;
-                    region = Clip(region, face, plane, id, ref failure);
                 }
-                if (failure != ExactFaceFailure.None)
-                    return failure;
-                if (region.IsEmpty)
-                    continue;
-                var category = coplanar > 0 ? brush.alignedCategory : (coplanar < 0 ? brush.reverseAlignedCategory : brush.insideCategory);
-                regions.Add(new ExactRegion { polygon = region, brush = t, category = category });
+                regions.Add(new ExactRegion { polygon = region, brush = t, category = coveredCategory[t] });
             }
             return ExactFaceFailure.None;
         }

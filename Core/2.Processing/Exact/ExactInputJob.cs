@@ -18,6 +18,10 @@ namespace Chisel.Core
         // cannot be made exact, or planes that do not close it within the world.
         public int                    cornerCount;
         public MinMaxAABB             bounds;       // contains the corners; empty without them
+        // by face: its polygon (offset and count into faceEdges, none when it has no area) and the box round it
+        public BlobArray<int2>             faces;
+        public BlobArray<MinMaxAABB>       faceBounds;
+        public BlobArray<ExactPolygonEdge> faceEdges;
     }
 
     static class ExactBrushes
@@ -29,6 +33,8 @@ namespace Chisel.Core
             failure = ExactCSGStat.Count;
             builder.planes.Clear();
             corners.Clear();
+            var faces     = new ExactList<int2>(8);
+            var faceEdges = new ExactList<ExactPolygonEdge>(32);
 
             bool valid = meshRef.IsCreated;
             if (valid)
@@ -44,7 +50,7 @@ namespace Chisel.Core
                     failure = ExactCSGStat.InvalidPlane;
             } else if (planeCount > 0)
             {
-                if (builder.PolytopeCorners(ref corners) != ExactFaceFailure.None)
+                if (builder.PolytopeCorners(ref corners, ref faces, ref faceEdges) != ExactFaceFailure.None)
                     failure = ExactCSGStat.OpenBrush;
                 else
                 {
@@ -64,6 +70,23 @@ namespace Chisel.Core
                 cornerArray[c] = corners[c];
             root.cornerCount = cornerCount;
             root.bounds      = box;
+            // the faces only of a brush that encloses volume: no other one is built
+            int faceCount   = cornerCount > 0 ? faces.Length : 0;
+            var faceArray   = blobBuilder.Allocate(ref root.faces, faceCount);
+            var boundsArray = blobBuilder.Allocate(ref root.faceBounds, faceCount);
+            var edgeArray   = blobBuilder.Allocate(ref root.faceEdges, faceCount > 0 ? faceEdges.Length : 0);
+            for (int e = 0; e < edgeArray.Length; e++)
+                edgeArray[e] = faceEdges[e];
+            for (int f = 0; f < faceCount; f++)
+            {
+                faceArray[f] = faces[f];
+                var faceBox = new MinMaxAABB { Min = new float3(float.PositiveInfinity), Max = new float3(float.NegativeInfinity) };
+                for (int e = 0; e < faces[f].y; e++)
+                    Include(ref faceBox, faceEdges[faces[f].x + e].start);
+                boundsArray[f] = faceBox;
+            }
+            faces.Dispose();
+            faceEdges.Dispose();
             return blobBuilder.CreateBlobAssetReference<ExactBrush>(Allocator.Persistent); // disposed through ExactInputJob's dispose list or CacheRemappingJob
         }
 
