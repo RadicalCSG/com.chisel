@@ -357,6 +357,32 @@ namespace Chisel.Core.Tests
             AssertNoTriangleWithoutArea(surface);
         }
 
+        // A sliver along the edge can only be filled again with slivers; left whole, it would leave the crack
+        [Test]
+        public void ACornerOnASliversLongEdge_IsPutIntoIt()
+        {
+            var a = new float3(0, 0, 0); var b = new float3(2.1434326f, 0, 0); var c = new float3(0, 0.0225f, 0);
+            var corner = new float3(2.0184326f, 0, 0);
+            using var surface = new Surface(new[] { a, b, c });
+            Assert.That(Split(surface, corner), Is.True);
+            Assert.That(surface.Uses(corner), Is.True);
+            AssertNoTriangleWithoutArea(surface);
+        }
+
+        // Pieces with a corner so small its cosine rounds to 1 still have an area, and a corner near the tip, so near two
+        // edges, goes into the one it is on
+        [Test]
+        public void CornersOnAThinTrianglesEdge_MakingTinyAngles_AreAllPutIn()
+        {
+            var a = new float3(0, 0, 0); var b = new float3(1.1853027f, 0, 0); var c = new float3(0, 0.0032536983f, 0);
+            var near = new float3(0.06903076f, 0, 0); var far = new float3(1.116272f, 0, 0);
+            using var surface = new Surface(new[] { a, b, c });
+            Assert.That(Split(surface, near, far), Is.True);
+            Assert.That(surface.Uses(near), Is.True);
+            Assert.That(surface.Uses(far), Is.True);
+            AssertNoTriangleWithoutArea(surface);
+        }
+
         [Test]
         public void SeveralCornersOnEdges_AreAllPutIn()
         {

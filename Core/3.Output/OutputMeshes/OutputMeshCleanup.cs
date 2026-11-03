@@ -814,7 +814,18 @@ namespace Chisel.Core
                         var along = math.dot(points[p] - p0, direction) / length;
                         if (along <= kJunctionDistance || along >= length - kJunctionDistance)
                             continue;
-                        if (math.distance(points[p], p0 + direction * (along / length)) > kJunctionDistance)
+                        var off = math.distance(points[p], p0 + direction * (along / length));
+                        if (off > kJunctionDistance)
+                            continue;
+                        // into the edge it is nearest to only: one near a sliver's tip is near two of them
+                        var nearer = false;
+                        for (int k = 1; k < 3 && !nearer; k++)
+                        {
+                            var other = (c + k) % 3;
+                            var d = DistanceToSegment(points[p], collider[triangle[other]], collider[triangle[(other + 1) % 3]]);
+                            nearer = d < off || (d == off && other < c);
+                        }
+                        if (nearer)
                             continue;
                         onEdge.Add(new float2(along, p));
                     }
@@ -860,14 +871,15 @@ namespace Chisel.Core
                     changed = true;
                     continue;
                 }
-                // the triangle with its new corners filled again, in its own plane
+                // the triangle with its new corners filled again, in its own plane: with slivers where it is one itself,
+                // as a crack where it was left whole would be worse
                 var normal = math.cross(collider[triangle.y] - pa, collider[triangle.z] - pa);
                 var u = math.normalizesafe(collider[triangle.y] - pa);
                 var v = math.cross(math.normalizesafe(normal), u);
                 flat.Clear();
                 for (int r = 0; r < ring.Length; r++)
                     flat.Add(new float2(math.dot(collider[ring[r]] - pa, u), math.dot(collider[ring[r]] - pa, v)));
-                if (!(math.lengthsq(normal) > 0) || !SurfaceMesh.Fill(ring, flat, filled, collider))
+                if (!(math.lengthsq(normal) > 0) || !SurfaceMesh.Fill(ring, flat, filled, collider, 0))
                 {
                     // left as it was
                     render.Resize(added, NativeArrayOptions.UninitializedMemory);
@@ -888,6 +900,13 @@ namespace Chisel.Core
                 indices.AddRange(output.AsArray());
             }
             return changed;
+        }
+
+        static float DistanceToSegment(float3 p, float3 a, float3 b)
+        {
+            var ab = b - a;
+            var t = math.saturate(math.dot(p - a, ab) / math.max(math.lengthsq(ab), 1e-30f));
+            return math.distance(p, a + ab * t);
         }
 
         struct ByX : System.Collections.Generic.IComparer<float2>
@@ -1501,8 +1520,10 @@ namespace Chisel.Core
             // The polygon around a removed vertex filled with triangles: its fattest corner cut off first each time (ear
             // clipping), or else, where that leaves three corners in a line last, the fattest fan from one of its corners.
             // Corners about as fat as each other go in the order from its least corner (by x, y, z of positions), so the
-            // same polygon is filled the same way whichever corner it came in from.
-            public static bool Fill(NativeList<int> ring, NativeList<float2> points, NativeList<int3> filled, NativeList<float3> positions)
+            // same polygon is filled the same way whichever corner it came in from. No triangle has a corner of minAngle or
+            // less.
+            public static bool Fill(NativeList<int> ring, NativeList<float2> points, NativeList<int3> filled, NativeList<float3> positions,
+                                    float minAngle = kMinAngle)
             {
                 var least = 0;
                 for (int i = 1; i < ring.Length; i++)
@@ -1517,7 +1538,7 @@ namespace Chisel.Core
                     startRing.Add(ring[(least + i) % ring.Length]);
                     startPoints.Add(points[(least + i) % ring.Length]);
                 }
-                return Fill(startRing, startPoints, filled);
+                return Fill(startRing, startPoints, filled, minAngle);
             }
 
             static bool Less(float3 a, float3 b)
@@ -1530,15 +1551,15 @@ namespace Chisel.Core
             // How much fatter a corner has to be to be taken before one that comes first
             const float kTieAngle = 1e-4f;
 
-            static bool Fill(NativeList<int> ring, NativeList<float2> points, NativeList<int3> filled)
+            static bool Fill(NativeList<int> ring, NativeList<float2> points, NativeList<int3> filled, float minAngle)
             {
-                if (Clip(ring, points, filled))
+                if (Clip(ring, points, filled, minAngle))
                     return true;
                 using var fan = new NativeList<int3>(ring.Length, Allocator.Temp);
                 var bestAngle = 0.0f;
                 for (int apex = 0; apex < ring.Length; apex++)
                 {
-                    var angle = Fan(apex, ring, points, fan);
+                    var angle = Fan(apex, ring, points, fan, minAngle);
                     if (angle > bestAngle + kTieAngle)
                     {
                         bestAngle = angle;
@@ -1550,7 +1571,7 @@ namespace Chisel.Core
             }
 
             // The triangles from one corner to every edge it isn't on, and their smallest angle; 0 when one is no good
-            static float Fan(int apex, NativeList<int> ring, NativeList<float2> points, NativeList<int3> fan)
+            static float Fan(int apex, NativeList<int> ring, NativeList<float2> points, NativeList<int3> fan, float minAngle)
             {
                 fan.Clear();
                 var smallest = float.MaxValue;
@@ -1561,7 +1582,7 @@ namespace Chisel.Core
                     if (!(Cross(points[from] - points[apex], points[to] - points[from]) > 0))
                         return 0;
                     var angle = SmallestAngle(points[apex], points[from], points[to]);
-                    if (!(angle > kMinAngle))
+                    if (!(angle > minAngle))
                         return 0;
                     for (int other = 0; other < ring.Length; other++)
                     {
@@ -1574,7 +1595,7 @@ namespace Chisel.Core
                 return smallest;
             }
 
-            static bool Clip(NativeList<int> ring, NativeList<float2> points, NativeList<int3> filled)
+            static bool Clip(NativeList<int> ring, NativeList<float2> points, NativeList<int3> filled, float minAngle)
             {
                 filled.Clear();
                 using var left = new NativeList<int>(ring.Length, Allocator.Temp);
@@ -1601,7 +1622,7 @@ namespace Chisel.Core
                         if (blocked)
                             continue;
                         var angle = SmallestAngle(points[prev], points[self], points[next]);
-                        if (angle > kMinAngle && angle > bestAngle + kTieAngle) { bestAngle = angle; best = i; }
+                        if (angle > minAngle && angle > bestAngle + kTieAngle) { bestAngle = angle; best = i; }
                     }
                     if (best < 0)
                         return false;
@@ -1609,7 +1630,7 @@ namespace Chisel.Core
                     left.RemoveAt(best);
                 }
                 if (!(Cross(points[left[1]] - points[left[0]], points[left[2]] - points[left[1]]) > 0) ||
-                    !(SmallestAngle(points[left[0]], points[left[1]], points[left[2]]) > kMinAngle))
+                    !(SmallestAngle(points[left[0]], points[left[1]], points[left[2]]) > minAngle))
                     return false;
                 filled.Add(new int3(ring[left[0]], ring[left[1]], ring[left[2]]));
                 return true;
@@ -1633,12 +1654,12 @@ namespace Chisel.Core
 
             static float Angle(float2 a, float2 b) => Angle(new float3(a, 0), new float3(b, 0));
 
+            // atan2 rather than acos: the cosine of a tiny angle rounds to 1
             static float Angle(float3 a, float3 b)
             {
-                var lengths = math.length(a) * math.length(b);
-                if (!(lengths > 0))
+                if (!(math.lengthsq(a) > 0 && math.lengthsq(b) > 0))
                     return 0;
-                return math.acos(math.clamp(math.dot(a, b) / lengths, -1, 1));
+                return math.atan2(math.length(math.cross(a, b)), math.dot(a, b));
             }
 
             // Lawson's flips, for the smallest angle of each pair of triangles

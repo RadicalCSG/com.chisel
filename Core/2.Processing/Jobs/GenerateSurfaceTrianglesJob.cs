@@ -868,13 +868,24 @@ namespace Chisel.Core
 				for (int s = 0; s < surfaceCount; s++)
 				{
 					var partCount = input.Read<int>();
+					if (partCount == 0)
+						continue;
+					// the face's vertices once, then each part's triangles into them; a part after the first gets a copy of
+					// them, as its vertices take its own normal (UniqueVertexMapper.RegisterVertices)
+					var vertexCount = input.Read<int>();
+					var faceStart   = vertices.Length;
+					for (int v = 0; v < vertexCount; v++)
+						vertices.Add(input.Read<float3>());
 					for (int p = 0; p < partCount; p++)
 					{
-						var category     = input.Read<int>();
-						var vertexCount  = input.Read<int>();
-						var vertexOffset = vertices.Length;
-						for (int v = 0; v < vertexCount; v++)
-							vertices.Add(input.Read<float3>());
+						var vertexOffset = faceStart;
+						if (p > 0)
+						{
+							vertexOffset = vertices.Length;
+							for (int v = 0; v < vertexCount; v++)
+								vertices.Add(vertices[faceStart + v]);
+						}
+						var category   = input.Read<int>();
 						var indexCount = input.Read<int>();
 						var first      = partIndices.Length;
 						for (int i = 0; i < indexCount; i++)
