@@ -140,6 +140,57 @@ namespace Chisel.Components.Tests
                         "out of reach of the other top: " + string.Join(", ", reached.ConvertAll(r => $"{(r.generator == a ? "a" : r.generator == b ? "b" : "higher")} {r.surfaceIndex}")));
         }
 
+        // A subtractive box takes the end of the top away: a dab over its edge raises only what is still drawn, or the
+        // raised columns would stand over the hole on nothing
+        [Test]
+        public void ADabOverARemovedPart_LeavesItFlat()
+        {
+            var model = Model();
+            var top = Box(model, new float3(0, 0, 0), new float3(2, 1, 2));
+            var hole = Box(model, new float3(1.3f, 0.5f, -1), new float3(3, 1.5f, 3));
+            hole.Operation = CSGOperationType.Subtractive;
+            Update();
+            var heights = ChiselPaintBrush.DisplacementFor(top, 0);
+            var drawn = new List<Vector3>();
+            Assert.That(ChiselPaintBrush.DrawnTriangles(top, Vector3.Cross(heights.cellU, heights.cellV), drawn), Is.True, "the model was built");
+            ChiselPaintBrush.Dab(heights, ChiselPaintBrush.kDisplacementMode, ChiselPaintOperation.Add, Vector4.one * 0.4f,
+                                 new Vector3(1.2f, 1, 1), 0.8f, 1, 0.5f, drawn: drawn);
+            int raised = 0, raisedOverTheHole = 0;
+            for (int j = 0; j < heights.resolution.y; j++)
+            {
+                for (int i = 0; i < heights.resolution.x; i++)
+                {
+                    if (!(heights[i, j].x > 0))
+                        continue;
+                    var point = heights.origin + i * heights.cellU + j * heights.cellV;
+                    if (point.x > 1.3f + 1e-3f) raisedOverTheHole++;
+                    else                        raised++;
+                }
+            }
+            Assert.That(raised, Is.GreaterThan(0), "nothing raised where the top is drawn");
+            Assert.That(raisedOverTheHole, Is.Zero, "raised over the hole");
+        }
+
+        // A needle (three corners on a line) among what is drawn covers nothing
+        [Test]
+        public void ANeedleAmongWhatIsDrawn_CoversNothing()
+        {
+            var grid = ChiselSurfacePaint.Create(0, ChiselPaintAttribute.Color, ChiselPaintComponents.X, Vector4.zero,
+                                                 new Vector3(0, 1, 0), Vector3.right * 0.25f, Vector3.forward * 0.25f, new Vector2Int(9, 9));
+            var drawn = new List<Vector3>
+            {
+                new Vector3(0, 1, 0), new Vector3(0.5f, 1, 0.5f), new Vector3(2, 1, 2),          // a needle across all of it
+                new Vector3(0, 1, 0), new Vector3(0, 1, 0.6f), new Vector3(0.6f, 1, 0),        // what is drawn: a corner
+            };
+            ChiselPaintBrush.Dab(grid, ChiselPaintBrush.kDisplacementMode, ChiselPaintOperation.Add, Vector4.one * 0.4f,
+                                 new Vector3(1, 1, 1), 5, 1, 1, drawn: drawn);
+            for (int j = 0; j < 9; j++)
+            {
+                for (int i = 0; i < 9; i++)
+                    Assert.That(grid[i, j].x > 0, Is.EqualTo(i + j <= 2), $"point {i}, {j}");
+            }
+        }
+
         // where the cursor was on one top, then the other: the grid points the two share along the seam end up alike
         [Test]
         public void StrokesOnEitherSideOfTheSeam_LeaveTheSeamAlike()

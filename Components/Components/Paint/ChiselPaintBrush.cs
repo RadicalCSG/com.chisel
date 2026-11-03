@@ -1,5 +1,7 @@
 using System.Collections.Generic;
 using Chisel.Core;
+using Unity.Collections;
+using Unity.Entities;
 using Unity.Mathematics;
 using UnityEngine;
 
@@ -89,6 +91,85 @@ namespace Chisel.Components
                         reached.Add((other, s));
                 }
             }
+        }
+
+        /// <summary>
+        /// The triangles the last build drew of a generator's brushes facing the way its surface does (normal, in the
+        /// generator's space), in the generator's space, three corners each: what of the surface is seen, raised or not.
+        /// False when the model hasn't been built, so nothing is known to be hidden.
+        /// </summary>
+        public static bool DrawnTriangles(ChiselGeneratorComponent generator, Vector3 normal, List<Vector3> triangles)
+        {
+            triangles.Clear();
+            var model = generator ? generator.hierarchyItem?.Model : null;
+            if (!model || !model.Node.Valid || !generator.TopTreeNode.Valid)
+                return false;
+            var lookups = ChiselTreeLookup.Value;
+            if (!lookups.HasTree(model.Node))
+                return false;
+            var data = lookups[model.Node];
+            data.lastJobHandle.Complete();
+            if (!data.brushRenderBufferLookup.IsCreated)
+                return false;
+            var modelToGenerator = generator.transform.worldToLocalMatrix * model.transform.localToWorldMatrix;
+            var built = false;
+            AddDrawn(generator.TopTreeNode, data.brushRenderBufferLookup, modelToGenerator, normal.normalized, triangles, ref built);
+            return built;
+        }
+
+        static void AddDrawn(CSGTreeNode node, NativeParallelHashMap<CompactNodeID, BlobAssetReference<ChiselBrushRenderBuffer>> buffers,
+                             Matrix4x4 modelToGenerator, Vector3 normal, List<Vector3> triangles, ref bool built)
+        {
+            if (!node.Valid)
+                return;
+            if (node.Type != CSGNodeType.Brush)
+            {
+                for (int i = 0; i < node.Count; i++)
+                    AddDrawn(node[i], buffers, modelToGenerator, normal, triangles, ref built);
+                return;
+            }
+            if (!buffers.TryGetValue(CompactHierarchyManager.GetCompactNodeID((CSGTreeBrush)node), out var buffer) || !buffer.IsCreated)
+                return;
+            built = true;
+            ref var surfaces = ref buffer.Value.surfaces;
+            for (int s = 0; s < surfaces.Length; s++)
+            {
+                ref var surface = ref surfaces[s];
+                if ((surface.destinationFlags & SurfaceDestinationFlags.Renderable) == 0)
+                    continue;
+                ref var indices = ref surface.indices;
+                ref var vertices = ref surface.colliderVertices;
+                for (int i = 0; i + 2 < indices.Length; i += 3)
+                {
+                    var a = modelToGenerator.MultiplyPoint3x4(vertices[indices[i]]);
+                    var b = modelToGenerator.MultiplyPoint3x4(vertices[indices[i + 1]]);
+                    var c = modelToGenerator.MultiplyPoint3x4(vertices[indices[i + 2]]);
+                    if (Vector3.Dot(Vector3.Cross(b - a, c - a), normal) <= 0)
+                        continue;
+                    triangles.Add(a); triangles.Add(b); triangles.Add(c);
+                }
+            }
+        }
+
+        // Whether a point is under or over one of the triangles, seen along the surface's normal (either way round)
+        static bool Covered(Vector3 point, IReadOnlyList<Vector3> triangles, Vector3 surfaceNormal)
+        {
+            surfaceNormal = surfaceNormal.normalized;
+            for (int t = 0; t + 2 < triangles.Count; t += 3)
+            {
+                Vector3 a = triangles[t], b = triangles[t + 1], c = triangles[t + 2];
+                // twice its area seen along the normal; a sliver covers nothing (its tests all come out about 0)
+                var area = Vector3.Dot(Vector3.Cross(b - a, c - a), surfaceNormal);
+                if (Mathf.Abs(area) < 1e-8f)
+                    continue;
+                // how much of the triangle's area each corner's opposite edge leaves the point, a fraction of the whole
+                var wa = Vector3.Dot(Vector3.Cross(c - b, point - b), surfaceNormal) / area;
+                var wb = Vector3.Dot(Vector3.Cross(a - c, point - c), surfaceNormal) / area;
+                var wc = 1 - wa - wb;
+                if (wa >= -1e-4f && wb >= -1e-4f && wc >= -1e-4f)
+                    return true;
+            }
+            return false;
         }
 
         // How far a point in a polygon's plane is from it: 0 inside, otherwise from its nearest edge
@@ -401,11 +482,12 @@ namespace Chisel.Components
 
         /// <summary>
         /// One dab on the paint, round a point in the generator's space (measured in the surface's plane), in the mode's
-        /// components. target is the brush's color or value. False when no grid point was in reach.
+        /// components. target is the brush's color or value. drawn: what of the surface is seen (<see cref="DrawnTriangles"/>),
+        /// the grid points not under it are left as they are; null for all of them. False when no grid point was in reach.
         /// </summary>
         public static bool Dab(ChiselSurfacePaint paint, in ChiselPaintMode mode, ChiselPaintOperation operation, Vector4 target,
                                Vector3 center, float radius, float strength, float hardness,
-                               ChiselPaintComponents group = ChiselPaintComponents.None)
+                               ChiselPaintComponents group = ChiselPaintComponents.None, IReadOnlyList<Vector3> drawn = null)
         {
             if (paint == null || !paint.IsValid)
                 return false;
@@ -431,6 +513,8 @@ namespace Chisel.Components
                     offset -= normal * Vector3.Dot(offset, normal);
                     var weight = Weight(offset.magnitude, radius, strength, hardness);
                     if (weight <= 0)
+                        continue;
+                    if (drawn != null && !Covered(paint.origin + i * paint.cellU + j * paint.cellV, drawn, normal))
                         continue;
                     var value = paint[i, j];
                     Vector4 result;
