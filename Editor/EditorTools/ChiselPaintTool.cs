@@ -321,7 +321,10 @@ namespace Chisel.Editors
                 var scale  = generator.transform.lossyScale;
                 var radius = s_Radius / Mathf.Max(Mathf.Abs(scale.x), Mathf.Max(Mathf.Abs(scale.y), Mathf.Abs(scale.z)), 1e-5f);
                 var center = generator.transform.InverseTransformPoint(hit.point);
-                if (ChiselPaintBrush.Dab(heights, ChiselPaintBrush.kDisplacementMode, s_Operation, Vector4.one * s_Value, center, radius, strength, s_Hardness))
+                // what the CSG removed of the surface isn't painted: raised, it would stand on nothing
+                var drawn = ChiselPaintBrush.DrawnTriangles(generator, Vector3.Cross(heights.cellU, heights.cellV), s_Drawn) ? s_Drawn : null;
+                if (ChiselPaintBrush.Dab(heights, ChiselPaintBrush.kDisplacementMode, s_Operation, Vector4.one * s_Value, center, radius, strength, s_Hardness,
+                                         drawn: drawn))
                 {
                     generator.DisplacementChanged();
                     EditorUtility.SetDirty(generator);
@@ -330,6 +333,7 @@ namespace Chisel.Editors
         }
 
         static readonly List<(ChiselGeneratorComponent, int)> s_Reached = new();
+        static readonly List<Vector3> s_Drawn = new();
 
         static GUIStyle s_TooltipStyle;
 
