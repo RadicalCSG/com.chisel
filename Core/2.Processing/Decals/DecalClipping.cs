@@ -358,6 +358,24 @@ namespace Chisel.Core
             return true;
         }
 
+        /// <summary>
+        /// The piece as it is, outside the volume, fanned with the points where the volume crosses its edges: what is
+        /// kept where a cut failed, so the piece on the other side of an edge, cut, still meets it there. False when its
+        /// edges cross the volume at more points than a polygon holds.
+        /// </summary>
+        public static bool KeepWithEdgePoints<TSink>(in DecalVolume volume, in DecalPiece piece, ref TSink sink)
+            where TSink : struct, IDecalPieceSink
+        {
+            var boundary = new DecalClipPolygon();
+            AddEdge(ref boundary, volume, piece.v0, piece.v1);
+            AddEdge(ref boundary, volume, piece.v1, piece.v2);
+            AddEdge(ref boundary, volume, piece.v2, piece.v0);
+            if (boundary.Overflowed)
+                return false;
+            AddPolygon(ref boundary, piece.owner, false, ref sink);
+            return true;
+        }
+
         public static bool Split<TSink>(in DecalVolume volume, in DecalPiece piece, ref TSink sink)
             where TSink : struct, IDecalPieceSink
         {

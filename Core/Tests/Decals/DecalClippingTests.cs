@@ -106,6 +106,46 @@ namespace Chisel.Core.Tests
             Assert.That(total, Is.EqualTo(Area(triangle)).Within(kAreaTolerance + 1e-9 * Area(triangle)), "the pieces don't cover the triangle");
         }
 
+        // Where a cut fails the piece is kept whole, but with the points a cut puts on its edges: the piece across each
+        // edge, cut, meets it there instead of at a T-junction
+        [Test]
+        public void APieceKeptWhereACutFailed_HasTheCutsEdgePoints()
+        {
+            var volume   = UnitBox(transparent: false);
+            var triangle = Triangle(new double3(-1.2, 0.1, -1), new double3(1.3, 0.1, -0.9), new double3(0.2, 0.1, 1.4));
+            triangle.owner = 3;
+            var cut  = Split(volume, triangle);
+            var sink = new ListSink { pieces = new List<(DecalPiece, bool)>() };
+            Assert.That(DecalClipping.KeepWithEdgePoints(volume, triangle, ref sink), Is.True);
+            var kept = sink.pieces;
+
+            var keptPoints = new HashSet<double3>();
+            var area = 0.0;
+            foreach (var (piece, inside) in kept)
+            {
+                Assert.That(inside, Is.False, "kept as it is, not taken by the decal");
+                Assert.That(piece.owner, Is.EqualTo(3), "kept by whoever had it");
+                Assert.That(math.dot(Normal(piece), Normal(triangle)), Is.GreaterThan(0), "a piece is turned over");
+                area += Area(piece);
+                keptPoints.Add(piece.v0.position); keptPoints.Add(piece.v1.position); keptPoints.Add(piece.v2.position);
+            }
+            Assert.That(area, Is.EqualTo(Area(triangle)).Within(kAreaTolerance), "the kept pieces don't cover the triangle");
+
+            // every point the cut put on one of the triangle's edges
+            var onEdges = 0;
+            foreach (var (piece, _) in cut)
+            {
+                foreach (var vertex in new[] { piece.v0, piece.v1, piece.v2 })
+                {
+                    if (math.cmin(vertex.barycentric) > 1e-9)
+                        continue;
+                    onEdges++;
+                    Assert.That(keptPoints.Contains(vertex.position), Is.True, $"the cut's edge point {vertex.position} is missing");
+                }
+            }
+            Assert.That(onEdges, Is.GreaterThan(3), "the volume should cross the triangle's edges");
+        }
+
         static bool OnBoundary(in DecalVolume volume, double3 point)
         {
             for (int i = 0; i < DecalPlanes.kCount; i++)
