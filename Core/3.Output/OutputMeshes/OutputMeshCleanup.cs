@@ -59,6 +59,8 @@ namespace Chisel.Core
         const float kMinAngle        = 1e-3f;
         // How far a corner of another surface may be from an outline edge and still be put into it
         public const float kJunctionDistance = 1e-3f;
+        // How far a corner inside a surface may be from an outline corner and still be taken for it
+        const float kSliverDistance = 1e-4f;
 
         // What the brush's buffer holds, to tell whether the cleanup's last result is still what it would make
         public static unsafe ulong KeyOf(BlobAssetReference<ChiselBrushRenderBuffer> buffer)
@@ -551,10 +553,16 @@ namespace Chisel.Core
                 OpenEdgeCorners(indices, collider, shared, outlineCorner);
                 for (int v = 0; v < render.Length; v++)
                 {
-                    if (!(outlineCorner[v] || openCorners.Contains(collider[v])) || snapOf.ContainsKey(collider[v]))
+                    if (snapOf.ContainsKey(collider[v]))
                         continue;
                     var snapped = Snap(collider[v], cornersAt);
-                    if (math.any(snapped != collider[v]))
+                    if (math.all(snapped == collider[v]))
+                        continue;
+                    // a corner the hotspot cut made inside the surface moves too where it is all but on an outline corner:
+                    // another brush may have it on its outline, and move it there (further, its triangles could turn over;
+                    // the CSG's own needles are the weld's)
+                    var sliver = from.physicsIndices.Length > 0 && math.distancesq(snapped, collider[v]) <= kSliverDistance * kSliverDistance;
+                    if (outlineCorner[v] || openCorners.Contains(collider[v]) || sliver)
                         snapOf.TryAdd(collider[v], snapped);
                 }
             }
@@ -775,13 +783,14 @@ namespace Chisel.Core
                 if (indices[i] < 0 || indices[i] >= vertexCount)
                     return false;
             }
-            // an edge no triangle runs the other way is on the outline
-            using var edges = new NativeParallelHashSet<int2>(indices.Length, Allocator.Temp);
+            // an edge no triangle runs the other way is on the outline (by position: the triangles either side of one may
+            // each have their own vertices there)
+            using var edges = new NativeParallelHashSet<float3x2>(indices.Length, Allocator.Temp);
             for (int i = 0; i < indices.Length; i += 3)
             {
-                edges.Add(new int2(indices[i], indices[i + 1]));
-                edges.Add(new int2(indices[i + 1], indices[i + 2]));
-                edges.Add(new int2(indices[i + 2], indices[i]));
+                edges.Add(new float3x2(collider[indices[i]],     collider[indices[i + 1]]));
+                edges.Add(new float3x2(collider[indices[i + 1]], collider[indices[i + 2]]));
+                edges.Add(new float3x2(collider[indices[i + 2]], collider[indices[i]]));
             }
             var changed = false;
             using var output = new NativeList<int>(indices.Length, Allocator.Temp);
@@ -799,7 +808,7 @@ namespace Chisel.Core
                     var from = triangle[c];
                     var to   = triangle[(c + 1) % 3];
                     ring.Add(from);
-                    if (edges.Contains(new int2(to, from)))
+                    if (edges.Contains(new float3x2(collider[to], collider[from])))
                         continue;
                     if (shared.IsCreated && shared.TryGetValue(EdgeKey(collider[from], collider[to]), out var sharing) && sharing > 1)
                         continue;
@@ -1556,18 +1565,19 @@ namespace Chisel.Core
                 if (Clip(ring, points, filled, minAngle))
                     return true;
                 using var fan = new NativeList<int3>(ring.Length, Allocator.Temp);
-                var bestAngle = 0.0f;
+                var bestAngle = 0.0f; var found = false;
                 for (int apex = 0; apex < ring.Length; apex++)
                 {
                     var angle = Fan(apex, ring, points, fan, minAngle);
-                    if (angle > bestAngle + kTieAngle)
+                    if (angle > 0 && (!found || angle > bestAngle + kTieAngle))
                     {
+                        found = true;
                         bestAngle = angle;
                         filled.Clear();
                         filled.AddRange(fan.AsArray());
                     }
                 }
-                return bestAngle > 0;
+                return found;
             }
 
             // The triangles from one corner to every edge it isn't on, and their smallest angle; 0 when one is no good
@@ -1622,7 +1632,7 @@ namespace Chisel.Core
                         if (blocked)
                             continue;
                         var angle = SmallestAngle(points[prev], points[self], points[next]);
-                        if (angle > minAngle && angle > bestAngle + kTieAngle) { bestAngle = angle; best = i; }
+                        if (angle > minAngle && (best < 0 || angle > bestAngle + kTieAngle)) { bestAngle = angle; best = i; }
                     }
                     if (best < 0)
                         return false;

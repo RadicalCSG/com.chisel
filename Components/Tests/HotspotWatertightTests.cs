@@ -112,8 +112,9 @@ namespace Chisel.Components.Tests
             return MeshManifoldValidation.Classify(vertexArray, indexArray, 0);
         }
 
-        // The edges only one triangle draws, each with any corner that lies on it (a T-junction) or "gap"
-        static string OpenEdges(ChiselModelComponent model)
+        // The edges only one triangle draws, each with any corner that lies on it (a T-junction) or "gap"; or with many,
+        // the edges more than two draw
+        static string OpenEdges(ChiselModelComponent model, bool many = false)
         {
             var points = new List<float3>();
             var uses   = new Dictionary<(float3, float3), int>();
@@ -139,9 +140,14 @@ namespace Chisel.Components.Tests
             var shown = 0;
             foreach (var (edge, n) in uses)
             {
-                if (n != 1 || shown++ >= 12)
+                if ((many ? n <= 2 : n != 1) || shown++ >= 12)
                     continue;
                 var (a, b) = edge;
+                if (many)
+                {
+                    sb.Append($"\n  {a} - {b}: {n}");
+                    continue;
+                }
                 var on = "gap";
                 foreach (var p in points)
                 {
@@ -168,7 +174,7 @@ namespace Chisel.Components.Tests
             if (cut)
                 Assert.That(triangleCount, Is.GreaterThan(12), "the surfaces were not cut");
             Assert.That(report.degenerateTriangleCount, Is.Zero, "triangles without area");
-            Assert.That(report.nonManifoldEdgeCount, Is.Zero, "edges drawn by more than two triangles");
+            Assert.That(report.nonManifoldEdgeCount, Is.Zero, $"edges drawn by more than two triangles:{OpenEdges(model, many: true)}");
             Assert.That(report.boundaryEdgeCount, Is.Zero,
                         $"edges drawn by one triangle, {report.boundaryEdgeLength} long in all:{OpenEdges(model)}");
         }
@@ -201,7 +207,7 @@ namespace Chisel.Components.Tests
         }
 
         [Test]
-        public void RandomBoxes_AreClosed([NUnit.Framework.Range(0, 11)] int seed, [Values] bool hotspot)
+        public void RandomBoxes_AreClosed([NUnit.Framework.Range(0, 59)] int seed, [Values] bool hotspot)
         {
             var random = new Unity.Mathematics.Random((uint)(seed * 104729 + 7));
             var model  = Model();
@@ -214,6 +220,24 @@ namespace Chisel.Components.Tests
                 Box(model, min, min + size, hotspot);
             }
             AssertClosed(model, hotspot);
+        }
+
+        // Turned every way, so no crease or section line lies along an axis
+        [Test]
+        public void RandomTurnedBoxes_AreClosed([NUnit.Framework.Range(0, 59)] int seed)
+        {
+            var random = new Unity.Mathematics.Random((uint)(seed * 7907 + 3));
+            var model  = Model();
+            var count  = 2 + seed % 4;
+            for (int b = 0; b < count; b++)
+            {
+                var min  = new float3(random.NextFloat(-1, 1), random.NextFloat(-0.5f, 0.5f), random.NextFloat(-1, 1));
+                var size = new float3(random.NextFloat(1.2f, 4), random.NextFloat(0.7f, 3), random.NextFloat(1.2f, 4));
+                var box  = Box(model, min, min + size);
+                box.transform.rotation = quaternion.Euler(random.NextFloat3(-0.6f, 0.6f));
+                Update();
+            }
+            AssertClosed(model);
         }
     }
 }
