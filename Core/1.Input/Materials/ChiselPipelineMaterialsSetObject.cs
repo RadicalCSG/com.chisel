@@ -13,8 +13,12 @@ namespace Chisel.Core
 	public class ChiselPipelineMaterialsSet
 	{
 		public const string kDefaultFloorMaterialName	= nameof(defaultFloorMaterial);
-		public const string kDefaultStepMaterialName	= nameof(defaultStepMaterial);
+		public const string kDefaultRiserMaterialName	= nameof(defaultRiserMaterial);
 		public const string kDefaultTreadMaterialName	= nameof(defaultTreadMaterial);
+		public const string kDefaultStepNoseMaterialName = nameof(defaultStepNoseMaterial);
+		public const string kDefaultStepSidesMaterialName = nameof(defaultStepSidesMaterial);
+		public const string kDefaultColumnMaterialName = nameof(defaultColumnMaterial);
+		public const string kDefaultTreadBottomMaterialName = nameof(defaultTreadBottomMaterial);
 		public const string kDefaultWallMaterialName	= nameof(defaultWallMaterial);
 		public const string kDefaultPhysicMaterialName	= nameof(defaultPhysicsMaterial);
 		public const string kDefaultForceShadowOnlyMaterialName = nameof(forceShadowOnlySurfacesMaterial);
@@ -29,8 +33,13 @@ namespace Chisel.Core
 		public PhysicsMaterial defaultPhysicsMaterial;
 
 		public Material defaultFloorMaterial;
-		public Material defaultStepMaterial;
+		[UnityEngine.Serialization.FormerlySerializedAs("defaultStepMaterial")]
+		public Material defaultRiserMaterial;
 		public Material defaultTreadMaterial;
+		public Material defaultStepNoseMaterial;
+		public Material defaultStepSidesMaterial;
+		public Material defaultColumnMaterial;
+		public Material defaultTreadBottomMaterial;
 		public Material defaultWallMaterial;
 
 		public Material collisionSurfacesMaterial;

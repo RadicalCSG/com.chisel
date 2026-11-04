@@ -67,8 +67,13 @@ namespace Chisel.Core
 		public static Material DefaultMaterial                 { get { return DefaultWallMaterial; } }
 
 		public static Material DefaultFloorMaterial		       { get { return Materials.defaultFloorMaterial; } set { Materials.defaultFloorMaterial = value; } }
-        public static Material DefaultStepMaterial		       { get { return Materials.defaultStepMaterial; } set { Materials.defaultStepMaterial = value; } }
+        public static Material DefaultRiserMaterial		       { get { return Materials.defaultRiserMaterial; } set { Materials.defaultRiserMaterial = value; } }
 		public static Material DefaultTreadMaterial		       { get { return Materials.defaultTreadMaterial; } set { Materials.defaultTreadMaterial = value; } }
+		// a project's settings saved before these existed have none: they take the package's own
+		public static Material DefaultStepNoseMaterial	       { get { return Materials.defaultStepNoseMaterial ? Materials.defaultStepNoseMaterial : ChiselDefaultMaterials.Defaults?.defaultStepNoseMaterial; } set { Materials.defaultStepNoseMaterial = value; } }
+		public static Material DefaultStepSidesMaterial	       { get { return Materials.defaultStepSidesMaterial ? Materials.defaultStepSidesMaterial : ChiselDefaultMaterials.Defaults?.defaultStepSidesMaterial; } set { Materials.defaultStepSidesMaterial = value; } }
+		public static Material DefaultColumnMaterial	       { get { return Materials.defaultColumnMaterial ? Materials.defaultColumnMaterial : ChiselDefaultMaterials.Defaults?.defaultColumnMaterial; } set { Materials.defaultColumnMaterial = value; } }
+		public static Material DefaultTreadBottomMaterial      { get { return Materials.defaultTreadBottomMaterial ? Materials.defaultTreadBottomMaterial : ChiselDefaultMaterials.Defaults?.defaultTreadBottomMaterial; } set { Materials.defaultTreadBottomMaterial = value; } }
 		public static Material DefaultWallMaterial		       { get { return Materials.defaultWallMaterial; } set { Materials.defaultWallMaterial = value; } }
 		public static PhysicsMaterial DefaultPhysicsMaterial   { get { return Materials.defaultPhysicsMaterial; } set { Materials.defaultPhysicsMaterial = value; } }
 

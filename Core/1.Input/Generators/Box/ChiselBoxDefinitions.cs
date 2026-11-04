@@ -8,7 +8,7 @@ namespace Chisel.Core
 {
     // TODO: beveled edges?
     [Serializable]
-    public struct ChiselBox : IBrushGenerator
+    public struct ChiselBox : IBrushGenerator, IChiselSurfaceNames
     {
         readonly static ChiselBox kDefaultSettings = new()
         {
@@ -53,6 +53,24 @@ namespace Chisel.Core
         #region Surfaces
         [BurstDiscard]
         public int RequiredSurfaceCount { get { return 6; } }
+
+        [BurstDiscard]
+        public readonly bool IsSurfaceUsed(int index) { return true; }
+
+        [BurstDiscard]
+        public readonly string GetSurfaceName(int index)
+        {
+            switch ((BrushMeshFactory.BoxSides)index)
+            {
+                case BrushMeshFactory.BoxSides.Top:    return ChiselSurfaceNames.Top;
+                case BrushMeshFactory.BoxSides.Bottom: return ChiselSurfaceNames.Bottom;
+                case BrushMeshFactory.BoxSides.Left:   return ChiselSurfaceNames.Left;
+                case BrushMeshFactory.BoxSides.Right:  return ChiselSurfaceNames.Right;
+                case BrushMeshFactory.BoxSides.Front:  return ChiselSurfaceNames.Front;
+                case BrushMeshFactory.BoxSides.Back:   return ChiselSurfaceNames.Back;
+                default:                               return null;
+            }
+        }
 
         [BurstDiscard]
         public void UpdateSurfaces(ref ChiselSurfaceArray surfaceDefinition) { }

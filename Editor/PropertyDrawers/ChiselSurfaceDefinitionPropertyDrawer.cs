@@ -56,9 +56,14 @@ namespace Chisel.Editors
                         try
                         {
                             SerializedProperty elementProperty;
+                            var generator = property.serializedObject.targetObject as Chisel.Components.ChiselGeneratorComponent;
                             for (int i = 0; i < surfacesProp.arraySize; i++)
                             {
-                                s_SurfacePropertyContent.text = string.Format(kSurfacePropertyName, (i + 1));
+                                // a surface the generator has no faces with, set up as it is, isn't shown
+                                if (generator && !generator.IsSurfaceUsed(i))
+                                    continue;
+                                var name = generator ? generator.GetSurfaceName(i) : null;
+                                s_SurfacePropertyContent.text = name ?? string.Format(kSurfacePropertyName, (i + 1));
                                 elementProperty = surfacesProp.GetArrayElementAtIndex(i);
                                 EditorGUILayout.PropertyField(elementProperty, s_SurfacePropertyContent, true);
                             }

@@ -15,9 +15,36 @@ namespace Chisel.Core
         public static float NotZero(float size, float min = kMinSize) => math.abs(size) >= min ? size : (size < 0 ? -min : min);
     }
 
+    /// <summary>A generator that names its surfaces, for the inspector</summary>
+    public interface IChiselSurfaceNames
+    {
+        /// <summary>The name of the surface at this place in the surface array, or null to show it numbered</summary>
+        string GetSurfaceName(int index);
+        /// <summary>Whether the generator, as it is set up now, has faces with the surface at this place</summary>
+        bool IsSurfaceUsed(int index);
+    }
+
+    /// <summary>The words generators name their surfaces with, so the same kind of surface has the same name in each</summary>
+    public static class ChiselSurfaceNames
+    {
+        public const string Top    = "Top";
+        public const string Bottom = "Bottom";
+        public const string Left   = "Left";
+        public const string Right  = "Right";
+        public const string Front  = "Front";
+        public const string Back   = "Back";
+
+        /// <summary>One of the sides around a round generator, counted from 1</summary>
+        public static string Side(int number) { return "Side " + number; }
+    }
+
     public interface IChiselNodeGenerator
     {
         int RequiredSurfaceCount { get; }
+        /// <summary>The name of the surface at this place in the surface array, or null to show it numbered</summary>
+        string GetSurfaceName(int index);
+        /// <summary>Whether the generator, as it is set up now, has faces with the surface at this place</summary>
+        bool IsSurfaceUsed(int index);
         void Reset();
         bool Validate();
         void UpdateSurfaces(ref ChiselSurfaceArray surfaceArray);
@@ -51,6 +78,9 @@ namespace Chisel.Core
         public virtual int RequiredSurfaceCount { get { return settings.RequiredSurfaceCount; } }
 
         public virtual BrushGenerator GetBrushGenerator() { return settings; }
+
+        public virtual string GetSurfaceName(int index) { return (settings is IChiselSurfaceNames names) ? names.GetSurfaceName(index) : null; }
+        public virtual bool IsSurfaceUsed(int index) { return (settings is IChiselSurfaceNames names) ? names.IsSurfaceUsed(index) : true; }
 
         public virtual void Reset() { settings.Reset(); }
 
@@ -144,6 +174,9 @@ namespace Chisel.Core
         public virtual int RequiredSurfaceCount { get { return settings.RequiredSurfaceCount; } }
 
         public virtual BranchGenerator GetBranchGenerator() { return settings; }
+
+        public virtual string GetSurfaceName(int index) { return (settings is IChiselSurfaceNames names) ? names.GetSurfaceName(index) : null; }
+        public virtual bool IsSurfaceUsed(int index) { return (settings is IChiselSurfaceNames names) ? names.IsSurfaceUsed(index) : true; }
 
         public virtual void Reset()     { settings.Reset(); }
         public virtual bool Validate()  { return settings.Validate(); }

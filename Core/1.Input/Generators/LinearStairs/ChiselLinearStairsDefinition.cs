@@ -28,7 +28,7 @@ namespace Chisel.Core
     }
 
     [Serializable]
-    public struct ChiselLinearStairs : IBranchGenerator
+    public struct ChiselLinearStairs : IBranchGenerator, IChiselSurfaceNames
     {
         // TODO: set defaults using attributes?
         readonly static ChiselLinearStairs kDefaultSettings = new()
@@ -204,42 +204,23 @@ namespace Chisel.Core
         #endregion
 
         #region Surfaces
-        public enum SurfaceSides : byte
-        {
-            Top     = 0,
-            Bottom  = 1,
-            Left    = 2,
-            Right   = 3,
-            Front   = 4,
-            Back    = 5,
-            Tread   = 6,
-            Step    = 7,
-
-            TotalSides
-        }
-
+        [BurstDiscard]
+        public int RequiredSurfaceCount { get { return StairsSurfaces.kCount; } }
 
         [BurstDiscard]
-        public int RequiredSurfaceCount { get { return (int)SurfaceSides.TotalSides; } }
+        public readonly string GetSurfaceName(int index) { return StairsSurfaces.Name(index); }
+
+        [BurstDiscard]
+        public readonly bool IsSurfaceUsed(int index)
+        {
+            return StairsSurfaces.IsUsed(index, haveTread: treadHeight >= 0.0001f, haveRiser: riserType != StairsRiserType.None,
+                                         haveWall: leftSide != StairsSideType.None || rightSide != StairsSideType.None, haveColumn: false);
+        }
 
         [BurstDiscard]
         public readonly void UpdateSurfaces(ref ChiselSurfaceArray surfaceDefinition)
         {
-            var surfaces = surfaceDefinition.surfaces;
-            if (!surfaces[(int)SurfaceSides.Top   ].HasMaterial) surfaces[(int)SurfaceSides.Top   ].SetMaterial(ChiselProjectSettings.DefaultFloorMaterial);
-            if (!surfaces[(int)SurfaceSides.Bottom].HasMaterial) surfaces[(int)SurfaceSides.Bottom].SetMaterial(ChiselProjectSettings.DefaultFloorMaterial);
-            if (!surfaces[(int)SurfaceSides.Left  ].HasMaterial) surfaces[(int)SurfaceSides.Left  ].SetMaterial(ChiselProjectSettings.DefaultWallMaterial);
-            if (!surfaces[(int)SurfaceSides.Right ].HasMaterial) surfaces[(int)SurfaceSides.Right ].SetMaterial(ChiselProjectSettings.DefaultWallMaterial);
-            if (!surfaces[(int)SurfaceSides.Front ].HasMaterial) surfaces[(int)SurfaceSides.Front ].SetMaterial(ChiselProjectSettings.DefaultWallMaterial);
-            if (!surfaces[(int)SurfaceSides.Back  ].HasMaterial) surfaces[(int)SurfaceSides.Back  ].SetMaterial(ChiselProjectSettings.DefaultWallMaterial);
-            if (!surfaces[(int)SurfaceSides.Tread ].HasMaterial) surfaces[(int)SurfaceSides.Tread ].SetMaterial(ChiselProjectSettings.DefaultTreadMaterial);
-            if (!surfaces[(int)SurfaceSides.Step  ].HasMaterial) surfaces[(int)SurfaceSides.Step  ].SetMaterial(ChiselProjectSettings.DefaultStepMaterial);
-
-            for (int i = 0; i < surfaceDefinition.surfaces.Length; i++)
-            {
-                if (!surfaceDefinition.surfaces[i].HasMaterial)
-                    surfaceDefinition.surfaces[i].SetMaterial(ChiselProjectSettings.DefaultWallMaterial);
-            }
+            StairsSurfaces.UpdateSurfaces(ref surfaceDefinition);
         }
         #endregion
 

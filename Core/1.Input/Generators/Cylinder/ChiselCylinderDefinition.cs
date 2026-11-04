@@ -23,7 +23,7 @@ namespace Chisel.Core
     // TODO: can end up with non convex shape when top ellipsoid is scaled larger than bottom on one (or more?) axi
     //          the quad triangulation needs to be reversed (figure out how to detect this)
     [Serializable]
-    public struct ChiselCylinder : IBrushGenerator
+    public struct ChiselCylinder : IBrushGenerator, IChiselSurfaceNames
     {
         readonly static ChiselCylinder kDefaultSettings = new()
         {
@@ -255,6 +255,17 @@ namespace Chisel.Core
         #region Surfaces
         [BurstDiscard]
         public int RequiredSurfaceCount { get { return 2 + sides; } }
+
+        [BurstDiscard]
+        public readonly bool IsSurfaceUsed(int index) { return true; }
+
+        [BurstDiscard]
+        public readonly string GetSurfaceName(int index)
+        {
+            if (index == 0) return ChiselSurfaceNames.Bottom;
+            if (index == 1) return ChiselSurfaceNames.Top;
+            return (index < 2 + sides) ? ChiselSurfaceNames.Side(index - 1) : null;
+        }
 
         [BurstDiscard]
         public void UpdateSurfaces(ref ChiselSurfaceArray surfaceDefinition)

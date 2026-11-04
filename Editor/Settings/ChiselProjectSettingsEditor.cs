@@ -14,8 +14,12 @@ namespace Chisel.Editors
 			public readonly static GUIContent kDefaultMaterialsSection	= EditorGUIUtility.TrTextContent("Default");
 
 			public readonly static GUIContent kDefaultFloorMaterial		= EditorGUIUtility.TrTextContent("Floor");
-			public readonly static GUIContent kDefaultStepMaterial		= EditorGUIUtility.TrTextContent("Step");
+			public readonly static GUIContent kDefaultRiserMaterial		= EditorGUIUtility.TrTextContent("Riser");
 			public readonly static GUIContent kDefaultTreadMaterial		= EditorGUIUtility.TrTextContent("Tread");
+			public readonly static GUIContent kDefaultStepNoseMaterial	= EditorGUIUtility.TrTextContent("Step Nose");
+			public readonly static GUIContent kDefaultStepSidesMaterial	= EditorGUIUtility.TrTextContent("Step Sides");
+			public readonly static GUIContent kDefaultColumnMaterial	= EditorGUIUtility.TrTextContent("Column");
+			public readonly static GUIContent kDefaultTreadBottomMaterial = EditorGUIUtility.TrTextContent("Tread Bottom");
 			public readonly static GUIContent kDefaultWallMaterial		= EditorGUIUtility.TrTextContent("Wall");
 			public readonly static GUIContent kDefaultPhysicMaterial	= EditorGUIUtility.TrTextContent("Physics");
 			public readonly static GUIContent kForceShadowOnlyMaterial	= EditorGUIUtility.TrTextContent("Force Shadow-Only");
@@ -36,8 +40,12 @@ namespace Chisel.Editors
 		};
 
 		SerializedProperty m_DefaultFloorMaterialProp;
-		SerializedProperty m_DefaultStepMaterialProp;
+		SerializedProperty m_DefaultRiserMaterialProp;
 		SerializedProperty m_DefaultTreadMaterialProp;
+		SerializedProperty m_DefaultStepNoseMaterialProp;
+		SerializedProperty m_DefaultStepSidesMaterialProp;
+		SerializedProperty m_DefaultColumnMaterialProp;
+		SerializedProperty m_DefaultTreadBottomMaterialProp;
 		SerializedProperty m_DefaultWallMaterialProp;
 		SerializedProperty m_DefaultPhysicMaterialProp;
 		SerializedProperty m_DefaultForceShadowOnlyMaterialProp;
@@ -60,8 +68,12 @@ namespace Chisel.Editors
 				return;
 			 
 			m_DefaultFloorMaterialProp  = materialsProp.FindPropertyRelative(ChiselPipelineMaterialsSet.kDefaultFloorMaterialName);
-			m_DefaultStepMaterialProp   = materialsProp.FindPropertyRelative(ChiselPipelineMaterialsSet.kDefaultStepMaterialName);
+			m_DefaultRiserMaterialProp  = materialsProp.FindPropertyRelative(ChiselPipelineMaterialsSet.kDefaultRiserMaterialName);
 			m_DefaultTreadMaterialProp  = materialsProp.FindPropertyRelative(ChiselPipelineMaterialsSet.kDefaultTreadMaterialName);
+			m_DefaultStepNoseMaterialProp = materialsProp.FindPropertyRelative(ChiselPipelineMaterialsSet.kDefaultStepNoseMaterialName);
+			m_DefaultStepSidesMaterialProp = materialsProp.FindPropertyRelative(ChiselPipelineMaterialsSet.kDefaultStepSidesMaterialName);
+			m_DefaultColumnMaterialProp = materialsProp.FindPropertyRelative(ChiselPipelineMaterialsSet.kDefaultColumnMaterialName);
+			m_DefaultTreadBottomMaterialProp = materialsProp.FindPropertyRelative(ChiselPipelineMaterialsSet.kDefaultTreadBottomMaterialName);
 			m_DefaultWallMaterialProp   = materialsProp.FindPropertyRelative(ChiselPipelineMaterialsSet.kDefaultWallMaterialName);
 			m_DefaultPhysicMaterialProp = materialsProp.FindPropertyRelative(ChiselPipelineMaterialsSet.kDefaultPhysicMaterialName);
 			m_DefaultForceShadowOnlyMaterialProp = materialsProp.FindPropertyRelative(ChiselPipelineMaterialsSet.kDefaultForceShadowOnlyMaterialName);
@@ -90,8 +102,12 @@ namespace Chisel.Editors
 				using (new EditorGUI.IndentLevelScope(1))
 				{
 					EditorGUILayout.PropertyField(m_DefaultFloorMaterialProp, SettingsContent.kDefaultFloorMaterial);
-					EditorGUILayout.PropertyField(m_DefaultStepMaterialProp, SettingsContent.kDefaultStepMaterial);
+					EditorGUILayout.PropertyField(m_DefaultRiserMaterialProp, SettingsContent.kDefaultRiserMaterial);
 					EditorGUILayout.PropertyField(m_DefaultTreadMaterialProp, SettingsContent.kDefaultTreadMaterial);
+					EditorGUILayout.PropertyField(m_DefaultStepNoseMaterialProp, SettingsContent.kDefaultStepNoseMaterial);
+					EditorGUILayout.PropertyField(m_DefaultStepSidesMaterialProp, SettingsContent.kDefaultStepSidesMaterial);
+					EditorGUILayout.PropertyField(m_DefaultColumnMaterialProp, SettingsContent.kDefaultColumnMaterial);
+					EditorGUILayout.PropertyField(m_DefaultTreadBottomMaterialProp, SettingsContent.kDefaultTreadBottomMaterial);
 					EditorGUILayout.PropertyField(m_DefaultWallMaterialProp, SettingsContent.kDefaultWallMaterial);
 					EditorGUILayout.PropertyField(m_DefaultPhysicMaterialProp, SettingsContent.kDefaultPhysicMaterial);
 					EditorGUILayout.PropertyField(m_DefaultForceShadowOnlyMaterialProp, SettingsContent.kForceShadowOnlyMaterial);	

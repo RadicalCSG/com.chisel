@@ -15,8 +15,12 @@ MonoBehaviour:
   Set:
     defaultPhysicsMaterial: {fileID: 13400000, guid: 9a131e27bee822f49bbeaa7ee131d929, type: 2}
     defaultFloorMaterial: {fileID: 2100000, guid: 985b7e9e6e89fbd4da9acda8fd0eec2c, type: 2}
-    defaultStepMaterial: {fileID: 2100000, guid: 48a4a6e984bd3d44bb45e31480b2dd96, type: 2}
+    defaultRiserMaterial: {fileID: 2100000, guid: 48a4a6e984bd3d44bb45e31480b2dd96, type: 2}
     defaultTreadMaterial: {fileID: 2100000, guid: b44b3d7cb1546df4798208bd3771a04e, type: 2}
+    defaultStepNoseMaterial: {fileID: 2100000, guid: d632ba4e29632704fb378214513ea3a6, type: 2}
+    defaultStepSidesMaterial: {fileID: 2100000, guid: 9af0c87d6b613624eb0e68937b37a1e3, type: 2}
+    defaultColumnMaterial: {fileID: 2100000, guid: 336d96c3ef7c8924ba0b04253d81b399, type: 2}
+    defaultTreadBottomMaterial: {fileID: 2100000, guid: 13826d13426bff3459194f7ddb8e2500, type: 2}
     defaultWallMaterial: {fileID: 2100000, guid: f0b289768881db043adc2a17bb334ddf, type: 2}
     collisionSurfacesMaterial: {fileID: 2100000, guid: 47b54e6f8308cb746a50ca4e51851d51, type: 2}
     shadowCastingSurfacesMaterial: {fileID: 2100000, guid: 9096e4e4d4d79d2479d1920dbea96a2d, type: 2}

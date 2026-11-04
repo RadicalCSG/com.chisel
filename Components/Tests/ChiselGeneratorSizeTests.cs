@@ -1188,5 +1188,241 @@ namespace Chisel.Components.Tests
             Assert.That(capsule.definition.settings.topHeight + capsule.definition.settings.bottomHeight, Is.EqualTo(0.5f).Within(1e-6f));
             AssertClosed(model, "capsule");
         }
+
+        // Each surface its own material, and the normals of the triangles drawn with each, by the surface's place
+        static Dictionary<int, List<Vector3>> NormalsBySurface(ChiselGeneratorComponent generator, ChiselModelComponent model, List<Material> materials)
+        {
+            for (int i = 0; i < generator.SurfaceDefinition.surfaces.Length; i++)
+            {
+                var material = new Material(ChiselProjectSettings.DefaultWallMaterial) { name = "surface " + i };
+                materials.Add(material);
+                generator.SurfaceDefinition.surfaces[i].SetMaterial(material);
+            }
+            generator.OnValidate();
+            Update();
+            var normals = new Dictionary<int, List<Vector3>>();
+            foreach (var renderable in model.generated.renderables)
+            {
+                if (renderable == null || renderable.sharedMesh == null || renderable.renderMaterials == null)
+                    continue;
+                var mesh = renderable.sharedMesh;
+                var vertices = mesh.vertices;
+                for (int sub = 0; sub < mesh.subMeshCount && sub < renderable.renderMaterials.Length; sub++)
+                {
+                    var surface = materials.IndexOf(renderable.renderMaterials[sub]);
+                    if (surface < 0)
+                        continue;
+                    if (!normals.TryGetValue(surface, out var list))
+                        normals[surface] = list = new List<Vector3>();
+                    var triangles = mesh.GetTriangles(sub);
+                    for (int t = 0; t + 2 < triangles.Length; t += 3)
+                    {
+                        var a = vertices[triangles[t]]; var b = vertices[triangles[t + 1]]; var c = vertices[triangles[t + 2]];
+                        var normal = Vector3.Cross(b - a, c - a);
+                        if (normal.sqrMagnitude > 1e-12f)
+                            list.Add(normal.normalized);
+                    }
+                }
+            }
+            return normals;
+        }
+
+        static void AssertFacing(Dictionary<int, List<Vector3>> normals, StairsSurface surface, Func<Vector3, bool> facing, string how)
+        {
+            Assert.That(normals.ContainsKey((int)surface), Is.True, $"nothing drawn as {surface}");
+            foreach (var normal in normals[(int)surface])
+                Assert.That(facing(normal), Is.True, $"a {surface} triangle doesn't face {how}: {normal}");
+        }
+
+        // Its tops are treads, its fronts risers, each with its own default material (they were numbered by triangle,
+        // so the treads had the risers' surface and the tread and riser materials were never used)
+        [Test]
+        public void LinearStairs_FacesHaveTheirNamedSurfaces()
+        {
+            var stairs = Generator<ChiselLinearStairsComponent>(out var model);
+            Assert.That(stairs.surfaceArray.surfaces[(int)StairsSurface.TreadTop].RenderMaterial, Is.EqualTo(ChiselProjectSettings.DefaultTreadMaterial));
+            Assert.That(stairs.surfaceArray.surfaces[(int)StairsSurface.RiserFront].RenderMaterial, Is.EqualTo(ChiselProjectSettings.DefaultRiserMaterial));
+            Assert.That(stairs.surfaceArray.surfaces[(int)StairsSurface.StepNose].RenderMaterial.name, Is.EqualTo("StepNose"));
+            Assert.That(stairs.surfaceArray.surfaces[(int)StairsSurface.StepSides].RenderMaterial.name, Is.EqualTo("StepSides"));
+            var materials = new List<Material>();
+            try
+            {
+                var normals = NormalsBySurface(stairs, model, materials);
+                AssertFacing(normals, StairsSurface.TreadTop, n => n.y > 0.9f, "up");
+                AssertFacing(normals, StairsSurface.RiserFront, n => Mathf.Abs(n.y) < 0.1f, "sideways");
+                AssertFacing(normals, StairsSurface.StepSides, n => Mathf.Abs(n.x) > 0.9f, "to the side");
+                AssertFacing(normals, StairsSurface.StepNose, n => n.z > 0.9f, "to the front");
+                foreach (var normal in normals[(int)StairsSurface.RiserFront])
+                    Assert.That(normal.y, Is.LessThan(0.1f));
+            }
+            finally { foreach (var m in materials) UnityEngine.Object.DestroyImmediate(m); }
+        }
+
+        [Test]
+        public void SpiralStairs_FacesHaveTheirNamedSurfaces()
+        {
+            var stairs = Generator<ChiselSpiralStairsComponent>(out var model);
+            Assert.That(stairs.surfaceArray.surfaces[(int)StairsSurface.RiserFront].RenderMaterial, Is.EqualTo(ChiselProjectSettings.DefaultRiserMaterial));
+            var materials = new List<Material>();
+            try
+            {
+                var normals = NormalsBySurface(stairs, model, materials);
+                AssertFacing(normals, StairsSurface.TreadTop, n => n.y > 0.9f, "up");
+                AssertFacing(normals, StairsSurface.RiserFront, n => Mathf.Abs(n.y) < 0.1f, "sideways");
+            }
+            finally { foreach (var m in materials) UnityEngine.Object.DestroyImmediate(m); }
+        }
+
+        // Solid to the floor, the face on the floor is the underside too (it had a surface of its own)
+        [TestCase(false)]
+        [TestCase(true)]
+        public void StairsSolidToTheFloor_UseTheUndersideBelow(bool spiral)
+        {
+            ChiselGeneratorComponent stairs;
+            ChiselModelComponent model;
+            if (spiral)
+            {
+                var s = Generator<ChiselSpiralStairsComponent>(out model);
+                s.definition.settings.riserType = StairsRiserType.FillDown;
+                stairs = s;
+            } else
+            {
+                var s = Generator<ChiselLinearStairsComponent>(out model);
+                s.definition.settings.riserType = StairsRiserType.FillDown;
+                stairs = s;
+            }
+            var materials = new List<Material>();
+            try
+            {
+                var normals = NormalsBySurface(stairs, model, materials);
+                AssertFacing(normals, StairsSurface.Underside, n => n.y < -0.9f, "down");
+                foreach (var pair in normals)
+                {
+                    if (pair.Key == (int)StairsSurface.Underside || pair.Key == (int)StairsSurface.WallBottom || pair.Key == (int)StairsSurface.TreadBottom)
+                        continue;
+                    foreach (var normal in pair.Value)
+                        Assert.That(normal.y, Is.GreaterThan(-0.9f), $"{(StairsSurface)pair.Key} faces down");
+                }
+            }
+            finally { foreach (var m in materials) UnityEngine.Object.DestroyImmediate(m); }
+        }
+
+        // The column in the middle has a surface of its own, and the treads' bottoms one apart from the steps' backs
+        [Test]
+        public void SpiralStairsColumnAndTreadBottoms_HaveTheirOwnSurfaces()
+        {
+            var stairs = Generator<ChiselSpiralStairsComponent>(out var model);
+            stairs.definition.settings.centerType = SpiralStairsCenterType.Solid;
+            if (stairs.definition.settings.innerDiameter < 0.2f)
+                stairs.definition.settings.innerDiameter = 0.4f;
+            Assert.That(stairs.surfaceArray.surfaces[(int)StairsSurface.Column].RenderMaterial.name, Is.EqualTo("Column"));
+            Assert.That(stairs.surfaceArray.surfaces[(int)StairsSurface.TreadBottom].RenderMaterial.name, Is.EqualTo("TreadBottom"));
+            var materials = new List<Material>();
+            try
+            {
+                var normals = NormalsBySurface(stairs, model, materials);
+                Assert.That(normals.ContainsKey((int)StairsSurface.Column), Is.True, "no column drawn");
+                AssertFacing(normals, StairsSurface.TreadBottom, n => n.y < -0.9f, "down");
+            }
+            finally { foreach (var m in materials) UnityEngine.Object.DestroyImmediate(m); }
+        }
+
+        // The inspector shows only the surfaces stairs, set up as they are, have faces with: none drawn is left out, and
+        // walls and a column they don't have aren't shown
+        [TestCase(false, StairsSideType.None)]
+        [TestCase(false, StairsSideType.DownAndUp)]
+        [TestCase(true, StairsSideType.None)]
+        [TestCase(true, StairsSideType.Up)]
+        public void Stairs_ShowOnlyTheSurfacesTheyUse(bool spiral, StairsSideType side)
+        {
+            ChiselGeneratorComponent stairs;
+            ChiselModelComponent model;
+            if (spiral)
+            {
+                var s = Generator<ChiselSpiralStairsComponent>(out model);
+                s.definition.settings.outerSide = side;
+                stairs = s;
+            } else
+            {
+                var s = Generator<ChiselLinearStairsComponent>(out model);
+                s.definition.settings.leftSide = side;
+                stairs = s;
+            }
+            var materials = new List<Material>();
+            try
+            {
+                var normals = NormalsBySurface(stairs, model, materials);
+                foreach (var surface in normals.Keys)
+                    Assert.That(stairs.IsSurfaceUsed(surface), Is.True, $"{(StairsSurface)surface} is drawn but not shown");
+                Assert.That(stairs.IsSurfaceUsed((int)StairsSurface.Wall), Is.EqualTo(side != StairsSideType.None), "walls");
+                Assert.That(stairs.IsSurfaceUsed((int)StairsSurface.Column), Is.False, "a column without one");
+            }
+            finally { foreach (var m in materials) UnityEngine.Object.DestroyImmediate(m); }
+        }
+
+        // Under a side wall is the wall's bottom, not the steps' underside
+        [Test]
+        public void LinearStairsSideWall_HasAWallBottom()
+        {
+            var stairs = Generator<ChiselLinearStairsComponent>(out var model);
+            stairs.definition.settings.leftSide = StairsSideType.Down;
+            var materials = new List<Material>();
+            try
+            {
+                var normals = NormalsBySurface(stairs, model, materials);
+                // a wall below the steps slopes along them underneath
+                AssertFacing(normals, StairsSurface.WallBottom, n => n.y < -0.5f, "down");
+            }
+            finally { foreach (var m in materials) UnityEngine.Object.DestroyImmediate(m); }
+        }
+
+        // The way a surface with this name faces, when its generator is not turned; zero when the name says no way
+        static Vector3 NamedDirection(string name)
+        {
+            switch (name)
+            {
+                case ChiselSurfaceNames.Top:    return Vector3.up;
+                case ChiselSurfaceNames.Bottom: return Vector3.down;
+                case ChiselSurfaceNames.Left:   return Vector3.left;
+                case ChiselSurfaceNames.Right:  return Vector3.right;
+                case ChiselSurfaceNames.Front:  return Vector3.forward;   // as the stairs, which go down towards +z
+                case ChiselSurfaceNames.Back:   return Vector3.back;
+                default:                        return Vector3.zero;
+            }
+        }
+
+        // Every surface a box or a cylinder names faces the way its name says
+        [TestCase(typeof(ChiselBoxComponent))]
+        [TestCase(typeof(ChiselCylinderComponent))]
+        public void NamedSurfaces_FaceTheWayTheirNameSays(Type type)
+        {
+            var root = new GameObject("named surfaces test");
+            roots.Add(root);
+            var model = root.AddComponent<ChiselModelComponent>();
+            var go = new GameObject(type.Name);
+            go.transform.SetParent(root.transform, false);
+            var generator = (ChiselGeneratorComponent)go.AddComponent(type);
+            Update();
+            var materials = new List<Material>();
+            try
+            {
+                var normals = NormalsBySurface(generator, model, materials);
+                var named = 0;
+                for (int i = 0; i < generator.SurfaceDefinition.surfaces.Length; i++)
+                {
+                    var name = generator.GetSurfaceName(i);
+                    Assert.That(name, Is.Not.Null, $"surface {i} has no name");
+                    var direction = NamedDirection(name);
+                    if (direction == Vector3.zero)
+                        continue;
+                    Assert.That(normals.ContainsKey(i), Is.True, $"nothing drawn as {name}");
+                    foreach (var normal in normals[i])
+                        Assert.That(Vector3.Dot(normal, direction), Is.GreaterThan(0.9f), $"{name} faces {normal}");
+                    named++;
+                }
+                Assert.That(named, Is.GreaterThanOrEqualTo(2), "too few surfaces with a direction");
+            }
+            finally { foreach (var m in materials) UnityEngine.Object.DestroyImmediate(m); }
+        }
     }
 }
