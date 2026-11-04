@@ -86,6 +86,10 @@ namespace Chisel.Core
 			if (polygons.Length == 0)
 				return false;
 
+			// the flat base first, then the rounded top
+			for (int p = 0; p < polygons.Length; p++)
+				SetSurface(ref polygons[p], p == 0 ? 0 : 1, ref surfaceDefinitionBlob.Value);
+
 			// TODO: eventually remove when it's more battle tested
 			if (!Validate(in localVertices, in halfEdges, in polygons, logErrors: true))
 				return false;

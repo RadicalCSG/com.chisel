@@ -1391,9 +1391,57 @@ namespace Chisel.Components.Tests
             }
         }
 
-        // Every surface a box or a cylinder names faces the way its name says
+        // A side of an extruded shape is the span from its point to the next: here the first span is by far the longest, the
+        // second the shortest. Each side took the surface of the point two further on
+        [Test]
+        public void ExtrudedShapeSides_AreTheSpansFromTheirPoint()
+        {
+            var shape = Generator<ChiselExtrudedShapeComponent>(out var model);
+            shape.definition.shape = new Curve2D(new CurveControlPoint2D(0, 0), new CurveControlPoint2D(4, 0), new CurveControlPoint2D(4, 1),
+                                                 new CurveControlPoint2D(2, 3), new CurveControlPoint2D(0, 1));
+            shape.OnValidate();
+            Update();
+            var materials = new List<Material>();
+            try
+            {
+                NormalsBySurface(shape, model, materials);
+                var areas = new float[shape.SurfaceDefinition.surfaces.Length];
+                foreach (var renderable in model.generated.renderables)
+                {
+                    if (renderable == null || renderable.sharedMesh == null || renderable.renderMaterials == null)
+                        continue;
+                    var vertices = renderable.sharedMesh.vertices;
+                    for (int sub = 0; sub < renderable.sharedMesh.subMeshCount && sub < renderable.renderMaterials.Length; sub++)
+                    {
+                        var surface = materials.IndexOf(renderable.renderMaterials[sub]);
+                        if (surface < 0)
+                            continue;
+                        var triangles = renderable.sharedMesh.GetTriangles(sub);
+                        for (int t = 0; t + 2 < triangles.Length; t += 3)
+                            areas[surface] += Vector3.Cross(vertices[triangles[t + 1]] - vertices[triangles[t]], vertices[triangles[t + 2]] - vertices[triangles[t]]).magnitude * 0.5f;
+                    }
+                }
+                // sides 1 to 5 are surfaces 2 to 6, spans of 4, 1, 2.8, 2.8 and 1 long
+                Assert.That(areas[2], Is.GreaterThan(0), "side 1 isn't drawn");
+                Assert.That(areas[2] / areas[3], Is.EqualTo(4).Within(0.01f), "side 1 or 2 is another span");
+                Assert.That(areas[4] / areas[3], Is.EqualTo(math.sqrt(8)).Within(0.01f), "side 3 is another span");
+                Assert.That(areas[6] / areas[3], Is.EqualTo(1).Within(0.01f), "side 5 is another span");
+            }
+            finally { foreach (var m in materials) UnityEngine.Object.DestroyImmediate(m); }
+        }
+
+        // Every surface a generator names faces the way its name says (a rounded one leans that way), and every surface
+        // drawn has a name and is shown. Capsule and hemisphere drew everything with their first surface, a sphere its
+        // first faces each with a surface of its own, a torus its tube with three
         [TestCase(typeof(ChiselBoxComponent))]
         [TestCase(typeof(ChiselCylinderComponent))]
+        [TestCase(typeof(ChiselCapsuleComponent))]
+        [TestCase(typeof(ChiselHemisphereComponent))]
+        [TestCase(typeof(ChiselSphereComponent))]
+        [TestCase(typeof(ChiselStadiumComponent))]
+        [TestCase(typeof(ChiselTorusComponent))]
+        [TestCase(typeof(ChiselExtrudedShapeComponent))]
+        [TestCase(typeof(ChiselRevolvedShapeComponent))]
         public void NamedSurfaces_FaceTheWayTheirNameSays(Type type)
         {
             var root = new GameObject("named surfaces test");
@@ -1417,10 +1465,14 @@ namespace Chisel.Components.Tests
                         continue;
                     Assert.That(normals.ContainsKey(i), Is.True, $"nothing drawn as {name}");
                     foreach (var normal in normals[i])
-                        Assert.That(Vector3.Dot(normal, direction), Is.GreaterThan(0.9f), $"{name} faces {normal}");
+                        Assert.That(Vector3.Dot(normal, direction), Is.GreaterThan(0.01f), $"{name} faces {normal}");
                     named++;
                 }
-                Assert.That(named, Is.GreaterThanOrEqualTo(2), "too few surfaces with a direction");
+                foreach (var surface in normals.Keys)
+                    Assert.That(generator.IsSurfaceUsed(surface), Is.True, $"{generator.GetSurfaceName(surface)} is drawn but not shown");
+                // a revolved shape has no surface facing one way only; the others have their top and bottom at least
+                if (type != typeof(ChiselRevolvedShapeComponent))
+                    Assert.That(named, Is.GreaterThanOrEqualTo(2), "too few surfaces with a direction");
             }
             finally { foreach (var m in materials) UnityEngine.Object.DestroyImmediate(m); }
         }

@@ -82,7 +82,7 @@ namespace Chisel.Core
 
         #region Surfaces
         [BurstDiscard]
-        public int RequiredSurfaceCount { get { return 6; } }
+        public int RequiredSurfaceCount { get { return 2 + (curveBlob.IsCreated ? curveBlob.Value.controlPoints.Length : 3); } }
 
         [BurstDiscard]
         public void UpdateSurfaces(ref ChiselSurfaceArray surfaceDefinition) { }
@@ -129,11 +129,25 @@ namespace Chisel.Core
             base.Reset();
         }
 
-        public override bool Validate() 
+        public override bool Validate()
         {
             shape ??= DefaultShape;
-            return base.Validate(); 
+            return base.Validate();
         }
+
+        // where it starts and ends going round, and a side for each point of its shape, along the span from that point
+        // to the next
+        public override int RequiredSurfaceCount { get { return 2 + (shape?.controlPoints?.Length ?? 0); } }
+
+        public override string GetSurfaceName(int index)
+        {
+            if (index == 0) return "Start";
+            if (index == 1) return "End";
+            return (index < RequiredSurfaceCount) ? ChiselSurfaceNames.Side(index - 1) : null;
+        }
+
+        // it always goes all the way round, so it has no start or end
+        public override bool IsSurfaceUsed(int index) { return index >= 2; }
 
 
         const Allocator defaultAllocator = Allocator.TempJob;

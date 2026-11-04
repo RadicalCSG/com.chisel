@@ -8,7 +8,7 @@ using Unity.Entities;
 namespace Chisel.Core
 {
     [Serializable]
-    public struct ChiselSphere : IBrushGenerator
+    public struct ChiselSphere : IBrushGenerator, IChiselSurfaceNames
     {
         readonly static ChiselSphere kDefaultSettings = new()
 		{
@@ -53,7 +53,14 @@ namespace Chisel.Core
 
         #region Surfaces
         [BurstDiscard]
-        public int RequiredSurfaceCount { get { return 6; } }
+        public int RequiredSurfaceCount { get { return 2; } }
+
+        // its bottom half and its top half
+        [BurstDiscard]
+        public readonly string GetSurfaceName(int index) { return index == 0 ? ChiselSurfaceNames.Bottom : index == 1 ? ChiselSurfaceNames.Top : null; }
+
+        [BurstDiscard]
+        public readonly bool IsSurfaceUsed(int index) { return true; }
 
         [BurstDiscard]
         public void UpdateSurfaces(ref ChiselSurfaceArray surfaceDefinition) { }

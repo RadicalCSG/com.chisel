@@ -126,6 +126,17 @@ namespace Chisel.Core
 
         public override int RequiredSurfaceCount { get { return 2 + shape.controlPoints.Length; } }
 
+        // as a cylinder: where it starts and ends along its path, and a side for each point of its shape, along the span
+        // from that point to the next
+        public override string GetSurfaceName(int index)
+        {
+            if (index == 0) return ChiselSurfaceNames.Bottom;
+            if (index == 1) return ChiselSurfaceNames.Top;
+            return (index < RequiredSurfaceCount) ? ChiselSurfaceNames.Side(index - 1) : null;
+        }
+
+        public override bool IsSurfaceUsed(int index) { return true; }
+
 
         public override bool Validate()
         {

@@ -110,6 +110,23 @@ namespace Chisel.Core
                 planes[p] = CalculatePlane(in polygons[p], in halfEdges, in vertices);
         }
 
+        // The middle of a polygon's corners
+        public static float3 PolygonCenter(in BrushMeshBlob.Polygon polygon, in BlobBuilderArray<BrushMeshBlob.HalfEdge> halfEdges, in BlobBuilderArray<float3> vertices)
+        {
+            var center = float3.zero;
+            for (int e = 0; e < polygon.edgeCount; e++)
+                center += vertices[halfEdges[polygon.firstEdge + e].vertexIndex];
+            return center / math.max(1, polygon.edgeCount);
+        }
+
+        // Gives a polygon the surface at this place in the generator's surface array
+        public static void SetSurface(ref BrushMeshBlob.Polygon polygon, int index, ref InternalChiselSurfaceArray surfaceArray)
+        {
+            index = math.clamp(index, 0, surfaceArray.surfaces.Length - 1);
+            polygon.descriptionIndex = index;
+            polygon.surface          = surfaceArray.surfaces[index];
+        }
+
         public static BrushMeshArrays GenerateSegmentedSubMesh(int horzSegments, int vertSegments, bool topCap, bool bottomCap, int topVertex, int bottomVertex,
                                                                       in BlobBuilderArray<float3> segmentVertices,
                                                                       ref InternalChiselSurfaceArray internalSurfaceArray,
@@ -386,7 +403,11 @@ namespace Chisel.Core
 
             for (int s = 0, surfaceID = 2; s < segments; s++)
             {
-                var descriptionIndex = (s >= segmentDescriptionLength) ? s + 2 : (segmentDescriptionIndices[s]);
+                // side s runs from vertex s - 2 to vertex s - 1 (see the loop above); it takes the surface of the vertex it starts at
+                var from = (s + segments - 2) % segments;
+                var descriptionIndex = (from >= segmentDescriptionLength) ? from + 2 : (segmentDescriptionIndices[from]);
+                // a generator with fewer surfaces than sides gives its faces their surfaces itself, after this
+                descriptionIndex = math.clamp(descriptionIndex, 0, surfaceArray.surfaces.Length - 1);
                 var firstEdge = edgeIndices[(s * 2) + 0] - 1;
                 switch (segmentTopology[s])
                 {

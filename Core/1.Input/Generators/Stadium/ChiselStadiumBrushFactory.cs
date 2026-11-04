@@ -33,6 +33,21 @@ namespace Chisel.Core
 			var polygons = arrays.polygons;
 			var halfEdges = arrays.halfEdges;
 
+			// as a box: its top and bottom, its straight sides left and right, and its ends (rounded or not) at the front
+			// and back
+			for (int p = 0; p < polygons.Length; p++)
+			{
+				var normal = CalculatePlane(in polygons[p], in halfEdges, in localVertices).xyz;
+				BoxSides side;
+				if (math.abs(normal.y) > 0.5f)
+					side = normal.y > 0 ? BoxSides.Top : BoxSides.Bottom;
+				else if (math.abs(normal.x) > 0.9999f)
+					side = normal.x > 0 ? BoxSides.Right : BoxSides.Left;
+				else
+					side = PolygonCenter(in polygons[p], in halfEdges, in localVertices).z > 0 ? BoxSides.Front : BoxSides.Back;
+				SetSurface(ref polygons[p], (int)side, ref surfaceDefinition);
+			}
+
 			// TODO: eventually remove when it's more battle tested
 			if (!Validate(in localVertices, in halfEdges, in polygons, logErrors: true))
 				return false;

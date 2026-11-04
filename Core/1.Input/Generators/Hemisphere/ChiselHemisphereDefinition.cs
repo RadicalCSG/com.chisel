@@ -1,5 +1,6 @@
 using System;
 using Unity.Collections;
+using Unity.Burst;
 using Unity.Mathematics;
 using UnityEngine;
 using Unity.Entities;
@@ -7,7 +8,7 @@ using Unity.Entities;
 namespace Chisel.Core
 {
     [Serializable]
-    public struct ChiselHemisphere : IBrushGenerator
+    public struct ChiselHemisphere : IBrushGenerator, IChiselSurfaceNames
     {
         readonly static ChiselHemisphere kDefaultSettings = new()
 		{
@@ -42,7 +43,14 @@ namespace Chisel.Core
         #endregion
 
         #region Surfaces
-        public int RequiredSurfaceCount { get { return 6; } }
+        public int RequiredSurfaceCount { get { return 2; } }
+
+        // its flat base and its rounded top
+        [BurstDiscard]
+        public readonly string GetSurfaceName(int index) { return index == 0 ? ChiselSurfaceNames.Bottom : index == 1 ? ChiselSurfaceNames.Top : null; }
+
+        [BurstDiscard]
+        public readonly bool IsSurfaceUsed(int index) { return true; }
 
         public void UpdateSurfaces(ref ChiselSurfaceArray surfaceDefinition) { }
         #endregion
