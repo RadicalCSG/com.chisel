@@ -16,7 +16,7 @@ namespace Chisel.Core
     }
 
     [Serializable]
-    public struct ChiselSpiralStairs : IBranchGenerator
+    public struct ChiselSpiralStairs : IBranchGenerator, IChiselSurfaceNames
     {
         readonly static ChiselSpiralStairs kDefaultSettings = new()
         {
@@ -295,25 +295,24 @@ namespace Chisel.Core
         #endregion
 
         #region Surfaces
-        public enum SurfaceSides : byte
-        { 
-            TreadTopSurface       = 0,
-            TreadBottomSurface    = 1,
-            TreadFrontSurface     = 2,
-            TreadBackSurface      = 3,
-            RiserFrontSurface     = 4,
-            RiserBackSurface      = 5,
-            InnerSurface          = 6,
-            OuterSurface          = 7,
+        [BurstDiscard]
+        public int RequiredSurfaceCount { get { return StairsSurfaces.kCount; } }
 
-            TotalSides
+        [BurstDiscard]
+        public readonly string GetSurfaceName(int index) { return StairsSurfaces.Name(index); }
+
+        [BurstDiscard]
+        public bool IsSurfaceUsed(int index)
+        {
+            return StairsSurfaces.IsUsed(index, haveTread: treadHeight >= 0.0001f, haveRiser: HaveRiser,
+                                         haveWall: HaveOuterSide || HaveInnerSide, haveColumn: HaveColumn);
         }
 
         [BurstDiscard]
-        public int RequiredSurfaceCount { get { return 8; } }
-
-        [BurstDiscard]
-        public void UpdateSurfaces(ref ChiselSurfaceArray surfaceDefinition) { }
+        public void UpdateSurfaces(ref ChiselSurfaceArray surfaceDefinition)
+        {
+            StairsSurfaces.UpdateSurfaces(ref surfaceDefinition);
+        }
         #endregion
         
         #region Validation

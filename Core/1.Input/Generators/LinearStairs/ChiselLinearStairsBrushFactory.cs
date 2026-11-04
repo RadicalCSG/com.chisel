@@ -1,4 +1,4 @@
-﻿using Unity.Mathematics;
+using Unity.Mathematics;
 using Unity.Collections;
 using UnityEngine;
 using Unity.Entities;
@@ -16,7 +16,7 @@ namespace Chisel.Core
             // TODO: properly assign all materials
 
             ref var surfaceDefinition = ref surfaceDefinitionBlob.Value;
-            if (surfaceDefinition.surfaces.Length != (int)ChiselLinearStairs.SurfaceSides.TotalSides)
+            if (surfaceDefinition.surfaces.Length != StairsSurfaces.kCount)
                 return false;
 
             var stepOffset = new float3(0, -description.stepHeight, description.stepDepth);
@@ -97,7 +97,7 @@ namespace Chisel.Core
 
                         // its top and bottom start their texture at its front, its front and back at its bottom; its sides
                         // are turned as the side walls are
-                        brushMeshes[subMeshOffset + i] = TurnSideFaces(AlignedUpright(AlignedToFront(CreateExtrudedSubMeshBlob(vertices, extrusion, indices, ref surfaceDefinition, allocator),
+                        brushMeshes[subMeshOffset + i] = TurnSideFaces(AlignedUpright(AlignedToFront(CreateExtrudedSubMeshBlob(vertices, extrusion, indices, StairsPart.Step, ref surfaceDefinition, allocator),
                                                                                        new float2(min.x, maxZ), new float2(max.x, maxZ)),
                                                                         new float3(min.x, description.bounds.Max.y, 0), aroundOrigin: false, description.stepHeight));// Indirect
 
@@ -140,7 +140,7 @@ namespace Chisel.Core
 
                         // the tread's texture starts at its nose, the front edge it reaches out to, and on its front and back
                         // at its bottom
-                        brushMeshes[subMeshOffset + description.startTread + i] = AlignedUpright(AlignedToFront(CreateExtrudedSubMeshBlob(vertices, extrusion, indices, ref surfaceDefinition, allocator),
+                        brushMeshes[subMeshOffset + description.startTread + i] = AlignedUpright(AlignedToFront(CreateExtrudedSubMeshBlob(vertices, extrusion, indices, StairsPart.Tread, ref surfaceDefinition, allocator),
                                                                                                                 new float2(min.x, max.z), new float2(max.x, max.z)),
                                                                                                  // on steps solid down to the floor, from the floor up as the solid
                                                                                                  description.riserType == StairsRiserType.FillDown ? new float3(description.bounds.Min.x, description.bounds.Min.y, 0)
@@ -254,7 +254,7 @@ namespace Chisel.Core
                 indices.Add(k + 1);
             }
             var extrusion = new float3(maxX - minX, 0, 0);
-            return TurnSideFaces(AlignedUpright(AlignedToFront(CreateExtrudedSubMeshBlob(vertices.AsArray(), extrusion, indices.AsArray(), ref surfaceDefinition, allocator),
+            return TurnSideFaces(AlignedUpright(AlignedToFront(CreateExtrudedSubMeshBlob(vertices.AsArray(), extrusion, indices.AsArray(), StairsPart.Step, ref surfaceDefinition, allocator),
                                                                new float2(minX, frontZ), new float2(maxX, frontZ)),
                                                 fromFloor ? new float3(description.bounds.Min.x, description.bounds.Min.y, 0)
                                                           : new float3(description.bounds.Min.x, description.bounds.Max.y, 0),
@@ -294,7 +294,8 @@ namespace Chisel.Core
             return brushMesh;
         }
 
-        static BlobAssetReference<BrushMeshBlob> CreateExtrudedSubMeshBlob([ReadOnly] NativeArray<float3> vertices, float3 extrusion, [ReadOnly] NativeArray<int> indices, 
+        static BlobAssetReference<BrushMeshBlob> CreateExtrudedSubMeshBlob([ReadOnly] NativeArray<float3> vertices, float3 extrusion, [ReadOnly] NativeArray<int> indices,
+                                                                           StairsPart part,
                                                                            ref InternalChiselSurfaceArray surfaceDefinition, Allocator allocator = Allocator.Persistent)// Indirect
 		{
 			using var builder = new BlobBuilder(Allocator.Temp);
@@ -316,6 +317,15 @@ namespace Chisel.Core
 				// TODO: calculate corner planes
 				var halfEdgePolygonIndices = builder.Allocate(ref root.halfEdgePolygonIndices, halfEdges.Length);
 				CalculatePlanes(ref localPlanes, in polygons, in halfEdges, in localVertices);
+				// the steps go down towards +z, so a step's front faces +z
+				for (int p = 0; p < polygons.Length; p++)
+				{
+					var normal = localPlanes[p].xyz;
+					ref var polygon = ref polygons[p];
+					var surface = StairsSurfaces.Classify(part, normal);
+					polygon.descriptionIndex = (int)surface;
+					polygon.surface          = surfaceDefinition.surfaces[(int)surface];
+				}
 				UpdateHalfEdgePolygonIndices(ref halfEdgePolygonIndices, in polygons);
 				root.localBounds = CalculateBounds(in localVertices);
 				return builder.CreateBlobAssetReference<BrushMeshBlob>(allocator); // Allocator.Persistent / Confirmed to dispose
@@ -366,7 +376,7 @@ namespace Chisel.Core
                     indices[4] = 2; 
                     indices[5] = 3;
 
-                    brushMeshes[startIndex] = CreateExtrudedSubMeshBlob(vertices, extrusion, indices, ref surfaceDefinition, allocator);// Indirect
+                    brushMeshes[startIndex] = CreateExtrudedSubMeshBlob(vertices, extrusion, indices, StairsPart.Wall, ref surfaceDefinition, allocator);// Indirect
 				} else
                     startIndex--;
 
@@ -412,7 +422,7 @@ namespace Chisel.Core
                     indices[4] = 2;
                     indices[5] = 3;
 
-                    brushMeshes[startIndex + 1] = CreateExtrudedSubMeshBlob(vertices, extrusion, indices, ref surfaceDefinition, allocator);// Indirect
+                    brushMeshes[startIndex + 1] = CreateExtrudedSubMeshBlob(vertices, extrusion, indices, StairsPart.Wall, ref surfaceDefinition, allocator);// Indirect
 				} else
                 {
                     var y1 = max.y;
@@ -468,7 +478,7 @@ namespace Chisel.Core
                         indices[7] = 3;
                         indices[8] = 4; // TODO: fix this
                                 
-                        brushMeshes[startIndex + 1] = CreateExtrudedSubMeshBlob(vertices, extrusion, indices, ref surfaceDefinition, allocator);// Indirect
+                        brushMeshes[startIndex + 1] = CreateExtrudedSubMeshBlob(vertices, extrusion, indices, StairsPart.Wall, ref surfaceDefinition, allocator);// Indirect
 					} else
                     if (z3 > maxZ)
                     {
@@ -508,7 +518,7 @@ namespace Chisel.Core
                             indices[7] = 3;
                             indices[8] = 4;
                                     
-                            brushMeshes[startIndex + 1] = CreateExtrudedSubMeshBlob(vertices, extrusion, indices, ref surfaceDefinition, allocator);// Indirect
+                            brushMeshes[startIndex + 1] = CreateExtrudedSubMeshBlob(vertices, extrusion, indices, StairsPart.Wall, ref surfaceDefinition, allocator);// Indirect
 						}
 
                         if ((description.sideDepth * aspect) < (description.plateauHeight - description.treadHeight))
@@ -539,7 +549,7 @@ namespace Chisel.Core
                             indices[4] = 2;
                             indices[5] = 3;
 
-                            brushMeshes[startIndex + 2] = CreateExtrudedSubMeshBlob(vertices, extrusion, indices, ref surfaceDefinition, allocator);// Indirect
+                            brushMeshes[startIndex + 2] = CreateExtrudedSubMeshBlob(vertices, extrusion, indices, StairsPart.Wall, ref surfaceDefinition, allocator);// Indirect
 						}
                     } else
                     {
@@ -580,7 +590,7 @@ namespace Chisel.Core
                         indices[7] = 3;
                         indices[8] = 4;
                                 
-                        brushMeshes[startIndex + 1] = CreateExtrudedSubMeshBlob(vertices, extrusion, indices, ref surfaceDefinition, allocator);// Indirect
+                        brushMeshes[startIndex + 1] = CreateExtrudedSubMeshBlob(vertices, extrusion, indices, StairsPart.Wall, ref surfaceDefinition, allocator);// Indirect
 					}
                 }
             } else
@@ -614,7 +624,7 @@ namespace Chisel.Core
                     indices[4] = 2;
                     indices[5] = 3;
 
-                    brushMeshes[startIndex] = CreateExtrudedSubMeshBlob(vertices, extrusion, indices, ref surfaceDefinition, allocator);// Indirect
+                    brushMeshes[startIndex] = CreateExtrudedSubMeshBlob(vertices, extrusion, indices, StairsPart.Wall, ref surfaceDefinition, allocator);// Indirect
 				} else
                     startIndex--;
                 // "wall" on stair steps: steps solid down to the floor have a wall down to the floor, in place of the solid
@@ -653,7 +663,7 @@ namespace Chisel.Core
 
                     // its back and front have their texture from the floor up and across from the stairs' side, as the
                     // solid between the walls
-                    brushMeshes[startIndex + 1] = TurnSideFaces(AlignedUpright(CreateExtrudedSubMeshBlob(vertices.AsArray(), extrusion, indices.AsArray(), ref surfaceDefinition, allocator),
+                    brushMeshes[startIndex + 1] = TurnSideFaces(AlignedUpright(CreateExtrudedSubMeshBlob(vertices.AsArray(), extrusion, indices.AsArray(), StairsPart.Wall, ref surfaceDefinition, allocator),
                                                                                new float3(description.bounds.Min.x, floor, 0), aroundOrigin: false, 0));// Indirect
                 } else
                 for (int i = 0, j = startIndex + 1; i < stepCount; i++, j++)
@@ -690,7 +700,7 @@ namespace Chisel.Core
                     indices[4] = 2;
                     indices[5] = 3;
                     
-                    brushMeshes[j] = CreateExtrudedSubMeshBlob(vertices, extrusion, indices, ref surfaceDefinition, allocator);// Indirect
+                    brushMeshes[j] = CreateExtrudedSubMeshBlob(vertices, extrusion, indices, StairsPart.Wall, ref surfaceDefinition, allocator);// Indirect
 
 					min.z += description.stepDepth;
                     max.z += description.stepDepth;
@@ -733,7 +743,7 @@ namespace Chisel.Core
                         indices[4] = 2;
                         indices[5] = 3;
                         
-                        brushMeshes[j] = CreateExtrudedSubMeshBlob(vertices, extrusion, indices, ref surfaceDefinition, allocator);// Indirect
+                        brushMeshes[j] = CreateExtrudedSubMeshBlob(vertices, extrusion, indices, StairsPart.Wall, ref surfaceDefinition, allocator);// Indirect
 
 						min.z += description.stepDepth;
                         max.z += description.stepDepth;
@@ -778,7 +788,7 @@ namespace Chisel.Core
                                 indices[4] = 2;
                                 indices[5] = 3;
                                 
-                                brushMeshes[startIndex] = CreateExtrudedSubMeshBlob(vertices, extrusion, indices, ref surfaceDefinition, allocator);// Indirect
+                                brushMeshes[startIndex] = CreateExtrudedSubMeshBlob(vertices, extrusion, indices, StairsPart.Wall, ref surfaceDefinition, allocator);// Indirect
 
 								min.z += description.stepDepth;
                                 max.z += description.stepDepth;
@@ -818,7 +828,7 @@ namespace Chisel.Core
                                 indices[4] = 2;
                                 indices[5] = 3;
                                 
-                                brushMeshes[startIndex] = CreateExtrudedSubMeshBlob(vertices, extrusion, indices, ref surfaceDefinition, allocator);// Indirect
+                                brushMeshes[startIndex] = CreateExtrudedSubMeshBlob(vertices, extrusion, indices, StairsPart.Wall, ref surfaceDefinition, allocator);// Indirect
 
 								min.z += description.stepDepth;
                                 max.z += description.stepDepth;
@@ -850,7 +860,7 @@ namespace Chisel.Core
                                 indices[4] = 2;
                                 indices[5] = 3;
 
-                                brushMeshes[startIndex] = CreateExtrudedSubMeshBlob(vertices, extrusion, indices, ref surfaceDefinition, allocator);// Indirect
+                                brushMeshes[startIndex] = CreateExtrudedSubMeshBlob(vertices, extrusion, indices, StairsPart.Wall, ref surfaceDefinition, allocator);// Indirect
 
 								min.z += description.stepDepth;
                                 max.z += description.stepDepth;
@@ -890,7 +900,7 @@ namespace Chisel.Core
                             indices[4] = 2;
                             indices[5] = 3;
                             
-                            brushMeshes[startIndex] = CreateExtrudedSubMeshBlob(vertices, extrusion, indices, ref surfaceDefinition, allocator);// Indirect
+                            brushMeshes[startIndex] = CreateExtrudedSubMeshBlob(vertices, extrusion, indices, StairsPart.Wall, ref surfaceDefinition, allocator);// Indirect
 
 							min.z += description.stepDepth;
                             max.z += description.stepDepth;
@@ -921,7 +931,7 @@ namespace Chisel.Core
                             indices[4] = 2;
                             indices[5] = 3;
                             
-                            brushMeshes[startIndex] = CreateExtrudedSubMeshBlob(vertices, extrusion, indices, ref surfaceDefinition, allocator);// Indirect
+                            brushMeshes[startIndex] = CreateExtrudedSubMeshBlob(vertices, extrusion, indices, StairsPart.Wall, ref surfaceDefinition, allocator);// Indirect
 
 							min.z += description.stepDepth;
                             max.z += description.stepDepth;
@@ -961,7 +971,7 @@ namespace Chisel.Core
                             indices[4] = 2;
                             indices[5] = 3;
                             
-                            brushMeshes[j] = CreateExtrudedSubMeshBlob(vertices, extrusion, indices, ref surfaceDefinition, allocator);// Indirect
+                            brushMeshes[j] = CreateExtrudedSubMeshBlob(vertices, extrusion, indices, StairsPart.Wall, ref surfaceDefinition, allocator);// Indirect
 						} else
                         if (y1 < description.bounds.Min.y)
                         {
@@ -996,7 +1006,7 @@ namespace Chisel.Core
                             indices[4] = 2;
                             indices[5] = 3;
 
-                            brushMeshes[j] = CreateExtrudedSubMeshBlob(vertices, extrusion, indices, ref surfaceDefinition, allocator);// Indirect
+                            brushMeshes[j] = CreateExtrudedSubMeshBlob(vertices, extrusion, indices, StairsPart.Wall, ref surfaceDefinition, allocator);// Indirect
 						} else
                         {
                             // z0 y0 *------* z1 y0 
@@ -1027,7 +1037,7 @@ namespace Chisel.Core
                             indices[4] = 2;
                             indices[5] = 3;
 
-                            brushMeshes[j] = CreateExtrudedSubMeshBlob(vertices, extrusion, indices, ref surfaceDefinition, allocator);// Indirect
+                            brushMeshes[j] = CreateExtrudedSubMeshBlob(vertices, extrusion, indices, StairsPart.Wall, ref surfaceDefinition, allocator);// Indirect
 						}
 
                         min.z += description.stepDepth;
@@ -1071,7 +1081,7 @@ namespace Chisel.Core
                             indices[4] = 2;
                             indices[5] = 3;
 
-                            brushMeshes[startIndex + stepCount] = CreateExtrudedSubMeshBlob(vertices, extrusion, indices, ref surfaceDefinition, allocator);// Indirect
+                            brushMeshes[startIndex + stepCount] = CreateExtrudedSubMeshBlob(vertices, extrusion, indices, StairsPart.Wall, ref surfaceDefinition, allocator);// Indirect
 						} else
                         {
                             // y1 z0 *
@@ -1097,7 +1107,7 @@ namespace Chisel.Core
                             indices[4] = 2;
                             indices[5] = 3;
                             
-                            brushMeshes[startIndex + stepCount] = CreateExtrudedSubMeshBlob(vertices, extrusion, indices, ref surfaceDefinition, allocator);// Indirect
+                            brushMeshes[startIndex + stepCount] = CreateExtrudedSubMeshBlob(vertices, extrusion, indices, StairsPart.Wall, ref surfaceDefinition, allocator);// Indirect
 						}
                     }
                 }
@@ -1128,7 +1138,7 @@ namespace Chisel.Core
                     indices[4] = 2;
                     indices[5] = 3;
 
-                    brushMeshes[startIndex + stepCount - 1] = CreateExtrudedSubMeshBlob(vertices, extrusion, indices, ref surfaceDefinition, allocator);// Indirect
+                    brushMeshes[startIndex + stepCount - 1] = CreateExtrudedSubMeshBlob(vertices, extrusion, indices, StairsPart.Wall, ref surfaceDefinition, allocator);// Indirect
 				}
             }
         }

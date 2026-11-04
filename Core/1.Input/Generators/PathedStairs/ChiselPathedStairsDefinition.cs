@@ -9,7 +9,7 @@ using Unity.Entities;
 namespace Chisel.Core
 {
     [Serializable]
-    public struct ChiselPathedStairs : IBranchGenerator
+    public struct ChiselPathedStairs : IBranchGenerator, IChiselSurfaceNames
     {
         readonly static ChiselPathedStairs kDefaultSettings = new()
 		{
@@ -89,6 +89,9 @@ namespace Chisel.Core
         #region Surfaces
         [BurstDiscard]
         public int RequiredSurfaceCount { get { return stairs.RequiredSurfaceCount; } }
+
+        public readonly string GetSurfaceName(int index) { return StairsSurfaces.Name(index); }
+        public readonly bool IsSurfaceUsed(int index) { return stairs.IsSurfaceUsed(index); }
 
         [BurstDiscard]
         public void UpdateSurfaces(ref ChiselSurfaceArray surfaceDefinition)

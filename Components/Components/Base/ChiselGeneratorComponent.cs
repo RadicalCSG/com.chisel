@@ -110,6 +110,8 @@ namespace Chisel.Components
 
         public override UnityEngine.Hash128 GetDefinitionInputHash() { return definition.GetInputHash(); }
 
+        public override string GetSurfaceName(int descriptionIndex) { return definition.GetSurfaceName(descriptionIndex); }
+        public override bool IsSurfaceUsed(int descriptionIndex) { return definition.IsSurfaceUsed(descriptionIndex); }
         public override ChiselSurface GetSurface(int descriptionIndex) { return surfaceArray.GetSurface(descriptionIndex); }
         public override SurfaceDetails GetSurfaceDetails(int descriptionIndex) { return surfaceArray.GetSurfaceDetails(descriptionIndex); }
         public override void SetSurfaceDetails(int descriptionIndex, SurfaceDetails description) { surfaceArray.SetSurfaceDetails(descriptionIndex, description); }
@@ -134,8 +136,19 @@ namespace Chisel.Components
                     surfaceArray = new ChiselSurfaceArray();
                     surfaceArray.Reset();
                 }
-                surfaceArray.EnsureSize(definition.RequiredSurfaceCount);
+                var prevLength = surfaceArray.surfaces?.Length ?? 0;
+                if (surfaceArray.EnsureSize(definition.RequiredSurfaceCount))
+                {
+                    // new surfaces take the generator's own defaults, the wall material where it has none
+                    for (int i = prevLength; i < surfaceArray.surfaces.Length; i++)
+                        surfaceArray.surfaces[i].SetMaterial(null);
+                }
                 definition.UpdateSurfaces(ref surfaceArray);
+                for (int i = prevLength; surfaceArray.surfaces != null && i < surfaceArray.surfaces.Length; i++)
+                {
+                    if (!surfaceArray.surfaces[i].HasMaterial)
+                        surfaceArray.surfaces[i].SetMaterial(ChiselProjectSettings.DefaultWallMaterial);
+                }
             }
             catch (System.Exception ex)
 			{
@@ -176,6 +189,12 @@ namespace Chisel.Components
         [HideInInspector] CSGTreeNode Node = default;
 
         public abstract ChiselSurfaceArray SurfaceDefinition { get; }
+
+        /// <summary>The name of the surface at this place in the surface array, or null when it is only numbered</summary>
+        public virtual string GetSurfaceName(int descriptionIndex) { return null; }
+
+        /// <summary>Whether the generator, as it is set up now, has faces with the surface at this place</summary>
+        public virtual bool IsSurfaceUsed(int descriptionIndex) { return true; }
 
         [SerializeField, HideInInspector] protected CSGOperationType    operation;		    // NOTE: do not rename, name is directly used in editors
         // What every brush this generates is made of: an index into ChiselContentsList.Instance, 0 is Solid.
