@@ -436,6 +436,10 @@ namespace Chisel.Core
                     //brushContainer.operations[subMeshIndex] = CSGOperationType.Subtractive;
                 }
 
+                // the steps' fronts and backs start their texture at the bottom of each step, and at the middle across
+                for (int i = 0; i < subMeshCount && i < brushMeshes.Length; i++)
+                    brushMeshes[i] = AlignedUpright(brushMeshes[i], origin, aroundOrigin: true, stepHeight);
+
                 // the column and the sides come after the steps, so the cylinders that trim the steps leave them whole
                 var index = subMeshCount;
                 if (definition.HaveColumn)
@@ -493,6 +497,9 @@ namespace Chisel.Core
             var stepHeight  = definition.stepHeight;
             var above       = (sideType == StairsSideType.Up   || sideType == StairsSideType.DownAndUp) ? definition.sideHeight : 0;
             var below       = (sideType == StairsSideType.Down || sideType == StairsSideType.DownAndUp) ? stepHeight + definition.sideDepth : 0;
+            // steps that are solid down to the floor have walls that go down to the floor too
+            if (definition.riserType == StairsRiserType.FillDown)
+                below = math.abs(definition.height) + stepHeight;
             var floor       = origin.y;
             // how far along the wall each piece starts, on its inner and its outer face, so the texture runs on across them
             var innerLength = 0.0f;
@@ -518,8 +525,12 @@ namespace Chisel.Core
 
                     var smoothing = definition.sideSmoothingGroup;
                     // the first wedge has the inner face, the second the outer one; the face between them is hidden
-                    brushMeshes[index++] = WallFace(Wedge(in0, line0, out0, line0, in1, line1, above, below, floor, in surfaceDefinitionBlob, allocator), smoothing, in0, in1, innerLength);
-                    brushMeshes[index++] = WallFace(Wedge(out0, line0, out1, line1, in1, line1, above, below, floor, in surfaceDefinitionBlob, allocator), smoothing, out0, out1, outerLength);
+                    // its ends, pointing out from the middle, have their texture from the middle out and from the bottom of the
+                    // step beside them up, as that step's front and back
+                    var stepBeside = math.clamp((int)math.floor(((a0 + a1) * 0.5f - startAngle) / anglePerStep), 0, definition.StepCount - 1);
+                    var endsFrom   = new float3(origin.x, origin.y + stepBeside * stepHeight, origin.z);
+                    brushMeshes[index++] = AlignedUpright(WallFace(Wedge(in0, line0, out0, line0, in1, line1, above, below, floor, in surfaceDefinitionBlob, allocator), smoothing, in0, in1, innerLength), endsFrom, aroundOrigin: true, 0);
+                    brushMeshes[index++] = AlignedUpright(WallFace(Wedge(out0, line0, out1, line1, in1, line1, above, below, floor, in surfaceDefinitionBlob, allocator), smoothing, out0, out1, outerLength), endsFrom, aroundOrigin: true, 0);
                     innerLength += math.distance(in0, in1);
                     outerLength += math.distance(out0, out1);
                     a0 = a1;
@@ -697,6 +708,68 @@ namespace Chisel.Core
             if (apothem <= 0)
                 return 0;
             return ChiselSpiralStairs.RadiusOnSide(angle, angle, apothem, segments);
+        }
+
+        // A step's upright front and back: the texture starts at the bottom of the step, and across at a fixed place (the
+        // stairs' side for straight stairs, the middle for spiral ones, where each front and back points away from). Only
+        // the faces running across the stairs: for straight stairs those facing along them, for spiral stairs those
+        // pointing out from the middle. Not mirrored seen from the side a face faces, and the surface's own uv settings
+        // are applied to it; a surface mapped in world space keeps its own
+        static BlobAssetReference<BrushMeshBlob> AlignedUpright(BlobAssetReference<BrushMeshBlob> brushMesh, float3 origin, bool aroundOrigin, float stepHeight)
+        {
+            if (!brushMesh.IsCreated)
+                return brushMesh;
+            ref var mesh = ref brushMesh.Value;
+            // the bottom of the step this piece belongs to (its top is in that step, a tread's top is the step's top), so
+            // a tread's front and the riser under it run on as one; steps are a whole number of steps up from the origin
+            var top = float.NegativeInfinity;
+            for (int i = 0; i < mesh.localVertices.Length; i++)
+                top = math.max(top, mesh.localVertices[i].y);
+            // without a step height the texture starts at the origin's height itself
+            var bottom = origin.y;
+            if (stepHeight > 0)
+                bottom = origin.y + (math.ceil((top - origin.y) / stepHeight - 0.001f) - 1) * stepHeight;
+            var start = new float3(origin.x, bottom, origin.z);
+            var up    = new float3(0, 1, 0);
+            for (int p = 0; p < mesh.polygons.Length && p < mesh.localPlanes.Length; p++)
+            {
+                var normal = math.normalizesafe(mesh.localPlanes[p].xyz);
+                if (math.abs(normal.y) > 0.1f)
+                    continue;
+                ref var polygon = ref mesh.polygons[p];
+                if (aroundOrigin)
+                {
+                    var middle = float3.zero;
+                    for (int e = 0; e < polygon.edgeCount; e++)
+                        middle += mesh.localVertices[mesh.halfEdges[polygon.firstEdge + e].vertexIndex];
+                    middle /= math.max(1, polygon.edgeCount);
+                    var outwards = new float2(middle.x - origin.x, middle.z - origin.z);
+                    if (math.lengthsq(outwards) < 1e-8f || math.abs(math.dot(math.normalize(outwards), normal.xz)) > 0.1f)
+                        continue;
+                } else
+                if (math.abs(normal.z) < 0.9f)
+                    continue;
+                if ((polygon.surface.details.detailFlags & SurfaceDetailFlags.TextureIsInWorldSpace) != 0)
+                    continue;
+
+                // u to the right seen from in front (left handed space), v up
+                var u3 = math.normalizesafe(math.cross(normal, up));
+                var v3 = up;
+
+                var toPlane  = MathExtensions.GenerateLocalToPlaneSpaceMatrix(mesh.localPlanes[p]);
+                var rotation = new float3x3(toPlane);
+                var shift    = toPlane.c3.xyz;
+                var ru = math.mul(rotation, u3);
+                var rv = math.mul(rotation, v3);
+                var u = new float4(ru, -math.dot(u3, start) - math.dot(ru, shift));
+                var v = new float4(rv, -math.dot(v3, start) - math.dot(rv, shift));
+
+                ref var uv0 = ref polygon.surface.details.UV0;
+                float4 givenU = uv0.U, givenV = uv0.V;
+                uv0.U = givenU.x * u + givenU.y * v + new float4(0, 0, 0, givenU.w);
+                uv0.V = givenV.x * u + givenV.y * v + new float4(0, 0, 0, givenV.w);
+            }
+            return brushMesh;
         }
 
         // A step's flat top and bottom: the texture starts at the step's front edge, running along it, and into the step
