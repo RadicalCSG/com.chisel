@@ -9,6 +9,7 @@
         "Unity.Collections",
         "Unity.Entities",
         "Unity.Mathematics",
+        "Unity.Mathematics.Extensions",
         "AssetMetadataRuntime",
         "AssetMetadataEditor"
     ],

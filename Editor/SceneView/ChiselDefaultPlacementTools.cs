@@ -5,6 +5,23 @@ using UnityEngine;
 
 namespace Chisel.Editors
 {
+    public static class ChiselPlacementTurn
+    {
+        // drawn wider than deep, a generator that runs along its depth is turned a quarter round up, to run along the long
+        // side: its frame turned, and the drawn box in it. Turned, a size can come out negative; the frame already says
+        // which way it runs, so the sizes are kept positive
+        public static void AlongLongSide(ref Matrix4x4 transformation, ref Bounds bounds)
+        {
+            if (Mathf.Abs(bounds.size.x) <= Mathf.Abs(bounds.size.z))
+                return;
+            var turn = Quaternion.AngleAxis(90, Vector3.up);
+            transformation = transformation * Matrix4x4.Rotate(turn);
+            var back = Quaternion.Inverse(turn);
+            var size = back * bounds.size;
+            bounds = new Bounds(back * bounds.center, new Vector3(Mathf.Abs(size.x), Mathf.Abs(size.y), Mathf.Abs(size.z)));
+        }
+    }
+
     public enum GeneratorModeState
     {
         None,
@@ -45,9 +62,12 @@ namespace Chisel.Editors
                 case ShapeExtrusionState.Modified:
                 case ShapeExtrusionState.Create:
                 {
+                    // flatter than a generator can be there is no shape: it is hidden until it has a height again, and
+                    // finishing then makes nothing
+                    var flat = Mathf.Abs(height) < ChiselGeneratorLimits.kMinSize;
                     if (!generatedComponent)
                     {
-                        if (height != 0)
+                        if (!flat)
                         {
                             var center2D = shape.Center;
                             var center3D = new Vector3(center2D.x, 0, center2D.y);
@@ -67,6 +87,10 @@ namespace Chisel.Editors
                         }
                     } else
                     {
+                        if (generatedComponent.gameObject.activeSelf == flat)
+                            generatedComponent.gameObject.SetActive(!flat);
+                        if (flat)
+                            break;
                         generatedComponent.Operation = forceOperation ??
                                                   ((height < 0 && modelBeneathCursor) ?
                                                     CSGOperationType.Subtractive :
@@ -78,7 +102,7 @@ namespace Chisel.Editors
                     break;
                 }
                 
-                case ShapeExtrusionState.Commit:        { Commit(generatedComponent, PlacementToolDefinition.CreateAsBrush); break; }
+                case ShapeExtrusionState.Commit:        { if (generatedComponent && generatedComponent.gameObject.activeSelf) Commit(generatedComponent, PlacementToolDefinition.CreateAsBrush); else Cancel(); break; }
                 case ShapeExtrusionState.Cancel:        { Cancel(); break; }
             }
 
@@ -119,10 +143,11 @@ namespace Chisel.Editors
 
         protected IChiselHandles handles = new ChiselEditorHandles();
 
-        const float kMinimumAxisLength = 0.0001f;
 
         public override void OnSceneGUI(SceneView sceneView, Rect dragArea)
         {
+            // thinner than this along any axis the generator can't be built
+            var minimumAxisLength = PlacementToolDefinition.MinimumSize;
             var generatoreModeFlags = PlacementToolDefinition.PlacementFlags;
 
             if ((generatoreModeFlags & (PlacementFlags.HeightEqualsHalfXZ | PlacementFlags.HeightEqualsXZ)) != 0)
@@ -131,16 +156,20 @@ namespace Chisel.Editors
             if (Event.current.shift)
                 generatoreModeFlags |= PlacementFlags.UseLastHeight;
 
-            switch (RectangleExtrusionHandle.Do(dragArea, out Bounds bounds, out float height, out ChiselModelComponent modelBeneathCursor, out Matrix4x4 transformation, generatoreModeFlags, Axis.Y))
+            var state = RectangleExtrusionHandle.Do(dragArea, out Bounds bounds, out float height, out ChiselModelComponent modelBeneathCursor, out Matrix4x4 transformation, generatoreModeFlags, Axis.Y);
+            if (PlacementToolDefinition.AlongLongSide)
+                ChiselPlacementTurn.AlongLongSide(ref transformation, ref bounds);
+
+            switch (state)
             {
                 case GeneratorModeState.Update:
                 {
                     if (!generatedComponent)
                     {
                         var size = bounds.size;
-                        if (Mathf.Abs(size.x) >= kMinimumAxisLength &&
-                            Mathf.Abs(size.y) >= kMinimumAxisLength &&
-                            Mathf.Abs(size.z) >= kMinimumAxisLength)
+                        if (Mathf.Abs(size.x) >= minimumAxisLength &&
+                            Mathf.Abs(size.y) >= minimumAxisLength &&
+                            Mathf.Abs(size.z) >= minimumAxisLength)
                         {
                             // Create the generator GameObject
                             Transform parentTransform = null;
@@ -164,14 +193,16 @@ namespace Chisel.Editors
                         }
                     } else
                     {
+                        // flat along any axis there is no shape: it is hidden until it has a size again, and finishing
+                        // then makes nothing
                         var size = bounds.size;
-                        if (Mathf.Abs(size.x) < kMinimumAxisLength &&
-                            Mathf.Abs(size.y) < kMinimumAxisLength &&
-                            Mathf.Abs(size.z) < kMinimumAxisLength)
-                        {
-                            UnityEngine.Object.DestroyImmediate(generatedComponent);
-                            return;
-                        }
+                        var flat = Mathf.Abs(size.x) < minimumAxisLength ||
+                                   Mathf.Abs(size.y) < minimumAxisLength ||
+                                   Mathf.Abs(size.z) < minimumAxisLength;
+                        if (generatedComponent.gameObject.activeSelf == flat)
+                            generatedComponent.gameObject.SetActive(!flat);
+                        if (flat)
+                            break;
 
                         // Update the generator GameObject
                         ChiselComponentFactory.SetTransform(generatedComponent, transformation);
@@ -193,7 +224,7 @@ namespace Chisel.Editors
                     break;
                 }
                 
-                case GeneratorModeState.Commit:     { if (generatedComponent) { Commit(generatedComponent, PlacementToolDefinition.CreateAsBrush); } else Cancel(); break; }
+                case GeneratorModeState.Commit:     { if (generatedComponent && generatedComponent.gameObject.activeSelf) { Commit(generatedComponent, PlacementToolDefinition.CreateAsBrush); } else Cancel(); break; }
                 case GeneratorModeState.Cancel:     { Cancel(); break; }
             }
 

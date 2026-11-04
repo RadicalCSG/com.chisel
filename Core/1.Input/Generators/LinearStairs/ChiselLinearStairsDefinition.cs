@@ -10,22 +10,21 @@ namespace Chisel.Core
     [Serializable]
     public enum StairsRiserType : byte
     {
-        None,
-        ThinRiser,
-        ThickRiser,
+        [InspectorName("Open")] None,
+        [InspectorName("Thin Risers")] ThinRiser,
+        [InspectorName("Thick Risers")] ThickRiser,
 //		Pyramid,
-        Smooth,
-        FillDown
+        [InspectorName("Sloped Underside")] Smooth,
+        [InspectorName("Solid To The Floor")] FillDown
     }
 
     [Serializable]
     public enum StairsSideType : byte
     {
-        None,
-        // TODO: better names
-        Down,
-        Up,
-        DownAndUp
+        [InspectorName("Open")] None,
+        [InspectorName("Wall Below The Steps")] Down,
+        [InspectorName("Wall Above The Steps")] Up,
+        [InspectorName("Both")] DownAndUp
     }
 
     [Serializable]
@@ -60,24 +59,43 @@ namespace Chisel.Core
 
 		public MinMaxAABB bounds;
 
+        [Tooltip("How high each step rises above the one below it")]
         [DistanceValue] public float	stepHeight;
+        [Tooltip("How deep each step is, front to back")]
         [DistanceValue] public float	stepDepth;
 
+        [ConditionalName("Tread Thickness"), Tooltip("How thick the slab on top of each step is; 0 for none")]
         [DistanceValue] public float	treadHeight;
 
+        [ConditionalName("Tread Front Overhang"), Tooltip("How far each tread sticks out over the step below it")]
         [DistanceValue] public float	nosingDepth;
+        [ConditionalName("Tread Side Overhang"), Tooltip("How far the treads stick out past a side without a wall")]
         [DistanceValue] public float	nosingWidth;
+        [ConditionalName("Top Tread Overhang"), Tooltip("How far the top tread sticks out past both sides, walls or not; 0 to keep it as wide as the others")]
+        [DistanceValue] public float    topTreadOverhang;
 
+        [ConditionalName("Base Height"), Tooltip("How high the lowest step starts: the solid part under it. Stairs taller than their steps fit in get a higher base")]
         [DistanceValue] public float    plateauHeight;
 
+        [ConditionalName("Under The Steps"), Tooltip("What is under the steps: nothing, a board at the back of each step, solid blocks, a sloped underside, or solid down to the floor")]
         public StairsRiserType          riserType;
+        [ConditionalName("Riser Thickness"), Tooltip("How thick the board at the back of each step is")]
+        [ConditionalHide(nameof(riserType), StairsRiserType.None, StairsRiserType.ThickRiser, StairsRiserType.Smooth, StairsRiserType.FillDown)]
         [DistanceValue] public float	riserDepth;
 
+        [Tooltip("A wall on the left side: below the steps, above them (a railing wall), or both")]
         public StairsSideType           leftSide;
+        [Tooltip("A wall on the right side: below the steps, above them (a railing wall), or both")]
         public StairsSideType           rightSide;
         
+        [ConditionalHideIfAll(StairsSideType.None, nameof(leftSide), nameof(rightSide))]
+        [ConditionalName("Side Wall Thickness"), Tooltip("How thick the side walls are")]
         [DistanceValue] public float	sideWidth;
+        [ConditionalHideIfAll(StairsSideType.None, nameof(leftSide), nameof(rightSide))]
+        [ConditionalName("Side Wall Height Above The Steps"), Tooltip("How high a wall above the steps reaches over them")]
         [DistanceValue] public float	sideHeight;
+        [ConditionalHideIfAll(StairsSideType.None, nameof(leftSide), nameof(rightSide))]
+        [ConditionalName("Side Wall Depth Below The Steps"), Tooltip("How far a wall below the steps reaches under them")]
         [DistanceValue] public float	sideDepth;
 
         //[NamedItems("Top", "Bottom", "Left", "Right", "Front", "Back", "Tread", "Step", overflow = "Side {0}", fixedSize = 8)]
@@ -105,6 +123,8 @@ namespace Chisel.Core
         }
         
         public float3   BoundsMin   { get { return math.min(bounds.Min, bounds.Max); } }
+        // the bounds with min below max on every axis, as the stairs are built (bounds keeps the sides as dragged)
+        public readonly MinMaxAABB SortedBounds { get { return new MinMaxAABB { Min = math.min(bounds.Min, bounds.Max), Max = math.max(bounds.Min, bounds.Max) }; } }
         public float3   BoundsMax   { get { return math.max(bounds.Min, bounds.Max); } }
         
         public float	AbsWidth  { get { return math.abs(BoundsSize.x); } }
@@ -133,14 +153,14 @@ namespace Chisel.Core
             if (math.any(size == 0))
                 return 0;
 
-            var description = new BrushMeshFactory.LineairStairsData(bounds,
+            var description = new BrushMeshFactory.LineairStairsData(SortedBounds,
                                                                         stepHeight, stepDepth,
                                                                         treadHeight,
                                                                         nosingDepth, nosingWidth,
                                                                         plateauHeight,
                                                                         riserType, riserDepth,
                                                                         leftSide, rightSide,
-                                                                        sideWidth, sideHeight, sideDepth);
+                                                                        sideWidth, sideHeight, sideDepth, topTreadOverhang);
             return description.subMeshCount;
         }
 
@@ -151,14 +171,14 @@ namespace Chisel.Core
 			using var _generatedBrushMeshes = generatedBrushMeshes = new NativeList<BlobAssetReference<BrushMeshBlob>>(nodes.Length, Allocator.Temp);
 
             generatedBrushMeshes.Resize(nodes.Length, NativeArrayOptions.ClearMemory);
-            var description = new BrushMeshFactory.LineairStairsData(bounds,
+            var description = new BrushMeshFactory.LineairStairsData(SortedBounds,
                                                                     stepHeight, stepDepth,
                                                                     treadHeight,
                                                                     nosingDepth, nosingWidth,
                                                                     plateauHeight,
                                                                     riserType, riserDepth,
                                                                     leftSide, rightSide,
-                                                                    sideWidth, sideHeight, sideDepth);
+                                                                    sideWidth, sideHeight, sideDepth, topTreadOverhang);
             const int subMeshOffset = 0;
             if (!BrushMeshFactory.GenerateLinearStairsSubMeshes(generatedBrushMeshes,
                                                                 subMeshOffset,
@@ -238,13 +258,19 @@ namespace Chisel.Core
             nosingDepth	    = math.max(0, nosingDepth);
             nosingWidth	    = math.max(0, nosingWidth);
 
-            Width			= math.max(kMinWidth, AbsWidth) * (Width < 0 ? -1 : 1);
-            Depth			= math.max(stepDepth, AbsDepth) * (Depth < 0 ? -1 : 1);
+            // a negative size stays as given, and a size is changed by moving its far side only (the side being dragged),
+            // never 0
+            var max         = bounds.Max;
+            max.x           = bounds.Min.x + ChiselGeneratorLimits.NotZero(Width, kMinWidth);
+            max.y           = bounds.Min.y + ChiselGeneratorLimits.NotZero(Height);
+            max.z           = bounds.Min.z + math.max(stepDepth, AbsDepth) * (Depth < 0 ? -1 : 1);
+            bounds.Max      = max;
 
             riserDepth		= math.max(kMinRiserDepth, riserDepth);
             sideDepth		= math.max(0, sideDepth);
             sideWidth		= math.max(kMinSideWidth, sideWidth);
             sideHeight		= math.max(0, sideHeight);
+            topTreadOverhang = math.max(0, topTreadOverhang);
 
             var realHeight          = math.max(stepHeight, AbsHeight);
             var maxPlateauHeight    = realHeight - stepHeight;
@@ -252,6 +278,10 @@ namespace Chisel.Core
             plateauHeight	= math.clamp(plateauHeight, 0, maxPlateauHeight);
 
             var totalSteps          = math.max(1, (int)math.floor((realHeight - plateauHeight + ChiselLinearStairs.kStepSmudgeValue) / stepHeight));
+            // no more steps than fit in the depth at their depth: taller than that, the steps keep their size and start
+            // higher up (the base under the lowest step grows), rather than every step getting shallower
+            var stepsThatFit        = math.max(1, (int)math.floor((AbsDepth + ChiselLinearStairs.kStepSmudgeValue) / stepDepth));
+            totalSteps              = math.min(totalSteps, stepsThatFit);
             var totalStepHeight     = totalSteps * stepHeight;
 
             plateauHeight	= math.max(0, realHeight - totalStepHeight);
@@ -300,7 +330,7 @@ namespace Chisel.Core
                     settings.bounds = bounds;
 
                 var min			= math.min(bounds.Min, bounds.Max);
-                var max			= math.min(bounds.Min, bounds.Max);
+                var max			= math.max(bounds.Min, bounds.Max);
 
                 var size        = (max - min);
 
@@ -348,8 +378,10 @@ namespace Chisel.Core
                 }
                 if (prevModified != handles.modified)
                 {
-                    settings.plateauHeight += heightOffset;
+                    // direction points away from where the diagonal is dragged
+                    settings.plateauHeight -= heightOffset;
                 }
+                handles.DoBoxMeasurements(ref settings.bounds);
             }
         }
         #endregion

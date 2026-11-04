@@ -60,7 +60,16 @@ namespace Chisel.Core
 			return result;
 		}
 
-        public static void RenderBox(this IChiselHandleRenderer renderer, MinMaxAABB bounds)               { renderer.RenderBox(bounds.ToBounds()); }
+		public static bool DoBoxMeasurements(this IChiselHandles handles, ref MinMaxAABB box, string undoMessage = null)
+		{
+			var bounds = box.ToBounds();
+			if (!handles.DoBoxMeasurements(ref bounds, undoMessage))
+				return false;
+			box = bounds.ToMinMaxAABB();
+			return true;
+		}
+
+        public static void RenderBox(this IChiselHandleRenderer renderer, MinMaxAABB bounds)             { renderer.RenderBox(bounds.ToBounds()); }
         public static void RenderBoxMeasurements(this IChiselHandleRenderer renderer, MinMaxAABB bounds)   { renderer.RenderBoxMeasurements(bounds.ToBounds()); }
         public static void RenderCylinder(this IChiselHandleRenderer renderer, MinMaxAABB bounds, int segments) { renderer.RenderCylinder(bounds.ToBounds(), segments); }
         
@@ -187,6 +196,8 @@ namespace Chisel.Core
         bool DoDirectionHandle(ref Vector3 position, Vector3 direction, float snappingStep = 0, string undoMessage = null);
         bool DoRotatableLineHandle(ref float angle, Vector3 origin, float diameter, Vector3 handleDir, Vector3 slideDir1, Vector3 slideDir2, string undoMessage = null);
         bool DoTurnHandle(ref Bounds bounds, string undoMessage = null);
+        // the bounds' lengths, each of which can be clicked and typed in
+        bool DoBoxMeasurements(ref Bounds bounds, string undoMessage = null);
 
         bool DoEdgeHandle1D(out float offset, Axis axis, Vector3 from, Vector3 to, float snappingStep = 0, float handleSize = 0, string undoMessage = null);
         bool DoEdgeHandle1DOffset(out Vector3 offset, Axis axis, Vector3 from, Vector3 to, Vector3 direction, float snappingStep = 0, float handleSize = 0, bool renderLine = true, string undoMessage = null);

@@ -54,8 +54,8 @@ namespace Chisel.Editors
             "m",
             "cm",
             "mm",
-            "ft",
-            "\""
+            "\"",
+            "ft"
         };
 
         static readonly GUIContent[] kDistanceUnitGUIContent = 
@@ -121,6 +121,12 @@ namespace Chisel.Editors
         }
 
         
+        // a length as shown: rounded to a tenth of a millimeter first, so float noise on snapped sizes doesn't show
+        static double Readable(DistanceUnit unit, float value)
+        {
+            return UnityToDistanceUnit(unit, (float)System.Math.Round(value, 4));
+        }
+
         public static string		ToDistanceString	(float value, string name = null)
         {
             return ToDistanceString(ActiveDistanceUnit, value, name);
@@ -129,9 +135,9 @@ namespace Chisel.Editors
         public static string		ToDistanceString	(DistanceUnit unit, float value, string name = null)
         {
             if (string.IsNullOrEmpty(name))
-                return string.Format(CultureInfo.InvariantCulture, "{0} {1}", UnityToDistanceUnit(unit, value), GetUnitString(unit));
+                return string.Format(CultureInfo.InvariantCulture, "{0:0.####} {1}", Readable(unit, value), GetUnitString(unit));
             else
-                return string.Format(CultureInfo.InvariantCulture, "{0} {1} ({2})", UnityToDistanceUnit(unit, value), GetUnitString(unit), name);
+                return string.Format(CultureInfo.InvariantCulture, "{0:0.####} {1} ({2})", Readable(unit, value), GetUnitString(unit), name);
         }		
         
         public static string		ToDistanceString	(DistanceUnit unit, Vector3 value, bool lockX = false, bool lockY = false, bool lockZ = false)
@@ -139,11 +145,11 @@ namespace Chisel.Editors
             var builder		= new StringBuilder();
             var unit_string = GetUnitString(unit);
             if (lockX) builder.Append("x: --\n");
-            else builder.AppendFormat(CultureInfo.InvariantCulture, "x: {0} {1}\n", UnityToDistanceUnit(unit, value.x), unit_string);
+            else builder.AppendFormat(CultureInfo.InvariantCulture, "x: {0:0.####} {1}\n", Readable(unit, value.x), unit_string);
             if (lockY) builder.Append("y: --\n");
-            else builder.AppendFormat(CultureInfo.InvariantCulture, "y: {0} {1}\n", UnityToDistanceUnit(unit, value.y), unit_string);
+            else builder.AppendFormat(CultureInfo.InvariantCulture, "y: {0:0.####} {1}\n", Readable(unit, value.y), unit_string);
             if (lockZ) builder.Append("z: --");
-            else builder.AppendFormat(CultureInfo.InvariantCulture, "z: {0} {1}", UnityToDistanceUnit(unit, value.z), unit_string);
+            else builder.AppendFormat(CultureInfo.InvariantCulture, "z: {0:0.####} {1}", Readable(unit, value.z), unit_string);
             return builder.ToString();
         }
 
@@ -225,6 +231,39 @@ namespace Chisel.Editors
         }
         
 
+
+        // Reads a typed length: a number in the given unit, or a number followed by any unit ("50 cm", "2'", "3 in")
+        public static bool			TryParseDistance	(string text, DistanceUnit unit, out float value)
+        {
+            value = 0;
+            if (string.IsNullOrWhiteSpace(text))
+                return false;
+            text = text.Trim().Replace(',', '.');
+            var end = 0;
+            while (end < text.Length && (char.IsDigit(text[end]) || text[end] == '.' || text[end] == '-' || text[end] == '+'))
+                end++;
+            if (!double.TryParse(text.Substring(0, end), NumberStyles.Float, CultureInfo.InvariantCulture, out var number))
+                return false;
+            var suffix = text.Substring(end).Trim().ToLowerInvariant();
+            switch (suffix)
+            {
+                case "":                                    break;
+                case "m":                                   unit = DistanceUnit.Meters; break;
+                case "cm":                                  unit = DistanceUnit.Centimeters; break;
+                case "mm":                                  unit = DistanceUnit.Millimeters; break;
+                case "\"": case "in": case "inch":          unit = DistanceUnit.Inches; break;
+                case "'":  case "ft": case "feet":          unit = DistanceUnit.Feet; break;
+                default:                                    return false;
+            }
+            value = DistanceUnitToUnity(unit, number);
+            return !float.IsNaN(value) && !float.IsInfinity(value);
+        }
+
+        // A length as typed in its unit: the number alone, rounded as it is shown
+        public static string		ToEditString		(DistanceUnit unit, float value)
+        {
+            return Readable(unit, value).ToString("0.####", CultureInfo.InvariantCulture);
+        }
 
         public static float			DistanceUnitToUnity	(DistanceUnit unit, double value)
         {

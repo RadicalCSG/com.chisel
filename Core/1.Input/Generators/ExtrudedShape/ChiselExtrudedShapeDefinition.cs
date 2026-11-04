@@ -131,7 +131,23 @@ namespace Chisel.Core
         {
             shape ??= new Curve2D(kDefaultShape);
             path  ??= new ChiselPath(ChiselPath.Default);
+            // never flat: a point of the path on the one before it is moved out by the smallest size, the way it faces
+            for (int i = 1; path.segments != null && i < path.segments.Length; i++)
+            {
+                var point = path.segments[i];
+                if (Vector3.Distance(point.position, path.segments[i - 1].position) >= ChiselGeneratorLimits.kMinSize)
+                    continue;
+                point.position = path.segments[i - 1].position + (point.rotation * Vector3.forward) * ChiselGeneratorLimits.kMinSize;
+                path.segments[i] = point;
+            }
             return base.Validate();
+        }
+
+        // Whether a point of the path moved to position would be on the one next to it
+        bool OnItsNeighbour(int i, Vector3 position)
+        {
+            return (i > 0 && Vector3.Distance(position, path.segments[i - 1].position) < ChiselGeneratorLimits.kMinSize) ||
+                   (i + 1 < path.segments.Length && Vector3.Distance(position, path.segments[i + 1].position) < ChiselGeneratorLimits.kMinSize);
         }
 
         const Allocator defaultAllocator = Allocator.TempJob;
@@ -169,7 +185,8 @@ namespace Chisel.Core
 
                 if (i == 0)
                 {
-                    if (handles.DoDirectionHandle(ref pathPoint.position, -(pathPoint.rotation * Vector3.forward)))
+                    if (handles.DoDirectionHandle(ref pathPoint.position, -(pathPoint.rotation * Vector3.forward)) &&
+                        !OnItsNeighbour(i, pathPoint.position))   // a drag that would make it flat isn't taken
                     {
                         path.segments[i] = pathPoint;
                         path = new ChiselPath(path);
@@ -177,7 +194,8 @@ namespace Chisel.Core
                 } else
                 if (i == path.segments.Length - 1)
                 {
-                    if (handles.DoDirectionHandle(ref pathPoint.position, (pathPoint.rotation * Vector3.forward)))
+                    if (handles.DoDirectionHandle(ref pathPoint.position, (pathPoint.rotation * Vector3.forward)) &&
+                        !OnItsNeighbour(i, pathPoint.position))
                     {
                         path.segments[i] = pathPoint;
                         path = new ChiselPath(path);

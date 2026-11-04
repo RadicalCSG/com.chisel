@@ -73,7 +73,7 @@ namespace Chisel.Editors
 
 		readonly static Dictionary<LabelStyle, GUIStyle> s_LabelStyles = new();
 		readonly static GUIContent s_TempContent = new();
-		public static Rect DrawLabel(UnityEngine.Vector3 position, UnityEngine.Vector3 alignmentDirection, int padding, string text)
+		public static Rect DrawLabel(UnityEngine.Vector3 position, UnityEngine.Vector3 alignmentDirection, int padding, string text, bool draw = true)
 		{
 			var matrix = SceneHandles.Matrix;
 			var pt = UnityEngine.Camera.current.WorldToViewportPoint(matrix.MultiplyPoint(position));
@@ -111,10 +111,13 @@ namespace Chisel.Editors
 
 			var rect = new Rect(screenpos.x, screenpos.y, size.x, size.y);
 
-			if (Event.current.type == EventType.Repaint)
+			if (draw && Event.current.type == EventType.Repaint)
 			{
 				SceneHandles.BeginGUI();
 				{
+					// a dark backing so the text reads on any surface
+					var back = new Rect(rect.x + 2 + padding, rect.y + padding, rect.width - 2 - padding * 2, rect.height - 3 - padding * 2);
+					UnityEditor.EditorGUI.DrawRect(back, new Color(0, 0, 0, 0.55f));
 					GUI.Label(rect, s_TempContent, style);
 				}
 				SceneHandles.EndGUI();
@@ -122,79 +125,125 @@ namespace Chisel.Editors
 			return rect;
 		}
 
-		static bool s_CanClick = false;
-		readonly static int kDistanceLabelHash = "DistanceLabel".GetHashCode();
+		// a length's label, only shown
 		public static void DrawUnitLabel(UnityEngine.Vector3 position, UnityEngine.Vector3 alignmentDirection, int padding, float distance, string name = null)
 		{
-			// TODO: click on unit to change unit, but click on number to be able to type in number ...
+			DrawLabel(position, alignmentDirection, padding, Units.ToDistanceString(distance, name));
+		}
 
-			var rect = DrawLabel(position, alignmentDirection, padding, Units.ToDistanceString(distance, name));
+		static bool		s_CanClick;
+		static int		s_EditingId;
+		static string	s_EditText;
+		static bool		s_FocusEdit;
+		const string	kEditControlName = "ChiselLengthEdit";
+		readonly static int kDistanceLabelHash = "DistanceLabel".GetHashCode();
 
+		// A length's label that turns into a text field where it is when clicked: Enter takes the typed length (in the unit
+		// set in the preferences, or the unit typed after it), Escape or a click elsewhere leaves it. Returns true when a
+		// length was taken; it keeps the sign the length had
+		public static bool DoUnitLabel(UnityEngine.Vector3 position, UnityEngine.Vector3 alignmentDirection, int padding, ref float distance, string name = null)
+		{
+			var id   = GUIUtility.GetControlID(kDistanceLabelHash, FocusType.Passive);
+			var text = Units.ToDistanceString(distance, name);
+			if (s_EditingId == id)
+				return DoEditField(DrawLabel(position, alignmentDirection, padding, text, draw: false), ref distance);
+
+			var rect = DrawLabel(position, alignmentDirection, padding, text);
 			if (SceneHandles.Disabled)
-				return;
+				return false;
 
-			var id = GUIUtility.GetControlID (kDistanceLabelHash, FocusType.Keyboard);
-			
 			var evt = Event.current;
-			var type = evt.GetTypeForControl(id);
-			switch (type)
+			switch (evt.GetTypeForControl(id))
 			{
 				case EventType.Layout:
 				{
-					if (UnityEditor.Tools.current == UnityEditor.Tool.View ||
-						UnityEditor.Tools.current == UnityEditor.Tool.None ||
-						evt.alt)
+					if (UnityEditor.Tools.current == UnityEditor.Tool.View || evt.alt)
 						break;
-
-					if (rect.Contains(Event.current.mousePosition))
-						UnityEditor.HandleUtility.AddControl(id, 3);
+					if (rect.Contains(evt.mousePosition))
+						UnityEditor.HandleUtility.AddControl(id, 0);
 					break;
 				}
 				case EventType.MouseDown:
 				{
-					if (UnityEditor.Tools.current == UnityEditor.Tool.View ||
-						UnityEditor.Tools.current == UnityEditor.Tool.None ||
-						evt.alt)
+					if (GUIUtility.hotControl != 0 || evt.button != 0 || UnityEditor.HandleUtility.nearestControl != id)
 						break;
-
-					if (GUIUtility.hotControl != 0)
-						break;
-
-					if ((UnityEditor.HandleUtility.nearestControl != id || evt.button != 0) &&
-						(GUIUtility.keyboardControl != id || evt.button != 2))
-						break;
-												
-					
-					GUIUtility.hotControl = GUIUtility.keyboardControl = id;
-					evt.Use();
-					UnityEditor.EditorGUIUtility.SetWantsMouseJumping(1);
+					GUIUtility.hotControl = id;
 					s_CanClick = true;
+					evt.Use();
 					break;
 				}
 				case EventType.MouseDrag:
 				{
 					if (GUIUtility.hotControl != id)
 						break;
-
 					s_CanClick = false;
 					evt.Use();
 					break;
 				}
 				case EventType.MouseUp:
 				{
-					if (GUIUtility.hotControl != id || (evt.button != 0 && evt.button != 2))
+					if (GUIUtility.hotControl != id || evt.button != 0)
 						break;
-					
 					GUIUtility.hotControl = 0;
-					GUIUtility.keyboardControl = 0;
 					evt.Use();
-					UnityEditor.EditorGUIUtility.SetWantsMouseJumping(0);
 					if (s_CanClick)
-						Units.ActiveDistanceUnit = Units.CycleToNextUnit(Units.ActiveDistanceUnit);
+					{
+						s_EditingId = id;
+						s_EditText	= Units.ToEditString(Units.ActiveDistanceUnit, Mathf.Abs(distance));
+						s_FocusEdit = true;
+					}
 					s_CanClick = false;
 					break;
 				}
 			}
+			return false;
+		}
+
+		static bool LengthLabel(bool editable, Vector3 position, Vector3 alignmentDirection, int padding, ref float distance, string name)
+		{
+			if (editable)
+				return DoUnitLabel(position, alignmentDirection, padding, ref distance, name);
+			DrawUnitLabel(position, alignmentDirection, padding, distance, name);
+			return false;
+		}
+
+		static bool DoEditField(Rect rect, ref float distance)
+		{
+			var evt		= Event.current;
+			var commit	= false;
+			var cancel	= false;
+			if (evt.type == EventType.KeyDown)
+			{
+				if (evt.keyCode == KeyCode.Return || evt.keyCode == KeyCode.KeypadEnter) { commit = true; evt.Use(); }
+				else if (evt.keyCode == KeyCode.Escape) { cancel = true; evt.Use(); }
+			}
+			rect.width = Mathf.Max(rect.width, 90);
+
+			SceneHandles.BeginGUI();
+			{
+				if (evt.type == EventType.MouseDown && !rect.Contains(evt.mousePosition))
+					cancel = true;
+				GUI.SetNextControlName(kEditControlName);
+				s_EditText = GUI.TextField(rect, s_EditText);
+				if (s_FocusEdit)
+				{
+					GUI.FocusControl(kEditControlName);
+					if (evt.type == EventType.Repaint)
+						s_FocusEdit = false;
+				}
+			}
+			SceneHandles.EndGUI();
+
+			if (!commit && !cancel)
+				return false;
+
+			s_EditingId = 0;
+			GUI.FocusControl(null);
+			UnityEditor.SceneView.RepaintAll();
+			if (!commit || !Units.TryParseDistance(s_EditText, Units.ActiveDistanceUnit, out var typed) || typed == 0)
+				return false;
+			distance = (distance < 0 ? -1 : 1) * Mathf.Abs(typed);
+			return true;
 		}
 
 		public static void DrawLength(UnityEngine.Vector3 from, UnityEngine.Vector3 to)
@@ -545,6 +594,12 @@ namespace Chisel.Editors
 
 		public static void DrawLengths(Bounds bounds, Axes activeAxes = Axes.XYZ, Axes visibleAxes = Axes.XYZ, Axes selectedAxes = Axes.None)
 		{
+			DrawLengths(ref bounds, false, activeAxes, visibleAxes, selectedAxes);
+		}
+
+		// the lengths of the bounds; when editable, a clicked length can be typed in, and true is returned when it changed bounds
+		public static bool DrawLengths(ref Bounds bounds, bool editable, Axes activeAxes = Axes.XYZ, Axes visibleAxes = Axes.XYZ, Axes selectedAxes = Axes.None)
+		{
 			// TODO: what if camera is inside of bounds?
 			// TODO: what if length is outside of camera, but other option is inside of camera view?
 			// TODO: don't make the side lines move around when resizing, be smarter about handlesize
@@ -559,6 +614,7 @@ namespace Chisel.Editors
 			var camera		= UnityEngine.Camera.current;
 			var camPos		= invMatrix.MultiplyPoint(camera.transform.position);
 
+			var changed		= Axes.None;
 			var lengthX		= bounds.size.x;
 			var lengthY		= bounds.size.y;
 			var lengthZ		= bounds.size.z;
@@ -672,7 +728,7 @@ namespace Chisel.Editors
 				SceneHandles.DrawLine(fromOfs, toOfs);
 				DrawFlatArrow(fromOfs,  Vector3.right, camDir, fromSize);
 				DrawFlatArrow(toOfs,   -Vector3.right, camDir, toSize  );
-				DrawUnitLabel(center, offset, labelPadding, lengthX, "X");
+				if (LengthLabel(editable, center, offset, labelPadding, ref lengthX, "X")) changed = Axes.X;
 			}
 			
 			if (showY && ((visibleAxes & Axes.Y) == Axes.Y))
@@ -700,7 +756,7 @@ namespace Chisel.Editors
 				SceneHandles.DrawLine(fromOfs, toOfs);
 				DrawFlatArrow(fromOfs,  Vector3.up, camDir, fromSize);
 				DrawFlatArrow(toOfs,   -Vector3.up, camDir, toSize  );
-				DrawUnitLabel(center, offset, labelPadding, lengthY, "Y");
+				if (LengthLabel(editable, center, offset, labelPadding, ref lengthY, "Y")) changed = Axes.Y;
 			}
 			
 			if (showZ && ((visibleAxes & Axes.Z) == Axes.Z))
@@ -728,9 +784,20 @@ namespace Chisel.Editors
 				SceneHandles.DrawLine(fromOfs, toOfs);
 				DrawFlatArrow(fromOfs,  Vector3.forward, camDir, fromSize);
 				DrawFlatArrow(toOfs,   -Vector3.forward, camDir, toSize  );
-				DrawUnitLabel(center, offset, labelPadding, lengthZ, "Z");
+				if (LengthLabel(editable, center, offset, labelPadding, ref lengthZ, "Z")) changed = Axes.Z;
 			}
 			SceneHandles.Color = prevColor;
+
+			// a typed length moves the max side, keeping the min side where it is
+			if (changed == Axes.None)
+				return false;
+			var newMin = bounds.min;
+			var newMax = bounds.max;
+			if (changed == Axes.X) newMax.x = newMin.x + lengthX;
+			if (changed == Axes.Y) newMax.y = newMin.y + lengthY;
+			if (changed == Axes.Z) newMax.z = newMin.z + lengthZ;
+			bounds.SetMinMax(newMin, newMax);
+			return true;
 		}
 
 		//readonly static UnityEngine.Vector3[] s_LinePoints = new UnityEngine.Vector3[2];
