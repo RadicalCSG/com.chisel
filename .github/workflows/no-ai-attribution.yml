@@ -1,0 +1,35 @@
+name: No AI attribution
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check PR title, body and commit messages
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          NUMBER: ${{ github.event.pull_request.number }}
+          TITLE: ${{ github.event.pull_request.title }}
+          BODY: ${{ github.event.pull_request.body }}
+        run: |
+          pattern='claude|anthropic'
+          failed=0
+          if printf '%s\n%s\n' "$TITLE" "$BODY" | grep -iEq "$pattern"; then
+            echo "::error::The PR title or description attributes an AI tool"
+            failed=1
+          fi
+          messages=$(gh api --paginate "repos/$REPO/pulls/$NUMBER/commits" --jq '.[] | .sha[0:7] + " " + .commit.message')
+          if printf '%s\n' "$messages" | grep -iEq "$pattern"; then
+            echo "::error::A commit message attributes an AI tool"
+            printf '%s\n' "$messages" | grep -iE "$pattern"
+            failed=1
+          fi
+          exit $failed
