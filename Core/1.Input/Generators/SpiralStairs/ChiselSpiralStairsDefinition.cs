@@ -173,18 +173,33 @@ namespace Chisel.Core
         {
             var start   = math.radians(startAngle);
             var perStep = math.radians(rotation / StepCount);
+            var end     = start + perStep * StepCount;
+            var split   = SideFloorAngle(start, perStep);
             var count   = 0;
-            for (int step = 0; step < StepCount; step++)
+            var angle   = start;
+            while (angle < end - kAngleEpsilon)
             {
-                var angle = start + perStep * step;
-                var end   = angle + perStep;
-                while (angle < end - kAngleEpsilon)
-                {
-                    angle = NextSideCorner(angle, end, segments);
-                    count++;
-                }
+                angle = NextSidePieceEnd(angle, end, segments, split);
+                count++;
             }
             return count;
+        }
+
+        // Where the bottom of a wall below the steps reaches the floor: before it the wall stands on the floor, after it
+        // the wall follows the steps, so a piece of wall can't be flat across it
+        internal float SideFloorAngle(float start, float perStep)
+        {
+            return start + perStep * (stepHeight > 0 ? sideDepth / stepHeight : 0);
+        }
+
+        // A wall runs along the straight sides of its cylinder in one piece each, so each side shows one face; it is also
+        // cut where it reaches the floor
+        internal static float NextSidePieceEnd(float angle, float end, int segments, float split)
+        {
+            var next = NextSideCorner(angle, end, segments);
+            if (split > angle + kAngleEpsilon && split < next - kAngleEpsilon)
+                next = split;
+            return next;
         }
 
         internal const float kAngleEpsilon = 0.0001f;
