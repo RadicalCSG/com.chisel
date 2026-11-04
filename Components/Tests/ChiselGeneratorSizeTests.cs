@@ -151,10 +151,11 @@ namespace Chisel.Components.Tests
             AssertClosed(model, "linear stairs");
         }
 
-        // Filled down, with a rail on the left only: the fill under the steps reaches the right side and stops at the left
-        // rail (it was narrowed on the wrong side, so it stuck out under the rail and fell short on the other side)
+        // Filled down, with a rail on the left only: the fill under the steps is the full width, carrying the rail on top of
+        // it on the left (the rail is above the steps only, the fill takes the place of the wall below them), and the treads
+        // don't reach out past it on the right
         [Test]
-        public void LinearStairsFilledDown_WithOneRail_FillUpToTheRail()
+        public void LinearStairsFilledDown_WithOneRail_FillTheFullWidth()
         {
             var stairs = Generator<ChiselLinearStairsComponent>(out var model);
             ref var settings = ref stairs.definition.settings;
@@ -164,14 +165,15 @@ namespace Chisel.Components.Tests
             settings.leftSide  = StairsSideType.DownAndUp;
             stairs.OnValidate();
             Update();
-            var sideWidth = stairs.definition.settings.sideWidth;
             float minX = float.PositiveInfinity, maxX = float.NegativeInfinity;
+            float allMinX = float.PositiveInfinity;
             foreach (var renderable in model.generated.renderables)
             {
                 if (renderable == null || renderable.sharedMesh == null)
                     continue;
                 foreach (var v in renderable.sharedMesh.vertices)
                 {
+                    allMinX = math.min(allMinX, v.x);
                     if (v.y > 1e-4f)
                         continue;   // the bottom only
                     minX = math.min(minX, v.x);
@@ -179,7 +181,8 @@ namespace Chisel.Components.Tests
                 }
             }
             Assert.That(minX, Is.EqualTo(0).Within(1e-4f), "the fill falls short of the right side");
-            Assert.That(maxX, Is.EqualTo(2 - sideWidth).Within(1e-4f), "the fill doesn't stop at the left rail");
+            Assert.That(maxX, Is.EqualTo(2).Within(1e-4f), "the fill falls short of the left side, under the rail");
+            Assert.That(allMinX, Is.EqualTo(0).Within(1e-4f), "the treads reach out past the fill");
         }
 
         // The top tread reaches out past the sides only when told to, and by as much
@@ -209,6 +212,405 @@ namespace Chisel.Components.Tests
             // with walls on both sides, nothing else reaches past them
             Assert.That(minX, Is.EqualTo(-overhang).Within(1e-4f), "left of the stairs");
             Assert.That(maxX, Is.EqualTo(2 + overhang).Within(1e-4f), "right of the stairs");
+        }
+
+        // Every tread's texture starts at its nose: on each tread's top, the uv at the nose's corner is the same
+        [Test]
+        public void LinearStairsTreads_StartTheirTextureAtTheirNose()
+        {
+            var stairs = Generator<ChiselLinearStairsComponent>(out var model);
+            ref var settings = ref stairs.definition.settings;
+            settings.bounds      = new MinMaxAABB { Min = new float3(0, 0, 0), Max = new float3(1, 1, 1.25f) };
+            settings.stepHeight  = 0.2f;
+            settings.stepDepth   = 0.25f;
+            settings.treadHeight = 0.05f;
+            settings.nosingDepth = 0.03f;
+            stairs.OnValidate();
+            Update();
+            var starts = new List<Vector2>();
+            foreach (var renderable in model.generated.renderables)
+            {
+                if (renderable == null || renderable.sharedMesh == null)
+                    continue;
+                var v  = renderable.sharedMesh.vertices;
+                var uv = renderable.sharedMesh.uv;
+                var t  = renderable.sharedMesh.triangles;
+                for (int i = 0; i < t.Length; i += 3)
+                {
+                    var normal = Vector3.Cross(v[t[i + 1]] - v[t[i]], v[t[i + 2]] - v[t[i]]).normalized;
+                    if (normal.y < 0.9f)
+                        continue;
+                    // the corner at the nose on the low x side: the highest z on this top, the lowest x
+                    var best = -1;
+                    for (int c = 0; c < 3; c++)
+                    {
+                        var p = v[t[i + c]];
+                        if (best < 0 || p.z > v[t[i + best]].z + 1e-4f ||
+                            (Mathf.Abs(p.z - v[t[i + best]].z) <= 1e-4f && p.x < v[t[i + best]].x))
+                            best = c;
+                    }
+                    var corner = v[t[i + best]];
+                    if (corner.x > 1e-3f)
+                        continue;   // not a triangle with that corner
+                    starts.Add(uv[t[i + best]]);
+                }
+            }
+            Assert.That(starts.Count, Is.GreaterThan(1), "no treads");
+            foreach (var s in starts)
+                Assert.That((s - starts[0]).magnitude, Is.LessThan(1e-3f), "a tread's texture starts somewhere else");
+        }
+
+        // The side walls' texture is turned a quarter round: on their faces to the sides u runs along the stairs, not up
+        [Test]
+        public void LinearStairsSideWalls_HaveTheirTextureTurned()
+        {
+            var stairs = Generator<ChiselLinearStairsComponent>(out var model);
+            ref var settings = ref stairs.definition.settings;
+            settings.bounds    = new MinMaxAABB { Min = new float3(0, 0, 0), Max = new float3(2, 1, 2) };
+            settings.leftSide  = StairsSideType.DownAndUp;
+            settings.rightSide = StairsSideType.DownAndUp;
+            stairs.OnValidate();
+            Update();
+            int faces = 0, alongTheStairs = 0, upsideDown = 0;
+            foreach (var renderable in model.generated.renderables)
+            {
+                if (renderable == null || renderable.sharedMesh == null)
+                    continue;
+                var v  = renderable.sharedMesh.vertices;
+                var uv = renderable.sharedMesh.uv;
+                var t  = renderable.sharedMesh.triangles;
+                for (int i = 0; i < t.Length; i += 3)
+                {
+                    Vector3 a = v[t[i]], b = v[t[i + 1]], c = v[t[i + 2]];
+                    var normal = Vector3.Cross(b - a, c - a).normalized;
+                    // the outsides of the walls, at the stairs' sides
+                    if (Mathf.Abs(normal.x) < 0.9f || (Mathf.Abs(a.x) > 1e-3f && Mathf.Abs(a.x - 2) > 1e-3f))
+                        continue;
+                    // how u changes going up and going along the stairs
+                    float z1 = b.z - a.z, y1 = b.y - a.y, z2 = c.z - a.z, y2 = c.y - a.y;
+                    var det = z1 * y2 - z2 * y1;
+                    if (Mathf.Abs(det) < 1e-6f)
+                        continue;
+                    float du1 = uv[t[i + 1]].x - uv[t[i]].x, du2 = uv[t[i + 2]].x - uv[t[i]].x;
+                    var alongZ = (du1 * y2 - du2 * y1) / det;
+                    var alongY = (du2 * z1 - du1 * z2) / det;
+                    faces++;
+                    if (Mathf.Abs(alongZ) > Mathf.Abs(alongY))
+                        alongTheStairs++;
+                    // and right side up: v goes up on both sides
+                    float dv1 = uv[t[i + 1]].y - uv[t[i]].y, dv2 = uv[t[i + 2]].y - uv[t[i]].y;
+                    var vUp = (dv2 * z1 - dv1 * z2) / det;
+                    if (vUp <= 0)
+                        upsideDown++;
+                }
+            }
+            Assert.That(faces, Is.GreaterThan(0), "no side walls");
+            Assert.That(alongTheStairs, Is.EqualTo(faces), $"faces with u still going up, of {faces}");
+            Assert.That(upsideDown, Is.Zero, $"faces upside down, of {faces}");
+        }
+
+        // The fronts and backs of the steps start their texture at the bottom of each step: on every such face the v at its
+        // lowest corner is the same
+        [Test]
+        // (straight stairs only: on spiral stairs a step's back and the next one's front share a plane, which this can't
+        // tell apart)
+        public void StairsUprightFaces_StartTheirTextureAtTheBottomOfTheStep([Values(false)] bool spiral)
+        {
+            ChiselModelComponent model;
+            if (spiral)
+            {
+                var stairs = WideSpiralStairs(out model);
+                stairs.definition.settings.innerDiameter = 0;
+                stairs.OnValidate();
+            } else
+            {
+                var stairs = Generator<ChiselLinearStairsComponent>(out model);
+                stairs.definition.settings.bounds     = new MinMaxAABB { Min = new float3(0, 0, 0), Max = new float3(1, 1, 1.25f) };
+                stairs.definition.settings.stepHeight = 0.2f;
+                stairs.definition.settings.stepDepth  = 0.25f;
+                stairs.OnValidate();
+            }
+            Update();
+            // per face (its plane), the lowest corner and the v there
+            var lowestOfFace  = new Dictionary<Vector4, Vector2>();
+            var highestOfFace = new Dictionary<Vector4, float>();
+            foreach (var renderable in model.generated.renderables)
+            {
+                if (renderable == null || renderable.sharedMesh == null)
+                    continue;
+                var v  = renderable.sharedMesh.vertices;
+                var uv = renderable.sharedMesh.uv;
+                var t  = renderable.sharedMesh.triangles;
+                for (int i = 0; i < t.Length; i += 3)
+                {
+                    Vector3 a = v[t[i]], b = v[t[i + 1]], c = v[t[i + 2]];
+                    var normal = Vector3.Cross(b - a, c - a).normalized;
+                    if (Mathf.Abs(normal.y) > 0.1f)
+                        continue;
+                    var middle = (a + b + c) / 3;
+                    if (spiral)
+                    {
+                        // across the stairs: pointing out from the middle
+                        var outwards = new Vector2(middle.x, middle.z);
+                        if (outwards.sqrMagnitude < 1e-6f || Mathf.Abs(Vector2.Dot(outwards.normalized, new Vector2(normal.x, normal.z))) > 0.1f)
+                            continue;
+                    } else
+                    if (Mathf.Abs(normal.z) < 0.9f)
+                        continue;
+                    var plane = new Vector4(Mathf.Round(normal.x * 100), Mathf.Round(normal.y * 100), Mathf.Round(normal.z * 100),
+                                            Mathf.Round(Vector3.Dot(normal, a) * 1000));
+                    for (int k = 0; k < 3; k++)
+                    {
+                        var p = v[t[i + k]];
+                        if (!lowestOfFace.TryGetValue(plane, out var known) || p.y < known.x - 1e-5f)
+                            lowestOfFace[plane] = new Vector2(p.y, uv[t[i + k]].y);
+                        highestOfFace[plane] = highestOfFace.TryGetValue(plane, out var high) ? Mathf.Max(high, p.y) : p.y;
+                    }
+                }
+            }
+            Assert.That(lowestOfFace.Count, Is.GreaterThan(1), "no fronts or backs");
+            // the texture starts at the bottom of the step every face is part of (steps of 0.2, a whole number of steps up
+            // from the floor, the step its top is in): the v at a face's lowest corner, less how far that is above its
+            // step's bottom, is the same
+            float first = float.NaN, spread = 0;
+            foreach (var face in lowestOfFace)
+            {
+                var bottom     = face.Value;
+                var stepBottom = (Mathf.Ceil(highestOfFace[face.Key] / 0.2f - 1e-3f) - 1) * 0.2f;
+                var start      = bottom.y - (bottom.x - stepBottom);
+                if (float.IsNaN(first)) first = start;
+                spread = Mathf.Max(spread, Mathf.Abs(start - first));
+            }
+            Assert.That(spread, Is.LessThan(1e-3f), $"faces whose texture starts at another height, of {lowestOfFace.Count}");
+        }
+
+        // Filled down, the stairs' back isn't stretched: across it and up it the texture changes as much as anywhere else
+        [Test]
+        public void LinearStairsFilledDown_HaveAnUnstretchedBack()
+        {
+            var stairs = Generator<ChiselLinearStairsComponent>(out var model);
+            ref var settings = ref stairs.definition.settings;
+            settings.bounds      = new MinMaxAABB { Min = new float3(0, 0, 0), Max = new float3(1, 1, 1.25f) };
+            settings.riserType   = StairsRiserType.FillDown;
+            settings.stepHeight  = 0.2f;
+            settings.stepDepth   = 0.2f;
+            settings.treadHeight = 0.02f;
+            settings.nosingDepth = 0.02f;
+            settings.leftSide    = StairsSideType.DownAndUp;
+            settings.rightSide   = StairsSideType.DownAndUp;
+            settings.sideWidth   = 0.125f;
+            settings.sideHeight  = 0.5f;
+            stairs.OnValidate();
+            Update();
+            var faces = 0;
+            var stretched = new List<string>();
+            foreach (var renderable in model.generated.renderables)
+            {
+                if (renderable == null || renderable.sharedMesh == null)
+                    continue;
+                var v  = renderable.sharedMesh.vertices;
+                var uv = renderable.sharedMesh.uv;
+                var t  = renderable.sharedMesh.triangles;
+                for (int i = 0; i < t.Length; i += 3)
+                {
+                    Vector3 a = v[t[i]], b = v[t[i + 1]], c = v[t[i + 2]];
+                    var normal = Vector3.Cross(b - a, c - a).normalized;
+                    if (Mathf.Abs(normal.z) < 0.9f || Mathf.Abs(Mathf.Min(a.z, Mathf.Min(b.z, c.z))) > 1e-3f)
+                        continue;   // the back, at the far end
+                    float x1 = b.x - a.x, y1 = b.y - a.y, x2 = c.x - a.x, y2 = c.y - a.y;
+                    var det = x1 * y2 - x2 * y1;
+                    if (Mathf.Abs(det) < 1e-6f)
+                        continue;
+                    Vector2 d1 = uv[t[i + 1]] - uv[t[i]], d2 = uv[t[i + 2]] - uv[t[i]];
+                    var alongX = (d1 * y2 - d2 * y1) / det;
+                    var alongY = (d2 * x1 - d1 * x2) / det;
+                    faces++;
+                    if (alongX.magnitude < 0.5f || alongX.magnitude > 2 || alongY.magnitude < 0.5f || alongY.magnitude > 2)
+                        stretched.Add($"{alongX} {alongY}");
+                }
+            }
+            Assert.That(faces, Is.GreaterThan(0), "no back");
+            Assert.That(stretched, Is.Empty, $"stretched, of {faces}");
+        }
+
+        // Filled down, the solid is one shape under the steps plus a piece per step: its back is one face, not a stack of
+        // one per step, and it's closed
+        [Test]
+        public void LinearStairsFilledDown_HaveOneBackFace()
+        {
+            var stairs = Generator<ChiselLinearStairsComponent>(out var model);
+            ref var settings = ref stairs.definition.settings;
+            settings.bounds      = new MinMaxAABB { Min = new float3(0, 0, 0), Max = new float3(1, 1, 1.25f) };
+            settings.riserType   = StairsRiserType.FillDown;
+            settings.stepHeight  = 0.2f;
+            settings.stepDepth   = 0.2f;
+            stairs.OnValidate();
+            Update();
+            AssertClosed(model, "filled down stairs");
+            var backCorners = new HashSet<Vector3Int>();
+            foreach (var renderable in model.generated.renderables)
+            {
+                if (renderable == null || renderable.sharedMesh == null)
+                    continue;
+                var v = renderable.sharedMesh.vertices;
+                var t = renderable.sharedMesh.triangles;
+                for (int i = 0; i < t.Length; i += 3)
+                {
+                    Vector3 a = v[t[i]], b = v[t[i + 1]], c = v[t[i + 2]];
+                    var normal = Vector3.Cross(b - a, c - a).normalized;
+                    if (normal.z > -0.9f || Mathf.Abs(a.z) > 1e-3f)
+                        continue;   // the back, at the far end, looking away
+                    backCorners.Add(Vector3Int.RoundToInt(a * 1000));
+                    backCorners.Add(Vector3Int.RoundToInt(b * 1000));
+                    backCorners.Add(Vector3Int.RoundToInt(c * 1000));
+                }
+            }
+            Assert.That(backCorners.Count, Is.InRange(4, 6), "the back isn't one face");
+        }
+
+        // Steps solid down to the floor have walls down to the floor in one piece, in place of the solid on that side, so
+        // the outside of each wall is one face; the stairs stay closed
+        [Test]
+        public void LinearStairsWallsAboveSolidSteps_AreOnePiece([Values(StairsRiserType.FillDown)] StairsRiserType riser)
+        {
+            var stairs = Generator<ChiselLinearStairsComponent>(out var model);
+            ref var settings = ref stairs.definition.settings;
+            settings.bounds     = new MinMaxAABB { Min = new float3(0, 0, 0), Max = new float3(1, 1, 1.25f) };
+            settings.riserType  = riser;
+            settings.stepHeight = 0.2f;
+            settings.stepDepth  = 0.2f;
+            settings.leftSide   = StairsSideType.Up;
+            settings.rightSide  = StairsSideType.Up;
+            stairs.OnValidate();
+            Update();
+            AssertClosed(model, riser.ToString());
+            // the outside of the right wall, at the stairs' side: one sloped face, four corners
+            var corners = new HashSet<Vector3Int>();
+            foreach (var renderable in model.generated.renderables)
+            {
+                if (renderable == null || renderable.sharedMesh == null)
+                    continue;
+                var v = renderable.sharedMesh.vertices;
+                var t = renderable.sharedMesh.triangles;
+                for (int i = 0; i < t.Length; i += 3)
+                {
+                    Vector3 a = v[t[i]], b = v[t[i + 1]], c = v[t[i + 2]];
+                    var normal = Vector3.Cross(b - a, c - a).normalized;
+                    if (normal.x > -0.9f || Mathf.Abs(a.x) > 1e-3f)
+                        continue;
+                    // above the steps only: the wall's part
+                    var top = Mathf.Max(a.y, Mathf.Max(b.y, c.y));
+                    corners.Add(Vector3Int.RoundToInt(a * 1000));
+                    corners.Add(Vector3Int.RoundToInt(b * 1000));
+                    corners.Add(Vector3Int.RoundToInt(c * 1000));
+                }
+            }
+            var stepCount = stairs.definition.settings.StepCount;
+            Assert.That(corners.Count, Is.LessThan(stepCount * 2), $"the side is split along the steps, {corners.Count} corners for {stepCount} steps");
+        }
+
+        // Filled down with walls, the fronts and back of the walls and of the solid between them run on as one texture:
+        // where they meet, facing the same way, the uv is the same on both
+        [Test]
+        public void LinearStairsFilledDown_HaveTheirFrontAndBackTextureRunOnAcrossTheWalls()
+        {
+            var stairs = Generator<ChiselLinearStairsComponent>(out var model);
+            ref var settings = ref stairs.definition.settings;
+            settings.bounds     = new MinMaxAABB { Min = new float3(0, 0, 0), Max = new float3(1, 1, 1.25f) };
+            settings.riserType  = StairsRiserType.FillDown;
+            settings.stepHeight = 0.2f;
+            settings.stepDepth  = 0.2f;
+            settings.leftSide   = StairsSideType.DownAndUp;
+            settings.rightSide  = StairsSideType.DownAndUp;
+            stairs.OnValidate();
+            Update();
+            var uvAt = new Dictionary<Vector4, Vector2>();
+            var seams = 0;
+            var shared = 0;
+            foreach (var renderable in model.generated.renderables)
+            {
+                if (renderable == null || renderable.sharedMesh == null)
+                    continue;
+                var v  = renderable.sharedMesh.vertices;
+                var uv = renderable.sharedMesh.uv;
+                var t  = renderable.sharedMesh.triangles;
+                for (int i = 0; i < t.Length; i += 3)
+                {
+                    Vector3 a = v[t[i]], b = v[t[i + 1]], c = v[t[i + 2]];
+                    var normal = Vector3.Cross(b - a, c - a).normalized;
+                    if (Mathf.Abs(normal.z) < 0.9f)
+                        continue;   // fronts and back
+                    for (int k = 0; k < 3; k++)
+                    {
+                        var p   = Vector3Int.RoundToInt(v[t[i + k]] * 1000);
+                        var key = new Vector4(p.x, p.y, p.z, Mathf.Sign(normal.z));
+                        if (uvAt.TryGetValue(key, out var known))
+                        {
+                            shared++;
+                            if ((known - uv[t[i + k]]).magnitude > 1e-3f)
+                                seams++;
+                        } else
+                            uvAt[key] = uv[t[i + k]];
+                    }
+                }
+            }
+            Assert.That(shared, Is.GreaterThan(0), "no fronts or back");
+            Assert.That(seams, Is.Zero, $"corners with another uv on each side, of {shared}");
+        }
+
+        // Spiral stairs with walls: at the start the front of the first step and at the end the back of the last one run on
+        // as one texture with the ends of the walls beside them, the same uv where they meet
+        [Test]
+        public void SpiralStairsFront_HasItsTextureRunOnAcrossTheWalls()
+        {
+            var stairs = WideSpiralStairs(out var model);
+            stairs.definition.settings.outerSide = StairsSideType.DownAndUp;
+            stairs.definition.settings.innerSide = StairsSideType.DownAndUp;
+            stairs.OnValidate();
+            Update();
+            var start = stairs.definition.settings.startAngle * Mathf.Deg2Rad;
+            var end   = start + stairs.definition.settings.rotation * Mathf.Deg2Rad;
+            var uvAt = new Dictionary<Vector3Int, Vector2>();
+            int shared = 0, seams = 0;
+            // the front at the start and the back at the end
+            foreach (var angle in new[] { start, end })
+            {
+            var front = new Vector2(Mathf.Sin(angle), Mathf.Cos(angle));
+            uvAt.Clear();
+            foreach (var renderable in model.generated.renderables)
+            {
+                if (renderable == null || renderable.sharedMesh == null)
+                    continue;
+                var v  = renderable.sharedMesh.vertices;
+                var uv = renderable.sharedMesh.uv;
+                var t  = renderable.sharedMesh.triangles;
+                for (int i = 0; i < t.Length; i += 3)
+                {
+                    Vector3 a = v[t[i]], b = v[t[i + 1]], c = v[t[i + 2]];
+                    var normal = Vector3.Cross(b - a, c - a).normalized;
+                    var middle = (a + b + c) / 3;
+                    // on the line out from the middle at the start, facing across it
+                    if (Mathf.Abs(normal.y) > 0.1f || Mathf.Abs(Vector2.Dot(new Vector2(normal.x, normal.z), front)) > 0.1f)
+                        continue;
+                    var along = new Vector2(middle.x, middle.z);
+                    if (Mathf.Abs(along.x * front.y - along.y * front.x) > 1e-3f || Vector2.Dot(along, front) < 0)
+                        continue;
+                    for (int k = 0; k < 3; k++)
+                    {
+                        var key = Vector3Int.RoundToInt(v[t[i + k]] * 1000);
+                        if (uvAt.TryGetValue(key, out var known))
+                        {
+                            shared++;
+                            if ((known - uv[t[i + k]]).magnitude > 1e-3f)
+                                seams++;
+                        } else
+                            uvAt[key] = uv[t[i + k]];
+                    }
+                }
+            }
+            }
+            Assert.That(shared, Is.GreaterThan(0), "no front");
+            Assert.That(seams, Is.Zero, $"corners on the front with another uv on each side, of {shared}");
         }
 
         // Taller than their steps fit in: the steps keep their depth and start higher, on a base, rather than getting
@@ -529,6 +931,50 @@ namespace Chisel.Components.Tests
             var outerSides = Mathf.CeilToInt(settings.rotation / (360f / settings.outerSegments)) + 2;
             Assert.That(settings.InnerSideSubMeshCount / 2, Is.LessThanOrEqualTo(innerSides), "inner wall pieces");
             Assert.That(settings.OuterSideSubMeshCount / 2, Is.LessThanOrEqualTo(outerSides), "outer wall pieces");
+        }
+
+        // Spiral stairs solid down to the floor have their walls go down to the floor as well, whichever way they're set
+        [Test]
+        public void SpiralStairsFilledDown_HaveWallsDownToTheFloor([Values(StairsSideType.Up, StairsSideType.Down)] StairsSideType side)
+        {
+            var stairs = WideSpiralStairs(out var model);
+            stairs.definition.settings.riserType = StairsRiserType.FillDown;
+            stairs.definition.settings.outerSide = side;
+            stairs.OnValidate();
+            Update();
+            var outerApothem = stairs.definition.settings.outerDiameter * 0.5f * Mathf.Cos(Mathf.PI / stairs.definition.settings.outerSegments);
+            // out past the steps there is only the wall: every place along it has its lowest corner on the floor
+            var faceDistance = outerApothem + stairs.definition.settings.sideWidth - 0.01f;
+            var lowestAt = new Dictionary<Vector2Int, float>();
+            foreach (var renderable in model.generated.renderables)
+            {
+                if (renderable == null || renderable.sharedMesh == null)
+                    continue;
+                var v = renderable.sharedMesh.vertices;
+                var t = renderable.sharedMesh.triangles;
+                for (int i = 0; i < t.Length; i += 3)
+                {
+                    Vector3 a = v[t[i]], b = v[t[i + 1]], c = v[t[i + 2]];
+                    var normal = Vector3.Cross(b - a, c - a).normalized;
+                    // the outer wall's face looking out
+                    if (Mathf.Abs(normal.y) > 0.1f || (a.x * normal.x + a.z * normal.z) < faceDistance)
+                        continue;
+                    for (int k = 0; k < 3; k++)
+                    {
+                        var p = v[t[i + k]];
+                        var key = new Vector2Int(Mathf.RoundToInt(p.x * 1000), Mathf.RoundToInt(p.z * 1000));
+                        lowestAt[key] = lowestAt.TryGetValue(key, out var low) ? Mathf.Min(low, p.y) : p.y;
+                    }
+                }
+            }
+            Assert.That(lowestAt.Count, Is.GreaterThan(0), "no outer wall");
+            var hanging = 0;
+            foreach (var low in lowestAt.Values)
+            {
+                if (low > 1e-3f)
+                    hanging++;
+            }
+            Assert.That(hanging, Is.Zero, $"places along the wall that don't reach the floor, of {lowestAt.Count}");
         }
 
         // A sloped underside is built for each step only: one step too many wrote past its own pieces, over the cylinders
