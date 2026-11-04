@@ -193,35 +193,37 @@ namespace Chisel.Core
 		}
         */
 
-        public bool ConvexPartition(int curveSegments, out UnsafeList<SegmentVertex> polygonVerticesArray, out UnsafeList<int> polygonVerticesSegments, 
+        public bool ConvexPartition(int curveSegments, out UnsafeList<SegmentVertex> polygonVerticesArray, out UnsafeList<int> polygonVerticesSegments,
                                     Allocator allocator = Allocator.Persistent) // Indirect
         {
 			using var shapeVertices = new NativeList<SegmentVertex>(Allocator.Temp);
 			AddPathVertices(curveSegments, shapeVertices);
 
-			//Profiler.BeginSample("ConvexPartition");
-			if (shapeVertices.Length == 3)
-			{
-				polygonVerticesArray = new UnsafeList<SegmentVertex>(3, allocator);//Allocator.Persistent
-				polygonVerticesSegments = new UnsafeList<int>(1, allocator);//Allocator.Persistent
+			// an outline that crosses itself is split where it crosses, into loops that don't, each filled on its own
+			using var loopVertices = new NativeList<SegmentVertex>(Allocator.Temp);
+			using var loopEnds     = new NativeList<int>(Allocator.Temp);
+			SplitAtCrossings(shapeVertices, loopVertices, loopEnds);
 
-				polygonVerticesArray.Resize(3, 
-                    NativeArrayOptions.ClearMemory);
-				    //NativeArrayOptions.UninitializedMemory);
-				polygonVerticesArray[0] = shapeVertices[0];
-				polygonVerticesArray[1] = shapeVertices[1];
-				polygonVerticesArray[2] = shapeVertices[2];
-
-				polygonVerticesSegments.Resize(1, 
-                    NativeArrayOptions.ClearMemory);
-				    //NativeArrayOptions.UninitializedMemory);
-				polygonVerticesSegments[0] = polygonVerticesArray.Length;
-			}
-			else
+			polygonVerticesArray = new UnsafeList<SegmentVertex>(shapeVertices.Length * math.max(1, shapeVertices.Length / 2), allocator);//Allocator.Persistent
+			polygonVerticesSegments = new UnsafeList<int>(shapeVertices.Length, allocator);//Allocator.Persistent
+			using var loop = new NativeList<SegmentVertex>(Allocator.Temp);
+			for (int l = 0; l < loopEnds.Length; l++)
 			{
-				polygonVerticesArray = new UnsafeList<SegmentVertex>(shapeVertices.Length * math.max(1, shapeVertices.Length / 2), allocator);//Allocator.Persistent
-				polygonVerticesSegments = new UnsafeList<int>(shapeVertices.Length, allocator);//Allocator.Persistent
-				if (!External.BayazitDecomposerBursted.ConvexPartition(shapeVertices,
+				var start = l == 0 ? 0 : loopEnds[l - 1];
+				loop.Clear();
+				for (int n = start; n < loopEnds[l]; n++)
+					loop.Add(loopVertices[n]);
+				if (loop.Length < 3)
+					continue;
+				if (loop.Length == 3)
+				{
+					polygonVerticesArray.Add(loop[0]);
+					polygonVerticesArray.Add(loop[1]);
+					polygonVerticesArray.Add(loop[2]);
+					polygonVerticesSegments.Add(polygonVerticesArray.Length);
+					continue;
+				}
+				if (!External.BayazitDecomposerBursted.ConvexPartition(loop,
 																	   ref polygonVerticesArray,
 																	   ref polygonVerticesSegments))
 				{
@@ -231,6 +233,14 @@ namespace Chisel.Core
 					polygonVerticesSegments = default;
 					return false;
 				}
+			}
+			if (polygonVerticesSegments.Length == 0)
+			{
+				polygonVerticesArray.Dispose();
+				polygonVerticesSegments.Dispose();
+				polygonVerticesArray = default;
+				polygonVerticesSegments = default;
+				return false;
 			}
 
 			for (int i = 0; i < polygonVerticesSegments.Length; i++)
@@ -249,6 +259,96 @@ namespace Chisel.Core
 			//Debug.Assert(polygonVerticesArray.Length == 0 || polygonVerticesArray.Length == polygonVerticesSegments[polygonVerticesSegments.Length - 1]);
 			return true;
 		}
+
+        // Splits a closed outline where two of its edges cross, over and over, until no loop crosses itself. At a crossing
+        // the outline becomes two loops that both start at the crossing point: one runs along the part between the two
+        // edges, the other along the rest. Each new corner keeps the side of the edge it starts
+        public static void SplitAtCrossings(NativeList<SegmentVertex> vertices, NativeList<SegmentVertex> loopVertices, NativeList<int> loopEnds)
+        {
+            using var pending = new NativeList<SegmentVertex>(Allocator.Temp);
+            using var pendingEnds = new NativeList<int>(Allocator.Temp);
+            pending.AddRange(vertices.AsArray());
+            pendingEnds.Add(pending.Length);
+
+            using var loop  = new NativeList<SegmentVertex>(Allocator.Temp);
+            using var first = new NativeList<SegmentVertex>(Allocator.Temp);
+            using var other = new NativeList<SegmentVertex>(Allocator.Temp);
+            // every split adds one loop; an outline can't cross itself more often than its edges can pair up
+            var maxLoops = math.max(1, vertices.Length * vertices.Length);
+            var done = 0;
+            while (pendingEnds.Length > 0)
+            {
+                var start = pendingEnds.Length == 1 ? 0 : pendingEnds[pendingEnds.Length - 2];
+                var end   = pendingEnds[pendingEnds.Length - 1];
+                loop.Clear();
+                for (int n = start; n < end; n++)
+                    loop.Add(pending[n]);
+                pending.ResizeUninitialized(start);
+                pendingEnds.RemoveAt(pendingEnds.Length - 1);
+
+                var count = loop.Length;
+                var split = false;
+                if (count > 3 && done < maxLoops)
+                {
+                    for (int i = 0; i < count && !split; i++)
+                    {
+                        var a0 = loop[i].position;
+                        var a1 = loop[(i + 1) % count].position;
+                        // edges next to each other share a corner, they don't cross
+                        for (int j = i + 2; j < count && !split; j++)
+                        {
+                            if (i == 0 && j == count - 1)
+                                continue;
+                            var b0 = loop[j].position;
+                            var b1 = loop[(j + 1) % count].position;
+                            if (!Crossing(a0, a1, b0, b1, out var point))
+                                continue;
+
+                            first.Clear();
+                            first.Add(new SegmentVertex { position = point, segmentIndex = loop[i].segmentIndex });
+                            for (int n = i + 1; n <= j; n++)
+                                first.Add(loop[n]);
+                            other.Clear();
+                            other.Add(new SegmentVertex { position = point, segmentIndex = loop[j].segmentIndex });
+                            for (int n = j + 1; n < count; n++)
+                                other.Add(loop[n]);
+                            for (int n = 0; n <= i; n++)
+                                other.Add(loop[n]);
+
+                            pending.AddRange(first.AsArray());
+                            pendingEnds.Add(pending.Length);
+                            pending.AddRange(other.AsArray());
+                            pendingEnds.Add(pending.Length);
+                            split = true;
+                            done++;
+                        }
+                    }
+                }
+                if (split)
+                    continue;
+                loopVertices.AddRange(loop.AsArray());
+                loopEnds.Add(loopVertices.Length);
+            }
+        }
+
+        // Where two edges cross each other, strictly inside both
+        static bool Crossing(float2 a0, float2 a1, float2 b0, float2 b1, out float2 point)
+        {
+            point = default;
+            var da = a1 - a0;
+            var db = b1 - b0;
+            var denominator = da.x * db.y - da.y * db.x;
+            if (math.abs(denominator) < 1e-9f)
+                return false;
+            var offset = b0 - a0;
+            var t = (offset.x * db.y - offset.y * db.x) / denominator;
+            var u = (offset.x * da.y - offset.y * da.x) / denominator;
+            const float kEpsilon = 1e-5f;
+            if (t <= kEpsilon || t >= 1 - kEpsilon || u <= kEpsilon || u >= 1 - kEpsilon)
+                return false;
+            point = a0 + da * t;
+            return true;
+        }
 
         public static BlobAssetReference<ChiselCurve2DBlob> Convert(Curve2D curve, Allocator allocator)
         {
