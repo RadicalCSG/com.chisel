@@ -67,6 +67,12 @@ namespace Chisel.Editors
             return null;
         }
 
+        // every surface of the node, of all the brushes a generator makes, not only of the one brush that was hit
+        internal static bool GetAllSurfaces(ChiselNodeComponent chiselNode, List<SurfaceReference> foundSurfaces)
+        {
+            return ChiselSurfaceSelectionManager.GetAllSurfaceReferences(chiselNode, foundSurfaces);
+        }
+
 		public static bool FindSurfaceReferences(Vector2 position, bool selectAllSurfaces, List<SurfaceReference> foundSurfaces, out ChiselIntersection intersection, out SurfaceReference surfaceReference)
         {
             intersection = ChiselIntersection.None;
@@ -89,7 +95,7 @@ namespace Chisel.Editors
                     FindSurfaceReference(chiselNode, chiselNode.TopTreeNode, brush, surfaceID, out surfaceReference);
 
                 if (selectAllSurfaces)
-                    return ChiselSurfaceSelectionManager.GetAllSurfaceReferences(chiselNode, brush, foundSurfaces);
+                    return GetAllSurfaces(chiselNode, foundSurfaces);
 
                 if (surfaceReference == null)
                     return false;

@@ -93,6 +93,18 @@ namespace Chisel.Editors.Tests
                         "the test below needs surfaces that share one");
         }
 
+        // Dragging with shift held takes every surface of the generator, of all the brushes it makes; it took only those
+        // of the brush under the cursor, one step of the stairs
+        [Test]
+        public void DraggingWithShift_TakesEverySurfaceOfTheGenerator()
+        {
+            var surfaces = AllSurfaces(typeof(ChiselLinearStairsComponent), out var generator);
+            var found = new List<SurfaceReference>();
+            Assert.That(ChiselClickSelectionManager.GetAllSurfaces(generator, found), Is.True);
+            Assert.That(found.Select(s => s.brush).Distinct().Count(), Is.EqualTo(surfaces.Select(s => s.brush).Distinct().Count()), "brushes");
+            Assert.That(found.Count, Is.EqualTo(surfaces.Count), "surfaces");
+        }
+
         [TestCaseSource(nameof(kGenerators))]
         public void DraggingOverEverySurfaceAndAway_PutsTheirMaterialsBack(System.Type type)
         {
