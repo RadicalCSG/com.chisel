@@ -850,7 +850,59 @@ namespace Chisel.Editors
 
 		readonly static ChiselComponentInspectorMessageHandler s_Warnings = new();
 
-		protected virtual void OnInspector() 
+        // Settings shown in groups the editor lays out (say each under a picture of what they measure), then the ones left
+        // in the order they are declared
+        readonly HashSet<string> m_DrawnSettings = new();
+        const string kSettingsName = "settings";
+
+        protected void OnGroupedInspector(Action drawGroups)
+        {
+            s_Warnings.StartWarnings();
+            ChiselMessages.ShowMessages(targets, s_Warnings);
+            s_Warnings.EndWarnings();
+
+            m_DrawnSettings.Clear();
+            EditorGUI.BeginChangeCheck();
+            {
+                drawGroups();
+                for (int i = 0; i < children.Count; i++)
+                {
+                    if (children[i].name != kSettingsName)
+                    {
+                        EditorGUILayout.PropertyField(children[i], true);
+                        continue;
+                    }
+                    var iterator = children[i].Copy();
+                    var end      = iterator.GetEndProperty();
+                    if (!iterator.NextVisible(true))
+                        continue;
+                    while (!SerializedProperty.EqualContents(iterator, end))
+                    {
+                        if (!m_DrawnSettings.Contains(iterator.name))
+                            EditorGUILayout.PropertyField(iterator, true);
+                        if (!iterator.NextVisible(false))
+                            break;
+                    }
+                }
+            }
+            if (EditorGUI.EndChangeCheck())
+                OnTargetModifiedInInspector();
+        }
+
+        // one of the settings, in a group; a part of one ("origin.y") is shown with its own label, and the whole is left out
+        // of the rest
+        protected void SettingsField(string name, GUIContent label = null)
+        {
+            var property = definitionSerializedProperty?.FindPropertyRelative(kSettingsName + "." + name);
+            if (property == null)
+                return;
+            if (label != null) EditorGUILayout.PropertyField(property, label, true);
+            else               EditorGUILayout.PropertyField(property, true);
+            var dot = name.IndexOf('.');
+            m_DrawnSettings.Add(dot < 0 ? name : name.Substring(0, dot));
+        }
+
+		protected virtual void OnInspector()
         {
             s_Warnings.StartWarnings();
 			ChiselMessages.ShowMessages(targets, s_Warnings);
@@ -1014,6 +1066,9 @@ namespace Chisel.Editors
 			}
         }
 
+        // whether what the brushes are made of can be picked; things like stairs are always solid
+        protected virtual bool ShowsContents => true;
+
         public override void OnInspectorGUI()
         {
             if (!target)
@@ -1027,7 +1082,8 @@ namespace Chisel.Editors
                 EditorGUI.BeginChangeCheck();
                 {
                     ShowInspectorHeader(operationProp);
-                    ChiselContentsGUI.ShowContentsField(contentsProp);
+                    if (ShowsContents)
+                        ChiselContentsGUI.ShowContentsField(contentsProp);
                     OnInspector();
                 }
                 if (EditorGUI.EndChangeCheck())

@@ -72,6 +72,7 @@ namespace Chisel.Core
             var innerSides		= definition.innerSegments;
             var outerSides		= definition.outerSegments;
             var riserDepth		= definition.riserDepth;
+            var undersideSmoothingGroup = definition.bottomSmoothingGroup;
 
             using (var outerCylinderSurfaceDefinitionBlob = BrushMeshManager.BuildInternalSurfaceArrayBlob(outerSides + 2, Allocator.Temp))
             using (var innerCylinderSurfaceDefinitionBlob = BrushMeshManager.BuildInternalSurfaceArrayBlob(innerSides + 2, Allocator.Temp))
@@ -186,24 +187,24 @@ namespace Chisel.Core
 
                                 {                  
                                     //brushMesh.halfEdges = (anglePerStep > 0) ? invertedSquarePyramidHalfEdges.ToArray() : squarePyramidHalfEdges.ToArray();
-                                    brushMeshes[subMeshIndex] = CreateSquarePyramidAssetPolygons(new float3(i0.x, maxY, i0.y), // 0
+                                    brushMeshes[subMeshIndex] = SmoothUnderside(CreateSquarePyramidAssetPolygons(new float3(i0.x, maxY, i0.y), // 0
                                                                                                  new float3(i0.x, minY, i0.y), // 1
                                                                                                  new float3(o0.x, minY, o0.y), // 2  
                                                                                                  new float3(o0.x, maxY, o0.y), // 3
                                                                                                  new float3(o1.x, maxY, o1.y), // 4
                                                                                                  in surfaceDefinitionBlob,
-                                                                                                 allocator);// Indirect
+                                                                                                 allocator), undersideSmoothingGroup);// Indirect
 									subMeshIndex++;
                                 }
 
                                 {
                                     //brushMesh.halfEdges = (anglePerStep > 0) ? invertedTriangularPyramidHalfEdges.ToArray() : triangularPyramidHalfEdges.ToArray();
-                                    brushMeshes[subMeshIndex] = CreateTriangularPyramidAssetPolygons(new float3(i0.x, maxY, i0.y), // 0
-                                                                                                     new float3(i0.x, minY, i0.y), // 1
+                                    brushMeshes[subMeshIndex] = SmoothUnderside(CreateTriangularPyramidAssetPolygons(new float3(i0.x, minY, i0.y), // 1
+                                                                                                     new float3(i0.x, maxY, i0.y), // 0
                                                                                                      new float3(i1.x, maxY, i1.y), // 2
                                                                                                      new float3(o1.x, maxY, o1.y), // 3,
                                                                                                      in surfaceDefinitionBlob, 
-                                                                                                     allocator);// Indirect
+                                                                                                     allocator), undersideSmoothingGroup);// Indirect
 									subMeshIndex++;
                                 }
                             
@@ -213,23 +214,23 @@ namespace Chisel.Core
 
                             {
                                 //brushMesh.halfEdges = (anglePerStep > 0) ? invertedTriangularPyramidHalfEdges.ToArray() : triangularPyramidHalfEdges.ToArray();
-                                brushMeshes[subMeshIndex] = CreateTriangularPyramidAssetPolygons(new float3(     i0.x, maxY,     i0.y), // 0
-                                                                                                 new float3(     i1.x, maxY,     i1.y), // 2
+                                brushMeshes[subMeshIndex] = SmoothUnderside(CreateTriangularPyramidAssetPolygons(new float3(     i1.x, maxY,     i1.y), // 2
+                                                                                                 new float3(     i0.x, maxY,     i0.y), // 0
                                                                                                  new float3(     i0.x, minY,     i0.y), // 1
-                                                                                                 new float3( origin.x, minY, origin.y), // 3
+                                                                                                 new float3( origin.x, minY, origin.z), // 3
                                                                                                  in surfaceDefinitionBlob, 
-                                                                                                 allocator);// Indirect
+                                                                                                 allocator), undersideSmoothingGroup);// Indirect
 								subMeshIndex++;
                             }
 
                             {
                                 //brushMesh.halfEdges = (anglePerStep > 0) ? invertedTriangularPyramidHalfEdges.ToArray() : triangularPyramidHalfEdges.ToArray();
-                                brushMeshes[subMeshIndex] = CreateTriangularPyramidAssetPolygons(new float3(     i1.x, maxY,     i1.y), // 2
-                                                                                                 new float3(     i0.x, maxY,     i0.y), // 0
-                                                                                                 new float3( origin.x, maxY, origin.y), // 1
-                                                                                                 new float3( origin.x, minY, origin.y), // 3
+                                brushMeshes[subMeshIndex] = SmoothUnderside(CreateTriangularPyramidAssetPolygons(new float3(     i0.x, maxY,     i0.y), // 0
+                                                                                                 new float3(     i1.x, maxY,     i1.y), // 2
+                                                                                                 new float3( origin.x, maxY, origin.z), // 1
+                                                                                                 new float3( origin.x, minY, origin.z), // 3
                                                                                                  in surfaceDefinitionBlob, 
-                                                                                                 allocator);// Indirect
+                                                                                                 allocator), undersideSmoothingGroup);// Indirect
 								subMeshIndex++;
                             }
 
@@ -373,8 +374,273 @@ namespace Chisel.Core
                     brushMeshes[subMeshIndex] = DescribedAs(brushMeshBlob, ChiselSpiralStairs.SurfaceSides.InnerSurface);
                     //brushContainer.operations[subMeshIndex] = CSGOperationType.Subtractive;
                 }
+
+                // the column and the sides come after the steps, so the cylinders that trim the steps leave them whole
+                var index = subMeshCount;
+                if (definition.HaveColumn)
+                {
+                    if (!GenerateCylinderSubMesh(innerDiameter, origin.y, origin.y + height, 0, innerSides, fitToBounds: fitToBounds,
+                                                 in innerCylinderSurfaceDefinitionBlob,
+                                                 out var columnBlob, allocator))// Indirect
+                        return false;
+                    brushMeshes[index++] = MapRoundFaces(SmoothRoundFaces(DescribedAs(columnBlob, ChiselSpiralStairs.SurfaceSides.InnerSurface), definition.columnSmoothingGroup, origin), innerDiameter * 0.5f, innerSides);
+                    if (definition.HaveColumnHole)
+                    {
+                        if (!GenerateCylinderSubMesh(definition.ColumnHoleDiameter, origin.y, origin.y + height, 0, innerSides, fitToBounds: fitToBounds,
+                                                     in innerCylinderSurfaceDefinitionBlob,
+                                                     out var holeBlob, allocator))// Indirect
+                            return false;
+                        brushMeshes[index++] = MapRoundFaces(SmoothRoundFaces(DescribedAs(holeBlob, ChiselSpiralStairs.SurfaceSides.InnerSurface), definition.columnSmoothingGroup, origin), definition.ColumnHoleDiameter * 0.5f, innerSides);
+                    }
+                }
+
+                // a wall reaches a little into what it stands against, so the two overlap instead of touching face to
+                // face, which would leave edges where both their outlines meet
+                const float kSideOverlap = 0.01f;
+                var sideWidth = definition.sideWidth;
+                if (definition.HaveOuterSide)
+                {
+                    // against the outside of the steps, as thick as set outwards
+                    var apothem = outerDiameter * 0.5f * math.cos(math.PI / outerSides);
+                    GenerateSide(brushMeshes, ref index, definition.outerSide, apothem - kSideOverlap, apothem + sideWidth, outerSides, in definition, origin, startAngle, anglePerStep, in surfaceDefinitionBlob, allocator);
+                }
+                if (definition.HaveInnerSide)
+                {
+                    // against the open middle, as thick as set inwards; with a column there it stands beside the column,
+                    // as thick as set outwards
+                    var apothem = innerDiameter * 0.5f * math.cos(math.PI / innerSides);
+                    if (definition.HaveColumn)
+                        GenerateSide(brushMeshes, ref index, definition.innerSide, apothem - kSideOverlap, apothem + sideWidth, innerSides, in definition, origin, startAngle, anglePerStep, in surfaceDefinitionBlob, allocator);
+                    else
+                        GenerateSide(brushMeshes, ref index, definition.innerSide, math.max(0, apothem - sideWidth), apothem + kSideOverlap, innerSides, in definition, origin, startAngle, anglePerStep, in surfaceDefinitionBlob, allocator);
+                }
                 return true;
             }
+        }
+
+        // A wall along the steps between two distances from the middle, along the same straight pieces as the cylinder the
+        // steps are trimmed by, following them round and up. Its height is measured from the line through the fronts of
+        // the treads: above it for a wall above the steps, below it (under the steps) for one below, never below the floor.
+        // Each piece is two wedges, so every face is flat
+        static void GenerateSide(NativeList<BlobAssetReference<BrushMeshBlob>> brushMeshes, ref int index, StairsSideType sideType,
+                                 float innerApothem, float outerApothem, int segments, in ChiselSpiralStairs definition, float3 origin,
+                                 float startAngle, float anglePerStep,
+                                 in BlobAssetReference<InternalChiselSurfaceArray> surfaceDefinitionBlob, Allocator allocator)
+        {
+            var stepHeight  = definition.stepHeight;
+            var above       = (sideType == StairsSideType.Up   || sideType == StairsSideType.DownAndUp) ? definition.sideHeight : 0;
+            var below       = (sideType == StairsSideType.Down || sideType == StairsSideType.DownAndUp) ? stepHeight + definition.sideDepth : 0;
+            var floor       = origin.y;
+            // how far along the wall each piece starts, on its inner and its outer face, so the texture runs on across them
+            var innerLength = 0.0f;
+            var outerLength = 0.0f;
+
+            for (int step = 0; step < definition.StepCount; step++)
+            {
+                var stepStart = startAngle + anglePerStep * step;
+                var stepEnd   = stepStart + anglePerStep;
+                var a0        = stepStart;
+                while (a0 < stepEnd - ChiselSpiralStairs.kAngleEpsilon)
+                {
+                    var a1 = ChiselSpiralStairs.NextSideCorner(a0, stepEnd, segments);
+                    // the line through the fronts of the treads rises a step per step
+                    var line0 = origin.y + stepHeight * (step + 1 + (a0 - stepStart) / anglePerStep);
+                    var line1 = origin.y + stepHeight * (step + 1 + (a1 - stepStart) / anglePerStep);
+
+                    // both ends on the same straight piece of the round side
+                    var middle = (a0 + a1) * 0.5f;
+                    var in0  = Around(origin, ChiselSpiralStairs.RadiusOnSide(a0, middle, innerApothem, segments), a0);
+                    var out0 = Around(origin, ChiselSpiralStairs.RadiusOnSide(a0, middle, outerApothem, segments), a0);
+                    var in1  = Around(origin, ChiselSpiralStairs.RadiusOnSide(a1, middle, innerApothem, segments), a1);
+                    var out1 = Around(origin, ChiselSpiralStairs.RadiusOnSide(a1, middle, outerApothem, segments), a1);
+
+                    var smoothing = definition.sideSmoothingGroup;
+                    // the first wedge has the inner face, the second the outer one; the face between them is hidden
+                    brushMeshes[index++] = WallFace(Wedge(in0, line0, out0, line0, in1, line1, above, below, floor, in surfaceDefinitionBlob, allocator), smoothing, in0, in1, innerLength);
+                    brushMeshes[index++] = WallFace(Wedge(out0, line0, out1, line1, in1, line1, above, below, floor, in surfaceDefinitionBlob, allocator), smoothing, out0, out1, outerLength);
+                    innerLength += math.distance(in0, in1);
+                    outerLength += math.distance(out0, out1);
+                    a0 = a1;
+                }
+            }
+        }
+
+        static float2 Around(float3 origin, float radius, float angle)
+        {
+            return new float2(origin.x + math.sin(angle) * radius, origin.z + math.cos(angle) * radius);
+        }
+
+        // A wedge standing on a triangle, each corner from below its line to above it; its corners are put in the order the
+        // steps' own wedges have them in, so it is never inside out
+        static BlobAssetReference<BrushMeshBlob> Wedge(float2 p0, float line0, float2 p1, float line1, float2 p2, float line2,
+                                                       float above, float below, float floor,
+                                                       in BlobAssetReference<InternalChiselSurfaceArray> surfaceDefinitionBlob, Allocator allocator)
+        {
+            var d1 = p1 - p0;
+            var d2 = p2 - p0;
+            if ((d1.x * d2.y - d1.y * d2.x) < 0)
+            {
+                var p = p1; p1 = p2; p2 = p;
+                var line = line1; line1 = line2; line2 = line;
+            }
+            return CreateWedgeAssetPolygons(new float3(p0.x, math.max(floor, line0 - below), p0.y),
+                                            new float3(p1.x, math.max(floor, line1 - below), p1.y),
+                                            new float3(p2.x, math.max(floor, line2 - below), p2.y),
+                                            new float3(p0.x, line0 + above, p0.y),
+                                            new float3(p1.x, line1 + above, p1.y),
+                                            new float3(p2.x, line2 + above, p2.y),
+                                            in surfaceDefinitionBlob, allocator);// Indirect
+        }
+
+        // The round faces of a column or a wall, the upright ones facing towards or away from the center, share a smoothing
+        // group so the light runs over them as over one curved surface; their tops, bottoms and ends stay sharp
+        static BlobAssetReference<BrushMeshBlob> SmoothRoundFaces(BlobAssetReference<BrushMeshBlob> brushMesh, uint smoothingGroup, float3 center)
+        {
+            if (smoothingGroup == 0 || !brushMesh.IsCreated)
+                return brushMesh;
+            ref var mesh = ref brushMesh.Value;
+            for (int p = 0; p < mesh.polygons.Length && p < mesh.localPlanes.Length; p++)
+            {
+                var normal = mesh.localPlanes[p].xyz;
+                if (math.abs(normal.y) > 0.1f)
+                    continue;
+                ref var polygon = ref mesh.polygons[p];
+                var middle = float3.zero;
+                for (int e = 0; e < polygon.edgeCount; e++)
+                    middle += mesh.localVertices[mesh.halfEdges[polygon.firstEdge + e].vertexIndex];
+                middle /= math.max(1, polygon.edgeCount);
+                var outwards = new float2(middle.x - center.x, middle.z - center.z);
+                if (math.lengthsq(outwards) < 1e-8f)
+                    continue;
+                if (math.abs(math.dot(math.normalize(outwards), math.normalize(normal.xz))) > 0.7f)
+                    polygon.surface.details.smoothingGroup = smoothingGroup;
+            }
+            return brushMesh;
+        }
+
+        // A wall piece's face that stands on the line from one point to another, seen from above: it gets the smoothing
+        // group, and a texture that runs on from the pieces before it, by the length along the wall, and up by height. It
+        // is not mirrored seen from the side it faces, and the surface's own uv settings are applied to it; a surface
+        // mapped in world space keeps its own
+        static BlobAssetReference<BrushMeshBlob> WallFace(BlobAssetReference<BrushMeshBlob> brushMesh, uint smoothingGroup, float2 from, float2 to, float startLength)
+        {
+            if (!brushMesh.IsCreated)
+                return brushMesh;
+            const float kEpsilon = 0.0001f;
+            ref var mesh = ref brushMesh.Value;
+            for (int p = 0; p < mesh.polygons.Length && p < mesh.localPlanes.Length; p++)
+            {
+                ref var polygon = ref mesh.polygons[p];
+                var along = polygon.edgeCount > 2;
+                for (int e = 0; e < polygon.edgeCount && along; e++)
+                {
+                    var vertex = mesh.localVertices[mesh.halfEdges[polygon.firstEdge + e].vertexIndex];
+                    along = math.lengthsq(vertex.xz - from) < kEpsilon || math.lengthsq(vertex.xz - to) < kEpsilon;
+                }
+                if (!along)
+                    continue;
+
+                if (smoothingGroup != 0)
+                    polygon.surface.details.smoothingGroup = smoothingGroup;
+
+                if ((polygon.surface.details.detailFlags & SurfaceDetailFlags.TextureIsInWorldSpace) != 0)
+                    continue;
+                var length = math.distance(from, to);
+                if (length < kEpsilon)
+                    continue;
+
+                // u = the length along the wall, v = the height, both as a flat mapping of the face in the brush's space
+                var normal    = math.normalizesafe(mesh.localPlanes[p].xyz);
+                var direction = new float3(to.x - from.x, 0, to.y - from.y) / length;
+                var side      = math.dot(direction, math.cross(new float3(0, 1, 0), normal)) < 0 ? -1.0f : 1.0f;
+                var start     = new float3(from.x, 0, from.y);
+                var alongU    = direction * side;
+                var atU       = side * (startLength - math.dot(direction, start));
+                var upV       = new float3(0, 1, 0);
+                var atV       = 0.0f;
+
+                // the same in the plane's space, which the surface's uv settings work in
+                var toPlane  = MathExtensions.GenerateLocalToPlaneSpaceMatrix(mesh.localPlanes[p]);
+                var rotation = new float3x3(toPlane);
+                var shift    = toPlane.c3.xyz;
+                var u = new float4(math.mul(rotation, alongU), atU - math.dot(math.mul(rotation, alongU), shift));
+                var v = new float4(math.mul(rotation, upV),    atV - math.dot(math.mul(rotation, upV),    shift));
+
+                ref var uv0 = ref polygon.surface.details.UV0;
+                float4 givenU = uv0.U, givenV = uv0.V;
+                uv0.U = givenU.x * u + givenU.y * v + new float4(0, 0, 0, givenU.w);
+                uv0.V = givenV.x * u + givenV.y * v + new float4(0, 0, 0, givenV.w);
+            }
+            return brushMesh;
+        }
+
+        // A column's round side: the texture runs round it by the length along its sides, starting again where it began,
+        // and up by height. Like a wall's faces it is not mirrored seen from the side a face faces, and the surface's own uv
+        // settings are applied to it; a surface mapped in world space keeps its own. The cylinder is around the brush's
+        // center, with its corners at (cos t, sin t)
+        static BlobAssetReference<BrushMeshBlob> MapRoundFaces(BlobAssetReference<BrushMeshBlob> brushMesh, float radius, int segments)
+        {
+            if (!brushMesh.IsCreated || radius <= 0 || segments < 3)
+                return brushMesh;
+            var segmentAngle = (math.PI * 2) / segments;
+            var offset       = ((segments & 1) == 1) ? 0.0f : segmentAngle * 0.5f;
+            var sideLength   = 2 * radius * math.sin(segmentAngle * 0.5f);
+            ref var mesh = ref brushMesh.Value;
+            for (int p = 0; p < mesh.polygons.Length && p < mesh.localPlanes.Length; p++)
+            {
+                ref var polygon = ref mesh.polygons[p];
+                var normal = math.normalizesafe(mesh.localPlanes[p].xyz);
+                if (math.abs(normal.y) > 0.1f)
+                    continue;
+                if ((polygon.surface.details.detailFlags & SurfaceDetailFlags.TextureIsInWorldSpace) != 0)
+                    continue;
+
+                // which side this is, from the middle of its corners
+                var middle = float3.zero;
+                for (int e = 0; e < polygon.edgeCount; e++)
+                    middle += mesh.localVertices[mesh.halfEdges[polygon.firstEdge + e].vertexIndex];
+                middle /= math.max(1, polygon.edgeCount);
+                var angle = math.atan2(middle.z, middle.x);
+                var side  = (int)math.floor((angle - offset) / segmentAngle);
+                side = ((side % segments) + segments) % segments;
+                var t0    = offset + side * segmentAngle;
+                var start = new float3(math.cos(t0), 0, math.sin(t0)) * radius;
+                var end   = new float3(math.cos(t0 + segmentAngle), 0, math.sin(t0 + segmentAngle)) * radius;
+                var direction = math.normalizesafe(end - start);
+
+                var flip   = math.dot(direction, math.cross(new float3(0, 1, 0), normal)) < 0 ? -1.0f : 1.0f;
+                var alongU = direction * flip;
+                var atU    = flip * (side * sideLength - math.dot(direction, start));
+                var upV    = new float3(0, 1, 0);
+
+                var toPlane  = MathExtensions.GenerateLocalToPlaneSpaceMatrix(mesh.localPlanes[p]);
+                var rotation = new float3x3(toPlane);
+                var shift    = toPlane.c3.xyz;
+                var u = new float4(math.mul(rotation, alongU), atU - math.dot(math.mul(rotation, alongU), shift));
+                var v = new float4(math.mul(rotation, upV),    0 - math.dot(math.mul(rotation, upV),    shift));
+
+                ref var uv0 = ref polygon.surface.details.UV0;
+                float4 givenU = uv0.U, givenV = uv0.V;
+                uv0.U = givenU.x * u + givenU.y * v + new float4(0, 0, 0, givenU.w);
+                uv0.V = givenV.x * u + givenV.y * v + new float4(0, 0, 0, givenV.w);
+            }
+            return brushMesh;
+        }
+
+        // The sloped underside is made of flat pieces: the ones facing down share a smoothing group, so the light runs over
+        // them as over one curved surface
+        static BlobAssetReference<BrushMeshBlob> SmoothUnderside(BlobAssetReference<BrushMeshBlob> brushMesh, uint smoothingGroup)
+        {
+            if (smoothingGroup == 0 || !brushMesh.IsCreated)
+                return brushMesh;
+            ref var polygons = ref brushMesh.Value.polygons;
+            ref var planes   = ref brushMesh.Value.localPlanes;
+            for (int p = 0; p < polygons.Length && p < planes.Length; p++)
+            {
+                if (planes[p].y < -0.2f)
+                    polygons[p].surface.details.smoothingGroup = smoothingGroup;
+            }
+            return brushMesh;
         }
 
         // A cylinder's polygons count its own surfaces, made here from one of the stairs': each is given that surface's

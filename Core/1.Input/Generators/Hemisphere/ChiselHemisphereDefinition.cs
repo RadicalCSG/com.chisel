@@ -53,7 +53,7 @@ namespace Chisel.Core
         public bool Validate()
         {
             diameterXYZ.x = math.max(kMinDiameter, math.abs(diameterXYZ.x));
-            diameterXYZ.y = math.max(0,            math.abs(diameterXYZ.y)) * (diameterXYZ.y < 0 ? -1 : 1);
+            diameterXYZ.y = ChiselGeneratorLimits.NotZero(diameterXYZ.y);   // a negative height stays (built downwards), 0 is never kept
             diameterXYZ.z = math.max(kMinDiameter, math.abs(diameterXYZ.z));
 
             horizontalSegments	= math.max(horizontalSegments, 3);
@@ -170,9 +170,25 @@ namespace Chisel.Core
             if (previousModified != handles.modified)
             {
                 var diameter = settings.diameterXYZ;
-                diameter.y = topPoint.y;
+                // a drag that would make it flat isn't taken
+                if (math.abs(topPoint.y) >= ChiselGeneratorLimits.kMinSize)
+                    diameter.y = topPoint.y;
                 diameter.x = radius2D.x * 2.0f;
                 diameter.z = radius2D.x * 2.0f;
+                settings.diameterXYZ = diameter;
+            }
+
+            // the sizes of the box around it, as when it was placed
+            var box        = new Bounds(new Vector3(0, settings.diameterXYZ.y * 0.5f, 0), math.abs(settings.diameterXYZ));
+            var sizeBefore = box.size;
+            if (handles.DoBoxMeasurements(ref box))
+            {
+                // a typed size changes that size alone
+                var size     = box.size;
+                var diameter = settings.diameterXYZ;
+                if (size.x != sizeBefore.x) diameter.x = size.x;
+                if (size.z != sizeBefore.z) diameter.z = size.z;
+                if (size.y != sizeBefore.y) diameter.y = (diameter.y < 0 ? -1 : 1) * size.y;
                 settings.diameterXYZ = diameter;
             }
         }

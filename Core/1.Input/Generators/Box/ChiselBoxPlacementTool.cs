@@ -11,6 +11,7 @@ namespace Chisel.Core
         [SerializeField] bool createAsBrush = false;
 
         public override bool CreateAsBrush { get { return createAsBrush; } set { createAsBrush = value; } }
+        public override float MinimumSize => ChiselBox.kMinSize;
 
         [ToggleFlags]
         public PlacementFlags placement = PlacementFlags.None;

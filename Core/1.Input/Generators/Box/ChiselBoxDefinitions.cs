@@ -37,9 +37,10 @@ namespace Chisel.Core
         #endregion
 
         #region Generate
-        public readonly BlobAssetReference<BrushMeshBlob> GenerateMesh(BlobAssetReference<InternalChiselSurfaceArray> surfaceDefinitionBlob, 
+        public readonly BlobAssetReference<BrushMeshBlob> GenerateMesh(BlobAssetReference<InternalChiselSurfaceArray> surfaceDefinitionBlob,
                                                                        Allocator allocator = Allocator.Persistent)// Indirect
 		{
+            // a negative size is the box with its sides swapped (CreateBox swaps them), so it is the right way out
             if (!BrushMeshFactory.CreateBox(bounds.Min, bounds.Max,
                                             in surfaceDefinitionBlob,
                                             out var newBrushMesh,
@@ -58,12 +59,19 @@ namespace Chisel.Core
         #endregion
 
         #region Validation
+        /// <summary>The smallest a box can be along an axis, either way: thinner than the other generators (a sheet of a
+        /// few millimetres is a box)</summary>
+        public const float kMinSize = 0.0001f;
+
+        // A negative size stays as it was given (the sides being dragged stay the ones dragged), a size of 0 becomes
+        // kMinSize
         public bool Validate()
         {
-            var originalBox = bounds;
-            var min = math.min(originalBox.Min, originalBox.Max);
-            var max = math.max(originalBox.Min, originalBox.Max);
-            bounds = new MinMaxAABB { Min = min, Max = max };
+            var size = bounds.Max - bounds.Min;
+            var max  = bounds.Max;
+            for (int axis = 0; axis < 3; axis++)
+                max[axis] = bounds.Min[axis] + ChiselGeneratorLimits.NotZero(size[axis], kMinSize);
+            bounds.Max = max;
             return true;
         }
 
@@ -94,8 +102,15 @@ namespace Chisel.Core
         #region OnEdit
         public override void OnEdit(IChiselHandles handles)
         {
+            // a drag that would make the box flat isn't taken
+            var before = settings.bounds;
             handles.DoBoundsHandle(ref settings.bounds);
-            handles.RenderBoxMeasurements(settings.bounds);
+            if (math.any(math.abs(settings.bounds.Max - settings.bounds.Min) < ChiselBox.kMinSize))
+                settings.bounds = before;
+            before = settings.bounds;
+            if (handles.DoBoxMeasurements(ref settings.bounds) &&
+                math.any(math.abs(settings.bounds.Max - settings.bounds.Min) < ChiselBox.kMinSize))
+                settings.bounds = before;
         }
         #endregion
     }

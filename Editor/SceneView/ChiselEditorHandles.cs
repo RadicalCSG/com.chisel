@@ -1311,6 +1311,19 @@ namespace Chisel.Editors
             return true;
         }
 
+        public bool DoBoxMeasurements(ref Bounds bounds, string undoMessage = null)
+        {
+            bool changed;
+            using (new UnityEditor.Handles.DrawingScope(SceneHandles.MeasureColor, matrix))
+                changed = Measurements.DrawLengths(ref bounds, editable: true);
+            if (!changed)
+                return false;
+            RecordUndo(undoMessage ?? "Typed a length");
+            GUI.changed = true;
+            this.modified = true;
+            return true;
+        }
+
         public bool DoTurnHandle(ref Bounds bounds, string undoMessage = null)
         {
             if (!generator || !generatorTransform)

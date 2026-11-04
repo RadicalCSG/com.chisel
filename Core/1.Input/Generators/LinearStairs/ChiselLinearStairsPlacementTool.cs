@@ -10,6 +10,7 @@ namespace Chisel.Core
         [ToggleFlags(includeFlags: (int)PlacementFlags.SameLengthXZ)]
         public PlacementFlags placement = PlacementFlags.AlwaysFaceUp | PlacementFlags.AlwaysFaceCameraXZ;
         public override PlacementFlags PlacementFlags => placement;
+        public override bool AlongLongSide => true;
 
         public override void OnUpdate(ref ChiselLinearStairsDefinition definition, Bounds bounds)
         {

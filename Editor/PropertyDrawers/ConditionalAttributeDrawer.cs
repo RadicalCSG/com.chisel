@@ -8,6 +8,7 @@ namespace Chisel.Editors
 {
     [CustomPropertyDrawer(typeof(ConditionalNameAttribute))]
     [CustomPropertyDrawer(typeof(ConditionalHideAttribute))]
+    [CustomPropertyDrawer(typeof(ConditionalHideIfAllAttribute))]
 #if UNITY_6000_7_OR_NEWER
     [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
 #endif
@@ -50,14 +51,8 @@ namespace Chisel.Editors
                 return false;
             }
 
+            // without parts the name is the name as it is
             var conditionalNameParts = fieldInfo.GetCustomAttributes(typeof(ConditionalNamePartAttribute), true);
-            if (conditionalNameParts == null ||
-                conditionalNameParts.Length == 0)
-            {
-                Debug.LogWarning("Could not find any ConditionalNameParts but ConditionalName has been specified");
-                return false;
-            }
-
             s_FoundParts.Clear();
             foreach (var attribute in conditionalNameParts)
             {
@@ -86,6 +81,16 @@ namespace Chisel.Editors
             {
                 var conditionalFlag = attribute as ConditionalHideAttribute;
                 if (!IsVisible(property, conditionalFlag.Condition))
+                    return false;
+            }
+            // hidden when every field named has the value
+            foreach (var attribute in fieldInfo.GetCustomAttributes(typeof(ConditionalHideIfAllAttribute), true))
+            {
+                var hideIfAll = attribute as ConditionalHideIfAllAttribute;
+                var all = hideIfAll.FieldsToCheck.Length > 0;
+                foreach (var field in hideIfAll.FieldsToCheck)
+                    all &= !IsVisible(property, new Condition(field, new[] { hideIfAll.Value }));
+                if (all)
                     return false;
             }
             return true;

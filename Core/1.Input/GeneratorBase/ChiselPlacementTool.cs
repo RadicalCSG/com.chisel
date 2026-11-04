@@ -21,6 +21,11 @@ namespace Chisel.Core
         where PlacementToolType : IChiselNodeGenerator, new()
     {
         public virtual bool CreateAsBrush { get; set; } = false;
+        /// <summary>Thinner than this along any axis, the generator isn't built: it is hidden while drawn so thin, and
+        /// finishing then makes nothing</summary>
+        public virtual float MinimumSize => ChiselGeneratorLimits.kMinSize;
+        /// <summary>The generator runs along its depth (z): drawn wider than deep, it is turned to run along the long side</summary>
+        public virtual bool AlongLongSide => false;
         public abstract PlacementFlags PlacementFlags { get; }
         public virtual void OnCreate(ref PlacementToolType definition) { }
         public abstract void OnUpdate(ref PlacementToolType definition, Bounds bounds);

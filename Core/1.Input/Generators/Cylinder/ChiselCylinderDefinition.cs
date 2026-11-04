@@ -283,12 +283,20 @@ namespace Chisel.Core
         #endregion
 
         #region Validation
+        // A negative height stays (the factory builds it the right way out); a height or diameter of 0 becomes the smallest
+        // (a frustum's top can be 0: then it is a cone)
         public bool Validate()
         {
+            height = ChiselGeneratorLimits.NotZero(height);
             topDiameterX = math.abs(topDiameterX);
             topDiameterZ = math.abs(topDiameterZ);
-            bottomDiameterX = math.abs(bottomDiameterX);
-            bottomDiameterZ = math.abs(bottomDiameterZ);
+            bottomDiameterX = math.max(math.abs(bottomDiameterX), ChiselGeneratorLimits.kMinSize);
+            bottomDiameterZ = math.max(math.abs(bottomDiameterZ), ChiselGeneratorLimits.kMinSize);
+            if (type == CylinderShapeType.Cylinder)
+            {
+                topDiameterX = math.max(topDiameterX, ChiselGeneratorLimits.kMinSize);
+                topDiameterZ = math.max(topDiameterZ, ChiselGeneratorLimits.kMinSize);
+            }
 
             sides = math.max(3, sides);
             return true;
@@ -450,10 +458,10 @@ namespace Chisel.Core
                 topZVector      = math.mul(rotate, new float3(0, 0, 1)) * tempTopDiameterZ * 0.5f;
                 bottomXVector   = math.mul(rotate, new float3(1, 0, 0)) * tempBottomDiameterX * 0.5f;
                 bottomZVector   = math.mul(rotate, new float3(0, 0, 1)) * tempBottomDiameterZ * 0.5f;
-                normal = Vector3.up;
-                if (topY < bottomY) normal = -Vector3.up; else normal = Vector3.up;
-                topPoint        = normal * topY;
-                bottomPoint     = normal * bottomY;
+                // the top and bottom are where they are along up; only the way out of them turns over at a negative height
+                normal          = (topY < bottomY) ? -Vector3.up : Vector3.up;
+                topPoint        = Vector3.up * topY;
+                bottomPoint     = Vector3.up * bottomY;
             
             
                 // Render vertical horizon of cylinder
@@ -677,11 +685,16 @@ namespace Chisel.Core
             }
             if (prevModified != handles.modified)
             {
-                cylinderHandles.topY    = Vector3.Dot(Vector3.up, cylinderHandles.topPoint);
-                cylinderHandles.bottomY = Vector3.Dot(Vector3.up, cylinderHandles.bottomPoint);
-
-                settings.height = cylinderHandles.topY - cylinderHandles.bottomY;
-                settings.bottomOffset = cylinderHandles.bottomY;
+                var topY    = Vector3.Dot(Vector3.up, cylinderHandles.topPoint);
+                var bottomY = Vector3.Dot(Vector3.up, cylinderHandles.bottomPoint);
+                // a drag that would make it flat isn't taken
+                if (math.abs(topY - bottomY) >= ChiselGeneratorLimits.kMinSize)
+                {
+                    cylinderHandles.topY    = topY;
+                    cylinderHandles.bottomY = bottomY;
+                    settings.height         = topY - bottomY;
+                    settings.bottomOffset   = bottomY;
+                }
             }
 
 
@@ -707,6 +720,33 @@ namespace Chisel.Core
                     settings.topDiameterZ    = settings.topDiameterX;
                     settings.bottomDiameterZ = settings.bottomDiameterX;
                 }
+            }
+
+            // the sizes of the box around it, as when it was placed
+            var frustum  = settings.type == CylinderShapeType.ConicalFrustum;
+            var sizeX    = math.max(math.abs(settings.bottomDiameterX), frustum ? math.abs(settings.topDiameterX) : 0);
+            var sizeZ    = settings.isEllipsoid ? math.max(math.abs(settings.bottomDiameterZ), frustum ? math.abs(settings.topDiameterZ) : 0) : sizeX;
+            var boxCenter = new Vector3(0, settings.bottomOffset + settings.height * 0.5f, 0);
+            var box        = new Bounds(boxCenter, new Vector3(sizeX, math.abs(settings.height), sizeZ));
+            var sizeBefore = box.size;
+            if (handles.DoBoxMeasurements(ref box))
+            {
+                // a typed width scales both circles, so a cone or frustum keeps its shape; a typed height moves the top
+                var size = box.size;
+                if (size.x != sizeBefore.x)
+                {
+                    var scale = size.x / math.max(ChiselGeneratorLimits.kMinSize, sizeBefore.x);
+                    settings.bottomDiameterX *= scale; settings.topDiameterX *= scale;
+                    if (!settings.isEllipsoid) { settings.bottomDiameterZ = settings.bottomDiameterX; settings.topDiameterZ = settings.topDiameterX; }
+                }
+                if (size.z != sizeBefore.z)
+                {
+                    var scale = size.z / math.max(ChiselGeneratorLimits.kMinSize, sizeBefore.z);
+                    settings.bottomDiameterZ *= scale; settings.topDiameterZ *= scale;
+                    if (!settings.isEllipsoid) { settings.bottomDiameterX = settings.bottomDiameterZ; settings.topDiameterX = settings.topDiameterZ; }
+                }
+                if (size.y != sizeBefore.y)
+                    settings.height = (settings.height < 0 ? -1 : 1) * size.y;
             }
         }
         #endregion
