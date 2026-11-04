@@ -109,7 +109,16 @@ namespace Chisel.Core
         {
             topHeight		= math.max(topHeight, 0);
             bottomHeight	= math.max(bottomHeight, 0);
-            height			= math.max(topHeight + bottomHeight, math.abs(height)) * (height < 0 ? -1 : 1);
+            // a negative height stays, 0 is the smallest; the rounded ends shrink to fit in it (growing it instead would
+            // move the side across from the one dragged)
+            height			= ChiselGeneratorLimits.NotZero(height);
+            var ends        = topHeight + bottomHeight;
+            if (ends > math.abs(height))
+            {
+                var scale     = math.abs(height) / ends;
+                topHeight    *= scale;
+                bottomHeight *= scale;
+            }
 
             diameterX		= math.max(math.abs(diameterX), kMinDiameter);
             diameterZ		= math.max(math.abs(diameterZ), kMinDiameter);
@@ -230,8 +239,10 @@ namespace Chisel.Core
             var topHeight       = settings.topHeight;
             var bottomHeight    = settings.bottomHeight;
 
-            var maxTopHeight    = settings.height - bottomHeight;
-            var maxBottomHeight = settings.height - topHeight;
+            // at a negative height the top is below the bottom: the ends are dragged the other way
+            var heightSign      = settings.height < 0 ? -1.0f : 1.0f;
+            var maxTopHeight    = math.abs(settings.height) - bottomHeight;
+            var maxBottomHeight = math.abs(settings.height) - topHeight;
 
             if (settings.height < 0)
                 normal = -normal;
@@ -254,7 +265,7 @@ namespace Chisel.Core
                         var to = vertices[i + settings.TopVertexOffset];
 
                         if (handles.DoEdgeHandle1DOffset(out var edgeOffset, Chisel.Core.Axis.Y, from, to, renderLine: false))
-                            topHeight = math.clamp(topHeight - edgeOffset, 0, maxTopHeight);
+                            topHeight = math.clamp(topHeight - edgeOffset * heightSign, 0, maxTopHeight);
                         topLoopHasFocus = topLoopHasFocus || handles.lastHandleHadFocus;
                     }
 
@@ -285,7 +296,7 @@ namespace Chisel.Core
                         var to      = vertices[i + settings.BottomVertexOffset];
 
                         if (handles.DoEdgeHandle1DOffset(out var edgeOffset, Chisel.Core.Axis.Y, from, to, renderLine: false))
-                            bottomHeight = math.clamp(bottomHeight + edgeOffset, 0, maxBottomHeight);
+                            bottomHeight = math.clamp(bottomHeight + edgeOffset * heightSign, 0, maxBottomHeight);
                         bottomLoopHasFocus = bottomLoopHasFocus || handles.lastHandleHadFocus;
                     }
 
@@ -308,12 +319,35 @@ namespace Chisel.Core
             if (prevModified != handles.modified)
             {
                 settings.diameterX      = radius2D.x * 2.0f;
-                settings.height         = topPoint.y - bottomPoint.y;
                 settings.diameterZ      = radius2D.x * 2.0f;
-                settings.offsetY        = bottomPoint.y;
+                // a drag that would make it flat isn't taken
+                if (math.abs(topPoint.y - bottomPoint.y) >= ChiselGeneratorLimits.kMinSize)
+                {
+                    settings.height     = topPoint.y - bottomPoint.y;
+                    settings.offsetY    = bottomPoint.y;
+                }
                 settings.topHeight      = topHeight;
                 settings.bottomHeight   = bottomHeight;
                 // TODO: handle sizing down (needs to modify transformation?)
+            }
+
+            // the sizes of the box around it, as when it was placed; a typed size changes its width or height
+            var box = new Bounds(new Vector3(0, settings.offsetY + settings.height * 0.5f, 0),
+                                 new Vector3(math.abs(settings.diameterX), math.abs(settings.height), math.abs(settings.diameterZ)));
+            var sizeBefore = box.size;
+            if (handles.DoBoxMeasurements(ref box))
+            {
+                var size = box.size;
+                if (size.x != sizeBefore.x) settings.diameterX = size.x;
+                if (size.z != sizeBefore.z) settings.diameterZ = size.z;
+                if (size.y != sizeBefore.y)
+                {
+                    settings.height = (settings.height < 0 ? -1 : 1) * size.y;
+                    // ends that no longer fit are made to
+                    var scale = math.min(1, size.y / math.max(ChiselGeneratorLimits.kMinSize, settings.topHeight + settings.bottomHeight));
+                    settings.topHeight    *= scale;
+                    settings.bottomHeight *= scale;
+                }
             }
         }
         #endregion

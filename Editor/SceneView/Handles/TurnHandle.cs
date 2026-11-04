@@ -50,6 +50,12 @@ namespace Chisel.Editors
             var pLabel0     = new Vector3(axis0X ? min.x : max.x, axisY ? max.y : min.y, axis0Z ? min.z : max.z);
             var pLabel1     = new Vector3(axis1X ? min.x : max.x, axisY ? max.y : min.y, axis1Z ? min.z : max.z);
 
+            // out past the corner, clear of the size measurements drawn along its edges
+            var dir0 = (pLabel0 - center).normalized;
+            var dir1 = (pLabel1 - center).normalized;
+            pLabel0 += dir0 * (HandleUtility.GetHandleSize(pLabel0) * 0.5f);
+            pLabel1 += dir1 * (HandleUtility.GetHandleSize(pLabel1) * 0.5f);
+
             var prevColor = Handles.color;
             Handles.color = kIconColor;
 
@@ -59,12 +65,12 @@ namespace Chisel.Editors
             //  - buttons closer to each other, which is nicer when you need to go back and forth (although you could just click 3 times to go back)
             //  - since you'd only have 1 button group, the chance is higher it's outside of the screen. 
             //    so a better solution should be found to make sure the button group doesn't overlap the stairs, yet is close to it, and on screen.
-            if (SceneHandles.ClickableLabel(pLabel1, (pLabel1 - center).normalized, kClockWiseRotation, fontSize: 32, fontStyle: FontStyle.Bold))
+            if (SceneHandles.ClickableLabel(pLabel1, dir1, kClockWiseRotation, fontSize: 32, fontStyle: FontStyle.Bold))
             {
                 result = TurnState.ClockWise;
             }
 
-            if (SceneHandles.ClickableLabel(pLabel0, (pLabel0 - center).normalized, kAntiClockWiseRotation, fontSize: 32, fontStyle: FontStyle.Bold))
+            if (SceneHandles.ClickableLabel(pLabel0, dir0, kAntiClockWiseRotation, fontSize: 32, fontStyle: FontStyle.Bold))
             {
                 result = TurnState.AntiClockWise;
             }

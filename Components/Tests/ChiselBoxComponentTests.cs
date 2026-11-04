@@ -113,6 +113,52 @@ namespace Chisel.Components.Tests
             AreEqual(new Vector3(6, 2, 2), DrawnBounds(model).size, "resizing a built box never reached its mesh");
         }
 
+        // A side dragged past the one across from it: the box keeps the sides as they were given (swapping them would
+        // hand the drag to the other side, which then follows the mouse) and is built the right way out
+        [Test]
+        public void ANegativeSize_StaysAsGiven_AndIsBuiltTheRightWayOut()
+        {
+            var box = Box(out var model);
+            box.Min = new float3(-1, 0, -1);
+            box.Max = new float3(1, 2, 1);
+            Update();
+            box.Max = new float3(1, -1.5f, 1);   // the top dragged down past the bottom
+            Update();
+            Assert.That((Vector3)box.Min, Is.EqualTo(new Vector3(-1, 0, -1)), "the bottom moved");
+            Assert.That((Vector3)box.Max, Is.EqualTo(new Vector3(1, -1.5f, 1)), "the top isn't where it was dragged to");
+            var drawn = DrawnBounds(model);
+            AreEqual(new Vector3(-1, -1.5f, -1), drawn.min, "min");
+            AreEqual(new Vector3(1, 0, 1), drawn.max, "max");
+            var triangles = 0;
+            foreach (var renderable in model.generated.renderables)
+            {
+                if (renderable == null || renderable.sharedMesh == null)
+                    continue;
+                var mesh = renderable.sharedMesh; var v = mesh.vertices; var t = mesh.triangles;
+                for (int i = 0; i < t.Length; i += 3)
+                {
+                    // facing out of the box: from its centre to the triangle
+                    var normal = Vector3.Cross(v[t[i + 1]] - v[t[i]], v[t[i + 2]] - v[t[i]]);
+                    var centre = (v[t[i]] + v[t[i + 1]] + v[t[i + 2]]) / 3 - new Vector3(0, -0.75f, 0);
+                    Assert.That(Vector3.Dot(normal, centre), Is.GreaterThan(0), "a triangle faces into the box");
+                    triangles++;
+                }
+            }
+            Assert.That(triangles, Is.EqualTo(12), "a box");
+        }
+
+        // An existing box can't be made flat: a size of 0 is taken as the smallest a box can have
+        [Test]
+        public void AZeroSize_IsTheSmallestSize()
+        {
+            var box = Box(out var model);
+            box.Min = new float3(-1, 0, -1);
+            box.Max = new float3(1, 0, 1);
+            Update();
+            Assert.That(box.Max.y - box.Min.y, Is.EqualTo(Core.ChiselBox.kMinSize).Within(1e-7f));
+            Assert.That(box.TopTreeNode.Valid, Is.True, "no brush");
+        }
+
         [Test]
         public void SizeAndCenter_SetFromCode_MoveAndResizeTheBrush()
         {

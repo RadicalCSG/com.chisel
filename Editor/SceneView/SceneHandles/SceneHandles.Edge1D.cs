@@ -119,7 +119,8 @@ namespace Chisel.Editors
                 }
                 case EventType.Repaint:
                 {
-                    SetCursor(id, from, to);
+                    // the cursor shows the way the edge moves, which isn't always across it on screen
+                    SetCursor(id, SceneHandleUtility.GetCursorForDirection(position, direction));
                     s_LinePoints[0] = from;
                     s_LinePoints[1] = to;
                     SceneHandles.DrawAAPolyLine(3.0f, s_LinePoints);

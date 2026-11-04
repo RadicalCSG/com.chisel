@@ -4,6 +4,17 @@ using Unity.Mathematics;
 
 namespace Chisel.Core
 {
+    /// <summary>What every generator keeps to: a size can be negative (built the right way out), never 0</summary>
+    public static class ChiselGeneratorLimits
+    {
+        /// <summary>The smallest a size can be, either way: a generator is never flat. A centimetre: a round generator
+        /// (cylinder, capsule, sphere, hemisphere) a millimetre high isn't built. A box can be thinner (ChiselBox.kMinSize).</summary>
+        public const float kMinSize = 0.01f;
+
+        /// <summary>A size of 0 (or less than min either way) as the smallest size, keeping its sign</summary>
+        public static float NotZero(float size, float min = kMinSize) => math.abs(size) >= min ? size : (size < 0 ? -min : min);
+    }
+
     public interface IChiselNodeGenerator
     {
         int RequiredSurfaceCount { get; }

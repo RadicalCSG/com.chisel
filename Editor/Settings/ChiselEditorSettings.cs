@@ -34,7 +34,8 @@ namespace Chisel.Editors
         public static float				UniformSnapSize { get { return Snapping.MoveSnappingSteps.x; } set { Snapping.MoveSnappingSteps = new UnityEngine.Vector3(value, value, value); } }
 
         public static bool				ShowAllAxi      { get; set; } = false;
-        public static DistanceUnit		DistanceUnit	{ get; set; } = DistanceUnit.Meters;
+        // the unit lengths are shown and typed in
+        public static DistanceUnit		DistanceUnit	{ get { return Units.ActiveDistanceUnit; } set { Units.ActiveDistanceUnit = value; } }
 
         /// <summary>Which helper surfaces (collider, shadow-only, discarded, ...) are drawn in the
         /// scene view on top of the regular geometry. Read by <see cref="ChiselDrawModes"/> every

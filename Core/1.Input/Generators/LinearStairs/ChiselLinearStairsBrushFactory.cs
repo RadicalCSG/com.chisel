@@ -39,8 +39,9 @@ namespace Chisel.Core
                     min.y = max.y - description.stepHeight;
                     min.y -= description.treadHeight;
                     max.y -= description.treadHeight;
-                    min.x += (description.leftSideType  != StairsSideType.None) ? description.sideWidth : 0;
-                    max.x -= (description.rightSideType != StairsSideType.None) ? description.sideWidth : 0;
+                    // the right side is at min.x and the left at max.x, as the sides themselves are built (below)
+                    min.x += (description.rightSideType != StairsSideType.None) ? description.sideWidth : 0;
+                    max.x -= (description.leftSideType  != StairsSideType.None) ? description.sideWidth : 0;
 
                     var extrusion = new float3(max.x - min.x, 0, 0);
                     for (int i = 0; i < description.stepCount; i++)
@@ -1078,7 +1079,8 @@ namespace Chisel.Core
                                      StairsSideType  rightSide,
                                      float           sideWidth,
                                      float           sideHeight,
-                                     float           sideDepth)
+                                     float           sideDepth,
+                                     float           topTreadOverhang = 0)
             {
                 // TODO: implement smooth riser-type
 
@@ -1163,8 +1165,9 @@ namespace Chisel.Core
 
                 this.leftNosingWidth     = haveLeftSideUp  ? -this.sideWidth : nosingWidth;
                 this.rightNosingWidth    = haveRightSideUp ? -this.sideWidth : nosingWidth;
-                this.leftTopNosingWidth  = (haveLeftSideUp  && (!this.haveTopSide)) ? nosingWidth : this.leftNosingWidth;
-                this.rightTopNosingWidth = (haveRightSideUp && (!this.haveTopSide)) ? nosingWidth : this.rightNosingWidth;
+                // the top tread is as wide as the others, unless it is set to reach out past the sides
+                this.leftTopNosingWidth  = (topTreadOverhang > 0) ? topTreadOverhang : this.leftNosingWidth;
+                this.rightTopNosingWidth = (topTreadOverhang > 0) ? topTreadOverhang : this.rightNosingWidth;
 
 
 

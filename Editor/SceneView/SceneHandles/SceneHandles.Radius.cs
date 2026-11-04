@@ -6,13 +6,19 @@ namespace Chisel.Editors
 {
     public sealed partial class SceneHandles
     {
+        readonly static int kRadiusHash = "RadiusSlider".GetHashCode();
+
         static float SizeSlider(Vector3 center, Vector3 direction, Vector3 forward, Vector3 up, Vector3 right, float radius, Axes axes = Axes.None)
         {
             Vector3 position = center + direction * radius;
             float size = UnityEditor.HandleUtility.GetHandleSize(position);
             bool temp = GUI.changed;
             GUI.changed = false;
-            position = Slider2DHandle(position, Vector3.zero, forward, up, right, size * 0.05f, OutlinedDotHandleCap, axes);
+            var id = GUIUtility.GetControlID(kRadiusHash, FocusType.Keyboard);
+            // the cursor shows the way the point resizes, out from the center
+            if (Event.current.type == EventType.Repaint)
+                SetCursor(id, SceneHandleUtility.GetCursorForDirection(position, direction));
+            position = Slider2DHandle(id, position, Vector3.zero, forward, up, right, size * 0.05f, OutlinedDotHandleCap, axes);
             if (GUI.changed)
                 radius = Vector3.Dot(position - center, direction);
             GUI.changed |= temp;
@@ -54,8 +60,9 @@ namespace Chisel.Editors
             radius = SizeSlider(position,  right, forward, up, right, radius);
             radius = SizeSlider(position, -right, forward, up, right, radius);
 
+            // dragged past the centre it grows again on the other side, never stopping at 0
             if (GUI.changed)
-                radius = Mathf.Max(0.0f, radius);
+                radius = Mathf.Abs(radius);
             GUI.changed |= temp;
             
             isDisabled =  isStatic || prevDisabled || (Snapping.AxisLocking[0] && Snapping.AxisLocking[1]);
