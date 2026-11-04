@@ -16,6 +16,9 @@ namespace Chisel.Editors
 
 		static GUIContent s_TempGUIContent = new();
 
+        // drawn whole by a drawer of their own, not field by field here
+        static bool DrawnWhole(SerializedProperty property) { return property.type == nameof(Unity.Mathematics.MinMaxAABB); }
+
 		public override float GetPropertyHeight(SerializedProperty iterator, GUIContent label)
         {
             float totalHeight = 0;
@@ -26,9 +29,12 @@ namespace Chisel.Editors
                 do
                 {
                     s_TempGUIContent.text = iterator.displayName;
-                    totalHeight += EditorGUI.GetPropertyHeight(iterator, s_TempGUIContent, includeChildren: false) + EditorGUIUtility.standardVerticalSpacing;
+                    var whole = DrawnWhole(iterator);
+                    totalHeight += EditorGUI.GetPropertyHeight(iterator, s_TempGUIContent, includeChildren: whole) + EditorGUIUtility.standardVerticalSpacing;
+                    if (!iterator.NextVisible(iterator.isExpanded && !whole))
+                        break;
                 }
-                while (iterator.NextVisible(iterator.isExpanded) && iterator.depth > startingDepth);
+                while (iterator.depth > startingDepth);
             }
             totalHeight += EditorGUIUtility.standardVerticalSpacing;
             return totalHeight;
@@ -49,11 +55,14 @@ namespace Chisel.Editors
                     {
                         EditorGUI.indentLevel = iterator.depth - startingDepth;
                         s_TempGUIContent.text = iterator.displayName;
-                        var height = EditorGUI.GetPropertyHeight(iterator, s_TempGUIContent, includeChildren: false);
-                        EditorGUI.PropertyField(new Rect(position.x, y, position.width, height), iterator, s_TempGUIContent);
+                        var whole  = DrawnWhole(iterator);
+                        var height = EditorGUI.GetPropertyHeight(iterator, s_TempGUIContent, includeChildren: whole);
+                        EditorGUI.PropertyField(new Rect(position.x, y, position.width, height), iterator, s_TempGUIContent, whole);
                         y += height + EditorGUIUtility.standardVerticalSpacing;
+                        if (!iterator.NextVisible(iterator.isExpanded && !whole))
+                            break;
                     }
-                    while (iterator.NextVisible(iterator.isExpanded) && iterator.depth >= startingDepth);
+                    while (iterator.depth >= startingDepth);
                 }
                 if (EditorGUI.EndChangeCheck())
                     iterator.serializedObject.ApplyModifiedProperties();
