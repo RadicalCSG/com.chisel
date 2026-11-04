@@ -37,6 +37,28 @@ namespace Chisel.Core
 			var halfEdges = arrays.halfEdges;
 			if (polygons.Length == 0)
 				return false;
+
+			// the upright band in the middle has a side for each side around, as a cylinder; the rest is its top or its
+			// bottom, rounded or flat
+			{
+				ref var surfaceArray = ref surfaceDefinition.Value;
+				var middleY = 0.0f;
+				for (int v = 0; v < localVertices.Length; v++)
+					middleY += localVertices[v].y;
+				middleY /= math.max(1, localVertices.Length);
+				var firstRing = topCap ? 1 : 0;
+				for (int p = 0; p < polygons.Length; p++)
+				{
+					var normal = CalculatePlane(in polygons[p], in halfEdges, in localVertices).xyz;
+					int index;
+					if (math.abs(normal.y) < 0.0001f && p >= firstRing)
+						index = 2 + ((p - firstRing) % sides);
+					else
+						index = PolygonCenter(in polygons[p], in halfEdges, in localVertices).y > middleY ? 1 : 0;
+					SetSurface(ref polygons[p], index, ref surfaceArray);
+				}
+			}
+
 			if (settings.smoothingGroup != 0)
 			{
 				for (int p = 0; p < polygons.Length; p++)

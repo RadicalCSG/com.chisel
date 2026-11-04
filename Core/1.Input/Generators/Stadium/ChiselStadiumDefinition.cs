@@ -8,7 +8,7 @@ using Unity.Entities;
 namespace Chisel.Core
 {
     [Serializable]
-    public struct ChiselStadium : IBrushGenerator
+    public struct ChiselStadium : IBrushGenerator, IChiselSurfaceNames
     {
         readonly static ChiselStadium kDefaultSettings = new()
 		{
@@ -65,7 +65,19 @@ namespace Chisel.Core
 
         #region Surfaces
         [BurstDiscard]
-        public int RequiredSurfaceCount { get { return 2 + Sides; } }
+        public int RequiredSurfaceCount { get { return 6; } }
+
+        // the same surfaces as a box, in the same places
+        [BurstDiscard]
+        public readonly string GetSurfaceName(int index) { return default(ChiselBox).GetSurfaceName(index); }
+
+        // without a straight part in the middle it has no left and right sides
+        [BurstDiscard]
+        public bool IsSurfaceUsed(int index)
+        {
+            var side = (BrushMeshFactory.BoxSides)index;
+            return HaveCenter || (side != BrushMeshFactory.BoxSides.Left && side != BrushMeshFactory.BoxSides.Right);
+        }
 
         [BurstDiscard]
         public void UpdateSurfaces(ref ChiselSurfaceArray surfaceDefinition) { }

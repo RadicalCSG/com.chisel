@@ -8,7 +8,7 @@ using Unity.Entities;
 namespace Chisel.Core
 {
     [Serializable]
-    public struct ChiselCapsule : IBrushGenerator
+    public struct ChiselCapsule : IBrushGenerator, IChiselSurfaceNames
     {
         public const float	kDefaultDiameter			= 1.0f;
         public const float	kDefaultHemisphereRatio	    = 0.25f;
@@ -95,6 +95,18 @@ namespace Chisel.Core
         #region Surfaces
         [BurstDiscard]
         public int RequiredSurfaceCount { get { return 2 + sides; } }
+
+        // as a cylinder: its bottom, its top (each rounded or flat) and the sides of the upright band between them
+        [BurstDiscard]
+        public readonly string GetSurfaceName(int index)
+        {
+            if (index == 0) return ChiselSurfaceNames.Bottom;
+            if (index == 1) return ChiselSurfaceNames.Top;
+            return (index < 2 + sides) ? ChiselSurfaceNames.Side(index - 1) : null;
+        }
+
+        [BurstDiscard]
+        public bool IsSurfaceUsed(int index) { return index < 2 || HaveCylinder; }
 
         [BurstDiscard]
         public void UpdateSurfaces(ref ChiselSurfaceArray surfaceDefinition) { }

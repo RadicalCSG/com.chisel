@@ -27,12 +27,11 @@ namespace Chisel.Core
 			if (localVertices.Length == 0)
 				return false;
 
-			// TODO: do something more intelligent with surface assignment, and put it inside CreateSphere
+			// its bottom half and its top half, split at its middle (between its poles)
+			var middleY = (localVertices[0].y + localVertices[1].y) * 0.5f;
 			for (int i = 0; i < polygons.Length; i++)
 			{
-				var surfaceID = i < surfaceDefinition.surfaces.Length ? i : 0;
-				polygons[i].descriptionIndex = surfaceID;
-				polygons[i].surface = surfaceDefinition.surfaces[surfaceID];
+				SetSurface(ref polygons[i], PolygonCenter(in polygons[i], in halfEdges, in localVertices).y > middleY ? 1 : 0, ref surfaceDefinition);
 				if (smoothingGroup != 0)
 					polygons[i].surface.details.smoothingGroup = smoothingGroup;
 			}

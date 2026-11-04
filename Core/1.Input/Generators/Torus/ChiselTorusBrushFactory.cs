@@ -104,6 +104,25 @@ namespace Chisel.Core
 				var arrays = CreateExtrudedSubMesh(verticalSegments, segmentIndices, segmentIndices.Length, 0, 1, in localVertices, in surfaceDefinitionBlob, in builder, ref root);
 				var polygons = arrays.polygons;
 				var halfEdges = arrays.halfEdges;
+				// the segment's ends are where the torus starts and ends; round the tube, a face is on its top or bottom, or
+				// on its outside or inside, by the way it faces
+				for (int p = 0; p < polygons.Length; p++)
+				{
+					int index;
+					if (p < 2)
+						index = p;
+					else
+					{
+						var normal  = CalculatePlane(in polygons[p], in halfEdges, in localVertices).xyz;
+						var center  = PolygonCenter(in polygons[p], in halfEdges, in localVertices);
+						var outward = math.dot(normal.xz, math.normalizesafe(center.xz));
+						if (math.abs(normal.y) > math.abs(outward))
+							index = normal.y > 0 ? 2 : 3;
+						else
+							index = outward > 0 ? 4 : 5;
+					}
+					SetSurface(ref polygons[p], index, ref surfaceDefinitionBlob.Value);
+				}
 				// the tube, not the segment's ends
 				if (smoothingGroup != 0)
 				{

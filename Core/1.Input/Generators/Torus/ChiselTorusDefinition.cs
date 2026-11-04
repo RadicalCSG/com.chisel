@@ -9,7 +9,7 @@ using Unity.Entities;
 namespace Chisel.Core
 {
     [Serializable]
-    public struct ChiselTorus : IBranchGenerator
+    public struct ChiselTorus : IBranchGenerator, IChiselSurfaceNames
     {
         readonly static ChiselTorus kDefaultSettings = new()
         {
@@ -103,6 +103,16 @@ namespace Chisel.Core
         #region Surfaces
         [BurstDiscard]
         public int RequiredSurfaceCount { get { return 6; } }
+
+        static readonly string[] kSurfaceNames = { "Start", "End", ChiselSurfaceNames.Top, ChiselSurfaceNames.Bottom, "Outside", "Inside" };
+
+        // where it starts and ends going round, and the tube's top, bottom, outside and inside
+        [BurstDiscard]
+        public readonly string GetSurfaceName(int index) { return (index >= 0 && index < kSurfaceNames.Length) ? kSurfaceNames[index] : null; }
+
+        // going all the way round, it has no start or end
+        [BurstDiscard]
+        public readonly bool IsSurfaceUsed(int index) { return index >= 2 || totalAngle < 360.0f; }
 
         [BurstDiscard]
         public void UpdateSurfaces(ref ChiselSurfaceArray surfaceDefinition) { }
