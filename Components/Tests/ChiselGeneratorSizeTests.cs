@@ -1139,6 +1139,21 @@ namespace Chisel.Components.Tests
             AssertClosed(model, "extruded shape");
         }
 
+        // An extruded shape whose outline has no area, its points on one line, is no shape: nothing is built, without errors
+        [Test]
+        public void AnExtrudedShapeWithoutArea_BuildsNothing()
+        {
+            var shape = Generator<ChiselExtrudedShapeComponent>(out var model);
+            shape.definition.shape = new Curve2D(new CurveControlPoint2D(0, 0), new CurveControlPoint2D(1, 0), new CurveControlPoint2D(2, 0));
+            shape.OnValidate();
+            Update();
+            var drawn = 0;
+            foreach (var renderable in model.generated.renderables)
+                if (renderable != null && renderable.sharedMesh != null)
+                    drawn += renderable.sharedMesh.triangles.Length;
+            Assert.That(drawn, Is.Zero, "something was drawn");
+        }
+
         // An extruded shape whose outline crosses itself, like a bow tie, is built as both its halves, each filled, closed
         [Test]
         public void AnExtrudedShapeThatCrossesItself_FillsBothHalves()
