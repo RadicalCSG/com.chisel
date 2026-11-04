@@ -313,7 +313,7 @@ namespace Chisel.Components
 
         // Unity's own picking draws the generated meshes as well as Chisel's picking draws the brushes, at the same depth:
         // either could be picked, so Unity's is kept off them (and the objects made in them later)
-        internal static void KeepOutOfPicking(GameObject container)
+        public static void KeepOutOfPicking(GameObject container)
         {
 #if UNITY_EDITOR
             if (!container)
@@ -322,10 +322,20 @@ namespace Chisel.Components
             if (visibility.IsPickingDisabledOnAllDescendants(container))
                 return;
             KeepingOutOfPicking = true;
-            try     { visibility.DisablePicking(container, true); }
+            try
+            {
+                // not as an undo step: it is no change of the user's, and would be one more to undo after each change that
+                // makes new generated objects (a new material, say)
+                if (DisablePickingWithoutUndo != null) DisablePickingWithoutUndo(container);
+                else                                   visibility.DisablePicking(container, true);
+            }
             finally { KeepingOutOfPicking = false; }
 #endif
         }
+
+        // Turns Unity's picking off on an object and all below it without recording it for undo; set by the editor where
+        // Unity lets it
+        public static Action<GameObject> DisablePickingWithoutUndo { get; set; }
 
         // Whether the picking that changes is only the generated objects', which says nothing about the brushes
         public static bool KeepingOutOfPicking { get; private set; }

@@ -279,13 +279,11 @@ namespace Chisel.Editors
             if (!branch.Valid)
                 return false;
 
+            // every child, not just up to the first one with surfaces: a generator's surfaces are on all its brushes
+            var found = false;
             for (int i = 0; i < branch.Count; i++)
-            {
-                var child = branch[i];
-                if (GetAllSurfaces(chiselNode, child, findBrush, surfaces)) 
-                    return true;
-            }
-            return false;
+                found |= GetAllSurfaces(chiselNode, branch[i], findBrush, surfaces);
+            return found;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -295,11 +293,11 @@ namespace Chisel.Editors
                 return false;
 
             if (findBrush.HasValue && findBrush.Value != brush)
-                return true;
+                return false;
 
             var brushMeshBlob = BrushMeshManager.GetBrushMeshBlob(brush.BrushMesh.BrushMeshID);
             if (!brushMeshBlob.IsCreated)
-                return true;
+                return false;
 
             ref var brushMesh = ref brushMeshBlob.Value;
             for (int i = 0; i < brushMesh.polygons.Length; i++)
