@@ -19,33 +19,19 @@ namespace Chisel.Editors
         public const KeyCode SwitchToPivotEditMode      = KeyCode.F6;
 
 
-        // TODO: assign reasonable keys
-        public const KeyCode            FreeBuilderModeKey                  = KeyCode.F6;
-        public const ShortcutModifiers  FreeBuilderModeModifiers            = ShortcutModifiers.None;
-        public const KeyCode            BoxBuilderModeKey                   = KeyCode.F7;
-        public const ShortcutModifiers  BoxBuilderModeModifiers             = ShortcutModifiers.None;
-        public const KeyCode            CylinderBuilderModeKey              = KeyCode.F8;
-        public const ShortcutModifiers  CylinderBuilderModeModifiers        = ShortcutModifiers.None;
-        public const KeyCode            CapsuleBuilderModeKey               = KeyCode.F9;
-        public const ShortcutModifiers  CapsuleBuilderModeModifiers         = ShortcutModifiers.None;
-        public const KeyCode            StadiumBuilderModeKey               = KeyCode.None;
-        public const ShortcutModifiers  StadiumBuilderModeModifiers         = ShortcutModifiers.None;
-        public const KeyCode            HemisphereBuilderModeKey            = KeyCode.F10;
-        public const ShortcutModifiers  HemisphereBuilderModeModifiers      = ShortcutModifiers.None;
-        public const KeyCode            SphereBuilderModeKey                = KeyCode.F11;
-        public const ShortcutModifiers  SphereBuilderModeModifiers          = ShortcutModifiers.None;
-        public const KeyCode            TorusBuilderModeKey                 = KeyCode.None;
-        public const ShortcutModifiers  TorusBuilderModeModifiers           = ShortcutModifiers.None;
-        
-        public const KeyCode            LinearStairsBuilderModeKey          = KeyCode.F12;
-        public const ShortcutModifiers  LinearStairsBuilderModeModifiers    = ShortcutModifiers.None;
-        public const KeyCode            SpiralStairsBuilderModeKey          = KeyCode.F13;	
-        public const ShortcutModifiers  SpiralStairsBuilderModeModifiers    = ShortcutModifiers.None;
-        public const KeyCode            PathedStairsBuilderModeKey          = KeyCode.None;
-        public const ShortcutModifiers  PathedStairsBuilderModeModifiers    = ShortcutModifiers.None;
-
-        public const KeyCode            RevolvedShapeBuilderModeKey         = KeyCode.None;
-        public const ShortcutModifiers  RevolvedShapeBuilderModeModifiers   = ShortcutModifiers.None;
+        // picking a generator to draw, in the Scene view while Chisel's tools are active; as in RealtimeCSG where it had them
+        public const KeyCode BoxGeneratorKey            = KeyCode.B;
+        public const KeyCode CylinderGeneratorKey       = KeyCode.C;
+        public const KeyCode CapsuleGeneratorKey        = KeyCode.Alpha3;
+        public const KeyCode SphereGeneratorKey         = KeyCode.K;
+        public const KeyCode HemisphereGeneratorKey     = KeyCode.Alpha5;
+        public const KeyCode StadiumGeneratorKey        = KeyCode.Alpha6;
+        public const KeyCode TorusGeneratorKey          = KeyCode.Alpha7;
+        public const KeyCode LinearStairsGeneratorKey   = KeyCode.L;
+        public const KeyCode SpiralStairsGeneratorKey   = KeyCode.P;
+        public const KeyCode PathedStairsGeneratorKey   = KeyCode.Alpha0;
+        public const KeyCode FreeDrawGeneratorKey       = KeyCode.N;
+        public const KeyCode RevolvedShapeGeneratorKey  = KeyCode.Alpha4;
 
 
         public const KeyCode            HalfGridSizeKey                 = KeyCode.LeftBracket;
