@@ -89,7 +89,7 @@ namespace Chisel.Editors
             temp.xMin += 25; 
             {
                 EditorGUI.BeginChangeCheck();
-                var content         = ChiselEditorResources.GetIconContentWithName(generator.ToolName, generator.ToolName)[0];
+                var content         = ChiselEditorResources.GetIconContentWithName(generator.ToolName, generator.Tooltip)[0];
                 var isSelected      = ChiselGeneratorManager.GeneratorMode == generator;
                 var value           = ToggleButton(temp, content, isSelected, style, isActive);
                 if (EditorGUI.EndChangeCheck() && value)
