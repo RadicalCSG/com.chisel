@@ -499,6 +499,29 @@ namespace Chisel.Components.Tests
                 Assert.That(Vector3.Distance(a[i], b[i]), Is.LessThan(2e-3f), $"vertex {i}: painted {a[i]}, at once {b[i]}");
         }
 
+        // A surface's heights start on a coarser grid than its color paint, as each cell is a brush; a paint spacing set on
+        // the surface sets it. They started at the color paint's spacing, so an 8 by 8 top was about 1100 brushes
+        [Test]
+        public void Displacement_StartsCoarserThanColorPaint()
+        {
+            var box = Box(out _);
+            box.Min = float3.zero;
+            box.Max = new float3(8, 1, 8);
+            Update();
+            var heights = ChiselPaintBrush.DisplacementFor(box, 0);
+            Assert.That(heights, Is.Not.Null);
+            Assert.That(heights.cellU.magnitude, Is.EqualTo(ChiselSurface.kDefaultDisplacementSpacing).Within(1e-4f));
+            Assert.That(ChiselSurface.kDefaultDisplacementSpacing, Is.GreaterThan(ChiselSurface.kDefaultPaintSpacing));
+            Assert.That(heights.resolution.x * heights.resolution.y, Is.LessThan(400), "grid points");
+
+            var spaced = Box(out _);
+            spaced.Min = float3.zero;
+            spaced.Max = new float3(8, 1, 8);
+            spaced.SurfaceDefinition.surfaces[0].paintSpacing = 0.2f;
+            Update();
+            Assert.That(ChiselPaintBrush.DisplacementFor(spaced, 0).cellU.magnitude, Is.EqualTo(0.2f).Within(1e-4f), "the surface's own spacing");
+        }
+
         // A dab changes the heights round it only: the columns elsewhere keep the brushes they were made as, and only
         // those round it are made again
         [Test]
@@ -539,6 +562,8 @@ namespace Chisel.Components.Tests
                 ChiselPaintBrush.Dab(heights, ChiselPaintBrush.kDisplacementMode, ChiselPaintOperation.Add, Vector4.one * 0.3f,
                                      new Vector3(1, 1, 1), 0.5f, 0.5f, 0.5f);
                 box.DisplacementChanged();
+                // as the end of a frame does: what was recorded is kept, so a redo brings back every dab, not the first
+                UnityEditor.Undo.FlushUndoRecordObjects();
                 Update();
             }
             Assert.That(box.IsDisplaced, Is.True);

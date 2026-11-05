@@ -79,6 +79,11 @@ namespace Chisel.Core
 		public const float kDefaultPaintSpacing = 0.25f;
 		public float PaintSpacing => paintSpacing > 0 ? paintSpacing : kDefaultPaintSpacing;
 
+		// Displacement is built as a brush per grid cell, so it starts coarser than color paint: at 0.25 an 8 by 8 box top
+		// is about 1100 brushes, at 0.5 about 290. The surface's own paint spacing still sets it.
+		public const float kDefaultDisplacementSpacing = 0.5f;
+		public float DisplacementSpacing => paintSpacing > 0 ? paintSpacing : kDefaultDisplacementSpacing;
+
 		public bool HasMaterial { get { return chiselMaterial.material != null; } }
 
 		public Material				   RenderMaterial   { get { return (chiselMaterial.material != null) ? chiselMaterial.material : ChiselProjectSettings.DefaultMaterial; } set { SetMaterial(value); } }
