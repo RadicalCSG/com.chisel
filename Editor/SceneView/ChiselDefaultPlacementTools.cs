@@ -143,6 +143,16 @@ namespace Chisel.Editors
 
         protected IChiselHandles handles = new ChiselEditorHandles();
 
+        // Drawn from its middle, a generator built upwards is moved down by half its height; one built around its
+        // origin is moved up by half, unless drawn from its middle
+        void Lift(PlacementFlags flags, float height)
+        {
+            var lift = (PlacementToolDefinition.CenteredOnY ? 0.5f : 0.0f) -
+                       (((flags & PlacementFlags.GenerateFromCenterY) == PlacementFlags.GenerateFromCenterY) ? 0.5f : 0.0f);
+            if (lift != 0)
+                generatedComponent.transform.localPosition = componentPosition + (upAxis * (height * lift));
+        }
+
 
         public override void OnSceneGUI(SceneView sceneView, Rect dragArea)
         {
@@ -187,8 +197,7 @@ namespace Chisel.Editors
                             PlacementToolDefinition.OnUpdate(ref generatedComponent.definition, bounds);
                             generatedComponent.OnValidate();
 
-                            if ((generatoreModeFlags & PlacementFlags.GenerateFromCenterY) == PlacementFlags.GenerateFromCenterY)
-                                generatedComponent.transform.localPosition = componentPosition - ((upAxis * height) * 0.5f);
+                            Lift(generatoreModeFlags, height);
                             generatedComponent.ResetTreeNodes();
                         }
                     } else
@@ -206,6 +215,7 @@ namespace Chisel.Editors
 
                         // Update the generator GameObject
                         ChiselComponentFactory.SetTransform(generatedComponent, transformation);
+                        componentPosition = generatedComponent.transform.localPosition;
                         if ((generatoreModeFlags & PlacementFlags.AlwaysFaceUp) == PlacementFlags.AlwaysFaceCameraXZ)
                             generatedComponent.Operation = forceOperation ?? CSGOperationType.Additive;
                         else
@@ -216,8 +226,7 @@ namespace Chisel.Editors
                         PlacementToolDefinition.OnUpdate(ref generatedComponent.definition, bounds);
                         generatedComponent.OnValidate();
 
-                        if ((generatoreModeFlags & PlacementFlags.GenerateFromCenterY) == PlacementFlags.GenerateFromCenterY)
-                            generatedComponent.transform.localPosition = componentPosition - ((upAxis * height) * 0.5f);
+                        Lift(generatoreModeFlags, height);
 
                         generatedComponent.ClearHashes(); // TODO: remove need for this
                     }

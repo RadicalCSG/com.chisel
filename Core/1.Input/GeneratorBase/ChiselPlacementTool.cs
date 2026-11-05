@@ -26,6 +26,8 @@ namespace Chisel.Core
         public virtual float MinimumSize => ChiselGeneratorLimits.kMinSize;
         /// <summary>The generator runs along its depth (z): drawn wider than deep, it is turned to run along the long side</summary>
         public virtual bool AlongLongSide => false;
+        /// <summary>The generator is built around its origin along y, not upwards from it: it is lifted by half its height</summary>
+        public virtual bool CenteredOnY => false;
         public abstract PlacementFlags PlacementFlags { get; }
         public virtual void OnCreate(ref PlacementToolType definition) { }
         public abstract void OnUpdate(ref PlacementToolType definition, Bounds bounds);
