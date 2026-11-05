@@ -269,6 +269,14 @@ namespace Chisel.Components
                 ? surfaces[surfaceIndex].PaintSpacing : ChiselSurface.kDefaultPaintSpacing;
         }
 
+        /// <summary>The spacing a generator's surface is displaced at (<see cref="ChiselSurface.DisplacementSpacing"/>)</summary>
+        public static float DisplacementSpacingOf(ChiselGeneratorComponent generator, int surfaceIndex)
+        {
+            var surfaces = generator ? generator.SurfaceDefinition?.surfaces : null;
+            return surfaces != null && surfaceIndex >= 0 && surfaceIndex < surfaces.Length && surfaces[surfaceIndex] != null
+                ? surfaces[surfaceIndex].DisplacementSpacing : ChiselSurface.kDefaultDisplacementSpacing;
+        }
+
         /// <summary>
         /// Puts the paint of every surface of a generator whose paint spacing changed on a new grid of that spacing,
         /// resampled from the old one. True when any changed.
@@ -449,8 +457,8 @@ namespace Chisel.Components
             ChiselPaintMode.Value(kDisplacementName, ChiselPaintAttribute.Color, ChiselPaintComponents.X, 0, -kMaxDisplacement, kMaxDisplacement);
 
         /// <summary>
-        /// The heights the displacement mode writes on a surface, made with a grid of the surface's paint spacing when it
-        /// has none. Null when the generator can't be displaced.
+        /// The heights the displacement mode writes on a surface, made with a grid of the surface's displacement spacing
+        /// when it has none. Null when the generator can't be displaced.
         /// </summary>
         public static ChiselSurfacePaint DisplacementFor(ChiselGeneratorComponent generator, int surfaceIndex)
         {
@@ -460,7 +468,7 @@ namespace Chisel.Components
             if (heights != null && heights.IsValid)
                 return heights;
             heights = CreateGrid(generator, surfaceIndex, kDisplacementMode.attribute, kDisplacementMode.components,
-                                 kDisplacementMode.defaultValue, SpacingOf(generator, surfaceIndex));
+                                 kDisplacementMode.defaultValue, DisplacementSpacingOf(generator, surfaceIndex));
             if (heights != null)
                 generator.SetSurfaceDisplacement(heights);
             return heights;
