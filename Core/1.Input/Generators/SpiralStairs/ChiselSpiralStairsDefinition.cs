@@ -104,22 +104,25 @@ namespace Chisel.Core
         [ConditionalHide(nameof(centerType), SpiralStairsCenterType.Open)]
         public uint                     columnSmoothingGroup;
 
-        [Tooltip("A wall along the outside of the steps: below them, above them (a railing wall), or both")]
+        [ConditionalName("Outer"), Tooltip("A guard rail along the outside of the steps: below them, above them, or both")]
         public StairsSideType           outerSide;
-        [Tooltip("A wall along the open middle: below the steps, above them (a railing wall), or both. Needs an inner diameter above 0")]
+        [ConditionalName("Inner"), Tooltip("A guard rail along the open middle: below the steps, above them, or both. Needs an inner diameter above 0")]
         public StairsSideType           innerSide;
 
         [ConditionalHideIfAll(StairsSideType.None, nameof(outerSide), nameof(innerSide))]
-        [ConditionalName("Side Wall Thickness"), Tooltip("How thick the side walls are")]
+        [ConditionalName("Thickness"), Tooltip("How thick the guard rails are")]
         [DistanceValue] public float	sideWidth;
         [ConditionalHideIfAll(StairsSideType.None, nameof(outerSide), nameof(innerSide))]
-        [ConditionalName("Side Wall Height Above The Steps"), Tooltip("How high a wall above the steps reaches over them")]
+        [ConditionalName("Height Above"), Tooltip("How high a guard rail above the steps reaches over them")]
         [DistanceValue] public float	sideHeight;
         [ConditionalHideIfAll(StairsSideType.None, nameof(outerSide), nameof(innerSide))]
-        [ConditionalName("Side Wall Depth Below The Steps"), Tooltip("How far a wall below the steps reaches under them")]
+        [ConditionalName("Depth Below"), Tooltip("How far a guard rail below the steps reaches under them")]
         [DistanceValue] public float	sideDepth;
         [ConditionalHideIfAll(StairsSideType.None, nameof(outerSide), nameof(innerSide))]
-        [ConditionalName("Side Wall Smoothing Group"), Tooltip("The smoothing group of the side walls' round faces, so they shade as one curved surface; 0 to show their flat pieces")]
+        [ConditionalName("Front Offset"), Tooltip("How far the guard rails reach out past the steps' fronts, round the stairs")]
+        [DistanceValue] public float	sideFrontOffset;
+        [ConditionalHideIfAll(StairsSideType.None, nameof(outerSide), nameof(innerSide))]
+        [ConditionalName("Smoothing Group"), Tooltip("The smoothing group of the guard rails' round faces, so they shade as one curved surface; 0 to show their flat pieces")]
         public uint                     sideSmoothingGroup;
 
         #region Properties
@@ -152,6 +155,32 @@ namespace Chisel.Core
                                                (riserType == StairsRiserType.Smooth) ? (2 * smoothSubDivisions)
                                                                             : 1;
         internal int RiserSubMeshCount => (StepCount * SubMeshPerRiser) + ((riserType == StairsRiserType.None) ? 0 : CylinderSubMeshCount);
+
+        // raised above the object's position, the part under the first step is its own, with its own surface; solid down
+        // to the floor, every step goes down there and there is no part of it to tell apart
+        internal bool HaveBase => riserType != StairsRiserType.None && riserType != StairsRiserType.FillDown && math.min(origin.y, origin.y + height) > 0.001f;
+
+        // the base is in one piece for each straight side of the outer cylinder under the first step, so it has that
+        // cylinder's shape without being trimmed by it, which would give its outside the cylinder's surface
+        internal bool BaseHasOpenMiddle => innerDiameter >= 0.001f && !HaveColumn;
+
+        internal int BaseSubMeshCount
+        {
+            get
+            {
+                if (!HaveBase)
+                    return 0;
+                var start = math.radians(startAngle);
+                var end   = start + math.radians(AnglePerStep);
+                var low   = math.min(start, end);
+                var high  = math.max(start, end);
+                var count = 0;
+                for (var angle = low; angle < high - kAngleEpsilon && count < outerSegments + 2; count++)
+                    angle = NextSideCorner(angle, high, outerSegments);
+                // around an open middle each piece is a four sided one, in two
+                return BaseHasOpenMiddle ? count * 2 : count;
+            }
+        }
         internal int TreadSubMeshCount => (HaveTread ? StepCount + CylinderSubMeshCount : 0);
         internal int StairsSubMeshCount => (TreadSubMeshCount + RiserSubMeshCount);
 
@@ -182,6 +211,9 @@ namespace Chisel.Core
                 angle = NextSidePieceEnd(angle, end, segments, split);
                 count++;
             }
+            // one more in front of the first step, when it reaches out past it
+            if (count > 0 && sideFrontOffset > 0)
+                count++;
             return count;
         }
 
@@ -189,7 +221,11 @@ namespace Chisel.Core
         // the wall follows the steps, so a piece of wall can't be flat across it
         internal float SideFloorAngle(float start, float perStep)
         {
-            return start + perStep * (stepHeight > 0 ? sideDepth / stepHeight : 0);
+            var angle = start + perStep * (stepHeight > 0 ? sideDepth / stepHeight : 0);
+            // raised above the object's position, it stands on that beside the first step, solid down to it there
+            if (origin.y > 0)
+                angle = math.max(angle, start + perStep);
+            return angle;
         }
 
         // A wall runs along the straight sides of its cylinder in one piece each, so each side shows one face; it is also
@@ -226,7 +262,7 @@ namespace Chisel.Core
             return apothem / math.cos(((math.PI * 0.5f) - angle) - edgeMiddle);
         }
 
-        internal int RequiredSubMeshCount => StairsSubMeshCount + ColumnSubMeshCount + SideSubMeshCount;
+        internal int RequiredSubMeshCount => StairsSubMeshCount + ColumnSubMeshCount + SideSubMeshCount + BaseSubMeshCount;
 
 
         internal bool HaveRiser => riserType != StairsRiserType.None;
@@ -305,7 +341,7 @@ namespace Chisel.Core
         public bool IsSurfaceUsed(int index)
         {
             return StairsSurfaces.IsUsed(index, haveTread: treadHeight >= 0.0001f, haveRiser: HaveRiser,
-                                         haveWall: HaveOuterSide || HaveInnerSide, haveColumn: HaveColumn);
+                                         haveWall: HaveOuterSide || HaveInnerSide, haveColumn: HaveColumn, haveBase: HaveBase);
         }
 
         [BurstDiscard]
@@ -358,6 +394,7 @@ namespace Chisel.Core
             sideWidth       = math.max(kMinSideWidth, sideWidth);
             sideHeight      = math.max(0, sideHeight);
             sideDepth       = math.max(0, sideDepth);
+            sideFrontOffset = math.max(0, sideFrontOffset);
             return true;
         }
 

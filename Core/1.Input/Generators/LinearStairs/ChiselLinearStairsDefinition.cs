@@ -10,7 +10,7 @@ namespace Chisel.Core
     [Serializable]
     public enum StairsRiserType : byte
     {
-        [InspectorName("Open")] None,
+        [InspectorName("None")] None,
         [InspectorName("Thin Risers")] ThinRiser,
         [InspectorName("Thick Risers")] ThickRiser,
 //		Pyramid,
@@ -21,10 +21,19 @@ namespace Chisel.Core
     [Serializable]
     public enum StairsSideType : byte
     {
-        [InspectorName("Open")] None,
-        [InspectorName("Wall Below The Steps")] Down,
-        [InspectorName("Wall Above The Steps")] Up,
+        [InspectorName("None")] None,
+        [InspectorName("Below The Steps")] Down,
+        [InspectorName("Above The Steps")] Up,
         [InspectorName("Both")] DownAndUp
+    }
+
+    // How far back the guard rails go beside the floor at the top of the stairs
+    [Serializable]
+    public enum StairsTopSideType : byte
+    {
+        [InspectorName("To The Back")] Full,
+        [InspectorName("None")] None,
+        [InspectorName("Set Length")] Length
     }
 
     [Serializable]
@@ -71,8 +80,6 @@ namespace Chisel.Core
         [DistanceValue] public float	nosingDepth;
         [ConditionalName("Tread Side Overhang"), Tooltip("How far the treads stick out past a side without a wall")]
         [DistanceValue] public float	nosingWidth;
-        [ConditionalName("Top Tread Overhang"), Tooltip("How far the top tread sticks out past both sides, walls or not; 0 to keep it as wide as the others")]
-        [DistanceValue] public float    topTreadOverhang;
 
         [ConditionalName("Base Height"), Tooltip("How high the lowest step starts: the solid part under it. Stairs taller than their steps fit in get a higher base")]
         [DistanceValue] public float    plateauHeight;
@@ -83,20 +90,37 @@ namespace Chisel.Core
         [ConditionalHide(nameof(riserType), StairsRiserType.None, StairsRiserType.ThickRiser, StairsRiserType.Smooth, StairsRiserType.FillDown)]
         [DistanceValue] public float	riserDepth;
 
-        [Tooltip("A wall on the left side: below the steps, above them (a railing wall), or both")]
+        [ConditionalName("Left"), Tooltip("A guard rail on the left side: below the steps, above them, or both")]
         public StairsSideType           leftSide;
-        [Tooltip("A wall on the right side: below the steps, above them (a railing wall), or both")]
+        [ConditionalName("Right"), Tooltip("A guard rail on the right side: below the steps, above them, or both")]
         public StairsSideType           rightSide;
         
         [ConditionalHideIfAll(StairsSideType.None, nameof(leftSide), nameof(rightSide))]
-        [ConditionalName("Side Wall Thickness"), Tooltip("How thick the side walls are")]
+        [ConditionalName("Thickness"), Tooltip("How thick the guard rails are")]
         [DistanceValue] public float	sideWidth;
         [ConditionalHideIfAll(StairsSideType.None, nameof(leftSide), nameof(rightSide))]
-        [ConditionalName("Side Wall Height Above The Steps"), Tooltip("How high a wall above the steps reaches over them")]
+        [ConditionalName("Height Above"), Tooltip("How high a guard rail above the steps reaches over them")]
         [DistanceValue] public float	sideHeight;
         [ConditionalHideIfAll(StairsSideType.None, nameof(leftSide), nameof(rightSide))]
-        [ConditionalName("Side Wall Depth Below The Steps"), Tooltip("How far a wall below the steps reaches under them")]
+        [ConditionalName("Depth Below"), Tooltip("How far a guard rail below the steps reaches under them")]
         [DistanceValue] public float	sideDepth;
+        [ConditionalHideIfAll(StairsSideType.None, nameof(leftSide), nameof(rightSide))]
+        [ConditionalName("Front Offset"), Tooltip("How far the guard rails reach out past the steps' fronts")]
+        [DistanceValue] public float	sideFrontOffset;
+        [ConditionalHideIfAll(StairsSideType.None, nameof(leftSide), nameof(rightSide))]
+        [ConditionalName("End"), Tooltip("How far back the guard rails go beside the floor at the top of the stairs")]
+        public StairsTopSideType        topSide;
+        [ConditionalHideIfAll(StairsSideType.None, nameof(leftSide), nameof(rightSide))]
+        [ConditionalName("End Length"), Tooltip("How far back from the top step the guard rails go, when set")]
+        [DistanceValue] public float	topSideLength;
+
+        // how far back from the top step the guard rails go beside the top floor
+        public readonly float TopSideLength => topSide switch
+        {
+            StairsTopSideType.None   => 0,
+            StairsTopSideType.Length => math.max(0, topSideLength),
+            _                        => float.PositiveInfinity
+        };
 
         //[NamedItems("Top", "Bottom", "Left", "Right", "Front", "Back", "Tread", "Step", overflow = "Side {0}", fixedSize = 8)]
         //public ChiselSurfaceDefinition  surfaceDefinition;
@@ -160,7 +184,7 @@ namespace Chisel.Core
                                                                         plateauHeight,
                                                                         riserType, riserDepth,
                                                                         leftSide, rightSide,
-                                                                        sideWidth, sideHeight, sideDepth, topTreadOverhang);
+                                                                        sideWidth, sideHeight, sideDepth, sideFrontOffset: sideFrontOffset, topSideLength: TopSideLength);
             return description.subMeshCount;
         }
 
@@ -178,7 +202,7 @@ namespace Chisel.Core
                                                                     plateauHeight,
                                                                     riserType, riserDepth,
                                                                     leftSide, rightSide,
-                                                                    sideWidth, sideHeight, sideDepth, topTreadOverhang);
+                                                                    sideWidth, sideHeight, sideDepth, sideFrontOffset: sideFrontOffset, topSideLength: TopSideLength);
             const int subMeshOffset = 0;
             if (!BrushMeshFactory.GenerateLinearStairsSubMeshes(generatedBrushMeshes,
                                                                 subMeshOffset,
@@ -214,7 +238,8 @@ namespace Chisel.Core
         public readonly bool IsSurfaceUsed(int index)
         {
             return StairsSurfaces.IsUsed(index, haveTread: treadHeight >= 0.0001f, haveRiser: riserType != StairsRiserType.None,
-                                         haveWall: leftSide != StairsSideType.None || rightSide != StairsSideType.None, haveColumn: false);
+                                         haveWall: leftSide != StairsSideType.None || rightSide != StairsSideType.None, haveColumn: false,
+                                         haveBase: riserType != StairsRiserType.None && riserType != StairsRiserType.FillDown && plateauHeight > 0.001f);
         }
 
         [BurstDiscard]
@@ -249,9 +274,9 @@ namespace Chisel.Core
 
             riserDepth		= math.max(kMinRiserDepth, riserDepth);
             sideDepth		= math.max(0, sideDepth);
+            sideFrontOffset	= math.max(0, sideFrontOffset);
             sideWidth		= math.max(kMinSideWidth, sideWidth);
             sideHeight		= math.max(0, sideHeight);
-            topTreadOverhang = math.max(0, topTreadOverhang);
 
             var realHeight          = math.max(stepHeight, AbsHeight);
             var maxPlateauHeight    = realHeight - stepHeight;
