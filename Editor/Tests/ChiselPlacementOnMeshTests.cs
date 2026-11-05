@@ -30,6 +30,21 @@ namespace Chisel.Editors.Tests
             Assert.That(Vector3.Dot(found.plane.normal, Vector3.up), Is.GreaterThan(0.999f), $"facing {found.plane.normal}");
         }
 
+        // Chisel's geometry is never what Unity's picking finds, so it is the nearer of the two: on CSG in front of a
+        // mesh it goes on the CSG, on a mesh in front of CSG on the mesh
+        [Test]
+        public void PlacingOverCsgAndAMesh_IsOnTheNearer()
+        {
+            var ray     = new Ray(new Vector3(0, 10, 0), Vector3.down);
+            var onCsg   = new PlaneIntersection(new Vector3(0, 2, 0), Vector3.up);
+            var onMesh  = new PlaneIntersection(new Vector3(0, -9.62f, 0), Vector3.up);
+            Assert.That(ChiselClickSelectionManager.Nearest(ray, onCsg, onMesh), Is.SameAs(onCsg),  "CSG in front");
+            Assert.That(ChiselClickSelectionManager.Nearest(ray, onMesh, onCsg), Is.SameAs(onCsg),  "CSG in front, the other way round");
+            var csgBehind = new PlaneIntersection(new Vector3(0, -20, 0), Vector3.up);
+            Assert.That(ChiselClickSelectionManager.Nearest(ray, csgBehind, onMesh), Is.SameAs(onMesh), "mesh in front");
+            Assert.That(ChiselClickSelectionManager.Nearest(ray, onCsg, null), Is.SameAs(onCsg), "only CSG");
+        }
+
         // with nothing under the mouse it is the grid
         [Test]
         public void PlacingOverNothing_IsOnTheGrid()
