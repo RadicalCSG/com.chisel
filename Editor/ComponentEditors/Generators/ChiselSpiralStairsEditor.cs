@@ -53,12 +53,14 @@ namespace Chisel.Editors
                 EditorGUILayout.Space();
 
                 // the side walls, seen from the side, with whether there are any under it
-                ChiselStairsSideWallDiagram.Draw();
+                ChiselStairsSideWallDiagram.Draw(topFloor: false);
+                EditorGUILayout.LabelField("Guard Rails", EditorStyles.boldLabel);
                 SettingsField(nameof(ChiselSpiralStairs.outerSide));
                 SettingsField(nameof(ChiselSpiralStairs.innerSide));
                 SettingsField(nameof(ChiselSpiralStairs.sideWidth));
                 SettingsField(nameof(ChiselSpiralStairs.sideHeight));
                 SettingsField(nameof(ChiselSpiralStairs.sideDepth));
+                SettingsField(nameof(ChiselSpiralStairs.sideFrontOffset));
                 SettingsField(nameof(ChiselSpiralStairs.sideSmoothingGroup));
                 EditorGUILayout.Space();
             });
@@ -72,16 +74,22 @@ namespace Chisel.Editors
 #endif
     static class ChiselStairsSideWallDiagram
     {
-        const int kWidth  = 250;
+        const int kWidth  = 300;
         const int kHeight = 130;
 
         // in pixels, y going down: three steps climbing to the right, and the wall's heights
-        const float kStepWidth = 46, kStepHeight = 22, kLeft = 16, kFloor = 122, kAbove = 30, kBelow = 12;
+        const float kStepWidth = 46, kStepHeight = 22, kLeft = 34, kFloor = 122, kAbove = 30, kBelow = 22;
+        // the wall's piece in front of the first step, and (with a floor at the top) the floor and how far the wall goes
+        // along it
+        const float kFront = 16, kTopFloor = 44, kTopWall = 28;
         // the end-on view: the side of a step, and the wall against it
-        const float kEndLeft = 200, kEndStep = 22, kEndWall = 9, kEndTop = 34, kEndBottom = 104;
+        const float kEndLeft = 250, kEndStep = 22, kEndWall = 9, kEndTop = 34, kEndBottom = 104;
 
-        static Texture2D s_Picture;
-        static bool      s_PictureIsPro;
+        const float kRight = kLeft + 3 * kStepWidth;
+        const float kTop   = kFloor - 3 * kStepHeight;
+
+        static readonly Texture2D[] s_Pictures = new Texture2D[2];
+        static readonly bool[]      s_PicturesArePro = new bool[2];
 
         static GUIStyle s_Label;
         static GUIStyle Label => s_Label ??= new GUIStyle(EditorStyles.miniLabel) { alignment = TextAnchor.MiddleCenter };
@@ -89,26 +97,42 @@ namespace Chisel.Editors
         // the line through the fronts of the treads
         static float Line(float x) { return kFloor - kStepHeight - (x - kLeft) * (kStepHeight / kStepWidth); }
 
-        public static void Draw()
+        // with a floor at the top, how far the wall goes along it is shown too
+        public static void Draw(bool topFloor = true)
         {
-            var rect = GUILayoutUtility.GetRect(EditorGUIUtility.currentViewWidth - 40, kHeight + 6);
+            // room above it for the names over its highest measures
+            const float kLabelRoom = 20;
+            var rect = GUILayoutUtility.GetRect(EditorGUIUtility.currentViewWidth - 40, kHeight + 6 + kLabelRoom);
             if (Event.current.type != EventType.Repaint)
                 return;
             var measure = EditorGUIUtility.isProSkin ? new Color(0.45f, 0.75f, 1f) : new Color(0.1f, 0.35f, 0.75f);
-            var picture = new Rect(rect.center.x - kWidth * 0.5f, rect.y, kWidth, kHeight);
-            GUI.DrawTexture(picture, Picture());
+            var picture = new Rect(rect.center.x - kWidth * 0.5f, rect.y + kLabelRoom, kWidth, kHeight);
+            GUI.DrawTexture(picture, Picture(topFloor));
+
+            // how far the wall reaches out in front of the first step
+            var frontTop = Line(kLeft) - kAbove;
+            Horizontal(picture, kLeft - kFront, kLeft, frontTop - 6, measure);
+            Text(picture, new Vector2(kLeft - kFront * 0.5f, frontTop - 16), "Front Offset", measure, right: false, centered: true);
+
+            // how far back from the top step the wall goes beside the floor there
+            if (topFloor)
+            {
+                Horizontal(picture, kRight, kRight + kTopWall, Line(kRight) - kAbove - 6, measure);
+                Text(picture, new Vector2(kRight + kTopWall * 0.5f, Line(kRight) - kAbove - 16), "End Length", measure, right: false, centered: true);
+            }
 
             // the height above the line, and how far below the steps the wall reaches
             var x = kLeft + kStepWidth * 2.4f;
             Vertical(picture, x, Line(x) - kAbove, Line(x), measure);
             Text(picture, new Vector2(x - 4, Line(x) - kAbove * 0.5f), "Height Above", measure, right: false);
-            Vertical(picture, x, Line(x) + kStepHeight, Line(x) + kStepHeight + kBelow, measure);
-            Text(picture, new Vector2(x + 4, Line(x) + kStepHeight + kBelow * 0.5f), "Depth Below", measure, right: true);
+            // straight on down from the line to the wall's bottom, its name beside it
+            Vertical(picture, x, Line(x), Line(x) + kStepHeight + kBelow, measure);
+            Text(picture, new Vector2(x + 4, Line(x) + (kStepHeight + kBelow) * 0.3f), "Depth Below", measure, right: true);
 
             // the thickness, over the wall seen end on
             var wallLeft = kEndLeft + kEndStep;
             Horizontal(picture, wallLeft, wallLeft + kEndWall, kEndTop - 6, measure);
-            Text(picture, new Vector2(wallLeft + kEndWall * 0.5f, kEndTop - 16), "Wall Thickness", measure, right: false, centered: true);
+            Text(picture, new Vector2(wallLeft + kEndWall * 0.5f, kEndTop - 16), "Thickness", measure, right: false, centered: true);
         }
 
         static void Vertical(Rect picture, float x, float from, float to, Color color)
@@ -139,17 +163,18 @@ namespace Chisel.Editors
             Label.normal.textColor = previous;
         }
 
-        // drawn once per skin, pixel by pixel
-        static Texture2D Picture()
+        // drawn once per skin, pixel by pixel, with and without a floor at the top
+        static Texture2D Picture(bool topFloor)
         {
-            if (s_Picture && s_PictureIsPro == EditorGUIUtility.isProSkin)
-                return s_Picture;
-            s_PictureIsPro = EditorGUIUtility.isProSkin;
+            var which = topFloor ? 1 : 0;
+            if (s_Pictures[which] && s_PicturesArePro[which] == EditorGUIUtility.isProSkin)
+                return s_Pictures[which];
+            var isPro = s_PicturesArePro[which] = EditorGUIUtility.isProSkin;
 
             var text    = EditorStyles.label.normal.textColor;
             var step    = new Color(text.r, text.g, text.b, 0.18f);
             var line    = new Color(text.r, text.g, text.b, 0.65f);
-            var measure = s_PictureIsPro ? new Color(0.45f, 0.75f, 1f) : new Color(0.1f, 0.35f, 0.75f);
+            var measure = isPro ? new Color(0.45f, 0.75f, 1f) : new Color(0.1f, 0.35f, 0.75f);
             var wall    = new Color(measure.r, measure.g, measure.b, 0.22f);
             var pixels  = new Color[kWidth * kHeight];
 
@@ -172,17 +197,23 @@ namespace Chisel.Editors
                     if (Mathf.Abs(y - top) < 0.7f || Mathf.Abs(x - (kLeft + index * kStepWidth)) < 0.7f && y >= top)
                         color = line;
                 }
+                // the floor at the top, solid down to the floor
+                if (topFloor && x > right && x <= right + kTopFloor && y <= kFloor && y >= kTop)
+                    color = (Mathf.Abs(y - kTop) < 0.7f || Mathf.Abs(x - (right + kTopFloor)) < 0.7f) ? line : step;
                 if (Mathf.Abs(y - kFloor) < 0.7f && x >= 4 && x <= kEndLeft - 12)
                     color = line;
 
                 // the wall, above the line through the fronts and from a step under it on down, over the steps it is
-                // beside, never below the floor
-                if (x >= kLeft && x <= right)
+                // beside, never below the floor; straight on in front of the first step, and on from its end along the floor at the top
+                // as far as it goes
+                var alongTop = topFloor && x > right && x <= right + kTopWall;
+                if ((x >= kLeft - kFront && x <= right) || alongTop)
                 {
-                    var l = Line(x);
-                    if (y >= l - kAbove && y <= Mathf.Min(kFloor, l + kStepHeight + kBelow))
+                    var l = alongTop ? Line(right) : (x < kLeft ? Line(kLeft) : Line(x));
+                    var bottom = Mathf.Min(kFloor, l + kStepHeight + kBelow);
+                    if (y >= l - kAbove && y <= bottom)
                         color = color.a > 0 ? Color.Lerp(color, new Color(wall.r, wall.g, wall.b, color.a + 0.1f), 0.5f) : wall;
-                    if (Mathf.Abs(y - (l - kAbove)) < 0.7f || Mathf.Abs(y - Mathf.Min(kFloor, l + kStepHeight + kBelow)) < 0.7f)
+                    if (Mathf.Abs(y - (l - kAbove)) < 0.7f || Mathf.Abs(y - bottom) < 0.7f)
                         color = measure;
                 }
                 // the line through the fronts of the treads, dashed
@@ -200,11 +231,11 @@ namespace Chisel.Editors
                 pixels[py * kWidth + px] = color;
             }
 
-            if (!s_Picture)
-                s_Picture = new Texture2D(kWidth, kHeight, TextureFormat.RGBA32, false) { hideFlags = HideFlags.HideAndDontSave, filterMode = FilterMode.Bilinear };
-            s_Picture.SetPixels(pixels);
-            s_Picture.Apply();
-            return s_Picture;
+            if (!s_Pictures[which])
+                s_Pictures[which] = new Texture2D(kWidth, kHeight, TextureFormat.RGBA32, false) { hideFlags = HideFlags.HideAndDontSave, filterMode = FilterMode.Bilinear };
+            s_Pictures[which].SetPixels(pixels);
+            s_Pictures[which].Apply();
+            return s_Pictures[which];
         }
     }
 

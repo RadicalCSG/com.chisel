@@ -853,6 +853,8 @@ namespace Chisel.Editors
         // Settings shown in groups the editor lays out (say each under a picture of what they measure), then the ones left
         // in the order they are declared
         readonly HashSet<string> m_DrawnSettings = new();
+        // and the definition's own values beside its settings, shown in a group
+        readonly HashSet<string> m_DrawnDefinition = new();
         const string kSettingsName = "settings";
 
         protected void OnGroupedInspector(Action drawGroups)
@@ -862,6 +864,7 @@ namespace Chisel.Editors
             s_Warnings.EndWarnings();
 
             m_DrawnSettings.Clear();
+            m_DrawnDefinition.Clear();
             EditorGUI.BeginChangeCheck();
             {
                 drawGroups();
@@ -869,7 +872,8 @@ namespace Chisel.Editors
                 {
                     if (children[i].name != kSettingsName)
                     {
-                        EditorGUILayout.PropertyField(children[i], true);
+                        if (!m_DrawnDefinition.Contains(children[i].name))
+                            EditorGUILayout.PropertyField(children[i], true);
                         continue;
                     }
                     var iterator = children[i].Copy();
@@ -891,15 +895,102 @@ namespace Chisel.Editors
 
         // one of the settings, in a group; a part of one ("origin.y") is shown with its own label, and the whole is left out
         // of the rest
-        protected void SettingsField(string name, GUIContent label = null)
+        protected void SettingsField(string name, GUIContent label = null, bool visible = true)
         {
-            var property = definitionSerializedProperty?.FindPropertyRelative(kSettingsName + "." + name);
+            // hidden, it's still counted as laid out, so it isn't shown with the ones left
+            var dot = name.IndexOf('.');
+            m_DrawnSettings.Add(dot < 0 ? name : name.Substring(0, dot));
+            var property = SettingsProperty(name);
+            if (property == null || !visible)
+                return;
+            if (label != null) EditorGUILayout.PropertyField(property, label, true);
+            else               EditorGUILayout.PropertyField(property, true);
+        }
+
+        // One of the settings with this label, drawn as a plain value: not by its own drawer, which may hide it or name it
+        // for where it's declared rather than where it's shown
+        protected void SettingsValueField(string name, GUIContent label, bool visible = true)
+        {
+            var dot = name.IndexOf('.');
+            m_DrawnSettings.Add(dot < 0 ? name : name.Substring(0, dot));
+            var property = SettingsProperty(name);
+            if (property == null || !visible)
+                return;
+            EditorGUI.showMixedValue = property.hasMultipleDifferentValues;
+            EditorGUI.BeginChangeCheck();
+            switch (property.propertyType)
+            {
+                case SerializedPropertyType.Float:
+                {
+                    var value = EditorGUILayout.FloatField(label, property.floatValue);
+                    if (EditorGUI.EndChangeCheck())
+                        property.floatValue = value;
+                    break;
+                }
+                case SerializedPropertyType.Enum:
+                {
+                    var names = property.enumDisplayNames;
+                    var value = EditorGUILayout.Popup(label, property.enumValueIndex, Array.ConvertAll(names, n => new GUIContent(n)));
+                    if (EditorGUI.EndChangeCheck())
+                        property.enumValueIndex = value;
+                    break;
+                }
+                default:
+                    EditorGUILayout.PropertyField(property, label, true);
+                    EditorGUI.EndChangeCheck();
+                    break;
+            }
+            EditorGUI.showMixedValue = false;
+        }
+
+        // How big a bounds setting is along one axis, changed by moving its max (or its min, when that's the larger)
+        protected void BoundsSizeField(string name, int axis, GUIContent label)
+        {
+            var dot = name.IndexOf('.');
+            m_DrawnSettings.Add(dot < 0 ? name : name.Substring(0, dot));
+            var bounds = SettingsProperty(name);
+            if (bounds == null)
+                return;
+            var axisName = axis == 0 ? "x" : axis == 1 ? "y" : "z";
+            var min = bounds.FindPropertyRelative("Min." + axisName);
+            var max = bounds.FindPropertyRelative("Max." + axisName);
+            if (min == null || max == null)
+                return;
+            EditorGUI.showMixedValue = min.hasMultipleDifferentValues || max.hasMultipleDifferentValues;
+            EditorGUI.BeginChangeCheck();
+            var size = EditorGUILayout.FloatField(label, Mathf.Abs(max.floatValue - min.floatValue));
+            if (EditorGUI.EndChangeCheck())
+            {
+                size = Mathf.Max(0, size);
+                if (max.floatValue >= min.floatValue) max.floatValue = min.floatValue + size;
+                else                                  min.floatValue = max.floatValue + size;
+            }
+            EditorGUI.showMixedValue = false;
+        }
+
+        // A value of the definition itself, beside its settings
+        protected void DefinitionField(string name, GUIContent label = null)
+        {
+            var dot = name.IndexOf('.');
+            m_DrawnDefinition.Add(dot < 0 ? name : name.Substring(0, dot));
+            var property = definitionSerializedProperty?.FindPropertyRelative(name);
             if (property == null)
                 return;
             if (label != null) EditorGUILayout.PropertyField(property, label, true);
             else               EditorGUILayout.PropertyField(property, true);
-            var dot = name.IndexOf('.');
-            m_DrawnSettings.Add(dot < 0 ? name : name.Substring(0, dot));
+        }
+
+        protected SerializedProperty SettingsProperty(string name)
+        {
+            return definitionSerializedProperty?.FindPropertyRelative(kSettingsName + "." + name);
+        }
+
+        // Whether an enum setting is, on all that are selected, one value; or differs between them, so what goes with it
+        // is shown too
+        protected bool SettingsIs(string name, int value)
+        {
+            var property = SettingsProperty(name);
+            return property != null && (property.hasMultipleDifferentValues || property.enumValueIndex == value);
         }
 
 		protected virtual void OnInspector()

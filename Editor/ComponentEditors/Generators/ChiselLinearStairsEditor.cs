@@ -1,4 +1,4 @@
-﻿using Chisel.Core;
+using Chisel.Core;
 using Chisel.Components;
 using UnityEditor;
 using UnityEngine;
@@ -23,23 +23,27 @@ namespace Chisel.Editors
             {
                 ChiselLinearStairsDiagram.Draw();
                 SettingsField(nameof(ChiselLinearStairs.bounds));
-                SettingsField(nameof(ChiselLinearStairs.plateauHeight));
                 SettingsField(nameof(ChiselLinearStairs.stepHeight));
                 SettingsField(nameof(ChiselLinearStairs.stepDepth));
                 SettingsField(nameof(ChiselLinearStairs.treadHeight));
                 SettingsField(nameof(ChiselLinearStairs.nosingDepth));
                 SettingsField(nameof(ChiselLinearStairs.nosingWidth));
-                SettingsField(nameof(ChiselLinearStairs.topTreadOverhang));
                 SettingsField(nameof(ChiselLinearStairs.riserType));
                 SettingsField(nameof(ChiselLinearStairs.riserDepth));
+                SettingsField(nameof(ChiselLinearStairs.plateauHeight));
                 EditorGUILayout.Space();
 
                 ChiselStairsSideWallDiagram.Draw();
+
+                EditorGUILayout.LabelField("Guard Rails", EditorStyles.boldLabel);
                 SettingsField(nameof(ChiselLinearStairs.leftSide));
                 SettingsField(nameof(ChiselLinearStairs.rightSide));
                 SettingsField(nameof(ChiselLinearStairs.sideWidth));
                 SettingsField(nameof(ChiselLinearStairs.sideHeight));
                 SettingsField(nameof(ChiselLinearStairs.sideDepth));
+                SettingsField(nameof(ChiselLinearStairs.sideFrontOffset));
+                SettingsField(nameof(ChiselLinearStairs.topSide));
+                SettingsField(nameof(ChiselLinearStairs.topSideLength), visible: SettingsIs(nameof(ChiselLinearStairs.topSide), (int)StairsTopSideType.Length));
                 EditorGUILayout.Space();
             });
         }

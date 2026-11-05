@@ -65,6 +65,8 @@ namespace Chisel.Core
                 origin.y += height;
                 height = -height;
             }
+            // raised above the object's position, the first step is solid down to it, as are the walls and the cylinders
+            var ground = math.min(0, origin.y);
 
             // TODO: expose this to user
             var smoothSubDivisions		= 3;
@@ -73,6 +75,8 @@ namespace Chisel.Core
             var subMeshPerRiser			= (riserType == StairsRiserType.None  ) ? 0 : 
                                           (riserType == StairsRiserType.Smooth) ? (2 * smoothSubDivisions)
                                                                                 : 1;
+            // raised above the object's position, the first step stands on a base of its own down to the ground
+            var haveBase                = definition.HaveBase;
             var riserSubMeshCount		= (stepCount * subMeshPerRiser) + ((riserType == StairsRiserType.None  ) ? 0 : cylinderSubMeshCount);
             var treadSubMeshCount		= (haveTread ? stepCount + cylinderSubMeshCount : 0);
             var subMeshCount			= (treadSubMeshCount + riserSubMeshCount);
@@ -127,10 +131,11 @@ namespace Chisel.Core
                                                        new float3(o1.x, maxY, o1.y), // 2
                                                        new float3(o0.x, maxY, o0.y), // 3  
 
-                                                       new float3(i0.x, minY, i0.y), // 4
-                                                       new float3(i1.x, minY, i1.y), // 5
-                                                       new float3(o1.x, minY, o1.y), // 6
-                                                       new float3(o0.x, minY, o0.y), // 7
+                                                       // the first one from the ground, unless it has a base under it
+                                                       new float3(i0.x, (i == 0 && !haveBase) ? ground : minY, i0.y), // 4
+                                                       new float3(i1.x, (i == 0 && !haveBase) ? ground : minY, i1.y), // 5
+                                                       new float3(o1.x, (i == 0 && !haveBase) ? ground : minY, o1.y), // 6
+                                                       new float3(o0.x, (i == 0 && !haveBase) ? ground : minY, o0.y), // 7
                                                        in surfaceDefinitionBlob,
                                                        allocator), StairsPart.Step, origin, anglePerStep, in surfaceDefinitionBlob);// Indirect
 							if (i == 0)
@@ -178,6 +183,8 @@ namespace Chisel.Core
                             var i1 = o1;
 
                             int subMeshIndex = i;
+                            // the first step from the ground, unless it has a base under it
+                            var stepMin = (i == 0 && !haveBase) ? ground : minY;
                             for (int subDiv = 1; subDiv < smoothSubDivisions; subDiv++)
                             {
                                 // TODO: need to space the subdivisions from smallest spaces to bigger spaces
@@ -208,8 +215,8 @@ namespace Chisel.Core
                                 {                  
                                     //brushMesh.halfEdges = (anglePerStep > 0) ? invertedSquarePyramidHalfEdges.ToArray() : squarePyramidHalfEdges.ToArray();
                                     brushMeshes[subMeshIndex] = SmoothUnderside(Classified(CreateSquarePyramidAssetPolygons(new float3(i0.x, maxY, i0.y), // 0
-                                                                                                 new float3(i0.x, minY, i0.y), // 1
-                                                                                                 new float3(o0.x, minY, o0.y), // 2  
+                                                                                                 new float3(i0.x, stepMin, i0.y), // 1
+                                                                                                 new float3(o0.x, stepMin, o0.y), // 2  
                                                                                                  new float3(o0.x, maxY, o0.y), // 3
                                                                                                  new float3(o1.x, maxY, o1.y), // 4
                                                                                                  in surfaceDefinitionBlob,
@@ -219,7 +226,7 @@ namespace Chisel.Core
 
                                 {
                                     //brushMesh.halfEdges = (anglePerStep > 0) ? invertedTriangularPyramidHalfEdges.ToArray() : triangularPyramidHalfEdges.ToArray();
-                                    brushMeshes[subMeshIndex] = SmoothUnderside(Classified(CreateTriangularPyramidAssetPolygons(new float3(i0.x, minY, i0.y), // 1
+                                    brushMeshes[subMeshIndex] = SmoothUnderside(Classified(CreateTriangularPyramidAssetPolygons(new float3(i0.x, stepMin, i0.y), // 1
                                                                                                      new float3(i0.x, maxY, i0.y), // 0
                                                                                                      new float3(i1.x, maxY, i1.y), // 2
                                                                                                      new float3(o1.x, maxY, o1.y), // 3,
@@ -244,8 +251,8 @@ namespace Chisel.Core
                                 //brushMesh.halfEdges = (anglePerStep > 0) ? invertedTriangularPyramidHalfEdges.ToArray() : triangularPyramidHalfEdges.ToArray();
                                 brushMeshes[subMeshIndex] = SmoothUnderside(Classified(CreateTriangularPyramidAssetPolygons(new float3(     i1.x, maxY,     i1.y), // 2
                                                                                                  new float3(     i0.x, maxY,     i0.y), // 0
-                                                                                                 new float3(     i0.x, minY,     i0.y), // 1
-                                                                                                 new float3(   apex.x, minY,   apex.y), // 3
+                                                                                                 new float3(     i0.x, stepMin,     i0.y), // 1
+                                                                                                 new float3(   apex.x, stepMin,   apex.y), // 3
                                                                                                  in surfaceDefinitionBlob,
                                                                                                  allocator), StairsPart.Step, origin, anglePerStep, in surfaceDefinitionBlob), undersideSmoothingGroup, origin, middleAngle, stepOuterRadius);// Indirect
 								subMeshIndex++;
@@ -256,7 +263,7 @@ namespace Chisel.Core
                                 brushMeshes[subMeshIndex] = SmoothUnderside(Classified(CreateTriangularPyramidAssetPolygons(new float3(     i0.x, maxY,     i0.y), // 0
                                                                                                  new float3(     i1.x, maxY,     i1.y), // 2
                                                                                                  new float3(   apex.x, maxY,   apex.y), // 1
-                                                                                                 new float3(   apex.x, minY,   apex.y), // 3
+                                                                                                 new float3(   apex.x, stepMin,   apex.y), // 3
                                                                                                  in surfaceDefinitionBlob, 
                                                                                                  allocator), StairsPart.Step, origin, anglePerStep, in surfaceDefinitionBlob), undersideSmoothingGroup, origin, middleAngle, stepOuterRadius);// Indirect
 								subMeshIndex++;
@@ -288,7 +295,8 @@ namespace Chisel.Core
                             o0 = new float2(origin.x + c0, origin.z + s0);
                             o1 = new float2(origin.x + c1, origin.z + s1);
 
-                            //brushMesh.halfEdges = (anglePerStep > 0) ? invertedWedgeHalfEdges.ToArray() : wedgeHalfEdges.ToArray();
+                            // the first step without a base under it, and every step solid down to the floor, from the ground
+                            var bottom = ((i == 0 && !haveBase) || riserType == StairsRiserType.FillDown) ? ground : minY;
                             if (stepInnerRadius > 0)
                             {
                                 var scale0 = InnerRadiusAt(angle - anglePerStep, stepInnerRadius, innerSides) / stepOuterRadius;
@@ -300,16 +308,16 @@ namespace Chisel.Core
                                                                           new float3(o0.x, maxY, o0.y),
                                                                           new float3(o1.x, maxY, o1.y),
 
-                                                                          new float3(i1.x, minY, i1.y),
-                                                                          new float3(i0.x, minY, i0.y),
-                                                                          new float3(o0.x, minY, o0.y),
-                                                                          new float3(o1.x, minY, o1.y),
+                                                                          new float3(i1.x, bottom, i1.y),
+                                                                          new float3(i0.x, bottom, i0.y),
+                                                                          new float3(o0.x, bottom, o0.y),
+                                                                          new float3(o1.x, bottom, o1.y),
                                                                           in surfaceDefinitionBlob,
                                                                           allocator), StairsPart.Step, origin, anglePerStep, in surfaceDefinitionBlob), i0, o0);// Indirect
                             } else
-                            brushMeshes[i] = AlignedToFront(Classified(CreateWedgeAssetPolygons(new float3( origin.x, minY, origin.z), // 0
-                                                                      new float3(     o1.x, minY,     o1.y), // 1
-                                                                      new float3(     o0.x, minY,     o0.y), // 2
+                            brushMeshes[i] = AlignedToFront(Classified(CreateWedgeAssetPolygons(new float3( origin.x, bottom, origin.z), // 0
+                                                                      new float3(     o1.x, bottom,     o1.y), // 1
+                                                                      new float3(     o0.x, bottom,     o0.y), // 2
 
                                                                       new float3( origin.x, maxY, origin.z), // 3
                                                                       new float3(     o1.x, maxY,     o1.y), // 4
@@ -329,7 +337,7 @@ namespace Chisel.Core
                         var subMeshIndex = treadStart - cylinderSubMeshCount;
 
 
-                        if (!GenerateCylinderSubMesh(outerDiameter, origin.y, origin.y + height, 0, outerSides, fitToBounds: fitToBounds,
+                        if (!GenerateCylinderSubMesh(outerDiameter, ground, origin.y + height, 0, outerSides, fitToBounds: fitToBounds,
                                                      in outerCylinderSurfaceDefinitionBlob,
                                                      out var brushMeshBlob,
                                                      allocator))// Indirect
@@ -349,7 +357,7 @@ namespace Chisel.Core
 
 
 
-                        if (!GenerateCylinderSubMesh(innerDiameter, origin.y, origin.y + height, 0, innerSides, fitToBounds: fitToBounds,
+                        if (!GenerateCylinderSubMesh(innerDiameter, ground, origin.y + height, 0, innerSides, fitToBounds: fitToBounds,
                                                      in innerCylinderSurfaceDefinitionBlob,
                                                      out var brushMeshBlob,
                                                      allocator))// Indirect
@@ -407,9 +415,12 @@ namespace Chisel.Core
                 }
 
 
+                // the treads' cylinders, only with treads: without, these places are the risers' cylinders, which would be
+                // left without being disposed
+                if (haveTread)
                 {
-                    var subMeshIndex = subMeshCount - cylinderSubMeshCount;                
-                    if (!GenerateCylinderSubMesh(outerDiameter + nosingWidth, origin.y, origin.y + height, 0, outerSides, fitToBounds: fitToBounds,
+                    var subMeshIndex = subMeshCount - cylinderSubMeshCount;
+                    if (!GenerateCylinderSubMesh(outerDiameter + nosingWidth, ground, origin.y + height, 0, outerSides, fitToBounds: fitToBounds,
                                                  in outerCylinderSurfaceDefinitionBlob,
                                                  out var brushMeshBlob, allocator))// Indirect
 						return false;
@@ -425,10 +436,10 @@ namespace Chisel.Core
                     //brushContainer.operations[subMeshIndex] = CSGOperationType.Intersecting;
                 }
 
-                if (haveInnerCyl)
+                if (haveTread && haveInnerCyl)
                 {
                     var subMeshIndex = subMeshCount - 1;
-                    if (!GenerateCylinderSubMesh(innerDiameter - nosingWidth, origin.y, origin.y + height, 0, innerSides, fitToBounds: fitToBounds,
+                    if (!GenerateCylinderSubMesh(innerDiameter - nosingWidth, ground, origin.y + height, 0, innerSides, fitToBounds: fitToBounds,
                                                  in innerCylinderSurfaceDefinitionBlob,
                                                  out var brushMeshBlob, allocator))// Indirect
 						return false;
@@ -444,14 +455,14 @@ namespace Chisel.Core
                 var index = subMeshCount;
                 if (definition.HaveColumn)
                 {
-                    if (!GenerateCylinderSubMesh(innerDiameter, origin.y, origin.y + height, 0, innerSides, fitToBounds: fitToBounds,
+                    if (!GenerateCylinderSubMesh(innerDiameter, ground, origin.y + height, 0, innerSides, fitToBounds: fitToBounds,
                                                  in innerCylinderSurfaceDefinitionBlob,
                                                  out var columnBlob, allocator))// Indirect
                         return false;
                     brushMeshes[index++] = MapRoundFaces(SmoothRoundFaces(Classified(columnBlob, StairsPart.Column, origin, anglePerStep, in surfaceDefinitionBlob), definition.columnSmoothingGroup, origin), innerDiameter * 0.5f, innerSides);
                     if (definition.HaveColumnHole)
                     {
-                        if (!GenerateCylinderSubMesh(definition.ColumnHoleDiameter, origin.y, origin.y + height, 0, innerSides, fitToBounds: fitToBounds,
+                        if (!GenerateCylinderSubMesh(definition.ColumnHoleDiameter, ground, origin.y + height, 0, innerSides, fitToBounds: fitToBounds,
                                                      in innerCylinderSurfaceDefinitionBlob,
                                                      out var holeBlob, allocator))// Indirect
                             return false;
@@ -479,6 +490,9 @@ namespace Chisel.Core
                     else
                         GenerateSide(brushMeshes, ref index, definition.innerSide, math.max(0, apothem - sideWidth), apothem + kSideOverlap, innerSides, in definition, origin, startAngle, anglePerStep, in surfaceDefinitionBlob, allocator);
                 }
+
+                if (haveBase)
+                    GenerateBase(brushMeshes, ref index, in definition, origin, ground, startAngle, anglePerStep, in surfaceDefinitionBlob, allocator);
                 return true;
             }
         }
@@ -500,15 +514,49 @@ namespace Chisel.Core
             // steps that are solid down to the floor have walls that go down to the floor too
             if (definition.riserType == StairsRiserType.FillDown)
                 below = math.abs(definition.height) + stepHeight;
-            var floor       = origin.y;
+            var floor       = math.min(0, origin.y);
             // how far along the wall each piece starts, on its inner and its outer face, so the texture runs on across them
             var innerLength = 0.0f;
             var outerLength = 0.0f;
 
             var end   = startAngle + anglePerStep * definition.StepCount;
             var split = definition.SideFloorAngle(startAngle, anglePerStep);
+            // raised above the object's position, a wall below the steps stands on it beside the first step, as that
+            // step does (its pieces there end where that step does, see SideFloorAngle)
+            var onGround  = below > 0 && origin.y > floor;
+            var firstStep = startAngle + anglePerStep;
+            const float kToTheGround = 1e6f;
             var a0    = startAngle;
             {
+                // In front of the first step, as far out as asked: straight on from the wall's first piece, its top and
+                // bottom flat
+                if (definition.sideFrontOffset > 0 && a0 < end - ChiselSpiralStairs.kAngleEpsilon)
+                {
+                    var first   = ChiselSpiralStairs.NextSidePieceEnd(a0, end, segments, split);
+                    var middle  = (a0 + first) * 0.5f;
+                    var in1     = Around(origin, ChiselSpiralStairs.RadiusOnSide(a0, middle, innerApothem, segments), a0);
+                    var out1    = Around(origin, ChiselSpiralStairs.RadiusOnSide(a0, middle, outerApothem, segments), a0);
+                    var inNext  = Around(origin, ChiselSpiralStairs.RadiusOnSide(first, middle, innerApothem, segments), first);
+                    var outNext = Around(origin, ChiselSpiralStairs.RadiusOnSide(first, middle, outerApothem, segments), first);
+                    var back    = math.normalizesafe(((in1 - inNext) + (out1 - outNext)) * 0.5f);
+                    var in0     = in1  + back * definition.sideFrontOffset;
+                    var out0    = out1 + back * definition.sideFrontOffset;
+
+                    var line1   = origin.y + stepHeight;
+                    var bottom  = onGround ? floor : math.max(floor, line1 - below);
+                    var top1    = line1 + above;
+                    var top0    = top1;
+
+                    var smoothing = definition.sideSmoothingGroup;
+                    var endsFrom  = origin;
+                    innerLength = -math.distance(in0, in1);
+                    outerLength = -math.distance(out0, out1);
+                    brushMeshes[index++] = AlignedUpright(WallFace(Classified(FlatBottomWedge(in0, top0, out0, top0, in1, top1, bottom, in surfaceDefinitionBlob, allocator), StairsPart.Wall, origin, anglePerStep, in surfaceDefinitionBlob), smoothing, in0, in1, innerLength), endsFrom, aroundOrigin: true, 0);
+                    brushMeshes[index++] = AlignedUpright(WallFace(Classified(FlatBottomWedge(out0, top0, out1, top1, in1, top1, bottom, in surfaceDefinitionBlob, allocator), StairsPart.Wall, origin, anglePerStep, in surfaceDefinitionBlob), smoothing, out0, out1, outerLength), endsFrom, aroundOrigin: true, 0);
+                    innerLength = 0;
+                    outerLength = 0;
+                }
+
                 while (a0 < end - ChiselSpiralStairs.kAngleEpsilon)
                 {
                     var a1 = ChiselSpiralStairs.NextSidePieceEnd(a0, end, segments, split);
@@ -529,8 +577,9 @@ namespace Chisel.Core
                     // step beside them up, as that step's front and back
                     var stepBeside = math.clamp((int)math.floor(((a0 + a1) * 0.5f - startAngle) / anglePerStep), 0, definition.StepCount - 1);
                     var endsFrom   = new float3(origin.x, origin.y + stepBeside * stepHeight, origin.z);
-                    brushMeshes[index++] = AlignedUpright(WallFace(Classified(Wedge(in0, line0, out0, line0, in1, line1, above, below, floor, in surfaceDefinitionBlob, allocator), StairsPart.Wall, origin, anglePerStep, in surfaceDefinitionBlob), smoothing, in0, in1, innerLength), endsFrom, aroundOrigin: true, 0);
-                    brushMeshes[index++] = AlignedUpright(WallFace(Classified(Wedge(out0, line0, out1, line1, in1, line1, above, below, floor, in surfaceDefinitionBlob, allocator), StairsPart.Wall, origin, anglePerStep, in surfaceDefinitionBlob), smoothing, out0, out1, outerLength), endsFrom, aroundOrigin: true, 0);
+                    var pieceBelow = (onGround && a1 <= firstStep + ChiselSpiralStairs.kAngleEpsilon) ? kToTheGround : below;
+                    brushMeshes[index++] = AlignedUpright(WallFace(Classified(Wedge(in0, line0, out0, line0, in1, line1, above, pieceBelow, floor, in surfaceDefinitionBlob, allocator), StairsPart.Wall, origin, anglePerStep, in surfaceDefinitionBlob), smoothing, in0, in1, innerLength), endsFrom, aroundOrigin: true, 0);
+                    brushMeshes[index++] = AlignedUpright(WallFace(Classified(Wedge(out0, line0, out1, line1, in1, line1, above, pieceBelow, floor, in surfaceDefinitionBlob, allocator), StairsPart.Wall, origin, anglePerStep, in surfaceDefinitionBlob), smoothing, out0, out1, outerLength), endsFrom, aroundOrigin: true, 0);
                     innerLength += math.distance(in0, in1);
                     outerLength += math.distance(out0, out1);
                     a0 = a1;
@@ -538,9 +587,71 @@ namespace Chisel.Core
             }
         }
 
+        // The base under the first step, from the ground up to the steps: a piece for each straight side of the outer
+        // cylinder under that step, out to that side, from the middle or from the open middle's cylinder
+        static void GenerateBase(NativeList<BlobAssetReference<BrushMeshBlob>> brushMeshes, ref int index, in ChiselSpiralStairs definition,
+                                 float3 origin, float ground, float startAngle, float anglePerStep,
+                                 in BlobAssetReference<InternalChiselSurfaceArray> surfaceDefinitionBlob, Allocator allocator)
+        {
+            var outerSides   = definition.outerSegments;
+            var innerSides   = definition.innerSegments;
+            var outerApothem = definition.outerDiameter * 0.5f * math.cos(math.PI / outerSides);
+            var innerApothem = definition.innerDiameter * 0.5f * math.cos(math.PI / innerSides);
+            var openMiddle   = definition.BaseHasOpenMiddle;
+            var center       = new float2(origin.x, origin.z);
+            var top          = origin.y;
+            var low          = math.min(startAngle, startAngle + anglePerStep);
+            var high         = math.max(startAngle, startAngle + anglePerStep);
+            var a0           = low;
+            for (int count = 0; a0 < high - ChiselSpiralStairs.kAngleEpsilon && count < outerSides + 2; count++)
+            {
+                var a1     = ChiselSpiralStairs.NextSideCorner(a0, high, outerSides);
+                var middle = (a0 + a1) * 0.5f;
+                var out0   = Around(origin, ChiselSpiralStairs.RadiusOnSide(a0, middle, outerApothem, outerSides), a0);
+                var out1   = Around(origin, ChiselSpiralStairs.RadiusOnSide(a1, middle, outerApothem, outerSides), a1);
+                if (openMiddle)
+                {
+                    var in0 = Around(origin, InnerRadiusAt(a0, innerApothem, innerSides), a0);
+                    var in1 = Around(origin, InnerRadiusAt(a1, innerApothem, innerSides), a1);
+                    brushMeshes[index++] = BasePiece(FlatBottomWedge(in0, top, out0, top, out1, top, ground, in surfaceDefinitionBlob, allocator), origin, anglePerStep, center, out0, in surfaceDefinitionBlob);
+                    brushMeshes[index++] = BasePiece(FlatBottomWedge(in0, top, out1, top, in1, top, ground, in surfaceDefinitionBlob, allocator), origin, anglePerStep, center, out0, in surfaceDefinitionBlob);
+                } else
+                    brushMeshes[index++] = BasePiece(FlatBottomWedge(center, top, out0, top, out1, top, ground, in surfaceDefinitionBlob, allocator), origin, anglePerStep, center, out0, in surfaceDefinitionBlob);
+                a0 = a1;
+            }
+        }
+
+        static BlobAssetReference<BrushMeshBlob> BasePiece(BlobAssetReference<BrushMeshBlob> brushMesh, float3 origin, float anglePerStep, float2 center, float2 front,
+                                                          in BlobAssetReference<InternalChiselSurfaceArray> surfaceDefinitionBlob)
+        {
+            // its texture as the first step's, from the ground up
+            return AlignedUpright(AlignedToFront(Classified(brushMesh, StairsPart.Base, origin, anglePerStep, in surfaceDefinitionBlob), center, front),
+                                  new float3(origin.x, math.min(0, origin.y), origin.z), aroundOrigin: true, 0);
+        }
+
         static float2 Around(float3 origin, float radius, float angle)
         {
             return new float2(origin.x + math.sin(angle) * radius, origin.z + math.cos(angle) * radius);
+        }
+
+        // A wedge standing on a triangle, from one flat bottom up to each corner's own top
+        static BlobAssetReference<BrushMeshBlob> FlatBottomWedge(float2 p0, float top0, float2 p1, float top1, float2 p2, float top2, float bottom,
+                                                                 in BlobAssetReference<InternalChiselSurfaceArray> surfaceDefinitionBlob, Allocator allocator)
+        {
+            var d1 = p1 - p0;
+            var d2 = p2 - p0;
+            if ((d1.x * d2.y - d1.y * d2.x) < 0)
+            {
+                var p = p1; p1 = p2; p2 = p;
+                var top = top1; top1 = top2; top2 = top;
+            }
+            return CreateWedgeAssetPolygons(new float3(p0.x, bottom, p0.y),
+                                            new float3(p1.x, bottom, p1.y),
+                                            new float3(p2.x, bottom, p2.y),
+                                            new float3(p0.x, top0, p0.y),
+                                            new float3(p1.x, top1, p1.y),
+                                            new float3(p2.x, top2, p2.y),
+                                            in surfaceDefinitionBlob, allocator);// Indirect
         }
 
         // A wedge standing on a triangle, each corner from below its line to above it; its corners are put in the order the

@@ -75,7 +75,29 @@ namespace Chisel.Components.Tests
             using var indexArray  = new NativeArray<int>(indices.ToArray(), Allocator.Temp);
             var report = MeshManifoldValidation.Classify(vertexArray, indexArray, 0);
             Assert.That(report.boundaryEdgeCount, Is.Zero, $"{what}: edges drawn by one triangle");
-            Assert.That(report.nonManifoldEdgeCount, Is.EqualTo(pinches), $"{what}: edges drawn by more than two triangles");
+            if (report.nonManifoldEdgeCount != pinches)
+            {
+                // where they are, by position, as the same corner can be in several meshes
+                var uses = new Dictionary<(Vector3Int, Vector3Int), int>();
+                Vector3Int Key(float3 p) => new Vector3Int(Mathf.RoundToInt(p.x * 1000), Mathf.RoundToInt(p.y * 1000), Mathf.RoundToInt(p.z * 1000));
+                for (int t = 0; t < indices.Count; t += 3)
+                {
+                    for (int e = 0; e < 3; e++)
+                    {
+                        var a = Key(vertices[indices[t + e]]);
+                        var b = Key(vertices[indices[t + ((e + 1) % 3)]]);
+                        var key = (a.x < b.x || (a.x == b.x && (a.y < b.y || (a.y == b.y && a.z < b.z)))) ? (a, b) : (b, a);
+                        uses[key] = uses.TryGetValue(key, out var n) ? n + 1 : 1;
+                    }
+                }
+                var where = "";
+                foreach (var pair in uses)
+                {
+                    if (pair.Value > 2)
+                        where += $" {(Vector3)pair.Key.Item1 / 1000}-{(Vector3)pair.Key.Item2 / 1000} x{pair.Value}";
+                }
+                Assert.Fail($"{what}: {report.nonManifoldEdgeCount} edges drawn by more than two triangles:{where}");
+            }
             Assert.That(report.degenerateTriangleCount, Is.Zero, $"{what}: triangles without area");
         }
 
@@ -183,35 +205,6 @@ namespace Chisel.Components.Tests
             Assert.That(minX, Is.EqualTo(0).Within(1e-4f), "the fill falls short of the right side");
             Assert.That(maxX, Is.EqualTo(2).Within(1e-4f), "the fill falls short of the left side, under the rail");
             Assert.That(allMinX, Is.EqualTo(0).Within(1e-4f), "the treads reach out past the fill");
-        }
-
-        // The top tread reaches out past the sides only when told to, and by as much
-        [TestCase(0f)]
-        [TestCase(0.2f)]
-        public void LinearStairsTopTread_SticksOutByTheOverhangOnly(float overhang)
-        {
-            var stairs = Generator<ChiselLinearStairsComponent>(out var model);
-            ref var settings = ref stairs.definition.settings;
-            settings.bounds           = new MinMaxAABB { Min = new float3(0, 0, 0), Max = new float3(2, 1, 2) };
-            settings.leftSide         = StairsSideType.Up;
-            settings.rightSide        = StairsSideType.Up;
-            settings.topTreadOverhang = overhang;
-            stairs.OnValidate();
-            Update();
-            float minX = float.PositiveInfinity, maxX = float.NegativeInfinity;
-            foreach (var renderable in model.generated.renderables)
-            {
-                if (renderable == null || renderable.sharedMesh == null)
-                    continue;
-                foreach (var v in renderable.sharedMesh.vertices)
-                {
-                    minX = math.min(minX, v.x);
-                    maxX = math.max(maxX, v.x);
-                }
-            }
-            // with walls on both sides, nothing else reaches past them
-            Assert.That(minX, Is.EqualTo(-overhang).Within(1e-4f), "left of the stairs");
-            Assert.That(maxX, Is.EqualTo(2 + overhang).Within(1e-4f), "right of the stairs");
         }
 
         // Every tread's texture starts at its nose: on each tread's top, the uv at the nose's corner is the same
@@ -556,6 +549,63 @@ namespace Chisel.Components.Tests
             }
             Assert.That(shared, Is.GreaterThan(0), "no fronts or back");
             Assert.That(seams, Is.Zero, $"corners with another uv on each side, of {shared}");
+        }
+
+        // Thick steps on a base with walls going down: the wall beside the base has its front textured as the base's, so
+        // where they meet the uv is the same on both
+        [Test]
+        public void LinearStairsOnABase_HaveTheirFrontTextureRunOnAcrossTheWalls([Values(StairsRiserType.ThickRiser, StairsRiserType.Smooth)] StairsRiserType riser)
+        {
+            var stairs = Generator<ChiselLinearStairsComponent>(out var model);
+            ref var settings = ref stairs.definition.settings;
+            settings.bounds        = new MinMaxAABB { Min = new float3(0, 0, 0), Max = new float3(2, 2, 3) };
+            settings.riserType     = riser;
+            settings.plateauHeight = 0.6f;
+            settings.stepHeight    = 0.2f;
+            settings.stepDepth     = 0.2f;
+            settings.leftSide      = StairsSideType.DownAndUp;
+            settings.rightSide     = StairsSideType.DownAndUp;
+            stairs.OnValidate();
+            Update();
+            var uvAt = new Dictionary<Vector3Int, Vector2>();
+            var seams = 0;
+            var shared = 0;
+            var where = new List<string>();
+            foreach (var renderable in model.generated.renderables)
+            {
+                if (renderable == null || renderable.sharedMesh == null)
+                    continue;
+                var v  = renderable.sharedMesh.vertices;
+                var uv = renderable.sharedMesh.uv;
+                var t  = renderable.sharedMesh.triangles;
+                for (int i = 0; i < t.Length; i += 3)
+                {
+                    Vector3 a = v[t[i]], b = v[t[i + 1]], c = v[t[i + 2]];
+                    var normal = Vector3.Cross(b - a, c - a).normalized;
+                    // the front of the base, below its top: each step's front starts its texture again, as does the wall
+                    // above the base, at the steps it's beside
+                    if (normal.z < 0.9f || Mathf.Abs(a.z - 3) > 1e-3f)
+                        continue;
+                    for (int k = 0; k < 3; k++)
+                    {
+                        if (v[t[i + k]].y > 0.78f - 1e-3f)
+                            continue;
+                        var key = Vector3Int.RoundToInt(v[t[i + k]] * 1000);
+                        if (uvAt.TryGetValue(key, out var known))
+                        {
+                            shared++;
+                            if ((known - uv[t[i + k]]).magnitude > 1e-3f)
+                            {
+                                seams++;
+                                where.Add($"{v[t[i + k]]}: {known} / {uv[t[i + k]]}");
+                            }
+                        } else
+                            uvAt[key] = uv[t[i + k]];
+                    }
+                }
+            }
+            Assert.That(shared, Is.GreaterThan(0), "nothing at the front");
+            Assert.That(seams, Is.Zero, $"corners with another uv on each side, of {shared}: {string.Join("; ", where)}");
         }
 
         // Spiral stairs with walls: at the start the front of the first step and at the end the back of the last one run on
@@ -998,6 +1048,492 @@ namespace Chisel.Components.Tests
             Assert.That(triangles, Is.GreaterThan(0), "nothing drawn");
         }
 
+        // Walls that go down beside the steps cover their sides all the way: beside a thick top floor down to its
+        // underside, and beside a base down to the floor. The steps are narrowed by the walls, so any side of theirs that
+        // faces out at that line is left showing. The wall under the steps only dropped along their slope from the tread
+        [Test]
+        public void LinearStairsWallsGoingDown_CoverTheTopFloorAndTheBase([Values(StairsRiserType.ThickRiser, StairsRiserType.Smooth)] StairsRiserType riser)
+        {
+            var stairs = Generator<ChiselLinearStairsComponent>(out var model);
+            ref var settings = ref stairs.definition.settings;
+            settings.bounds        = new MinMaxAABB { Min = new float3(0, 0, 0), Max = new float3(2, 2, 3) };
+            settings.riserType     = riser;
+            settings.plateauHeight = 0.6f;
+            settings.stepHeight    = 0.2f;
+            settings.stepDepth     = 0.2f;
+            settings.leftSide      = StairsSideType.DownAndUp;
+            settings.rightSide     = StairsSideType.DownAndUp;
+            stairs.OnValidate();
+            Update();
+
+            var sideWidth = stairs.definition.settings.sideWidth;
+            var showing = new List<Vector3>();
+            foreach (var renderable in model.generated.renderables)
+            {
+                if (renderable == null || renderable.sharedMesh == null)
+                    continue;
+                var v = renderable.sharedMesh.vertices;
+                var t = renderable.sharedMesh.triangles;
+                for (int i = 0; i < t.Length; i += 3)
+                {
+                    var a = v[t[i]]; var b = v[t[i + 1]]; var c = v[t[i + 2]];
+                    var normal = Vector3.Cross(b - a, c - a).normalized;
+                    var middle = (a + b + c) / 3;
+                    // the treads' noses reach out past the front, the walls included
+                    if (middle.z > 3)
+                        continue;
+                    if ((normal.x < -0.99f && Mathf.Abs(middle.x - sideWidth) < 1e-3f) ||
+                        (normal.x >  0.99f && Mathf.Abs(middle.x - (2 - sideWidth)) < 1e-3f))
+                        showing.Add(middle);
+                }
+            }
+            Assert.That(showing, Is.Empty, "sides of the steps the walls don't cover: " + string.Join(" ", showing.ConvertAll(p => $"({p.x:0.##},{p.y:0.##},{p.z:0.##})")));
+        }
+
+        // A wall's outline can have two corners in the same place, at the default size: a side between them has no
+        // length, and its plane no direction, so the CSG left the whole wall out
+        [Test]
+        public void LinearStairsWalls_HaveNoPlaneWithoutADirection([Values] StairsRiserType riser,
+                                                                   [Values(StairsSideType.Up, StairsSideType.DownAndUp)] StairsSideType side)
+        {
+            var stairs = Generator<ChiselLinearStairsComponent>(out _);
+            stairs.definition.settings.riserType = riser;
+            stairs.definition.settings.leftSide  = side;
+            stairs.definition.settings.rightSide = side;
+            stairs.OnValidate();
+            Update();
+
+            var branch = (CSGTreeBranch)stairs.TopTreeNode;
+            for (int i = 0; i < branch.Count; i++)
+            {
+                var blob = BrushMeshManager.GetBrushMeshBlob(((CSGTreeBrush)branch[i]).BrushMesh.BrushMeshID);
+                if (!blob.IsCreated)
+                    continue;
+                ref var mesh = ref blob.Value;
+                for (int p = 0; p < mesh.localPlanes.Length; p++)
+                {
+                    var plane = mesh.localPlanes[p];
+                    Assert.That(math.all(math.isfinite(plane)) && math.lengthsq(plane.xyz) > 0.5f, Is.True, $"brush {i} plane {p}: {plane}");
+                }
+            }
+        }
+
+        // Pathed stairs go along their path: on a path that turns a corner both legs are built. The stairs were moved
+        // onto the path but not their planes, so every leg was built where the first one was
+        [Test]
+        public void PathedStairs_FollowAPathThatTurns()
+        {
+            var stairs = Generator<ChiselPathedStairsComponent>(out var model);
+            stairs.definition.shape = new Curve2D(false, new CurveControlPoint2D(-2, -2), new CurveControlPoint2D(2, -2), new CurveControlPoint2D(2, 2));
+            stairs.OnValidate();
+            Update();
+
+            var vertices = DrawnVertices(model, out _);
+            Assert.That(vertices, Is.Not.Empty, "nothing drawn");
+            var drawn = new Bounds(vertices[0], Vector3.zero);
+            foreach (var vertex in vertices)
+                drawn.Encapsulate(vertex);
+            // the path is their outer edge: the leg along x from x -2 to 2 at z -2, the one along z from z -2 to 2 at x 2
+            Assert.That(drawn.min.x, Is.EqualTo(-2).Within(0.1f), $"drawn {drawn}: not out to where the path starts");
+            Assert.That(drawn.max.x, Is.EqualTo( 2).Within(0.1f), $"drawn {drawn}: not out to the path's corner");
+            Assert.That(drawn.min.z, Is.EqualTo(-2).Within(0.1f), $"drawn {drawn}: not out to the leg along x");
+            Assert.That(drawn.max.z, Is.EqualTo( 2).Within(0.1f), $"drawn {drawn}: not out to where the path ends");
+            AssertClosed(model, "pathed stairs");
+        }
+
+        // At a corner the two parts of the path meet along its diagonal: nothing of either reaches past it, and they
+        // leave no gap. Their ends were cut back by the wrong amounts, which left a sawtooth of gaps
+        [Test]
+        public void PathedStairs_MeetAtCorners()
+        {
+            var stairs = Generator<ChiselPathedStairsComponent>(out var model);
+            stairs.definition.shape = new Curve2D(false, new CurveControlPoint2D(-2, -2), new CurveControlPoint2D(2, -2), new CurveControlPoint2D(2, 2));
+            stairs.OnValidate();
+            Update();
+
+            // the corner is at (2, -2) and the stairs go inward from the path, so its diagonal is x + z = 0, from (2, -2)
+            // in to (2 - depth, -2 + depth). Both parts are cut along it, so the corners of their steps there are on it,
+            // and nothing drawn in the corner's square reaches past it on the wrong side of either part
+            var vertices = DrawnVertices(model, out _);
+            Assert.That(vertices, Is.Not.Empty, "nothing drawn");
+            var depth = (float)(stairs.definition.settings.stairs.BoundsMax.z - stairs.definition.settings.stairs.BoundsMin.z);
+            int onDiagonal = 0;
+            foreach (var vertex in vertices)
+            {
+                if (vertex.x < 2 - depth - 0.01f || vertex.z > -2 + depth + 0.01f)
+                    continue;
+                if (math.abs(vertex.x + vertex.z) < 0.01f)
+                    onDiagonal++;
+            }
+            var steps = Mathf.CeilToInt((float)(stairs.definition.settings.stairs.BoundsMax.y - stairs.definition.settings.stairs.BoundsMin.y) /
+                                        stairs.definition.settings.stairs.stepHeight);
+            Assert.That(onDiagonal, Is.GreaterThanOrEqualTo(steps * 2), $"{onDiagonal} corners on the diagonal for {steps} steps: the parts don't meet along it");
+        }
+
+        // The two parts at a corner are cut by one shared plane, so whatever the risers they join without a seam. Each
+        // was cut by a plane made from its own vertices; the two weren't quite the same and both faces were kept
+        [Test]
+        public void PathedStairs_AreClosedAtCorners_WhateverTheRisers()
+        {
+            foreach (StairsRiserType riser in Enum.GetValues(typeof(StairsRiserType)))
+            {
+                var stairs = Generator<ChiselPathedStairsComponent>(out var model);
+                stairs.definition.shape = new Curve2D(false, new CurveControlPoint2D(-2, -2), new CurveControlPoint2D(2, -2), new CurveControlPoint2D(2, 2));
+                stairs.definition.settings.stairs.riserType = riser;
+                stairs.OnValidate();
+                Update();
+                AssertClosed(model, $"pathed stairs with {riser} risers");
+            }
+        }
+
+        // A path that isn't square, with stairs deeper than some of its parts are long, and the same path the other
+        // way round, so it turns away from the stairs
+        [TestCase(false)]
+        [TestCase(true)]
+        public void PathedStairs_AreClosed_OnAnUnevenPath(bool reversed)
+        {
+            var points = new[] { new CurveControlPoint2D(2, -18), new CurveControlPoint2D(7, -7), new CurveControlPoint2D(6, 5), new CurveControlPoint2D(-3, 6) };
+            if (reversed)
+                Array.Reverse(points);
+            var stairs = Generator<ChiselPathedStairsComponent>(out var model);
+            stairs.definition.shape = new Curve2D(false, points);
+            stairs.definition.settings.stairs.bounds = new MinMaxAABB { Min = new float3(-5), Max = new float3(5) };
+            stairs.definition.settings.stairs.plateauHeight = 4.6f;
+            stairs.OnValidate();
+            Update();
+            AssertClosed(model, reversed ? "pathed stairs turning away" : "pathed stairs");
+        }
+
+        // An open path's ends have their side walls, which rise above the steps. Each end was cut by moving every
+        // vertex near it onto its plane, which squashed the walls, a wall's width in from the end, to nothing
+        [Test]
+        public void PathedStairs_HaveSideWallsAtOpenEnds()
+        {
+            var stairs = Generator<ChiselPathedStairsComponent>(out var model);
+            stairs.definition.shape = new Curve2D(false, new CurveControlPoint2D(-2, -2), new CurveControlPoint2D(2, -2), new CurveControlPoint2D(2, 2));
+            ref var settings = ref stairs.definition.settings.stairs;
+            settings.leftSide  = StairsSideType.Up;
+            settings.rightSide = StairsSideType.Up;
+            stairs.OnValidate();
+            Update();
+
+            var vertices = DrawnVertices(model, out _);
+            Assert.That(vertices, Is.Not.Empty, "nothing drawn");
+            var top = float.NegativeInfinity;
+            foreach (var vertex in vertices)
+                top = Mathf.Max(top, vertex.y);
+            var stairsTop = (float)stairs.definition.settings.stairs.BoundsMax.y;
+            Assert.That(top, Is.GreaterThan(stairsTop + 0.1f), "no side walls above the steps");
+            AssertClosed(model, "pathed stairs with side walls");
+        }
+
+        // Where two parts of the path meet there's a side wall of its own, on the plane they share
+        [Test]
+        public void PathedStairs_HaveSideWallsAtCorners()
+        {
+            var stairs = Generator<ChiselPathedStairsComponent>(out var model);
+            stairs.definition.shape = new Curve2D(false, new CurveControlPoint2D(-2, -2), new CurveControlPoint2D(2, -2), new CurveControlPoint2D(2, 2));
+            stairs.definition.settings.cornerSide = StairsSideType.Up;
+            stairs.OnValidate();
+            Update();
+
+            var vertices = DrawnVertices(model, out _);
+            Assert.That(vertices, Is.Not.Empty, "nothing drawn");
+            var top = float.NegativeInfinity;
+            foreach (var vertex in vertices)
+                top = Mathf.Max(top, vertex.y);
+            var stairsTop = (float)stairs.definition.settings.stairs.BoundsMax.y;
+            Assert.That(top, Is.GreaterThan(stairsTop + 0.1f), "no side wall above the steps at the corner");
+
+            // the corner's plane is x + z = 0: the wall above the steps is on both sides of it, half on each
+            float before = 0, after = 0;
+            foreach (var vertex in vertices)
+            {
+                if (vertex.y < stairsTop + 0.1f)
+                    continue;
+                before = Mathf.Min(before, vertex.x + vertex.z);
+                after  = Mathf.Max(after,  vertex.x + vertex.z);
+            }
+            Assert.That(after + before, Is.EqualTo(0).Within(1e-3f), $"not centred on the corner: from {before} to {after}");
+            Assert.That(after, Is.GreaterThan(0.01f), "the wall is only on one side of the corner");
+
+            // one wall square to the plane, not two halves each leaning along their own part
+            var planeNormal = new Vector3(1, 0, 1).normalized;
+            var sides = 0;
+            foreach (var triangle in DrawnTriangles(model))
+            {
+                var middle = (triangle.a + triangle.b + triangle.c) / 3;
+                // within the wall where it's above all the steps, not the steps beside or under it
+                if (middle.y < top - (stairs.definition.settings.stairs.sideHeight * 0.5f) || Mathf.Abs(middle.x + middle.z) > 0.15f)
+                    continue;
+                var cross  = Vector3.Cross(triangle.b - triangle.a, triangle.c - triangle.a);
+                // a triangle with all its corners on a line has no side it faces
+                if (cross.magnitude < 1e-4f)
+                    continue;
+                var normal = cross.normalized;
+                var facing = Mathf.Abs(Vector3.Dot(normal, planeNormal));
+                if (Mathf.Abs(normal.y) > 0.1f || facing < 0.5f)
+                    continue;
+                sides++;
+                Assert.That(facing, Is.GreaterThan(0.999f), $"a side of the wall at {middle} leans along its part, facing {normal}");
+            }
+            Assert.That(sides, Is.GreaterThan(0), "no sides to the wall at the corner");
+            AssertClosed(model, "pathed stairs with a wall at the corner");
+        }
+
+        // Where the two parts' fronts meet in a point sticking out, that point is cut off under the corner's wall, which
+        // is in front of everything within its width
+        [TestCase(-6), TestCase(2)]
+        public void PathedStairs_AreCutOffUnderTheirCornerWall_WhereTheirFrontsMeetInAPoint(float endZ)
+        {
+            var stairs = Generator<ChiselPathedStairsComponent>(out var model);
+            stairs.definition.shape = new Curve2D(false, new CurveControlPoint2D(-2, -2), new CurveControlPoint2D(2, -2), new CurveControlPoint2D(2, endZ));
+            stairs.definition.settings.cornerSide = StairsSideType.Up;
+            stairs.OnValidate();
+            Update();
+
+            var vertices = DrawnVertices(model, out _);
+            Assert.That(vertices, Is.Not.Empty, "nothing drawn");
+            // the corner's plane goes through (2, -2) halfway between the two parts; along it, towards the corner of
+            // the path is forward
+            var planeNormal = (new Vector3(1, 0, 0) + new Vector3(0, 0, Mathf.Sign(endZ + 2))).normalized;
+            var along       = Vector3.Cross(Vector3.up, planeNormal);
+            var middle      = Vector3.zero;
+            foreach (var vertex in vertices)
+                middle += vertex;
+            middle /= vertices.Count;
+            if (Vector3.Dot(new Vector3(2, 0, -2) - middle, along) < 0)
+                along = -along;
+
+            var halfWidth = stairs.definition.settings.stairs.sideWidth * 0.5f;
+            float inside = float.NegativeInfinity, wallFront = float.NegativeInfinity;
+            foreach (var vertex in vertices)
+            {
+                var fromPlane = Mathf.Abs(Vector3.Dot(vertex - new Vector3(2, 0, -2), planeNormal));
+                var forward   = Vector3.Dot(vertex, along);
+                if (fromPlane < halfWidth - 1e-3f)
+                    inside = Mathf.Max(inside, forward);
+                else if (fromPlane < halfWidth + 1e-3f)
+                    wallFront = Mathf.Max(wallFront, forward);
+            }
+            Assert.That(inside, Is.LessThanOrEqualTo(wallFront + 1e-3f), "the steps stick out in front of the wall at the corner");
+            AssertClosed(model, "pathed stairs cut off under the wall at a corner");
+        }
+
+        // The corner's wall reaches out past the steps' fronts as far as asked, when that's further than the noses
+        [Test]
+        public void PathedStairs_HaveTheirCornerWallReachOutAsFarAsAsked()
+        {
+            float FrontWith(float frontOffset)
+            {
+                var stairs = Generator<ChiselPathedStairsComponent>(out var model);
+                stairs.definition.shape = new Curve2D(false, new CurveControlPoint2D(-2, -2), new CurveControlPoint2D(2, -2), new CurveControlPoint2D(2, -6));
+                stairs.definition.settings.cornerSide = StairsSideType.Up;
+                stairs.definition.settings.stairs.sideFrontOffset = frontOffset;
+                stairs.OnValidate();
+                Update();
+                // the corner's plane is x - z = 4; along it, (-1, 0, -1) is towards the corner of the path
+                var planeNormal = new Vector3(1, 0, -1).normalized;
+                var along       = new Vector3(-1, 0, -1).normalized;
+                var front       = float.NegativeInfinity;
+                foreach (var vertex in DrawnVertices(model, out _))
+                {
+                    var fromPlane = Mathf.Abs(Vector3.Dot(vertex - new Vector3(2, 0, -2), planeNormal));
+                    if (fromPlane < (stairs.definition.settings.stairs.sideWidth * 0.5f) + 1e-3f)
+                        front = Mathf.Max(front, Vector3.Dot(vertex, along));
+                }
+                return front;
+            }
+            var nosesOnly = FrontWith(0);
+            var further   = FrontWith(0.5f);
+            Assert.That(further - nosesOnly, Is.GreaterThan(0.3f), $"the wall's front went from {nosesOnly} to {further}");
+        }
+
+        // Linear stairs' side walls reach out past the steps' fronts as far as asked
+        [Test]
+        public void LinearStairsSideWalls_ReachOutPastTheStepsAsFarAsAsked()
+        {
+            float FrontWith(float frontOffset)
+            {
+                var stairs = Generator<ChiselLinearStairsComponent>(out var model);
+                ref var settings = ref stairs.definition.settings;
+                settings.bounds          = new MinMaxAABB { Min = new float3(0, 0, 0), Max = new float3(2, 1, 2) };
+                settings.leftSide        = StairsSideType.DownAndUp;
+                settings.rightSide       = StairsSideType.DownAndUp;
+                settings.sideFrontOffset = frontOffset;
+                stairs.OnValidate();
+                Update();
+                var front = float.NegativeInfinity;
+                foreach (var vertex in DrawnVertices(model, out _))
+                    front = Mathf.Max(front, vertex.z);
+                return front;
+            }
+            // the steps' fronts are at z 2, the treads' noses a little past them
+            Assert.That(FrontWith(0.3f), Is.EqualTo(2.3f).Within(1e-3f), "the walls' front isn't that far past the steps'");
+        }
+
+        // Spiral stairs' side walls reach out round the stairs past the first step's front as far as asked
+        [Test]
+        public void SpiralStairsSideWalls_ReachOutPastTheStepsAsFarAsAsked()
+        {
+            float StartWith(float frontOffset)
+            {
+                var stairs = WideSpiralStairs(out var model);
+                ref var settings = ref stairs.definition.settings;
+                settings.rotation        = 90;
+                settings.outerSide       = StairsSideType.Up;
+                settings.innerSide       = StairsSideType.None;
+                settings.sideFrontOffset = frontOffset;
+                stairs.OnValidate();
+                Update();
+                // how far round from the first step's front the outer wall starts, outside the steps
+                var start = settings.startAngle * Mathf.Deg2Rad;
+                var first = float.PositiveInfinity;
+                foreach (var vertex in DrawnVertices(model, out _))
+                {
+                    if (new Vector2(vertex.x, vertex.z).magnitude < 1.5f + 1e-3f)
+                        continue;
+                    var angle = Mathf.Atan2(vertex.x, vertex.z) - start;
+                    angle = Mathf.Repeat(angle + Mathf.PI, Mathf.PI * 2) - Mathf.PI;
+                    first = Mathf.Min(first, angle);
+                }
+                return first;
+            }
+            var none    = StartWith(0);
+            var further = StartWith(0.3f);
+            Assert.That(none, Is.GreaterThan(-1e-3f), "without an offset the wall starts before the first step");
+            // 0.3 round the middle of the wall, a little more than 1.5 from the middle
+            Assert.That(further, Is.LessThan(-0.1f), $"the wall starts {further} round from the first step");
+        }
+
+        // The side walls beside the floor at the top go back to the stairs' back, as far back from the top step as set, or
+        // not at all
+        [TestCase(StairsTopSideType.Full,   0.0f)]
+        [TestCase(StairsTopSideType.Length, 0.7f)]
+        [TestCase(StairsTopSideType.None,   float.PositiveInfinity)]
+        public void LinearStairsSideWalls_GoBackBesideTheTopFloorAsSet(StairsTopSideType topSide, float back)
+        {
+            var stairs = Generator<ChiselLinearStairsComponent>(out var model);
+            ref var settings = ref stairs.definition.settings;
+            // 5 steps of 0.2 deep in front, a top floor 1 deep behind them
+            settings.bounds        = new MinMaxAABB { Min = new float3(0, 0, 0), Max = new float3(2, 1, 2) };
+            settings.leftSide      = StairsSideType.Up;
+            settings.rightSide     = StairsSideType.Up;
+            settings.topSide       = topSide;
+            settings.topSideLength = 0.3f;
+            stairs.OnValidate();
+            Update();
+            // the wall above the top floor, which is at the stairs' top
+            var wallBack = float.PositiveInfinity;
+            foreach (var vertex in DrawnVertices(model, out _))
+            {
+                if (vertex.y > 1.01f)
+                    wallBack = Mathf.Min(wallBack, vertex.z);
+            }
+            if (float.IsPositiveInfinity(back))
+                Assert.That(wallBack, Is.GreaterThan(0.99f), "a wall beside the top floor");
+            else
+                Assert.That(wallBack, Is.EqualTo(back).Within(1e-3f), "the wall beside the top floor goes back the wrong way");
+        }
+
+        // Spiral stairs raised above the object's position stand on it: their first step, walls and column reach down to it
+        [TestCase(StairsRiserType.ThickRiser)]
+        [TestCase(StairsRiserType.ThinRiser)]
+        [TestCase(StairsRiserType.Smooth)]
+        public void SpiralStairsRaisedAboveTheirPosition_StandOnIt(StairsRiserType riser)
+        {
+            var stairs = WideSpiralStairs(out var model);
+            ref var settings = ref stairs.definition.settings;
+            settings.origin    = new float3(0, 0.5f, 0);
+            settings.riserType = riser;
+            settings.outerSide = StairsSideType.DownAndUp;
+            stairs.OnValidate();
+            Update();
+            float lowest = float.PositiveInfinity, lowestWall = float.PositiveInfinity;
+            foreach (var vertex in DrawnVertices(model, out _))
+            {
+                lowest = Mathf.Min(lowest, vertex.y);
+                // the wall outside the steps
+                if (new Vector2(vertex.x, vertex.z).magnitude > 1.5f + 1e-3f)
+                    lowestWall = Mathf.Min(lowestWall, vertex.y);
+            }
+            Assert.That(lowest, Is.EqualTo(0).Within(1e-3f), "the stairs don't reach down to their position");
+            Assert.That(lowestWall, Is.EqualTo(0).Within(1e-3f), "the wall beside the first step doesn't reach down to their position");
+            AssertClosed(model, "raised spiral stairs");
+        }
+
+        // Pathed stairs without a base are a whole number of steps high: what's left over comes off the top
+        // (steps that don't fit in the depth become a base)
+        [TestCase(2.0f, 0.0f)]
+        [TestCase(0.6f, 0.4f)]
+        public void PathedStairsWithoutABase_AreAWholeNumberOfStepsHigh(float depth, float base_)
+        {
+            var stairs = Generator<ChiselPathedStairsComponent>(out _);
+            ref var settings = ref stairs.definition.settings.stairs;
+            settings.bounds        = new MinMaxAABB { Min = new float3(-1, 0, 0), Max = new float3(1, 1.05f, depth) };
+            settings.stepHeight    = 0.2f;
+            settings.stepDepth     = 0.2f;
+            settings.plateauHeight = 0;
+            stairs.OnValidate();
+            Assert.That(stairs.definition.settings.stairs.plateauHeight, Is.EqualTo(base_).Within(1e-4f), "the base");
+            Assert.That(stairs.definition.settings.stairs.bounds.Max.y, Is.EqualTo(1.0f).Within(1e-4f), "not a whole number of steps high");
+        }
+
+        // Pathed stairs with a sloped underside get no wall at an open path's start and end they weren't given
+        [Test]
+        public void PathedStairsWithSmoothRisers_HaveNoWallAtTheirEndsWithoutOne()
+        {
+            int BrushCount(StairsSideType ends)
+            {
+                var stairs = Generator<ChiselPathedStairsComponent>(out _);
+                stairs.definition.shape = new Curve2D(false, new CurveControlPoint2D(-2, -2), new CurveControlPoint2D(2, -2), new CurveControlPoint2D(2, 2));
+                stairs.definition.settings.stairs.riserType = StairsRiserType.Smooth;
+                stairs.definition.settings.stairs.leftSide  = ends;
+                stairs.definition.settings.stairs.rightSide = ends;
+                stairs.OnValidate();
+                Update();
+                return ((CSGTreeBranch)stairs.TopTreeNode).Count;
+            }
+            Assert.That(BrushCount(StairsSideType.None), Is.LessThan(BrushCount(StairsSideType.Down)), "a wall at the ends that wasn't asked for");
+        }
+
+        // Pathed stairs' treads reach out past an open path's start and end without guard rails, but not at a corner
+        [Test]
+        public void PathedStairsTreads_ReachOutOnlyAtTheirOpenEnds()
+        {
+            float Reach(float nosingWidth)
+            {
+                var stairs = Generator<ChiselPathedStairsComponent>(out var model);
+                stairs.definition.shape = new Curve2D(false, new CurveControlPoint2D(-2, -2), new CurveControlPoint2D(2, -2), new CurveControlPoint2D(2, 2));
+                stairs.definition.settings.stairs.nosingWidth = nosingWidth;
+                stairs.OnValidate();
+                Update();
+                // the path's start is at x -2: how far past it the stairs reach
+                var reach = float.PositiveInfinity;
+                foreach (var vertex in DrawnVertices(model, out _))
+                    reach = Mathf.Min(reach, vertex.x);
+                return -2 - reach;
+            }
+            Assert.That(Reach(0.1f) - Reach(0), Is.EqualTo(0.1f).Within(1e-3f), "the treads don't reach out past the start");
+        }
+
+        // Smooth linear stairs get a wall down on a side without one, which a corner of pathed stairs doesn't need
+        [Test]
+        public void PathedStairsWithSmoothRisers_HaveNoWallAtCornersWithoutOne()
+        {
+            int BrushCount(StairsSideType cornerSide)
+            {
+                var stairs = Generator<ChiselPathedStairsComponent>(out _);
+                stairs.definition.shape = new Curve2D(false, new CurveControlPoint2D(-2, -2), new CurveControlPoint2D(2, -2), new CurveControlPoint2D(2, 2));
+                stairs.definition.settings.stairs.riserType = StairsRiserType.Smooth;
+                stairs.definition.settings.cornerSide = cornerSide;
+                stairs.OnValidate();
+                Update();
+                return ((CSGTreeBranch)stairs.TopTreeNode).Count;
+            }
+            Assert.That(BrushCount(StairsSideType.None), Is.LessThan(BrushCount(StairsSideType.Down)), "a wall at the corner that wasn't asked for");
+        }
+
         static List<Vector3> DrawnVertices(ChiselModelComponent model, out List<Vector3> triangleMiddles)
         {
             var vertices = new List<Vector3>();
@@ -1015,6 +1551,21 @@ namespace Chisel.Components.Tests
             return vertices;
         }
 
+        static List<(Vector3 a, Vector3 b, Vector3 c)> DrawnTriangles(ChiselModelComponent model)
+        {
+            var triangles = new List<(Vector3 a, Vector3 b, Vector3 c)>();
+            foreach (var renderable in model.generated.renderables)
+            {
+                if (renderable == null || renderable.sharedMesh == null)
+                    continue;
+                var v = renderable.sharedMesh.vertices;
+                var t = renderable.sharedMesh.triangles;
+                for (int i = 0; i < t.Length; i += 3)
+                    triangles.Add((v[t[i]], v[t[i + 1]], v[t[i + 2]]));
+            }
+            return triangles;
+        }
+
         static float Around(Vector3 point) { return new Vector2(point.x, point.z).magnitude; }
 
         ChiselSpiralStairsComponent WideSpiralStairs(out ChiselModelComponent model)
@@ -1023,6 +1574,26 @@ namespace Chisel.Components.Tests
             stairs.definition.settings.outerDiameter = 3;
             stairs.definition.settings.innerDiameter = 1;
             return stairs;
+        }
+
+        // Without treads the risers are trimmed by their own cylinder, as wide as the stairs. The treads' cylinders, wider
+        // by the nose, were made anyway, in the risers' cylinders' places, which were left without being disposed
+        [Test]
+        public void SpiralStairsWithoutTreads_TrimTheirRisersWithTheirOwnCylinder()
+        {
+            var stairs = WideSpiralStairs(out _);
+            stairs.definition.settings.nosingDepth = 0;   // no treads
+            stairs.definition.settings.nosingWidth = 0.2f;
+            stairs.definition.settings.riserType   = StairsRiserType.ThickRiser;
+            stairs.OnValidate();
+            Update();
+
+            var branch = (CSGTreeBranch)stairs.TopTreeNode;
+            var outer  = (CSGTreeBrush)branch[stairs.definition.settings.TreadStart - stairs.definition.settings.CylinderSubMeshCount];
+            var blob   = BrushMeshManager.GetBrushMeshBlob(outer.BrushMesh.BrushMeshID);
+            Assert.That(blob.IsCreated, Is.True, "no cylinder");
+            var bounds = blob.Value.localBounds;
+            Assert.That((float)(bounds.Max.x - bounds.Min.x), Is.EqualTo(3).Within(0.1f), "the risers' cylinder isn't as wide as the stairs");
         }
 
         // A wall along the outside of spiral stairs stands outside the steps, as thick as set
@@ -1320,6 +1891,108 @@ namespace Chisel.Components.Tests
                 }
             }
             finally { foreach (var m in materials) UnityEngine.Object.DestroyImmediate(m); }
+        }
+
+        // Stairs that start higher up have their base, from the floor to the lowest step, in a surface of its own; it was
+        // the lowest step's, down to the floor
+        [TestCase(0, StairsRiserType.ThickRiser)]
+        [TestCase(0, StairsRiserType.ThinRiser)]
+        [TestCase(0, StairsRiserType.Smooth)]
+        [TestCase(1, StairsRiserType.ThickRiser)]
+        [TestCase(2, StairsRiserType.ThickRiser)]
+        [TestCase(2, StairsRiserType.ThinRiser)]
+        [TestCase(2, StairsRiserType.Smooth)]
+        public void StairsWithABase_HaveItInItsOwnSurface(int kind, StairsRiserType riserType)
+        {
+            ChiselGeneratorComponent stairs;
+            ChiselModelComponent model;
+            float baseTop;
+            if (kind == 2)
+            {
+                var s = Generator<ChiselSpiralStairsComponent>(out model);
+                s.definition.settings.riserType = riserType;
+                s.definition.settings.origin    = new float3(0, 0.5f, 0);
+                baseTop = 0.5f;
+                stairs = s;
+            } else
+            {
+                ChiselLinearStairs settings;
+                if (kind == 0)
+                {
+                    var linear = Generator<ChiselLinearStairsComponent>(out model);
+                    settings = linear.definition.settings;
+                    stairs = linear;
+                } else
+                {
+                    var pathed = Generator<ChiselPathedStairsComponent>(out model);
+                    pathed.definition.shape = new Curve2D(false, new CurveControlPoint2D(-2, -2), new CurveControlPoint2D(2, -2), new CurveControlPoint2D(2, 2));
+                    settings = pathed.definition.settings.stairs;
+                    stairs = pathed;
+                }
+                settings.bounds        = new MinMaxAABB { Min = new float3(-1, 0, 0), Max = new float3(1, 1, 2) };
+                settings.stepHeight    = 0.2f;
+                settings.stepDepth     = 0.2f;
+                settings.plateauHeight = 0.4f;
+                settings.riserType     = riserType;
+                if (stairs is ChiselLinearStairsComponent l) l.definition.settings = settings;
+                else ((ChiselPathedStairsComponent)stairs).definition.settings.stairs = settings;
+                baseTop = 0.4f;
+            }
+            var materials = new List<Material>();
+            try
+            {
+                var triangles = TrianglesBySurface(stairs, model, materials);
+                Assert.That(triangles.ContainsKey((int)StairsSurface.Base), Is.True, "no base drawn");
+                foreach (var t in triangles[(int)StairsSurface.Base])
+                    Assert.That(Mathf.Max(t.a.y, Mathf.Max(t.b.y, t.c.y)), Is.LessThanOrEqualTo(baseTop + 1e-3f), "a base face above the base");
+                foreach (var pair in triangles)
+                {
+                    var surface = (StairsSurface)pair.Key;
+                    if (surface == StairsSurface.Base || surface == StairsSurface.Wall || surface == StairsSurface.WallTop || surface == StairsSurface.WallBottom)
+                        continue;
+                    foreach (var t in pair.Value)
+                    {
+                        var normal = Vector3.Cross(t.b - t.a, t.c - t.a).normalized;
+                        if (Mathf.Abs(normal.y) > 0.1f)
+                            continue;
+                        Assert.That(Mathf.Max(t.a.y, Mathf.Max(t.b.y, t.c.y)), Is.GreaterThan(baseTop + 1e-3f), $"a {surface} face beside the base");
+                    }
+                }
+            }
+            finally { foreach (var m in materials) UnityEngine.Object.DestroyImmediate(m); }
+        }
+
+        // the triangles drawn, by the surface they're drawn with, each surface given a material of its own
+        Dictionary<int, List<(Vector3 a, Vector3 b, Vector3 c)>> TrianglesBySurface(ChiselGeneratorComponent generator, ChiselModelComponent model, List<Material> materials)
+        {
+            for (int i = 0; i < generator.SurfaceDefinition.surfaces.Length; i++)
+            {
+                var material = new Material(ChiselProjectSettings.DefaultWallMaterial) { name = "surface " + i };
+                materials.Add(material);
+                generator.SurfaceDefinition.surfaces[i].SetMaterial(material);
+            }
+            generator.OnValidate();
+            Update();
+            var result = new Dictionary<int, List<(Vector3 a, Vector3 b, Vector3 c)>>();
+            foreach (var renderable in model.generated.renderables)
+            {
+                if (renderable == null || renderable.sharedMesh == null || renderable.renderMaterials == null)
+                    continue;
+                var mesh = renderable.sharedMesh;
+                var vertices = mesh.vertices;
+                for (int sub = 0; sub < mesh.subMeshCount && sub < renderable.renderMaterials.Length; sub++)
+                {
+                    var surface = materials.IndexOf(renderable.renderMaterials[sub]);
+                    if (surface < 0)
+                        continue;
+                    if (!result.TryGetValue(surface, out var list))
+                        result[surface] = list = new List<(Vector3 a, Vector3 b, Vector3 c)>();
+                    var triangles = mesh.GetTriangles(sub);
+                    for (int t = 0; t + 2 < triangles.Length; t += 3)
+                        list.Add((vertices[triangles[t]], vertices[triangles[t + 1]], vertices[triangles[t + 2]]));
+                }
+            }
+            return result;
         }
 
         // The column in the middle has a surface of its own, and the treads' bottoms one apart from the steps' backs

@@ -18,6 +18,7 @@ namespace Chisel.Editors.Tests
             Assert.That(ChiselMeshPicking.Available, Is.True, "mesh picking");
             Assert.That(ChiselLightmappingInternals.Available, Is.True, "lightmapping warnings");
             Assert.That(ChiselGeneratedPicking.Available, Is.True, "picking off generated objects without undo");
+            Assert.That(ChiselClickThrough.Available, Is.True, "clicking through only on the same spot");
             Assert.That(ChiselUnityInternals.Missing.Where(missing => !missing.Contains(kTestFeature)), Is.Empty);
         }
 
@@ -49,6 +50,34 @@ namespace Chisel.Editors.Tests
                 Assert.That(Steps(), Is.EqualTo(before), "an undo step was added");
             }
             finally { Object.DestroyImmediate(container); }
+        }
+
+        // Clicking through to what's behind starts over once the mouse moves: Unity went on to the next object behind
+        // whenever a click found the same objects under it as the last one, so a second click anywhere on a generator
+        // selected what was behind it
+        [Test]
+        public void MovingTheMouse_StartsClickingThroughOver()
+        {
+            var picking  = typeof(Editor).Assembly.GetType("UnityEditor.SceneViewPicking");
+            var flags    = System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic;
+            var topmost  = picking.GetField("s_PreviousTopmostHash", flags);
+            var prefix   = picking.GetField("s_PreviousPrefixHash", flags);
+            var oldTop   = topmost.GetValue(null);
+            var oldPre   = prefix.GetValue(null);
+            try
+            {
+                // as after a click
+                topmost.SetValue(null, 1234);
+                prefix.SetValue(null, 5678);
+                ChiselClickThrough.StartOver();
+                Assert.That(topmost.GetValue(null), Is.EqualTo(0), "the objects under the last click are still remembered");
+                Assert.That(prefix.GetValue(null), Is.EqualTo(0), "the objects under the last click are still remembered");
+            }
+            finally
+            {
+                topmost.SetValue(null, oldTop);
+                prefix.SetValue(null, oldPre);
+            }
         }
 
         // A member Unity no longer has: one warning naming it and the feature, and nothing to use

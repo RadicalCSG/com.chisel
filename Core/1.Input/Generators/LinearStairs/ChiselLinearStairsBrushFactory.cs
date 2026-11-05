@@ -16,7 +16,7 @@ namespace Chisel.Core
             // TODO: properly assign all materials
 
             ref var surfaceDefinition = ref surfaceDefinitionBlob.Value;
-            if (surfaceDefinition.surfaces.Length != StairsSurfaces.kCount)
+            if (surfaceDefinition.surfaces.Length < StairsSurfaces.kCount)
                 return false;
 
             var stepOffset = new float3(0, -description.stepHeight, description.stepDepth);
@@ -47,8 +47,8 @@ namespace Chisel.Core
                                      (fillDown && description.rightSideType != StairsSideType.None);
                     var leftTaken  = description.leftSideType  == StairsSideType.Down || description.leftSideType  == StairsSideType.DownAndUp ||
                                      (fillDown && description.leftSideType  != StairsSideType.None);
-                    min.x += rightTaken ? description.sideWidth : 0;
-                    max.x -= leftTaken  ? description.sideWidth : 0;
+                    min.x += rightTaken ? description.rightSideWidth : 0;
+                    max.x -= leftTaken  ? description.leftSideWidth : 0;
 
                     var extrusion = new float3(max.x - min.x, 0, 0);
                     if (description.riserType == StairsRiserType.FillDown)
@@ -64,7 +64,8 @@ namespace Chisel.Core
                         }
                         if (i == description.stepCount - 1)
                         {
-                            min.y += description.treadHeight - description.offsetY;
+                            // the lowest step goes down to the floor, or to the base when there is one, which is its own
+                            min.y += description.treadHeight - (description.haveBase ? 0 : description.offsetY);
                         }
 
                         var minZ = math.max(description.bounds.Min.z, min.z);
@@ -101,6 +102,22 @@ namespace Chisel.Core
                                                                                        new float2(min.x, maxZ), new float2(max.x, maxZ)),
                                                                         new float3(min.x, description.bounds.Max.y, 0), aroundOrigin: false, description.stepHeight));// Indirect
 
+                        // the base under the lowest step, from the floor up, as wide as the steps and as deep as that step,
+                        // at least a whole step deep under a thin riser
+                        if (i == description.stepCount - 1 && description.haveBase)
+                        {
+                            var floor    = description.bounds.Min.y;
+                            var baseMinZ = math.max(description.bounds.Min.z, math.min(minZ, maxZ - description.stepDepth));
+                            vertices[0] = new float3(min.x, floor, baseMinZ);
+                            vertices[1] = new float3(min.x, floor, maxZ);
+                            vertices[2] = new float3(min.x, min.y, maxZ);
+                            vertices[3] = new float3(min.x, min.y, baseMinZ);
+                            brushMeshes[subMeshOffset + description.startBase] = TurnSideFaces(AlignedUpright(AlignedToFront(CreateExtrudedSubMeshBlob(vertices, extrusion, indices, StairsPart.Base, ref surfaceDefinition, allocator),
+                                                                                                             new float2(min.x, maxZ), new float2(max.x, maxZ)),
+                                                                                              // from where the step above it starts its texture, so it runs on across the two
+                                                                                              new float3(min.x, StepTextureBottom(max.y, in description), 0), aroundOrigin: false, 0));// Indirect
+                        }
+
 						if (description.riserType != StairsRiserType.FillDown)
                             min.z += description.stepDepth;
                         max.z += description.stepDepth;
@@ -110,12 +127,12 @@ namespace Chisel.Core
                 }
                 if (description.haveTread)
                 {
-                    var min = new float3(description.bounds.Min.x + description.sideWidth, description.bounds.Max.y - description.treadHeight, description.bounds.Min.z);
-                    var max = new float3(description.bounds.Max.x - description.sideWidth, description.bounds.Max.y, description.bounds.Min.z + description.stepDepthOffset + description.stepDepth + description.nosingDepth);
+                    var min = new float3(description.bounds.Min.x + description.rightSideWidth, description.bounds.Max.y - description.treadHeight, description.bounds.Min.z);
+                    var max = new float3(description.bounds.Max.x - description.leftSideWidth, description.bounds.Max.y, description.bounds.Min.z + description.stepDepthOffset + description.stepDepth + description.nosingDepth);
                     for (int i = 0; i < description.stepCount; i++)
                     {
-                        min.x = description.bounds.Min.x - ((i == 0) ? description.rightTopNosingWidth : description.rightNosingWidth);
-                        max.x = description.bounds.Max.x + ((i == 0) ? description.leftTopNosingWidth  : description.leftNosingWidth );
+                        min.x = description.bounds.Min.x - description.rightNosingWidth;
+                        max.x = description.bounds.Max.x + description.leftNosingWidth;
                         if (i == 1)
                         {
                             min.z = max.z - (description.stepDepth + description.nosingDepth);
@@ -154,7 +171,7 @@ namespace Chisel.Core
 
                 if (description.leftSideDescription.enabled)
                 {
-                    var minX = description.bounds.Max.x - description.sideWidth;
+                    var minX = description.bounds.Max.x - description.leftSideWidth;
                     var maxX = description.bounds.Max.x;
 
                     GenerateStairsSide(brushMeshes, subMeshOffset + description.startLeftSide, description.stepCount, minX, maxX, 
@@ -164,7 +181,7 @@ namespace Chisel.Core
                 if (description.rightSideDescription.enabled)
                 {
                     var minX = description.bounds.Min.x;
-                    var maxX = description.bounds.Min.x + description.sideWidth;
+                    var maxX = description.bounds.Min.x + description.rightSideWidth;
 
                     GenerateStairsSide(brushMeshes, subMeshOffset + description.startRightSide, description.stepCount, minX, maxX, description.rightSideType,
                                        in description, ref surfaceDefinition, description.rightSideDescription, allocator);// Indirect
@@ -174,8 +191,74 @@ namespace Chisel.Core
                 var sideEnd = subMeshOffset + description.startRightSide + (description.rightSideDescription.enabled ? description.rightSideDescription.subMeshCount : 0);
                 for (int i = subMeshOffset + description.startLeftSide; i < sideEnd && i < brushMeshes.Length; i++)
                     brushMeshes[i] = TurnSideFaces(brushMeshes[i]);
+
+                if (description.sideFrontOffset > 0)
+                {
+                    var front = subMeshOffset + description.startSideFronts;
+                    if (description.leftSideDescription.enabled)
+                        brushMeshes[front++] = SideFront(brushMeshes, subMeshOffset + description.startLeftSide, description.leftSideDescription.subMeshCount,
+                                                         description.bounds.Max.x - description.leftSideWidth, description.bounds.Max.x, in description, ref surfaceDefinition, allocator);
+                    if (description.rightSideDescription.enabled)
+                        brushMeshes[front++] = SideFront(brushMeshes, subMeshOffset + description.startRightSide, description.rightSideDescription.subMeshCount,
+                                                         description.bounds.Min.x, description.bounds.Min.x + description.rightSideWidth, in description, ref surfaceDefinition, allocator);
+                }
             }
             return true;
+        }
+
+        // where the texture of a step with its top here starts, as AlignedUpright has it for the steps
+        static float StepTextureBottom(float top, in LineairStairsData description)
+        {
+            var origin = description.bounds.Max.y;
+            return origin + (math.ceil((top - origin) / description.stepHeight - 0.001f) - 1) * description.stepHeight;
+        }
+
+        // the shortest a wall beside the top floor is, when the length set doesn't reach past the wall under the steps
+        const float kMinTopSide = 0.001f;
+
+        // In front of a side wall, as far out as asked: its front face pushed out straight, top and bottom flat
+        static BlobAssetReference<BrushMeshBlob> SideFront(NativeList<BlobAssetReference<BrushMeshBlob>> brushMeshes, int first, int count, float minX, float maxX,
+                                                           in LineairStairsData description, ref InternalChiselSurfaceArray surfaceDefinition, Allocator allocator)
+        {
+            var front = float.NegativeInfinity;
+            for (int i = first; i < first + count; i++)
+            {
+                if (!brushMeshes[i].IsCreated)
+                    continue;
+                ref var vertices = ref brushMeshes[i].Value.localVertices;
+                for (int v = 0; v < vertices.Length; v++)
+                    front = math.max(front, vertices[v].z);
+            }
+            float bottom = float.PositiveInfinity, top = float.NegativeInfinity;
+            for (int i = first; i < first + count; i++)
+            {
+                if (!brushMeshes[i].IsCreated)
+                    continue;
+                ref var vertices = ref brushMeshes[i].Value.localVertices;
+                for (int v = 0; v < vertices.Length; v++)
+                {
+                    if (vertices[v].z < front - 1e-4f)
+                        continue;
+                    bottom = math.min(bottom, vertices[v].y);
+                    top    = math.max(top,    vertices[v].y);
+                }
+            }
+            if (!(top > bottom))
+                return BlobAssetReference<BrushMeshBlob>.Null;
+
+            var z0 = front;
+            var z1 = front + description.sideFrontOffset;
+            NativeArray<float3> corners;
+            using var _corners = corners = new NativeArray<float3>(4, Allocator.Temp);
+            corners[0] = new float3(minX, top,    z0);
+            corners[1] = new float3(minX, bottom, z0);
+            corners[2] = new float3(minX, bottom, z1);
+            corners[3] = new float3(minX, top,    z1);
+            NativeArray<int> indices;
+            using var _indices = indices = new NativeArray<int>(6, Allocator.Temp);
+            indices[0] = 0; indices[1] = 1; indices[2] = 2;
+            indices[3] = 0; indices[4] = 2; indices[5] = 3;
+            return TurnSideFaces(TexturedAsTheSteps(CreateExtrudedSubMeshBlob(corners, new float3(maxX - minX, 0, 0), indices, StairsPart.Wall, ref surfaceDefinition, allocator), in description));// Indirect
         }
 
         // Steps solid down to the floor, seen from the side: one shape under them all, flat on top at the back, sloping down
@@ -334,6 +417,41 @@ namespace Chisel.Core
 				return BlobAssetReference<BrushMeshBlob>.Null;
 		}
 
+        // A wall that goes down beside the steps has its texture placed as theirs, so its front and back run on from
+        // theirs where they meet
+        static BlobAssetReference<BrushMeshBlob> TexturedAsTheSteps(BlobAssetReference<BrushMeshBlob> wall, in LineairStairsData description)
+        {
+            // its faces to the sides are turned with the rest of the side walls'
+            return AlignedUpright(wall, new float3(description.bounds.Min.x + description.rightSideWidth, description.bounds.Max.y, 0),
+                                  aroundOrigin: false, description.stepHeight);
+        }
+
+        // A corner of a wall's outline, left out where it's where the one before is (or, last, where the first is): a side
+        // between the two would have no length, and its plane no direction
+        static void AddCorner(NativeList<float3> corners, float3 corner)
+        {
+            const float kSame = 1e-5f;
+            if (corners.Length > 0 && math.lengthsq(corners[corners.Length - 1] - corner) < kSame * kSame)
+                return;
+            corners.Add(corner);
+        }
+
+        // Triangles fanned out over all of an outline's corners, from its first; a last corner on the first is left out
+        static NativeList<int> FanIndices(NativeList<float3> corners)
+        {
+            const float kSame = 1e-5f;
+            if (corners.Length > 1 && math.lengthsq(corners[corners.Length - 1] - corners[0]) < kSame * kSame)
+                corners.RemoveAt(corners.Length - 1);
+            var indices = new NativeList<int>(math.max(0, corners.Length - 2) * 3, Allocator.Temp);
+            for (int k = 1; k + 1 < corners.Length; k++)
+            {
+                indices.Add(0);
+                indices.Add(k);
+                indices.Add(k + 1);
+            }
+            return indices;
+        }
+
         private static void GenerateStairsSide(NativeList<BlobAssetReference<BrushMeshBlob>> brushMeshes, int startIndex, int stepCount, float minX, float maxX, 
                                                StairsSideType sideType, in LineairStairsData description, ref InternalChiselSurfaceArray surfaceDefinition, 
                                                in LinearStairsSideData side, Allocator allocator = Allocator.Persistent)// Indirect
@@ -341,7 +459,8 @@ namespace Chisel.Core
             var min = new float3(minX, description.bounds.Max.y - description.treadHeight - description.stepHeight, description.bounds.Min.z + description.stepDepthOffset);
             var max = new float3(maxX, description.bounds.Max.y - description.treadHeight                         , description.bounds.Min.z + description.stepDepthOffset + description.stepDepth);
 
-            var maxZ = description.bounds.Max.z - description.riserDepth;
+            // thick steps reach the front; a thin riser is a riser's depth behind it
+            var maxZ = description.thickRiser ? description.bounds.Max.z : description.bounds.Max.z - description.riserDepth;
 
             var aspect = description.stepHeight / description.stepDepth;
 
@@ -349,23 +468,27 @@ namespace Chisel.Core
             {
                 var extrusion = new float3(max.x - min.x, 0, 0);
                 // Top "wall"
-                if (description.stepDepthOffset > description.sideDepth)
+                if (LinearStairsSideData.HasTopWall(description.stepDepthOffset, description.sideDepth, description.riserType, description.topSideLength))
                 {
-                    // z0 y0 *----* z1 y0 
+                    // z0 y0 *----* z1 y0
                     //       |    |
-                    // z0 y1 *----* z1 y2 
+                    // z0 y1 *----* z1 y2
                     var y0 = max.y + description.sideHeight;
                     var y1 = max.y;
                     var y2 = min.y;
-                    var z0 = description.bounds.Min.z;
-                    var z1 = min.z - description.sideDepth;
+                    // a thick top floor goes down to y2 all the way to the first step's front: so does its wall, which
+                    // overlaps the wall under the steps there
+                    var z1 = description.thickRiser ? min.z : min.z - description.sideDepth;
+                    // back to the back of the stairs, or as far back from the top step as set
+                    var z0 = math.min(math.max(description.bounds.Min.z, min.z - description.topSideLength), z1 - kMinTopSide);
+                    var bottom = description.thickRiser ? y2 : y1;
 
                     NativeArray<float3> vertices;
 					using var _vertices = vertices = new NativeArray<float3>(4, Allocator.Temp);
-                    vertices[0] = new float3(min.x, y0, z0); // 0
-                    vertices[1] = new float3(min.x, y1, z0); // 1
-                    vertices[2] = new float3(min.x, y1, z1); // 2
-                    vertices[3] = new float3(min.x, y0, z1); // 3
+                    vertices[0] = new float3(min.x, y0,     z0); // 0
+                    vertices[1] = new float3(min.x, bottom, z0); // 1
+                    vertices[2] = new float3(min.x, bottom, z1); // 2
+                    vertices[3] = new float3(min.x, y0,     z1); // 3
 
                     NativeArray<int> indices;
 					using var _indices = indices = new NativeArray<int>(6, Allocator.Temp);
@@ -376,7 +499,7 @@ namespace Chisel.Core
                     indices[4] = 2; 
                     indices[5] = 3;
 
-                    brushMeshes[startIndex] = CreateExtrudedSubMeshBlob(vertices, extrusion, indices, StairsPart.Wall, ref surfaceDefinition, allocator);// Indirect
+                    brushMeshes[startIndex] = TexturedAsTheSteps(CreateExtrudedSubMeshBlob(vertices, extrusion, indices, StairsPart.Wall, ref surfaceDefinition, allocator), in description);// Indirect
 				} else
                     startIndex--;
 
@@ -422,7 +545,7 @@ namespace Chisel.Core
                     indices[4] = 2;
                     indices[5] = 3;
 
-                    brushMeshes[startIndex + 1] = CreateExtrudedSubMeshBlob(vertices, extrusion, indices, StairsPart.Wall, ref surfaceDefinition, allocator);// Indirect
+                    brushMeshes[startIndex + 1] = TexturedAsTheSteps(CreateExtrudedSubMeshBlob(vertices, extrusion, indices, StairsPart.Wall, ref surfaceDefinition, allocator), in description);// Indirect
 				} else
                 {
                     var y1 = max.y;
@@ -478,7 +601,7 @@ namespace Chisel.Core
                         indices[7] = 3;
                         indices[8] = 4; // TODO: fix this
                                 
-                        brushMeshes[startIndex + 1] = CreateExtrudedSubMeshBlob(vertices, extrusion, indices, StairsPart.Wall, ref surfaceDefinition, allocator);// Indirect
+                        brushMeshes[startIndex + 1] = TexturedAsTheSteps(CreateExtrudedSubMeshBlob(vertices, extrusion, indices, StairsPart.Wall, ref surfaceDefinition, allocator), in description);// Indirect
 					} else
                     if (z3 > maxZ)
                     {
@@ -518,7 +641,7 @@ namespace Chisel.Core
                             indices[7] = 3;
                             indices[8] = 4;
                                     
-                            brushMeshes[startIndex + 1] = CreateExtrudedSubMeshBlob(vertices, extrusion, indices, StairsPart.Wall, ref surfaceDefinition, allocator);// Indirect
+                            brushMeshes[startIndex + 1] = TexturedAsTheSteps(CreateExtrudedSubMeshBlob(vertices, extrusion, indices, StairsPart.Wall, ref surfaceDefinition, allocator), in description);// Indirect
 						}
 
                         if ((description.sideDepth * aspect) < (description.plateauHeight - description.treadHeight))
@@ -549,7 +672,7 @@ namespace Chisel.Core
                             indices[4] = 2;
                             indices[5] = 3;
 
-                            brushMeshes[startIndex + 2] = CreateExtrudedSubMeshBlob(vertices, extrusion, indices, StairsPart.Wall, ref surfaceDefinition, allocator);// Indirect
+                            brushMeshes[startIndex + 2] = TexturedAsTheSteps(CreateExtrudedSubMeshBlob(vertices, extrusion, indices, StairsPart.Wall, ref surfaceDefinition, allocator), in description);// Indirect
 						}
                     } else
                     {
@@ -569,36 +692,58 @@ namespace Chisel.Core
                         //             \    |
                         //        y2 z3 *---* y2 z1 
 
-                        NativeArray<float3> vertices;
-						using var _vertices = vertices = new NativeArray<float3>(6, Allocator.Temp);
-                        vertices[0] = new float3(min.x, y0, z2); // 0
-                        vertices[1] = new float3(min.x, y1, z2); // 1
-                        vertices[2] = new float3(min.x, y2, z3); // 2
-                        vertices[3] = new float3(min.x, y2, z1); // 3
-                        vertices[4] = new float3(min.x, y3, z1); // 4
-                        vertices[5] = new float3(min.x, y0, z0); // 5
+                        using var vertices = new NativeList<float3>(6, Allocator.Temp);
+                        AddCorner(vertices, new float3(min.x, y0, z2));
+                        AddCorner(vertices, new float3(min.x, y1, z2));
+                        AddCorner(vertices, new float3(min.x, y2, z3));
+                        AddCorner(vertices, new float3(min.x, y2, z1));
+                        AddCorner(vertices, new float3(min.x, y3, z1));
+                        AddCorner(vertices, new float3(min.x, y0, z0));
+                        using var indices = FanIndices(vertices);
 
-                        NativeArray<int> indices;
-						using var _indices = indices = new NativeArray<int>(9, Allocator.Temp);
-                        indices[0] = 0;
-                        indices[1] = 1;
-                        indices[2] = 2;
-                        indices[3] = 0;
-                        indices[4] = 2;
-                        indices[5] = 3;
-                        indices[6] = 0;
-                        indices[7] = 3;
-                        indices[8] = 4;
-                                
-                        brushMeshes[startIndex + 1] = CreateExtrudedSubMeshBlob(vertices, extrusion, indices, StairsPart.Wall, ref surfaceDefinition, allocator);// Indirect
+                        brushMeshes[startIndex + 1] = TexturedAsTheSteps(CreateExtrudedSubMeshBlob(vertices.AsArray(), extrusion, indices.AsArray(), StairsPart.Wall, ref surfaceDefinition, allocator), in description);// Indirect
 					}
+                }
+
+                // Thick steps on a base: the bottom step is solid down to the floor all along it, which the wall beside the
+                // steps, only dropping along their slope, doesn't cover. Its piece beside the base is all of the base's side
+                // (in the place the count of brushes keeps for it)
+                if (description.thickRiser && description.sideDepth > 0 &&
+                    (description.bounds.Max.y - description.treadHeight) >= description.bounds.Min.y &&
+                    (description.sideDepth * aspect) < (description.plateauHeight - description.treadHeight))
+                {
+                    var floor = description.bounds.Min.y;
+                    // up to the bottom step's top, under its tread
+                    var top   = floor + description.plateauHeight + description.stepHeight - description.treadHeight;
+                    var front = description.bounds.Max.z;
+                    var back  = math.max(description.bounds.Min.z, description.bounds.Min.z + description.stepDepthOffset + (description.stepDepth * (stepCount - 2)));
+
+                    // back top *----* front top
+                    //          |    |
+                    // back     *----* front floor
+                    NativeArray<float3> vertices;
+					using var _vertices = vertices = new NativeArray<float3>(4, Allocator.Temp);
+                    vertices[0] = new float3(min.x, top,   back);
+                    vertices[1] = new float3(min.x, floor, back);
+                    vertices[2] = new float3(min.x, floor, front);
+                    vertices[3] = new float3(min.x, top,   front);
+
+                    NativeArray<int> indices;
+					using var _indices = indices = new NativeArray<int>(6, Allocator.Temp);
+                    indices[0] = 0; indices[1] = 1; indices[2] = 2;
+                    indices[3] = 0; indices[4] = 2; indices[5] = 3;
+
+                    if (brushMeshes[startIndex + 2].IsCreated)
+                        brushMeshes[startIndex + 2].Dispose();
+                    // textured as the steps beside it, so its front runs on from the base's
+                    brushMeshes[startIndex + 2] = TexturedAsTheSteps(CreateExtrudedSubMeshBlob(vertices, extrusion, indices, StairsPart.Wall, ref surfaceDefinition, allocator), in description);// Indirect
                 }
             } else
             if (sideType == StairsSideType.Up)
             {
                 var extrusion = new float3(max.x - min.x, 0, 0);
                 // Top "wall" (filled down, the wall on the steps reaches back over it too)
-                if ((min.z - description.bounds.Min.z) > 0 && description.riserType != StairsRiserType.FillDown)
+                if ((min.z - description.bounds.Min.z) > 0 && description.riserType != StairsRiserType.FillDown && description.topSideLength > 0)
                 {
                     // z0 y0 *----* z1 y0
                     //       |    |
@@ -606,8 +751,9 @@ namespace Chisel.Core
                     var y0 = max.y + description.sideHeight;
                     var y1 = max.y;
                     var y2 = min.y;
-                    var z0 = description.bounds.Min.z;
                     var z1 = min.z;
+                    // back to the back of the stairs, or as far back from the top step as set
+                    var z0 = math.max(description.bounds.Min.z, z1 - description.topSideLength);
                     NativeArray<float3> vertices;
 					using var _vertices = vertices = new NativeArray<float3>(4, Allocator.Temp);
                     vertices[0] = new float3(min.x, y0, z0); // 0
@@ -1148,6 +1294,17 @@ namespace Chisel.Core
             public bool enabled;        // TODO: just check if subMeshCount == 0
             public int  subMeshCount;
 
+            // A wall going down beside the top floor has a piece of its own there when the top floor reaches further back
+            // than the wall's depth, or when the top floor is thick: the wall under the steps only drops along their
+            // slope from the tread, so it doesn't cover the top floor's side down to its underside
+            public static bool HasTopWall(float stepDepthOffset, float sideDepth, StairsRiserType riserType, float topSideLength)
+            {
+                if (topSideLength <= 0)
+                    return false;
+                var thickTop = riserType == StairsRiserType.ThickRiser || riserType == StairsRiserType.Smooth;
+                return stepDepthOffset > sideDepth || (thickTop && stepDepthOffset > 0);
+            }
+
             // TODO: just turn into method that returns subMeshCount
             public LinearStairsSideData(float stepHeight,
                                         float stepDepth,
@@ -1155,7 +1312,8 @@ namespace Chisel.Core
                                         float treadHeight,
                                         float absDepth,
                                         float stepDepthOffset,
-                                        int stepCount, float sideDepth, MinMaxAABB bounds, StairsRiserType riserType, float riserDepth, StairsSideType sideType)
+                                        int stepCount, float sideDepth, MinMaxAABB bounds, StairsRiserType riserType, float riserDepth, StairsSideType sideType,
+                                        float topSideLength)
             {
                 this.enabled = sideType != StairsSideType.None;
 
@@ -1182,14 +1340,14 @@ namespace Chisel.Core
                 {
                     // with steps solid down to the floor the wall on them is one piece, otherwise one per step
                     var onSteps = (riserType == StairsRiserType.FillDown) ? 1 : stepCount;
-                    if (stepDepthOffset > 0 && riserType != StairsRiserType.FillDown)
+                    if (stepDepthOffset > 0 && riserType != StairsRiserType.FillDown && topSideLength > 0)
                         this.subMeshCount = onSteps + 1;
                     else
                         this.subMeshCount = onSteps;
                 } else
                 if (sideType == StairsSideType.DownAndUp)
                 {
-                    if (stepDepthOffset > sideDepth)
+                    if (HasTopWall(stepDepthOffset, sideDepth, riserType, topSideLength))
                         this.subMeshCount = 2;
                     else
                         this.subMeshCount = 1;
@@ -1226,9 +1384,16 @@ namespace Chisel.Core
             public bool haveRightSideUp;
 
             public float sideWidth;
+            // how wide each side wall is; both the side width, unless set apart
+            public float leftSideWidth;
+            public float rightSideWidth;
             public bool thickRiser;
             public float riserDepth;
             public float sideDepth;
+            // how far the side walls reach out past the steps' fronts
+            public float sideFrontOffset;
+            // how far back from the top step the side walls go beside the top floor
+            public float topSideLength;
 
             public int stepCount;
             public float offsetZ;
@@ -1240,14 +1405,16 @@ namespace Chisel.Core
 
             public float leftNosingWidth;
             public float rightNosingWidth;
-            public float leftTopNosingWidth;
-            public float rightTopNosingWidth;
 
             public int subMeshCount;
 
             public int startTread;
             public int startLeftSide;
             public int startRightSide;
+            public int startSideFronts;
+            // the base under the lowest step is its own brush, with its own surface
+            public bool haveBase;
+            public int startBase;
 
             public float stepDepthOffset;
             public float stepHeight;
@@ -1273,7 +1440,10 @@ namespace Chisel.Core
                                      float           sideWidth,
                                      float           sideHeight,
                                      float           sideDepth,
-                                     float           topTreadOverhang = 0)
+                                     bool            leftAsSet = false,
+                                     bool            rightAsSet = false,
+                                     float           sideFrontOffset = 0,
+                                     float           topSideLength = float.PositiveInfinity)
             {
                 // TODO: implement smooth riser-type
 
@@ -1314,11 +1484,14 @@ namespace Chisel.Core
                 } else
                 if (riserType == StairsRiserType.Smooth)
                 {
+                    // unless the sides are to be as set (pathed stairs: where parts meet they close each other, and their ends are as asked)
+                    if (!leftAsSet)
                     switch (this.leftSideType)
                     {
                         case StairsSideType.Up:   this.leftSideType = StairsSideType.DownAndUp; break;
                         case StairsSideType.None: this.leftSideType = StairsSideType.Down; break;
                     }
+                    if (!rightAsSet)
                     switch (this.rightSideType)
                     {
                         case StairsSideType.Up:   this.rightSideType = StairsSideType.DownAndUp; break;
@@ -1335,10 +1508,14 @@ namespace Chisel.Core
                 this.haveRightSideUp     = (this.rightSideType == StairsSideType.Up || this.rightSideType == StairsSideType.DownAndUp);
                 
                 this.sideWidth           = sideWidth;
+                this.leftSideWidth       = sideWidth;
+                this.rightSideWidth      = sideWidth;
                 this.thickRiser          = this.riserType == StairsRiserType.ThickRiser || this.riserType == StairsRiserType.Smooth;
                 this.riserDepth          = (this.haveRiser && !this.thickRiser) ? riserDepth : 0;
 
                 this.sideDepth           = this.riserDepth + math.max(sideDepth, this.thickRiser ? stepDepth : 0);
+                this.sideFrontOffset     = math.max(0, sideFrontOffset);
+                this.topSideLength       = math.max(0, topSideLength);
                 
                 var boundsSize           = bounds.Max - bounds.Min;
                 var absWidth             = Mathf.Abs(boundsSize.x); 
@@ -1358,20 +1535,17 @@ namespace Chisel.Core
 
                 // filled down to the floor, the treads don't reach out past the sides of the solid under them
                 var sideOverhang         = (this.riserType == StairsRiserType.FillDown) ? 0 : nosingWidth;
-                this.leftNosingWidth     = haveLeftSideUp  ? -this.sideWidth : sideOverhang;
-                this.rightNosingWidth    = haveRightSideUp ? -this.sideWidth : sideOverhang;
-                // the top tread is as wide as the others, unless it is set to reach out past the sides
-                this.leftTopNosingWidth  = (topTreadOverhang > 0) ? topTreadOverhang : this.leftNosingWidth;
-                this.rightTopNosingWidth = (topTreadOverhang > 0) ? topTreadOverhang : this.rightNosingWidth;
+                this.leftNosingWidth     = haveLeftSideUp  ? -this.leftSideWidth : sideOverhang;
+                this.rightNosingWidth    = haveRightSideUp ? -this.rightSideWidth : sideOverhang;
 
 
 
                 this.leftSideDescription     = new LinearStairsSideData(stepHeight, stepDepth, plateauHeight, 
                                                                         this.treadHeight, this.absDepth, this.stepDepthOffset, 
-                                                                        this.stepCount, this.sideDepth, this.bounds, this.riserType, this.riserDepth, this.leftSideType);
+                                                                        this.stepCount, this.sideDepth, this.bounds, this.riserType, this.riserDepth, this.leftSideType, this.topSideLength);
                 this.rightSideDescription    = new LinearStairsSideData(stepHeight, stepDepth, plateauHeight,
                                                                         this.treadHeight, this.absDepth, this.stepDepthOffset, 
-                                                                        this.stepCount, this.sideDepth, this.bounds, this.riserType, this.riserDepth, this.rightSideType);
+                                                                        this.stepCount, this.sideDepth, this.bounds, this.riserType, this.riserDepth, this.rightSideType, this.topSideLength);
 
                 // filled down there is one more: the shape under all the steps
                 this.subMeshCount        = 0; if (haveRiser) this.subMeshCount = this.stepCount + (this.riserType == StairsRiserType.FillDown ? 1 : 0);
@@ -1379,6 +1553,15 @@ namespace Chisel.Core
 
                 this.startLeftSide       = this.subMeshCount; if (leftSideDescription.enabled)  this.subMeshCount += leftSideDescription.subMeshCount;
                 this.startRightSide      = this.subMeshCount; if (rightSideDescription.enabled) this.subMeshCount += rightSideDescription.subMeshCount;
+                // a piece in front of each side wall, when it reaches out past the steps' fronts
+                this.startSideFronts     = this.subMeshCount;
+                if (this.sideFrontOffset > 0)
+                    this.subMeshCount += (leftSideDescription.enabled ? 1 : 0) + (rightSideDescription.enabled ? 1 : 0);
+                // solid down to the floor, the base is part of the one shape under all the steps
+                this.haveBase            = haveRiser && this.riserType != StairsRiserType.FillDown && plateauHeight > kEpsilon;
+                this.startBase           = this.subMeshCount;
+                if (this.haveBase)
+                    this.subMeshCount += 1;
             }
         }
     }

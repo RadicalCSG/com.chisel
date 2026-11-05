@@ -20,11 +20,12 @@ namespace Chisel.Core
         [InspectorName("Step Nose")]
         StepNose    = 6,    // the fronts of the treads
         Wall        = 7,    // the side walls
-        [InspectorName("Wall Top")]
+        [InspectorName("Guard Rail Top")]
         WallTop     = 8,    // the tops of the side walls
-        [InspectorName("Wall Bottom")]
+        [InspectorName("Guard Rail Bottom")]
         WallBottom  = 9,    // under the side walls
         Column      = 10,   // the column in the middle of spiral stairs
+        Base        = 11,   // the solid part under the lowest step, when it starts higher up
 
         TotalSurfaces
     }
@@ -34,20 +35,23 @@ namespace Chisel.Core
         Step,
         Tread,
         Wall,
-        Column
+        Column,
+        Base
     }
 
     public static class StairsSurfaces
     {
         public const int kCount = (int)StairsSurface.TotalSurfaces;
 
-        static readonly string[] kNames = { "Tread Top", "Tread Bottom", "Riser Front", "Riser Back", "Underside", "Step Sides", "Step Nose", "Wall", "Wall Top", "Wall Bottom", "Column" };
+        static readonly string[] kNames = { "Tread Top", "Tread Bottom", "Riser Front", "Riser Back", "Underside", "Step Sides", "Step Nose", "Guard Rail", "Guard Rail Top", "Guard Rail Bottom", "Column", "Base" };
 
         public static string Name(int index) { return (index >= 0 && index < kNames.Length) ? kNames[index] : null; }
 
         // Whether stairs with these parts have faces with this surface
-        public static bool IsUsed(int index, bool haveTread, bool haveRiser, bool haveWall, bool haveColumn)
+        public static bool IsUsed(int index, bool haveTread, bool haveRiser, bool haveWall, bool haveColumn, bool haveBase = false)
         {
+            if ((StairsSurface)index == StairsSurface.Base)
+                return haveBase;
             switch ((StairsSurface)index)
             {
                 case StairsSurface.TreadTop:    return haveTread || haveRiser;
@@ -71,6 +75,8 @@ namespace Chisel.Core
         {
             if (part == StairsPart.Column)
                 return StairsSurface.Column;
+            if (part == StairsPart.Base)
+                return StairsSurface.Base;
             if (part == StairsPart.Wall)
                 return normal.y > 0.5f ? StairsSurface.WallTop : normal.y < -0.5f ? StairsSurface.WallBottom : StairsSurface.Wall;
             if (normal.y < -0.5f)
@@ -99,6 +105,7 @@ namespace Chisel.Core
                     case StairsSurface.StepNose:    surfaces[i].SetMaterial(ChiselProjectSettings.DefaultStepNoseMaterial); break;
                     case StairsSurface.StepSides:   surfaces[i].SetMaterial(ChiselProjectSettings.DefaultStepSidesMaterial); break;
                     case StairsSurface.Column:      surfaces[i].SetMaterial(ChiselProjectSettings.DefaultColumnMaterial); break;
+                    case StairsSurface.Base:        surfaces[i].SetMaterial(ChiselProjectSettings.DefaultFloorMaterial); break;
                     default:                        surfaces[i].SetMaterial(ChiselProjectSettings.DefaultWallMaterial); break;
                 }
             }

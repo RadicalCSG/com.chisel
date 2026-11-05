@@ -23,6 +23,20 @@ namespace Chisel.Core
 
         public int curveSegments;
 
+        // the side wall where two parts of the path meet, standing on the plane they share; the stairs' own left and
+        // right side walls are at an open path's start and end
+        public StairsSideType cornerSide;
+        // how far back that wall goes beside the floor at the top, as the stairs' own side walls' do
+        public StairsTopSideType cornerTopSide;
+        [DistanceValue] public float cornerTopSideLength;
+
+        public readonly float CornerTopSideLength => cornerTopSide switch
+        {
+            StairsTopSideType.None   => 0,
+            StairsTopSideType.Length => math.max(0, cornerTopSideLength),
+            _                        => float.PositiveInfinity
+        };
+
         // TODO: do not use this data structure, find common stuff and share between the definitions ...
         [HideFoldout] public ChiselLinearStairs stairs;
 
@@ -42,8 +56,8 @@ namespace Chisel.Core
             return BrushMeshFactory.CountPathedStairBrushes(shapeVertices, closed, bounds,
                                                             stairs.stepHeight, stairs.stepDepth, stairs.treadHeight, stairs.nosingDepth,
                                                             stairs.plateauHeight, stairs.riserType, stairs.riserDepth,
-                                                            stairs.leftSide, stairs.rightSide,
-                                                            stairs.sideWidth, stairs.sideHeight, stairs.sideDepth);
+                                                            stairs.leftSide, stairs.rightSide, cornerSide,
+                                                            stairs.sideWidth, stairs.sideHeight, stairs.sideDepth, stairs.sideFrontOffset, stairs.TopSideLength, CornerTopSideLength);
         }
 
         public bool GenerateNodes(BlobAssetReference<InternalChiselSurfaceArray> surfaceDefinitionBlob, NativeList<GeneratedNode> nodes, 
@@ -58,12 +72,14 @@ namespace Chisel.Core
             ref var curve = ref curveBlob.Value;
             var bounds = stairs.bounds;
 
-            if (!BrushMeshFactory.GeneratePathedStairs(generatedBrushMeshes,
+            using var brushTransformations = new NativeList<float4x4>(nodes.Length, Allocator.Temp);
+            brushTransformations.Resize(nodes.Length, NativeArrayOptions.ClearMemory);
+            if (!BrushMeshFactory.GeneratePathedStairs(generatedBrushMeshes, brushTransformations,
                                                         shapeVertices, closed, bounds,
-                                                        stairs.stepHeight, stairs.stepDepth, stairs.treadHeight, stairs.nosingDepth,
+                                                        stairs.stepHeight, stairs.stepDepth, stairs.treadHeight, stairs.nosingDepth, stairs.nosingWidth,
                                                         stairs.plateauHeight, stairs.riserType, stairs.riserDepth,
-                                                        stairs.leftSide, stairs.rightSide,
-                                                        stairs.sideWidth, stairs.sideHeight, stairs.sideDepth,
+                                                        stairs.leftSide, stairs.rightSide, cornerSide,
+                                                        stairs.sideWidth, stairs.sideHeight, stairs.sideDepth, stairs.sideFrontOffset, stairs.TopSideLength, CornerTopSideLength,
                                                         in surfaceDefinitionBlob, allocator)) // Indirect
 			{
                 for (int i = 0; i < generatedBrushMeshes.Length; i++)
@@ -75,7 +91,7 @@ namespace Chisel.Core
                 return false;
             }
             for (int i = 0; i < generatedBrushMeshes.Length; i++)
-                nodes[i] = GeneratedNode.GenerateBrush(generatedBrushMeshes[i]); // Confirmed to dispose
+                nodes[i] = GeneratedNode.GenerateBrush(generatedBrushMeshes[i], brushTransformations[i]); // Confirmed to dispose
 			return true;
         }
 
@@ -106,7 +122,20 @@ namespace Chisel.Core
         public bool Validate()
         {
             curveSegments = math.max(curveSegments, kMinCurveSegments);
-            return stairs.Validate();
+            // without a base the height is a whole number of steps: less than a step left over comes off the top, rather
+            // than becoming a base that wasn't asked for; steps that don't fit in the depth still become a base
+            var noBase = stairs.plateauHeight <= 0;
+            if (!stairs.Validate())
+                return false;
+            if (noBase && stairs.plateauHeight > 0 && stairs.stepHeight > 0)
+            {
+                var wholeSteps = math.floor(stairs.plateauHeight / stairs.stepHeight + 0.0001f) * stairs.stepHeight;
+                var leftOver   = math.max(0, stairs.plateauHeight - wholeSteps);
+                if (stairs.bounds.Max.y >= stairs.bounds.Min.y) stairs.bounds.Max.y -= leftOver;
+                else                                            stairs.bounds.Min.y -= leftOver;
+                stairs.plateauHeight = wholeSteps;
+            }
+            return true;
         }
 
         [BurstDiscard]
@@ -158,6 +187,146 @@ namespace Chisel.Core
         public override void OnEdit(IChiselHandles handles)
         {
             handles.DoShapeHandle(ref shape);
+            if (shape == null || shape.controlPoints == null || shape.controlPoints.Length < 2)
+                return;
+
+            // along every part of the path, lines to drag: the top at the back (the height), the top of the base at the
+            // front, the back on the floor (the depth) and where the steps end at the top (how deep, so how steep, they are). The
+            // lowest step is at the path, the floor at the top furthest from it
+            ref var stairs   = ref settings.stairs;
+            var stepHeight   = stairs.stepHeight;
+            var stepCount    = stairs.StepCount;
+            var height       = stairs.AbsHeight;
+            var depth        = stairs.AbsDepth;
+            var baseHeight   = stairs.plateauHeight;
+            var run          = stepCount * stairs.stepDepth;
+
+            var points = shape.controlPoints;
+            var count  = points.Length;
+            var closed = shape.closed;
+            var parts  = closed ? count : count - 1;
+            var up     = Vector3.up;
+
+            // the stairs stand at the object's position; moving that is the transform's
+            Vector3 Point(int i) { var p = points[(i + count) % count].position; return new Vector3(p.x, 0, p.y); }
+            Vector3 Inward(int part) { var along = (Point(part + 1) - Point(part)).normalized; return new Vector3(-along.z, 0, along.x); }
+            // a point on the cutting plane at a corner (square to the path at an open end), at a distance from the path
+            Vector3 Offset(int i, float distance)
+            {
+                var hasBefore = closed || i > 0;
+                var hasAfter  = closed || i < count - 1;
+                var after     = Inward(hasAfter ? i : i - 1);
+                if (!hasBefore || !hasAfter)
+                    return Point(i) + after * distance;
+                var before    = Inward(i - 1);
+                var miter     = (before + after).normalized;
+                var cos       = Vector3.Dot(miter, after);
+                return Point(i) + miter * (cos > 0.01f ? distance / cos : distance);
+            }
+
+            // whole where nothing is in front, dashed where something is
+            var color  = handles.color;
+            var hidden = Color.Lerp(color, Color.black, 0.45f); hidden.a = color.a;
+            void Line(Vector3 from, Vector3 to)
+            {
+                handles.color = hidden;
+                handles.DrawLine(from, to, lineMode: LineMode.NoZTest, thickness: 0.5f, dashSize: 2.0f);
+                handles.color = color;
+                handles.DrawLine(from, to, lineMode: LineMode.ZTest, thickness: 1.0f);
+            }
+
+            // on every cutting plane the stairs' profile: up the front to the base, along the slope of the steps, across
+            // the flat top to the back, down it and back along the floor. The slope is dragged across itself to move the
+            // steps up or down: they keep their size, so there are fewer or more of them
+            for (int i = 0; i < count; i++)
+            {
+                var front = Point(i) + up * baseHeight;
+                var slope = Offset(i, run) + up * height;
+                var top   = Offset(i, depth) + up * height;
+                if (baseHeight > 0)
+                    Line(Point(i), front);
+                Line(slope, top);
+                Line(top, Offset(i, depth));
+                Line(Offset(i, depth), Point(i));
+
+                var across = Vector3.Cross(slope - front, Vector3.Cross(up, slope - front)).normalized;
+                if (Vector3.Dot(across, up) < 0)
+                    across = -across;
+                if (handles.DoEdgeHandle1DOffset(out Vector3 shifted, Axis.Y, front, slope, across, undoMessage: "Move Steps"))
+                {
+                    var rise = Vector3.Dot(shifted, across) / math.max(0.01f, Vector3.Dot(up, across));
+                    var steps = math.round(rise / stepHeight);
+                    stairs.plateauHeight = math.clamp(baseHeight + steps * stepHeight, 0, height - stepHeight);
+                }
+            }
+
+            for (int i = 0; i < parts; i++)
+            {
+                var j = i + 1;
+                if ((Point(j) - Point(i)).sqrMagnitude <= 0)
+                    continue;
+                var inward = Inward(i);
+
+                // the base alone: the steps share what's left of the height, so they change height, not number
+                if (handles.DoEdgeHandle1DOffset(out Vector3 moved, Axis.Y, Point(i) + up * baseHeight, Point(j) + up * baseHeight, up, undoMessage: "Change Base Height"))
+                {
+                    var newBase = math.clamp(baseHeight + moved.y, 0, height - ChiselLinearStairs.kMinStepHeight * stepCount);
+                    stairs.plateauHeight = newBase;
+                    stairs.stepHeight    = (height - newBase) / stepCount;
+                }
+                if (handles.DoEdgeHandle1DOffset(out moved, Axis.Z, Offset(i, depth), Offset(j, depth), inward, snappingStep: stairs.stepDepth, undoMessage: "Change Depth"))
+                    SetSize(ref stairs.bounds, 2, math.max(stairs.stepDepth, depth + Vector3.Dot(moved, inward)));
+                if (handles.DoEdgeHandle1DOffset(out moved, Axis.Z, Offset(i, run) + up * height, Offset(j, run) + up * height, inward, undoMessage: "Change Step Depth"))
+                    stairs.stepDepth = math.clamp(run + Vector3.Dot(moved, inward), ChiselLinearStairs.kMinStepDepth * stepCount, depth) / stepCount;
+            }
+            handles.color = color;
+
+            // the height: a point at the top in the middle of the path, dashed down to the floor, as a cylinder's
+            var center = Vector3.zero;
+            for (int i = 0; i < count; i++)
+                center += Point(i);
+            center /= count;
+            if (handles.generatorState is not IChiselNormalHandle topHandle)
+                handles.generatorState = topHandle = handles.CreateNormalHandle(Vector3.zero, Vector3.up);
+            topHandle.Origin = center + up * height;
+            topHandle.Normal = up;
+            handles.color = hidden;
+            handles.DrawLine(center, center + up * height, lineMode: LineMode.NoZTest, thickness: 1.0f, dashSize: 2.0f);
+            handles.color = color;
+            var topPoint = center + up * height;
+            if (handles.DoSlider1DHandle(ref topPoint, up, topHandle, snappingStep: stepHeight, undoMessage: "Change Height"))
+                SetSize(ref stairs.bounds, 1, math.max(stepHeight, topPoint.y));
+
+            // how high, how deep and how high the base is, where the first part of the path starts
+            handles.RenderDistanceMeasurement(center, center + up * height, height);
+            if (count > 1)
+            {
+                handles.RenderDistanceMeasurement(Point(0), Offset(0, depth), depth);
+                if (baseHeight > 0)
+                    handles.RenderDistanceMeasurement(Point(0), Point(0) + up * baseHeight, baseHeight);
+            }
+        }
+
+        // the middle of the path on the floor: where the stairs' own position is shown, to move them by
+        public Vector3 PathCenter
+        {
+            get
+            {
+                var center = Vector3.zero;
+                if (shape == null || shape.controlPoints == null || shape.controlPoints.Length == 0)
+                    return center;
+                foreach (var point in shape.controlPoints)
+                    center += new Vector3(point.position.x, 0, point.position.y);
+                return center / shape.controlPoints.Length;
+            }
+        }
+
+        // a size is changed by moving its far side only, keeping its sign
+        static void SetSize(ref MinMaxAABB bounds, int axis, float size)
+        {
+            var max = bounds.Max;
+            max[axis] = bounds.Min[axis] + size * (bounds.Max[axis] < bounds.Min[axis] ? -1 : 1);
+            bounds.Max = max;
         }
     }
 }
