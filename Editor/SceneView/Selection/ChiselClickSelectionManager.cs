@@ -36,18 +36,33 @@ namespace Chisel.Editors
     {
         public static PlaneIntersection GetPlaneIntersection(Vector2 mousePosition)
         {
-            // whatever is nearest under the mouse: Chisel's own picking finds only Chisel's brushes, so a mesh that isn't
-            // Chisel's was never found, and the grid was used under it
-            var closest  = UnityEditor.HandleUtility.PickGameObject(mousePosition, false);
+            // whatever is nearest under the mouse. Chisel's picking finds only its own brushes, and Unity's never finds
+            // them since the generated meshes are kept out of it: both are asked
             var mouseRay = UnityEditor.HandleUtility.GUIPointToWorldRay(mousePosition);
+
+            PlaneIntersection onChisel = null;
+            var intersectionObject = ChiselSelectionManager.PickClosestGameObject(mousePosition, out var brushIntersection);
+            if (intersectionObject && intersectionObject.activeInHierarchy && brushIntersection.treeNode != null)
+                onChisel = new PlaneIntersection(brushIntersection);
+
+            var closest = UnityEditor.HandleUtility.PickGameObject(mousePosition, false);
             if (closest && closest.TryGetComponent<ChiselNodeComponent>(out _))
-            {
-                var intersectionObject = ChiselSelectionManager.PickClosestGameObject(mousePosition, out var brushIntersection);
-                if (intersectionObject && intersectionObject.activeInHierarchy && brushIntersection.treeNode != null)
-                    return new PlaneIntersection(brushIntersection);
-                return null;
-            }
-            return GetPlaneIntersection(closest, mouseRay);
+                closest = null;
+            var onMesh = closest ? GetPlaneIntersection(closest, mouseRay) : null;
+
+            if (onChisel != null || onMesh != null)
+                return Nearest(mouseRay, onChisel, onMesh);
+            return GetPlaneIntersection(null, mouseRay);
+        }
+
+        // the one nearer along the ray, either one when the other is missing
+        internal static PlaneIntersection Nearest(Ray ray, PlaneIntersection a, PlaneIntersection b)
+        {
+            if (a == null) return b;
+            if (b == null) return a;
+            var distanceA = Vector3.Dot(a.point - ray.origin, ray.direction);
+            var distanceB = Vector3.Dot(b.point - ray.origin, ray.direction);
+            return distanceA <= distanceB ? a : b;
         }
 
         // Where the mouse ray meets an object under the mouse that isn't Chisel's: the triangle of its mesh it hits; the
