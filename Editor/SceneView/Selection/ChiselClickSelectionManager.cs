@@ -36,34 +36,36 @@ namespace Chisel.Editors
     {
         public static PlaneIntersection GetPlaneIntersection(Vector2 mousePosition)
         {
-			var intersectionObject = ChiselSelectionManager.PickClosestGameObject(mousePosition, out ChiselIntersection brushIntersection);
-			if (intersectionObject &&
-                intersectionObject.activeInHierarchy)
+            // whatever is nearest under the mouse: Chisel's own picking finds only Chisel's brushes, so a mesh that isn't
+            // Chisel's was never found, and the grid was used under it
+            var closest  = UnityEditor.HandleUtility.PickGameObject(mousePosition, false);
+            var mouseRay = UnityEditor.HandleUtility.GUIPointToWorldRay(mousePosition);
+            if (closest && closest.TryGetComponent<ChiselNodeComponent>(out _))
             {
-                if (brushIntersection.treeNode != null)
+                var intersectionObject = ChiselSelectionManager.PickClosestGameObject(mousePosition, out var brushIntersection);
+                if (intersectionObject && intersectionObject.activeInHierarchy && brushIntersection.treeNode != null)
                     return new PlaneIntersection(brushIntersection);
-
-                if (intersectionObject.TryGetComponent<MeshFilter>(out var meshFilter))
-                {
-                    var mesh = meshFilter.sharedMesh;
-                    var mouseRay = UnityEditor.HandleUtility.GUIPointToWorldRay(mousePosition);
-					if (ChiselMeshPicking.IntersectRayMesh(mouseRay, mesh, intersectionObject.transform.localToWorldMatrix, out RaycastHit hit))
-					{
-						if (intersectionObject.TryGetComponent<MeshRenderer>(out var meshRenderer) &&
-							meshRenderer.enabled)
-						{
-							return new PlaneIntersection(hit.point, hit.normal);
-						}
-					}
-				}
+                return null;
             }
-            else
+            return GetPlaneIntersection(closest, mouseRay);
+        }
+
+        // Where the mouse ray meets an object under the mouse that isn't Chisel's: the triangle of its mesh it hits; the
+        // grid when there is none
+        internal static PlaneIntersection GetPlaneIntersection(GameObject closest, Ray mouseRay)
+        {
+			if (closest &&
+                closest.activeInHierarchy)
             {
-                var gridPlane = Chisel.Editors.Grid.ActiveGrid.PlaneXZ;
-                var mouseRay = UnityEditor.HandleUtility.GUIPointToWorldRay(mousePosition);
-				if (gridPlane.SignedRaycast(mouseRay, out float dist))
-					return new PlaneIntersection(mouseRay.GetPoint(dist), gridPlane);
-			}
+                if (closest.TryGetComponent<MeshFilter>(out var meshFilter) &&
+                    closest.TryGetComponent<MeshRenderer>(out var meshRenderer) && meshRenderer.enabled &&
+                    ChiselMeshPicking.IntersectRayMeshFace(mouseRay, meshFilter.sharedMesh, closest.transform.localToWorldMatrix, out var point, out var normal))
+                    return new PlaneIntersection(point, normal);
+                return null;
+            }
+            var gridPlane = Chisel.Editors.Grid.ActiveGrid.PlaneXZ;
+			if (gridPlane.SignedRaycast(mouseRay, out float dist))
+				return new PlaneIntersection(mouseRay.GetPoint(dist), gridPlane);
             return null;
         }
 
