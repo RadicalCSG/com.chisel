@@ -99,7 +99,45 @@ namespace Chisel.Editors
         public abstract string  ToolName        { get; }
         public virtual string   Group           { get; }
 
-        public GUIContent       Content         { get { return ChiselEditorResources.GetIconContent(ToolName, ToolName)[0]; } }
+        // Its tooltip is its name and its shortcut as currently bound. Without an icon its name is cut off in a button and
+        // no tooltip showed: a short name instead
+        public GUIContent       Content
+        {
+            get
+            {
+                var tooltip = Tooltip;
+                var content = ChiselEditorResources.GetIconContent(ToolName, tooltip)[0];
+                if (content.image)
+                    return content;
+                if (m_ShortContent == null || m_ShortContent.tooltip != tooltip)
+                    m_ShortContent = new GUIContent(ShortName(ToolName), tooltip);
+                return m_ShortContent;
+            }
+        }
+        GUIContent m_ShortContent;
+
+        internal string Tooltip
+        {
+            get
+            {
+                var key = ChiselGeneratorShortcuts.KeyOf(ToolName);
+                return string.IsNullOrEmpty(key) ? ToolName : $"{ToolName} ({key})";
+            }
+        }
+
+        // the first letters of its words, or the first two letters of a single word
+        internal static string ShortName(string name)
+        {
+            var words = name.Split(' ', System.StringSplitOptions.RemoveEmptyEntries);
+            if (words.Length == 0)
+                return string.Empty;
+            if (words.Length == 1)
+                return words[0].Length <= 2 ? words[0] : words[0].Substring(0, 2);
+            var initials = new System.Text.StringBuilder(words.Length);
+            foreach (var word in words)
+                initials.Append(char.ToUpperInvariant(word[0]));
+            return initials.ToString();
+        }
 
 
         public bool             IsGenerating    { get; private set; }

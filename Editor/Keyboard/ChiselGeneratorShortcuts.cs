@@ -41,6 +41,13 @@ namespace Chisel.Editors
             TagRegistered = active;
         }
 
+        // the key the generator with this name is bound to now, empty if none
+        internal static string KeyOf(string toolName)
+        {
+            try { return ShortcutManager.instance.GetShortcutBinding(kBase + toolName).ToString(); }
+            catch (System.ArgumentException) { return string.Empty; }
+        }
+
         // the generator with this name in the create tool, which is then switched to
         internal static bool Pick(string toolName)
         {

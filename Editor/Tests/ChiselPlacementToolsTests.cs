@@ -32,6 +32,39 @@ namespace Chisel.Editors.Tests
             Assert.That(missing, Is.Empty, "can't be drawn");
         }
 
+        // without an icon a button shows a short name and the full name as its tooltip
+        [Test]
+        public void WithoutAnIcon_ButtonHasShortNameAndFullTooltip()
+        {
+            var tool = ChiselGeneratorManager.s_GeneratorModes.FirstOrDefault(mode => mode.ToolName == ChiselRevolvedShapeDefinition.kNodeTypeName);
+            Assert.That(tool, Is.Not.Null);
+            var content = tool.Content;
+            if (content.image)
+                Assert.Ignore("it has an icon");
+            Assert.That(content.text,    Is.EqualTo("RS"));
+            Assert.That(content.tooltip, Does.StartWith(ChiselRevolvedShapeDefinition.kNodeTypeName));
+        }
+
+        // its tooltip shows the key it's bound to now, whatever it was rebound to
+        [Test]
+        public void Tooltip_ShowsCurrentShortcut()
+        {
+            foreach (var tool in ChiselGeneratorManager.s_GeneratorModes)
+            {
+                var key = ChiselGeneratorShortcuts.KeyOf(tool.ToolName);
+                Assert.That(key, Is.Not.Empty, $"{tool.ToolName} has no key");
+                Assert.That(tool.Content.tooltip, Is.EqualTo($"{tool.ToolName} ({key})"));
+            }
+        }
+
+        [Test]
+        public void ShortName_IsInitialsOrFirstLetters()
+        {
+            Assert.That(ChiselPlacementToolInstance.ShortName("Pathed Stairs"), Is.EqualTo("PS"));
+            Assert.That(ChiselPlacementToolInstance.ShortName("Stadium"),       Is.EqualTo("St"));
+            Assert.That(ChiselPlacementToolInstance.ShortName("Box"),           Is.EqualTo("Bo"));
+        }
+
         static T Tool<T>() where T : ScriptableObject { return ScriptableObject.CreateInstance<T>(); }
 
         [Test]
