@@ -170,22 +170,36 @@ namespace Chisel.Editors
             }
         }
 
-        // a filter row: click goes from off to "has it" to "doesn't have it"
+        // a filter row: ticked in front, only materials with it; ticked at "Not", only those without it
         void TraitsGUI()
         {
             GUILayout.Space(6);
-            GUILayout.Label(new GUIContent("FILTERS", "Click a filter: with it, without it, off"), EditorStyles.miniBoldLabel);
+            using (new EditorGUILayout.HorizontalScope())
+            {
+                GUILayout.Label("FILTERS", EditorStyles.miniBoldLabel);
+                GUILayout.FlexibleSpace();
+                GUILayout.Label("Not", EditorStyles.miniLabel, GUILayout.Width(26));
+            }
             foreach (var trait in model.traits)
             {
                 var filter = model.FilterOf(trait.name);
-                var mark = filter == ChiselSurfaceBrowserModel.TraitFilter.Without ? "Not " : "";
-                if (Row(mark + trait.name, model.CountWith(trait), filter != ChiselSurfaceBrowserModel.TraitFilter.Any))
-                {
-                    model.SetFilter(trait.name, ChiselSurfaceBrowserModel.Next(filter));
-                    SaveTraitFilters();
-                    Filter();
-                    Event.current.Use();
-                }
+                var with    = filter == ChiselSurfaceBrowserModel.TraitFilter.With;
+                var without = filter == ChiselSurfaceBrowserModel.TraitFilter.Without;
+                var rect = GUILayoutUtility.GetRect(new GUIContent(trait.name), EditorStyles.label, GUILayout.ExpandWidth(true));
+                var newWith = EditorGUI.ToggleLeft(new Rect(rect.x + 4, rect.y, rect.width - 80, rect.height),
+                                                   new GUIContent(trait.name, "Only materials with this"), with);
+                GUI.Label(new Rect(rect.xMax - 64, rect.y, 36, rect.height), model.CountWith(trait).ToString(),
+                          new GUIStyle(EditorStyles.miniLabel) { alignment = TextAnchor.MiddleRight });
+                var newWithout = EditorGUI.Toggle(new Rect(rect.xMax - 22, rect.y, 18, rect.height),
+                                                  new GUIContent(string.Empty, "Only materials without this"), without);
+                var next = filter;
+                if (newWith != with)       next = newWith    ? ChiselSurfaceBrowserModel.TraitFilter.With    : ChiselSurfaceBrowserModel.TraitFilter.Any;
+                if (newWithout != without) next = newWithout ? ChiselSurfaceBrowserModel.TraitFilter.Without : ChiselSurfaceBrowserModel.TraitFilter.Any;
+                if (next == filter)
+                    continue;
+                model.SetFilter(trait.name, next);
+                SaveTraitFilters();
+                Filter();
             }
         }
 
