@@ -112,6 +112,19 @@ namespace Chisel.Editors.Tests
             Assert.That(ChiselSurfaceBrowserModel.Next(ChiselSurfaceBrowserModel.TraitFilter.Without), Is.EqualTo(ChiselSurfaceBrowserModel.TraitFilter.Any));
         }
 
+        // Plain: none of the other traits; unticking it leaves out the materials that have none
+        [Test]
+        public void Plain_IsWithoutAnyOtherTrait()
+        {
+            var model = Model("Assets/Models");
+            var metal = new ChiselSurfaceBrowserModel.Trait { name = "Metal", has = item => System.Array.Exists(item.labels, l => l.ToLower() == "metal") };
+            model.traits.Add(metal);
+            model.traits.Add(ChiselSurfaceBrowserModel.PlainTrait(new[] { metal }));
+            model.SetFilter("Plain", ChiselSurfaceBrowserModel.TraitFilter.Without);
+            Assert.That(Names(model.Filter("", ChiselSurfaceBrowserModel.QuickAccess.All)), Is.EqualTo(new[] { "Metal_Floor", "Trim_Industrial" }));
+            Assert.That(model.CountWith(model.traits[1]), Is.EqualTo(2), "Concrete_Panels and Wall");
+        }
+
         [Test]
         public void Unused_IsWhatIsntInTheScene()
         {

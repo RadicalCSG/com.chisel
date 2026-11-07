@@ -81,11 +81,13 @@ namespace Chisel.Editors
             model.isInScene   = item => ChiselSceneMaterialUsage.SurfacesUsing(Load(item)) > 0;
             model.traits.Clear();
             model.traits.AddRange(Traits());
+            // only unticked filters are kept; one ticked under the earlier "with it" filters is just ticked now
             foreach (var saved in traitFilters)
             {
-                if (saved.Length > 1)
-                    model.SetFilter(saved.Substring(1), saved[0] == '+' ? ChiselSurfaceBrowserModel.TraitFilter.With : ChiselSurfaceBrowserModel.TraitFilter.Without);
+                if (saved.Length > 1 && saved[0] == '-')
+                    model.SetFilter(saved.Substring(1), ChiselSurfaceBrowserModel.TraitFilter.Without);
             }
+            wantsMouseMove = true;     // moving the mouse cancels a rename that's waiting to start
             EditorApplication.projectChanged += MarkDirty;
             Selection.selectionChanged       += Repaint;
             Undo.undoRedoPerformed           += MarkDirty;
@@ -148,7 +150,7 @@ namespace Chisel.Editors
         {
             ChiselSurfaceBrowserModel.Trait Trait(string name, Func<Material, bool> has) =>
                 new() { name = name, has = item => has(Load(item)) };
-            return new[]
+            var traits = new List<ChiselSurfaceBrowserModel.Trait>
             {
                 Trait("Paintable",     material => PaintProfileOf(material) != null),
                 Trait("Color paint",   material => HasPaintMode(material, mode => mode.kind == ChiselPaintKind.Color)),
@@ -157,6 +159,8 @@ namespace Chisel.Editors
                 Trait("Skybox",        material => material != null && material.shader != null && material.shader.name.StartsWith("Skybox/", StringComparison.OrdinalIgnoreCase)),
                 Trait("Hotspots",      material => HotspotLayoutOf(material) != null),
             };
+            traits.Add(ChiselSurfaceBrowserModel.PlainTrait(traits));
+            return traits.ToArray();
         }
 
         void SaveTraitFilters()
@@ -170,34 +174,22 @@ namespace Chisel.Editors
             }
         }
 
-        // a filter row: ticked in front, only materials with it; ticked at "Not", only those without it
+        // a filter per trait, all ticked at first; unticked, the materials with it are left out
         void TraitsGUI()
         {
             GUILayout.Space(6);
-            using (new EditorGUILayout.HorizontalScope())
-            {
-                GUILayout.Label("FILTERS", EditorStyles.miniBoldLabel);
-                GUILayout.FlexibleSpace();
-                GUILayout.Label("Not", EditorStyles.miniLabel, GUILayout.Width(26));
-            }
+            GUILayout.Label("FILTERS", EditorStyles.miniBoldLabel);
             foreach (var trait in model.traits)
             {
-                var filter = model.FilterOf(trait.name);
-                var with    = filter == ChiselSurfaceBrowserModel.TraitFilter.With;
-                var without = filter == ChiselSurfaceBrowserModel.TraitFilter.Without;
+                var shown = model.FilterOf(trait.name) != ChiselSurfaceBrowserModel.TraitFilter.Without;
                 var rect = GUILayoutUtility.GetRect(new GUIContent(trait.name), EditorStyles.label, GUILayout.ExpandWidth(true));
-                var newWith = EditorGUI.ToggleLeft(new Rect(rect.x + 4, rect.y, rect.width - 80, rect.height),
-                                                   new GUIContent(trait.name, "Only materials with this"), with);
-                GUI.Label(new Rect(rect.xMax - 64, rect.y, 36, rect.height), model.CountWith(trait).ToString(),
+                var newShown = EditorGUI.ToggleLeft(new Rect(rect.x + 4, rect.y, rect.width - 52, rect.height),
+                                                    new GUIContent(trait.name, "Show the materials with this"), shown);
+                GUI.Label(new Rect(rect.xMax - 44, rect.y, 40, rect.height), model.CountWith(trait).ToString(),
                           new GUIStyle(EditorStyles.miniLabel) { alignment = TextAnchor.MiddleRight });
-                var newWithout = EditorGUI.Toggle(new Rect(rect.xMax - 22, rect.y, 18, rect.height),
-                                                  new GUIContent(string.Empty, "Only materials without this"), without);
-                var next = filter;
-                if (newWith != with)       next = newWith    ? ChiselSurfaceBrowserModel.TraitFilter.With    : ChiselSurfaceBrowserModel.TraitFilter.Any;
-                if (newWithout != without) next = newWithout ? ChiselSurfaceBrowserModel.TraitFilter.Without : ChiselSurfaceBrowserModel.TraitFilter.Any;
-                if (next == filter)
+                if (newShown == shown)
                     continue;
-                model.SetFilter(trait.name, next);
+                model.SetFilter(trait.name, newShown ? ChiselSurfaceBrowserModel.TraitFilter.Any : ChiselSurfaceBrowserModel.TraitFilter.Without);
                 SaveTraitFilters();
                 Filter();
             }
@@ -575,14 +567,31 @@ namespace Chisel.Editors
             if (uses > 0)
                 GUI.Label(new Rect(thumbRect.xMax - 34, thumbRect.yMax - 16, 32, 14), new GUIContent(uses.ToString(), $"{uses} surfaces in the scene use it"), new GUIStyle(badge) { alignment = TextAnchor.MiddleRight });
 
-            GUI.Label(new Rect(rect.x, thumbRect.yMax + 2, rect.width, EditorGUIUtility.singleLineHeight), new GUIContent(item.name, item.path),
+            var nameRect = new Rect(rect.x, thumbRect.yMax + 2, rect.width, EditorGUIUtility.singleLineHeight);
+            if (cardRenameGuid == item.guid)
+            {
+                CardRenameGUI(nameRect, item);
+                return;
+            }
+            GUI.Label(nameRect, new GUIContent(item.name, item.path),
                       new GUIStyle(EditorStyles.miniLabel) { alignment = TextAnchor.MiddleCenter, clipping = TextClipping.Clip });
 
+            if (evt.type == EventType.MouseMove && pendingRenameGuid != null &&
+                (GUIUtility.GUIToScreenPoint(evt.mousePosition) - pendingRenameMouse).sqrMagnitude > kRenameStillPixels * kRenameStillPixels)
+                pendingRenameGuid = null;
             if (!rect.Contains(evt.mousePosition))
                 return;
             switch (evt.type)
             {
                 case EventType.MouseDown when evt.button == 0:
+                    // a click on the name of the one already selected: renamed when the mouse then stays still
+                    pendingRenameGuid = null;
+                    if (evt.clickCount == 1 && item.guid == selectedGuid && nameRect.Contains(evt.mousePosition) && IsEditable(item.path))
+                    {
+                        pendingRenameGuid  = item.guid;
+                        pendingRenameTime  = EditorApplication.timeSinceStartup;
+                        pendingRenameMouse = GUIUtility.GUIToScreenPoint(evt.mousePosition);
+                    }
                     Select(item.guid);
                     if (evt.clickCount == 2)
                         Apply(material);
@@ -638,17 +647,98 @@ namespace Chisel.Editors
             return openForEdit;
         }
 
-        const string kRenameControl = "ChiselRenameMaterial";
-        bool   focusRename;
-        string renamingGuid;
-        string renameText;
+        const string kRenameControl     = "ChiselRenameMaterial";
+        const string kCardRenameControl = "ChiselRenameCard";
+        bool focusRename;
+
+        // renaming in place on a card
+        const double kRenameDelay       = 2.0;
+        const float  kRenameStillPixels = 4;
+        string  cardRenameGuid;
+        string  cardRenameText;
+        bool    focusCardRename;
+        string  pendingRenameGuid;
+        double  pendingRenameTime;
+        Vector2 pendingRenameMouse;
+
+        /// <summary>A click on a selected item's name starts renaming it when the mouse stays still long enough</summary>
+        internal static bool ShouldStartRename(double clickTime, double now, Vector2 clickMouse, Vector2 mouse)
+        {
+            return now - clickTime >= kRenameDelay && (mouse - clickMouse).sqrMagnitude <= kRenameStillPixels * kRenameStillPixels;
+        }
 
         void StartRename(ChiselSurfaceBrowserModel.Item item)
         {
-            renamingGuid = item.guid;
-            renameText   = item.name;
-            focusRename  = true;
+            pendingRenameGuid = null;
+            cardRenameGuid    = item.guid;
+            cardRenameText    = item.name;
+            focusCardRename   = true;
             Repaint();
+        }
+
+        void Update()
+        {
+            if (pendingRenameGuid == null)
+                return;
+            if (pendingRenameGuid != selectedGuid)
+            {
+                pendingRenameGuid = null;
+                return;
+            }
+            if (!ShouldStartRename(pendingRenameTime, EditorApplication.timeSinceStartup, pendingRenameMouse, pendingRenameMouse))
+                return;
+            var item = Selected;
+            pendingRenameGuid = null;
+            if (item != null)
+                StartRename(item);
+        }
+
+        // the card's name as a text field: Enter or leaving it renames, Escape keeps the name
+        void CardRenameGUI(Rect rect, ChiselSurfaceBrowserModel.Item item)
+        {
+            var evt = Event.current;
+            var focused = GUI.GetNameOfFocusedControl() == kCardRenameControl;
+            if (evt.type == EventType.KeyDown && focused)
+            {
+                if (evt.keyCode == KeyCode.Escape)
+                {
+                    cardRenameGuid = null;
+                    GUIUtility.keyboardControl = 0;
+                    evt.Use();
+                    Repaint();
+                    return;
+                }
+                if (evt.keyCode == KeyCode.Return || evt.keyCode == KeyCode.KeypadEnter)
+                {
+                    FinishCardRename(item);
+                    evt.Use();
+                    GUIUtility.ExitGUI();
+                }
+            }
+            GUI.SetNextControlName(kCardRenameControl);
+            cardRenameText = GUI.TextField(rect, cardRenameText, new GUIStyle(EditorStyles.textField) { alignment = TextAnchor.MiddleCenter, fontSize = EditorStyles.miniLabel.fontSize });
+            if (focusCardRename)
+            {
+                focusCardRename = false;
+                cardRenameHadFocus = false;
+                EditorGUI.FocusTextInControl(kCardRenameControl);
+            } else if (focused)
+                cardRenameHadFocus = true;
+            else if (evt.type == EventType.Repaint && cardRenameHadFocus)
+                FinishCardRename(item);    // clicked elsewhere
+        }
+
+        bool cardRenameHadFocus;
+
+        void FinishCardRename(ChiselSurfaceBrowserModel.Item item)
+        {
+            var text = cardRenameText;
+            cardRenameGuid = null;
+            GUIUtility.keyboardControl = 0;
+            var error = Rename(item.path, text);
+            if (error != null)
+                ShowNotification(new GUIContent(error));
+            MarkDirty();
         }
 
         /// <summary>Renames an asset; the error when it can't be, null when it was</summary>
@@ -665,50 +755,26 @@ namespace Chisel.Editors
             return string.IsNullOrEmpty(error) ? null : error;
         }
 
-        // the name; while renaming a text field, Enter renames and Escape cancels; double-click it to rename
+        // the name, always a text field (read-only when the material can't be changed); Enter or leaving it renames,
+        // Escape keeps the name
         void NameGUI(ChiselSurfaceBrowserModel.Item item, bool editable)
         {
-            var evt = Event.current;
-            if (renamingGuid != item.guid || !editable)
+            using (new EditorGUI.DisabledScope(!editable))
             {
-                if (renamingGuid != null && renamingGuid != item.guid)
-                    renamingGuid = null;
-                var labelRect = GUILayoutUtility.GetRect(new GUIContent(item.name), EditorStyles.boldLabel);
-                GUI.Label(labelRect, new GUIContent(item.name, editable ? "Double-click to rename" : null), EditorStyles.boldLabel);
-                if (editable && evt.type == EventType.MouseDown && evt.clickCount == 2 && labelRect.Contains(evt.mousePosition))
+                GUI.SetNextControlName(kRenameControl);
+                var newName = EditorGUILayout.DelayedTextField(item.name, new GUIStyle(EditorStyles.textField) { fontStyle = FontStyle.Bold });
+                if (focusRename)
                 {
-                    StartRename(item);
-                    evt.Use();
+                    focusRename = false;
+                    EditorGUI.FocusTextInControl(kRenameControl);
                 }
-                return;
-            }
-
-            var focused = GUI.GetNameOfFocusedControl() == kRenameControl;
-            if (evt.type == EventType.KeyDown && focused)
-            {
-                if (evt.keyCode == KeyCode.Return || evt.keyCode == KeyCode.KeypadEnter)
-                {
-                    var error = Rename(item.path, renameText);
-                    renamingGuid = null;
-                    if (error != null)
-                        ShowNotification(new GUIContent(error));
-                    evt.Use();
-                    MarkDirty();
-                    GUIUtility.ExitGUI();
-                } else if (evt.keyCode == KeyCode.Escape)
-                {
-                    renamingGuid = null;
-                    evt.Use();
-                    Repaint();
+                if (!editable || newName == item.name)
                     return;
-                }
-            }
-            GUI.SetNextControlName(kRenameControl);
-            renameText = EditorGUILayout.TextField(renameText);
-            if (focusRename)
-            {
-                focusRename = false;
-                EditorGUI.FocusTextInControl(kRenameControl);
+                var error = Rename(item.path, newName);
+                if (error != null)
+                    ShowNotification(new GUIContent(error));
+                MarkDirty();
+                GUIUtility.ExitGUI();
             }
         }
 

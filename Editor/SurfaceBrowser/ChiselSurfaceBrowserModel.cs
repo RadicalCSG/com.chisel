@@ -45,6 +45,17 @@ namespace Chisel.Editors
         }
         public enum TraitFilter { Any, With, Without }
 
+        /// <summary>A plain material: one with none of the other traits</summary>
+        public static Trait PlainTrait(IReadOnlyList<Trait> others)
+        {
+            var copy = new List<Trait>(others);
+            return new Trait
+            {
+                name = "Plain",
+                has  = item => copy.TrueForAll(trait => !trait.has(item))
+            };
+        }
+
         public readonly List<Trait> traits = new();
         readonly Dictionary<string, TraitFilter> traitFilters = new();
 
