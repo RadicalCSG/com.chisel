@@ -597,9 +597,11 @@ namespace Chisel.Editors
             menu.AddItem(new GUIContent("Show in Project Tab"), false, () => EditorGUIUtility.PingObject(material));
             menu.AddItem(new GUIContent("Open Folder in Explorer"), false, () => EditorUtility.RevealInFinder(item.path));
             if (IsEditable(item.path))
-                menu.AddItem(new GUIContent("Rename"), false, () => { focusRename = true; Repaint(); });
+                menu.AddItem(new GUIContent("Rename"), false, () => StartRename(item));
             else
                 menu.AddDisabledItem(new GUIContent("Rename"));
+            menu.AddSeparator(string.Empty);
+            menu.AddItem(new GUIContent("Select Surfaces Using This Material"), false, () => SelectSurfacesUsing(material));
             return menu;
         }
 
@@ -623,30 +625,77 @@ namespace Chisel.Editors
         }
 
         const string kRenameControl = "ChiselRenameMaterial";
-        bool focusRename;
+        bool   focusRename;
+        string renamingGuid;
+        string renameText;
 
-        // the name, editable when the material can be changed; a new name renames the asset
+        void StartRename(ChiselSurfaceBrowserModel.Item item)
+        {
+            renamingGuid = item.guid;
+            renameText   = item.name;
+            focusRename  = true;
+            Repaint();
+        }
+
+        /// <summary>Renames an asset; the error when it can't be, null when it was</summary>
+        internal static string Rename(string path, string newName)
+        {
+            newName = newName?.Trim();
+            if (string.IsNullOrEmpty(newName))
+                return "A name can't be empty";
+            if (newName == System.IO.Path.GetFileNameWithoutExtension(path))
+                return null;
+            if (!IsEditable(path))
+                return "This material can't be changed";
+            var error = AssetDatabase.RenameAsset(path, newName);
+            return string.IsNullOrEmpty(error) ? null : error;
+        }
+
+        // the name; while renaming a text field, Enter renames and Escape cancels; double-click it to rename
         void NameGUI(ChiselSurfaceBrowserModel.Item item, bool editable)
         {
-            if (!editable)
+            var evt = Event.current;
+            if (renamingGuid != item.guid || !editable)
             {
-                GUILayout.Label(item.name, EditorStyles.boldLabel);
+                if (renamingGuid != null && renamingGuid != item.guid)
+                    renamingGuid = null;
+                var labelRect = GUILayoutUtility.GetRect(new GUIContent(item.name), EditorStyles.boldLabel);
+                GUI.Label(labelRect, new GUIContent(item.name, editable ? "Double-click to rename" : null), EditorStyles.boldLabel);
+                if (editable && evt.type == EventType.MouseDown && evt.clickCount == 2 && labelRect.Contains(evt.mousePosition))
+                {
+                    StartRename(item);
+                    evt.Use();
+                }
                 return;
             }
+
+            var focused = GUI.GetNameOfFocusedControl() == kRenameControl;
+            if (evt.type == EventType.KeyDown && focused)
+            {
+                if (evt.keyCode == KeyCode.Return || evt.keyCode == KeyCode.KeypadEnter)
+                {
+                    var error = Rename(item.path, renameText);
+                    renamingGuid = null;
+                    if (error != null)
+                        ShowNotification(new GUIContent(error));
+                    evt.Use();
+                    MarkDirty();
+                    GUIUtility.ExitGUI();
+                } else if (evt.keyCode == KeyCode.Escape)
+                {
+                    renamingGuid = null;
+                    evt.Use();
+                    Repaint();
+                    return;
+                }
+            }
             GUI.SetNextControlName(kRenameControl);
-            var newName = EditorGUILayout.DelayedTextField(item.name, EditorStyles.boldLabel);
+            renameText = EditorGUILayout.TextField(renameText);
             if (focusRename)
             {
                 focusRename = false;
                 EditorGUI.FocusTextInControl(kRenameControl);
             }
-            if (newName == item.name || string.IsNullOrWhiteSpace(newName))
-                return;
-            var error = AssetDatabase.RenameAsset(item.path, newName.Trim());
-            if (!string.IsNullOrEmpty(error))
-                ShowNotification(new GUIContent(error));
-            MarkDirty();
-            GUIUtility.ExitGUI();
         }
 
         void KeyboardGUI(int columns)

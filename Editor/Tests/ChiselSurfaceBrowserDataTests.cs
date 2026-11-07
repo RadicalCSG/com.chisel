@@ -182,6 +182,28 @@ namespace Chisel.Editors.Tests
         }
 
         [Test]
+        public void Rename_RenamesTheMaterialAsset()
+        {
+            const string kFolder = "Assets/ChiselRenameTests";
+            if (!AssetDatabase.IsValidFolder(kFolder))
+                AssetDatabase.CreateFolder("Assets", "ChiselRenameTests");
+            try
+            {
+                var material = new UnityEngine.Material(UnityEngine.Shader.Find("Standard"));
+                AssetDatabase.CreateAsset(material, kFolder + "/before.mat");
+                var guid = AssetDatabase.AssetPathToGUID(kFolder + "/before.mat");
+                Assert.That(ChiselSurfaceBrowserWindow.Rename(kFolder + "/before.mat", "  after "), Is.Null);
+                Assert.That(AssetDatabase.GUIDToAssetPath(guid), Is.EqualTo(kFolder + "/after.mat"));
+                Assert.That(ChiselSurfaceBrowserWindow.Rename(kFolder + "/after.mat", "after"), Is.Null, "the same name: nothing to do");
+                Assert.That(ChiselSurfaceBrowserWindow.Rename(kFolder + "/after.mat", " "), Is.Not.Null, "no empty names");
+            }
+            finally
+            {
+                AssetDatabase.DeleteAsset(kFolder);
+            }
+        }
+
+        [Test]
         public void Favorites_AreAddedAndRemoved()
         {
             ChiselSurfaceBrowserPrefs.SetFavorite("a", true);
