@@ -922,7 +922,8 @@ namespace Chisel.Editors
             {
                 var applies = new GUIStyle(EditorStyles.miniLabel) { wordWrap = true, normal = { textColor = new Color(1f, 0.75f, 0.3f) } };
                 GUILayout.Label(isDecal ? "Applies to every decal of this material" :
-                                uses > 0 ? $"Applies to all {uses} surface{(uses == 1 ? "" : "s")} using this material" : "Applies to every surface using this material", applies);
+                                uses == 1 ? "Applies to 1 surface using this material" :
+                                uses > 1 ? $"Applies to all {uses} surfaces using this material" : "Applies to every surface using this material", applies);
                 Editor.CreateCachedEditor(metadata, typeof(ChiselSurfaceMetadataEditor), ref metadataEditor);
                 metadataEditor?.OnInspectorGUI();
             }
@@ -931,10 +932,6 @@ namespace Chisel.Editors
             GUILayout.Space(8);
             if (GUILayout.Button("Set as default for...", EditorStyles.popup))
                 DefaultsMenu(material).ShowAsContext();
-            if (GUILayout.Button("Select surfaces using this material"))
-                SelectSurfacesUsing(material);
-            if (GUILayout.Button("Ping in Project"))
-                EditorGUIUtility.PingObject(material);
         }
 
         internal const float kMinPreviewHeight = 60;
@@ -1011,7 +1008,6 @@ namespace Chisel.Editors
             {
                 GUILayout.Label("Labels", EditorStyles.miniBoldLabel);
                 GUILayout.FlexibleSpace();
-                GUILayout.Label("Enter adds - Backspace removes last", EditorStyles.miniLabel);
             }
             Chips(current, width, label => { ChiselAssetLabels.Remove(material, label); MarkDirty(); }, "x");
 
@@ -1154,7 +1150,9 @@ namespace Chisel.Editors
             {
                 GUILayout.Label("Selection  " + SelectionText(), EditorStyles.miniLabel);
                 GUILayout.FlexibleSpace();
-                GUILayout.Label(ChiselSurfaceBrowserDecals.IsDecal(Load(Selected)) ? "Double-click to place - Drag into the Scene view" : "Double-click to apply - Drag onto a surface", EditorStyles.miniLabel);
+                GUILayout.Label(ChiselSurfaceBrowserDecals.IsDecal(Load(Selected))
+                                    ? "Double-click a decal to place it, or drag it into the Scene view"
+                                    : "Double-click a material to apply it to the selected surfaces, or drag it onto a surface in the Scene view", EditorStyles.miniLabel);
                 if (GUILayout.Button("Close", GUILayout.Width(60)))
                     Close();
                 var count = ChiselSurfaceSelectionManager.Selection.Count;
