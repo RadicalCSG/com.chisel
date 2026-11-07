@@ -93,7 +93,36 @@ namespace Chisel.Editors
             if (s_Points.Count <= 1 && (evt.type == EventType.MouseMove || evt.type == EventType.MouseDown))
                 s_Surface = Pick(evt.mousePosition);
 
+            // Enter closes the shape at the corners placed so far, Backspace takes back the last corner
+            var finish = false;
+            if (evt.type == EventType.KeyDown)
+            {
+                if ((evt.keyCode == KeyCode.Return || evt.keyCode == KeyCode.KeypadEnter) && PlacedCorners(s_Points) >= 3)
+                {
+                    finish = true;
+                    evt.Use();
+                } else if (evt.keyCode == KeyCode.Backspace && RemoveLastCorner(s_Points))
+                {
+                    if (s_Points.Count <= 1)
+                        ClearDrawing();
+                    evt.Use();
+                    SceneView.RepaintAll();
+                }
+            }
+
             PointDrawing.PointDrawHandle(dragArea, ref s_Points, out var transformation, out _, releaseOnMouseUp: true, SceneHandles.OutlinedDotHandleCap);
+
+            if (finish)
+            {
+                var corners = new List<Vector3>();
+                for (int i = 0; i < PlacedCorners(s_Points); i++)
+                    corners.Add(transformation.MultiplyPoint3x4(s_Points[i]));
+                var surface = s_Surface;
+                ClearDrawing();
+                if (surface.valid)
+                    CreateShape(surface, corners, transformation.GetColumn(0));
+                GUIUtility.ExitGUI();
+            }
             SnapToSurfaceOutline(transformation);
 
             if (evt.type == EventType.Repaint && s_Points.Count > 1)
@@ -115,14 +144,32 @@ namespace Chisel.Editors
                 var surface = s_Surface;
                 ClearDrawing();
                 if (surface.valid)
-                {
-                    if (s_DecalMaterial != null)
-                        CreateWithImage(surface.brush, surface.surfaceIndex, s_DecalMaterial, s_DecalTile, surface.normal, outline, transformation.GetColumn(0));
-                    else
-                        Create(surface.brush, surface.surfaceIndex, surface.material, surface.normal, outline, transformation.GetColumn(0));
-                }
+                    CreateShape(surface, outline, transformation.GetColumn(0));
                 GUIUtility.ExitGUI();
             }
+        }
+
+        static void CreateShape(Hit surface, List<Vector3> outline, Vector3 right)
+        {
+            if (s_DecalMaterial != null)
+                CreateWithImage(surface.brush, surface.surfaceIndex, s_DecalMaterial, s_DecalTile, surface.normal, outline, right);
+            else
+                Create(surface.brush, surface.surfaceIndex, surface.material, surface.normal, outline, right);
+        }
+
+        /// <summary>The corners placed so far; the last point follows the mouse and isn't one</summary>
+        internal static int PlacedCorners(List<Vector3> points)
+        {
+            return Mathf.Max(0, points.Count - 1);
+        }
+
+        /// <summary>Takes back the last placed corner, keeping the point that follows the mouse</summary>
+        internal static bool RemoveLastCorner(List<Vector3> points)
+        {
+            if (PlacedCorners(points) == 0)
+                return false;
+            points.RemoveAt(points.Count - 2);
+            return true;
         }
 
         static readonly List<Vector3> s_SurfaceOutline = new();

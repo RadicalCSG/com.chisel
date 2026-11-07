@@ -686,6 +686,20 @@ namespace Chisel.Editors
         static ChiselDecalComponent s_PickingFor;
         static bool s_RemoveIfUnplaced;
 
+        /// <summary>Puts a trim decal on the edge nearest a point of the scene view; false when there is none</summary>
+        internal static bool PlaceTrimAt(ChiselDecalComponent decal, Vector2 mousePosition)
+        {
+            var candidate = FindEdge(mousePosition);
+            if (!candidate.valid)
+                return false;
+            Undo.RecordObjects(new Object[] { decal, decal.transform }, "Place Trim Decal");
+            decal.SetTargets(new[] { candidate.a, candidate.b });
+            decal.SetTrimEdge(false, candidate.edgeIndex);
+            decal.transform.position = candidate.at;
+            EditorUtility.SetDirty(decal);
+            return true;
+        }
+
         /// <summary>Selects a trim decal and starts picking its edge in the scene view; removeIfCancelled: a decal made
         /// only to be placed, removed again when Escape cancels</summary>
         internal static void StartPickingEdge(ChiselDecalComponent decal, bool removeIfCancelled)

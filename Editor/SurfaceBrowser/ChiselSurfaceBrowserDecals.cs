@@ -7,9 +7,96 @@ using UnityEngine;
 namespace Chisel.Editors
 {
     // The decal images of the materials marked as decals, and placing them: one per tile of a decal sheet, or the whole
-    // texture for a material without a layout
+    // texture for a material without a layout. An image dragged into the scene view is placed where it's dropped
+    [InitializeOnLoad]
     public static class ChiselSurfaceBrowserDecals
     {
+        public const string kDragKey = "ChiselDecalImage";
+
+        static ChiselSurfaceBrowserDecals()
+        {
+            SceneView.duringSceneGui -= OnSceneGUI;
+            SceneView.duringSceneGui += OnSceneGUI;
+        }
+
+        /// <summary>Starts dragging an image; not as a material, so dropping it doesn't paint a surface</summary>
+        public static void StartDrag(Image image)
+        {
+            DragAndDrop.PrepareStartDrag();
+            DragAndDrop.objectReferences = System.Array.Empty<Object>();
+            DragAndDrop.SetGenericData(kDragKey, image);
+            DragAndDrop.StartDrag(image.name);
+        }
+
+        // the brush surface under a point of the scene view
+        static bool PickSurface(Vector2 mousePosition, out ChiselIntersection hit)
+        {
+            hit = default;
+            var intersections = new List<ChiselIntersection>();
+            ChiselSelectionManager.GetOverlappingObjects(mousePosition, intersections);
+            foreach (var intersection in intersections)
+            {
+                if (intersection.treeNode != null && intersection.model != null && intersection.brushIntersection.brush.Valid)
+                {
+                    hit = intersection;
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        static void OnSceneGUI(SceneView sceneView)
+        {
+            var evt = Event.current;
+            if (evt.type != EventType.DragUpdated && evt.type != EventType.DragPerform)
+                return;
+            if (DragAndDrop.GetGenericData(kDragKey) is not Image image || image.material == null)
+                return;
+            var shape = ChiselDecalComponent.DefaultsOf(image.material).shape;
+            var onSurface = PickSurface(evt.mousePosition, out var hit);
+            DragAndDrop.visualMode = onSurface || shape == ChiselDecalShape.Polygon ? DragAndDropVisualMode.Copy : DragAndDropVisualMode.Rejected;
+            if (evt.type == EventType.DragPerform)
+            {
+                DragAndDrop.AcceptDrag();
+                DragAndDrop.SetGenericData(kDragKey, null);
+                Drop(image, shape, onSurface, hit, evt.mousePosition);
+            }
+            evt.Use();
+        }
+
+        // a box where it's dropped, a trim on the edge nearest to it; a polygon starts drawing
+        static void Drop(Image image, ChiselDecalShape shape, bool onSurface, ChiselIntersection hit, Vector2 mousePosition)
+        {
+            ChiselSurfaceBrowserPrefs.MarkUsed(image.Key);
+            switch (shape)
+            {
+                case ChiselDecalShape.Polygon:
+                    ChiselSurfaceShapeTool.StartDrawing(image.material, image.tile);
+                    return;
+                case ChiselDecalShape.Trim:
+                {
+                    var decal = CreateTrim(image.material, image.tile);
+                    if (!ChiselDecalEditor.PlaceTrimAt(decal, mousePosition))
+                        ChiselDecalEditor.StartPickingEdge(decal, removeIfCancelled: true);
+                    else
+                        Selection.activeGameObject = decal.gameObject;
+                    return;
+                }
+                default:
+                {
+                    if (!onSurface)
+                        return;
+                    var decal = CreateBoxAt(hit.treeNode.transform, image.material, image.tile, hit.worldPlaneIntersection, hit.worldPlane.normal);
+                    if (decal == null)
+                        return;
+                    Undo.RegisterCreatedObjectUndo(decal.gameObject, "Place Decal");
+                    Selection.activeGameObject = decal.gameObject;
+                    ChiselDecalManager.SetDirty();
+                    ChiselSceneMaterialUsage.SetDirty();
+                    return;
+                }
+            }
+        }
         public sealed class Image
         {
             public Material material;
@@ -65,6 +152,14 @@ namespace Chisel.Editors
             foreach (var point in outline)
                 center += point;
             center /= outline.Count;
+            return CreateBoxAt(parent, material, tile, center, normal);
+        }
+
+        /// <summary>A box decal of an image at a point on a surface, facing it, with the material's decal defaults</summary>
+        public static ChiselDecalComponent CreateBoxAt(Transform parent, Material material, int tile, Vector3 center, Vector3 normal)
+        {
+            if (material == null || normal.sqrMagnitude < 1e-12f)
+                return null;
             normal.Normalize();
             var up = Mathf.Abs(Vector3.Dot(normal, Vector3.up)) < 0.99f ? Vector3.up : Vector3.forward;
 
@@ -312,6 +407,12 @@ namespace Chisel.Editors
                 if (evt.clickCount == 2)
                     PlaceSelectedDecal();
                 evt.Use();
+            } else if (evt.type == EventType.MouseDrag && evt.button == 0 && rect.Contains(evt.mousePosition))
+            {
+                // dropped in the scene view, it's placed there
+                selectedDecal = image.Key;
+                ChiselSurfaceBrowserDecals.StartDrag(image);
+                evt.Use();
             }
         }
         #endregion
@@ -392,9 +493,9 @@ namespace Chisel.Editors
         {
             switch (shape)
             {
-                case ChiselDecalShape.Trim:    return "Pick edge: hover an edge between two surfaces in the Scene view and click to place the trim along it. Escape cancels.";
-                case ChiselDecalShape.Polygon: return "Draw on surface: click the corners on a surface, then click the first corner again to close it. Escape cancels.";
-                default:                       return "Place on the selected surfaces: one decal on each, centered on it and facing it. Double-click an image to place it.";
+                case ChiselDecalShape.Trim:    return "Pick edge: hover an edge between two surfaces in the Scene view and click to place the trim along it. Escape cancels. Or drag the image onto an edge in the Scene view.";
+                case ChiselDecalShape.Polygon: return "Draw on surface: click the corners on a surface, then click the first corner again or press Enter to close it. Backspace takes back a corner, Escape cancels.";
+                default:                       return "Place on the selected surfaces: one decal on each, centered on it and facing it. Double-click an image to place it, or drag it onto a surface in the Scene view.";
             }
         }
 
