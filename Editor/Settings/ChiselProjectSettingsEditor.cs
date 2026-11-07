@@ -169,8 +169,22 @@ namespace Chisel.Editors
 
 		// The project's folders as a tree, each with a toggle that hides it; a folder hidden through its parent shows
 		// as hidden and can only be shown through its parent
+		System.Collections.Generic.Dictionary<string, int> materialCounts;
+
 		void HiddenFoldersGUI()
 		{
+			if (materialCounts == null)
+			{
+				var paths = new System.Collections.Generic.List<string>();
+				// the ones the Surface Browser lists: material files, not those inside models or other assets
+				foreach (var guid in AssetDatabase.FindAssets("t:Material", new[] { "Assets", "Packages" }))
+				{
+					var path = AssetDatabase.GUIDToAssetPath(guid);
+					if (path.EndsWith(".mat", System.StringComparison.OrdinalIgnoreCase))
+						paths.Add(path);
+				}
+				materialCounts = ChiselSurfaceBrowserModel.CountPerFolder(paths);
+			}
 			FolderRowGUI("Assets", "Assets", 0, false);
 			FolderRowGUI("Packages", "Packages", 0, false);
 		}
@@ -201,7 +215,15 @@ namespace Chisel.Editors
 					else ChiselProjectSettings.UnhideFolder(path);
 				}
 			}
-			GUI.Label(new Rect(toggleRect.xMax + 2, rect.y, rect.xMax - toggleRect.xMax - 2, rect.height), new GUIContent(name, path));
+			// how many materials it holds; one without any is greyed out, but can still be hidden
+			materialCounts.TryGetValue(path, out var count);
+			var prevColor = GUI.color;
+			if (count == 0) GUI.color = new Color(prevColor.r, prevColor.g, prevColor.b, 0.45f);
+			GUI.Label(new Rect(toggleRect.xMax + 2, rect.y, rect.xMax - toggleRect.xMax - 50, rect.height), new GUIContent(name, path));
+			GUI.Label(new Rect(rect.xMax - 46, rect.y, 44, rect.height),
+					  new GUIContent(count.ToString(), count == 1 ? "1 material" : count + " materials"),
+					  new GUIStyle(EditorStyles.miniLabel) { alignment = TextAnchor.MiddleRight });
+			GUI.color = prevColor;
 
 			if (!expanded)
 				return;

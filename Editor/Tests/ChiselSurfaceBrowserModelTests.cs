@@ -91,6 +91,36 @@ namespace Chisel.Editors.Tests
         }
 
         [Test]
+        public void Unused_IsWhatIsntInTheScene()
+        {
+            var model = Model("Assets/Models");
+            model.isInScene = item => item.name == "Metal_Floor";
+            Assert.That(Names(model.Filter("", ChiselSurfaceBrowserModel.QuickAccess.UnusedInThisScene)),
+                        Is.EqualTo(new[] { "Concrete_Panels", "Trim_Industrial", "Wall" }), "hidden ones are left out too");
+            Assert.That(model.Count(ChiselSurfaceBrowserModel.QuickAccess.UnusedInThisScene), Is.EqualTo(3));
+        }
+
+        [Test]
+        public void CountPerFolder_IncludesSubfolders()
+        {
+            var counts = ChiselSurfaceBrowserModel.CountPerFolder(new[] { "Assets/A/B/x.mat", "Assets/A/y.mat", "Packages/P/z.mat" });
+            Assert.That(counts["Assets"], Is.EqualTo(2));
+            Assert.That(counts["Assets/A"], Is.EqualTo(2));
+            Assert.That(counts["assets/a/b"], Is.EqualTo(1), "case is ignored");
+            Assert.That(counts["Packages"], Is.EqualTo(1));
+            Assert.That(counts.ContainsKey("Assets/C"), Is.False);
+        }
+
+        [Test]
+        public void TheDetailsPanel_KeepsWithinTheWindow()
+        {
+            Assert.That(ChiselSurfaceBrowserWindow.ClampDetailsWidth(1000, 1200), Is.EqualTo(1200 - ChiselSurfaceBrowserWindow.kSidebarWidth - ChiselSurfaceBrowserWindow.kMinGridWidth));
+            Assert.That(ChiselSurfaceBrowserWindow.ClampDetailsWidth(10, 1200), Is.EqualTo(ChiselSurfaceBrowserWindow.kMinDetailsWidth));
+            Assert.That(ChiselSurfaceBrowserWindow.ClampDetailsWidth(400, 1200), Is.EqualTo(400));
+            Assert.That(ChiselSurfaceBrowserWindow.ClampDetailsWidth(400, 500), Is.EqualTo(ChiselSurfaceBrowserWindow.kMinDetailsWidth), "a narrow window still keeps its smallest");
+        }
+
+        [Test]
         public void RecentlyUsed_KeepsItsOwnOrder()
         {
             var model = Model();

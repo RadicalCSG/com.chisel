@@ -14,8 +14,19 @@ namespace Chisel.Editors
 #endif
     public sealed class ChiselSurfaceBrowserWindow : EditorWindow
     {
-        const float kSidebarWidth = 220;
-        const float kDetailsWidth = 300;
+        internal const float kSidebarWidth    = 220;
+        internal const float kMinDetailsWidth = 260;
+        internal const float kMinGridWidth    = 200;
+        const float kSplitterWidth = 6;
+
+        [SerializeField] float detailsWidth = 380;
+        bool draggingSplitter;
+
+        /// <summary>The details panel's width, leaving the grid its smallest; never under its own smallest</summary>
+        internal static float ClampDetailsWidth(float width, float bodyWidth)
+        {
+            return Mathf.Max(kMinDetailsWidth, Mathf.Min(width, bodyWidth - kSidebarWidth - kMinGridWidth));
+        }
         const float kFooterHeight = 28;
         const float kHeaderHeight = 22;
         const float kMinThumb     = 48;
@@ -51,7 +62,7 @@ namespace Chisel.Editors
         {
             var window = GetWindow<ChiselSurfaceBrowserWindow>();
             window.titleContent = new GUIContent("Surface Browser");
-            window.minSize = new Vector2(kSidebarWidth + kDetailsWidth + 260, 360);
+            window.minSize = new Vector2(kSidebarWidth + kMinDetailsWidth + kMinGridWidth, 360);
             window.Show();
             return window;
         }
@@ -176,7 +187,8 @@ namespace Chisel.Editors
                 return;
             }
             var sidebar = new Rect(body.x, body.y, kSidebarWidth, body.height);
-            var details = new Rect(body.xMax - kDetailsWidth, body.y, kDetailsWidth, body.height);
+            DetailsSplitterGUI(body);
+            var details = new Rect(body.xMax - detailsWidth, body.y, detailsWidth, body.height);
             var grid    = new Rect(sidebar.xMax, body.y, details.x - sidebar.xMax, body.height);
 
             SidebarGUI(sidebar);
@@ -187,6 +199,31 @@ namespace Chisel.Editors
             EditorGUI.DrawRect(new Rect(sidebar.xMax, body.y, 1, body.height), new Color(0, 0, 0, 0.3f));
             EditorGUI.DrawRect(new Rect(details.x - 1, body.y, 1, body.height), new Color(0, 0, 0, 0.3f));
             EditorGUI.DrawRect(new Rect(0, footer.y, full.width, 1), new Color(0, 0, 0, 0.3f));
+        }
+
+        // dragging the edge between the grid and the details panel resizes the panel
+        void DetailsSplitterGUI(Rect body)
+        {
+            detailsWidth = ClampDetailsWidth(detailsWidth, body.width);
+            var splitter = new Rect(body.xMax - detailsWidth - kSplitterWidth / 2, body.y, kSplitterWidth, body.height);
+            EditorGUIUtility.AddCursorRect(splitter, MouseCursor.ResizeHorizontal);
+            var evt = Event.current;
+            switch (evt.type)
+            {
+                case EventType.MouseDown when evt.button == 0 && splitter.Contains(evt.mousePosition):
+                    draggingSplitter = true;
+                    evt.Use();
+                    break;
+                case EventType.MouseDrag when draggingSplitter:
+                    detailsWidth = ClampDetailsWidth(body.xMax - evt.mousePosition.x, body.width);
+                    Repaint();
+                    evt.Use();
+                    break;
+                case EventType.MouseUp when draggingSplitter:
+                    draggingSplitter = false;
+                    evt.Use();
+                    break;
+            }
         }
 
         #region Toolbar
@@ -215,7 +252,7 @@ namespace Chisel.Editors
         #endregion
 
         #region Sidebar
-        static readonly string[] kQuickNames = { "All materials", "Favorites", "Recently used", "In this scene", "With hotspots" };
+        static readonly string[] kQuickNames = { "All materials", "Favorites", "Recently used", "In this scene", "Unused in this scene", "With hotspots" };
 
         bool Row(string text, int count, bool selected, int depth = 0, bool greyed = false)
         {
@@ -504,12 +541,22 @@ namespace Chisel.Editors
             var item = Selected;
             var material = Load(item);
             GUILayout.BeginArea(new Rect(rect.x + 8, rect.y + 6, rect.width - 14, rect.height - 8));
-            detailsScroll = EditorGUILayout.BeginScrollView(detailsScroll);
+            // never scrolls sideways: everything fits the panel's width
+            detailsScroll = EditorGUILayout.BeginScrollView(detailsScroll, false, false, GUIStyle.none, GUI.skin.verticalScrollbar, GUIStyle.none);
+            var contentWidth = rect.width - 14 - 16;
+            var oldLabelWidth = EditorGUIUtility.labelWidth;
+            EditorGUIUtility.labelWidth = Mathf.Max(80, contentWidth * 0.4f);
+            try { DetailsContentGUI(item, material, contentWidth); }
+            finally { EditorGUIUtility.labelWidth = oldLabelWidth; }
+            EditorGUILayout.EndScrollView();
+            GUILayout.EndArea();
+        }
+
+        void DetailsContentGUI(ChiselSurfaceBrowserModel.Item item, Material material, float contentWidth)
+        {
             if (material == null)
             {
                 GUILayout.Label("Select a material to see its details.", EditorStyles.centeredGreyMiniLabel);
-                EditorGUILayout.EndScrollView();
-                GUILayout.EndArea();
                 return;
             }
 
@@ -522,7 +569,9 @@ namespace Chisel.Editors
                     GUILayout.FlexibleSpace();
                     previewEditor.OnPreviewSettings();
                 }
-                var previewRect = GUILayoutUtility.GetRect(rect.width - 30, 180);
+                // square up to the panel's width, not taller than a part of the window
+                var previewSize = Mathf.Min(contentWidth, Mathf.Max(120, position.height * 0.35f));
+                var previewRect = GUILayoutUtility.GetRect(contentWidth, previewSize, GUILayout.Width(contentWidth), GUILayout.Height(previewSize));
                 previewEditor.OnInteractivePreviewGUI(previewRect, EditorStyles.helpBox);
             }
 
@@ -541,7 +590,7 @@ namespace Chisel.Editors
                 HotspotBoxGUI(material, metadata);
 
             GUILayout.Space(8);
-            LabelsGUI(material);
+            LabelsGUI(material, contentWidth);
 
             GUILayout.Space(8);
             GUILayout.Label("MATERIAL SETTINGS", EditorStyles.miniBoldLabel);
@@ -583,9 +632,6 @@ namespace Chisel.Editors
                 SelectSurfacesUsing(material);
             if (GUILayout.Button("Ping in Project"))
                 EditorGUIUtility.PingObject(material);
-
-            EditorGUILayout.EndScrollView();
-            GUILayout.EndArea();
         }
 
         static void InfoRow(string name, string value)
@@ -622,7 +668,7 @@ namespace Chisel.Editors
         }
 
         // Its labels as chips; Enter adds the typed one, Backspace in the empty field removes the last
-        void LabelsGUI(Material material)
+        void LabelsGUI(Material material, float width)
         {
             var current = ChiselAssetLabels.Get(material);
             using (new EditorGUILayout.HorizontalScope())
@@ -631,7 +677,7 @@ namespace Chisel.Editors
                 GUILayout.FlexibleSpace();
                 GUILayout.Label("Enter adds · Backspace removes last", EditorStyles.miniLabel);
             }
-            Chips(current, label => { ChiselAssetLabels.Remove(material, label); MarkDirty(); }, "×");
+            Chips(current, width, label => { ChiselAssetLabels.Remove(material, label); MarkDirty(); }, "x");
 
             const string kControl = "ChiselNewLabel";
             var evt = Event.current;
@@ -663,16 +709,15 @@ namespace Chisel.Editors
                     continue;
                 suggestions.Add(pair.Key);
             }
-            Chips(suggestions.ToArray(), label => { ChiselAssetLabels.Add(material, label); newLabel = string.Empty; MarkDirty(); }, "+", prefix: true);
+            Chips(suggestions.ToArray(), width, label => { ChiselAssetLabels.Add(material, label); newLabel = string.Empty; MarkDirty(); }, "+", prefix: true);
         }
 
-        static void Chips(string[] items, Action<string> clicked, string mark, bool prefix = false)
+        static void Chips(string[] items, float maxWidth, Action<string> clicked, string mark, bool prefix = false)
         {
             if (items.Length == 0)
                 return;
             var style = new GUIStyle(EditorStyles.miniButton) { stretchWidth = false };
             var width = 0f;
-            var maxWidth = kDetailsWidth - 30;
             EditorGUILayout.BeginHorizontal();
             foreach (var item in items)
             {

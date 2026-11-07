@@ -35,7 +35,7 @@ namespace Chisel.Editors
             public List<Folder> children = new();
         }
 
-        public enum QuickAccess { All, Favorites, RecentlyUsed, InThisScene, WithHotspots }
+        public enum QuickAccess { All, Favorites, RecentlyUsed, InThisScene, UnusedInThisScene, WithHotspots }
 
         // what quick access asks of an item, given from outside: per user and per scene
         public Func<Item, bool> isFavorite   = _ => false;
@@ -125,6 +125,7 @@ namespace Chisel.Editors
                 case QuickAccess.Favorites:    return isFavorite(item);
                 case QuickAccess.RecentlyUsed: return Contains(recent(), item.guid);
                 case QuickAccess.InThisScene:  return isInScene(item);
+                case QuickAccess.UnusedInThisScene: return !isInScene(item);
                 case QuickAccess.WithHotspots: return hasHotspots(item);
                 default:                       return true;
             }
@@ -236,6 +237,22 @@ namespace Chisel.Editors
             // Assets before Packages, whatever else
             roots.Sort((a, b) => RootOrder(a.name).CompareTo(RootOrder(b.name)));
             return roots;
+        }
+
+        /// <summary>How many of the assets each folder holds, its subfolders' included</summary>
+        public static Dictionary<string, int> CountPerFolder(IEnumerable<string> assetPaths)
+        {
+            var counts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            foreach (var path in assetPaths)
+            {
+                for (var slash = path.LastIndexOf('/'); slash > 0; slash = path.LastIndexOf('/', slash - 1))
+                {
+                    var folder = path.Substring(0, slash);
+                    counts.TryGetValue(folder, out var count);
+                    counts[folder] = count + 1;
+                }
+            }
+            return counts;
         }
 
         static int RootOrder(string name) { return name == "Assets" ? 0 : name == "Packages" ? 1 : 2; }
