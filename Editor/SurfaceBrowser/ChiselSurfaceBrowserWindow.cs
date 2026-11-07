@@ -646,7 +646,7 @@ namespace Chisel.Editors
             return menu;
         }
 
-        const string kAddParametersText = "Add Chisel Surface Parameters";
+        const string kAddParametersText = "Set up material";
 
         /// <summary>Gives a material Chisel's surface parameters (its metadata), undoably; false when it has them or
         /// can't be changed</summary>
@@ -911,7 +911,6 @@ namespace Chisel.Editors
             GUILayout.Label("MATERIAL SETTINGS", EditorStyles.miniBoldLabel);
             if (metadata == null)
             {
-                EditorGUILayout.HelpBox("This material has no Chisel surface parameters yet; surfaces using it take Chisel's defaults.", MessageType.None);
                 if (GUILayout.Button(kAddParametersText))
                 {
                     AddSurfaceParameters(material);
