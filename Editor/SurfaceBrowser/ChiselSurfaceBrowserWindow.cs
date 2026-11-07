@@ -883,17 +883,6 @@ namespace Chisel.Editors
             {
                 var applies = new GUIStyle(EditorStyles.miniLabel) { wordWrap = true, normal = { textColor = new Color(1f, 0.75f, 0.3f) } };
                 GUILayout.Label(uses > 0 ? $"Applies to all {uses} surface{(uses == 1 ? "" : "s")} using this material" : "Applies to every surface using this material", applies);
-                EditorGUI.BeginChangeCheck();
-                var isDecal = EditorGUILayout.Toggle(new GUIContent("Use as decal", "Lists the material in the Decals tab, to place as decals"), metadata.decalDefaults.isDecal);
-                if (EditorGUI.EndChangeCheck())
-                {
-                    Undo.RecordObject(metadata, isDecal ? "Use As Decal" : "Not A Decal");
-                    var defaults = metadata.decalDefaults;
-                    defaults.isDecal = isDecal;
-                    metadata.decalDefaults = defaults;
-                    EditorUtility.SetDirty(metadata);
-                }
-
                 Editor.CreateCachedEditor(metadata, typeof(ChiselSurfaceMetadataEditor), ref metadataEditor);
                 metadataEditor?.OnInspectorGUI();
             }

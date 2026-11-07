@@ -99,6 +99,23 @@ namespace Chisel.Editors.Tests
             Assert.That(decal.Settings.size.y, Is.EqualTo(0.5f).Within(1e-5f));
         }
 
+        // The material's inspector knows a decal material, to show only what decals use
+        [Test]
+        public void TheMaterialInspector_KnowsADecalMaterial()
+        {
+            var decal = DecalMaterial(ChiselDecalDefaults.Default);
+            var editor = (ChiselSurfaceMetadataEditor)UnityEditor.Editor.CreateEditor(decal.GetMetadataOfType<ChiselSurfaceMetadata>());
+            created.Add(editor);
+            Assert.That(editor.IsDecal, Is.True);
+
+            var metadata = decal.GetMetadataOfType<ChiselSurfaceMetadata>();
+            var defaults = metadata.decalDefaults;
+            defaults.isDecal = false;
+            metadata.decalDefaults = defaults;
+            editor.serializedObject.Update();
+            Assert.That(editor.IsDecal, Is.False);
+        }
+
         // A material whose decals are trims or polygons still places as a box when placed on surfaces
         [Test]
         public void ABoxDecal_FromAPolygonMaterial_TakesABoxProjection()

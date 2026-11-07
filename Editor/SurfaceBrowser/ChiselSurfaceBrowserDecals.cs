@@ -224,7 +224,6 @@ namespace Chisel.Editors
     public sealed partial class ChiselSurfaceBrowserWindow
     {
         static readonly string[] kShapeFilters = { "All", "Box", "Trim", "Polygon" };
-        static readonly string[] kBlendNames   = { "Transparent", "Opaque" };
 
         [SerializeField] int    decalShapeFilter;
         [SerializeField] string selectedDecal;
@@ -465,23 +464,19 @@ namespace Chisel.Editors
             LabelsGUI(material, contentWidth);
 
             GUILayout.Space(8);
-            GUILayout.Label("DEFAULTS FOR NEW DECALS", EditorStyles.miniBoldLabel);
+            GUILayout.Label("MATERIAL SETTINGS", EditorStyles.miniBoldLabel);
             var applies = new GUIStyle(EditorStyles.miniLabel) { wordWrap = true, normal = { textColor = new Color(1f, 0.75f, 0.3f) } };
             GUILayout.Label($"Belong to {material.name}: every image on it starts from them", applies);
-            if (DecalDefaultsGUI(material, image))
-                decalsDirty = true;     // the shape filter and group headers follow the defaults
-
-            GUILayout.Space(8);
-            if (GUILayout.Button(new GUIContent("Not a decal", "Removes the material from the Decals tab")))
+            var metadata = MetadataOf(material);
+            if (metadata != null)
             {
-                var metadata = MetadataOf(material);
-                Undo.RecordObject(metadata, "Not A Decal");
-                var defaults = metadata.decalDefaults;
-                defaults.isDecal = false;
-                metadata.decalDefaults = defaults;
-                EditorUtility.SetDirty(metadata);
-                MarkDirty();
-                GUIUtility.ExitGUI();
+                // the material's own settings, the same as in its inspector; unticking Use as decal takes it out of this tab
+                Editor.CreateCachedEditor(metadata, typeof(ChiselSurfaceMetadataEditor), ref metadataEditor);
+                EditorGUI.BeginChangeCheck();
+                metadataEditor?.OnInspectorGUI();
+                if (EditorGUI.EndChangeCheck())
+                    MarkDirty();
+                DecalSizeGUI(material, image);
             }
 
             EditorGUI.EndDisabledGroup();
@@ -499,66 +494,15 @@ namespace Chisel.Editors
             }
         }
 
-        // every row is always shown; the ones that don't apply to the shape are disabled with a reason
-        static bool DecalDefaultsGUI(Material material, ChiselSurfaceBrowserDecals.Image image)
+        // the size a new decal of this image starts with, from the material's height and the image's aspect
+        static void DecalSizeGUI(Material material, ChiselSurfaceBrowserDecals.Image image)
         {
-            var metadata = MetadataOf(material);
-            if (metadata == null)
-                return false;
-            var defaults = metadata.decalDefaults.Valid();
-            var changed  = defaults;
-            EditorGUI.BeginChangeCheck();
-
-            var shape = (ChiselDecalShape)EditorGUILayout.EnumPopup("Shape", defaults.shape);
-            if (shape != defaults.shape)
-                changed = changed.WithShape(shape);
-
-            var trim    = changed.shape == ChiselDecalShape.Trim;
-            var polygon = changed.shape == ChiselDecalShape.Polygon;
-            using (new EditorGUI.DisabledScope(trim || polygon))
-            {
-                var label = new GUIContent("Projection", trim ? "Not used by Trim" : polygon ? "A polygon always uses Polygon" : null);
-                var projection = (ChiselDecalProjection)EditorGUILayout.EnumPopup(label, changed.projection,
-                    value => ChiselDecalDefaults.AllowsProjection(changed.shape, (ChiselDecalProjection)value), false);
-                if (!trim && !polygon)
-                    changed.projection = projection;
-            }
-            if (trim)        DisabledReason("Not used by Trim");
-            else if (polygon) DisabledReason("Locked to Polygon");
-
-            var omni = changed.shape == ChiselDecalShape.Box && changed.projection == ChiselDecalProjection.Omni;
-            using (new EditorGUI.DisabledScope(!omni))
-                changed.reach = (ChiselDecalReach)EditorGUILayout.EnumPopup("Reach", changed.reach);
-            if (!omni) DisabledReason("Only for Box with Omni");
-
-            changed.transparent = EditorGUILayout.Popup("Blend", changed.transparent ? 0 : 1, kBlendNames) == 0;
-
-            using (new EditorGUI.DisabledScope(!trim))
-                changed.trimFill = (ChiselTrimFill)EditorGUILayout.EnumPopup("Trim fill", changed.trimFill);
-            if (!trim) DisabledReason("Only for Trim");
-
-            changed.height = EditorGUILayout.FloatField(new GUIContent(polygon ? "Depth" : "Height", polygon ? "How deep a drawn outline reaches" : "The image's height; its width follows its aspect"), changed.height);
-            if (!polygon)
-            {
-                var size = changed.Valid().SizeFor(ChiselDecalComponent.ImageAspectOf(material, image.tile), 0);
-                EditorGUILayout.LabelField(trim ? "Repeat length" : "Size", trim ? $"{size.x:0.###} along the edge, {size.y:0.###} across" : $"{size.x:0.###} x {size.y:0.###}");
-            }
-
-            if (!EditorGUI.EndChangeCheck())
-                return false;
-            changed = changed.Valid();
-            if (changed.Equals(metadata.decalDefaults))
-                return false;
-            Undo.RecordObject(metadata, "Change Decal Defaults");
-            metadata.decalDefaults = changed;
-            EditorUtility.SetDirty(metadata);
-            return true;
-        }
-
-        static void DisabledReason(string reason)
-        {
-            using (new EditorGUI.IndentLevelScope(1))
-                EditorGUILayout.LabelField(reason, EditorStyles.centeredGreyMiniLabel);
+            var defaults = ChiselDecalComponent.DefaultsOf(material);
+            if (defaults.shape == ChiselDecalShape.Polygon)
+                return;
+            var size = defaults.SizeFor(ChiselDecalComponent.ImageAspectOf(material, image.tile), 0);
+            EditorGUILayout.LabelField(defaults.shape == ChiselDecalShape.Trim ? "Repeat length" : "Size of this image",
+                                       defaults.shape == ChiselDecalShape.Trim ? $"{size.x:0.###} along the edge, {size.y:0.###} across" : $"{size.x:0.###} x {size.y:0.###}");
         }
         #endregion
 

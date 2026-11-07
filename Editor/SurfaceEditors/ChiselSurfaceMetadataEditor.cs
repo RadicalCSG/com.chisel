@@ -46,7 +46,12 @@ namespace Chisel.Editors
 			hotspotLayoutProp = serializedObject.FindProperty(ChiselSurfaceMetadata.kHotspotLayoutFieldName);
 			hotspotVariantsProp = serializedObject.FindProperty(ChiselSurfaceMetadata.kHotspotVariantsFieldName);
 			hotspotSheetsProp = serializedObject.FindProperty(ChiselSurfaceMetadata.kHotspotSheetsFieldName);
+			decalDefaultsProp = serializedObject.FindProperty(ChiselSurfaceMetadata.kDecalDefaultsFieldName);
+			isDecalProp       = decalDefaultsProp?.FindPropertyRelative(nameof(ChiselDecalDefaults.isDecal));
 		}
+
+		SerializedProperty decalDefaultsProp;
+		SerializedProperty isDecalProp;
 
 		internal void OnDisable()
 		{
@@ -56,6 +61,8 @@ namespace Chisel.Editors
 			hotspotLayoutProp = null;
 			hotspotVariantsProp = null;
 			hotspotSheetsProp = null;
+			decalDefaultsProp = null;
+			isDecalProp = null;
 		}
 
 		void OnDestroy() { OnDisable(); }
@@ -122,7 +129,8 @@ namespace Chisel.Editors
 		}
 
 		// The layout, a new one made from the material's texture, and the editor
-		void HotspotGUI()
+		// decal: a decal's images are the layout's tiles; variants and other sheets are only for surfaces
+		void HotspotGUI(bool decal)
 		{
 			EditorGUI.BeginChangeCheck();
 			EditorGUILayout.PropertyField(hotspotLayoutProp, kHotspotContents);
@@ -141,13 +149,13 @@ namespace Chisel.Editors
 					ChiselHotspotLayoutWindow.Open((ChiselHotspotLayout)hotspotLayoutProp.objectReferenceValue, MaterialOf(target));
 			}
 			EditorGUILayout.Space(kButtonSpacing);
-			if (hotspotVariantsProp != null && (hotspotLayoutProp.objectReferenceValue != null || hotspotLayoutProp.hasMultipleDifferentValues))
+			if (!decal && hotspotVariantsProp != null && (hotspotLayoutProp.objectReferenceValue != null || hotspotLayoutProp.hasMultipleDifferentValues))
 			{
 				EditorGUI.BeginChangeCheck();
 				EditorGUILayout.PropertyField(hotspotVariantsProp, kHotspotVariantsContents, true);
 				changed |= EditorGUI.EndChangeCheck();
 			}
-			if (hotspotSheetsProp != null && (hotspotLayoutProp.objectReferenceValue != null || hotspotLayoutProp.hasMultipleDifferentValues))
+			if (!decal && hotspotSheetsProp != null && (hotspotLayoutProp.objectReferenceValue != null || hotspotLayoutProp.hasMultipleDifferentValues))
 			{
 				EditorGUI.BeginChangeCheck();
 				EditorGUILayout.PropertyField(hotspotSheetsProp, kHotspotSheetsContents, true);
@@ -179,6 +187,109 @@ namespace Chisel.Editors
 			}
 		}
 
+		static readonly GUIContent kDecalVisibleContents        = new("Visible", "The decals are drawn");
+		static readonly GUIContent kDecalReceiveShadowsContents = new("Receive Shadows", "The decals take the shadows falling on them");
+		static readonly GUIContent kDecalDefaultsContents       = new("Defaults for new decals", "What a new decal of this material starts from; each placed decal can still be changed on its own");
+		static readonly GUIContent kShapeContents      = new("Shape");
+		static readonly GUIContent kProjectionContents = new("Projection");
+		static readonly GUIContent kReachContents      = new("Reach");
+		static readonly GUIContent kBlendContents      = new("Blend", "Transparent: drawn over the surface. Opaque: replaces the surface where it covers it");
+		static readonly GUIContent kTrimFillContents   = new("Trim fill");
+		static readonly GUIContent kHeightContents     = new("Height", "The image's height; its width follows its aspect");
+		static readonly GUIContent kDepthContents      = new("Depth", "How deep a drawn outline reaches");
+		static readonly GUIContent[] kBlendOptions     = { new("Transparent"), new("Opaque") };
+
+		// of the destination flags, the two a decal uses (ChiselDecalInstance.destinationFlags)
+		void DecalFlagsGUI()
+		{
+			var flags = (SurfaceDestinationFlags)surfaceDestinationFlagsProp.enumValueFlag;
+			EditorGUI.showMixedValue = surfaceDestinationFlagsProp.hasMultipleDifferentValues;
+			EditorGUI.BeginChangeCheck();
+			var visible  = EditorGUILayout.Toggle(kDecalVisibleContents, (flags & SurfaceDestinationFlags.Renderable) != 0);
+			bool receive;
+			using (new EditorGUI.DisabledScope(!visible))
+				receive = EditorGUILayout.Toggle(kDecalReceiveShadowsContents, visible && (flags & SurfaceDestinationFlags.ShadowReceiving) != 0);
+			if (EditorGUI.EndChangeCheck())
+			{
+				flags = visible ? flags | SurfaceDestinationFlags.Renderable : flags & ~SurfaceDestinationFlags.Renderable;
+				flags = receive ? flags | SurfaceDestinationFlags.ShadowReceiving : flags & ~SurfaceDestinationFlags.ShadowReceiving;
+				surfaceDestinationFlagsProp.intValue = (int)flags;
+			}
+			EditorGUI.showMixedValue = false;
+		}
+
+		static void DisabledReason(string reason)
+		{
+			using (new EditorGUI.IndentLevelScope(1))
+				EditorGUILayout.LabelField(reason, EditorStyles.centeredGreyMiniLabel);
+		}
+
+		// every row is always shown; the ones that don't apply to the shape are disabled with a reason
+		void DecalDefaultsGUI()
+		{
+			var shapeProp      = decalDefaultsProp.FindPropertyRelative(nameof(ChiselDecalDefaults.shape));
+			var projectionProp = decalDefaultsProp.FindPropertyRelative(nameof(ChiselDecalDefaults.projection));
+			var reachProp      = decalDefaultsProp.FindPropertyRelative(nameof(ChiselDecalDefaults.reach));
+			var blendProp      = decalDefaultsProp.FindPropertyRelative(nameof(ChiselDecalDefaults.transparent));
+			var trimFillProp   = decalDefaultsProp.FindPropertyRelative(nameof(ChiselDecalDefaults.trimFill));
+			var heightProp     = decalDefaultsProp.FindPropertyRelative(nameof(ChiselDecalDefaults.height));
+
+			EditorGUILayout.Space(kButtonSpacing);
+			EditorGUILayout.LabelField(kDecalDefaultsContents, EditorStyles.boldLabel);
+
+			EditorGUI.BeginChangeCheck();
+			EditorGUILayout.PropertyField(shapeProp, kShapeContents);
+			if (EditorGUI.EndChangeCheck() && !shapeProp.hasMultipleDifferentValues)
+			{
+				// changing the shape keeps the projection one it takes
+				var shape = (ChiselDecalShape)shapeProp.enumValueIndex;
+				var projection = (ChiselDecalProjection)projectionProp.enumValueIndex;
+				if (shape == ChiselDecalShape.Polygon)
+					projectionProp.enumValueIndex = (int)ChiselDecalProjection.Polygon;
+				else if (shape == ChiselDecalShape.Box && projection == ChiselDecalProjection.Polygon)
+					projectionProp.enumValueIndex = (int)ChiselDecalProjection.Orthographic;
+			}
+
+			var mixedShape = shapeProp.hasMultipleDifferentValues;
+			var current    = (ChiselDecalShape)shapeProp.enumValueIndex;
+			var trim       = !mixedShape && current == ChiselDecalShape.Trim;
+			var polygon    = !mixedShape && current == ChiselDecalShape.Polygon;
+			using (new EditorGUI.DisabledScope(trim || polygon))
+			{
+				EditorGUI.showMixedValue = projectionProp.hasMultipleDifferentValues;
+				EditorGUI.BeginChangeCheck();
+				var projection = (ChiselDecalProjection)EditorGUILayout.EnumPopup(kProjectionContents, (ChiselDecalProjection)projectionProp.enumValueIndex,
+					value => ChiselDecalDefaults.AllowsProjection(current, (ChiselDecalProjection)value), false);
+				if (EditorGUI.EndChangeCheck())
+					projectionProp.enumValueIndex = (int)projection;
+				EditorGUI.showMixedValue = false;
+			}
+			if (trim)         DisabledReason("Not used by Trim");
+			else if (polygon) DisabledReason("Locked to Polygon");
+
+			var omni = !mixedShape && current == ChiselDecalShape.Box && !projectionProp.hasMultipleDifferentValues &&
+					   (ChiselDecalProjection)projectionProp.enumValueIndex == ChiselDecalProjection.Omni;
+			using (new EditorGUI.DisabledScope(!omni))
+				EditorGUILayout.PropertyField(reachProp, kReachContents);
+			if (!omni) DisabledReason("Only for Box with Omni");
+
+			EditorGUI.showMixedValue = blendProp.hasMultipleDifferentValues;
+			EditorGUI.BeginChangeCheck();
+			var blend = EditorGUILayout.Popup(kBlendContents, blendProp.boolValue ? 0 : 1, kBlendOptions);
+			if (EditorGUI.EndChangeCheck())
+				blendProp.boolValue = blend == 0;
+			EditorGUI.showMixedValue = false;
+
+			using (new EditorGUI.DisabledScope(!trim))
+				EditorGUILayout.PropertyField(trimFillProp, kTrimFillContents);
+			if (!trim) DisabledReason("Only for Trim");
+
+			EditorGUI.BeginChangeCheck();
+			EditorGUILayout.PropertyField(heightProp, polygon ? kDepthContents : kHeightContents);
+			if (EditorGUI.EndChangeCheck() && heightProp.floatValue < ChiselDecalDefaults.kMinHeight)
+				heightProp.floatValue = ChiselDecalDefaults.kMinHeight;
+		}
+
 		float lastWidth;
 
 		// the flags take more rows when the space is narrow; the width is only known when painting, so the last one is used
@@ -198,27 +309,45 @@ namespace Chisel.Editors
 			EditorGUI.PropertyField(rect, surfaceDestinationFlagsProp, true);
 		}
 
+		static readonly GUIContent kIsDecalContents = new("Use as decal", "The material is placed as decals (listed in the Surface Browser's Decals tab), not put on surfaces: only the settings decals use are shown");
+
+		/// <summary>Whether the edited material is a decal material (mixed counts as not)</summary>
+		public bool IsDecal => isDecalProp != null && !isDecalProp.hasMultipleDifferentValues && isDecalProp.boolValue;
+
 		public override void OnInspectorGUI()
 		{
 			Profiler.BeginSample("OnInspectorGUI");
 			try
 			{
+				serializedObject.Update();
 				EditorGUI.BeginChangeCheck();
 				{
-					DestinationFlagsGUI();
-					GetSurfaceDestinationFlags(surfaceDestinationFlagsProp, out var isRenderable, out var isCollidable);
-					if (isRenderable && outputFlagsProp != null)
+					if (isDecalProp != null)
+						EditorGUILayout.PropertyField(isDecalProp, kIsDecalContents);
+					if (IsDecal)
 					{
-						DoubleSidedGUI();
-						LightmapGUI();
-					}
-					if (isCollidable)
+						// a decal is only drawn: whether it shows and takes shadows, its images and its defaults
+						DecalFlagsGUI();
+						if (hotspotLayoutProp != null)
+							HotspotGUI(decal: true);
+						DecalDefaultsGUI();
+					} else
 					{
-						EditorGUILayout.PropertyField(physicsMaterialProp, true);
-					}
-					if (isRenderable && hotspotLayoutProp != null)
-					{
-						HotspotGUI();
+						DestinationFlagsGUI();
+						GetSurfaceDestinationFlags(surfaceDestinationFlagsProp, out var isRenderable, out var isCollidable);
+						if (isRenderable && outputFlagsProp != null)
+						{
+							DoubleSidedGUI();
+							LightmapGUI();
+						}
+						if (isCollidable)
+						{
+							EditorGUILayout.PropertyField(physicsMaterialProp, true);
+						}
+						if (isRenderable && hotspotLayoutProp != null)
+						{
+							HotspotGUI(decal: false);
+						}
 					}
 				}
 				if (EditorGUI.EndChangeCheck())
@@ -227,8 +356,10 @@ namespace Chisel.Editors
 					// the surfaces drawn with the material take its settings again; nothing else is rebuilt
 					foreach (var metadata in targets)
 						ChiselHotspotLayoutWindow.RefreshSurfacesUsing(MaterialOf(metadata));
+					ChiselDecalManager.SetDirty();
 				}
-				PaintGUI();
+				if (!IsDecal)
+					PaintGUI();
 			}
 			catch (ExitGUIException) { }
 			catch (Exception ex) { Debug.LogException(ex); }
