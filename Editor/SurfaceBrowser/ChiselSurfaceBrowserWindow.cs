@@ -593,11 +593,6 @@ namespace Chisel.Editors
                         pendingRenameMouse = GUIUtility.GUIToScreenPoint(evt.mousePosition);
                     }
                     Select(item.guid);
-                    if (evt.clickCount == 2)
-                    {
-                        if (cardIsDecal) PlaceSelectedDecal();
-                        else             Apply(material);
-                    }
                     GUIUtility.hotControl = 0;
                     evt.Use();
                     break;
@@ -1000,7 +995,7 @@ namespace Chisel.Editors
             }
         }
 
-        // Its labels as chips; Enter adds the typed one, Backspace in the empty field removes the last
+        // Its labels as chips; Enter adds the typed one
         void LabelsGUI(Material material, float width)
         {
             var current = ChiselAssetLabels.Get(material);
@@ -1019,11 +1014,6 @@ namespace Chisel.Editors
                 {
                     ChiselAssetLabels.Add(material, newLabel, model.ExistingLabelFor(newLabel.Trim()));
                     newLabel = string.Empty;
-                    MarkDirty();
-                    evt.Use();
-                } else if (evt.keyCode == KeyCode.Backspace && newLabel.Length == 0 && current.Length > 0)
-                {
-                    ChiselAssetLabels.Remove(material, current[^1]);
                     MarkDirty();
                     evt.Use();
                 }
@@ -1150,9 +1140,6 @@ namespace Chisel.Editors
             {
                 GUILayout.Label("Selection  " + SelectionText(), EditorStyles.miniLabel);
                 GUILayout.FlexibleSpace();
-                GUILayout.Label(ChiselSurfaceBrowserDecals.IsDecal(Load(Selected))
-                                    ? "Double-click a decal to place it, or drag it into the Scene view"
-                                    : "Double-click a material to apply it to the selected surfaces, or drag it onto a surface in the Scene view", EditorStyles.miniLabel);
                 if (GUILayout.Button("Close", GUILayout.Width(60)))
                     Close();
                 var count = ChiselSurfaceSelectionManager.Selection.Count;

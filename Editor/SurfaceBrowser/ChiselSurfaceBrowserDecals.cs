@@ -340,8 +340,6 @@ namespace Chisel.Editors
                 if (evt.type == EventType.MouseDown && evt.button == 0 && cell.Contains(evt.mousePosition))
                 {
                     selectedTile = images[i].tile;
-                    if (evt.clickCount == 2)
-                        PlaceSelectedDecal();
                     evt.Use();
                 }
             }
