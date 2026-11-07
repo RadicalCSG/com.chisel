@@ -13,12 +13,13 @@ namespace Chisel.Editors
 		private readonly static GUIContent	kCollidableContent		= new("Collidable", "When set, the surface will be part of the generated collider, otherwise it will not be part of the collider.");
 		private readonly static GUIContent  kShadowCastingContent	= new("Cast Shadows", "When set, the surface cast shadows on other surfaces, otherwise light will pass through it. Note that the surface does not need to be visible to block light.");
 		private readonly static GUIContent  kShadowReceivingContent	= new("Receive Shadows", "When set, the surface have shadows cast onto it, as long as the surface is visible. This cannot be disabled in deferred rendering modes.");
+		private readonly static GUIContent  kExcludedFromGIContent	= new("Exclude From GI", "When set, the surface is left out of baked global illumination. A surface that doesn't cast shadows always is.");
 		
         public static float DefaultHeight
         {
             get
             {
-                return (EditorGUI.GetPropertyHeight(SerializedPropertyType.Boolean, GUIContent.none) * 2);
+                return (EditorGUI.GetPropertyHeight(SerializedPropertyType.Boolean, GUIContent.none) * 3);
             }
         }
 
@@ -41,6 +42,7 @@ namespace Chisel.Editors
                 bool isRenderable		= (surfaceDestinationFlags & SurfaceDestinationFlags.Renderable) != 0;
                 bool isShadowCasting	= (surfaceDestinationFlags & SurfaceDestinationFlags.ShadowCasting) != 0;
                 bool isShadowReceiving	= (surfaceDestinationFlags & SurfaceDestinationFlags.ShadowReceiving) != 0;
+                bool isExcludedFromGI	= (surfaceDestinationFlags & SurfaceDestinationFlags.ExcludedFromGlobalIllumination) != 0;
 				//bool isDoubleSided	= (surfaceDestinationFlags & SurfaceDestinationFlags.DoubleSided) != 0;
 				//bool isSkybox	        = (surfaceDestinationFlags & SurfaceDestinationFlags.ReplaceWithSkybox) != 0;
 				//bool noLightmap	    = (surfaceDestinationFlags & SurfaceDestinationFlags.NoLightmap) != 0;
@@ -81,6 +83,9 @@ namespace Chisel.Editors
                     var button4 = button2;
                     button3.y += button1.height;
                     button4.y += button2.height;
+                    var button5 = button3;
+                    button5.y += button3.height;
+                    button5.width = position.width;
 
 
 					isRenderable	= EditorGUI.ToggleLeft(button1, kVisibleContent, isRenderable, toggleStyle);
@@ -90,6 +95,11 @@ namespace Chisel.Editors
                     if	    (!isRenderable        ) EditorGUI.ToggleLeft(button4, kShadowReceivingContent, false, toggleStyle);
                     else if (deferredRenderingPath) EditorGUI.ToggleLeft(button4, kShadowReceivingContent, true,  toggleStyle);
                     else		 isShadowReceiving = EditorGUI.ToggleLeft(button4, kShadowReceivingContent, isShadowReceiving, toggleStyle);
+                    EditorGUI.EndDisabledGroup();
+                    // a surface that doesn't cast shadows is always left out (SurfaceDestinationFlags.Normalize)
+                    EditorGUI.BeginDisabledGroup(!isShadowCasting);
+                    if (!isShadowCasting) EditorGUI.ToggleLeft(button5, kExcludedFromGIContent, true, toggleStyle);
+                    else                  isExcludedFromGI = EditorGUI.ToggleLeft(button5, kExcludedFromGIContent, isExcludedFromGI, toggleStyle);
                     EditorGUI.EndDisabledGroup();
 
 					// Set indent back to what it was
@@ -108,6 +118,9 @@ namespace Chisel.Editors
                 
                     if (isCollidable)		surfaceDestinationFlags |=  SurfaceDestinationFlags.Collidable;
                     else					surfaceDestinationFlags &= ~SurfaceDestinationFlags.Collidable;
+
+                    if (isExcludedFromGI)	surfaceDestinationFlags |=  SurfaceDestinationFlags.ExcludedFromGlobalIllumination;
+                    else					surfaceDestinationFlags &= ~SurfaceDestinationFlags.ExcludedFromGlobalIllumination;
 
 					property.intValue = (int)surfaceDestinationFlags;
                 }

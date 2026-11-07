@@ -134,6 +134,43 @@ namespace Chisel.Editors.Tests
             }
         }
 
+        // Unity's undo doesn't cover labels; adding and removing them here can be undone and redone
+        [Test]
+        public void Labels_CanBeUndoneAndRedone()
+        {
+            const string kFolder = "Assets/ChiselLabelTests";
+            if (!AssetDatabase.IsValidFolder(kFolder))
+                AssetDatabase.CreateFolder("Assets", "ChiselLabelTests");
+            try
+            {
+                var material = new UnityEngine.Material(UnityEngine.Shader.Find("Standard"));
+                AssetDatabase.CreateAsset(material, kFolder + "/labelled.mat");
+
+                ChiselAssetLabels.Add(material, "metal");
+                Undo.IncrementCurrentGroup();
+                ChiselAssetLabels.Add(material, "METAL");
+                Assert.That(ChiselAssetLabels.Get(material), Is.EqualTo(new[] { "metal" }), "the same label in another case isn't added twice");
+                ChiselAssetLabels.Add(material, "Trim");
+                Undo.IncrementCurrentGroup();
+                Assert.That(ChiselAssetLabels.Get(material), Is.EquivalentTo(new[] { "metal", "Trim" }));
+
+                Undo.PerformUndo();
+                Assert.That(ChiselAssetLabels.Get(material), Is.EqualTo(new[] { "metal" }));
+                Undo.PerformRedo();
+                Assert.That(ChiselAssetLabels.Get(material), Is.EquivalentTo(new[] { "metal", "Trim" }));
+
+                ChiselAssetLabels.Remove(material, "metal");
+                Undo.IncrementCurrentGroup();
+                Assert.That(ChiselAssetLabels.Get(material), Is.EqualTo(new[] { "Trim" }));
+                Undo.PerformUndo();
+                Assert.That(ChiselAssetLabels.Get(material), Is.EquivalentTo(new[] { "metal", "Trim" }));
+            }
+            finally
+            {
+                AssetDatabase.DeleteAsset(kFolder);
+            }
+        }
+
         [Test]
         public void Favorites_AreAddedAndRemoved()
         {
