@@ -37,6 +37,10 @@ namespace Chisel.Editors
 			public readonly static GUIContent kHotspotSection      = EditorGUIUtility.TrTextContent("Hotspot Mapping");
 			public readonly static GUIContent kHotspotMaxRepeats   = EditorGUIUtility.TrTextContent("Max repeats", "The most repeats a border strip, a repeating tile or a bordered tile's interior lays on one surface; more and it stretches instead. A layout can have its own");
 			public readonly static GUIContent kHotspotMaxTriangles = EditorGUIUtility.TrTextContent("Max triangles", "The most triangles a surface's cut may draw; more and its interior's repeats are left out, then the cut. A layout can have its own");
+
+			public readonly static GUIContent kHiddenFoldersSection = EditorGUIUtility.TrTextContent("Surface Browser Hidden Folders", "Folders whose materials the Surface Browser leaves out, with everything under them");
+			public readonly static GUIContent kHideFolder   = EditorGUIUtility.TrTextContent("Hide folder", "Drop or pick a folder to hide it");
+			public readonly static GUIContent kUnhideFolder = EditorGUIUtility.TrTextContent("Show");
 		};
 
 		SerializedProperty m_DefaultFloorMaterialProp;
@@ -150,9 +154,40 @@ namespace Chisel.Editors
 				}
 			}
 
+			EditorGUILayout.Space();
+			GUILayout.Label(SettingsContent.kHiddenFoldersSection, EditorStyles.boldLabel);
+			using (new EditorGUI.IndentLevelScope(1))
+				HiddenFoldersGUI();
+
 			if (serializedObject.ApplyModifiedProperties())
 			{
 				ChiselProjectSettings.instance.Save();
+			}
+		}
+
+		static void HiddenFoldersGUI()
+		{
+			string unhide = null;
+			foreach (var folder in ChiselProjectSettings.HiddenFolders)
+			{
+				using (new EditorGUILayout.HorizontalScope())
+				{
+					EditorGUILayout.LabelField(folder);
+					if (GUILayout.Button(SettingsContent.kUnhideFolder, GUILayout.Width(60)))
+						unhide = folder;
+				}
+			}
+			if (unhide != null)
+				ChiselProjectSettings.UnhideFolder(unhide);
+
+			// a folder dropped or picked here is hidden
+			EditorGUI.BeginChangeCheck();
+			var added = EditorGUILayout.ObjectField(SettingsContent.kHideFolder, null, typeof(DefaultAsset), false);
+			if (EditorGUI.EndChangeCheck() && added != null)
+			{
+				var path = AssetDatabase.GetAssetPath(added);
+				if (AssetDatabase.IsValidFolder(path))
+					ChiselProjectSettings.HideFolder(path);
 			}
 		}
 

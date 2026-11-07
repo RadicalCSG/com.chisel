@@ -34,7 +34,6 @@ namespace Chisel.Editors
         [SerializeField] string  folder;
         [SerializeField] string  label;
         [SerializeField] string  selectedGuid;
-        [SerializeField] bool    showHidden;
 
         readonly ChiselSurfaceBrowserModel model = new();
         List<ChiselSurfaceBrowserModel.Item> shown = new();
@@ -87,6 +86,9 @@ namespace Chisel.Editors
 
         void MarkDirty() { dirty = true; Repaint(); }
 
+        // hidden folders are changed in the project settings
+        void OnFocus() { MarkDirty(); }
+
         // repaints now and then, so the selection and scene counts stay current
         void OnInspectorUpdate() { Repaint(); }
 
@@ -123,7 +125,7 @@ namespace Chisel.Editors
                 });
             }
             model.SetItems(items);
-            folders = model.BuildFolders(showHidden);
+            folders = model.BuildFolders(includeHidden: false);
             labels  = model.Labels();
             Filter();
         }
@@ -253,11 +255,8 @@ namespace Chisel.Editors
                 FolderGUI(root);
             var hiddenCount = ChiselProjectSettings.HiddenFolders.Count;
             if (hiddenCount > 0 &&
-                GUILayout.Button(showHidden ? "Hide hidden folders" : $"Show {hiddenCount} hidden folder{(hiddenCount == 1 ? "" : "s")}", EditorStyles.linkLabel))
-            {
-                showHidden = !showHidden;
-                MarkDirty();
-            }
+                GUILayout.Button(new GUIContent($"{hiddenCount} hidden folder{(hiddenCount == 1 ? "" : "s")}", "Hidden in Project Settings > Chisel"), EditorStyles.linkLabel))
+                SettingsService.OpenProjectSettings("Project/Chisel");
 
             GUILayout.Space(6);
             GUILayout.Label("LABELS", EditorStyles.miniBoldLabel);
@@ -295,29 +294,10 @@ namespace Chisel.Editors
                     if (expanded) expandedFolders.Add(node.path); else expandedFolders.Remove(node.path);
                 }
             }
-            var prev = GUI.color;
-            if (node.hidden) GUI.color = new Color(prev.r, prev.g, prev.b, 0.5f);
-            var nameStyle = new GUIStyle(EditorStyles.label) { fontStyle = node.hidden ? FontStyle.Italic : FontStyle.Normal };
-            GUI.Label(new Rect(foldRect.xMax, rect.y, rect.width - foldRect.xMax - 64, rect.height), new GUIContent(node.name, node.path), nameStyle);
-            GUI.Label(new Rect(rect.xMax - 64, rect.y, 40, rect.height), node.count.ToString(), new GUIStyle(EditorStyles.miniLabel) { alignment = TextAnchor.MiddleRight });
-            GUI.color = prev;
+            GUI.Label(new Rect(foldRect.xMax, rect.y, rect.width - foldRect.xMax - 44, rect.height), new GUIContent(node.name, node.path));
+            GUI.Label(new Rect(rect.xMax - 44, rect.y, 40, rect.height), node.count.ToString(), new GUIStyle(EditorStyles.miniLabel) { alignment = TextAnchor.MiddleRight });
 
-            // the eye: hides the folder, or shows a hidden one again (a folder hidden through its parent, through it)
-            var hiddenItself = node.hidden && !ChiselProjectSettings.IsHidden(ParentOf(node.path));
-            var eyeRect = new Rect(rect.xMax - 20, rect.y, 18, rect.height);
-            if ((hovering && !node.hidden) || hiddenItself)
-            {
-                var icon = EditorGUIUtility.IconContent(node.hidden ? "scenevis_hidden_hover" : "scenevis_visible_hover");
-                icon.tooltip = node.hidden ? "Show this folder again" : "Hide this folder and everything in it";
-                if (GUI.Button(eyeRect, icon, GUIStyle.none))
-                {
-                    if (node.hidden) ChiselProjectSettings.UnhideFolder(node.path);
-                    else ChiselProjectSettings.HideFolder(node.path);
-                    MarkDirty();
-                    GUIUtility.ExitGUI();
-                }
-            }
-            if (evt.type == EventType.MouseDown && evt.button == 0 && hovering && !eyeRect.Contains(evt.mousePosition) && !foldRect.Contains(evt.mousePosition))
+            if (evt.type == EventType.MouseDown && evt.button == 0 && hovering && !foldRect.Contains(evt.mousePosition))
             {
                 folder = node.path; quick = 0; label = null;
                 Filter();
@@ -332,11 +312,6 @@ namespace Chisel.Editors
                 FolderGUI(child);
         }
 
-        static string ParentOf(string path)
-        {
-            var slash = path.LastIndexOf('/');
-            return slash > 0 ? path.Substring(0, slash) : string.Empty;
-        }
         #endregion
 
         #region Grid
