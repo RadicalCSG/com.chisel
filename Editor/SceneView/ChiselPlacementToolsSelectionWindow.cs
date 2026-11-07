@@ -306,7 +306,41 @@ namespace Chisel.Editors
         }
 
 
-        public static void RenderGeneratorTools()
+        // the buttons start this far in from the left, and end as far in from the right
+        const int kRowInset = 2;
+
+        // the width a row of this many buttons takes, with the gaps between them
+        public static float RowWidth(int columns)
+        {
+            InitStyles();
+            return kRowInset + (columns * (s_Styles.toggleStyleMid.fixedWidth + kButtonGap)) - kButtonGap + kRowInset;
+        }
+
+        // as many buttons as fit side by side in a width, at least one
+        public static int ColumnsThatFit(float width)
+        {
+            InitStyles();
+            var buttonSlot = s_Styles.toggleStyleMid.fixedWidth + kButtonGap;
+            return Mathf.Max(1, Mathf.FloorToInt((width - (2 * kRowInset) + kButtonGap) / buttonSlot));
+        }
+
+        // the buttons shown, the one to add more included
+        public static int ButtonCount()
+        {
+            var generatorModes = ChiselGeneratorManager.s_GeneratorModes;
+            int count = 1;
+            for (int i = 0; i < generatorModes.Length; i++)
+            {
+                if (generatorModes[i].InToolBox || ChiselGeneratorManager.GeneratorMode == generatorModes[i])
+                    count++;
+            }
+            return count;
+        }
+
+        public static void RenderGeneratorTools() { RenderGeneratorTools(kToolsWide); }
+
+        // in rows of at most this many buttons, wrapping onto the next row
+        public static void RenderGeneratorTools(int columns)
         {
             InitStyles();
 
@@ -315,20 +349,12 @@ namespace Chisel.Editors
 
             var style           = s_Styles.toggleStyleMid;
 
-            int usedModes = 0;
-            for (int i = 0; i < generatorModes.Length; i++)
-            {
-                if (!generatorModes[i].InToolBox &&
-                    ChiselGeneratorManager.GeneratorMode != generatorModes[i])
-                    continue;
-                usedModes++;
-            }
+            int usedModes = ButtonCount() - 1;
 
             // exactly as wide as a full row of buttons with the gaps between them, and as high as its rows, so the overlay
-            // it's in fits it: the buttons start 2 in from its left, and end 2 in from its right
-            const int toolsWide = kToolsWide;
-            var buttonSlot = style.fixedWidth + kButtonGap;
-            var rowWidth   = 2 + (toolsWide * buttonSlot) - kButtonGap + 2;
+            // it's in fits it
+            var toolsWide  = Mathf.Clamp(columns, 1, usedModes + 1);
+            var rowWidth   = RowWidth(toolsWide);
             int rows = Mathf.CeilToInt((usedModes + 1) / (float)toolsWide);
             var groupRect = EditorGUILayout.GetControlRect(false, (rows * (style.fixedHeight + kButtonGap)) + s_Styles.boxStyleVerticalMargin, GUILayout.Width(rowWidth));
             groupRect.xMin -= 2;
