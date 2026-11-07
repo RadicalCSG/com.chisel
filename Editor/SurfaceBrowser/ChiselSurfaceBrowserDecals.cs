@@ -355,14 +355,6 @@ namespace Chisel.Editors
             var shape = ChiselSurfaceBrowserDecals.ShapeOf(material);
             var size  = defaults.SizeFor(ChiselDecalComponent.ImageAspectOf(material, selectedTile), 0);
             InfoRow(shape == ChiselDecalShape.Trim ? "Repeat" : "Size", shape == ChiselDecalShape.Trim ? $"{size.x:0.###} along the edge, {size.y:0.###} across" : $"{size.x:0.###} x {size.y:0.###}");
-            EditorGUILayout.HelpBox(PlacingHint(shape), MessageType.None);
-        }
-
-        static string PlacingHint(ChiselDecalShape shape)
-        {
-            return shape == ChiselDecalShape.Trim
-                ? "Pick edge: hover an edge between two surfaces in the Scene view and click to place the trim along it; Escape cancels. Or drag it onto an edge in the Scene view."
-                : "Place on the selected surfaces: one decal on each, centered on it and facing it. Or drag it onto a surface in the Scene view.";
         }
 
         static string PlaceActionText(Material material)
