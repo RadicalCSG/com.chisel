@@ -46,7 +46,6 @@ namespace Chisel.Editors
             {
                 ChiselLinearStairsDiagram.Draw();
                 DefinitionField(nameof(ChiselPathedStairsDefinition.shape) + "." + nameof(Curve2D.closed), kClosedContent);
-                SettingsField(nameof(ChiselPathedStairs.curveSegments));
                 DefinitionField(nameof(ChiselPathedStairsDefinition.shape) + "." + nameof(Curve2D.controlPoints), kControlPointsContent);
                 // the stairs' height and depth, kept in their bounds; how wide they are is the path's
                 BoundsSizeField(kStairs + nameof(ChiselLinearStairs.bounds), 1, kHeightContent);

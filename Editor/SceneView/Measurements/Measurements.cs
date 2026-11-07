@@ -113,16 +113,43 @@ namespace Chisel.Editors
 
 			if (draw && Event.current.type == EventType.Repaint)
 			{
-				SceneHandles.BeginGUI();
-				{
-					// a dark backing so the text reads on any surface
-					var back = new Rect(rect.x + 2 + padding, rect.y + padding, rect.width - 2 - padding * 2, rect.height - 3 - padding * 2);
-					UnityEditor.EditorGUI.DrawRect(back, new Color(0, 0, 0, 0.55f));
-					GUI.Label(rect, s_TempContent, style);
-				}
-				SceneHandles.EndGUI();
+				if (s_DeferDepth > 0)
+					s_Deferred.Add((rect, text, style, padding));
+				else
+					PaintLabel(rect, text, style, padding);
 			}
 			return rect;
+		}
+
+		static void PaintLabel(Rect rect, string text, GUIStyle style, int padding)
+		{
+			s_TempContent.text = text;
+			SceneHandles.BeginGUI();
+			{
+				// a dark backing so the text reads on any surface
+				var back = new Rect(rect.x + 2 + padding, rect.y + padding, rect.width - 2 - padding * 2, rect.height - 3 - padding * 2);
+				UnityEditor.EditorGUI.DrawRect(back, new Color(0, 0, 0, 0.55f));
+				GUI.Label(rect, s_TempContent, style);
+			}
+			SceneHandles.EndGUI();
+		}
+
+		// Between these, labels are drawn at the end, over every line drawn in between
+		static int s_DeferDepth;
+		readonly static List<(Rect rect, string text, GUIStyle style, int padding)> s_Deferred = new();
+		public static void BeginLabels() { s_DeferDepth++; }
+		public static void EndLabels()
+		{
+			if (s_DeferDepth > 0)
+				s_DeferDepth--;
+		}
+
+		// the lines are drawn in a batch at the end of the scene view's repaint; the labels gathered go over them after that
+		public static void PaintDeferredLabels()
+		{
+			foreach (var label in s_Deferred)
+				PaintLabel(label.rect, label.text, label.style, label.padding);
+			s_Deferred.Clear();
 		}
 
 		// a length's label, only shown
@@ -273,7 +300,7 @@ namespace Chisel.Editors
 			SceneHandles.Color = prevColor;
 		}
 
-		public static void DrawLength(UnityEngine.Vector3 from, UnityEngine.Vector3 to, float forceValue)
+		public static void DrawLength(UnityEngine.Vector3 from, UnityEngine.Vector3 to, float forceValue, string name = null)
 		{
 			var prevColor = SceneHandles.Color;
 			SceneHandles.Color = SceneHandles.StateColor(SceneHandles.MeasureColor);
@@ -296,14 +323,14 @@ namespace Chisel.Editors
 			//	SceneHandles.DrawLine(from - right, from + right);
 			//	SceneHandles.DrawLine(to   - right, to   + right);
 
-			DrawUnitLabel(center, right, 2, forceValue);
+			DrawUnitLabel(center, right, 2, forceValue, name);
 			SceneHandles.Color = prevColor;
 		}
 
 		// a length whose label can be clicked and typed in; returns true when a length was taken
 		// With a direction to keep it off what it measures, the line is that far out the same on screen at any distance,
 		// with thin lines back to the points it measures and its label on that side, as the lengths of bounds have
-		public static bool DoLength(UnityEngine.Vector3 from, UnityEngine.Vector3 to, ref float distance, UnityEngine.Vector3 offsetDirection = default)
+		public static bool DoLength(UnityEngine.Vector3 from, UnityEngine.Vector3 to, ref float distance, UnityEngine.Vector3 offsetDirection = default, string name = null)
 		{
 			var prevColor = SceneHandles.Color;
 			var color     = SceneHandles.StateColor(SceneHandles.MeasureColor);
@@ -329,7 +356,7 @@ namespace Chisel.Editors
 			SceneHandles.DrawLine(fromOfs, toOfs);
 			DrawFlatArrow(fromOfs,  forward, camDir, fromSize);
 			DrawFlatArrow(toOfs,   -forward, camDir, toSize);
-			var taken = DoUnitLabel((toOfs + fromOfs) * 0.5f, labelSide, 2, ref distance);
+			var taken = DoUnitLabel((toOfs + fromOfs) * 0.5f, labelSide, 2, ref distance, name);
 			SceneHandles.Color = prevColor;
 			return taken;
 		}

@@ -333,6 +333,9 @@ namespace Chisel.Core
         // TODO: code below needs to be cleaned up & simplified 
         //
 
+        // the lines dragged to change the base, the steps and the top: thicker than the others
+        const float kThickLine = 5.0f;
+
         public override void OnEdit(IChiselHandles handles)
         {
             {
@@ -373,7 +376,34 @@ namespace Chisel.Core
                 if (handles.DoTurnHandle(ref bounds))
                     settings.bounds = bounds;
 
-                if (handles.DoEdgeHandle1D(out edgeHeight, Axis.Y, pHeight0, pHeight1, snappingStep: stepHeight))
+                // each side's profile as the pathed stairs draw theirs: whole where nothing is in front, dashed where something is
+                {
+                    var color  = handles.color;
+                    var hidden = Color.Lerp(color, Color.black, 0.45f); hidden.a = color.a;
+                    void Line(Vector3 from, Vector3 to)
+                    {
+                        handles.color = hidden;
+                        handles.DrawLine(from, to, lineMode: LineMode.NoZTest, thickness: 0.5f, dashSize: 2.0f);
+                        handles.color = color;
+                        handles.DrawLine(from, to, lineMode: LineMode.ZTest, thickness: 1.0f);
+                    }
+                    foreach (var x in new[] { min.x, max.x })
+                    {
+                        var floorFront = new Vector3(x, min.y, max.z);
+                        var baseFront  = new Vector3(x, edgeHeight, max.z);
+                        var slopeTop   = new Vector3(x, max.y, depthStart + stepDepthOffset);
+                        var backTop    = new Vector3(x, max.y, depthStart);
+                        var backFloor  = new Vector3(x, min.y, depthStart);
+                        Line(floorFront, baseFront);
+                        Line(baseFront, slopeTop);
+                        Line(slopeTop, backTop);
+                        Line(backTop, backFloor);
+                        Line(backFloor, floorFront);
+                    }
+                    handles.color = color;
+                }
+
+                if (handles.DoEdgeHandle1D(out edgeHeight, Axis.Y, pHeight0, pHeight1, snappingStep: stepHeight, thickness: kThickLine))
                 {
                     var totalStepHeight = math.clamp((heightStart - edgeHeight), size.y % stepHeight, size.y);
                     const float kSmudgeValue = 0.0001f;
@@ -383,20 +413,22 @@ namespace Chisel.Core
                     settings.stepDepth     = (oldStepCount * settings.stepDepth) / newStepCount;
                     settings.plateauHeight = size.y - (stepHeight * newStepCount);
                 }
+                var baseFocused = handles.lastHandleHadFocus;
 
-                if (handles.DoEdgeHandle1D(out stepDepthOffset, Axis.Z, pDepth0, pDepth1, snappingStep: ChiselLinearStairs.kMinStepDepth))
+                if (handles.DoEdgeHandle1D(out stepDepthOffset, Axis.Z, pDepth0, pDepth1, snappingStep: ChiselLinearStairs.kMinStepDepth, thickness: kThickLine))
                 {
                     stepDepthOffset -= depthStart;
                     stepDepthOffset = math.clamp(stepDepthOffset, 0, settings.AbsDepth - ChiselLinearStairs.kMinStepDepth);
                     settings.stepDepth = ((settings.AbsDepth - stepDepthOffset) / settings.StepCount);
                 }
+                var topFocused = handles.lastHandleHadFocus;
 
                 float heightOffset;
                 var prevModified = handles.modified;
                 {
                     var direction = Vector3.Cross(Vector3.forward, pHeight0 - pDepth0).normalized;
-                    handles.DoEdgeHandle1DOffset(out var height0vec, Axis.Y, pHeight0, pDepth0, direction, snappingStep: stepHeight);
-                    handles.DoEdgeHandle1DOffset(out var height1vec, Axis.Y, pHeight1, pDepth1, direction, snappingStep: stepHeight);
+                    handles.DoEdgeHandle1DOffset(out var height0vec, Axis.Y, pHeight0, pDepth0, direction, snappingStep: stepHeight, thickness: kThickLine);
+                    handles.DoEdgeHandle1DOffset(out var height1vec, Axis.Y, pHeight1, pDepth1, direction, snappingStep: stepHeight, thickness: kThickLine);
                     var height0 = Vector3.Dot(direction, height0vec);
                     var height1 = Vector3.Dot(direction, height1vec);
                     if (math.abs(height0) > math.abs(height1)) heightOffset = height0; else heightOffset = height1;
@@ -408,6 +440,22 @@ namespace Chisel.Core
                 }
                 var sorted = settings.SortedBounds;
                 handles.DoMoveGizmo(new Vector3((sorted.Min.x + sorted.Max.x) * 0.5f, sorted.Min.y, (sorted.Min.z + sorted.Max.z) * 0.5f));
+
+                // with the base or the top's line hovered, only what it changes
+                if (baseFocused)
+                {
+                    var typed = settings.plateauHeight;
+                    if (handles.DoDistanceMeasurement(ref typed, new Vector3(min.x, min.y, max.z), pHeight0, name: "Base Height"))
+                        settings.plateauHeight = math.clamp(typed, 0, size.y - stepHeight);
+                    return;
+                }
+                if (topFocused)
+                {
+                    var typed = settings.StepDepthOffset;
+                    if (typed > 0 && handles.DoDistanceMeasurement(ref typed, new Vector3(min.x, max.y, depthStart), pDepth0, name: "Top Depth"))
+                        settings.SetTopDepth(typed);
+                    return;
+                }
 
                 boundsBefore = settings.bounds;
                 if (handles.DoBoxMeasurements(ref settings.bounds) &&

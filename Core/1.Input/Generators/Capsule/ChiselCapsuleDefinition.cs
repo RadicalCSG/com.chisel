@@ -183,6 +183,25 @@ namespace Chisel.Core
         const float kCapLineThickness			= 2.0f;
         const float kCapLineThicknessSelected   = 2.5f;
 
+        static Color Faint(Color color) { color.a *= 0.3f; return color; }
+
+        // The loop at an end, side by side: seen from inside the capsule, the sides behind where its outline turns fainter
+        static void DrawEndLoop(IChiselHandles handles, Vector3[] vertices, int offset, int sides, Vector3 center, Vector3 outward, Color baseColor, bool hasFocus, float thickness)
+        {
+            for (int j = sides - 1, i = 0; i < sides; j = i, i++)
+            {
+                var from   = vertices[offset + j];
+                var to     = vertices[offset + i];
+                var behind = handles.IsEdgeBehind(from, to, center, outward);
+                var hidden = handles.GetStateColor(baseColor, hasFocus, true);
+                var shown  = handles.GetStateColor(baseColor, hasFocus, false);
+                handles.color = behind ? Faint(hidden) : hidden;
+                handles.DrawLine(from, to, lineMode: LineMode.NoZTest, thickness: thickness);
+                handles.color = behind ? Faint(shown) : shown;
+                handles.DrawLine(from, to, lineMode: LineMode.ZTest, thickness: thickness);
+            }
+        }
+
         static void DrawOutline(IChiselHandleRenderer renderer, ChiselCapsuleDefinition definition, Vector3[] vertices, LineMode lineMode)
         {
             var sides			    = definition.settings.sides;
@@ -274,6 +293,21 @@ namespace Chisel.Core
                 {
                     var radius2Dx = radius2D.x;
                     handles.DoRadiusHandle(ref radius2Dx, normal, middlePoint);
+
+                    // the lines on the horizon of its round middle, from ring to ring, dragged out or in to resize it
+                    var hasRings = vertices != null && vertices.Length > math.max(settings.TopVertexOffset, settings.BottomVertexOffset);
+                    var lowY  = hasRings ? math.min(vertices[settings.TopVertexOffset].y, vertices[settings.BottomVertexOffset].y) : 0;
+                    var highY = hasRings ? math.max(vertices[settings.TopVertexOffset].y, vertices[settings.BottomVertexOffset].y) : 0;
+                    var axis  = new Vector3(middlePoint.x, 0, middlePoint.z);
+                    if (highY > lowY &&
+                        handles.TryGetHorizonPoints(axis, radius2Dx, out var left, out var right))
+                    {
+                        foreach (var point in new[] { left, right })
+                        {
+                            var change = handles.DoHorizonLineHandle(new Vector3(point.x, lowY, point.z), new Vector3(point.x, highY, point.z), axis);
+                            radius2Dx = math.max(0, radius2Dx + change * 0.5f);
+                        }
+                    }
                     radius2D.x = radius2Dx;
                 }
 
@@ -286,6 +320,7 @@ namespace Chisel.Core
                         var from = vertices[j + settings.TopVertexOffset];
                         var to = vertices[i + settings.TopVertexOffset];
 
+                        handles.color = handles.IsEdgeBehind(from, to, topPoint, normal) ? Faint(baseColor) : baseColor;
                         if (handles.DoEdgeHandle1DOffset(out var edgeOffset, Chisel.Core.Axis.Y, from, to, renderLine: false))
                             topHeight = math.clamp(topHeight - edgeOffset * heightSign, 0, maxTopHeight);
                         topLoopHasFocus = topLoopHasFocus || handles.lastHandleHadFocus;
@@ -301,11 +336,7 @@ namespace Chisel.Core
 
                     var thickness = topLoopHasFocus ? kCapLineThicknessSelected : kCapLineThickness;
 
-                    handles.color = handles.GetStateColor(baseColor, topLoopHasFocus, true);
-                    handles.DrawLineLoop(vertices, settings.TopVertexOffset, settings.sides, lineMode: LineMode.NoZTest, thickness: thickness);
-
-                    handles.color = handles.GetStateColor(baseColor, topLoopHasFocus, false);
-                    handles.DrawLineLoop(vertices, settings.TopVertexOffset, settings.sides, lineMode: LineMode.ZTest,   thickness: thickness);
+                    DrawEndLoop(handles, vertices, settings.TopVertexOffset, settings.sides, topPoint, normal, baseColor, topLoopHasFocus, thickness);
                 }
                 
                 {
@@ -317,6 +348,7 @@ namespace Chisel.Core
                         var from    = vertices[j + settings.BottomVertexOffset];
                         var to      = vertices[i + settings.BottomVertexOffset];
 
+                        handles.color = handles.IsEdgeBehind(from, to, bottomPoint, -normal) ? Faint(baseColor) : baseColor;
                         if (handles.DoEdgeHandle1DOffset(out var edgeOffset, Chisel.Core.Axis.Y, from, to, renderLine: false))
                             bottomHeight = math.clamp(bottomHeight + edgeOffset * heightSign, 0, maxBottomHeight);
                         bottomLoopHasFocus = bottomLoopHasFocus || handles.lastHandleHadFocus;
@@ -331,11 +363,7 @@ namespace Chisel.Core
 
                     var thickness = bottomLoopHasFocus ? kCapLineThicknessSelected : kCapLineThickness;
 
-                    handles.color = handles.GetStateColor(baseColor, bottomLoopHasFocus, true);
-                    handles.DrawLineLoop(vertices, settings.BottomVertexOffset, settings.sides, lineMode: LineMode.NoZTest, thickness: thickness);
-
-                    handles.color = handles.GetStateColor(baseColor, bottomLoopHasFocus, false);
-                    handles.DrawLineLoop(vertices, settings.BottomVertexOffset, settings.sides, lineMode: LineMode.ZTest,   thickness: thickness);
+                    DrawEndLoop(handles, vertices, settings.BottomVertexOffset, settings.sides, bottomPoint, -normal, baseColor, bottomLoopHasFocus, thickness);
                 }
             }
             if (prevModified != handles.modified)

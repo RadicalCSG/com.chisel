@@ -351,8 +351,8 @@ namespace Chisel.Core
                     var radiusZ = diameterZ * 0.5f;
                     var vecX = (xVector.normalized * radiusX);
                     var vecZ = (zVector.normalized * radiusZ);
-                    handles.RenderDistanceMeasurement(center, center + vecX, radiusX);
-                    handles.RenderDistanceMeasurement(center, center + vecZ, radiusZ);
+                    handles.RenderDistanceMeasurement(center, center + vecX, radiusX, "Radius");
+                    handles.RenderDistanceMeasurement(center, center + vecZ, radiusZ, "Radius");
                 }
                 diameterX = -diameterX; handles.DoSlider1DHandle(ref diameterX, center, xVector, radiusHandles[0]); // left
                 if (handles.lastHandleHadFocus)
@@ -361,8 +361,8 @@ namespace Chisel.Core
                     var radiusZ = diameterZ * 0.5f;
                     var vecX = (xVector.normalized * radiusX);
                     var vecZ = (zVector.normalized * radiusZ);
-                    handles.RenderDistanceMeasurement(center, center + vecX, radiusX);
-                    handles.RenderDistanceMeasurement(center, center + vecZ, radiusZ);
+                    handles.RenderDistanceMeasurement(center, center + vecX, radiusX, "Radius");
+                    handles.RenderDistanceMeasurement(center, center + vecZ, radiusZ, "Radius");
                 }
                 diameterZ = -diameterZ; handles.DoSlider1DHandle(ref diameterZ, center, zVector, radiusHandles[3]); // back
                 if (handles.lastHandleHadFocus)
@@ -371,8 +371,8 @@ namespace Chisel.Core
                     var radiusZ = diameterZ * 0.5f;
                     var vecX = (xVector.normalized * radiusX);
                     var vecZ = (zVector.normalized * radiusZ);
-                    handles.RenderDistanceMeasurement(center, center + vecX, radiusX);
-                    handles.RenderDistanceMeasurement(center, center + vecZ, radiusZ);
+                    handles.RenderDistanceMeasurement(center, center + vecX, radiusX, "Radius");
+                    handles.RenderDistanceMeasurement(center, center + vecZ, radiusZ, "Radius");
                 }
                 diameterZ = -diameterZ; handles.DoSlider1DHandle(ref diameterZ, center, zVector, radiusHandles[2]); // forward
                 if (handles.lastHandleHadFocus)
@@ -381,8 +381,8 @@ namespace Chisel.Core
                     var radiusZ = diameterZ * 0.5f;
                     var vecX = (xVector.normalized * radiusX);
                     var vecZ = (zVector.normalized * radiusZ);
-                    handles.RenderDistanceMeasurement(center, center + vecX, radiusX);
-                    handles.RenderDistanceMeasurement(center, center + vecZ, radiusZ);
+                    handles.RenderDistanceMeasurement(center, center + vecX, radiusX, "Radius");
+                    handles.RenderDistanceMeasurement(center, center + vecZ, radiusZ, "Radius");
                 }
 
                 diameterX = math.abs(diameterX);
@@ -400,7 +400,7 @@ namespace Chisel.Core
                     if (handles.TryGetClosestPoint(radiusHandles, out var closestPoint, interpolate: false))
                     {
                         var vec = (closestPoint - center);
-                        handles.RenderDistanceMeasurement(center, center + vec, radiusX);
+                        handles.RenderDistanceMeasurement(center, center + vec, radiusX, "Radius");
                     }
                 }
             }
@@ -591,6 +591,9 @@ namespace Chisel.Core
 
                 fullTopCircleHandle.Normal = normal;
                 fullBottomCircleHandle.Normal = -normal;
+                // out of the cylinder at its ends, so from inside the part behind is fainter
+                fullTopCircleHandle.Outward = normal;
+                fullBottomCircleHandle.Outward = -normal;
 
                 topHandle.Normal = normal;
                 bottomHandle.Normal = -normal;
@@ -624,6 +627,7 @@ namespace Chisel.Core
                     {
                         bottomRadiusHandles[i].Center = bottomPoint;
                         bottomRadiusHandles[i].Normal = -normal;
+                        bottomRadiusHandles[i].Outward = -normal;
                         bottomRadiusHandles[i].DiameterX = tempBottomDiameterX;
                         bottomRadiusHandles[i].DiameterZ = tempBottomDiameterZ;
                         bottomRadiusHandles[i].Rotation = definition.settings.rotation;
@@ -633,6 +637,7 @@ namespace Chisel.Core
                     {
                         topRadiusHandles[i].Center = topPoint;
                         topRadiusHandles[i].Normal = normal;
+                        topRadiusHandles[i].Outward = normal;
                         topRadiusHandles[i].DiameterX = tempTopDiameterX;
                         topRadiusHandles[i].DiameterZ = tempTopDiameterZ;
                         topRadiusHandles[i].Rotation = definition.settings.rotation;
@@ -684,6 +689,27 @@ namespace Chisel.Core
             // Render vertical lines at the horizon of the cylinder
             handles.DoRenderHandles(new[] { cylinderHandles.verticalHandle1, cylinderHandles.verticalHandle2 });
 
+            // round, they're dragged out or in to resize it: a frustum's two circles by as much
+            if (!settings.isElliptical)
+            {
+                var change = 0.0f;
+                foreach (var line in new[] { cylinderHandles.verticalHandle1, cylinderHandles.verticalHandle2 })
+                {
+                    if (line.From != line.To)
+                        change += handles.DoHorizonLineHandle(line.From, line.To, Vector3.zero);
+                }
+                if (change != 0)
+                {
+                    settings.bottomDiameterX = math.max(0, settings.bottomDiameterX + change);
+                    settings.bottomDiameterZ = settings.bottomDiameterX;
+                    if (settings.type == CylinderShapeType.ConicalFrustum)
+                    {
+                        settings.topDiameterX = math.max(0, settings.topDiameterX + change);
+                        settings.topDiameterZ = settings.topDiameterX;
+                    }
+                }
+            }
+
 
             // Move the cylinder top/bottom up/down
             var prevModified = handles.modified;
@@ -693,7 +719,7 @@ namespace Chisel.Core
                 handles.DoSlider1DHandle(ref cylinderHandles.topPoint,     cylinderHandles.normal, cylinderHandles.topHandles);
                 haveFocus = haveFocus || handles.lastHandleHadFocus;
                 if (haveFocus)
-                    handles.RenderDistanceMeasurement(cylinderHandles.topPoint, cylinderHandles.bottomPoint, math.abs(settings.height));
+                    handles.RenderDistanceMeasurement(cylinderHandles.topPoint, cylinderHandles.bottomPoint, math.abs(settings.height), "Height");
             }
             if (prevModified != handles.modified)
             {
@@ -762,7 +788,7 @@ namespace Chisel.Core
                 {
                     var typedHeight = math.abs(settings.height);
                     var outwards    = new Vector3(from.x, 0, from.z).normalized;
-                    if (handles.DoDistanceMeasurement(ref typedHeight, from, new Vector3(from.x, to.y, from.z), "Change Height", offsetDirection: outwards))
+                    if (handles.DoDistanceMeasurement(ref typedHeight, from, new Vector3(from.x, to.y, from.z), "Change Height", offsetDirection: outwards, name: "Height"))
                         settings.height = (settings.height < 0 ? -1 : 1) * typedHeight;
                 }
                 return;

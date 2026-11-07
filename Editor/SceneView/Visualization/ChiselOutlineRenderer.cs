@@ -421,7 +421,6 @@ namespace Chisel.Editors
         }
         
         static ChiselRenderer HandleRenderer { get { return GetHandleRenderer(Camera.current); } }
-
         #region Vector3 versions
         public static void DrawLine(Matrix4x4 transformation, Vector3 from, Vector3 to, Color color, LineMode lineMode = LineMode.NoZTest, float thickness = 1.0f, float dashSize = 0.0f) { HandleRenderer.DrawLine(transformation, from, to, color, lineMode, thickness, dashSize); }
         public static void DrawLine(Matrix4x4 transformation, Vector3 from, Vector3 to, LineMode lineMode = LineMode.NoZTest, float thickness = 1.0f, float dashSize = 0.0f) { HandleRenderer.DrawLine(transformation, from, to, lineMode, thickness, dashSize); }
@@ -735,7 +734,8 @@ namespace Chisel.Editors
             handleRenderer.End();
             handleRenderer.RenderAll(camera);
             handleRenderer.Begin();
-            
+            Measurements.PaintDeferredLabels();
+
             var focus = Chisel.Editors.SceneHandleUtility.FocusControl;
             if (prevFocus != focus)
             {

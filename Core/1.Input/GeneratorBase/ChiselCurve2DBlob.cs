@@ -43,6 +43,12 @@ namespace Chisel.Core
             return (1 - t) * (1 - t) * (1 - t) * p0 + 3 * t * (1 - t) * (1 - t) * p1 + 3 * t * t * (1 - t) * p2 + t * t * t * p3;
         }
 
+        // which way the curve goes at t, not normalized
+        static float2 DirectionOnBezier(float2 p0, float2 p1, float2 p2, float2 p3, float t)
+        {
+            return ((1 - t) * (1 - t) * (p1 - p0)) + (2 * t * (1 - t) * (p2 - p1)) + (t * t * (p3 - p2));
+        }
+
         public void AddPathVertices(int shapeCurveSegments, NativeList<SegmentVertex> shapeVertices)
         {
             var length = controlPoints.Length;
@@ -83,47 +89,58 @@ namespace Chisel.Core
             }
         }
 
-        public UnsafeList<SegmentVertex> GetPathVertices(int shapeCurveSegments, Allocator allocator)
+        const int kTurnSamples = 64;
+
+        // The path with each curved span cut into as many parts as it needs for none to turn more than maxTurn
+        // (radians), each turning as much as the others
+        public UnsafeList<SegmentVertex> GetPathVerticesByTurn(float maxTurn, Allocator allocator)
         {
             var length = controlPoints.Length;
-
-            var shapeVertices = new UnsafeList<SegmentVertex>(length * (1 + math.max(1, shapeCurveSegments)), allocator);
+            var shapeVertices = new UnsafeList<SegmentVertex>(length * 4, allocator);
+            var turns = new NativeArray<float>(kTurnSamples + 1, Allocator.Temp);
             for (int i = 0; i < length; i++)
             {
-                var index1 = i;
-                var index2 = (i + 1) % length;
-                var p1 = controlPoints[index1];
-                var p2 = controlPoints[index2];
+                var p1 = controlPoints[i];
+                var p2 = controlPoints[(i + 1) % length];
                 var v1 = p1.position;
                 var v2 = p2.position;
-
-                if (shapeCurveSegments == 0 ||
-                    (controlPoints[index1].constraint2 == ControlPointConstraint.Straight &&
-                     controlPoints[index2].constraint1 == ControlPointConstraint.Straight))
-                {
-                    shapeVertices.Add(new SegmentVertex { position = v1, segmentIndex = i });
+                shapeVertices.Add(new SegmentVertex { position = v1, segmentIndex = i });
+                if (p1.constraint2 == ControlPointConstraint.Straight &&
+                    p2.constraint1 == ControlPointConstraint.Straight)
                     continue;
+
+                var v0 = (p1.constraint2 != ControlPointConstraint.Straight) ? v1 - p1.tangent2 : v1;
+                var v3 = (p2.constraint1 != ControlPointConstraint.Straight) ? v2 - p2.tangent1 : v2;
+
+                // how far it has turned by each sample
+                turns[0] = 0;
+                var prevDirection = math.normalizesafe(DirectionOnBezier(v1, v0, v3, v2, 0));
+                for (int s = 1; s <= kTurnSamples; s++)
+                {
+                    var direction = math.normalizesafe(DirectionOnBezier(v1, v0, v3, v2, s / (float)kTurnSamples));
+                    var turn = 0.0f;
+                    if (math.any(prevDirection != float2.zero) && math.any(direction != float2.zero))
+                        turn = math.abs(math.atan2((prevDirection.x * direction.y) - (prevDirection.y * direction.x), math.dot(prevDirection, direction)));
+                    turns[s] = turns[s - 1] + turn;
+                    if (math.any(direction != float2.zero))
+                        prevDirection = direction;
                 }
 
-                float2 v0, v3;
-
-                if (p1.constraint2 != ControlPointConstraint.Straight)
-                    v0 = v1 - p1.tangent2;
-                else
-                    v0 = v1;
-                if (p2.constraint1 != ControlPointConstraint.Straight)
-                    v3 = v2 - p2.tangent1;
-                else
-                    v3 = v2;
-
-                shapeVertices.Add(new SegmentVertex { position = v1, segmentIndex = i });
-                for (int n = 1; n < shapeCurveSegments; n++)
+                var parts = (int)math.ceil(turns[kTurnSamples] / maxTurn - 1e-4f);
+                for (int n = 1, s = 1; n < parts; n++)
                 {
-                    shapeVertices.Add(new SegmentVertex { position = PointOnBezier(v1, v0, v3, v2, n / (float)shapeCurveSegments), segmentIndex = i });
+                    var target = turns[kTurnSamples] * n / parts;
+                    while (s < kTurnSamples && turns[s] < target)
+                        s++;
+                    var span = turns[s] - turns[s - 1];
+                    var fraction = (span > 0) ? (target - turns[s - 1]) / span : 0;
+                    var t = (s - 1 + fraction) / kTurnSamples;
+                    shapeVertices.Add(new SegmentVertex { position = PointOnBezier(v1, v0, v3, v2, t), segmentIndex = i });
                 }
             }
+            turns.Dispose();
             return shapeVertices;
-		}
+        }
 
         // TODO: put somewhere else
         public static float CalculateOrientation(UnsafeList<SegmentVertex> vertices, Range range)
