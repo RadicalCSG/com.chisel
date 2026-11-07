@@ -71,8 +71,10 @@ namespace Chisel.Editors.Tests
             Assert.That(materials.children[0].children.ConvertAll(folder => folder.depth), Is.EqualTo(new[] { 3, 3 }));
 
             var model = Model();
-            Assert.That(Names(model.Filter("", ChiselSurfaceBrowserModel.QuickAccess.All, "Assets/Materials/Environment")),
+            Assert.That(Names(model.Filter("", ChiselSurfaceBrowserModel.QuickAccess.All, new[] { "Assets/Materials/Environment" })),
                         Is.EqualTo(new[] { "Concrete_Panels", "Metal_Floor" }), "a folder shows what's in its subfolders");
+            Assert.That(Names(model.Filter("", ChiselSurfaceBrowserModel.QuickAccess.All, new[] { "Assets/Materials/Trims", "Assets/Models" })),
+                        Is.EqualTo(new[] { "Guard", "Trim_Industrial" }), "several folders show what's in any of them");
         }
 
         // Labels that differ only in case are one label, and adding one reuses its existing spelling

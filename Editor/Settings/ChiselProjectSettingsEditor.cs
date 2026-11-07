@@ -38,9 +38,7 @@ namespace Chisel.Editors
 			public readonly static GUIContent kHotspotMaxRepeats   = EditorGUIUtility.TrTextContent("Max repeats", "The most repeats a border strip, a repeating tile or a bordered tile's interior lays on one surface; more and it stretches instead. A layout can have its own");
 			public readonly static GUIContent kHotspotMaxTriangles = EditorGUIUtility.TrTextContent("Max triangles", "The most triangles a surface's cut may draw; more and its interior's repeats are left out, then the cut. A layout can have its own");
 
-			public readonly static GUIContent kHiddenFoldersSection = EditorGUIUtility.TrTextContent("Surface Browser Hidden Folders", "Folders whose materials the Surface Browser leaves out, with everything under them");
-			public readonly static GUIContent kHideFolder   = EditorGUIUtility.TrTextContent("Hide folder", "Drop or pick a folder to hide it");
-			public readonly static GUIContent kUnhideFolder = EditorGUIUtility.TrTextContent("Show");
+			public readonly static GUIContent kHiddenFoldersSection = EditorGUIUtility.TrTextContent("Hidden folders", "Folders whose materials the Surface Browser leaves out, with everything under them");
 		};
 
 		SerializedProperty m_DefaultFloorMaterialProp;
@@ -102,8 +100,7 @@ namespace Chisel.Editors
 				case Section.Hotspots:      HotspotsGUI(); break;
 				case Section.SurfaceBrowser:
 					GUILayout.Label(SettingsContent.kHiddenFoldersSection, EditorStyles.boldLabel);
-					using (new EditorGUI.IndentLevelScope(1))
-						HiddenFoldersGUI();
+					HiddenFoldersGUI();
 					break;
 			}
 			if (serializedObject.ApplyModifiedProperties())
@@ -168,30 +165,49 @@ namespace Chisel.Editors
 			}
 		}
 
-		static void HiddenFoldersGUI()
+		readonly System.Collections.Generic.HashSet<string> expandedFolders = new() { "Assets" };
+
+		// The project's folders as a tree, each with a toggle that hides it; a folder hidden through its parent shows
+		// as hidden and can only be shown through its parent
+		void HiddenFoldersGUI()
 		{
-			string unhide = null;
-			foreach (var folder in ChiselProjectSettings.HiddenFolders)
+			FolderRowGUI("Assets", "Assets", 0, false);
+			FolderRowGUI("Packages", "Packages", 0, false);
+		}
+
+		void FolderRowGUI(string path, string name, int depth, bool parentHidden)
+		{
+			var subFolders = AssetDatabase.GetSubFolders(path);
+			var hiddenItself = !parentHidden && ChiselProjectSettings.IsHidden(path);
+			var rect = EditorGUILayout.GetControlRect();
+			var foldRect = new Rect(rect.x + depth * 14, rect.y, 14, rect.height);
+			var expanded = expandedFolders.Contains(path);
+			if (subFolders.Length > 0)
 			{
-				using (new EditorGUILayout.HorizontalScope())
+				var newExpanded = EditorGUI.Foldout(foldRect, expanded, GUIContent.none, true);
+				if (newExpanded != expanded)
 				{
-					EditorGUILayout.LabelField(folder);
-					if (GUILayout.Button(SettingsContent.kUnhideFolder, GUILayout.Width(60)))
-						unhide = folder;
+					if (newExpanded) expandedFolders.Add(path); else expandedFolders.Remove(path);
+					expanded = newExpanded;
 				}
 			}
-			if (unhide != null)
-				ChiselProjectSettings.UnhideFolder(unhide);
-
-			// a folder dropped or picked here is hidden
-			EditorGUI.BeginChangeCheck();
-			var added = EditorGUILayout.ObjectField(SettingsContent.kHideFolder, null, typeof(DefaultAsset), false);
-			if (EditorGUI.EndChangeCheck() && added != null)
+			var toggleRect = new Rect(foldRect.xMax, rect.y, 18, rect.height);
+			using (new EditorGUI.DisabledScope(parentHidden))
 			{
-				var path = AssetDatabase.GetAssetPath(added);
-				if (AssetDatabase.IsValidFolder(path))
-					ChiselProjectSettings.HideFolder(path);
+				var hide = EditorGUI.Toggle(toggleRect, new GUIContent(string.Empty, "Hide this folder and everything in it"), parentHidden || hiddenItself);
+				if (!parentHidden && hide != hiddenItself)
+				{
+					if (hide) ChiselProjectSettings.HideFolder(path);
+					else ChiselProjectSettings.UnhideFolder(path);
+				}
 			}
+			GUI.Label(new Rect(toggleRect.xMax + 2, rect.y, rect.xMax - toggleRect.xMax - 2, rect.height), new GUIContent(name, path));
+
+			if (!expanded)
+				return;
+			var hidden = parentHidden || ChiselProjectSettings.IsHidden(path);
+			foreach (var sub in subFolders)
+				FolderRowGUI(sub, sub.Substring(sub.LastIndexOf('/') + 1), depth + 1, hidden);
 		}
 
 		public enum Section { Materials, Hotspots, SurfaceBrowser }

@@ -105,11 +105,17 @@ namespace Chisel.Editors
             return true;
         }
 
-        static bool InFolder(Item item, string folder)
+        // in any of the folders, or anywhere when none are given
+        static bool InFolders(Item item, IReadOnlyList<string> folders)
         {
-            if (string.IsNullOrEmpty(folder))
+            if (folders == null || folders.Count == 0)
                 return true;
-            return item.path.StartsWith(folder + "/", StringComparison.OrdinalIgnoreCase);
+            foreach (var folder in folders)
+            {
+                if (item.path.StartsWith(folder + "/", StringComparison.OrdinalIgnoreCase))
+                    return true;
+            }
+            return false;
         }
 
         bool InQuickAccess(Item item, QuickAccess quick)
@@ -138,14 +144,14 @@ namespace Chisel.Editors
 
         /// <summary>The items shown: not hidden, in the quick access list, folder and label chosen, and matching the
         /// search. Recently used keeps its own order</summary>
-        public List<Item> Filter(string searchText, QuickAccess quick, string folder = null, string label = null,
+        public List<Item> Filter(string searchText, QuickAccess quick, IReadOnlyList<string> folders = null, string label = null,
                                  Sort sort = Sort.Name, Func<Item, int> useInScene = null)
         {
             var search = ParseSearch(searchText);
             var result = new List<Item>();
             foreach (var item in items)
             {
-                if (!IsVisible(item) || !InQuickAccess(item, quick) || !InFolder(item, folder) ||
+                if (!IsVisible(item) || !InQuickAccess(item, quick) || !InFolders(item, folders) ||
                     (!string.IsNullOrEmpty(label) && !HasLabel(item, label)) || !Matches(item, search))
                     continue;
                 result.Add(item);

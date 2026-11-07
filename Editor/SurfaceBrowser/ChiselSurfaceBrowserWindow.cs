@@ -31,13 +31,13 @@ namespace Chisel.Editors
         [SerializeField] List<string> expandedFolders = new() { "Assets" };
         [SerializeField] string  search = string.Empty;
         [SerializeField] int     quick;
-        [SerializeField] string  folder;
+        [SerializeField] List<string> folders = new();
         [SerializeField] string  label;
         [SerializeField] string  selectedGuid;
 
         readonly ChiselSurfaceBrowserModel model = new();
         List<ChiselSurfaceBrowserModel.Item> shown = new();
-        List<ChiselSurfaceBrowserModel.Folder> folders = new();
+        List<ChiselSurfaceBrowserModel.Folder> folderTree = new();
         List<KeyValuePair<string, int>> labels = new();
         bool dirty = true;
 
@@ -125,14 +125,14 @@ namespace Chisel.Editors
                 });
             }
             model.SetItems(items);
-            folders = model.BuildFolders(includeHidden: false);
+            folderTree = model.BuildFolders(includeHidden: false);
             labels  = model.Labels();
             Filter();
         }
 
         void Filter()
         {
-            shown = model.Filter(search, (ChiselSurfaceBrowserModel.QuickAccess)quick, folder, label,
+            shown = model.Filter(search, (ChiselSurfaceBrowserModel.QuickAccess)quick, folders, label,
                                  (ChiselSurfaceBrowserModel.Sort)sort, item => ChiselSceneMaterialUsage.SurfacesUsing(Load(item)));
         }
 
@@ -241,9 +241,9 @@ namespace Chisel.Editors
             GUILayout.Label("QUICK ACCESS", EditorStyles.miniBoldLabel);
             for (int i = 0; i < kQuickNames.Length; i++)
             {
-                if (Row(kQuickNames[i], model.Count((ChiselSurfaceBrowserModel.QuickAccess)i), quick == i && folder == null && label == null))
+                if (Row(kQuickNames[i], model.Count((ChiselSurfaceBrowserModel.QuickAccess)i), quick == i && folders.Count == 0 && string.IsNullOrEmpty(label)))
                 {
-                    quick = i; folder = null; label = null;
+                    quick = i; folders.Clear(); label = null;
                     Filter();
                     Event.current.Use();
                 }
@@ -251,7 +251,7 @@ namespace Chisel.Editors
 
             GUILayout.Space(6);
             GUILayout.Label("FOLDERS", EditorStyles.miniBoldLabel);
-            foreach (var root in folders)
+            foreach (var root in folderTree)
                 FolderGUI(root);
             var hiddenCount = ChiselProjectSettings.HiddenFolders.Count;
             if (hiddenCount > 0 &&
@@ -280,7 +280,7 @@ namespace Chisel.Editors
             var rect = GUILayoutUtility.GetRect(new GUIContent(node.name), EditorStyles.label, GUILayout.ExpandWidth(true));
             var evt = Event.current;
             var hovering = rect.Contains(evt.mousePosition);
-            if (folder == node.path)
+            if (folders.Contains(node.path))
                 EditorGUI.DrawRect(rect, new Color(0.24f, 0.48f, 0.9f, 0.5f));
 
             var indent = node.depth * 14;
@@ -299,8 +299,42 @@ namespace Chisel.Editors
 
             if (evt.type == EventType.MouseDown && evt.button == 0 && hovering && !foldRect.Contains(evt.mousePosition))
             {
-                folder = node.path; quick = 0; label = null;
+                // ctrl, cmd or shift adds or removes a folder, a plain click picks only it
+                if (evt.control || evt.command || evt.shift)
+                {
+                    if (!folders.Remove(node.path))
+                        folders.Add(node.path);
+                } else
+                {
+                    folders.Clear();
+                    folders.Add(node.path);
+                }
+                quick = 0; label = null;
                 Filter();
+                evt.Use();
+            }
+            if (evt.type == EventType.ContextClick && hovering)
+            {
+                if (!folders.Contains(node.path))
+                {
+                    folders.Clear();
+                    folders.Add(node.path);
+                    quick = 0; label = null;
+                    Filter();
+                }
+                var toHide = new List<string>(folders);
+                var menu = new GenericMenu();
+                menu.AddItem(new GUIContent(toHide.Count == 1 ? "Hide Folder" : $"Hide {toHide.Count} Folders"), false, () =>
+                {
+                    HideFolders(toHide);
+                    folders.Clear();
+                    Filter();
+                    MarkDirty();
+                    EditorUtility.DisplayDialog(toHide.Count == 1 ? "Folder hidden" : "Folders hidden",
+                        (toHide.Count == 1 ? "The folder is hidden" : "The folders are hidden") +
+                        " from the Surface Browser. Show it again in Project Settings > Chisel > Surface Browser.", "OK");
+                });
+                menu.ShowAsContext();
                 evt.Use();
             }
             if (hovering && evt.type == EventType.MouseMove)
@@ -312,12 +346,22 @@ namespace Chisel.Editors
                 FolderGUI(child);
         }
 
+        /// <summary>Hides the folders as one undo step</summary>
+        internal static void HideFolders(IReadOnlyList<string> paths)
+        {
+            Undo.IncrementCurrentGroup();
+            var group = Undo.GetCurrentGroup();
+            foreach (var path in paths)
+                ChiselProjectSettings.HideFolder(path);
+            Undo.SetCurrentGroupName(paths.Count == 1 ? "Hide Folder" : "Hide Folders");
+            Undo.CollapseUndoOperations(group);
+        }
         #endregion
 
         #region Grid
         string HeaderText()
         {
-            var what = folder ?? (label != null ? "Label: " + label : kQuickNames[quick]);
+            var what = folders.Count == 1 ? folders[0] : folders.Count > 1 ? $"{folders.Count} folders" : (!string.IsNullOrEmpty(label) ? "Label: " + label : kQuickNames[quick]);
             return $"{what}  ·  {shown.Count} material{(shown.Count == 1 ? "" : "s")}";
         }
 

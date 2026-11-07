@@ -67,6 +67,16 @@ namespace Chisel.Editors.Tests
         }
 
         [Test]
+        public void HidingSeveralFolders_IsOneUndo()
+        {
+            ChiselSurfaceBrowserWindow.HideFolders(new[] { "Assets/Particles", "Assets/Models" });
+            Assert.That(ChiselProjectSettings.IsHidden("Assets/Particles/Smoke.mat"), Is.True);
+            Assert.That(ChiselProjectSettings.IsHidden("Assets/Models/Guard.mat"), Is.True);
+            Undo.PerformUndo();
+            Assert.That(ChiselProjectSettings.HiddenFolders, Is.Empty);
+        }
+
+        [Test]
         public void RecentlyUsed_KeepsTheLatestFirst_AndNoMoreThanItsLimit()
         {
             for (int i = 0; i < ChiselSurfaceBrowserPrefs.kMaxRecent + 5; i++)
