@@ -162,6 +162,19 @@ namespace Chisel.Editors.Tests
             Assert.That(defaults, Has.None.EqualTo("Packages/com.chisel"));
         }
 
+        // A material in a package from a registry can't be changed; one in the project or an embedded package can
+        [Test]
+        public void Materials_InReadOnlyPackages_AreNotEditable()
+        {
+            Assert.That(ChiselSurfaceBrowserWindow.IsEditable((string)null), Is.False);
+            Assert.That(ChiselSurfaceBrowserWindow.IsEditable(null, openForEdit: true), Is.True, "in the project");
+            Assert.That(ChiselSurfaceBrowserWindow.IsEditable(null, openForEdit: false), Is.False, "locked by version control");
+            Assert.That(ChiselSurfaceBrowserWindow.IsEditable(UnityEditor.PackageManager.PackageSource.Embedded, true), Is.True);
+            Assert.That(ChiselSurfaceBrowserWindow.IsEditable(UnityEditor.PackageManager.PackageSource.Local, true), Is.True);
+            Assert.That(ChiselSurfaceBrowserWindow.IsEditable(UnityEditor.PackageManager.PackageSource.Registry, true), Is.False);
+            Assert.That(ChiselSurfaceBrowserWindow.IsEditable(UnityEditor.PackageManager.PackageSource.BuiltIn, true), Is.False);
+        }
+
         [Test]
         public void TheSettingsFolderTree_ListsThePackages()
         {

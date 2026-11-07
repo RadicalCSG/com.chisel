@@ -356,6 +356,10 @@ namespace Chisel.Editors
             GUILayout.Label(path, new GUIStyle(EditorStyles.miniLabel) { wordWrap = true });
             InfoRow("In scene", $"{ChiselSceneMaterialUsage.DecalsUsing(material, image.tile)} decals");
 
+            var editable = IsEditable(path);
+            if (!editable)
+                EditorGUILayout.HelpBox("This material can't be changed: it is locked by version control or in a read-only package.", MessageType.Info);
+            EditorGUI.BeginDisabledGroup(!editable);
             GUILayout.Space(8);
             LabelsGUI(material, contentWidth);
 
@@ -379,6 +383,7 @@ namespace Chisel.Editors
                 GUIUtility.ExitGUI();
             }
 
+            EditorGUI.EndDisabledGroup();
             GUILayout.Space(8);
             EditorGUILayout.HelpBox(PlacingHint(ChiselDecalComponent.DefaultsOf(material).shape), MessageType.None);
         }

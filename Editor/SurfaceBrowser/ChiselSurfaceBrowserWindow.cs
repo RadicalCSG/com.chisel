@@ -575,6 +575,11 @@ namespace Chisel.Editors
                     GUIUtility.hotControl = 0;
                     evt.Use();
                     break;
+                case EventType.ContextClick when material != null:
+                    Select(item.guid);
+                    MaterialMenu(item, material).ShowAsContext();
+                    evt.Use();
+                    break;
                 case EventType.MouseDrag when evt.button == 0 && material != null:
                     // dropped on a surface in the scene view, it's applied there
                     DragAndDrop.PrepareStartDrag();
@@ -584,6 +589,64 @@ namespace Chisel.Editors
                     evt.Use();
                     break;
             }
+        }
+
+        GenericMenu MaterialMenu(ChiselSurfaceBrowserModel.Item item, Material material)
+        {
+            var menu = new GenericMenu();
+            menu.AddItem(new GUIContent("Show in Project Tab"), false, () => EditorGUIUtility.PingObject(material));
+            menu.AddItem(new GUIContent("Open Folder in Explorer"), false, () => EditorUtility.RevealInFinder(item.path));
+            if (IsEditable(item.path))
+                menu.AddItem(new GUIContent("Rename"), false, () => { focusRename = true; Repaint(); });
+            else
+                menu.AddDisabledItem(new GUIContent("Rename"));
+            return menu;
+        }
+
+        /// <summary>Whether an asset can be changed: not locked or checked in by version control, not in a package that
+        /// can't be changed (one from a registry or built in)</summary>
+        internal static bool IsEditable(string path)
+        {
+            if (string.IsNullOrEmpty(path))
+                return false;
+            var package = path.StartsWith("Packages/", StringComparison.OrdinalIgnoreCase) ? UnityEditor.PackageManager.PackageInfo.FindForAssetPath(path) : null;
+            return IsEditable(package?.source, AssetDatabase.IsOpenForEdit(path, StatusQueryOptions.UseCachedIfPossible));
+        }
+
+        /// <summary>source: the package it is in, null outside packages; openForEdit: not locked by version control</summary>
+        internal static bool IsEditable(UnityEditor.PackageManager.PackageSource? source, bool openForEdit)
+        {
+            if (source.HasValue && source.Value != UnityEditor.PackageManager.PackageSource.Embedded &&
+                source.Value != UnityEditor.PackageManager.PackageSource.Local)
+                return false;
+            return openForEdit;
+        }
+
+        const string kRenameControl = "ChiselRenameMaterial";
+        bool focusRename;
+
+        // the name, editable when the material can be changed; a new name renames the asset
+        void NameGUI(ChiselSurfaceBrowserModel.Item item, bool editable)
+        {
+            if (!editable)
+            {
+                GUILayout.Label(item.name, EditorStyles.boldLabel);
+                return;
+            }
+            GUI.SetNextControlName(kRenameControl);
+            var newName = EditorGUILayout.DelayedTextField(item.name, EditorStyles.boldLabel);
+            if (focusRename)
+            {
+                focusRename = false;
+                EditorGUI.FocusTextInControl(kRenameControl);
+            }
+            if (newName == item.name || string.IsNullOrWhiteSpace(newName))
+                return;
+            var error = AssetDatabase.RenameAsset(item.path, newName.Trim());
+            if (!string.IsNullOrEmpty(error))
+                ShowNotification(new GUIContent(error));
+            MarkDirty();
+            GUIUtility.ExitGUI();
         }
 
         void KeyboardGUI(int columns)
@@ -652,8 +715,11 @@ namespace Chisel.Editors
                 previewEditor.OnInteractivePreviewGUI(previewRect, EditorStyles.helpBox);
             }
 
-            GUILayout.Label(item.name, EditorStyles.boldLabel);
+            var editable = IsEditable(item.path);
+            NameGUI(item, editable);
             GUILayout.Label(item.path, new GUIStyle(EditorStyles.miniLabel) { wordWrap = true });
+            if (!editable)
+                EditorGUILayout.HelpBox("This material can't be changed: it is locked by version control or in a read-only package.", MessageType.Info);
             var metadata = MetadataOf(material);
             InfoRow("Shader", material.shader != null ? material.shader.name : "None");
             if (material.mainTexture != null)
@@ -666,6 +732,8 @@ namespace Chisel.Editors
             if (metadata != null && metadata.hotspotLayout != null)
                 HotspotBoxGUI(material, metadata);
 
+            // everything stored in the material shows read-only when it can't be changed
+            EditorGUI.BeginDisabledGroup(!editable);
             GUILayout.Space(8);
             LabelsGUI(material, contentWidth);
 
@@ -702,6 +770,7 @@ namespace Chisel.Editors
                 metadataEditor?.OnInspectorGUI();
             }
 
+            EditorGUI.EndDisabledGroup();
             GUILayout.Space(8);
             if (GUILayout.Button("Set as default for...", EditorStyles.popup))
                 DefaultsMenu(material).ShowAsContext();
