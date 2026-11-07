@@ -255,8 +255,8 @@ namespace Chisel.Editors
                 FolderGUI(root);
             var hiddenCount = ChiselProjectSettings.HiddenFolders.Count;
             if (hiddenCount > 0 &&
-                GUILayout.Button(new GUIContent($"{hiddenCount} hidden folder{(hiddenCount == 1 ? "" : "s")}", "Hidden in Project Settings > Chisel"), EditorStyles.linkLabel))
-                SettingsService.OpenProjectSettings("Project/Chisel");
+                GUILayout.Button(new GUIContent($"{hiddenCount} hidden folder{(hiddenCount == 1 ? "" : "s")}", "Hidden in Project Settings > Chisel > Surface Browser"), EditorStyles.linkLabel))
+                SettingsService.OpenProjectSettings(ChiselProjectSettingsEditor.kSurfaceBrowserPath);
 
             GUILayout.Space(6);
             GUILayout.Label("LABELS", EditorStyles.miniBoldLabel);

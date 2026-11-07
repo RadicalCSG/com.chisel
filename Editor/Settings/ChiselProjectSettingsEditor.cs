@@ -96,11 +96,24 @@ namespace Chisel.Editors
 			if (serializedObject == null)
 				return;
 			serializedObject.Update();
+			switch (section)
+			{
+				case Section.Materials:     MaterialsGUI(); break;
+				case Section.Hotspots:      HotspotsGUI(); break;
+				case Section.SurfaceBrowser:
+					GUILayout.Label(SettingsContent.kHiddenFoldersSection, EditorStyles.boldLabel);
+					using (new EditorGUI.IndentLevelScope(1))
+						HiddenFoldersGUI();
+					break;
+			}
+			if (serializedObject.ApplyModifiedProperties())
+			{
+				ChiselProjectSettings.instance.Save();
+			}
+		}
 
-			GUILayout.Label(SettingsContent.kMaterialSection, EditorStyles.boldLabel);
-			EditorGUILayout.Space();
-			
-			using (new EditorGUI.IndentLevelScope(1))
+		void MaterialsGUI()
+		{
 			{
 				EditorGUILayout.LabelField(SettingsContent.kDefaultMaterialsSection, EditorStyles.boldLabel);
 				using (new EditorGUI.IndentLevelScope(1))
@@ -136,10 +149,10 @@ namespace Chisel.Editors
 					ChiselProjectSettings.instance.ResetMaterials();
 				}
 			}
+		}
 
-			EditorGUILayout.Space();
-			GUILayout.Label(SettingsContent.kHotspotSection, EditorStyles.boldLabel);
-			using (new EditorGUI.IndentLevelScope(1))
+		static void HotspotsGUI()
+		{
 			{
 				EditorGUI.BeginChangeCheck();
 				var maxRepeats   = EditorGUILayout.IntField(SettingsContent.kHotspotMaxRepeats,   ChiselProjectSettings.HotspotMaxRepeats);
@@ -152,16 +165,6 @@ namespace Chisel.Editors
 					ChiselProjectSettings.instance.Save();
 					ChiselHotspotStore.SettingsChanged();
 				}
-			}
-
-			EditorGUILayout.Space();
-			GUILayout.Label(SettingsContent.kHiddenFoldersSection, EditorStyles.boldLabel);
-			using (new EditorGUI.IndentLevelScope(1))
-				HiddenFoldersGUI();
-
-			if (serializedObject.ApplyModifiedProperties())
-			{
-				ChiselProjectSettings.instance.Save();
 			}
 		}
 
@@ -191,13 +194,35 @@ namespace Chisel.Editors
 			}
 		}
 
-		[SettingsProvider]
-		public static SettingsProvider CreateMyCustomSettingsProvider()
+		public enum Section { Materials, Hotspots, SurfaceBrowser }
+		public Section section;
+
+		public const string kRootPath           = "Project/Chisel";
+		public const string kMaterialsPath      = kRootPath + "/Materials";
+		public const string kHotspotsPath       = kRootPath + "/Hotspot Mapping";
+		public const string kSurfaceBrowserPath = kRootPath + "/Surface Browser";
+
+		static SettingsProvider SectionProvider(string path, Section section)
 		{
-			var provider = AssetSettingsProvider.CreateProviderFromObject(
-				"Project/Chisel", ChiselProjectSettings.instance,
-				SettingsProvider.GetSearchKeywordsFromGUIContentProperties<SettingsContent>());
-			return provider;
+			return new AssetSettingsProvider(path, () =>
+			{
+				var editor = (ChiselProjectSettingsEditor)CreateEditor(ChiselProjectSettings.instance);
+				editor.section = section;
+				return editor;
+			}, SettingsProvider.GetSearchKeywordsFromGUIContentProperties<SettingsContent>());
+		}
+
+		[SettingsProvider] static SettingsProvider CreateMaterialsProvider()      { return SectionProvider(kMaterialsPath, Section.Materials); }
+		[SettingsProvider] static SettingsProvider CreateHotspotsProvider()       { return SectionProvider(kHotspotsPath, Section.Hotspots); }
+		[SettingsProvider] static SettingsProvider CreateSurfaceBrowserProvider() { return SectionProvider(kSurfaceBrowserPath, Section.SurfaceBrowser); }
+
+		[SettingsProvider]
+		static SettingsProvider CreateRootProvider()
+		{
+			return new SettingsProvider(kRootPath, SettingsScope.Project)
+			{
+				guiHandler = _ => EditorGUILayout.LabelField("Chisel's project settings are on the pages under this one.", EditorStyles.wordWrappedLabel)
+			};
 		}
 	}
 }
