@@ -35,7 +35,11 @@ namespace Chisel.Editors
             public List<Folder> children = new();
         }
 
-        public enum QuickAccess { All, Favorites, RecentlyUsed, InThisScene, UnusedInThisScene }
+        // NotSetUp: no Chisel settings of its own yet, so surfaces using it take Chisel's defaults
+        public enum QuickAccess { All, Favorites, RecentlyUsed, InThisScene, UnusedInThisScene, Decals, NotSetUp }
+
+        public Func<Item, bool> isDecal = _ => false;
+        public Func<Item, bool> isSetUp = _ => true;
 
         // Something a material has or not (paintable, a skybox, hotspots); a filter asks for it, or for its absence
         public sealed class Trait
@@ -184,6 +188,8 @@ namespace Chisel.Editors
                 case QuickAccess.RecentlyUsed: return Contains(recent(), item.guid);
                 case QuickAccess.InThisScene:  return isInScene(item);
                 case QuickAccess.UnusedInThisScene: return !isInScene(item);
+                case QuickAccess.Decals:       return isDecal(item);
+                case QuickAccess.NotSetUp:     return !isSetUp(item);
                 default:                       return true;
             }
         }

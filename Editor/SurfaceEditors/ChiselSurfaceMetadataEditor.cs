@@ -237,9 +237,16 @@ namespace Chisel.Editors
 			EditorGUILayout.Space(kButtonSpacing);
 			EditorGUILayout.LabelField(kDecalDefaultsContents, EditorStyles.boldLabel);
 
+			// a decal material is placed as a box or a trim; a polygon is drawn with a surface's own material
+			EditorGUI.showMixedValue = shapeProp.hasMultipleDifferentValues;
 			EditorGUI.BeginChangeCheck();
-			EditorGUILayout.PropertyField(shapeProp, kShapeContents);
-			if (EditorGUI.EndChangeCheck() && !shapeProp.hasMultipleDifferentValues)
+			var newShape = (ChiselDecalShape)EditorGUILayout.EnumPopup(kShapeContents, (ChiselDecalShape)shapeProp.enumValueIndex,
+				value => (ChiselDecalShape)value != ChiselDecalShape.Polygon, false);
+			EditorGUI.showMixedValue = false;
+			var shapeChanged = EditorGUI.EndChangeCheck();
+			if (shapeChanged)
+				shapeProp.enumValueIndex = (int)newShape;
+			if (shapeChanged)
 			{
 				// changing the shape keeps the projection one it takes
 				var shape = (ChiselDecalShape)shapeProp.enumValueIndex;

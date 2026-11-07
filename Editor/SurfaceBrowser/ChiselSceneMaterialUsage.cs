@@ -31,7 +31,13 @@ namespace Chisel.Editors
             Undo.undoRedoPerformed += SetDirty;
             EditorApplication.hierarchyChanged -= SetDirty;
             EditorApplication.hierarchyChanged += SetDirty;
+            UnityEditor.SceneManagement.EditorSceneManager.sceneOpened -= OnSceneOpened;
+            UnityEditor.SceneManagement.EditorSceneManager.sceneOpened += OnSceneOpened;
+            // asked for while the scene is still coming back after a reload, nothing is counted; count again once settled
+            EditorApplication.delayCall += SetDirty;
         }
+
+        static void OnSceneOpened(UnityEngine.SceneManagement.Scene scene, UnityEditor.SceneManagement.OpenSceneMode mode) { SetDirty(); }
 
         static void OnChangesPublished(ref ObjectChangeEventStream stream) { SetDirty(); }
 

@@ -99,6 +99,16 @@ namespace Chisel.Editors.Tests
             Assert.That(decal.Settings.size.y, Is.EqualTo(0.5f).Within(1e-5f));
         }
 
+        // A decal without a texture shows its color
+        [Test]
+        public void ADecalsColor_IsItsBaseColor()
+        {
+            var material = DecalMaterial(ChiselDecalDefaults.Default);
+            material.SetColor("_Color", Color.green);
+            Assert.That(ChiselSurfaceBrowserDecals.ColorOf(material), Is.EqualTo(Color.green));
+            Assert.That(ChiselSurfaceBrowserDecals.ColorOf(null), Is.EqualTo(Color.white));
+        }
+
         // The material's inspector knows a decal material, to show only what decals use
         [Test]
         public void TheMaterialInspector_KnowsADecalMaterial()

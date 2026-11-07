@@ -32,11 +32,9 @@ namespace Chisel.Editors
         const float kMinThumb     = 48;
         const float kMaxThumb     = 160;
 
-        static readonly string[] kTabs = { "Materials", "Decals" };
         static readonly string[] kSortNames = { "Name", "Folder", "Use in scene" };
 
         // per user, between sessions
-        [SerializeField] int     tab;
         [SerializeField] float   thumbSize = 88;
         [SerializeField] int     sort;
         [SerializeField] List<string> expandedFolders = new() { "Assets" };
@@ -79,6 +77,8 @@ namespace Chisel.Editors
             model.isFavorite  = item => ChiselSurfaceBrowserPrefs.IsFavorite(item.guid);
             model.recent      = () => ChiselSurfaceBrowserPrefs.Recent;
             model.isInScene   = item => ChiselSceneMaterialUsage.SurfacesUsing(Load(item)) > 0;
+            model.isDecal     = item => ChiselSurfaceBrowserDecals.IsDecal(Load(item));
+            model.isSetUp     = item => MetadataOf(Load(item)) != null;
             model.traits.Clear();
             model.traits.AddRange(Traits());
             // only unticked filters are kept; one ticked under the earlier "with it" filters is just ticked now
@@ -158,6 +158,8 @@ namespace Chisel.Editors
                 Trait("Blends layers", material => HasPaintMode(material, mode => mode.group > 0)),
                 Trait("Skybox",        material => material != null && material.shader != null && material.shader.name.StartsWith("Skybox/", StringComparison.OrdinalIgnoreCase)),
                 Trait("Hotspots",      material => HotspotLayoutOf(material) != null),
+                Trait("Box decal",     material => ChiselSurfaceBrowserDecals.IsDecal(material) && ChiselSurfaceBrowserDecals.ShapeOf(material) == ChiselDecalShape.Box),
+                Trait("Trim decal",    material => ChiselSurfaceBrowserDecals.IsDecal(material) && ChiselSurfaceBrowserDecals.ShapeOf(material) == ChiselDecalShape.Trim),
             };
             traits.Add(ChiselSurfaceBrowserModel.PlainTrait(traits));
             return traits.ToArray();
@@ -224,7 +226,6 @@ namespace Chisel.Editors
 
         void Filter()
         {
-            decalsDirty = true;
             shown = model.Filter(search, (ChiselSurfaceBrowserModel.QuickAccess)quick, folders, label,
                                  (ChiselSurfaceBrowserModel.Sort)sort, item => ChiselSceneMaterialUsage.SurfacesUsing(Load(item)));
         }
@@ -262,11 +263,6 @@ namespace Chisel.Editors
             var body    = new Rect(0, toolbar.yMax, full.width, footer.y - toolbar.yMax);
 
             ToolbarGUI(toolbar);
-            if (tab != 0)
-            {
-                DecalsGUI(body, footer);
-                return;
-            }
             var sidebar = new Rect(body.x, body.y, kSidebarWidth, body.height);
             DetailsSplitterGUI(body);
             var details = new Rect(body.xMax - detailsWidth, body.y, detailsWidth, body.height);
@@ -313,8 +309,6 @@ namespace Chisel.Editors
             GUILayout.BeginArea(rect, EditorStyles.toolbar);
             using (new EditorGUILayout.HorizontalScope())
             {
-                tab = GUILayout.Toolbar(tab, kTabs, EditorStyles.toolbarButton, GUILayout.Width(160));
-                GUILayout.Space(8);
                 EditorGUI.BeginChangeCheck();
                 search = EditorGUILayout.TextField(search, EditorStyles.toolbarSearchField, GUILayout.MinWidth(120), GUILayout.MaxWidth(360));
                 if (EditorGUI.EndChangeCheck())
@@ -333,7 +327,7 @@ namespace Chisel.Editors
         #endregion
 
         #region Sidebar
-        static readonly string[] kQuickNames = { "All materials", "Favorites", "Recently used", "In this scene", "Unused in this scene" };
+        static readonly string[] kQuickNames = { "All materials", "Favorites", "Recently used", "In this scene", "Unused in this scene", "Decals", "Not set up" };
 
         bool Row(string text, int count, bool selected, int depth = 0, bool greyed = false)
         {
@@ -539,11 +533,16 @@ namespace Chisel.Editors
             if (evt.type == EventType.Repaint)
             {
                 EditorGUI.DrawRect(thumbRect, new Color(0, 0, 0, 0.2f));
-                var texture = PreviewOf(material, IsSheet(material));
-                if (texture != null)
-                    GUI.DrawTexture(thumbRect, texture, ScaleMode.ScaleToFit);
+                if (ChiselSurfaceBrowserDecals.IsDecal(material))
+                    DrawImage(thumbRect, material, 0);      // flat: a decal draws nothing on a preview sphere
                 else
-                    Repaint();  // previews load in the background
+                {
+                    var texture = PreviewOf(material, IsSheet(material));
+                    if (texture != null)
+                        GUI.DrawTexture(thumbRect, texture, ScaleMode.ScaleToFit);
+                    else
+                        Repaint();  // previews load in the background
+                }
             }
 
             // indicators: a hotspot layout, a decal material, a favorite, its use in the scene
@@ -563,9 +562,10 @@ namespace Chisel.Editors
                 Filter();
                 evt.Use();
             }
-            var uses = ChiselSceneMaterialUsage.SurfacesUsing(material);
+            var cardIsDecal = ChiselSurfaceBrowserDecals.IsDecal(material);
+            var uses = cardIsDecal ? ChiselSceneMaterialUsage.DecalsUsing(material) : ChiselSceneMaterialUsage.SurfacesUsing(material);
             if (uses > 0)
-                GUI.Label(new Rect(thumbRect.xMax - 34, thumbRect.yMax - 16, 32, 14), new GUIContent(uses.ToString(), $"{uses} surfaces in the scene use it"), new GUIStyle(badge) { alignment = TextAnchor.MiddleRight });
+                GUI.Label(new Rect(thumbRect.xMax - 34, thumbRect.yMax - 16, 32, 14), new GUIContent(uses.ToString(), $"{uses} {(cardIsDecal ? "decals" : "surfaces")} in the scene use it"), new GUIStyle(badge) { alignment = TextAnchor.MiddleRight });
 
             var nameRect = new Rect(rect.x, thumbRect.yMax + 2, rect.width, EditorGUIUtility.singleLineHeight);
             if (cardRenameGuid == item.guid)
@@ -594,13 +594,24 @@ namespace Chisel.Editors
                     }
                     Select(item.guid);
                     if (evt.clickCount == 2)
-                        Apply(material);
+                    {
+                        if (cardIsDecal) PlaceSelectedDecal();
+                        else             Apply(material);
+                    }
                     GUIUtility.hotControl = 0;
                     evt.Use();
                     break;
                 case EventType.ContextClick when material != null:
                     Select(item.guid);
                     MaterialMenu(item, material).ShowAsContext();
+                    evt.Use();
+                    break;
+                case EventType.MouseDrag when evt.button == 0 && material != null && cardIsDecal:
+                    // dropped in the scene view, a decal is placed there
+                    Select(item.guid);
+                    var image = SelectedImage;
+                    if (image != null)
+                        ChiselSurfaceBrowserDecals.StartDrag(image);
                     evt.Use();
                     break;
                 case EventType.MouseDrag when evt.button == 0 && material != null:
@@ -829,9 +840,14 @@ namespace Chisel.Editors
                 return;
             }
 
-            // a large preview; Unity's own material preview, with its sphere, cube, plane and other shapes
-            Editor.CreateCachedEditor(material, null, ref previewEditor);
-            if (previewEditor != null && previewEditor.HasPreviewGUI())
+            // a large preview; Unity's own material preview, with its sphere, cube, plane and other shapes; a decal's
+            // image flat (a decal draws nothing on the preview's shapes)
+            var isDecal = ChiselSurfaceBrowserDecals.IsDecal(material);
+            if (isDecal)
+                DecalPreviewGUI(material, contentWidth);
+            else
+                Editor.CreateCachedEditor(material, null, ref previewEditor);
+            if (!isDecal && previewEditor != null && previewEditor.HasPreviewGUI())
             {
                 using (new EditorGUILayout.HorizontalScope())
                 {
@@ -855,10 +871,14 @@ namespace Chisel.Editors
             if (metadata != null && metadata.hotspotLayout != null)
                 InfoRow("Hotspots", 1 + (metadata.hotspotVariants?.Count ?? 0) + (metadata.hotspotSheets?.Count ?? 0) + " sheets (layout, variants and other sheets)");
             var uses = ChiselSceneMaterialUsage.SurfacesUsing(material);
-            InfoRow("In scene", uses == 1 ? "1 surface" : uses + " surfaces");
-
-            if (metadata != null && metadata.hotspotLayout != null)
-                HotspotBoxGUI(material, metadata);
+            if (isDecal)
+                DecalInfoGUI(material);
+            else
+            {
+                InfoRow("In scene", uses == 1 ? "1 surface" : uses + " surfaces");
+                if (metadata != null && metadata.hotspotLayout != null)
+                    HotspotBoxGUI(material, metadata);
+            }
 
             // everything stored in the material shows read-only when it can't be changed
             EditorGUI.BeginDisabledGroup(!editable);
@@ -882,7 +902,8 @@ namespace Chisel.Editors
             } else
             {
                 var applies = new GUIStyle(EditorStyles.miniLabel) { wordWrap = true, normal = { textColor = new Color(1f, 0.75f, 0.3f) } };
-                GUILayout.Label(uses > 0 ? $"Applies to all {uses} surface{(uses == 1 ? "" : "s")} using this material" : "Applies to every surface using this material", applies);
+                GUILayout.Label(isDecal ? "Applies to every decal of this material" :
+                                uses > 0 ? $"Applies to all {uses} surface{(uses == 1 ? "" : "s")} using this material" : "Applies to every surface using this material", applies);
                 Editor.CreateCachedEditor(metadata, typeof(ChiselSurfaceMetadataEditor), ref metadataEditor);
                 metadataEditor?.OnInspectorGUI();
             }
@@ -1114,15 +1135,26 @@ namespace Chisel.Editors
             {
                 GUILayout.Label("Selection  " + SelectionText(), EditorStyles.miniLabel);
                 GUILayout.FlexibleSpace();
-                GUILayout.Label("Double-click to apply - Drag onto a surface", EditorStyles.miniLabel);
+                GUILayout.Label(ChiselSurfaceBrowserDecals.IsDecal(Load(Selected)) ? "Double-click to place - Drag into the Scene view" : "Double-click to apply - Drag onto a surface", EditorStyles.miniLabel);
                 if (GUILayout.Button("Close", GUILayout.Width(60)))
                     Close();
                 var count = ChiselSurfaceSelectionManager.Selection.Count;
                 var material = Load(Selected);
-                using (new EditorGUI.DisabledScope(count == 0 || material == null))
+                if (ChiselSurfaceBrowserDecals.IsDecal(material))
                 {
-                    if (GUILayout.Button($"Apply to {count} surface{(count == 1 ? "" : "s")}", GUILayout.Width(140)))
-                        Apply(material);
+                    // a decal is placed, not put on surfaces
+                    using (new EditorGUI.DisabledScope(!CanPlace(material)))
+                    {
+                        if (GUILayout.Button(PlaceActionText(material), GUILayout.Width(170)))
+                            PlaceSelectedDecal();
+                    }
+                } else
+                {
+                    using (new EditorGUI.DisabledScope(count == 0 || material == null))
+                    {
+                        if (GUILayout.Button($"Apply to {count} surface{(count == 1 ? "" : "s")}", GUILayout.Width(140)))
+                            Apply(material);
+                    }
                 }
             }
             GUILayout.EndArea();

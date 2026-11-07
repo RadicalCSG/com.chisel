@@ -52,9 +52,9 @@ namespace Chisel.Editors
                 return;
             if (DragAndDrop.GetGenericData(kDragKey) is not Image image || image.material == null)
                 return;
-            var shape = ChiselDecalComponent.DefaultsOf(image.material).shape;
+            var shape = ShapeOf(image.material);
             var onSurface = PickSurface(evt.mousePosition, out var hit);
-            DragAndDrop.visualMode = onSurface || shape == ChiselDecalShape.Polygon ? DragAndDropVisualMode.Copy : DragAndDropVisualMode.Rejected;
+            DragAndDrop.visualMode = onSurface ? DragAndDropVisualMode.Copy : DragAndDropVisualMode.Rejected;
             if (evt.type == EventType.DragPerform)
             {
                 DragAndDrop.AcceptDrag();
@@ -67,12 +67,9 @@ namespace Chisel.Editors
         // a box where it's dropped, a trim on the edge nearest to it; a polygon starts drawing
         static void Drop(Image image, ChiselDecalShape shape, bool onSurface, ChiselIntersection hit, Vector2 mousePosition)
         {
-            ChiselSurfaceBrowserPrefs.MarkUsed(image.Key);
+            ChiselSurfaceBrowserPrefs.MarkUsed(image.guid);
             switch (shape)
             {
-                case ChiselDecalShape.Polygon:
-                    ChiselSurfaceShapeTool.StartDrawing(image.material, image.tile);
-                    return;
                 case ChiselDecalShape.Trim:
                 {
                     var decal = CreateTrim(image.material, image.tile);
@@ -107,6 +104,39 @@ namespace Chisel.Editors
             public int      count;
 
             public string Key => guid + ":" + tile;
+        }
+
+        /// <summary>How a decal material is placed: along an edge (Trim) or as a box; a polygon is drawn with a
+        /// surface's own material, so it isn't one of these</summary>
+        public static ChiselDecalShape ShapeOf(Material material)
+        {
+            return ChiselDecalComponent.DefaultsOf(material).shape == ChiselDecalShape.Trim ? ChiselDecalShape.Trim : ChiselDecalShape.Box;
+        }
+
+        /// <summary>The texture a decal draws: the material's main one, else its first texture</summary>
+        public static Texture ImageTextureOf(Material material)
+        {
+            if (material == null)
+                return null;
+            if (material.mainTexture != null)
+                return material.mainTexture;
+            foreach (var name in material.GetTexturePropertyNames())
+            {
+                var texture = material.GetTexture(name);
+                if (texture != null)
+                    return texture;
+            }
+            return null;
+        }
+
+        /// <summary>The color a material tints its texture with (URP's base color, or the built-in color), white without one</summary>
+        public static Color ColorOf(Material material)
+        {
+            if (material == null)
+                return Color.white;
+            if (material.HasColor("_BaseColor")) return material.GetColor("_BaseColor");
+            if (material.HasColor("_Color"))     return material.GetColor("_Color");
+            return Color.white;
         }
 
         public static bool IsDecal(Material material)
@@ -223,121 +253,8 @@ namespace Chisel.Editors
 
     public sealed partial class ChiselSurfaceBrowserWindow
     {
-        static readonly string[] kShapeFilters = { "All", "Box", "Trim", "Polygon" };
-
-        [SerializeField] int    decalShapeFilter;
-        [SerializeField] string selectedDecal;
-
-        // the decal images shown, grouped by material
-        readonly List<List<ChiselSurfaceBrowserDecals.Image>> decalGroups = new();
-        bool decalsDirty = true;
-        Vector2 decalsGridScroll;
-
-        void RefreshDecals()
-        {
-            if (!decalsDirty)
-                return;
-            decalsDirty = false;
-            decalGroups.Clear();
-            var search = ChiselSurfaceBrowserModel.ParseSearch(this.search);
-            foreach (var item in model.Items)
-            {
-                if (!model.IsVisible(item))
-                    continue;
-                var material = Load(item);
-                if (!ChiselSurfaceBrowserDecals.IsDecal(material))
-                    continue;
-                var shape = ChiselDecalComponent.DefaultsOf(material).shape;
-                if (decalShapeFilter != 0 && (int)shape != decalShapeFilter - 1)
-                    continue;
-                var images = ChiselSurfaceBrowserDecals.ImagesOf(material, item.guid);
-                // a search matches the material (its name and labels) or an image's name
-                var materialMatches = ChiselSurfaceBrowserModel.Matches(item, search);
-                if (!materialMatches)
-                {
-                    images.RemoveAll(image => !ChiselSurfaceBrowserModel.Matches(
-                        new ChiselSurfaceBrowserModel.Item { name = image.name, path = item.path, labels = item.labels }, search));
-                }
-                if (images.Count > 0)
-                    decalGroups.Add(images);
-            }
-            decalGroups.Sort((a, b) => string.Compare(a[0].material.name, b[0].material.name, System.StringComparison.OrdinalIgnoreCase));
-        }
-
-        ChiselSurfaceBrowserDecals.Image SelectedImage
-        {
-            get
-            {
-                foreach (var group in decalGroups)
-                    foreach (var image in group)
-                        if (image.Key == selectedDecal)
-                            return image;
-                return null;
-            }
-        }
-
-        void DecalsGUI(Rect body, Rect footer)
-        {
-            RefreshDecals();
-            DetailsSplitterGUI(body);
-            var details = new Rect(body.xMax - detailsWidth, body.y, detailsWidth, body.height);
-            var grid    = new Rect(body.x, body.y, details.x - body.x, body.height);
-            DecalGridGUI(grid);
-            DecalDetailsGUI(details);
-            DecalFooterGUI(footer);
-            EditorGUI.DrawRect(new Rect(details.x - 1, body.y, 1, body.height), new Color(0, 0, 0, 0.3f));
-            EditorGUI.DrawRect(new Rect(0, footer.y, footer.width, 1), new Color(0, 0, 0, 0.3f));
-        }
-
-        #region Decal grid
-        void DecalGridGUI(Rect rect)
-        {
-            // the shape chips filter by each material's default shape
-            var chipsRect = new Rect(rect.x + 8, rect.y + 3, Mathf.Min(rect.width - 16, 280), kHeaderHeight - 4);
-            EditorGUI.BeginChangeCheck();
-            decalShapeFilter = GUI.Toolbar(chipsRect, decalShapeFilter, kShapeFilters, EditorStyles.miniButton);
-            if (EditorGUI.EndChangeCheck())
-                decalsDirty = true;
-
-            var area = new Rect(rect.x, rect.y + kHeaderHeight + 2, rect.width, rect.height - kHeaderHeight - 2);
-            var cell = thumbSize + 14;
-            var cellHeight = thumbSize + 26;
-            var columns = Mathf.Max(1, Mathf.FloorToInt((area.width - 24) / cell));
-            var groupHeader = EditorGUIUtility.singleLineHeight + 6;
-
-            var height = 4f;
-            foreach (var group in decalGroups)
-                height += groupHeader + Mathf.CeilToInt(group.Count / (float)columns) * cellHeight;
-            var content = new Rect(0, 0, area.width - 16, height);
-            decalsGridScroll = GUI.BeginScrollView(area, decalsGridScroll, content);
-            if (decalGroups.Count == 0)
-                GUI.Label(new Rect(0, 20, content.width, 40), "No decal materials. Tick \"Use as decal\" on a material in the Materials tab.", EditorStyles.centeredGreyMiniLabel);
-            var y = 4f;
-            foreach (var group in decalGroups)
-            {
-                var first  = group[0];
-                var shape  = ChiselDecalComponent.DefaultsOf(first.material).shape;
-                var header = new Rect(8, y, content.width - 16, groupHeader);
-                // the material's name opens it in the Materials tab
-                if (GUI.Button(new Rect(header.x, header.y + 2, header.width, EditorGUIUtility.singleLineHeight),
-                               new GUIContent($"{first.material.name}  -  {shape}  -  {group.Count} image{(group.Count == 1 ? "" : "s")}", "Open in the Materials tab"),
-                               EditorStyles.boldLabel))
-                {
-                    tab = 0;
-                    Select(first.guid);
-                    GUIUtility.ExitGUI();
-                }
-                y += groupHeader;
-                for (int i = 0; i < group.Count; i++)
-                {
-                    var row = i / columns;
-                    var column = i % columns;
-                    DecalCardGUI(new Rect(8 + column * cell, y + row * cellHeight, cell - 6, cellHeight - 6), group[i]);
-                }
-                y += Mathf.CeilToInt(group.Count / (float)columns) * cellHeight;
-            }
-            GUI.EndScrollView();
-        }
+        // the image of the selected decal material placed next (a tile of its sheet, 0 for the whole texture)
+        [SerializeField] int selectedTile;
 
         Texture2D checker;
 
@@ -360,11 +277,11 @@ namespace Chisel.Editors
             if (checker) DestroyImmediate(checker);
         }
 
-        // only the image's own tile, at its aspect, fitted into rect
-        void DrawImage(Rect rect, ChiselSurfaceBrowserDecals.Image image)
+        // a decal's image flat, only its own tile, at its aspect, over a checkerboard, fitted into rect
+        void DrawImage(Rect rect, Material material, int tile)
         {
-            var texture = image.material != null ? image.material.mainTexture : null;
-            var aspect  = ChiselDecalComponent.ImageAspectOf(image.material, image.tile);
+            var texture = ChiselSurfaceBrowserDecals.ImageTextureOf(material);
+            var aspect  = ChiselDecalComponent.ImageAspectOf(material, tile);
             var fitted  = rect;
             if (aspect > rect.width / rect.height)
             {
@@ -376,163 +293,103 @@ namespace Chisel.Editors
                 fitted.x += (rect.width - fitted.width) / 2;
             }
             DrawChecker(fitted);
-            if (texture != null)
-                GUI.DrawTextureWithTexCoords(fitted, texture, ChiselDecalComponent.ImageRectOf(image.material, image.tile), true);
+            // tinted by the material's color; a material without a texture is its color
+            var tint = ChiselSurfaceBrowserDecals.ColorOf(material);
+            if (texture == null)
+            {
+                EditorGUI.DrawRect(fitted, tint);
+                return;
+            }
+            var prev = GUI.color;
+            GUI.color = prev * tint;
+            GUI.DrawTextureWithTexCoords(fitted, texture, ChiselDecalComponent.ImageRectOf(material, tile), true);
+            GUI.color = prev;
         }
 
-        void DecalCardGUI(Rect rect, ChiselSurfaceBrowserDecals.Image image)
+        // The selected decal material's preview, and for a sheet its images, to pick the one to place
+        void DecalPreviewGUI(Material material, float contentWidth)
         {
-            var evt = Event.current;
-            if (image.Key == selectedDecal)
-                EditorGUI.DrawRect(rect, new Color(0.24f, 0.48f, 0.9f, 0.45f));
-            var thumbRect = new Rect(rect.x + 4, rect.y + 4, thumbSize, thumbSize);
-            if (evt.type == EventType.Repaint)
-            {
-                EditorGUI.DrawRect(thumbRect, new Color(0, 0, 0, 0.2f));
-                DrawImage(thumbRect, image);
-            }
-            var uses = ChiselSceneMaterialUsage.DecalsUsing(image.material, image.tile);
-            if (uses > 0)
-            {
-                var badge = new GUIStyle(EditorStyles.miniLabel) { alignment = TextAnchor.MiddleRight, normal = { textColor = Color.white } };
-                GUI.Label(new Rect(thumbRect.xMax - 34, thumbRect.yMax - 16, 32, 14), new GUIContent(uses.ToString(), $"{uses} decals in the scene use it"), badge);
-            }
-            GUI.Label(new Rect(rect.x, thumbRect.yMax + 2, rect.width, EditorGUIUtility.singleLineHeight), new GUIContent(image.name, image.material.name),
-                      new GUIStyle(EditorStyles.miniLabel) { alignment = TextAnchor.MiddleCenter, clipping = TextClipping.Clip });
-
-            if (evt.type == EventType.MouseDown && evt.button == 0 && rect.Contains(evt.mousePosition))
-            {
-                selectedDecal = image.Key;
-                if (evt.clickCount == 2)
-                    PlaceSelectedDecal();
-                evt.Use();
-            } else if (evt.type == EventType.MouseDrag && evt.button == 0 && rect.Contains(evt.mousePosition))
-            {
-                // dropped in the scene view, it's placed there
-                selectedDecal = image.Key;
-                ChiselSurfaceBrowserDecals.StartDrag(image);
-                evt.Use();
-            }
-        }
-        #endregion
-
-        #region Decal details
-        Vector2 decalDetailsScroll;
-
-        void DecalDetailsGUI(Rect rect)
-        {
-            var image = SelectedImage;
-            GUILayout.BeginArea(new Rect(rect.x + 8, rect.y + 6, rect.width - 14, rect.height - 8));
-            decalDetailsScroll = EditorGUILayout.BeginScrollView(decalDetailsScroll, false, false, GUIStyle.none, GUI.skin.verticalScrollbar, GUIStyle.none);
-            var contentWidth = rect.width - 14 - 16;
-            var oldLabelWidth = EditorGUIUtility.labelWidth;
-            EditorGUIUtility.labelWidth = Mathf.Max(80, contentWidth * 0.4f);
-            try
-            {
-                if (image == null)
-                    GUILayout.Label("Select a decal image to see its details.", EditorStyles.centeredGreyMiniLabel);
-                else
-                    DecalDetailsContentGUI(image, contentWidth);
-            }
-            finally { EditorGUIUtility.labelWidth = oldLabelWidth; }
-            EditorGUILayout.EndScrollView();
-            GUILayout.EndArea();
-        }
-
-        void DecalDetailsContentGUI(ChiselSurfaceBrowserDecals.Image image, float contentWidth)
-        {
-            var material = image.material;
+            var images = ChiselSurfaceBrowserDecals.ImagesOf(material, selectedGuid);
+            if (images.Count > 0 && !images.Exists(image => image.tile == selectedTile))
+                selectedTile = images[0].tile;
             var previewRect = GUILayoutUtility.GetRect(contentWidth, previewHeight, GUILayout.Width(contentWidth), GUILayout.Height(previewHeight));
             if (Event.current.type == EventType.Repaint)
             {
                 EditorGUI.DrawRect(previewRect, new Color(0.5f, 0.5f, 0.5f, 1));
-                DrawImage(new Rect(previewRect.x + 8, previewRect.y + 8, previewRect.width - 16, previewRect.height - 16), image);
+                DrawImage(new Rect(previewRect.x + 8, previewRect.y + 8, previewRect.width - 16, previewRect.height - 16), material, selectedTile);
             }
             PreviewResizeGUI();
 
-            GUILayout.Label(image.name, EditorStyles.boldLabel);
-            GUILayout.Label($"Image {image.index} of {image.count} on {material.name}", EditorStyles.miniLabel);
-            var path = AssetDatabase.GetAssetPath(material);
-            GUILayout.Label(path, new GUIStyle(EditorStyles.miniLabel) { wordWrap = true });
-            InfoRow("In scene", $"{ChiselSceneMaterialUsage.DecalsUsing(material, image.tile)} decals");
-
-            var editable = IsEditable(path);
-            if (!editable)
-                EditorGUILayout.HelpBox("This material can't be changed: it is locked by version control or in a read-only package.", MessageType.Info);
-            EditorGUI.BeginDisabledGroup(!editable);
-            GUILayout.Space(8);
-            LabelsGUI(material, contentWidth);
-
-            GUILayout.Space(8);
-            GUILayout.Label("MATERIAL SETTINGS", EditorStyles.miniBoldLabel);
-            var applies = new GUIStyle(EditorStyles.miniLabel) { wordWrap = true, normal = { textColor = new Color(1f, 0.75f, 0.3f) } };
-            GUILayout.Label($"Belong to {material.name}: every image on it starts from them", applies);
-            var metadata = MetadataOf(material);
-            if (metadata != null)
+            if (images.Count <= 1)
+                return;
+            const float kThumb = 40;
+            var columns = Mathf.Max(1, Mathf.FloorToInt(contentWidth / (kThumb + 4)));
+            var rows    = Mathf.CeilToInt(images.Count / (float)columns);
+            var area    = GUILayoutUtility.GetRect(contentWidth, rows * (kThumb + 4));
+            var evt     = Event.current;
+            for (int i = 0; i < images.Count; i++)
             {
-                // the material's own settings, the same as in its inspector; unticking Use as decal takes it out of this tab
-                Editor.CreateCachedEditor(metadata, typeof(ChiselSurfaceMetadataEditor), ref metadataEditor);
-                EditorGUI.BeginChangeCheck();
-                metadataEditor?.OnInspectorGUI();
-                if (EditorGUI.EndChangeCheck())
-                    MarkDirty();
-                DecalSizeGUI(material, image);
+                var cell = new Rect(area.x + (i % columns) * (kThumb + 4) + 2, area.y + (i / columns) * (kThumb + 4) + 2, kThumb, kThumb);
+                if (evt.type == EventType.Repaint)
+                {
+                    if (images[i].tile == selectedTile)
+                        EditorGUI.DrawRect(new Rect(cell.x - 2, cell.y - 2, cell.width + 4, cell.height + 4), new Color(0.24f, 0.48f, 0.9f, 0.8f));
+                    DrawImage(cell, material, images[i].tile);
+                }
+                GUI.Label(cell, new GUIContent(string.Empty, images[i].name));
+                if (evt.type == EventType.MouseDown && evt.button == 0 && cell.Contains(evt.mousePosition))
+                {
+                    selectedTile = images[i].tile;
+                    if (evt.clickCount == 2)
+                        PlaceSelectedDecal();
+                    evt.Use();
+                }
             }
+            var chosen = images.Find(image => image.tile == selectedTile);
+            if (chosen != null)
+                GUILayout.Label($"{chosen.name}  -  image {chosen.index} of {chosen.count}", EditorStyles.miniLabel);
+        }
 
-            EditorGUI.EndDisabledGroup();
-            GUILayout.Space(8);
-            EditorGUILayout.HelpBox(PlacingHint(ChiselDecalComponent.DefaultsOf(material).shape), MessageType.None);
+        void DecalInfoGUI(Material material)
+        {
+            InfoRow("In scene", $"{ChiselSceneMaterialUsage.DecalsUsing(material)} decals");
+            var defaults = ChiselDecalComponent.DefaultsOf(material);
+            var shape = ChiselSurfaceBrowserDecals.ShapeOf(material);
+            var size  = defaults.SizeFor(ChiselDecalComponent.ImageAspectOf(material, selectedTile), 0);
+            InfoRow(shape == ChiselDecalShape.Trim ? "Repeat" : "Size", shape == ChiselDecalShape.Trim ? $"{size.x:0.###} along the edge, {size.y:0.###} across" : $"{size.x:0.###} x {size.y:0.###}");
+            EditorGUILayout.HelpBox(PlacingHint(shape), MessageType.None);
         }
 
         static string PlacingHint(ChiselDecalShape shape)
         {
-            switch (shape)
-            {
-                case ChiselDecalShape.Trim:    return "Pick edge: hover an edge between two surfaces in the Scene view and click to place the trim along it. Escape cancels. Or drag the image onto an edge in the Scene view.";
-                case ChiselDecalShape.Polygon: return "Draw on surface: click the corners on a surface, then click the first corner again or press Enter to close it. Backspace takes back a corner, Escape cancels.";
-                default:                       return "Place on the selected surfaces: one decal on each, centered on it and facing it. Double-click an image to place it, or drag it onto a surface in the Scene view.";
-            }
+            return shape == ChiselDecalShape.Trim
+                ? "Pick edge: hover an edge between two surfaces in the Scene view and click to place the trim along it; Escape cancels. Or drag it onto an edge in the Scene view."
+                : "Place on the selected surfaces: one decal on each, centered on it and facing it. Or drag it onto a surface in the Scene view.";
         }
 
-        // the size a new decal of this image starts with, from the material's height and the image's aspect
-        static void DecalSizeGUI(Material material, ChiselSurfaceBrowserDecals.Image image)
+        static string PlaceActionText(Material material)
         {
-            var defaults = ChiselDecalComponent.DefaultsOf(material);
-            if (defaults.shape == ChiselDecalShape.Polygon)
-                return;
-            var size = defaults.SizeFor(ChiselDecalComponent.ImageAspectOf(material, image.tile), 0);
-            EditorGUILayout.LabelField(defaults.shape == ChiselDecalShape.Trim ? "Repeat length" : "Size of this image",
-                                       defaults.shape == ChiselDecalShape.Trim ? $"{size.x:0.###} along the edge, {size.y:0.###} across" : $"{size.x:0.###} x {size.y:0.###}");
+            if (ChiselSurfaceBrowserDecals.ShapeOf(material) == ChiselDecalShape.Trim)
+                return "Pick edge in Scene view";
+            var count = ChiselSurfaceSelectionManager.Selection.Count;
+            return $"Place on {count} surface{(count == 1 ? "" : "s")}";
         }
-        #endregion
 
-        #region Decal footer and placing
-        void DecalFooterGUI(Rect rect)
+        static bool CanPlace(Material material)
         {
-            GUILayout.BeginArea(new Rect(rect.x + 8, rect.y + 4, rect.width - 16, rect.height - 6));
-            using (new EditorGUILayout.HorizontalScope())
+            return ChiselSurfaceBrowserDecals.ShapeOf(material) == ChiselDecalShape.Trim || ChiselSurfaceSelectionManager.Selection.Count > 0;
+        }
+
+        ChiselSurfaceBrowserDecals.Image SelectedImage
+        {
+            get
             {
-                GUILayout.Label("Selection  " + SelectionText(), EditorStyles.miniLabel);
-                GUILayout.FlexibleSpace();
-                if (GUILayout.Button("Close", GUILayout.Width(60)))
-                    Close();
-                var image = SelectedImage;
-                var shape = image != null ? ChiselDecalComponent.DefaultsOf(image.material).shape : ChiselDecalShape.Box;
-                var count = ChiselSurfaceSelectionManager.Selection.Count;
-                string action;
-                switch (shape)
-                {
-                    case ChiselDecalShape.Trim:    action = "Pick edge in Scene view"; break;
-                    case ChiselDecalShape.Polygon: action = "Draw on surface"; break;
-                    default:                       action = $"Place on {count} surface{(count == 1 ? "" : "s")}"; break;
-                }
-                using (new EditorGUI.DisabledScope(image == null || (shape == ChiselDecalShape.Box && count == 0)))
-                {
-                    if (GUILayout.Button(action, GUILayout.Width(170)))
-                        PlaceSelectedDecal();
-                }
+                var material = Load(Selected);
+                if (!ChiselSurfaceBrowserDecals.IsDecal(material))
+                    return null;
+                var images = ChiselSurfaceBrowserDecals.ImagesOf(material, selectedGuid);
+                return images.Find(image => image.tile == selectedTile) ?? (images.Count > 0 ? images[0] : null);
             }
-            GUILayout.EndArea();
         }
 
         void PlaceSelectedDecal()
@@ -540,23 +397,15 @@ namespace Chisel.Editors
             var image = SelectedImage;
             if (image == null)
                 return;
-            ChiselSurfaceBrowserPrefs.MarkUsed(image.Key);
-            switch (ChiselDecalComponent.DefaultsOf(image.material).shape)
+            ChiselSurfaceBrowserPrefs.MarkUsed(image.guid);
+            if (ChiselSurfaceBrowserDecals.ShapeOf(image.material) == ChiselDecalShape.Trim)
             {
-                case ChiselDecalShape.Trim:
-                    ChiselDecalEditor.StartPickingEdge(ChiselSurfaceBrowserDecals.CreateTrim(image.material, image.tile), removeIfCancelled: true);
-                    break;
-                case ChiselDecalShape.Polygon:
-                    ChiselSurfaceShapeTool.StartDrawing(image.material, image.tile);
-                    break;
-                default:
-                    var placed = ChiselSurfaceBrowserDecals.PlaceOn(ChiselSurfaceSelectionManager.Selection, image.material, image.tile);
-                    if (placed.Count == 0)
-                        ShowNotification(new GUIContent("Select surfaces to place the decal on"));
-                    break;
+                ChiselDecalEditor.StartPickingEdge(ChiselSurfaceBrowserDecals.CreateTrim(image.material, image.tile), removeIfCancelled: true);
+                return;
             }
-            decalsDirty = true;
+            var placed = ChiselSurfaceBrowserDecals.PlaceOn(ChiselSurfaceSelectionManager.Selection, image.material, image.tile);
+            if (placed.Count == 0)
+                ShowNotification(new GUIContent("Select surfaces to place the decal on"));
         }
-        #endregion
     }
 }

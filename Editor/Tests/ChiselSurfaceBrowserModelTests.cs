@@ -126,6 +126,16 @@ namespace Chisel.Editors.Tests
         }
 
         [Test]
+        public void QuickAccess_DecalsAndNotSetUp()
+        {
+            var model = Model("Assets/Models");
+            model.isDecal = item => item.name == "Trim_Industrial";
+            model.isSetUp = item => item.name != "Wall";
+            Assert.That(Names(model.Filter("", ChiselSurfaceBrowserModel.QuickAccess.Decals)), Is.EqualTo(new[] { "Trim_Industrial" }));
+            Assert.That(Names(model.Filter("", ChiselSurfaceBrowserModel.QuickAccess.NotSetUp)), Is.EqualTo(new[] { "Wall" }));
+        }
+
+        [Test]
         public void Unused_IsWhatIsntInTheScene()
         {
             var model = Model("Assets/Models");
