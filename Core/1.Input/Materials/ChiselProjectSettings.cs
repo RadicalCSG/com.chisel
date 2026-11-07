@@ -101,6 +101,30 @@ namespace Chisel.Core
 			return true;
 		}
 
+		// the folders hidden by default (Unity's packages, Chisel's debug materials) were added once; after that only the
+		// user changes what is hidden
+		[SerializeField] private bool defaultHiddenFoldersAdded;
+
+		/// <summary>Hides the folders, once for the project; false when that was done before</summary>
+		public static bool AddDefaultHiddenFolders(System.Collections.Generic.IEnumerable<string> paths)
+		{
+			if (instance.defaultHiddenFoldersAdded)
+				return false;
+			var folders = instance.hiddenFolders ??= new();
+			foreach (var path in paths)
+			{
+				var key = FolderKey(path);
+				if (key.Length == 0 || IsHidden(key))
+					continue;
+				folders.RemoveAll(folder => IsUnder(folder, key));
+				folders.Add(key);
+			}
+			folders.Sort(StringComparer.OrdinalIgnoreCase);
+			instance.defaultHiddenFoldersAdded = true;
+			SaveChange();
+			return true;
+		}
+
 		static void RecordChange(string name)
 		{
 #if UNITY_EDITOR

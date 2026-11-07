@@ -90,6 +90,28 @@ namespace Chisel.Editors.Tests
             Assert.That(model.ExistingLabelFor("Glass"), Is.EqualTo("Glass"));
         }
 
+        // A filter asks for a trait or its absence; filters combine
+        [Test]
+        public void Traits_FilterWithAndWithout()
+        {
+            var model = Model("Assets/Models");
+            model.traits.Add(new ChiselSurfaceBrowserModel.Trait { name = "Metal", has = item => System.Array.Exists(item.labels, l => l.ToLower() == "metal") });
+            model.traits.Add(new ChiselSurfaceBrowserModel.Trait { name = "Trim",  has = item => item.name.StartsWith("Trim") });
+
+            model.SetFilter("Metal", ChiselSurfaceBrowserModel.TraitFilter.With);
+            Assert.That(Names(model.Filter("", ChiselSurfaceBrowserModel.QuickAccess.All)), Is.EqualTo(new[] { "Metal_Floor", "Trim_Industrial" }));
+            model.SetFilter("Trim", ChiselSurfaceBrowserModel.TraitFilter.Without);
+            Assert.That(Names(model.Filter("", ChiselSurfaceBrowserModel.QuickAccess.All)), Is.EqualTo(new[] { "Metal_Floor" }));
+            model.SetFilter("Metal", ChiselSurfaceBrowserModel.TraitFilter.Without);
+            Assert.That(Names(model.Filter("", ChiselSurfaceBrowserModel.QuickAccess.All)), Is.EqualTo(new[] { "Concrete_Panels", "Wall" }));
+            model.SetFilter("Metal", ChiselSurfaceBrowserModel.TraitFilter.Any);
+            model.SetFilter("Trim", ChiselSurfaceBrowserModel.TraitFilter.Any);
+            Assert.That(model.Filter("", ChiselSurfaceBrowserModel.QuickAccess.All).Count, Is.EqualTo(4));
+
+            Assert.That(model.CountWith(model.traits[0]), Is.EqualTo(2));
+            Assert.That(ChiselSurfaceBrowserModel.Next(ChiselSurfaceBrowserModel.TraitFilter.Without), Is.EqualTo(ChiselSurfaceBrowserModel.TraitFilter.Any));
+        }
+
         [Test]
         public void Unused_IsWhatIsntInTheScene()
         {
@@ -122,6 +144,22 @@ namespace Chisel.Editors.Tests
             Assert.That(ChiselSurfaceBrowserModel.FolderLabel("Assets/Materials", "Materials"), Is.EqualTo("Materials"));
             Assert.That(ChiselSurfaceBrowserModel.PackageNameOf("Packages/com.chisel/Package Resources/x.mat"), Is.EqualTo(chisel.displayName));
             Assert.That(ChiselSurfaceBrowserModel.PackageNameOf("Assets/x.mat"), Is.Null);
+        }
+
+        [Test]
+        public void HiddenFolders_OnlyThoseWithMaterialsAreCounted()
+        {
+            var counts = ChiselSurfaceBrowserModel.CountPerFolder(new[] { "Assets/A/x.mat", "Assets/B/C/y.mat" });
+            Assert.That(ChiselProjectSettingsEditor.HiddenWithMaterials(new[] { "Assets/A", "Assets/Empty", "Assets/B/C" }, counts), Is.EqualTo(2));
+        }
+
+        [Test]
+        public void ByDefault_UnitysPackagesAndChiselsDebugMaterialsAreHidden()
+        {
+            var defaults = ChiselProjectSettingsEditor.DefaultHiddenFolders();
+            Assert.That(defaults, Has.Some.StartsWith("Packages/com.unity."));
+            Assert.That(defaults, Has.Some.EndsWith("/DebugVisualization"));
+            Assert.That(defaults, Has.None.EqualTo("Packages/com.chisel"));
         }
 
         [Test]

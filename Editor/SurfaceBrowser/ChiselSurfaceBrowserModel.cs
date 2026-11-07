@@ -35,12 +35,59 @@ namespace Chisel.Editors
             public List<Folder> children = new();
         }
 
-        public enum QuickAccess { All, Favorites, RecentlyUsed, InThisScene, UnusedInThisScene, WithHotspots }
+        public enum QuickAccess { All, Favorites, RecentlyUsed, InThisScene, UnusedInThisScene }
+
+        // Something a material has or not (paintable, a skybox, hotspots); a filter asks for it, or for its absence
+        public sealed class Trait
+        {
+            public string           name;
+            public Func<Item, bool> has;
+        }
+        public enum TraitFilter { Any, With, Without }
+
+        public readonly List<Trait> traits = new();
+        readonly Dictionary<string, TraitFilter> traitFilters = new();
+
+        public TraitFilter FilterOf(string trait)
+        {
+            return traitFilters.TryGetValue(trait, out var filter) ? filter : TraitFilter.Any;
+        }
+
+        public void SetFilter(string trait, TraitFilter filter)
+        {
+            if (filter == TraitFilter.Any) traitFilters.Remove(trait);
+            else traitFilters[trait] = filter;
+        }
+
+        /// <summary>The next of Any, With, Without, round again</summary>
+        public static TraitFilter Next(TraitFilter filter) { return (TraitFilter)(((int)filter + 1) % 3); }
+
+        bool PassesTraits(Item item)
+        {
+            foreach (var trait in traits)
+            {
+                var filter = FilterOf(trait.name);
+                if (filter != TraitFilter.Any && trait.has(item) != (filter == TraitFilter.With))
+                    return false;
+            }
+            return true;
+        }
+
+        /// <summary>How many of the visible items have a trait</summary>
+        public int CountWith(Trait trait)
+        {
+            var count = 0;
+            foreach (var item in items)
+            {
+                if (IsVisible(item) && trait.has(item))
+                    count++;
+            }
+            return count;
+        }
 
         // what quick access asks of an item, given from outside: per user and per scene
         public Func<Item, bool> isFavorite   = _ => false;
         public Func<Item, bool> isInScene    = _ => false;
-        public Func<Item, bool> hasHotspots  = _ => false;
         public Func<IReadOnlyList<string>> recent = () => Array.Empty<string>();
         public Func<string, bool> isHidden   = ChiselProjectSettings.IsHidden;
 
@@ -126,7 +173,6 @@ namespace Chisel.Editors
                 case QuickAccess.RecentlyUsed: return Contains(recent(), item.guid);
                 case QuickAccess.InThisScene:  return isInScene(item);
                 case QuickAccess.UnusedInThisScene: return !isInScene(item);
-                case QuickAccess.WithHotspots: return hasHotspots(item);
                 default:                       return true;
             }
         }
@@ -153,7 +199,7 @@ namespace Chisel.Editors
             foreach (var item in items)
             {
                 if (!IsVisible(item) || !InQuickAccess(item, quick) || !InFolders(item, folders) ||
-                    (!string.IsNullOrEmpty(label) && !HasLabel(item, label)) || !Matches(item, search))
+                    (!string.IsNullOrEmpty(label) && !HasLabel(item, label)) || !PassesTraits(item) || !Matches(item, search))
                     continue;
                 result.Add(item);
             }

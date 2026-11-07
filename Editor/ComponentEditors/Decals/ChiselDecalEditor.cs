@@ -684,6 +684,17 @@ namespace Chisel.Editors
 
         // Picking a trim decal's edge in the scene view (Pick Edge)
         static ChiselDecalComponent s_PickingFor;
+        static bool s_RemoveIfUnplaced;
+
+        /// <summary>Selects a trim decal and starts picking its edge in the scene view; removeIfCancelled: a decal made
+        /// only to be placed, removed again when Escape cancels</summary>
+        internal static void StartPickingEdge(ChiselDecalComponent decal, bool removeIfCancelled)
+        {
+            s_PickingFor       = decal;
+            s_RemoveIfUnplaced = removeIfCancelled;
+            Selection.activeGameObject = decal.gameObject;
+            SceneView.lastActiveSceneView?.Focus();
+        }
         static EdgeCandidate s_Candidate;
         static readonly Color kCandidateColor = new Color(0.2f, 0.9f, 1.0f, 1.0f);
 
@@ -729,13 +740,20 @@ namespace Chisel.Editors
                         EditorUtility.SetDirty(decal);
                     }
                     if (!addToChain)
+                    {
                         s_PickingFor = null;
+                        s_RemoveIfUnplaced = false;
+                    }
                     s_Candidate  = default;
                     evt.Use();
                     break;
                 case EventType.KeyDown:
                     if (evt.keyCode != KeyCode.Escape)
                         break;
+                    // a decal made only to be placed goes again when placing is cancelled
+                    if (s_RemoveIfUnplaced && decal.Targets.Count < 2)
+                        Undo.DestroyObjectImmediate(decal.gameObject);
+                    s_RemoveIfUnplaced = false;
                     s_PickingFor = null;
                     s_Candidate  = default;
                     evt.Use();

@@ -12,7 +12,7 @@ namespace Chisel.Editors
 #if UNITY_6000_7_OR_NEWER
     [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
 #endif
-    public sealed class ChiselSurfaceBrowserWindow : EditorWindow
+    public sealed partial class ChiselSurfaceBrowserWindow : EditorWindow
     {
         internal const float kSidebarWidth    = 220;
         internal const float kMinDetailsWidth = 260;
@@ -79,7 +79,13 @@ namespace Chisel.Editors
             model.isFavorite  = item => ChiselSurfaceBrowserPrefs.IsFavorite(item.guid);
             model.recent      = () => ChiselSurfaceBrowserPrefs.Recent;
             model.isInScene   = item => ChiselSceneMaterialUsage.SurfacesUsing(Load(item)) > 0;
-            model.hasHotspots = item => HotspotLayoutOf(Load(item)) != null;
+            model.traits.Clear();
+            model.traits.AddRange(Traits());
+            foreach (var saved in traitFilters)
+            {
+                if (saved.Length > 1)
+                    model.SetFilter(saved.Substring(1), saved[0] == '+' ? ChiselSurfaceBrowserModel.TraitFilter.With : ChiselSurfaceBrowserModel.TraitFilter.Without);
+            }
             EditorApplication.projectChanged += MarkDirty;
             Selection.selectionChanged       += Repaint;
             Undo.undoRedoPerformed           += MarkDirty;
@@ -93,6 +99,7 @@ namespace Chisel.Editors
             Undo.undoRedoPerformed           -= MarkDirty;
             if (metadataEditor) DestroyImmediate(metadataEditor);
             if (previewEditor)  DestroyImmediate(previewEditor);
+            DestroyDecalResources();
         }
 
         void MarkDirty() { dirty = true; Repaint(); }
@@ -115,11 +122,79 @@ namespace Chisel.Editors
 
         static ChiselHotspotLayout HotspotLayoutOf(Material material) { return MetadataOf(material)?.hotspotLayout; }
 
+        // "+name" or "-name" per trait filtered on
+        [SerializeField] List<string> traitFilters = new();
+
+        static ChiselPaintProfile PaintProfileOf(Material material)
+        {
+            return material != null && material.shader != null ? ChiselPaintProfiles.Find(material.shader) : null;
+        }
+
+        static bool HasPaintMode(Material material, Func<ChiselPaintMode, bool> mode)
+        {
+            var profile = PaintProfileOf(material);
+            if (profile == null)
+                return false;
+            foreach (var m in profile.modes)
+            {
+                if (mode(m))
+                    return true;
+            }
+            return false;
+        }
+
+        // what the filters can ask of a material, each also by its absence
+        static ChiselSurfaceBrowserModel.Trait[] Traits()
+        {
+            ChiselSurfaceBrowserModel.Trait Trait(string name, Func<Material, bool> has) =>
+                new() { name = name, has = item => has(Load(item)) };
+            return new[]
+            {
+                Trait("Paintable",     material => PaintProfileOf(material) != null),
+                Trait("Color paint",   material => HasPaintMode(material, mode => mode.kind == ChiselPaintKind.Color)),
+                Trait("Value paint",   material => HasPaintMode(material, mode => mode.kind == ChiselPaintKind.Value)),
+                Trait("Blends layers", material => HasPaintMode(material, mode => mode.group > 0)),
+                Trait("Skybox",        material => material != null && material.shader != null && material.shader.name.StartsWith("Skybox/", StringComparison.OrdinalIgnoreCase)),
+                Trait("Hotspots",      material => HotspotLayoutOf(material) != null),
+            };
+        }
+
+        void SaveTraitFilters()
+        {
+            traitFilters.Clear();
+            foreach (var trait in model.traits)
+            {
+                var filter = model.FilterOf(trait.name);
+                if (filter != ChiselSurfaceBrowserModel.TraitFilter.Any)
+                    traitFilters.Add((filter == ChiselSurfaceBrowserModel.TraitFilter.With ? "+" : "-") + trait.name);
+            }
+        }
+
+        // a filter row: click goes from off to "has it" to "doesn't have it"
+        void TraitsGUI()
+        {
+            GUILayout.Space(6);
+            GUILayout.Label(new GUIContent("FILTERS", "Click a filter: with it, without it, off"), EditorStyles.miniBoldLabel);
+            foreach (var trait in model.traits)
+            {
+                var filter = model.FilterOf(trait.name);
+                var mark = filter == ChiselSurfaceBrowserModel.TraitFilter.Without ? "Not " : "";
+                if (Row(mark + trait.name, model.CountWith(trait), filter != ChiselSurfaceBrowserModel.TraitFilter.Any))
+                {
+                    model.SetFilter(trait.name, ChiselSurfaceBrowserModel.Next(filter));
+                    SaveTraitFilters();
+                    Filter();
+                    Event.current.Use();
+                }
+            }
+        }
+
         void Refresh()
         {
             if (!dirty)
                 return;
             dirty = false;
+            ChiselProjectSettingsEditor.EnsureDefaultHiddenFolders();
             var items = new List<ChiselSurfaceBrowserModel.Item>();
             foreach (var guid in AssetDatabase.FindAssets("t:Material", new[] { "Assets", "Packages" }))
             {
@@ -143,6 +218,7 @@ namespace Chisel.Editors
 
         void Filter()
         {
+            decalsDirty = true;
             shown = model.Filter(search, (ChiselSurfaceBrowserModel.QuickAccess)quick, folders, label,
                                  (ChiselSurfaceBrowserModel.Sort)sort, item => ChiselSceneMaterialUsage.SurfacesUsing(Load(item)));
         }
@@ -182,8 +258,7 @@ namespace Chisel.Editors
             ToolbarGUI(toolbar);
             if (tab != 0)
             {
-                // the Decals tab comes with placing decals from here
-                GUI.Label(body, "Decals are listed here once decal browsing is built.", EditorStyles.centeredGreyMiniLabel);
+                DecalsGUI(body, footer);
                 return;
             }
             var sidebar = new Rect(body.x, body.y, kSidebarWidth, body.height);
@@ -252,7 +327,7 @@ namespace Chisel.Editors
         #endregion
 
         #region Sidebar
-        static readonly string[] kQuickNames = { "All materials", "Favorites", "Recently used", "In this scene", "Unused in this scene", "With hotspots" };
+        static readonly string[] kQuickNames = { "All materials", "Favorites", "Recently used", "In this scene", "Unused in this scene" };
 
         bool Row(string text, int count, bool selected, int depth = 0, bool greyed = false)
         {
@@ -286,14 +361,12 @@ namespace Chisel.Editors
                 }
             }
 
+            TraitsGUI();
+
             GUILayout.Space(6);
             GUILayout.Label("FOLDERS", EditorStyles.miniBoldLabel);
             foreach (var root in folderTree)
                 FolderGUI(root);
-            var hiddenCount = ChiselProjectSettings.HiddenFolders.Count;
-            if (hiddenCount > 0 &&
-                GUILayout.Button(new GUIContent($"{hiddenCount} hidden folder{(hiddenCount == 1 ? "" : "s")}", "Hidden in Project Settings > Chisel > Surface Browser"), EditorStyles.linkLabel))
-                SettingsService.OpenProjectSettings(ChiselProjectSettingsEditor.kSurfaceBrowserPath);
 
             GUILayout.Space(6);
             GUILayout.Label("LABELS", EditorStyles.miniBoldLabel);
@@ -371,6 +444,8 @@ namespace Chisel.Editors
                         (toHide.Count == 1 ? "The folder is hidden" : "The folders are hidden") +
                         " from the Surface Browser. Show it again in Project Settings > Chisel > Surface Browser.", "OK");
                 });
+                menu.AddSeparator(string.Empty);
+                menu.AddItem(new GUIContent("Settings..."), false, () => SettingsService.OpenProjectSettings(ChiselProjectSettingsEditor.kSurfaceBrowserPath));
                 menu.ShowAsContext();
                 evt.Use();
             }
@@ -399,7 +474,7 @@ namespace Chisel.Editors
         string HeaderText()
         {
             var what = folders.Count == 1 ? folders[0] : folders.Count > 1 ? $"{folders.Count} folders" : (!string.IsNullOrEmpty(label) ? "Label: " + label : kQuickNames[quick]);
-            return $"{what}  ·  {shown.Count} material{(shown.Count == 1 ? "" : "s")}";
+            return $"{what}  -  {shown.Count} material{(shown.Count == 1 ? "" : "s")}";
         }
 
         void GridGUI(Rect rect)
@@ -474,7 +549,9 @@ namespace Chisel.Editors
                 GUI.Label(new Rect(thumbRect.x + 2, thumbRect.y + 2, 40, 14), new GUIContent("Decal", "A decal material"), badge);
             var favorite = ChiselSurfaceBrowserPrefs.IsFavorite(item.guid);
             var starRect = new Rect(thumbRect.xMax - 18, thumbRect.y + 2, 16, 16);
-            if (GUI.Button(starRect, new GUIContent(favorite ? "★" : "☆", favorite ? "Remove from favorites" : "Add to favorites"), badge))
+            // a star: bright when a favorite, faint otherwise
+            var star = new GUIStyle(badge) { fontStyle = FontStyle.Bold, normal = { textColor = favorite ? new Color(1f, 0.8f, 0.2f) : new Color(1, 1, 1, 0.35f) } };
+            if (GUI.Button(starRect, new GUIContent("*", favorite ? "Remove from favorites" : "Add to favorites"), star))
             {
                 ChiselSurfaceBrowserPrefs.SetFavorite(item.guid, !favorite);
                 Filter();
@@ -580,7 +657,7 @@ namespace Chisel.Editors
             var metadata = MetadataOf(material);
             InfoRow("Shader", material.shader != null ? material.shader.name : "None");
             if (material.mainTexture != null)
-                InfoRow("Texture", $"{material.mainTexture.width} × {material.mainTexture.height}");
+                InfoRow("Texture", $"{material.mainTexture.width} x {material.mainTexture.height}");
             if (metadata != null && metadata.hotspotLayout != null)
                 InfoRow("Hotspots", 1 + (metadata.hotspotVariants?.Count ?? 0) + (metadata.hotspotSheets?.Count ?? 0) + " sheets (layout, variants and other sheets)");
             var uses = ChiselSceneMaterialUsage.SurfacesUsing(material);
@@ -626,7 +703,7 @@ namespace Chisel.Editors
             }
 
             GUILayout.Space(8);
-            if (GUILayout.Button("Set as default for…", EditorStyles.popup))
+            if (GUILayout.Button("Set as default for...", EditorStyles.popup))
                 DefaultsMenu(material).ShowAsContext();
             if (GUILayout.Button("Select surfaces using this material"))
                 SelectSurfacesUsing(material);
@@ -662,7 +739,7 @@ namespace Chisel.Editors
                 InfoRow("Hotspot tile", choice);
                 var count = ChiselSurfaceSelectionManager.Selection.Count;
                 GUILayout.Label($"{using_} of the {count} selected surface{(count == 1 ? "" : "s")} use it", EditorStyles.miniLabel);
-                if (GUILayout.Button("Edit layout…"))
+                if (GUILayout.Button("Edit layout..."))
                     ChiselHotspotLayoutWindow.Open(metadata.hotspotLayout, material);
             }
         }
@@ -675,7 +752,7 @@ namespace Chisel.Editors
             {
                 GUILayout.Label("Labels", EditorStyles.miniBoldLabel);
                 GUILayout.FlexibleSpace();
-                GUILayout.Label("Enter adds · Backspace removes last", EditorStyles.miniLabel);
+                GUILayout.Label("Enter adds - Backspace removes last", EditorStyles.miniLabel);
             }
             Chips(current, width, label => { ChiselAssetLabels.Remove(material, label); MarkDirty(); }, "x");
 
@@ -807,7 +884,7 @@ namespace Chisel.Editors
                 materials.Add(surface.RenderMaterial);
             }
             var text = $"{surfaces.Count} surface{(surfaces.Count == 1 ? "" : "s")} on {nodes.Count} brush{(nodes.Count == 1 ? "" : "es")}";
-            text += materials.Count > 1 ? $"  ·  {materials.Count} materials (mixed)" : "";
+            text += materials.Count > 1 ? $"  -  {materials.Count} materials (mixed)" : "";
             return text;
         }
 
@@ -818,7 +895,7 @@ namespace Chisel.Editors
             {
                 GUILayout.Label("Selection  " + SelectionText(), EditorStyles.miniLabel);
                 GUILayout.FlexibleSpace();
-                GUILayout.Label("Double-click to apply · Drag onto a surface", EditorStyles.miniLabel);
+                GUILayout.Label("Double-click to apply - Drag onto a surface", EditorStyles.miniLabel);
                 if (GUILayout.Button("Close", GUILayout.Width(60)))
                     Close();
                 var count = ChiselSurfaceSelectionManager.Selection.Count;

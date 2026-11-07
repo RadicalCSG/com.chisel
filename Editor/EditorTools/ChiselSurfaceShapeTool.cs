@@ -36,7 +36,20 @@ namespace Chisel.Editors
         static readonly List<ChiselIntersection> s_Intersections = new();
 
         public override void OnActivated()          { ClearDrawing(); }
-        public override void OnWillBeDeactivated()  { ClearDrawing(); }
+        public override void OnWillBeDeactivated()  { ClearDrawing(); s_DecalMaterial = null; s_DecalTile = 0; }
+
+        // a decal image chosen to draw with (the Surface Browser), until the tool is left; none: the surface's material
+        static Material s_DecalMaterial;
+        static int      s_DecalTile;
+
+        /// <summary>Starts the tool drawing shapes with a decal image, which take its material's decal defaults</summary>
+        internal static void StartDrawing(Material material, int tile)
+        {
+            ToolManager.SetActiveTool<ChiselSurfaceShapeTool>();
+            s_DecalMaterial = material;
+            s_DecalTile     = tile;
+            SceneView.lastActiveSceneView?.Focus();
+        }
 
         static void ClearDrawing()
         {
@@ -102,7 +115,12 @@ namespace Chisel.Editors
                 var surface = s_Surface;
                 ClearDrawing();
                 if (surface.valid)
-                    Create(surface.brush, surface.surfaceIndex, surface.material, surface.normal, outline, transformation.GetColumn(0));
+                {
+                    if (s_DecalMaterial != null)
+                        CreateWithImage(surface.brush, surface.surfaceIndex, s_DecalMaterial, s_DecalTile, surface.normal, outline, transformation.GetColumn(0));
+                    else
+                        Create(surface.brush, surface.surfaceIndex, surface.material, surface.normal, outline, transformation.GetColumn(0));
+                }
                 GUIUtility.ExitGUI();
             }
         }
@@ -133,6 +151,27 @@ namespace Chisel.Editors
             if (decal == null)
                 return null;
             Undo.RegisterCreatedObjectUndo(decal.gameObject, "Draw Surface Shape");
+            return decal;
+        }
+
+        /// <summary>A shape drawn with a decal image: its own image (not the surface's texture coordinates), with its
+        /// material's decal defaults</summary>
+        internal static ChiselDecalComponent CreateWithImage(ChiselNodeComponent brush, int surfaceIndex, Material material, int tile, Vector3 normal,
+                                                             List<Vector3> outline, Vector3 right = default)
+        {
+            var decal = Create(brush, surfaceIndex, material, normal, outline, right);
+            if (decal == null)
+                return null;
+            decal.ImageTile = tile;
+            var settings = decal.Settings;
+            settings.surfaceUVs = false;
+            decal.Settings = settings;
+            var depth = decal.Settings.size.z;
+            decal.ApplyMaterialDefaults();
+            // a shape drawn on a surface keeps reaching just either side of it
+            settings = decal.Settings;
+            settings.size.z = depth;
+            decal.Settings = settings;
             return decal;
         }
     }
