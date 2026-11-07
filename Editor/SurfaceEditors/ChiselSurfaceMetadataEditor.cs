@@ -140,6 +140,7 @@ namespace Chisel.Editors
 				} else if (GUILayout.Button("Edit Layout", EditorStyles.miniButton))
 					ChiselHotspotLayoutWindow.Open((ChiselHotspotLayout)hotspotLayoutProp.objectReferenceValue, MaterialOf(target));
 			}
+			EditorGUILayout.Space(kButtonSpacing);
 			if (hotspotVariantsProp != null && (hotspotLayoutProp.objectReferenceValue != null || hotspotLayoutProp.hasMultipleDifferentValues))
 			{
 				EditorGUI.BeginChangeCheck();
@@ -159,6 +160,8 @@ namespace Chisel.Editors
 				ChiselHotspotLayoutWindow.RefreshSurfacesUsing(MaterialOf(metadata));
 		}
 
+		const float kButtonSpacing = 4;
+
 		static readonly GUIContent kConfigurePaintContents = new("Configure Paintability Of Shader", "Opens Project Settings > Chisel > Paint on the paint profile of the material's shader, adding one when it has none");
 
 		// Whether the material's shader can be painted, and the way to its paint profile
@@ -167,12 +170,32 @@ namespace Chisel.Editors
 			var material = MaterialOf(target);
 			if (!material || !material.shader)
 				return;
+			EditorGUILayout.Space(kButtonSpacing);
 			using (new EditorGUILayout.HorizontalScope())
 			{
 				EditorGUILayout.PrefixLabel(ChiselPaintProfiles.Find(material.shader) != null ? "Paintable" : "Not Paintable");
 				if (GUILayout.Button(kConfigurePaintContents, EditorStyles.miniButton))
 					ChiselPaintSettingsProvider.Configure(material.shader);
 			}
+		}
+
+		float lastWidth;
+
+		// the flags take more rows when the space is narrow; the width is only known when painting, so the last one is used
+		void DestinationFlagsGUI()
+		{
+			var widthRect = EditorGUILayout.GetControlRect(false, 0);
+			if (Event.current.type == EventType.Repaint)
+			{
+				if (!Mathf.Approximately(lastWidth, widthRect.width))
+				{
+					lastWidth = widthRect.width;
+					Repaint();
+				}
+			}
+			var fieldWidth = lastWidth > 0 ? lastWidth - EditorGUIUtility.labelWidth : EditorGUIUtility.currentViewWidth - EditorGUIUtility.labelWidth - 24;
+			var rect = EditorGUILayout.GetControlRect(true, SurfaceDestinationFlagsPropertyDrawer.HeightFor(fieldWidth));
+			EditorGUI.PropertyField(rect, surfaceDestinationFlagsProp, true);
 		}
 
 		public override void OnInspectorGUI()
@@ -182,7 +205,7 @@ namespace Chisel.Editors
 			{
 				EditorGUI.BeginChangeCheck();
 				{
-					EditorGUILayout.PropertyField(surfaceDestinationFlagsProp, true);
+					DestinationFlagsGUI();
 					GetSurfaceDestinationFlags(surfaceDestinationFlagsProp, out var isRenderable, out var isCollidable);
 					if (isRenderable && outputFlagsProp != null)
 					{
