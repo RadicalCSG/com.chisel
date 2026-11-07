@@ -255,6 +255,24 @@ namespace Chisel.Editors
             return counts;
         }
 
+        /// <summary>The display name of the package an asset or folder is in ("Chisel 3D Level Editor"), null outside packages</summary>
+        public static string PackageNameOf(string path)
+        {
+            if (string.IsNullOrEmpty(path) || !path.StartsWith("Packages/", StringComparison.OrdinalIgnoreCase))
+                return null;
+            var info = UnityEditor.PackageManager.PackageInfo.FindForAssetPath(path);
+            return info != null && !string.IsNullOrEmpty(info.displayName) ? info.displayName : null;
+        }
+
+        /// <summary>A folder's name as shown: a package's own folder by its display name</summary>
+        public static string FolderLabel(string path, string name)
+        {
+            var slashes = 0;
+            foreach (var c in path)
+                if (c == '/') slashes++;
+            return slashes == 1 ? PackageNameOf(path) ?? name : name;
+        }
+
         static int RootOrder(string name) { return name == "Assets" ? 0 : name == "Packages" ? 1 : 2; }
 
         static void SortFolders(List<Folder> folders)

@@ -111,6 +111,25 @@ namespace Chisel.Editors.Tests
             Assert.That(counts.ContainsKey("Assets/C"), Is.False);
         }
 
+        // A package's own folder shows its display name, so it's clear where a material comes from
+        [Test]
+        public void PackageFolders_ShowThePackagesName()
+        {
+            var chisel = UnityEditor.PackageManager.PackageInfo.FindForAssetPath("Packages/com.chisel");
+            Assume.That(chisel, Is.Not.Null);
+            Assert.That(ChiselSurfaceBrowserModel.FolderLabel("Packages/com.chisel", "com.chisel"), Is.EqualTo(chisel.displayName));
+            Assert.That(ChiselSurfaceBrowserModel.FolderLabel("Packages/com.chisel/Editor", "Editor"), Is.EqualTo("Editor"));
+            Assert.That(ChiselSurfaceBrowserModel.FolderLabel("Assets/Materials", "Materials"), Is.EqualTo("Materials"));
+            Assert.That(ChiselSurfaceBrowserModel.PackageNameOf("Packages/com.chisel/Package Resources/x.mat"), Is.EqualTo(chisel.displayName));
+            Assert.That(ChiselSurfaceBrowserModel.PackageNameOf("Assets/x.mat"), Is.Null);
+        }
+
+        [Test]
+        public void TheSettingsFolderTree_ListsThePackages()
+        {
+            Assert.That(ChiselProjectSettingsEditor.SubFoldersOf("Packages"), Does.Contain("Packages/com.chisel"));
+        }
+
         [Test]
         public void TheDetailsPanel_KeepsWithinTheWindow()
         {

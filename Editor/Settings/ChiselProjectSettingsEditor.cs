@@ -165,7 +165,7 @@ namespace Chisel.Editors
 			}
 		}
 
-		readonly System.Collections.Generic.HashSet<string> expandedFolders = new() { "Assets" };
+		readonly System.Collections.Generic.HashSet<string> expandedFolders = new() { "Assets", "Packages" };
 
 		// The project's folders as a tree, each with a toggle that hides it; a folder hidden through its parent shows
 		// as hidden and can only be shown through its parent
@@ -189,9 +189,24 @@ namespace Chisel.Editors
 			FolderRowGUI("Packages", "Packages", 0, false);
 		}
 
+		// the asset database gives no subfolders for "Packages" itself: those are the packages' own folders
+		internal static string[] SubFoldersOf(string path)
+		{
+			if (path != "Packages")
+				return AssetDatabase.GetSubFolders(path);
+			var packages = new System.Collections.Generic.List<string>();
+			foreach (var package in UnityEditor.PackageManager.PackageInfo.GetAllRegisteredPackages())
+			{
+				if (package != null && !string.IsNullOrEmpty(package.assetPath) && AssetDatabase.IsValidFolder(package.assetPath))
+					packages.Add(package.assetPath);
+			}
+			packages.Sort((a, b) => string.Compare(ChiselSurfaceBrowserModel.FolderLabel(a, a), ChiselSurfaceBrowserModel.FolderLabel(b, b), System.StringComparison.OrdinalIgnoreCase));
+			return packages.ToArray();
+		}
+
 		void FolderRowGUI(string path, string name, int depth, bool parentHidden)
 		{
-			var subFolders = AssetDatabase.GetSubFolders(path);
+			var subFolders = SubFoldersOf(path);
 			var hiddenItself = !parentHidden && ChiselProjectSettings.IsHidden(path);
 			var rect = EditorGUILayout.GetControlRect();
 			var foldRect = new Rect(rect.x + depth * 14, rect.y, 14, rect.height);
@@ -229,7 +244,7 @@ namespace Chisel.Editors
 				return;
 			var hidden = parentHidden || ChiselProjectSettings.IsHidden(path);
 			foreach (var sub in subFolders)
-				FolderRowGUI(sub, sub.Substring(sub.LastIndexOf('/') + 1), depth + 1, hidden);
+				FolderRowGUI(sub, ChiselSurfaceBrowserModel.FolderLabel(sub, sub.Substring(sub.LastIndexOf('/') + 1)), depth + 1, hidden);
 		}
 
 		public enum Section { Materials, Hotspots, SurfaceBrowser }
