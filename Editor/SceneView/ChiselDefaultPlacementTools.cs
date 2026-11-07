@@ -254,6 +254,7 @@ namespace Chisel.Editors
         protected override void OnScene(IChiselHandles handles, ComponentType generator)
         {
             generator.definition.OnEdit(handles);
+            (handles as ChiselEditorHandles)?.DoDefaultMoveGizmo();
         }
     }
 }

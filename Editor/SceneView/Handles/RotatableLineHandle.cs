@@ -20,12 +20,13 @@ namespace Chisel.Editors
 
         static float s_RotatedStartAngle = 0.0f;
         static float s_RotatedAngleOffset = 0.0f;
-        public static float DoHandle(int id, float angle, Vector3 origin, float diameter, Vector3 handleDir, Vector3 slideDir1, Vector3 slideDir2, float handleSize = 0.0f, Chisel.Editors.SceneHandles.CapFunction capFunction = null, Axes axes = Axes.None)
+        public static float DoHandle(int id, float angle, Vector3 origin, float diameter, Vector3 handleDir, Vector3 slideDir1, Vector3 slideDir2, float handleSize = 0.0f, Chisel.Editors.SceneHandles.CapFunction capFunction = null, Axes axes = Axes.None, float lineStart = 0.0f)
         {
-            var from		= origin;
             var vector		= Quaternion.AngleAxis(angle, handleDir) * Vector3.forward;
-            var to			= from + (vector * diameter);
-            var position	= from + (vector * (diameter * 0.5f));
+            // it turns around the origin, but is only drawn and picked from this far out
+            var from		= origin + (vector * lineStart);
+            var to			= origin + (vector * diameter);
+            var position	= origin + (vector * (diameter * 0.5f));
 
             var evt = Event.current;
             switch (evt.GetTypeForControl(id))

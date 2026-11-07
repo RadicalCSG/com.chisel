@@ -1,4 +1,4 @@
-﻿using UnityEngine;
+using UnityEngine;
 
 namespace Chisel.Core
 {
@@ -15,7 +15,7 @@ namespace Chisel.Core
 
         public override void OnCreate(ref ChiselCylinderDefinition definition) 
         {
-            definition.settings.isEllipsoid		= (placement & PlacementFlags.SameLengthXZ) != PlacementFlags.SameLengthXZ;
+            definition.settings.isElliptical		= (placement & PlacementFlags.SameLengthXZ) != PlacementFlags.SameLengthXZ;
             definition.settings.type			= cylinderType;
             definition.settings.sides			= sides;
         }

@@ -34,6 +34,8 @@ namespace Chisel.Editors
         public static float				UniformSnapSize { get { return Snapping.MoveSnappingSteps.x; } set { Snapping.MoveSnappingSteps = new UnityEngine.Vector3(value, value, value); } }
 
         public static bool				ShowAllAxi      { get; set; } = false;
+        // a move gizmo on a generator being edited, to move it with
+        public static bool				ShowMoveGizmo   { get; set; } = false;
         // the unit lengths are shown and typed in
         public static DistanceUnit		DistanceUnit	{ get { return Units.ActiveDistanceUnit; } set { Units.ActiveDistanceUnit = value; } }
 
@@ -59,7 +61,8 @@ namespace Chisel.Editors
             BoundsSnapping	= EditorPrefs.GetBool ("BoundsSnapping",	true);
             PivotSnapping	= EditorPrefs.GetBool ("PivotSnapping",		false);
             ShowAllAxi		= !EditorPrefs.GetBool("UniformGrid",		true);
-            
+            ShowMoveGizmo	= EditorPrefs.GetBool ("ShowMoveGizmo",		false);
+
             DistanceUnit	= (DistanceUnit)EditorPrefs.GetInt("DistanceUnit", (int)DistanceUnit.Meters);
 
             HelperSurfaceFlags = (DrawModeFlags)EditorPrefs.GetInt("HelperSurfaceFlags", (int)DrawModeFlags.Default);
@@ -94,6 +97,7 @@ namespace Chisel.Editors
             EditorPrefs.SetBool("BoundsSnapping",	BoundsSnapping);
             EditorPrefs.SetBool("PivotSnapping",	PivotSnapping);
             EditorPrefs.SetBool("UniformGrid",		!ShowAllAxi);
+            EditorPrefs.SetBool("ShowMoveGizmo",	ShowMoveGizmo);
 
             EditorPrefs.SetInt  ("DistanceUnit",	(int)DistanceUnit);
 

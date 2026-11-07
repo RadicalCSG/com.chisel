@@ -36,7 +36,14 @@ namespace Chisel.Core
         public float    bottomHeight;
         public float    offsetY;
 
+        // across, as wide in both directions, or with a width and a depth of its own
+        [Tooltip("Whether it can be wider one way than the other; otherwise its diameter is the same all round")]
+        public bool     isElliptical;
+
+        [ConditionalNamePart("{elliptical}", " X", "", nameof(isElliptical)),
+            ConditionalName("Diameter{elliptical}"), DistanceValue]
         public float    diameterX;
+        [ConditionalName("Diameter Z"), ConditionalHide(nameof(isElliptical)), DistanceValue]
         public float    diameterZ;
         public float    rotation;
 
@@ -133,7 +140,7 @@ namespace Chisel.Core
             }
 
             diameterX		= math.max(math.abs(diameterX), kMinDiameter);
-            diameterZ		= math.max(math.abs(diameterZ), kMinDiameter);
+            diameterZ		= isElliptical ? math.max(math.abs(diameterZ), kMinDiameter) : diameterX;
 
             topSegments	    = math.max(topSegments, 0);
             bottomSegments	= math.max(bottomSegments, 0);
@@ -262,10 +269,13 @@ namespace Chisel.Core
             var prevModified = handles.modified;
             {
                 handles.color = baseColor;
-                // TODO: make it possible to (optionally) size differently in x & z
-                var radius2Dx = radius2D.x;
-                handles.DoRadiusHandle(ref radius2Dx, normal, middlePoint);
-                radius2D.x = radius2Dx;
+                // round, its radius is dragged; elliptical, its width and depth are, with the box around it below
+                if (!settings.isElliptical)
+                {
+                    var radius2Dx = radius2D.x;
+                    handles.DoRadiusHandle(ref radius2Dx, normal, middlePoint);
+                    radius2D.x = radius2Dx;
+                }
 
                 {
                     var isTopBackfaced = handles.IsSufaceBackFaced(topPoint, normal);
@@ -330,8 +340,11 @@ namespace Chisel.Core
             }
             if (prevModified != handles.modified)
             {
-                settings.diameterX      = radius2D.x * 2.0f;
-                settings.diameterZ      = radius2D.x * 2.0f;
+                if (!settings.isElliptical)
+                {
+                    settings.diameterX  = radius2D.x * 2.0f;
+                    settings.diameterZ  = radius2D.x * 2.0f;
+                }
                 // a drag that would make it flat isn't taken
                 if (math.abs(topPoint.y - bottomPoint.y) >= ChiselGeneratorLimits.kMinSize)
                 {
@@ -343,23 +356,61 @@ namespace Chisel.Core
                 // TODO: handle sizing down (needs to modify transformation?)
             }
 
-            // the sizes of the box around it, as when it was placed; a typed size changes its width or height
-            var box = new Bounds(new Vector3(0, settings.offsetY + settings.height * 0.5f, 0),
-                                 new Vector3(math.abs(settings.diameterX), math.abs(settings.height), math.abs(settings.diameterZ)));
-            var sizeBefore = box.size;
-            if (handles.DoBoxMeasurements(ref box))
+            // elliptical: the box around it, as a box's, its sides dragged and its sizes typed in
+            if (settings.isElliptical)
             {
-                var size = box.size;
-                if (size.x != sizeBefore.x) settings.diameterX = size.x;
-                if (size.z != sizeBefore.z) settings.diameterZ = size.z;
-                if (size.y != sizeBefore.y)
+                var box = new MinMaxAABB
                 {
-                    settings.height = (settings.height < 0 ? -1 : 1) * size.y;
-                    // ends that no longer fit are made to
-                    var scale = math.min(1, size.y / math.max(ChiselGeneratorLimits.kMinSize, settings.topHeight + settings.bottomHeight));
-                    settings.topHeight    *= scale;
-                    settings.bottomHeight *= scale;
+                    Min = new float3(-math.abs(settings.diameterX) * 0.5f, math.min(settings.offsetY, settings.offsetY + settings.height), -math.abs(settings.diameterZ) * 0.5f),
+                    Max = new float3( math.abs(settings.diameterX) * 0.5f, math.max(settings.offsetY, settings.offsetY + settings.height),  math.abs(settings.diameterZ) * 0.5f)
+                };
+                var boxBefore = box;
+                var changed   = handles.DoBoundsHandle(ref box);
+                changed       = handles.DoBoxMeasurements(ref box) || changed;
+                var size      = box.Max - box.Min;
+                if (changed && math.all(math.abs(size) >= ChiselGeneratorLimits.kMinSize))
+                {
+                    // it stays around its middle: a side moved is as far out on the other side
+                    var sizeBefore = boxBefore.Max - boxBefore.Min;
+                    if (size.x != sizeBefore.x) settings.diameterX = math.abs(size.x);
+                    if (size.z != sizeBefore.z) settings.diameterZ = math.abs(size.z);
+                    if (size.y != sizeBefore.y || box.Min.y != boxBefore.Min.y)
+                    {
+                        var sign = settings.height < 0 ? -1 : 1;
+                        settings.height  = sign * math.abs(size.y);
+                        settings.offsetY = sign < 0 ? math.max(box.Min.y, box.Max.y) : math.min(box.Min.y, box.Max.y);
+                        // ends that no longer fit are made to
+                        var scale = math.min(1, math.abs(size.y) / math.max(ChiselGeneratorLimits.kMinSize, settings.topHeight + settings.bottomHeight));
+                        settings.topHeight    *= scale;
+                        settings.bottomHeight *= scale;
+                    }
                 }
+                return;
+            }
+
+            // as a cylinder: its diameter on one of its widest circles, where the rounded ends start, and its height along its
+            // outline on the right; both can be typed in
+            var low      = math.min(settings.offsetY, settings.offsetY + settings.height);
+            var high      = math.max(settings.offsetY, settings.offsetY + settings.height);
+            var diameter  = math.abs(settings.diameterX);
+            var widestTop = Vector3.up * (high - (settings.height < 0 ? settings.bottomHeight : settings.topHeight));
+            var widestLow = Vector3.up * (low  + (settings.height < 0 ? settings.topHeight : settings.bottomHeight));
+            var diameterBefore = diameter;
+            handles.DoDiameterMeasurement(ref diameter, widestTop, widestLow);
+            if (diameter != diameterBefore)
+            {
+                settings.diameterX = diameter;
+                settings.diameterZ = diameter;
+            }
+
+            var typedHeight = math.abs(settings.height);
+            if (handles.DoHeightMeasurement(ref typedHeight, Vector3.up * low, Vector3.up * high, diameter * 0.5f))
+            {
+                settings.height = (settings.height < 0 ? -1 : 1) * typedHeight;
+                // ends that no longer fit are made to
+                var scale = math.min(1, typedHeight / math.max(ChiselGeneratorLimits.kMinSize, settings.topHeight + settings.bottomHeight));
+                settings.topHeight    *= scale;
+                settings.bottomHeight *= scale;
             }
         }
         #endregion

@@ -16,43 +16,27 @@ namespace Chisel.Editors
 
         protected override bool ShowsContents => false;
 
-        // the stairs stand at their position, so the point at the bottom of their height moves them, as a move gizmo
-        protected override void OnScene(IChiselHandles handles, ChiselPathedStairsComponent generator)
-        {
-            base.OnScene(handles, generator);
-
-            var center   = generator.definition.PathCenter;
-            var rotation = Tools.pivotRotation == PivotRotation.Local ? Quaternion.identity : Quaternion.Inverse(generator.transform.rotation);
-            EditorGUI.BeginChangeCheck();
-            var moved = Handles.PositionHandle(center, rotation);
-            if (!EditorGUI.EndChangeCheck())
-                return;
-            var transform = generator.transform;
-            Undo.RecordObject(transform, "Move Pathed Stairs");
-            transform.position += Handles.matrix.MultiplyVector(moved - center);
-        }
-
         const string kStairs = nameof(ChiselPathedStairs.stairs) + ".";
 
-        static readonly GUIContent kStartSideContent  = new("Start",  "The guard rail where an open path starts");
-        static readonly GUIContent kEndSideContent    = new("End",    "The guard rail where an open path ends");
-        static readonly GUIContent kCornerSideContent = new("Inner",  "The guard rail where two parts of the path meet, on the plane between them");
+        static readonly GUIContent kStartSideContent         = new("Start",            "The guard rail where an open path starts");
+        static readonly GUIContent kEndSideContent           = new("End",              "The guard rail where an open path ends");
+        static readonly GUIContent kCornerSideContent        = new("Inner",            "The guard rail where two parts of the path meet, on the plane between them");
         // a closed path has only these, so there's nothing to tell them apart from
-        static readonly GUIContent kAllSidesContent    = new("Placement",         "The guard rail where two parts of the path meet, on the plane between them");
-        static readonly GUIContent kAllTopContent      = new("Side End",        "How far back the guard rails go beside the floor at the top");
-        static readonly GUIContent kAllTopLengthContent = new("Side End Length", "How far back from the top step the guard rails go, when set");
-        static readonly GUIContent kHeightContent = new("Height", "How high the stairs are, from the object's position to the top. Without a base it's a whole number of steps; with one, the base takes up what's left");
-        static readonly GUIContent kDepthContent  = new("Depth",  "How deep the stairs are from the path, the floor at the top included");
-        static readonly GUIContent kThicknessContent  = new("Thickness",    "How thick the guard rails are");
-        static readonly GUIContent kHeightAboveContent = new("Height Above", "How high a guard rail above the steps reaches over them");
-        static readonly GUIContent kDepthBelowContent  = new("Depth Below",  "How far a guard rail below the steps reaches under them");
-        static readonly GUIContent kFrontOffsetContent = new("Front Offset", "How far the guard rails reach out past the steps' fronts");
-        static readonly GUIContent kClosedContent       = new("Closed Loop",    "Whether the path goes round back to where it starts; then every guard rail is a corner's");
-        static readonly GUIContent kControlPointsContent = new("Path Points",    "The points the path goes through");
-        static readonly GUIContent kStartEndTopContent      = new("Side End",        "How far back the guard rails at an open path's start and end go beside the floor at the top");
-        static readonly GUIContent kStartEndTopLengthContent = new("Side End Length", "How far back from the top step the guard rails at an open path's start and end go, when set");
-        static readonly GUIContent kCornerTopContent         = new("Inner End",            "How far back the guard rails where two parts of the path meet go beside the floor at the top");
-        static readonly GUIContent kCornerTopLengthContent   = new("Inner End Length",     "How far back from the top step the guard rails where two parts of the path meet go, when set");
+        static readonly GUIContent kAllSidesContent          = new("Placement",        "The guard rail where two parts of the path meet, on the plane between them");
+        static readonly GUIContent kAllTopContent            = new("Side End",         "How far back the guard rails go beside the floor at the top");
+        static readonly GUIContent kAllTopLengthContent      = new("Side End Length",  "How far back from the top step the guard rails go, when set");
+        static readonly GUIContent kHeightContent            = new("Height",           "How high the stairs are, from the object's position to the top. The steps keep their size: as many as fit, with the base taking up what's left");
+        static readonly GUIContent kDepthContent             = new("Depth",            "How deep the stairs are from the path, the floor at the top included");
+        static readonly GUIContent kThicknessContent         = new("Thickness",        "How thick the guard rails are");
+        static readonly GUIContent kHeightAboveContent       = new("Height Above",     "How high a guard rail above the steps reaches over them");
+        static readonly GUIContent kDepthBelowContent        = new("Depth Below",      "How far a guard rail below the steps reaches under them");
+        static readonly GUIContent kFrontOffsetContent       = new("Front Offset",     "How far the guard rails reach out past the steps' fronts");
+        static readonly GUIContent kClosedContent            = new("Closed Loop",      "Whether the path goes round back to where it starts; then every guard rail is a corner's");
+        static readonly GUIContent kControlPointsContent     = new("Path Points",      "The points the path goes through");
+        static readonly GUIContent kStartEndTopContent       = new("Side End",         "How far back the guard rails at an open path's start and end go beside the floor at the top");
+        static readonly GUIContent kStartEndTopLengthContent = new("Side End Length",  "How far back from the top step the guard rails at an open path's start and end go, when set");
+        static readonly GUIContent kCornerTopContent         = new("Inner End",        "How far back the guard rails where two parts of the path meet go beside the floor at the top");
+        static readonly GUIContent kCornerTopLengthContent   = new("Inner End Length", "How far back from the top step the guard rails where two parts of the path meet go, when set");
 
         // as the linear stairs each part of the path is: the steps with their settings under them, the guard rails
         // (only at an open path's ends) with theirs, then the rest

@@ -1,4 +1,4 @@
-﻿using Chisel.Core;
+using Chisel.Core;
 using UnityEngine;
 
 namespace Chisel.Components
@@ -84,10 +84,10 @@ namespace Chisel.Components
             set { if (value == definition.settings.rotation) return; definition.settings.rotation = value; OnValidateState(); }
         }
         
-        public bool IsEllipsoid
+        public bool IsElliptical
         {
-            get { return definition.settings.isEllipsoid; }
-            set { if (value == definition.settings.isEllipsoid) return; definition.settings.isEllipsoid = value; OnValidateState(); }
+            get { return definition.settings.isElliptical; }
+            set { if (value == definition.settings.isElliptical) return; definition.settings.isElliptical = value; OnValidateState(); }
         }
         
         public uint SmoothingGroup

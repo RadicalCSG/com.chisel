@@ -44,10 +44,10 @@ namespace Chisel.Core
     public static class IChiselHandleRendererExtensions
 	{
 
-		public static bool DoBoundsHandle(this IChiselHandles handles, ref MinMaxAABB box, Vector3? snappingSteps = null, string undoMessage = null)
+		public static bool DoBoundsHandle(this IChiselHandles handles, ref MinMaxAABB box, Vector3? snappingSteps = null, string undoMessage = null, bool fixedBottom = false)
 		{
 			var bounds = box.ToBounds();
-			var result = handles.DoBoundsHandle(ref bounds, snappingSteps, undoMessage);
+			var result = handles.DoBoundsHandle(ref bounds, snappingSteps, undoMessage, fixedBottom);
 			box = bounds.ToMinMaxAABB();
 			return result;
 		}
@@ -69,7 +69,90 @@ namespace Chisel.Core
 			return true;
 		}
 
-        public static void RenderBox(this IChiselHandleRenderer renderer, MinMaxAABB bounds)             { renderer.RenderBox(bounds.ToBounds()); }
+		// A circle's diameter, along a line off it so it isn't in front of the shape; can be typed in. A bottom circle has it on
+		// the side nearest the camera looking down on the circle and furthest looking up at it, a top circle the reverse
+		public static void DoDiameterMeasurement(this IChiselHandles handles, ref float diameter, Vector3 center, bool isTop)
+		{
+			var camera = Camera.current;
+			if (camera == null || diameter <= 0)
+				return;
+			var toCamera = camera.orthographic ? -handles.inverseMatrix.MultiplyVector(camera.transform.forward)
+			                                   : handles.inverseMatrix.MultiplyPoint(camera.transform.position) - center;
+			var lookingDown = toCamera.y >= 0;
+			toCamera.y = 0;
+			var distance = camera.orthographic ? float.PositiveInfinity : toCamera.magnitude;
+			toCamera = toCamera.sqrMagnitude > 1e-8f ? toCamera.normalized : Vector3.forward;
+			var onFarSide = lookingDown == isTop;
+			if (onFarSide)
+				toCamera = -toCamera;
+			var radius   = diameter * 0.5f;
+			var nearest  = center + toCamera * radius;
+			var awayFrom = (toCamera + (isTop ? Vector3.up : Vector3.down)).normalized;
+			var along    = Vector3.Cross(Vector3.up, toCamera);
+			// on the far side as wide as the circle looks: its ends on the lines from the camera that just touch the circle, on
+			// the horizon
+			var halfWidth = radius;
+			if (onFarSide && !float.IsInfinity(distance) && distance > radius)
+			{
+				var touchSide = radius * Mathf.Sqrt(1 - (radius * radius) / (distance * distance));
+				var touchAt   = (radius * radius) / distance;
+				halfWidth     = touchSide * (distance + radius) / (distance - touchAt);
+			}
+			handles.DoDistanceMeasurement(ref diameter, nearest - along * halfWidth, nearest + along * halfWidth, "Change Diameter", offsetDirection: awayFrom);
+		}
+
+		// One diameter for a cylinder's two circles of the same size: on the one nearest the camera, or the bottom one with the
+		// camera in between them; or, when asked, with the camera past either, the one furthest from it
+		public static void DoDiameterMeasurement(this IChiselHandles handles, ref float diameter, Vector3 topCenter, Vector3 bottomCenter, bool furthest = false)
+		{
+			var camera = Camera.current;
+			if (camera == null || diameter <= 0)
+				return;
+			var cameraY = handles.inverseMatrix.MultiplyPoint(camera.transform.position).y;
+			var aboveTop    = cameraY > topCenter.y;
+			var belowBottom = cameraY < bottomCenter.y;
+			var useTop      = furthest ? belowBottom : aboveTop;
+			handles.DoDiameterMeasurement(ref diameter, useTop ? topCenter : bottomCenter, useTop);
+		}
+
+		// The height of something round, along its outline on the right as seen from the camera, just outside it; can be typed in
+		public static bool DoHeightMeasurement(this IChiselHandles handles, ref float height, Vector3 bottomCenter, Vector3 topCenter, float radius, string undoMessage = "Change Height")
+		{
+			var camera = Camera.current;
+			if (camera == null || radius <= 0)
+				return false;
+			var middle   = (bottomCenter + topCenter) * 0.5f;
+			var toCamera = camera.orthographic ? -handles.inverseMatrix.MultiplyVector(camera.transform.forward)
+			                                   : handles.inverseMatrix.MultiplyPoint(camera.transform.position) - middle;
+			toCamera.y = 0;
+			var distance = camera.orthographic ? float.PositiveInfinity : toCamera.magnitude;
+			toCamera = toCamera.sqrMagnitude > 1e-8f ? toCamera.normalized : Vector3.forward;
+			var side = Vector3.Cross(Vector3.up, toCamera);
+			if (Vector3.Dot(side, handles.inverseMatrix.MultiplyVector(camera.transform.right)) < 0)
+				side = -side;
+			// where the line from the camera just touches the circle
+			var outline = side * radius;
+			if (!float.IsInfinity(distance) && distance > radius)
+				outline = toCamera * (radius * radius / distance) + side * (radius * Mathf.Sqrt(1 - (radius * radius) / (distance * distance)));
+			var from = new Vector3(bottomCenter.x + outline.x, bottomCenter.y, bottomCenter.z + outline.z);
+			var to   = new Vector3(bottomCenter.x + outline.x, topCenter.y,    bottomCenter.z + outline.z);
+			return handles.DoDistanceMeasurement(ref height, from, to, undoMessage, offsetDirection: new Vector3(outline.x, 0, outline.z).normalized);
+		}
+
+		// A circle to drag; while it has focus, its radius
+		public static void DoDraggableCircle(this IChiselHandles handles, ref float diameter, Vector3 center, IChiselEllipsoidHandle circle)
+		{
+			circle.Center    = center;
+			circle.Normal    = Vector3.up;
+			circle.DiameterX = diameter;
+			circle.DiameterZ = diameter;
+			handles.DoDistanceHandle(ref diameter, center, Vector3.up, circle);
+			diameter = math.abs(diameter);
+			if (handles.lastHandleHadFocus && handles.TryGetClosestPoint(circle, out var closest, interpolate: false))
+				handles.RenderDistanceMeasurement(center, closest, diameter * 0.5f);
+		}
+
+        public static void RenderBox(this IChiselHandleRenderer renderer, MinMaxAABB bounds)           { renderer.RenderBox(bounds.ToBounds()); }
         public static void RenderBoxMeasurements(this IChiselHandleRenderer renderer, MinMaxAABB bounds)   { renderer.RenderBoxMeasurements(bounds.ToBounds()); }
         public static void RenderCylinder(this IChiselHandleRenderer renderer, MinMaxAABB bounds, int segments) { renderer.RenderCylinder(bounds.ToBounds(), segments); }
         
@@ -187,23 +270,27 @@ namespace Chisel.Core
 
         bool IsSufaceBackFaced(Vector3 point, Vector3 normal);
 
-        bool DoBoundsHandle(ref Bounds bounds, Vector3? snappingSteps = null, string undoMessage = null);
+        bool DoBoundsHandle(ref Bounds bounds, Vector3? snappingSteps = null, string undoMessage = null, bool fixedBottom = false);
         bool DoShapeHandle(ref Curve2D shape, string undoMessage = null);
         bool DoShapeHandle(ref Curve2D shape, Matrix4x4 transformation, string undoMessage = null);
         bool DoRadiusHandle(ref float outerRadius, Vector3 direction, Vector3 position, bool renderDisc = true, string undoMessage = null);
         bool DoRadius2DHandle(ref Vector3 radius1, ref Vector3 radius2, Vector3 center, Vector3 up, float minRadius1 = 0, float minRadius2 = 0, float maxRadius1 = float.PositiveInfinity, float maxRadius2 = float.PositiveInfinity, bool renderDisc = true, string undoMessage = null);
         bool DoRadius2DHandle(ref Vector3 radius, Vector3 center, Vector3 up, float minRadius = 0, float maxRadius = float.PositiveInfinity, bool renderDisc = true, string undoMessage = null);
         bool DoDirectionHandle(ref Vector3 position, Vector3 direction, float snappingStep = 0, string undoMessage = null);
-        bool DoRotatableLineHandle(ref float angle, Vector3 origin, float diameter, Vector3 handleDir, Vector3 slideDir1, Vector3 slideDir2, string undoMessage = null);
+        bool DoRotatableLineHandle(ref float angle, Vector3 origin, float diameter, Vector3 handleDir, Vector3 slideDir1, Vector3 slideDir2, string undoMessage = null, float lineStart = 0);
         bool DoTurnHandle(ref Bounds bounds, string undoMessage = null);
         // the bounds' lengths, each of which can be clicked and typed in
         bool DoBoxMeasurements(ref Bounds bounds, string undoMessage = null);
+        // a length between two points, which can be clicked and typed in; a direction keeps it off them, the same on screen
+        bool DoDistanceMeasurement(ref float distance, Vector3 from, Vector3 to, string undoMessage = null, Vector3 offsetDirection = default);
 
         bool DoEdgeHandle1D(out float offset, Axis axis, Vector3 from, Vector3 to, float snappingStep = 0, float handleSize = 0, string undoMessage = null);
         bool DoEdgeHandle1DOffset(out Vector3 offset, Axis axis, Vector3 from, Vector3 to, Vector3 direction, float snappingStep = 0, float handleSize = 0, bool renderLine = true, string undoMessage = null);
         bool DoEdgeHandle1DOffset(out float offset, Axis axis, Vector3 from, Vector3 to, float snappingStep = 0, float handleSize = 0, bool renderLine = true, string undoMessage = null);
 
 
+        // shown at a point of the generator, it moves the whole of it, as the generator's transform
+        bool DoMoveGizmo(Vector3 point);
         bool DoPathPointHandle(ref ChiselPathPoint pathPoint, string undoMessage = null);
         bool DoPositionHandle(ref Vector3 position, Quaternion rotation, string undoMessage = null);
         bool DoRotationHandle(ref Quaternion rotation, Vector3 position, string undoMessage = null);

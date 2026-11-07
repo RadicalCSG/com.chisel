@@ -300,6 +300,40 @@ namespace Chisel.Editors
 			SceneHandles.Color = prevColor;
 		}
 
+		// a length whose label can be clicked and typed in; returns true when a length was taken
+		// With a direction to keep it off what it measures, the line is that far out the same on screen at any distance,
+		// with thin lines back to the points it measures and its label on that side, as the lengths of bounds have
+		public static bool DoLength(UnityEngine.Vector3 from, UnityEngine.Vector3 to, ref float distance, UnityEngine.Vector3 offsetDirection = default)
+		{
+			var prevColor = SceneHandles.Color;
+			var color     = SceneHandles.StateColor(SceneHandles.MeasureColor);
+			var camPos    = SceneHandles.InverseMatrix.MultiplyPoint(UnityEngine.Camera.current.transform.position);
+			var offset    = offsetDirection * (UnityEditor.HandleUtility.GetHandleSize(SceneHandleUtility.ProjectPointLine(camPos, from, to)) * 0.25f);
+			var fromOfs   = from + offset;
+			var toOfs     = to   + offset;
+			var length    = (toOfs - fromOfs).magnitude;
+			var forward   = (toOfs - fromOfs).normalized;
+			var camDir    = (SceneHandleUtility.ProjectPointLine(camPos, fromOfs, toOfs) - camPos).normalized;
+			var fromSize  = Mathf.Min(length / 3.0f, UnityEditor.HandleUtility.GetHandleSize(fromOfs) * 0.2f);
+			var toSize    = Mathf.Min(length / 3.0f, UnityEditor.HandleUtility.GetHandleSize(toOfs)   * 0.2f);
+			var labelSide = offsetDirection == default ? Vector3.Cross(forward, camDir) : offset;
+
+			if (offsetDirection != default)
+			{
+				var faint = color; faint.a *= 0.5f;
+				SceneHandles.Color = faint;
+				SceneHandles.DrawLine(from, fromOfs);
+				SceneHandles.DrawLine(to,   toOfs);
+			}
+			SceneHandles.Color = color;
+			SceneHandles.DrawLine(fromOfs, toOfs);
+			DrawFlatArrow(fromOfs,  forward, camDir, fromSize);
+			DrawFlatArrow(toOfs,   -forward, camDir, toSize);
+			var taken = DoUnitLabel((toOfs + fromOfs) * 0.5f, labelSide, 2, ref distance);
+			SceneHandles.Color = prevColor;
+			return taken;
+		}
+
 		public static void DrawLengthsXY(Rect rect, Axes activeAxes = Axes.XYZ, Axes visibleAxes = Axes.XYZ, Axes selectedAxes = Axes.None)
 		{
 			// TODO: what if camera is inside of rect?

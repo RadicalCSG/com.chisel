@@ -43,6 +43,7 @@ namespace Chisel.Editors
             else
                 this.camera = null;
             this.mouseCursor = null;
+            this.moveGizmoShown = false;
             s_HighlightHandles.Clear();
             s_EditorHandlesToDraw.Clear();
             if (Event.current != null)
@@ -1211,10 +1212,10 @@ namespace Chisel.Editors
                 RecordUndo(undoMessage ?? $"Modified {generator.ChiselNodeTypeName}", generator);
         }
 
-        public bool DoBoundsHandle(ref Bounds bounds, Vector3? snappingSteps = null, string undoMessage = null)
+        public bool DoBoundsHandle(ref Bounds bounds, Vector3? snappingSteps = null, string undoMessage = null, bool fixedBottom = false)
         {
             EditorGUI.BeginChangeCheck();
-            var newBounds = Chisel.Editors.SceneHandles.BoundsHandle(bounds, Quaternion.identity, snappingSteps: snappingSteps);
+            var newBounds = Chisel.Editors.SceneHandles.BoundsHandle(bounds, Quaternion.identity, snappingSteps: snappingSteps, fixedBottom: fixedBottom);
             if (!EditorGUI.EndChangeCheck())
                 return false;
 
@@ -1293,14 +1294,14 @@ namespace Chisel.Editors
             return true;
         }
 
-        public bool DoRotatableLineHandle(ref float angle, Vector3 origin, float diameter, Vector3 handleDir, Vector3 slideDir1, Vector3 slideDir2, string undoMessage = null)
+        public bool DoRotatableLineHandle(ref float angle, Vector3 origin, float diameter, Vector3 handleDir, Vector3 slideDir1, Vector3 slideDir2, string undoMessage = null, float lineStart = 0)
         {
             EditorGUI.BeginChangeCheck();
             var id = GUIUtility.GetControlID(kDoDirectionHandleHash, FocusType.Passive);
             this.lastHandleHadFocus = focusControl == id;
             var prevColor = color;
             color = GetStateColor(color, lastHandleHadFocus, backfaced);
-            var newAngle = RotatableLineHandle.DoHandle(angle, origin, diameter, handleDir, slideDir1, slideDir2);
+            var newAngle = RotatableLineHandle.DoHandle(id, angle, origin, diameter, handleDir, slideDir1, slideDir2, lineStart: lineStart);
             color = prevColor;
             if (!EditorGUI.EndChangeCheck())
                 return false;
@@ -1317,6 +1318,39 @@ namespace Chisel.Editors
             using (new UnityEditor.Handles.DrawingScope(SceneHandles.MeasureColor, matrix))
                 changed = Measurements.DrawLengths(ref bounds, editable: true);
             if (!changed)
+                return false;
+            RecordUndo(undoMessage ?? "Typed a length");
+            GUI.changed = true;
+            this.modified = true;
+            return true;
+        }
+
+        // a generator that shows none of its own gets one at its position
+        bool moveGizmoShown;
+        public void DoDefaultMoveGizmo()
+        {
+            if (!moveGizmoShown)
+                DoMoveGizmo(Vector3.zero);
+        }
+
+        public bool DoMoveGizmo(Vector3 point)
+        {
+            moveGizmoShown = true;
+            if (!generatorTransform || !ChiselEditorSettings.ShowMoveGizmo)
+                return false;
+            var rotation = Tools.pivotRotation == PivotRotation.Local ? Quaternion.identity : Quaternion.Inverse(generatorTransform.rotation);
+            EditorGUI.BeginChangeCheck();
+            var moved = UnityEditor.Handles.PositionHandle(point, rotation);
+            if (!EditorGUI.EndChangeCheck())
+                return false;
+            Undo.RecordObject(generatorTransform, "Move Generator");
+            generatorTransform.position += UnityEditor.Handles.matrix.MultiplyVector(moved - point);
+            return true;
+        }
+
+        public bool DoDistanceMeasurement(ref float distance, Vector3 from, Vector3 to, string undoMessage = null, Vector3 offsetDirection = default)
+        {
+            if (!Measurements.DoLength(from, to, ref distance, offsetDirection))
                 return false;
             RecordUndo(undoMessage ?? "Typed a length");
             GUI.changed = true;
