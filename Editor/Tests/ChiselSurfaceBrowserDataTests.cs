@@ -214,6 +214,49 @@ namespace Chisel.Editors.Tests
             Assert.That(ChiselSurfaceBrowserWindow.ShouldStartRename(10, 12, at, at + new UnityEngine.Vector2(20, 0)), Is.False, "moved");
         }
 
+        // The metadata package's label is never shown, and kept when the labels change
+        [Test]
+        public void TheAssetMetadataLabel_IsHiddenAndKept()
+        {
+            const string kFolder = "Assets/ChiselInternalLabelTests";
+            if (!AssetDatabase.IsValidFolder(kFolder))
+                AssetDatabase.CreateFolder("Assets", "ChiselInternalLabelTests");
+            try
+            {
+                var material = new UnityEngine.Material(UnityEngine.Shader.Find("Standard"));
+                AssetDatabase.CreateAsset(material, kFolder + "/labelled.mat");
+                AssetDatabase.SetLabels(material, new[] { "AssetMetadata", "Metal" });
+                Assert.That(ChiselAssetLabels.Get(material), Is.EqualTo(new[] { "Metal" }));
+                ChiselAssetLabels.Remove(material, "Metal");
+                Assert.That(AssetDatabase.GetLabels(material), Is.EqualTo(new[] { "AssetMetadata" }), "kept");
+            }
+            finally
+            {
+                AssetDatabase.DeleteAsset(kFolder);
+            }
+        }
+
+        [Test]
+        public void AddingSurfaceParameters_GivesTheMaterialMetadata()
+        {
+            const string kFolder = "Assets/ChiselAddParametersTests";
+            if (!AssetDatabase.IsValidFolder(kFolder))
+                AssetDatabase.CreateFolder("Assets", "ChiselAddParametersTests");
+            try
+            {
+                var material = new UnityEngine.Material(UnityEngine.Shader.Find("Standard"));
+                AssetDatabase.CreateAsset(material, kFolder + "/plain.mat");
+                Assert.That(material.GetMetadataOfType<ChiselSurfaceMetadata>(), Is.Null);
+                Assert.That(ChiselSurfaceBrowserWindow.AddSurfaceParameters(material), Is.True);
+                Assert.That(material.GetMetadataOfType<ChiselSurfaceMetadata>(), Is.Not.Null);
+                Assert.That(ChiselSurfaceBrowserWindow.AddSurfaceParameters(material), Is.False, "it has them already");
+            }
+            finally
+            {
+                AssetDatabase.DeleteAsset(kFolder);
+            }
+        }
+
         [Test]
         public void Favorites_AreAddedAndRemoved()
         {

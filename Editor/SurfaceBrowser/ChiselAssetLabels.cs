@@ -61,9 +61,21 @@ namespace Chisel.Editors
             return true;
         }
 
+        // labels other packages keep on assets for their own use: the metadata package's, which builds use to find the
+        // assets holding metadata; never shown, never removed
+        const string kAssetMetadataLabel = "AssetMetadata";
+
+        public static bool IsInternal(string label)
+        {
+            return string.Equals(label, kAssetMetadataLabel, StringComparison.OrdinalIgnoreCase);
+        }
+
+        /// <summary>An asset's labels, without the internal ones</summary>
         public static string[] Get(UnityEngine.Object asset)
         {
-            return asset != null ? AssetDatabase.GetLabels(asset) : Array.Empty<string>();
+            if (asset == null)
+                return Array.Empty<string>();
+            return Array.FindAll(AssetDatabase.GetLabels(asset), label => !IsInternal(label));
         }
 
         /// <summary>Sets an asset's labels, undoably</summary>
@@ -72,7 +84,14 @@ namespace Chisel.Editors
             if (asset == null || !AssetDatabase.TryGetGUIDAndLocalFileIdentifier(asset, out string guid, out long _))
                 return;
             var current = AssetDatabase.GetLabels(asset);
-            labels ??= Array.Empty<string>();
+            // the internal labels it has are kept, whatever is asked
+            var kept = new List<string>(Array.FindAll(current, IsInternal));
+            foreach (var label in labels ?? Array.Empty<string>())
+            {
+                if (!IsInternal(label))
+                    kept.Add(label);
+            }
+            labels = kept.ToArray();
             if (Same(current, labels))
                 return;
             var state = GetState();

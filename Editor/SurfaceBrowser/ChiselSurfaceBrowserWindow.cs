@@ -215,7 +215,7 @@ namespace Chisel.Editors
                     guid   = guid,
                     path   = path,
                     name   = System.IO.Path.GetFileNameWithoutExtension(path),
-                    labels = asset != null ? AssetDatabase.GetLabels(asset) : Array.Empty<string>()
+                    labels = ChiselAssetLabels.Get(asset)
                 });
             }
             model.SetItems(items);
@@ -634,9 +634,31 @@ namespace Chisel.Editors
                 menu.AddItem(new GUIContent("Rename"), false, () => StartRename(item));
             else
                 menu.AddDisabledItem(new GUIContent("Rename"));
+            if (MetadataOf(material) == null)
+            {
+                if (IsEditable(item.path))
+                    menu.AddItem(new GUIContent(kAddParametersText), false, () => { AddSurfaceParameters(material); MarkDirty(); });
+                else
+                    menu.AddDisabledItem(new GUIContent(kAddParametersText));
+            }
             menu.AddSeparator(string.Empty);
             menu.AddItem(new GUIContent("Select Surfaces Using This Material"), false, () => SelectSurfacesUsing(material));
             return menu;
+        }
+
+        const string kAddParametersText = "Add Chisel Surface Parameters";
+
+        /// <summary>Gives a material Chisel's surface parameters (its metadata), undoably; false when it has them or
+        /// can't be changed</summary>
+        internal static bool AddSurfaceParameters(Material material)
+        {
+            if (material == null || MetadataOf(material) != null || !IsEditable(AssetDatabase.GetAssetPath(material)))
+                return false;
+            Undo.RecordObject(material, kAddParametersText);
+            material.AddMetadataOfType<ChiselSurfaceMetadata>();
+            EditorUtility.SetDirty(material);
+            AssetDatabase.SaveAssetIfDirty(material);
+            return MetadataOf(material) != null;
         }
 
         /// <summary>Whether an asset can be changed: not locked or checked in by version control, not in a package that
@@ -889,13 +911,11 @@ namespace Chisel.Editors
             GUILayout.Label("MATERIAL SETTINGS", EditorStyles.miniBoldLabel);
             if (metadata == null)
             {
-                EditorGUILayout.HelpBox("This material has no Chisel settings yet; surfaces using it take Chisel's defaults.", MessageType.None);
-                if (GUILayout.Button("Add Chisel settings"))
+                EditorGUILayout.HelpBox("This material has no Chisel surface parameters yet; surfaces using it take Chisel's defaults.", MessageType.None);
+                if (GUILayout.Button(kAddParametersText))
                 {
-                    Undo.RecordObject(material, "Add Chisel Settings");
-                    material.AddMetadataOfType<ChiselSurfaceMetadata>();
-                    EditorUtility.SetDirty(material);
-                    AssetDatabase.SaveAssetIfDirty(material);
+                    AddSurfaceParameters(material);
+                    MarkDirty();
                     Select(item.guid);
                     GUIUtility.ExitGUI();
                 }
