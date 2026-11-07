@@ -31,8 +31,18 @@ namespace Chisel.Editors
             ChiselOutlineRenderer.VisualizationMode = VisualizationMode.None;
         }
 
+        // another tool, like move, shows every brush's outline; activating this one doesn't always undo that, so it's
+        // kept hidden while this tool is used
+        internal static void HideBrushOutlines()
+        {
+            if (ChiselOutlineRenderer.VisualizationMode != VisualizationMode.None)
+                ChiselOutlineRenderer.VisualizationMode = VisualizationMode.None;
+        }
+
         public override void OnSceneGUI(SceneView sceneView, Rect dragArea)
         {
+            HideBrushOutlines();
+
             var evt = Event.current;
             switch (evt.type)
             {

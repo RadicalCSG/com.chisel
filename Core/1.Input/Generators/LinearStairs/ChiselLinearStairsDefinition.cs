@@ -441,15 +441,16 @@ namespace Chisel.Core
                 var sorted = settings.SortedBounds;
                 handles.DoMoveGizmo(new Vector3((sorted.Min.x + sorted.Max.x) * 0.5f, sorted.Min.y, (sorted.Min.z + sorted.Max.z) * 0.5f));
 
-                // with the base or the top's line hovered, only what it changes
-                if (baseFocused)
+                // with the base or the top's line hovered, only what it changes; not while a measurement is typed in
+                var editing = handles.isEditingMeasurement;
+                if (baseFocused && !editing)
                 {
                     var typed = settings.plateauHeight;
                     if (handles.DoDistanceMeasurement(ref typed, new Vector3(min.x, min.y, max.z), pHeight0, name: "Base Height"))
                         settings.plateauHeight = math.clamp(typed, 0, size.y - stepHeight);
                     return;
                 }
-                if (topFocused)
+                if (topFocused && !editing)
                 {
                     var typed = settings.StepDepthOffset;
                     if (typed > 0 && handles.DoDistanceMeasurement(ref typed, new Vector3(min.x, max.y, depthStart), pDepth0, name: "Top Depth"))

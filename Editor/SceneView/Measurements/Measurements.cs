@@ -160,6 +160,8 @@ namespace Chisel.Editors
 
 		static bool		s_CanClick;
 		static int		s_EditingId;
+		// a length is being typed in
+		public static bool IsEditing => s_EditingId != 0;
 		static string	s_EditText;
 		static bool		s_FocusEdit;
 		const string	kEditControlName = "ChiselLengthEdit";
@@ -300,7 +302,17 @@ namespace Chisel.Editors
 			SceneHandles.Color = prevColor;
 		}
 
+		public static void DrawLength(UnityEngine.Vector3 from, UnityEngine.Vector3 to, float forceValue, string name, float secondValue, string secondName)
+		{
+			DrawLengthWithText(from, to, Units.ToDistanceString(forceValue, name) + "\n" + Units.ToDistanceString(secondValue, secondName));
+		}
+
 		public static void DrawLength(UnityEngine.Vector3 from, UnityEngine.Vector3 to, float forceValue, string name = null)
+		{
+			DrawLengthWithText(from, to, Units.ToDistanceString(forceValue, name));
+		}
+
+		static void DrawLengthWithText(UnityEngine.Vector3 from, UnityEngine.Vector3 to, string text)
 		{
 			var prevColor = SceneHandles.Color;
 			SceneHandles.Color = SceneHandles.StateColor(SceneHandles.MeasureColor);
@@ -323,7 +335,7 @@ namespace Chisel.Editors
 			//	SceneHandles.DrawLine(from - right, from + right);
 			//	SceneHandles.DrawLine(to   - right, to   + right);
 
-			DrawUnitLabel(center, right, 2, forceValue, name);
+			DrawLabel(center, right, 2, text);
 			SceneHandles.Color = prevColor;
 		}
 

@@ -338,7 +338,8 @@ namespace Chisel.Core
 
             // how high, how deep and how high the base is, where the first part of the path starts; with the base or the
             // top's line hovered, only what it changes
-            var showAll = !baseFocused && !topFocused;
+            var editing = handles.isEditingMeasurement;
+            var showAll = editing || (!baseFocused && !topFocused);
             var typed = height;
             if (showAll && handles.DoDistanceMeasurement(ref typed, center, center + up * height, name: "Height"))
                 SetSize(ref stairs.bounds, 1, math.max(stepHeight, typed));
@@ -349,10 +350,10 @@ namespace Chisel.Core
                     SetSize(ref stairs.bounds, 2, math.max(stairs.stepDepth, typed));
                 // the flat part at the top, from the back to where the steps start
                 typed = depth - run;
-                if (!baseFocused && typed > 0 && handles.DoDistanceMeasurement(ref typed, Offset(0, run) + up * height, Offset(0, depth) + up * height, name: "Top Depth"))
+                if ((editing || !baseFocused) && typed > 0 && handles.DoDistanceMeasurement(ref typed, Offset(0, run) + up * height, Offset(0, depth) + up * height, name: "Top Depth"))
                     stairs.SetTopDepth(typed);
                 typed = baseHeight;
-                if (!topFocused && baseHeight > 0 && handles.DoDistanceMeasurement(ref typed, Point(0), Point(0) + up * baseHeight, name: "Base Height"))
+                if ((editing || !topFocused) && baseHeight > 0 && handles.DoDistanceMeasurement(ref typed, Point(0), Point(0) + up * baseHeight, name: "Base Height"))
                     SetBaseHeight(typed);
             }
         }
