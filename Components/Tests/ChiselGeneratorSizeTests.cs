@@ -1299,6 +1299,34 @@ namespace Chisel.Components.Tests
             AssertClosed(model, "pathed stairs with a wall at the corner");
         }
 
+        // A curved span is cut into many short parts; only its control points are corners with a wall, not the
+        // points inside the curve
+        [Test]
+        public void PathedStairs_HaveNoCornerWallsInsideACurve()
+        {
+            float TopOf(StairsSideType cornerSide)
+            {
+                var stairs = Generator<ChiselPathedStairsComponent>(out var model);
+                var start = new CurveControlPoint2D(-2, -2) { tangent2 = new Vector2(-2, 0), constraint2 = ControlPointConstraint.Mirrored };
+                var end   = new CurveControlPoint2D( 2,  2) { tangent1 = new Vector2(0, 2),  constraint1 = ControlPointConstraint.Mirrored };
+                stairs.definition.shape = new Curve2D(false, start, end);
+                stairs.definition.settings.cornerSide = cornerSide;
+                stairs.definition.settings.stairs.leftSide  = StairsSideType.None;
+                stairs.definition.settings.stairs.rightSide = StairsSideType.None;
+                stairs.OnValidate();
+                Update();
+
+                var vertices = DrawnVertices(model, out _);
+                Assert.That(vertices, Is.Not.Empty, "nothing drawn");
+                var top = float.NegativeInfinity;
+                foreach (var vertex in vertices)
+                    top = Mathf.Max(top, vertex.y);
+                AssertClosed(model, $"pathed stairs along a curve, corner side {cornerSide}");
+                return top;
+            }
+            Assert.That(TopOf(StairsSideType.Up), Is.EqualTo(TopOf(StairsSideType.None)).Within(1e-3f), "a corner wall inside the curve");
+        }
+
         // Where the two parts' fronts meet in a point sticking out, that point is cut off under the corner's wall, which
         // is in front of everything within its width
         [TestCase(-6), TestCase(2)]

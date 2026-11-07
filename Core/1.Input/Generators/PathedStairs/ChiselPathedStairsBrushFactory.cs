@@ -46,7 +46,7 @@ namespace Chisel.Core
                 // i is where the part of the path ends
                 SidesOf(closedLoop, i == 1, i == shapeVertices.Length - 1, leftSide, rightSide, out var segmentLeftSide, out var segmentRightSide);
 
-                var endIsCorner = closedLoop || i != shapeVertices.Length - 1;
+                var endIsCorner = (closedLoop || i != shapeVertices.Length - 1) && IsControlPoint(in shapeVertices, i);
                 var description = new LineairStairsData(bounds, stepHeight, stepDepth, treadHeight,
                                                         nosingDepth, nosingWidth: 0, plateauHeight,
                                                         riserType, riserDepth,
@@ -168,7 +168,9 @@ namespace Chisel.Core
 
                 SidesOf(closedLoop, vi2 == 1, vi2 == count - 1, leftSide, rightSide, out var segmentLeftSide, out var segmentRightSide);
                 var startIsCorner = closedLoop || vi1 != 0;
-                var endIsCorner   = closedLoop || vi2 != count - 1;
+                var endIsJoin     = closedLoop || vi2 != count - 1;
+                // points inside a curve join two parts without a wall
+                var endIsCorner   = endIsJoin && IsControlPoint(in shapeVertices, vi2);
 
                 var description = new LineairStairsData(bounds,
                                                         stepHeight, stepDepth,
@@ -181,7 +183,7 @@ namespace Chisel.Core
                                                         leftAsSet: true, rightAsSet: true, sideFrontOffset: sideFrontOffset, topSideLength: topSideLength);
                 // the treads reach out past a side without a guard rail only at an open path's start and end
                 if (startIsCorner) description.leftNosingWidth  = math.min(description.leftNosingWidth,  0);
-                if (endIsCorner)   description.rightNosingWidth = math.min(description.rightNosingWidth, 0);
+                if (endIsJoin)     description.rightNosingWidth = math.min(description.rightNosingWidth, 0);
                 var subMeshCount = description.subMeshCount;
                 if (subMeshCount > 0 &&
                     !GenerateLinearStairsSubMeshes(brushMeshes, subMeshIndex, in description, in surfaceDefinitionBlob, allocator)) // Indirect
@@ -583,6 +585,12 @@ namespace Chisel.Core
         {
             startSide = (!closed && isFirst) ? leftSide  : StairsSideType.None;
             endSide   = (!closed && isLast)  ? rightSide : StairsSideType.None;
+        }
+
+        // A point of the path that is one of its curve's control points, not one inside a curved span
+        static bool IsControlPoint(in UnsafeList<SegmentVertex> points, int index)
+        {
+            return index == 0 || points[index].segmentIndex != points[index - 1].segmentIndex;
         }
 
         // a cut this close to along its part of the path is taken as this

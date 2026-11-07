@@ -81,6 +81,8 @@ namespace Chisel.Editors
         }
 
         static Ray s_InternalMouseRay;
+        public Ray mouseRay => MouseRay;
+
         static Ray MouseRay
         {
             get
@@ -117,6 +119,8 @@ namespace Chisel.Editors
         public Camera camera { get; private set; }
 
         public bool lastHandleHadFocus { get; private set; }
+        // while something is dragged, the handle with focus is the one being dragged
+        public bool lastHandleIsDragged => lastHandleHadFocus && GUIUtility.hotControl != 0;
         public bool disabled { get; private set; }
 
         // TODO: get rid of this
@@ -480,8 +484,45 @@ namespace Chisel.Editors
             public float TotalAngles { get => totalAngles; set => totalAngles = Mathf.Clamp(value, 1, 360.0f); }
             public Color Color { get; set; }
             public float DashSize { get; set; }
+            public Vector3 Outward { get; set; }
 
             const float kDefaultThickness = 1.0f;
+
+            // Seen from inside the shape, the part of the circle behind the points where the lines from the camera just
+            // touch it; in the circle's own space, where it's a circle of radius 1 around the origin
+            bool IsBehind(Matrix4x4 toWorld, out Vector3 toCamera, out float chord)
+            {
+                toCamera = Vector3.zero;
+                chord = 0;
+                var camera = Camera.current;
+                if (camera == null || Outward == Vector3.zero)
+                    return false;
+                var handlesMatrix = Handles.matrix;
+                var camInHandles  = handlesMatrix.inverse.MultiplyPoint(camera.transform.position);
+                var inside = camera.orthographic ? Vector3.Dot(handlesMatrix.inverse.MultiplyVector(camera.transform.forward), Outward) > 0
+                                                 : Vector3.Dot(camInHandles - Center, Outward) < 0;
+                if (!inside)
+                    return false;
+                var toLocal = toWorld.inverse;
+                if (camera.orthographic)
+                {
+                    toCamera = toLocal.MultiplyVector(-camera.transform.forward);
+                    toCamera.y = 0;
+                    if (toCamera.sqrMagnitude < 1e-8f)
+                        return false;
+                    toCamera.Normalize();
+                    return true;
+                }
+                toCamera = toLocal.MultiplyPoint(camera.transform.position);
+                toCamera.y = 0;
+                var distance = toCamera.magnitude;
+                // above the circle itself all of it is in view
+                if (distance <= 1.0f)
+                    return false;
+                toCamera /= distance;
+                chord = 1.0f / distance;
+                return true;
+            }
 
             Matrix4x4 StartAngleTransform
             {
@@ -530,7 +571,30 @@ namespace Chisel.Editors
 
                 var prevMatrix = Handles.matrix;
                 var transform = this.EllipsoidTransform;
+                var hasBehind = IsBehind(prevMatrix * transform, out var toCamera, out var chord);
                 Handles.matrix = prevMatrix * transform;
+
+                if (hasBehind)
+                {
+                    // segment by segment: the part behind fainter, the rest as it always is
+                    var front  = handles.GetStateColor(Color, focus, false);
+                    var faint  = front; faint.a *= 0.3f;
+                    var hidden = handles.GetStateColor(Color, focus, true);
+                    var hiddenFaint = hidden; hiddenFaint.a *= 0.3f;
+                    var segments = count < maxLines ? count - 1 : maxLines;
+                    for (int i = 0; i < segments; i++)
+                    {
+                        var from   = s_CircleVertices[i];
+                        var to     = s_CircleVertices[(i + 1) % maxLines];
+                        var behind = Vector3.Dot((from + to) * 0.5f, toCamera) < chord;
+                        handles.color = behind ? faint : front;
+                        ChiselOutlineRenderer.DrawLine(from, to, LineMode.ZTest, kDefaultThickness, DashSize);
+                        handles.color = behind ? hiddenFaint : hidden;
+                        ChiselOutlineRenderer.DrawLine(from, to, LineMode.NoZTest, kDefaultThickness, DashSize);
+                    }
+                    Handles.matrix = prevMatrix;
+                    return;
+                }
 
                 handles.color = handles.GetStateColor(Color, focus, false);
                 if (count < maxLines)
@@ -1137,7 +1201,7 @@ namespace Chisel.Editors
         public void RenderBox(Bounds bounds) { HandleRendering.RenderBox(matrix, bounds); }
         public void RenderBoxMeasurements(Bounds bounds) { HandleRendering.RenderBoxMeasurements(matrix, bounds); }
         public void RenderDistanceMeasurement(Vector3 from, Vector3 to) { Measurements.DrawLength(from, to); }
-        public void RenderDistanceMeasurement(Vector3 from, Vector3 to, float forceValue) { Measurements.DrawLength(from, to, forceValue); }
+        public void RenderDistanceMeasurement(Vector3 from, Vector3 to, float forceValue, string name = null) { Measurements.DrawLength(from, to, forceValue, name); }
         public void RenderCylinder(Bounds bounds, int segments) { HandleRendering.RenderCylinder(matrix, bounds, segments); }
         public void RenderShape(Curve2D shape, float height) { HandleRendering.RenderShape(matrix, shape, height); }
 
@@ -1312,6 +1376,25 @@ namespace Chisel.Editors
             return true;
         }
 
+        readonly static int kAngleRingHandleHash = "DoAngleRingHandle".GetHashCode();
+        public bool DoAngleRingHandle(ref float angle, Vector3 center, Vector3 axis, Vector3 zeroDirection, float radius, string undoMessage = null, string name = null)
+        {
+            EditorGUI.BeginChangeCheck();
+            var id = GUIUtility.GetControlID(kAngleRingHandleHash, FocusType.Passive);
+            this.lastHandleHadFocus = focusControl == id;
+            var prevColor = color;
+            color = GetStateColor(color, lastHandleHadFocus, backfaced);
+            var newAngle = AngleRingHandle.DoHandle(id, angle, center, axis, zeroDirection, radius, name);
+            color = prevColor;
+            if (!EditorGUI.EndChangeCheck() || newAngle == angle)
+                return false;
+
+            RecordUndo(undoMessage);
+            angle = newAngle;
+            this.modified = true;
+            return true;
+        }
+
         public bool DoBoxMeasurements(ref Bounds bounds, string undoMessage = null)
         {
             bool changed;
@@ -1348,9 +1431,9 @@ namespace Chisel.Editors
             return true;
         }
 
-        public bool DoDistanceMeasurement(ref float distance, Vector3 from, Vector3 to, string undoMessage = null, Vector3 offsetDirection = default)
+        public bool DoDistanceMeasurement(ref float distance, Vector3 from, Vector3 to, string undoMessage = null, Vector3 offsetDirection = default, string name = null)
         {
-            if (!Measurements.DoLength(from, to, ref distance, offsetDirection))
+            if (!Measurements.DoLength(from, to, ref distance, offsetDirection, name))
                 return false;
             RecordUndo(undoMessage ?? "Typed a length");
             GUI.changed = true;
@@ -1405,10 +1488,18 @@ namespace Chisel.Editors
             return false;
         }
 
-        public bool DoEdgeHandle1D(out float offset, Axis axis, Vector3 from, Vector3 to, float snappingStep = 0, float handleSize = 0, string undoMessage = null)
+        public bool DoEdgeHandle1D(out float offset, Axis axis, Vector3 from, Vector3 to, float snappingStep = 0, float handleSize = 0, string undoMessage = null, float thickness = 3.0f)
         {
             EditorGUI.BeginChangeCheck();
-            offset = SceneHandles.Edge1DHandle(axis, from, to, snappingStep, handleSize);
+            var id = GUIUtility.GetControlID(kEdgeHandleHash, FocusType.Keyboard);
+            this.lastHandleHadFocus = focusControl == id;
+            // no point on it: the line itself lights up while it's hovered or dragged
+            var prevColor = color;
+            color = GetStateColor(color, lastHandleHadFocus, backfaced);
+            var position  = (from + to) * 0.5f;
+            var direction = (Vector3)Matrix4x4.identity.GetColumn((int)axis);
+            offset = SceneHandles.Edge1DHandleOffset(id, axis, from, to, position, direction, snappingStep, handleSize, capFunction: null, thickness)[(int)axis] + position[(int)axis];
+            color = prevColor;
             if (!EditorGUI.EndChangeCheck())
                 return false;
 
@@ -1420,10 +1511,13 @@ namespace Chisel.Editors
         public bool DoEdgeHandle1DOffset(out float offset, Axis axis, Vector3 from, Vector3 to, float snappingStep = 0, float handleSize = 0, bool renderLine = true, string undoMessage = null)
         {
             EditorGUI.BeginChangeCheck();
-            if (renderLine)
-                offset = SceneHandles.Edge1DHandleOffset(axis, from, to, snappingStep, handleSize);
-            else
-                offset = SceneHandles.Edge1DHandleOffset(axis, from, to, snappingStep, handleSize, capFunction: null);
+            var id = GUIUtility.GetControlID(kEdgeHandleHash, FocusType.Keyboard);
+            this.lastHandleHadFocus = focusControl == id;
+            // no point on it: the line itself lights up while it's hovered or dragged
+            var prevColor = color;
+            color = GetStateColor(color, lastHandleHadFocus, backfaced);
+            offset = SceneHandles.Edge1DHandleOffset(id, axis, from, to, snappingStep, handleSize, capFunction: null);
+            color = prevColor;
             if (!EditorGUI.EndChangeCheck())
                 return false;
 
@@ -1432,13 +1526,17 @@ namespace Chisel.Editors
             return true;
         }
 
-        public bool DoEdgeHandle1DOffset(out Vector3 offset, Axis axis, Vector3 from, Vector3 to, Vector3 direction, float snappingStep = 0, float handleSize = 0, bool renderLine = true, string undoMessage = null)
+        readonly static int kEdgeHandleHash = "DoEdgeHandle1DOffset".GetHashCode();
+        public bool DoEdgeHandle1DOffset(out Vector3 offset, Axis axis, Vector3 from, Vector3 to, Vector3 direction, float snappingStep = 0, float handleSize = 0, bool renderLine = true, string undoMessage = null, float thickness = 3.0f)
         {
             EditorGUI.BeginChangeCheck();
-            if (renderLine)
-                offset = SceneHandles.Edge1DHandleOffset(axis, from, to, direction, snappingStep, handleSize);
-            else
-                offset = SceneHandles.Edge1DHandleOffset(axis, from, to, direction, snappingStep, handleSize, capFunction: null);
+            var id = GUIUtility.GetControlID(kEdgeHandleHash, FocusType.Keyboard);
+            this.lastHandleHadFocus = focusControl == id;
+            // no point on it: the line itself lights up while it's hovered or dragged
+            var prevColor = color;
+            color = GetStateColor(color, lastHandleHadFocus, backfaced);
+            offset = SceneHandles.Edge1DHandleOffset(id, axis, from, to, (from + to) * 0.5f, direction, snappingStep, handleSize, capFunction: null, thickness);
+            color = prevColor;
             if (!EditorGUI.EndChangeCheck())
                 return false;
 

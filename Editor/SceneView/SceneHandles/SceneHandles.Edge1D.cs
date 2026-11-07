@@ -100,7 +100,7 @@ namespace Chisel.Editors
             return Edge1DHandleOffset(id, axis, from, to, position, direction, snappingStep, handleSize, capFunction);
         }
 
-        public static Vector3 Edge1DHandleOffset(int id, Axis axis, Vector3 from, Vector3 to, Vector3 position, Vector3 direction, float snappingStep, float handleSize, CapFunction capFunction)
+        public static Vector3 Edge1DHandleOffset(int id, Axis axis, Vector3 from, Vector3 to, Vector3 position, Vector3 direction, float snappingStep, float handleSize, CapFunction capFunction, float thickness = 3.0f)
         {
             if (snappingStep == 0)
                 snappingStep = Snapping.MoveSnappingSteps[(int)axis];
@@ -123,7 +123,7 @@ namespace Chisel.Editors
                     SetCursor(id, SceneHandleUtility.GetCursorForDirection(position, direction));
                     s_LinePoints[0] = from;
                     s_LinePoints[1] = to;
-                    SceneHandles.DrawAAPolyLine(3.0f, s_LinePoints);
+                    SceneHandles.DrawAAPolyLine(thickness, s_LinePoints);
                     break;
                 }
             }

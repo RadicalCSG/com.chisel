@@ -453,16 +453,23 @@ namespace Chisel.Core
                 if (apothem > 0)
                     inner = ChiselSpiralStairs.RadiusOnSide(angle, angle, apothem, settings.innerSegments);
             }
-            handles.RenderDistanceMeasurement(center + outward * inner, center + outward * outer, outer - inner);
+            handles.RenderDistanceMeasurement(center + outward * inner, center + outward * outer, outer - inner, "Step Width");
         }
 
         // A cylinder's outline: the sides facing the camera drawn clearly over a dark edge, the ones facing away fainter,
         // and every line dashed where something in front of it hides it, so its shape reads
-        // returns a corner on its horizon
-        static int DrawCylinder(IChiselHandles handles, Vector3[] vertices, int sides, Vector3 center, bool inward, Color color, Color outlineColor, bool uprights = true)
+        // returns the corners on its horizon, the last one found second
+        static int2 DrawCylinder(IChiselHandles handles, Vector3[] vertices, int sides, Vector3 center, bool inward, Color color, Color outlineColor, bool uprights = true)
         {
-            var horizon = 0;
+            var horizon = new int2(-1, 0);
             var faint  = color; faint.a *= 0.6f;
+            // a ring seen from inside the cylinder: its part behind the horizon fainter still
+            var behind = color; behind.a *= 0.2f;
+            var cameraY = Camera.current != null ? handles.inverseMatrix.MultiplyPoint(Camera.current.transform.position).y : 0;
+            var topInside    = Camera.current != null && cameraY < vertices[0].y;
+            var bottomInside = Camera.current != null && cameraY > vertices[sides].y;
+            if (vertices[0].y < vertices[sides].y)
+                (topInside, bottomInside) = (cameraY > vertices[0].y, cameraY < vertices[sides].y);
             var hidden = Color.Lerp(color, Color.black, 0.45f); hidden.a = color.a;
             bool Facing(int i, int j)
             {
@@ -494,7 +501,10 @@ namespace Chisel.Core
                 // without all uprights only those on its horizon: between a side facing the camera and one facing away
                 var onHorizon   = sideFacing != Facing(k, i);
                 if (onHorizon)
-                    horizon = i;
+                {
+                    if (horizon.x < 0) horizon.x = i;
+                    horizon.y = i;
+                }
                 var drawUpright = onHorizon;
                 // the others subtle
                 if (uprights && !onHorizon)
@@ -509,12 +519,25 @@ namespace Chisel.Core
 
                 if (drawUpright)
                     Line(t0, b0, uprightFacing ? color : faint, 1.0f);
-                Line(t0, t1, sideFacing ? color : faint, 1.0f);
-                Line(b0, b1, sideFacing ? color : faint, 1.0f);
-                if (inward)
-                    Line((t0 + b0) * 0.5f, (t1 + b1) * 0.5f, sideFacing ? color : faint, sideFacing ? 2.0f : 1.0f);
+                Line(t0, t1, sideFacing ? color : (topInside ? behind : faint), 1.0f);
+                Line(b0, b1, sideFacing ? color : (bottomInside ? behind : faint), 1.0f);
             }
+            if (horizon.x < 0) horizon.x = horizon.y;
             return horizon;
+        }
+
+        void HorizonHandles(IChiselHandles handles, Vector3[] vertices, int sides, int2 horizon, ref float diameter, string radiusName)
+        {
+            var center = new Vector3(settings.origin.x, 0, settings.origin.z);
+            for (int h = 0; h < 2; h++)
+            {
+                if (h == 1 && horizon.y == horizon.x)
+                    break;
+                var index   = h == 0 ? horizon.x : horizon.y;
+                var top     = vertices[index];
+                var bottom  = vertices[index + sides];
+                diameter = math.max(0, diameter + handles.DoHorizonLineHandle(bottom, top, center, radiusName));
+            }
         }
 
         // A guard rail's top and bottom, as it is built: from the line through the treads' fronts, its bottom never below the floor
@@ -662,61 +685,89 @@ namespace Chisel.Core
 
             {
                 var currRotation = startAngle + rotation;
-                handles.DoRotatableLineHandle(ref startAngle  , lowPoint, outerDiameter * 0.5f, normal, lowDirection, Vector3.Cross(normal, lowDirection), lineStart: innerDiameter * 0.5f);
+                // where the lowest step starts: a knob on a ring around the bottom, just outside the stairs
+                var lowCenter = new Vector3(originalOrigin.x, lowPoint.y, originalOrigin.z);
+                handles.DoAngleRingHandle(ref startAngle, lowCenter, normal, lowDirection, outerDiameter * 0.5f, "Change Start Angle", name: "Start Angle");
                 var bottomAngleFocus = handles.lastHandleHadFocus;
-                if (bottomAngleFocus)
-                    StepMeasurements(handles, startAngle, atTheTop: false);
-                handles.DoRotatableLineHandle(ref currRotation, topPoint, outerDiameter * 0.5f, normal, topDirection, Vector3.Cross(normal, topDirection), lineStart: innerDiameter * 0.5f);
-                if (handles.lastHandleHadFocus)
-                    StepMeasurements(handles, currRotation, atTheTop: true);
+                var angleDragged     = handles.lastHandleIsDragged;
+                // where the top step is: a knob on a ring around the top, the angle counted from the lowest step, so it
+                // shows how far the stairs turn; moving the lowest step leaves the top one where it is
+                var topCenter      = new Vector3(originalOrigin.x, topPoint.y, originalOrigin.z);
+                var startDirection = Quaternion.AngleAxis(startAngle, normal) * topDirection;
+                var turn           = currRotation - startAngle;
+                handles.DoAngleRingHandle(ref turn, topCenter, normal, startDirection, outerDiameter * 0.5f, "Change Turn Angle", name: "Turn Angle");
+                // while an angle is dragged, only it is measured
+                angleDragged |= handles.lastHandleIsDragged;
                 if (handles.modified)
-                    rotation = currRotation - startAngle;
+                    rotation = turn;
 
 
                 // TODO: properly show things as backfaced
                 // TODO: temporarily show inner or outer diameter as disabled when resizing one or the other
                 // TODO: FIXME: why aren't there any arrows?
+                // dashed from the height's handle down to the object's position
+                {
+                    var prevColor = handles.color;
+                    var dashed = Color.Lerp(prevColor, Color.black, 0.45f); dashed.a = prevColor.a;
+                    handles.color = dashed;
+                    handles.DrawLine(topPoint, Vector3.zero, lineMode: LineMode.NoZTest, thickness: 1.0f, dashSize: 2.0f);
+                    handles.color = prevColor;
+                }
                 handles.DoDirectionHandle(ref topPoint, normal, snappingStep: originalStepHeight);
                 topPoint.y		= math.max(lowPoint.y + originalStepHeight, topPoint.y);
 
-                // at the bottom of the lowest step's front: how high the stairs start, the top staying where it is
+                // the bottom of the lowest step's front, dragged up or down: how high the stairs start, the top staying where it is
                 var firstAngle = math.radians(startAngle);
+                var front      = new Vector3(math.sin(firstAngle), 0, math.cos(firstAngle));
                 var midRadius  = (outerDiameter + innerDiameter) * 0.25f;
-                var basePoint  = new Vector3(originalOrigin.x + math.sin(firstAngle) * midRadius, lowPoint.y, originalOrigin.z + math.cos(firstAngle) * midRadius);
-                if (handles.DoDirectionHandle(ref basePoint, normal, snappingStep: originalStepHeight, undoMessage: "Change Base Height"))
-                    lowPoint.y = math.clamp(basePoint.y, math.min(0, originalLowPoint.y), topPoint.y - originalStepHeight);
+                var basePoint  = lowCenter + front * midRadius;
+                if (handles.DoEdgeHandle1DOffset(out Vector3 raised, Axis.Y, lowCenter + front * (innerDiameter * 0.5f), lowCenter + front * (outerDiameter * 0.5f), normal,
+                                                 snappingStep: originalStepHeight, undoMessage: "Change Base Height"))
+                    lowPoint.y = math.clamp(originalLowPoint.y + raised.y, math.min(0, originalLowPoint.y), topPoint.y - originalStepHeight);
+                if (handles.lastHandleHadFocus)
+                    StepMeasurements(handles, startAngle, atTheTop: false);
 
                 // how high that is above the object's position, which can be typed in
-                if (originalLowPoint.y > 0 && !bottomAngleFocus)
+                if (originalLowPoint.y > 0 && !bottomAngleFocus && !angleDragged)
                 {
                     var typedBase = originalLowPoint.y;
                     var onGround  = new Vector3(basePoint.x, 0, basePoint.z);
                     var atBase    = new Vector3(basePoint.x, originalLowPoint.y, basePoint.z);
-                    if (handles.DoDistanceMeasurement(ref typedBase, onGround, atBase, "Change Base Height"))
+                    if (handles.DoDistanceMeasurement(ref typedBase, onGround, atBase, "Change Base Height", name: "Base Height"))
                         lowPoint.y = math.clamp(typedBase, 0, topPoint.y - originalStepHeight);
                 }
 
                 float minOuterDiameter = innerDiameter + ChiselSpiralStairs.kMinStairsDepth;
                 // circles to drag directly, top and bottom of each cylinder, as a cylinder has
-                if (handles.generatorState is not IChiselEllipsoidHandle[] circles || circles.Length != 5)
+                if (handles.generatorState is not IChiselEllipsoidHandle[] circles || circles.Length != 7)
                 {
-                    circles = new IChiselEllipsoidHandle[5];
+                    circles = new IChiselEllipsoidHandle[7];
                     for (int c = 0; c < circles.Length; c++)
                         circles[c] = handles.CreateEllipsoidHandle(Vector3.zero, Vector3.up, 0, 0);
                     handles.generatorState = circles;
                 }
                 var groundPoint = normal * math.min(0, originalOrigin.y);
-                handles.DoDraggableCircle(ref outerDiameter, topPoint, circles[0]);
-                handles.DoDraggableCircle(ref outerDiameter, groundPoint, circles[1]);
-                handles.DoDiameterMeasurement(ref outerDiameter, topPoint, groundPoint);
+                // a circle between the ends is always seen from inside: its outside is away from the camera
+                var cameraY = Camera.current != null ? handles.inverseMatrix.MultiplyPoint(Camera.current.transform.position).y : 0;
+                Vector3 AwayFromCamera(Vector3 at) => cameraY > at.y ? Vector3.down : Vector3.up;
+                handles.DoDraggableCircle(ref outerDiameter, topPoint, circles[0], "Outer Radius", outward: Vector3.up);
+                handles.DoDraggableCircle(ref outerDiameter, groundPoint, circles[1], "Outer Radius", outward: Vector3.down);
+                // and at the height of the lowest step's angle line, when the stairs start above the ground
+                var atBaseLine = new Vector3(groundPoint.x, lowPoint.y, groundPoint.z);
+                var hasBaseLine = lowPoint.y > groundPoint.y;
+                if (hasBaseLine)
+                    handles.DoDraggableCircle(ref outerDiameter, atBaseLine, circles[5], "Outer Radius", outward: AwayFromCamera(atBaseLine));
+                if (!angleDragged)
+                    handles.DoDiameterMeasurement(ref outerDiameter, topPoint, groundPoint, name: "Outer Diameter");
                 outerDiameter = math.max(minOuterDiameter, outerDiameter);
 
                 float maxInnerDiameter = outerDiameter - ChiselSpiralStairs.kMinStairsDepth;
-                handles.DoDraggableCircle(ref innerDiameter, topPoint, circles[2]);
-                handles.DoDraggableCircle(ref innerDiameter, groundPoint, circles[3]);
-                // and one halfway up the inner cylinder, on its middle line
-                handles.DoDraggableCircle(ref innerDiameter, (topPoint + groundPoint) * 0.5f, circles[4]);
-                handles.DoDiameterMeasurement(ref innerDiameter, topPoint, groundPoint, furthest: true);
+                handles.DoDraggableCircle(ref innerDiameter, topPoint, circles[2], "Inner Radius", outward: Vector3.up);
+                handles.DoDraggableCircle(ref innerDiameter, groundPoint, circles[3], "Inner Radius", outward: Vector3.down);
+                if (hasBaseLine)
+                    handles.DoDraggableCircle(ref innerDiameter, atBaseLine, circles[6], "Inner Radius", outward: AwayFromCamera(atBaseLine));
+                if (!angleDragged)
+                    handles.DoDiameterMeasurement(ref innerDiameter, topPoint, groundPoint, furthest: true, name: "Inner Diameter");
                 innerDiameter = math.min(maxInnerDiameter, innerDiameter);
 
 
@@ -739,19 +790,26 @@ namespace Chisel.Core
                 var horizon = DrawCylinder(handles, s_OuterVertices, settings.outerSegments, settings.origin, inward: false, color, outlineColor, uprights: false);
 
                 // the total height, base included, just outside a line on the horizon; can be typed in
-                if (originalHeight > 0)
+                if (originalHeight > 0 && !angleDragged)
                 {
                     var ground     = cylinderLow.height;
                     var totalTop   = originalOrigin.y + originalHeight;
-                    var corner     = s_OuterVertices[horizon];
+                    var corner     = s_OuterVertices[horizon.y];
                     var outside    = new Vector3(corner.x, 0, corner.z);
                     var typedTotal = totalTop - ground;
-                    if (handles.DoDistanceMeasurement(ref typedTotal, outside + normal * ground, outside + normal * totalTop, "Change Height", offsetDirection: outside.normalized))
+                    if (handles.DoDistanceMeasurement(ref typedTotal, outside + normal * ground, outside + normal * totalTop, "Change Height", offsetDirection: outside.normalized, name: "Height"))
                         topPoint.y = math.max(lowPoint.y + originalStepHeight, ground + typedTotal);
                     handles.color = originalColor;
                 }
                 DrawSpirals(handles, color);
-                DrawCylinder(handles, s_InnerVertices, settings.innerSegments, settings.origin, inward: true,  color, outlineColor, uprights: settings.HaveColumn);
+                var innerHorizon = DrawCylinder(handles, s_InnerVertices, settings.innerSegments, settings.origin, inward: true,  color, outlineColor, uprights: settings.HaveColumn);
+                handles.color = originalColor;
+
+                // the lines on each cylinder's horizon are dragged out or in to resize it; while one is, its radius
+                HorizonHandles(handles, s_OuterVertices, settings.outerSegments, horizon, ref outerDiameter, "Outer Radius");
+                outerDiameter = math.max(innerDiameter + ChiselSpiralStairs.kMinStairsDepth, outerDiameter);
+                HorizonHandles(handles, s_InnerVertices, settings.innerSegments, innerHorizon, ref innerDiameter, "Inner Radius");
+                innerDiameter = math.clamp(innerDiameter, 0, outerDiameter - ChiselSpiralStairs.kMinStairsDepth);
                 handles.color = originalColor;
             }
             if (handles.modified)

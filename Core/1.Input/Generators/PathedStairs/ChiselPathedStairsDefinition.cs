@@ -13,15 +13,15 @@ namespace Chisel.Core
     {
         readonly static ChiselPathedStairs kDefaultSettings = new()
 		{
-            curveSegments   = 8,
-            closed          = true,
+            closed         = true,
             stairs          = ChiselLinearStairs.DefaultSettings
 		};
 		public static ref readonly ChiselPathedStairs DefaultSettings => ref kDefaultSettings;
 
 		[NonSerialized] public bool closed;
 
-        public int curveSegments;
+        // a curve is cut into parts that each turn at most this much
+        public const float kMaxTurnPerPart = math.PI / 12;
 
         // the side wall where two parts of the path meet, standing on the plane they share; the stairs' own left and
         // right side walls are at an open path's start and end
@@ -49,7 +49,7 @@ namespace Chisel.Core
             ref var curve = ref curveBlob.Value;
             var bounds = stairs.bounds;
             if (shapeVertices.IsCreated) shapeVertices.Dispose();
-			shapeVertices = curve.GetPathVertices(curveSegments, Allocator.Persistent);
+			shapeVertices = curve.GetPathVerticesByTurn(kMaxTurnPerPart, Allocator.Persistent);
             if (shapeVertices.Length < 2)
                 return 0;
 
@@ -117,11 +117,8 @@ namespace Chisel.Core
         #endregion
 
         #region Validation
-        public const int kMinCurveSegments = 2;
-
         public bool Validate()
         {
-            curveSegments = math.max(curveSegments, kMinCurveSegments);
             return stairs.Validate();
         }
 
@@ -171,6 +168,9 @@ namespace Chisel.Core
             return base.GetBranchGenerator();
         }
 
+        // the lines dragged to change the base, the steps and the top: thicker than the others
+        const float kThickLine = 5.0f;
+
         public override void OnEdit(IChiselHandles handles)
         {
             handles.DoMoveGizmo(PathCenter);
@@ -189,14 +189,28 @@ namespace Chisel.Core
             var baseHeight   = stairs.plateauHeight;
             var run          = stepCount * stairs.stepDepth;
 
-            var points = shape.controlPoints;
+            // the path as the stairs are built along it, curves cut into their parts
+            Vector2[] points;
+            bool[] isControlPoint;
+            using (var curveBlob = ChiselCurve2DBlob.Convert(shape, Allocator.Temp))
+            {
+                var pathVertices = curveBlob.Value.GetPathVerticesByTurn(ChiselPathedStairs.kMaxTurnPerPart, Allocator.Temp);
+                points = new Vector2[pathVertices.Length];
+                isControlPoint = new bool[pathVertices.Length];
+                for (int i = 0; i < pathVertices.Length; i++)
+                {
+                    points[i] = pathVertices[i].position;
+                    isControlPoint[i] = i == 0 || pathVertices[i].segmentIndex != pathVertices[i - 1].segmentIndex;
+                }
+                pathVertices.Dispose();
+            }
             var count  = points.Length;
             var closed = shape.closed;
             var parts  = closed ? count : count - 1;
             var up     = Vector3.up;
 
             // the stairs stand at the object's position; moving that is the transform's
-            Vector3 Point(int i) { var p = points[(i + count) % count].position; return new Vector3(p.x, 0, p.y); }
+            Vector3 Point(int i) { var p = points[(i + count) % count]; return new Vector3(p.x, 0, p.y); }
             Vector3 Inward(int part) { var along = (Point(part + 1) - Point(part)).normalized; return new Vector3(-along.z, 0, along.x); }
             // a point on the cutting plane at a corner (square to the path at an open end), at a distance from the path
             Vector3 Offset(int i, float distance)
@@ -215,6 +229,7 @@ namespace Chisel.Core
             // whole where nothing is in front, dashed where something is
             var color  = handles.color;
             var hidden = Color.Lerp(color, Color.black, 0.45f); hidden.a = color.a;
+            var subtle = color; subtle.a *= 0.35f;
             void Line(Vector3 from, Vector3 to)
             {
                 handles.color = hidden;
@@ -231,6 +246,19 @@ namespace Chisel.Core
                 var front = Point(i) + up * baseHeight;
                 var slope = Offset(i, run) + up * height;
                 var top   = Offset(i, depth) + up * height;
+                // inside a curve: faint, and only where nothing is in front
+                if (!isControlPoint[i])
+                {
+                    handles.color = subtle;
+                    if (baseHeight > 0)
+                        handles.DrawLine(Point(i), front, lineMode: LineMode.ZTest, thickness: 1.0f);
+                    handles.DrawLine(front, slope, lineMode: LineMode.ZTest, thickness: 1.0f);
+                    handles.DrawLine(slope, top, lineMode: LineMode.ZTest, thickness: 1.0f);
+                    handles.DrawLine(top, Offset(i, depth), lineMode: LineMode.ZTest, thickness: 1.0f);
+                    handles.DrawLine(Offset(i, depth), Point(i), lineMode: LineMode.ZTest, thickness: 1.0f);
+                    handles.color = color;
+                    continue;
+                }
                 if (baseHeight > 0)
                     Line(Point(i), front);
                 Line(slope, top);
@@ -240,7 +268,7 @@ namespace Chisel.Core
                 var across = Vector3.Cross(slope - front, Vector3.Cross(up, slope - front)).normalized;
                 if (Vector3.Dot(across, up) < 0)
                     across = -across;
-                if (handles.DoEdgeHandle1DOffset(out Vector3 shifted, Axis.Y, front, slope, across, undoMessage: "Move Steps"))
+                if (handles.DoEdgeHandle1DOffset(out Vector3 shifted, Axis.Y, front, slope, across, undoMessage: "Move Steps", thickness: kThickLine))
                 {
                     var rise = Vector3.Dot(shifted, across) / math.max(0.01f, Vector3.Dot(up, across));
                     var steps = math.round(rise / stepHeight);
@@ -248,28 +276,55 @@ namespace Chisel.Core
                 }
             }
 
+            bool baseFocused = false, topFocused = false;
             for (int i = 0; i < parts; i++)
             {
                 var j = i + 1;
                 if ((Point(j) - Point(i)).sqrMagnitude <= 0)
                     continue;
                 var inward = Inward(i);
+                // inside a curve, lines without a handle point on each short part
+                var withPoint = isControlPoint[i] && isControlPoint[j % count];
+                // inside a curve, the top at the back between its profiles
+                if (!withPoint)
+                {
+                    handles.color = subtle;
+                    handles.DrawLine(Offset(i, depth) + up * height, Offset(j, depth) + up * height, lineMode: LineMode.ZTest, thickness: 1.0f);
+                    handles.color = color;
+                }
 
                 // the base alone: the steps share what's left of the height, so they change height, not number
-                if (handles.DoEdgeHandle1DOffset(out Vector3 moved, Axis.Y, Point(i) + up * baseHeight, Point(j) + up * baseHeight, up, undoMessage: "Change Base Height"))
+                if (handles.DoEdgeHandle1DOffset(out Vector3 moved, Axis.Y, Point(i) + up * baseHeight, Point(j) + up * baseHeight, up, renderLine: withPoint, undoMessage: "Change Base Height", thickness: kThickLine))
                     SetBaseHeight(baseHeight + moved.y);
-                if (handles.DoEdgeHandle1DOffset(out moved, Axis.Z, Offset(i, depth), Offset(j, depth), inward, snappingStep: stairs.stepDepth, undoMessage: "Change Depth"))
+                baseFocused |= handles.lastHandleHadFocus;
+                if (handles.DoEdgeHandle1DOffset(out moved, Axis.Z, Offset(i, depth), Offset(j, depth), inward, snappingStep: stairs.stepDepth, renderLine: withPoint, undoMessage: "Change Depth"))
                     SetSize(ref stairs.bounds, 2, math.max(stairs.stepDepth, depth + Vector3.Dot(moved, inward)));
-                if (handles.DoEdgeHandle1DOffset(out moved, Axis.Z, Offset(i, run) + up * height, Offset(j, run) + up * height, inward, undoMessage: "Change Step Depth"))
+                if (handles.DoEdgeHandle1DOffset(out moved, Axis.Z, Offset(i, run) + up * height, Offset(j, run) + up * height, inward, renderLine: withPoint, undoMessage: "Change Step Depth", thickness: kThickLine))
                     stairs.stepDepth = math.clamp(run + Vector3.Dot(moved, inward), ChiselLinearStairs.kMinStepDepth * stepCount, depth) / stepCount;
+                topFocused |= handles.lastHandleHadFocus;
+            }
+
+            // the line being hovered or dragged lit up all along the path
+            if (baseFocused || topFocused)
+            {
+                handles.color = handles.GetStateColor(color, hasFocus: true, isBackfaced: false);
+                for (int i = 0; i < parts; i++)
+                {
+                    var j = i + 1;
+                    if (baseFocused)
+                        handles.DrawLine(Point(i) + up * baseHeight, Point(j) + up * baseHeight, lineMode: LineMode.NoZTest, thickness: 3.0f);
+                    else
+                        handles.DrawLine(Offset(i, run) + up * height, Offset(j, run) + up * height, lineMode: LineMode.NoZTest, thickness: 3.0f);
+                }
             }
             handles.color = color;
 
             // the height: a point at the top in the middle of the path, dashed down to the floor, as a cylinder's
+            // from the control points, so it doesn't move when a curve is cut into more parts
             var center = Vector3.zero;
-            for (int i = 0; i < count; i++)
-                center += Point(i);
-            center /= count;
+            foreach (var controlPoint in shape.controlPoints)
+                center += new Vector3(controlPoint.position.x, 0, controlPoint.position.y);
+            center /= shape.controlPoints.Length;
             if (handles.generatorState is not IChiselNormalHandle topHandle)
                 handles.generatorState = topHandle = handles.CreateNormalHandle(Vector3.zero, Vector3.up);
             topHandle.Origin = center + up * height;
@@ -281,21 +336,23 @@ namespace Chisel.Core
             if (handles.DoSlider1DHandle(ref topPoint, up, topHandle, snappingStep: stepHeight, undoMessage: "Change Height"))
                 SetSize(ref stairs.bounds, 1, math.max(stepHeight, topPoint.y));
 
-            // how high, how deep and how high the base is, where the first part of the path starts
+            // how high, how deep and how high the base is, where the first part of the path starts; with the base or the
+            // top's line hovered, only what it changes
+            var showAll = !baseFocused && !topFocused;
             var typed = height;
-            if (handles.DoDistanceMeasurement(ref typed, center, center + up * height))
+            if (showAll && handles.DoDistanceMeasurement(ref typed, center, center + up * height, name: "Height"))
                 SetSize(ref stairs.bounds, 1, math.max(stepHeight, typed));
             if (count > 1)
             {
                 typed = depth;
-                if (handles.DoDistanceMeasurement(ref typed, Point(0), Offset(0, depth)))
+                if (showAll && handles.DoDistanceMeasurement(ref typed, Point(0), Offset(0, depth), name: "Depth"))
                     SetSize(ref stairs.bounds, 2, math.max(stairs.stepDepth, typed));
                 // the flat part at the top, from the back to where the steps start
                 typed = depth - run;
-                if (typed > 0 && handles.DoDistanceMeasurement(ref typed, Offset(0, run) + up * height, Offset(0, depth) + up * height))
+                if (!baseFocused && typed > 0 && handles.DoDistanceMeasurement(ref typed, Offset(0, run) + up * height, Offset(0, depth) + up * height, name: "Top Depth"))
                     stairs.SetTopDepth(typed);
                 typed = baseHeight;
-                if (baseHeight > 0 && handles.DoDistanceMeasurement(ref typed, Point(0), Point(0) + up * baseHeight))
+                if (!topFocused && baseHeight > 0 && handles.DoDistanceMeasurement(ref typed, Point(0), Point(0) + up * baseHeight, name: "Base Height"))
                     SetBaseHeight(typed);
             }
         }
