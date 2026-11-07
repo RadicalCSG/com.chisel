@@ -122,20 +122,7 @@ namespace Chisel.Core
         public bool Validate()
         {
             curveSegments = math.max(curveSegments, kMinCurveSegments);
-            // without a base the height is a whole number of steps: less than a step left over comes off the top, rather
-            // than becoming a base that wasn't asked for; steps that don't fit in the depth still become a base
-            var noBase = stairs.plateauHeight <= 0;
-            if (!stairs.Validate())
-                return false;
-            if (noBase && stairs.plateauHeight > 0 && stairs.stepHeight > 0)
-            {
-                var wholeSteps = math.floor(stairs.plateauHeight / stairs.stepHeight + 0.0001f) * stairs.stepHeight;
-                var leftOver   = math.max(0, stairs.plateauHeight - wholeSteps);
-                if (stairs.bounds.Max.y >= stairs.bounds.Min.y) stairs.bounds.Max.y -= leftOver;
-                else                                            stairs.bounds.Min.y -= leftOver;
-                stairs.plateauHeight = wholeSteps;
-            }
-            return true;
+            return stairs.Validate();
         }
 
         [BurstDiscard]
@@ -186,6 +173,7 @@ namespace Chisel.Core
 
         public override void OnEdit(IChiselHandles handles)
         {
+            handles.DoMoveGizmo(PathCenter);
             handles.DoShapeHandle(ref shape);
             if (shape == null || shape.controlPoints == null || shape.controlPoints.Length < 2)
                 return;
@@ -269,11 +257,7 @@ namespace Chisel.Core
 
                 // the base alone: the steps share what's left of the height, so they change height, not number
                 if (handles.DoEdgeHandle1DOffset(out Vector3 moved, Axis.Y, Point(i) + up * baseHeight, Point(j) + up * baseHeight, up, undoMessage: "Change Base Height"))
-                {
-                    var newBase = math.clamp(baseHeight + moved.y, 0, height - ChiselLinearStairs.kMinStepHeight * stepCount);
-                    stairs.plateauHeight = newBase;
-                    stairs.stepHeight    = (height - newBase) / stepCount;
-                }
+                    SetBaseHeight(baseHeight + moved.y);
                 if (handles.DoEdgeHandle1DOffset(out moved, Axis.Z, Offset(i, depth), Offset(j, depth), inward, snappingStep: stairs.stepDepth, undoMessage: "Change Depth"))
                     SetSize(ref stairs.bounds, 2, math.max(stairs.stepDepth, depth + Vector3.Dot(moved, inward)));
                 if (handles.DoEdgeHandle1DOffset(out moved, Axis.Z, Offset(i, run) + up * height, Offset(j, run) + up * height, inward, undoMessage: "Change Step Depth"))
@@ -298,13 +282,33 @@ namespace Chisel.Core
                 SetSize(ref stairs.bounds, 1, math.max(stepHeight, topPoint.y));
 
             // how high, how deep and how high the base is, where the first part of the path starts
-            handles.RenderDistanceMeasurement(center, center + up * height, height);
+            var typed = height;
+            if (handles.DoDistanceMeasurement(ref typed, center, center + up * height))
+                SetSize(ref stairs.bounds, 1, math.max(stepHeight, typed));
             if (count > 1)
             {
-                handles.RenderDistanceMeasurement(Point(0), Offset(0, depth), depth);
-                if (baseHeight > 0)
-                    handles.RenderDistanceMeasurement(Point(0), Point(0) + up * baseHeight, baseHeight);
+                typed = depth;
+                if (handles.DoDistanceMeasurement(ref typed, Point(0), Offset(0, depth)))
+                    SetSize(ref stairs.bounds, 2, math.max(stairs.stepDepth, typed));
+                // the flat part at the top, from the back to where the steps start
+                typed = depth - run;
+                if (typed > 0 && handles.DoDistanceMeasurement(ref typed, Offset(0, run) + up * height, Offset(0, depth) + up * height))
+                    stairs.SetTopDepth(typed);
+                typed = baseHeight;
+                if (baseHeight > 0 && handles.DoDistanceMeasurement(ref typed, Point(0), Point(0) + up * baseHeight))
+                    SetBaseHeight(typed);
             }
+        }
+
+        // the base alone: the steps share what's left of the height, so they change height, not number
+        public void SetBaseHeight(float baseHeight)
+        {
+            ref var stairs  = ref settings.stairs;
+            var stepCount   = stairs.StepCount;
+            var height      = stairs.AbsHeight;
+            var newBase     = math.clamp(baseHeight, 0, height - ChiselLinearStairs.kMinStepHeight * stepCount);
+            stairs.plateauHeight = newBase;
+            stairs.stepHeight    = (height - newBase) / stepCount;
         }
 
         // the middle of the path on the floor: where the stairs' own position is shown, to move them by

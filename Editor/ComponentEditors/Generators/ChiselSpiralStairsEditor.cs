@@ -16,7 +16,7 @@ namespace Chisel.Editors
 
         protected override bool ShowsContents => false;
 
-        static readonly GUIContent kBottomOffsetContent = new("Bottom Offset", "How far above the object's position the bottom of the stairs is; dragging the bottom handle changes it");
+        static readonly GUIContent kBottomOffsetContent = new("Bottom Offset", "How far above the object's position the bottom of the stairs is");
 
         // each picture with the settings it shows under it, then the rest
         protected override void OnInspector()

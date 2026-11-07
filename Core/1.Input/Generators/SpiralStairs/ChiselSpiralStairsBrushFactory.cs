@@ -46,6 +46,16 @@ namespace Chisel.Core
 
             var stepOuterDiameter		= outerDiameter + ((math.length(pm) - math.length(pn)) * (outerDiameter * 1.25f)); // TODO: figure out why we need the 1.25 magic number to fit the step in the outerDiameter?
             var stepOuterRadius			= stepOuterDiameter * 0.5f;
+            var outerNosingWidth        = nosingWidth;
+            // with a guard rail on the outside the steps' own shapes end inside it, their outer edges halfway in: shapes that
+            // reach through it, even where they're trimmed away, split its outer face along their outlines
+            if (definition.HaveOuterSide)
+            {
+                var railApothem = outerDiameter * 0.5f * math.cos(math.PI / definition.outerSegments);
+                var railMiddle  = railApothem - definition.sideWidth * 0.5f;
+                stepOuterRadius = math.min(railApothem - 0.001f, railMiddle / math.cos(math.abs(anglePerStep) * 0.5f));
+                outerNosingWidth = 0;
+            }
             var stepInnerRadius			= 0.0f;
             // with a wall around an open middle the steps start inside that wall instead of at the middle: steps that
             // reach through it, even where they're cut away, split the wall's face along their outlines. The wall has the
@@ -337,7 +347,7 @@ namespace Chisel.Core
                         var subMeshIndex = treadStart - cylinderSubMeshCount;
 
 
-                        if (!GenerateCylinderSubMesh(outerDiameter, ground, origin.y + height, 0, outerSides, fitToBounds: fitToBounds,
+                        if (!GenerateCylinderSubMesh(definition.StepsOuterDiameter, ground, origin.y + height, 0, outerSides, fitToBounds: fitToBounds,
                                                      in outerCylinderSurfaceDefinitionBlob,
                                                      out var brushMeshBlob,
                                                      allocator))// Indirect
@@ -346,8 +356,9 @@ namespace Chisel.Core
                         var lastAngle = startAngle + (stepCount - 1) * anglePerStep;
                         var lastDir   = new float2(math.sin(lastAngle), math.cos(lastAngle));
                         var center    = new float2(origin.x, origin.z);
-                        brushMeshes[subMeshIndex] = AlignedToFront(Classified(brushMeshBlob, StairsPart.Step, origin, anglePerStep, in surfaceDefinitionBlob),
-                                                                   center + lastDir * InnerRadiusAt(lastAngle, stepInnerRadius, innerSides), center + lastDir * stepOuterRadius);
+                        brushMeshes[subMeshIndex] = LastTopRunsOn(AlignedToFront(Classified(brushMeshBlob, StairsPart.Step, origin, anglePerStep, in surfaceDefinitionBlob),
+                                                                   center + lastDir * InnerRadiusAt(lastAngle, stepInnerRadius, innerSides), center + lastDir * stepOuterRadius),
+                                                                   origin, lastDir, center, anglePerStep, stepHeight, in surfaceDefinitionBlob);
                         //brushContainer.operations[subMeshIndex] = CSGOperationType.Intersecting;
                     }
 
@@ -389,8 +400,8 @@ namespace Chisel.Core
                         var inner1 = InnerRadiusAt(angle, stepInnerRadius, innerSides);
                         i0 = new float2(origin.x + (c0 * inner0), origin.z + (s0 * inner0));
                         i1 = new float2(origin.x + (c1 * inner1), origin.z + (s1 * inner1));
-                        o0 = new float2(origin.x + (c0 * (stepOuterRadius + nosingWidth)), origin.z + (s0 * (stepOuterRadius + nosingWidth)));
-                        o1 = new float2(origin.x + (c1 * (stepOuterRadius + nosingWidth)), origin.z + (s1 * (stepOuterRadius + nosingWidth)));
+                        o0 = new float2(origin.x + (c0 * (stepOuterRadius + outerNosingWidth)), origin.z + (s0 * (stepOuterRadius + outerNosingWidth)));
+                        o1 = new float2(origin.x + (c1 * (stepOuterRadius + outerNosingWidth)), origin.z + (s1 * (stepOuterRadius + outerNosingWidth)));
 
                         var noseSizeDeep = math.normalize(new float2((c0 - c1), (s0 - s1))) * nosingDepth;
                         i0 += noseSizeDeep;
@@ -420,7 +431,8 @@ namespace Chisel.Core
                 if (haveTread)
                 {
                     var subMeshIndex = subMeshCount - cylinderSubMeshCount;
-                    if (!GenerateCylinderSubMesh(outerDiameter + nosingWidth, ground, origin.y + height, 0, outerSides, fitToBounds: fitToBounds,
+                    // the treads stop at a guard rail on the outside, rather than poking through it
+                    if (!GenerateCylinderSubMesh(definition.HaveOuterSide ? definition.StepsOuterDiameter : outerDiameter + nosingWidth, ground, origin.y + height, 0, outerSides, fitToBounds: fitToBounds,
                                                  in outerCylinderSurfaceDefinitionBlob,
                                                  out var brushMeshBlob, allocator))// Indirect
 						return false;
@@ -430,9 +442,10 @@ namespace Chisel.Core
                     var nextDir   = new float2(math.sin(lastAngle + anglePerStep), math.cos(lastAngle + anglePerStep));
                     var nose      = math.normalizesafe(lastDir - nextDir) * nosingDepth;
                     var center    = new float2(origin.x, origin.z);
-                    brushMeshes[subMeshIndex] = AlignedToFront(Classified(brushMeshBlob, StairsPart.Step, origin, anglePerStep, in surfaceDefinitionBlob),
+                    brushMeshes[subMeshIndex] = LastTopRunsOn(AlignedToFront(Classified(brushMeshBlob, StairsPart.Step, origin, anglePerStep, in surfaceDefinitionBlob),
                                                                center + lastDir * InnerRadiusAt(lastAngle, stepInnerRadius, innerSides) + nose,
-                                                               center + lastDir * (stepOuterRadius + nosingWidth) + nose);
+                                                               center + lastDir * (stepOuterRadius + outerNosingWidth) + nose),
+                                                               origin, lastDir, center + nose, anglePerStep, stepHeight, in surfaceDefinitionBlob);
                     //brushContainer.operations[subMeshIndex] = CSGOperationType.Intersecting;
                 }
 
@@ -449,7 +462,7 @@ namespace Chisel.Core
 
                 // the steps' fronts and backs start their texture at the bottom of each step, and at the middle across
                 for (int i = 0; i < subMeshCount && i < brushMeshes.Length; i++)
-                    brushMeshes[i] = AlignedUpright(brushMeshes[i], origin, aroundOrigin: true, stepHeight);
+                    brushMeshes[i] = AlignedUpright(brushMeshes[i], origin, aroundOrigin: true, stepHeight, topRunsOnFromFront: anglePerStep < 0 ? -1 : 1);
 
                 // the column and the sides come after the steps, so the cylinders that trim the steps leave them whole
                 var index = subMeshCount;
@@ -476,9 +489,9 @@ namespace Chisel.Core
                 var sideWidth = definition.sideWidth;
                 if (definition.HaveOuterSide)
                 {
-                    // against the outside of the steps, as thick as set outwards
+                    // inside the outer cylinder, on the steps' outside, as thick as set inwards
                     var apothem = outerDiameter * 0.5f * math.cos(math.PI / outerSides);
-                    GenerateSide(brushMeshes, ref index, definition.outerSide, apothem - kSideOverlap, apothem + sideWidth, outerSides, in definition, origin, startAngle, anglePerStep, in surfaceDefinitionBlob, allocator);
+                    GenerateSide(brushMeshes, ref index, definition.outerSide, math.max(0, apothem - sideWidth), apothem, outerSides, in definition, origin, startAngle, anglePerStep, in surfaceDefinitionBlob, allocator);
                 }
                 if (definition.HaveInnerSide)
                 {
@@ -595,7 +608,7 @@ namespace Chisel.Core
         {
             var outerSides   = definition.outerSegments;
             var innerSides   = definition.innerSegments;
-            var outerApothem = definition.outerDiameter * 0.5f * math.cos(math.PI / outerSides);
+            var outerApothem = definition.StepsOuterDiameter * 0.5f * math.cos(math.PI / outerSides);
             var innerApothem = definition.innerDiameter * 0.5f * math.cos(math.PI / innerSides);
             var openMiddle   = definition.BaseHasOpenMiddle;
             var center       = new float2(origin.x, origin.z);
@@ -826,7 +839,9 @@ namespace Chisel.Core
         // the faces running across the stairs: for straight stairs those facing along them, for spiral stairs those
         // pointing out from the middle. Not mirrored seen from the side a face faces, and the surface's own uv settings
         // are applied to it; a surface mapped in world space keeps its own
-        static BlobAssetReference<BrushMeshBlob> AlignedUpright(BlobAssetReference<BrushMeshBlob> brushMesh, float3 origin, bool aroundOrigin, float stepHeight)
+        // With a way the steps go (for spiral stairs the sign of the angle per step), a step's top runs on from its front
+        // without a seam: the same way across, and from the front's top edge into the step
+        static BlobAssetReference<BrushMeshBlob> AlignedUpright(BlobAssetReference<BrushMeshBlob> brushMesh, float3 origin, bool aroundOrigin, float stepHeight, float topRunsOnFromFront = 0)
         {
             if (!brushMesh.IsCreated)
                 return brushMesh;
@@ -842,6 +857,47 @@ namespace Chisel.Core
                 bottom = origin.y + (math.ceil((top - origin.y) / stepHeight - 0.001f) - 1) * stepHeight;
             var start = new float3(origin.x, bottom, origin.z);
             var up    = new float3(0, 1, 0);
+
+            // its front, a corner on it and the uv settings of its surface, for the top to run on from
+            var frontNormal = float3.zero;
+            var onFront     = float3.zero;
+            float4 frontU = default, frontV = default;
+            var haveFront   = false;
+            var frontFromMiddle = -1.0f; // a tiny face right at the middle can pass for one: the one reaching furthest out is it
+            for (int p = 0; topRunsOnFromFront != 0 && p < mesh.polygons.Length && p < mesh.localPlanes.Length; p++)
+            {
+                var normal = math.normalizesafe(mesh.localPlanes[p].xyz);
+                if (math.abs(normal.y) > 0.1f)
+                    continue;
+                ref var polygon = ref mesh.polygons[p];
+                var middle = float3.zero;
+                for (int e = 0; e < polygon.edgeCount; e++)
+                    middle += mesh.localVertices[mesh.halfEdges[polygon.firstEdge + e].vertexIndex];
+                middle /= math.max(1, polygon.edgeCount);
+                if (aroundOrigin)
+                {
+                    var outwards = new float2(middle.x - origin.x, middle.z - origin.z);
+                    var fromMiddle = math.length(outwards);
+                    if (fromMiddle < 1e-4f || fromMiddle <= frontFromMiddle)
+                        continue;
+                    outwards /= fromMiddle;
+                    if (math.abs(math.dot(outwards, normal.xz)) > 0.1f)
+                        continue;
+                    // up the stairs, around the middle; the front looks the other way
+                    var goingUp = new float2(outwards.y, -outwards.x) * topRunsOnFromFront;
+                    if (math.dot(normal.xz, goingUp) >= 0)
+                        continue;
+                    frontFromMiddle = fromMiddle;
+                } else
+                if (normal.z < 0.9f || haveFront)
+                    continue;
+                frontNormal = normal;
+                onFront     = mesh.localVertices[mesh.halfEdges[polygon.firstEdge].vertexIndex];
+                frontU      = polygon.surface.details.UV0.U;
+                frontV      = polygon.surface.details.UV0.V;
+                haveFront   = true;
+            }
+
             for (int p = 0; p < mesh.polygons.Length && p < mesh.localPlanes.Length; p++)
             {
                 var normal = math.normalizesafe(mesh.localPlanes[p].xyz);
@@ -879,6 +935,53 @@ namespace Chisel.Core
                 float4 givenU = uv0.U, givenV = uv0.V;
                 uv0.U = givenU.x * u + givenU.y * v + new float4(0, 0, 0, givenU.w);
                 uv0.V = givenV.x * u + givenV.y * v + new float4(0, 0, 0, givenV.w);
+            }
+
+            if (!haveFront)
+                return brushMesh;
+            return TopRunsOn(brushMesh, frontNormal, start, onFront, top - bottom, frontU, frontV);
+        }
+
+        // The last step's top is on the top of the cylinder that trims it, which has no front of its own
+        static BlobAssetReference<BrushMeshBlob> LastTopRunsOn(BlobAssetReference<BrushMeshBlob> brushMesh, float3 origin, float2 lastDir, float2 onFront, float anglePerStep, float stepHeight,
+                                                               in BlobAssetReference<InternalChiselSurfaceArray> surfaceDefinitionBlob)
+        {
+            var goingUp = new float2(lastDir.y, -lastDir.x) * (anglePerStep < 0 ? -1 : 1);
+            ref var uv0 = ref surfaceDefinitionBlob.Value.surfaces[(int)StairsSurface.RiserFront].details.UV0;
+            return TopRunsOn(brushMesh, new float3(-goingUp.x, 0, -goingUp.y), origin, new float3(onFront.x, 0, onFront.y), stepHeight, uv0.U, uv0.V);
+        }
+
+        // A flat top going on from the top edge of a front: the same way across, into the step from there, with the front's uv settings
+        static BlobAssetReference<BrushMeshBlob> TopRunsOn(BlobAssetReference<BrushMeshBlob> brushMesh, float3 frontNormal, float3 start, float3 onFront, float rise, float4 frontU, float4 frontV)
+        {
+            if (!brushMesh.IsCreated)
+                return brushMesh;
+            ref var mesh = ref brushMesh.Value;
+            var up = new float3(0, 1, 0);
+            for (int p = 0; p < mesh.polygons.Length && p < mesh.localPlanes.Length; p++)
+            {
+                var normal = math.normalizesafe(mesh.localPlanes[p].xyz);
+                if (normal.y < 0.9f)
+                    continue;
+                ref var polygon = ref mesh.polygons[p];
+                if ((polygon.surface.details.detailFlags & SurfaceDetailFlags.TextureIsInWorldSpace) != 0)
+                    continue;
+
+                var u3 = math.normalizesafe(math.cross(frontNormal, up));
+                var v3 = -frontNormal;
+
+                var toPlane  = MathExtensions.GenerateLocalToPlaneSpaceMatrix(mesh.localPlanes[p]);
+                var rotation = new float3x3(toPlane);
+                var shift    = toPlane.c3.xyz;
+                var ru = math.mul(rotation, u3);
+                var rv = math.mul(rotation, v3);
+                var u = new float4(ru, -math.dot(u3, start) - math.dot(ru, shift));
+                var v = new float4(rv, -math.dot(v3, onFront) + rise - math.dot(rv, shift));
+
+                // with the uv settings the front has, or the two wouldn't meet
+                ref var uv0 = ref polygon.surface.details.UV0;
+                uv0.U = frontU.x * u + frontU.y * v + new float4(0, 0, 0, frontU.w);
+                uv0.V = frontV.x * u + frontV.y * v + new float4(0, 0, 0, frontV.w);
             }
             return brushMesh;
         }

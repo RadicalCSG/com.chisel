@@ -622,6 +622,9 @@ namespace Chisel.Components.Tests
             var end   = start + stairs.definition.settings.rotation * Mathf.Deg2Rad;
             var uvAt = new Dictionary<Vector3Int, Vector2>();
             int shared = 0, seams = 0;
+            var seamsAt = "";
+            var normalAt  = new Dictionary<Vector3Int, Vector3>();
+            var cornersAt = new Dictionary<Vector3Int, string>();
             // the front at the start and the back at the end
             foreach (var angle in new[] { start, end })
             {
@@ -637,7 +640,11 @@ namespace Chisel.Components.Tests
                 for (int i = 0; i < t.Length; i += 3)
                 {
                     Vector3 a = v[t[i]], b = v[t[i + 1]], c = v[t[i + 2]];
-                    var normal = Vector3.Cross(b - a, c - a).normalized;
+                    var cross  = Vector3.Cross(b - a, c - a);
+                    // a triangle with no area shows nothing, and has no way it faces
+                    if (cross.magnitude < 1e-5f)    // as small as normalized turns to zero
+                        continue;
+                    var normal = cross.normalized;
                     var middle = (a + b + c) / 3;
                     // on the line out from the middle at the start, facing across it
                     if (Mathf.Abs(normal.y) > 0.1f || Mathf.Abs(Vector2.Dot(new Vector2(normal.x, normal.z), front)) > 0.1f)
@@ -652,15 +659,23 @@ namespace Chisel.Components.Tests
                         {
                             shared++;
                             if ((known - uv[t[i + k]]).magnitude > 1e-3f)
+                            {
                                 seams++;
+                                if (seams <= 4)
+                                    seamsAt += $" {(Vector3)v[t[i + k]]:F3}: {known:F3} (normal {normalAt[key]:F2}, triangle {cornersAt[key]}) / {uv[t[i + k]]:F3} (normal {normal:F2}, triangle {a:F3} {b:F3} {c:F3});";
+                            }
                         } else
+                        {
                             uvAt[key] = uv[t[i + k]];
+                            normalAt[key] = normal;
+                            cornersAt[key] = $"{a:F3} {b:F3} {c:F3}";
+                        }
                     }
                 }
             }
             }
             Assert.That(shared, Is.GreaterThan(0), "no front");
-            Assert.That(seams, Is.Zero, $"corners on the front with another uv on each side, of {shared}");
+            Assert.That(seams, Is.Zero, $"corners on the front with another uv on each side, of {shared}:{seamsAt}");
         }
 
         // Taller than their steps fit in: the steps keep their depth and start higher, on a base, rather than getting
@@ -993,8 +1008,8 @@ namespace Chisel.Components.Tests
             stairs.OnValidate();
             Update();
             var outerApothem = stairs.definition.settings.outerDiameter * 0.5f * Mathf.Cos(Mathf.PI / stairs.definition.settings.outerSegments);
-            // out past the steps there is only the wall: every place along it has its lowest corner on the floor
-            var faceDistance = outerApothem + stairs.definition.settings.sideWidth - 0.01f;
+            // on the outer cylinder there is only the wall: every place along it has its lowest corner on the floor
+            var faceDistance = outerApothem - 0.01f;
             var lowestAt = new Dictionary<Vector2Int, float>();
             foreach (var renderable in model.generated.renderables)
             {
@@ -1019,12 +1034,15 @@ namespace Chisel.Components.Tests
             }
             Assert.That(lowestAt.Count, Is.GreaterThan(0), "no outer wall");
             var hanging = 0;
-            foreach (var low in lowestAt.Values)
+            var where   = "";
+            foreach (var pair in lowestAt)
             {
-                if (low > 1e-3f)
-                    hanging++;
+                if (pair.Value <= 1e-3f)
+                    continue;
+                hanging++;
+                where += $" ({pair.Key.x / 1000f:F3}, {pair.Value:F3}, {pair.Key.y / 1000f:F3})";
             }
-            Assert.That(hanging, Is.Zero, $"places along the wall that don't reach the floor, of {lowestAt.Count}");
+            Assert.That(hanging, Is.Zero, $"places along the wall that don't reach the floor, of {lowestAt.Count}:{where}");
         }
 
         // A sloped underside is built for each step only: one step too many wrote past its own pieces, over the cylinders
@@ -1453,8 +1471,8 @@ namespace Chisel.Components.Tests
             foreach (var vertex in DrawnVertices(model, out _))
             {
                 lowest = Mathf.Min(lowest, vertex.y);
-                // the wall outside the steps
-                if (new Vector2(vertex.x, vertex.z).magnitude > 1.5f + 1e-3f)
+                // the wall on the outer cylinder, past where the steps end
+                if (new Vector2(vertex.x, vertex.z).magnitude > 1.5f - 1e-3f)
                     lowestWall = Mathf.Min(lowestWall, vertex.y);
             }
             Assert.That(lowest, Is.EqualTo(0).Within(1e-3f), "the stairs don't reach down to their position");
@@ -1462,21 +1480,28 @@ namespace Chisel.Components.Tests
             AssertClosed(model, "raised spiral stairs");
         }
 
-        // Pathed stairs without a base are a whole number of steps high: what's left over comes off the top
-        // (steps that don't fit in the depth become a base)
-        [TestCase(2.0f, 0.0f)]
-        [TestCase(0.6f, 0.4f)]
-        public void PathedStairsWithoutABase_AreAWholeNumberOfStepsHigh(float depth, float base_)
+        // Changing the height of pathed stairs does just what it does to linear stairs
+        [Test]
+        public void PathedStairsHeight_ChangesAsOnLinearStairs()
         {
-            var stairs = Generator<ChiselPathedStairsComponent>(out _);
-            ref var settings = ref stairs.definition.settings.stairs;
-            settings.bounds        = new MinMaxAABB { Min = new float3(-1, 0, 0), Max = new float3(1, 1.05f, depth) };
-            settings.stepHeight    = 0.2f;
-            settings.stepDepth     = 0.2f;
-            settings.plateauHeight = 0;
-            stairs.OnValidate();
-            Assert.That(stairs.definition.settings.stairs.plateauHeight, Is.EqualTo(base_).Within(1e-4f), "the base");
-            Assert.That(stairs.definition.settings.stairs.bounds.Max.y, Is.EqualTo(1.0f).Within(1e-4f), "not a whole number of steps high");
+            var linear = ChiselLinearStairs.DefaultSettings;
+            linear.bounds        = new MinMaxAABB { Min = new float3(-1, 0, 0), Max = new float3(1, 1.4f, 4) };
+            linear.stepHeight    = 0.2f;
+            linear.stepDepth     = 0.2f;
+            linear.plateauHeight = 0.4f;
+            var pathed = ChiselPathedStairs.DefaultSettings;
+            pathed.stairs = linear;
+
+            foreach (var height in new[] { 1.4f, 1.2f, 1.5f, 0.8f, 1.05f, 2.0f })
+            {
+                linear.bounds.Max.y = height;
+                pathed.stairs.bounds.Max.y = height;
+                linear.Validate();
+                pathed.Validate();
+                Assert.That(pathed.stairs.plateauHeight, Is.EqualTo(linear.plateauHeight).Within(1e-5f), $"the base at {height}");
+                Assert.That(pathed.stairs.StepCount, Is.EqualTo(linear.StepCount), $"the steps at {height}");
+                Assert.That(pathed.stairs.AbsHeight, Is.EqualTo(linear.AbsHeight).Within(1e-5f), $"the height at {height}");
+            }
         }
 
         // Pathed stairs with a sloped underside get no wall at an open path's start and end they weren't given
@@ -1596,9 +1621,9 @@ namespace Chisel.Components.Tests
             Assert.That((float)(bounds.Max.x - bounds.Min.x), Is.EqualTo(3).Within(0.1f), "the risers' cylinder isn't as wide as the stairs");
         }
 
-        // A wall along the outside of spiral stairs stands outside the steps, as thick as set
+        // A wall along the outside of spiral stairs reaches out to the outer cylinder and no further
         [Test]
-        public void SpiralStairsWithAnOuterWall_HaveItOutsideTheSteps()
+        public void SpiralStairsWithAnOuterWall_HaveItOnTheOuterCylinder()
         {
             var stairs = WideSpiralStairs(out var model);
             stairs.definition.settings.outerSide = StairsSideType.Up;
@@ -1608,7 +1633,7 @@ namespace Chisel.Components.Tests
             var furthest = 0f;
             foreach (var vertex in DrawnVertices(model, out _))
                 furthest = Mathf.Max(furthest, Around(vertex));
-            Assert.That(furthest, Is.GreaterThan(1.5f + 0.15f), "nothing outside the steps");
+            Assert.That(furthest, Is.EqualTo(1.5f).Within(0.01f), "the wall isn't on the outer cylinder");
         }
 
         // A solid column fills the middle; an open middle has nothing in it
@@ -1891,6 +1916,191 @@ namespace Chisel.Components.Tests
                 }
             }
             finally { foreach (var m in materials) UnityEngine.Object.DestroyImmediate(m); }
+        }
+
+        // A typed depth of the flat top moves the back: the front and the steps stay where they are
+        [Test]
+        public void StairsTopDepth_MovesTheBack()
+        {
+            var stairs = ChiselLinearStairs.DefaultSettings;
+            stairs.bounds     = new MinMaxAABB { Min = new float3(-1, 0, 0), Max = new float3(1, 1, 3) };
+            stairs.stepHeight = 0.2f;
+            stairs.stepDepth  = 0.2f;
+            stairs.SetTopDepth(0.5f);
+            Assert.That(stairs.StepDepthOffset, Is.EqualTo(0.5f).Within(1e-4f));
+            Assert.That(stairs.bounds.Max.z, Is.EqualTo(3).Within(1e-4f));
+            Assert.That(stairs.stepDepth, Is.EqualTo(0.2f).Within(1e-4f));
+        }
+
+        // The outer guard rail lies inside the outer cylinder; it was built outwards from it, and treads reached past it
+        [Test]
+        public void SpiralStairsOuterGuardRail_LiesInsideTheOuterCylinder()
+        {
+            var stairs = Generator<ChiselSpiralStairsComponent>(out var model);
+            stairs.definition.settings.outerSide   = StairsSideType.DownAndUp;
+            stairs.definition.settings.sideWidth   = 0.2f;
+            stairs.definition.settings.nosingWidth = 0.1f;
+            stairs.OnValidate();
+            Update();
+            var vertices = DrawnVertices(model, out _);
+            Assert.That(vertices, Is.Not.Empty);
+            var radius = stairs.definition.settings.outerDiameter * 0.5f;
+            foreach (var v in vertices)
+                Assert.That(new Vector2(v.x, v.z).magnitude, Is.LessThanOrEqualTo(radius + 1e-3f), $"{v} is outside the circle");
+        }
+
+        // The outer face of an outer guard rail is whole, one face per piece: steps reaching through it, even where they
+        // were trimmed away, split it along their outlines
+        [Test]
+        public void SpiralStairsOuterGuardRail_IsNotCutByTheSteps()
+        {
+            var stairs = WideSpiralStairs(out var model);
+            ref var settings = ref stairs.definition.settings;
+            settings.outerSide = StairsSideType.DownAndUp;
+            settings.sideWidth = 0.2f;
+            stairs.OnValidate();
+            Update();
+            var apothem = settings.outerDiameter * 0.5f * Mathf.Cos(Mathf.PI / settings.outerSegments);
+            foreach (var triangle in DrawnTriangles(model))
+            {
+                var normal = Vector3.Cross(triangle.b - triangle.a, triangle.c - triangle.a).normalized;
+                if (Mathf.Abs(normal.y) > 0.1f || (triangle.a.x * normal.x + triangle.a.z * normal.z) < apothem - 0.01f)
+                    continue;
+                foreach (var corner in new[] { triangle.a, triangle.b, triangle.c })
+                {
+                    var angle = Mathf.Atan2(corner.x, corner.z);
+                    var side  = Mathf.PI * 2 / settings.outerSegments;
+                    var nearCorner = Mathf.Abs(new Vector2(corner.x, corner.z).magnitude - settings.outerDiameter * 0.5f) < 1e-2f;
+                    var atAnEnd    = Mathf.Abs(Mathf.DeltaAngle(angle * Mathf.Rad2Deg, settings.startAngle)) < 0.1f ||
+                                     Mathf.Abs(Mathf.DeltaAngle(angle * Mathf.Rad2Deg, settings.startAngle + settings.rotation)) < 0.1f;
+                    // the wall has a piece end where it reaches the floor
+                    var split      = settings.SideFloorAngle(settings.startAngle * Mathf.Deg2Rad, settings.AnglePerStep * Mathf.Deg2Rad);
+                    var atItsSplit = Mathf.Abs(Mathf.DeltaAngle(angle * Mathf.Rad2Deg, split * Mathf.Rad2Deg)) < 0.1f;
+                    Assert.That(nearCorner || atAnEnd || atItsSplit, Is.True, $"the rail's outer face is cut at {corner} (a side is {side} wide)");
+                }
+            }
+        }
+
+        // A step's top runs on from its front without a seam, on linear, pathed and spiral stairs
+        [TestCase(0, StairsRiserType.ThickRiser)]
+        [TestCase(0, StairsRiserType.ThinRiser)]
+        [TestCase(1, StairsRiserType.ThickRiser)]
+        [TestCase(2, StairsRiserType.ThickRiser)]
+        [TestCase(2, StairsRiserType.ThinRiser)]
+        public void StairsStepTops_RunOnFromTheirFronts(int kind, StairsRiserType riser)
+        {
+            ChiselModelComponent model;
+            var perStep = 0f;
+            if (kind == 0)      Generator<ChiselLinearStairsComponent>(out model).definition.settings.riserType = riser;
+            else if (kind == 1)
+            {
+                // one straight part: where parts meet each has its own uv
+                var pathed = Generator<ChiselPathedStairsComponent>(out model);
+                pathed.definition.settings.stairs.riserType = riser;
+                pathed.definition.shape = new Curve2D(false, new CurveControlPoint2D(-2, -2), new CurveControlPoint2D(2, -2));
+            }
+            else
+            {
+                var spiral = Generator<ChiselSpiralStairsComponent>(out model);
+                spiral.definition.settings.riserType = riser;
+                perStep = spiral.definition.settings.AnglePerStep;
+            }
+            model.GetComponentInChildren<ChiselGeneratorComponent>().OnValidate();
+            Update();
+            // looking down the stairs: on straight stairs along z (each part of a path has its own), on spiral ones back around
+            bool LooksDownTheStairs(Vector3 normal, Vector3 middle)
+            {
+                if (kind == 0)
+                    return normal.z > 0.9f;
+                if (kind == 1)
+                    return normal.z < -0.9f;
+                var outwards = new Vector2(middle.x, middle.z).normalized;
+                if (Mathf.Abs(Vector2.Dot(outwards, new Vector2(normal.x, normal.z))) > 0.1f)
+                    return false;
+                return Vector2.Dot(new Vector2(normal.x, normal.z), new Vector2(outwards.y, -outwards.x) * Mathf.Sign(perStep)) < 0;
+            }
+
+            var tops = new Dictionary<Vector3Int, Vector2>();
+            var fronts = new List<(Vector3Int at, Vector2 uv)>();
+            foreach (var renderable in model.generated.renderables)
+            {
+                if (renderable == null || renderable.sharedMesh == null)
+                    continue;
+                var v  = renderable.sharedMesh.vertices;
+                var uv = renderable.sharedMesh.uv;
+                var t  = renderable.sharedMesh.triangles;
+                for (int i = 0; i < t.Length; i += 3)
+                {
+                    var normal = Vector3.Cross(v[t[i + 1]] - v[t[i]], v[t[i + 2]] - v[t[i]]).normalized;
+                    var middle = (v[t[i]] + v[t[i + 1]] + v[t[i + 2]]) / 3;
+                    var highest = Mathf.Max(v[t[i]].y, Mathf.Max(v[t[i + 1]].y, v[t[i + 2]].y));
+                    for (int k = 0; k < 3; k++)
+                    {
+                        var at = Vector3Int.RoundToInt(v[t[i + k]] * 1000);
+                        if (normal.y > 0.9f)
+                            tops[at] = uv[t[i + k]];
+                        else if (Mathf.Abs(normal.y) < 0.1f && LooksDownTheStairs(normal, middle) && v[t[i + k]].y > highest - 1e-4f)
+                            fronts.Add((at, uv[t[i + k]]));
+                    }
+                }
+            }
+            // a corner on a front's top edge has the top's uv
+            int shared = 0, same = 0;
+            var samples = "";
+            foreach (var front in fronts)
+            {
+                if (!tops.TryGetValue(front.at, out var uv))
+                    continue;
+                shared++;
+                if ((uv - front.uv).magnitude < 1e-3f)
+                    same++;
+                else if (shared <= 10)
+                    samples += $" {front.at}: top {uv:F3} upright {front.uv:F3};";
+            }
+            Assert.That(shared, Is.GreaterThan(0), "no tops meet anything upright");
+            Assert.That(same, Is.GreaterThanOrEqualTo(shared * 7 / 10), $"only {same} of {shared} corners on a top have the same uv on both faces:{samples}");
+        }
+
+        // A capsule that isn't elliptical is round: its depth is its width
+        [Test]
+        public void CapsuleNotElliptical_IsRound()
+        {
+            var capsule = ChiselCapsule.DefaultSettings;
+            capsule.diameterX = 2;
+            capsule.diameterZ = 1;
+            capsule.Validate();
+            Assert.That(capsule.diameterZ, Is.EqualTo(2));
+            capsule.isElliptical = true;
+            capsule.diameterZ = 1;
+            capsule.Validate();
+            Assert.That(capsule.diameterZ, Is.EqualTo(1), "elliptical");
+        }
+
+        // Setting a torus's inner diameter sets it; the value given was ignored, so its inner handle did nothing
+        [Test]
+        public void TorusInnerDiameter_IsSetAsGiven()
+        {
+            var torus = ChiselTorus.DefaultSettings;
+            torus.outerDiameter = 2;
+            torus.InnerDiameter = 1.2f;
+            Assert.That(torus.InnerDiameter, Is.EqualTo(1.2f).Within(1e-4f));
+        }
+
+        // A typed or dragged base height keeps the height and the number of steps, the steps taking up what's left
+        [Test]
+        public void PathedStairsBaseHeight_ChangesTheStepHeightNotTheirNumber()
+        {
+            var definition = new ChiselPathedStairsDefinition();
+            definition.Reset();
+            ref var stairs = ref definition.settings.stairs;
+            stairs.bounds        = new MinMaxAABB { Min = new float3(-1, 0, 0), Max = new float3(1, 2, 2) };
+            stairs.stepHeight    = 0.2f;
+            stairs.plateauHeight = 0;
+            var steps = stairs.StepCount;
+            definition.SetBaseHeight(1);
+            Assert.That(stairs.plateauHeight, Is.EqualTo(1).Within(1e-4f));
+            Assert.That(stairs.StepCount, Is.EqualTo(steps));
+            Assert.That(stairs.AbsHeight, Is.EqualTo(2).Within(1e-4f));
         }
 
         // Stairs that start higher up have their base, from the floor to the lowest step, in a surface of its own; it was

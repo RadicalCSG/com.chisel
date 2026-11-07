@@ -32,6 +32,8 @@ namespace Chisel.Core
             settings.topHeight    = Mathf.Min(hemisphereHeight, Mathf.Abs(height) * 0.5f);
             settings.bottomHeight = Mathf.Min(hemisphereHeight, Mathf.Abs(height) * 0.5f);
 
+            // placed with the same width both ways it's round, otherwise elliptical
+            settings.isElliptical = (placement & PlacementFlags.SameLengthXZ) != PlacementFlags.SameLengthXZ;
             settings.diameterX    = bounds.size[(int)Axis.X];
             settings.height       = height;
             settings.diameterZ    = bounds.size[(int)Axis.Z];

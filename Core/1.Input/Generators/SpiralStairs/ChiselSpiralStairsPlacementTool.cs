@@ -5,7 +5,6 @@ namespace Chisel.Core
     [ChiselPlacementTool(name: ChiselSpiralStairsDefinition.kNodeTypeName, group: ChiselToolGroups.kStairs)]
     public sealed class ChiselSpiralStairsPlacementTool : ChiselBoundsPlacementTool<ChiselSpiralStairsDefinition>
     {
-        // TODO: add more settings
         public float    stepHeight      = ChiselSpiralStairs.DefaultSettings.stepHeight;
         public int      outerSegments   = ChiselSpiralStairs.DefaultSettings.outerSegments;
         

@@ -168,6 +168,18 @@ namespace Chisel.Core
         {
             get { return math.max(0, AbsDepth - (StepCount * stepDepth)); }
         }
+
+        // How deep the flat part at the top is, from the back to where the steps start: the back moves, the steps stay as they are
+        public void SetTopDepth(float topDepth)
+        {
+            var depth = StepCount * stepDepth + math.max(0, topDepth);
+            var min   = bounds.Min;
+            var max   = bounds.Max;
+            if (min.z <= max.z) min.z = max.z - depth;
+            else                max.z = min.z - depth;
+            bounds.Min = min;
+            bounds.Max = max;
+        }
         #endregion
 
         #region Generate
@@ -332,8 +344,15 @@ namespace Chisel.Core
                 var steps		    = handles.moveSnappingSteps;
                 steps.y			    = stepHeight;
 
-                if (handles.DoBoundsHandle(ref bounds, snappingSteps: steps))
+                // the bottom stays: moving the stairs is the transform's, with the move gizmo there. A drag that would make them
+                // flat isn't taken
+                var boundsBefore = bounds;
+                if (handles.DoBoundsHandle(ref bounds, snappingSteps: steps, fixedBottom: true))
+                {
+                    if (math.any(math.abs(bounds.Max - bounds.Min) < ChiselLinearStairs.kMinWidth))
+                        bounds = boundsBefore;
                     settings.bounds = bounds;
+                }
 
                 var min			= math.min(bounds.Min, bounds.Max);
                 var max			= math.max(bounds.Min, bounds.Max);
@@ -387,7 +406,13 @@ namespace Chisel.Core
                     // direction points away from where the diagonal is dragged
                     settings.plateauHeight -= heightOffset;
                 }
-                handles.DoBoxMeasurements(ref settings.bounds);
+                var sorted = settings.SortedBounds;
+                handles.DoMoveGizmo(new Vector3((sorted.Min.x + sorted.Max.x) * 0.5f, sorted.Min.y, (sorted.Min.z + sorted.Max.z) * 0.5f));
+
+                boundsBefore = settings.bounds;
+                if (handles.DoBoxMeasurements(ref settings.bounds) &&
+                    math.any(math.abs(settings.bounds.Max - settings.bounds.Min) < ChiselLinearStairs.kMinWidth))
+                    settings.bounds = boundsBefore;
             }
         }
         #endregion

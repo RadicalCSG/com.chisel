@@ -27,7 +27,7 @@ namespace Chisel.Editors
             var unit = (DistanceUnit)EditorGUILayout.EnumPopup(kDistanceUnitContent, ChiselEditorSettings.DistanceUnit);
             if (EditorGUI.EndChangeCheck())
             {
-                ChiselEditorSettings.DistanceUnit = unit;
+                ChiselEditorSettings.DistanceUnit  = unit;
                 ChiselEditorSettings.Save();
                 SceneView.RepaintAll();
             }

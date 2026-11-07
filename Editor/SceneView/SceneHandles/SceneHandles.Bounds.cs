@@ -62,12 +62,13 @@ namespace Chisel.Editors
 
         const float kShowPointThreshold = 0.00001f;
 
-        public static Bounds BoundsHandle(Bounds bounds, Quaternion rotation, Vector3? snappingSteps = null)
+        public static Bounds BoundsHandle(Bounds bounds, Quaternion rotation, Vector3? snappingSteps = null, bool fixedBottom = false)
         {
-            return BoundsHandle(bounds, rotation, Chisel.Editors.SceneHandles.NormalHandleCap, Chisel.Editors.SceneHandles.OutlinedDotHandleCap, snappingSteps);
+            return BoundsHandle(bounds, rotation, Chisel.Editors.SceneHandles.NormalHandleCap, Chisel.Editors.SceneHandles.OutlinedDotHandleCap, snappingSteps, fixedBottom);
         }
-        
-        public static Bounds BoundsHandle(Bounds bounds, Quaternion rotation, CapFunction sideCapFunction, CapFunction pointCapFunction, Vector3? snappingSteps = null)
+
+        // with a fixed bottom it has no handle there, and dragging an edge along it only moves the edge's other side
+        public static Bounds BoundsHandle(Bounds bounds, Quaternion rotation, CapFunction sideCapFunction, CapFunction pointCapFunction, Vector3? snappingSteps = null, bool fixedBottom = false)
         {
             var hotControl = GUIUtility.hotControl;
             bool isControlHot = false;
@@ -150,7 +151,8 @@ namespace Chisel.Editors
                 for (int i = 0; i < s_BoundsValues.Length; i++)
                 {
                     var id = s_BoundsControlIds[i];
-                
+                    if (fixedBottom && i == 1)
+                        continue;
 
                     GUI.changed = false;
                     var localPoint	= s_BoundsSidePoint[i];
@@ -267,7 +269,9 @@ namespace Chisel.Editors
                 GUI.changed = prevGUIchanged || haveChanged;
 
                 if (haveChanged)
-                { 
+                {
+                    if (fixedBottom)
+                        s_BoundsValues[1] = min.y;
                     var size   = bounds.size;
 
                     center.x = (s_BoundsValues[3] + s_BoundsValues[0]) * 0.5f;

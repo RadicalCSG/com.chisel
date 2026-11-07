@@ -7,6 +7,7 @@ using UnityEditor.EditorTools;
 using UnityEditor.Overlays;
 using UnityEditor.Toolbars;
 using UnityEngine;
+using UnityEngine.UIElements;
 
 // Just a misc. collections of buttons we don't have a more sensible place for
 namespace Chisel.Editors
@@ -441,6 +442,30 @@ namespace Chisel.Editors
         }
     }
 
+    // on, a generator being edited shows no move gizmo
+    [EditorToolbarElement(id, typeof(SceneView))]
+    class MoveGizmoToggle : EditorToolbarToggle
+    {
+        public const string id       = nameof(ChiselGlobalToolbar) + "/" + nameof(MoveGizmoToggle);
+        public const string kTooltip = "Hide the move gizmo on a generator while editing it";
+
+        public MoveGizmoToggle()
+        {
+            text    = string.Empty;
+            tooltip = kTooltip;
+            // Unity's own move tool icon, for the move gizmo it shows
+            onIcon  = EditorGUIUtility.IconContent("MoveTool On").image as Texture2D;
+            offIcon = EditorGUIUtility.IconContent("MoveTool").image as Texture2D;
+            SetValueWithoutNotify(!ChiselEditorSettings.ShowMoveGizmo);
+            this.RegisterValueChangedCallback(evt =>
+            {
+                ChiselEditorSettings.ShowMoveGizmo = !evt.newValue;
+                ChiselEditorSettings.Save();
+                SceneView.RepaintAll();
+            });
+        }
+    }
+
     [Overlay(typeof(SceneView), "Chisel Global")]
     public class ChiselGlobalToolbar : ToolbarOverlay // TODO: better name
     {
@@ -451,6 +476,7 @@ namespace Chisel.Editors
             ChiselSetIntersectingOperationToggle.id,
             CenterPivotOnSelectionButton.id,
             CenterPivotOnEachNodeInSelectionButton.id,
+            MoveGizmoToggle.id,
             RebuildAllButton.id)
         {
         }

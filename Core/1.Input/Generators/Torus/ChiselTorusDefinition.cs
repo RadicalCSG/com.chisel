@@ -49,7 +49,7 @@ namespace Chisel.Core
 
         const float kMinTubeDiameter = 0.1f;
 
-        public float InnerDiameter { get { return math.max(0, outerDiameter - (tubeWidth * 2)); } set { tubeWidth = math.max(kMinTubeDiameter, (outerDiameter - InnerDiameter) * 0.5f); } }
+        public float InnerDiameter { get { return math.max(0, outerDiameter - (tubeWidth * 2)); } set { tubeWidth = math.max(kMinTubeDiameter, (outerDiameter - value) * 0.5f); } }
         #endregion
 
         #region Generate
@@ -220,6 +220,17 @@ namespace Chisel.Core
                 settings.InnerDiameter	= innerRadius * 2.0f;
                 settings.tubeHeight		= (topPoint.y - bottomPoint.y);
                 // TODO: handle sizing down
+            }
+
+            // the sizes of the box around it; a typed width or depth sets the outer diameter, keeping the tube as wide
+            var box        = new Bounds(Vector3.zero, new Vector3(settings.outerDiameter, settings.tubeHeight, settings.outerDiameter));
+            var sizeBefore = box.size;
+            if (handles.DoBoxMeasurements(ref box))
+            {
+                var size = box.size;
+                if (size.x != sizeBefore.x) settings.outerDiameter = size.x;
+                if (size.z != sizeBefore.z) settings.outerDiameter = size.z;
+                if (size.y != sizeBefore.y) settings.tubeHeight    = size.y;
             }
         }
         #endregion

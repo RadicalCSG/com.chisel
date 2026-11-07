@@ -100,7 +100,7 @@ namespace Chisel.Core
                         // are turned as the side walls are
                         brushMeshes[subMeshOffset + i] = TurnSideFaces(AlignedUpright(AlignedToFront(CreateExtrudedSubMeshBlob(vertices, extrusion, indices, StairsPart.Step, ref surfaceDefinition, allocator),
                                                                                        new float2(min.x, maxZ), new float2(max.x, maxZ)),
-                                                                        new float3(min.x, description.bounds.Max.y, 0), aroundOrigin: false, description.stepHeight));// Indirect
+                                                                        new float3(min.x, description.bounds.Max.y, 0), aroundOrigin: false, description.stepHeight, topRunsOnFromFront: 1));// Indirect
 
                         // the base under the lowest step, from the floor up, as wide as the steps and as deep as that step,
                         // at least a whole step deep under a thin riser
@@ -162,7 +162,7 @@ namespace Chisel.Core
                                                                                                  // on steps solid down to the floor, from the floor up as the solid
                                                                                                  description.riserType == StairsRiserType.FillDown ? new float3(description.bounds.Min.x, description.bounds.Min.y, 0)
                                                                                                                                                    : new float3(min.x, description.bounds.Max.y, 0),
-                                                                                                 aroundOrigin: false, description.riserType == StairsRiserType.FillDown ? 0 : description.stepHeight);// Indirect
+                                                                                                 aroundOrigin: false, description.riserType == StairsRiserType.FillDown ? 0 : description.stepHeight, topRunsOnFromFront: 1);// Indirect
 
 						min += stepOffset;
                         max += stepOffset;
@@ -341,7 +341,7 @@ namespace Chisel.Core
                                                                new float2(minX, frontZ), new float2(maxX, frontZ)),
                                                 fromFloor ? new float3(description.bounds.Min.x, description.bounds.Min.y, 0)
                                                           : new float3(description.bounds.Min.x, description.bounds.Max.y, 0),
-                                                aroundOrigin: false, fromFloor ? 0 : description.stepHeight));// Indirect
+                                                aroundOrigin: false, fromFloor ? 0 : description.stepHeight, topRunsOnFromFront: 1));// Indirect
         }
 
         // A face to the side has its texture turned a quarter round: u becomes v and v becomes -u. The faces on either side

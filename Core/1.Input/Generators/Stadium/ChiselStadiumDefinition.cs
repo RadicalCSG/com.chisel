@@ -314,6 +314,17 @@ namespace Chisel.Core
                 settings.width	= leftPoint.x - rightPoint.x;
                 // TODO: handle sizing in some directions (needs to modify transformation?)
             }
+
+            // the sizes of the box around it
+            var box        = new Bounds(new Vector3(0, settings.height * 0.5f, 0), new Vector3(settings.width, math.abs(settings.height), settings.length));
+            var sizeBefore = box.size;
+            if (handles.DoBoxMeasurements(ref box))
+            {
+                var size = box.size;
+                if (size.x != sizeBefore.x) settings.width  = size.x;
+                if (size.z != sizeBefore.z) settings.length = size.z;
+                if (size.y != sizeBefore.y) settings.height = (settings.height < 0 ? -1 : 1) * size.y;
+            }
         }
         #endregion
     }

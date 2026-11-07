@@ -15,6 +15,7 @@ namespace Chisel.Core
         [InspectorName("Hollow Column")] Hollow
     }
 
+    // Spiral Stairs data
     [Serializable]
     public struct ChiselSpiralStairs : IBranchGenerator, IChiselSurfaceNames
     {
@@ -162,6 +163,9 @@ namespace Chisel.Core
 
         // the base is in one piece for each straight side of the outer cylinder under the first step, so it has that
         // cylinder's shape without being trimmed by it, which would give its outside the cylinder's surface
+        // with a guard rail on the outside the steps end halfway into it, so its outer face isn't on theirs
+        internal float StepsOuterDiameter => HaveOuterSide ? math.max(0.001f, outerDiameter - sideWidth / math.cos(math.PI / outerSegments)) : outerDiameter;
+
         internal bool BaseHasOpenMiddle => innerDiameter >= 0.001f && !HaveColumn;
 
         internal int BaseSubMeshCount
@@ -408,10 +412,7 @@ namespace Chisel.Core
     }
 
     // https://www.archdaily.com/896537/how-to-calculate-spiral-staircase-dimensions-and-designs
-    // http://www.zhitov.ru/en/spiral_stairs/
-    // https://easystair.net/en/spiral-staircase.php
     // https://www.google.com/imgres?imgurl=https%3A%2F%2Fwww.visualarq.com%2Fwp-content%2Fuploads%2Fsites%2F2%2F2014%2F07%2FSpiral-stair-landings.png&imgrefurl=https%3A%2F%2Fwww.visualarq.com%2Fsupport%2Ftips%2Fhow-can-i-create-spiral-stairs-can-i-add-landings%2F&docid=Tk82BDe0l2fZmM&tbnid=DTs7Bc10UxKpWM%3A&vet=10ahUKEwiL8_nBtLXeAhWC-qQKHUO4CBQQMwhCKAIwAg..i&w=880&h=656&client=firefox-b-ab&bih=625&biw=1649&q=spiral%20stairs%20parameters&ved=0ahUKEwiL8_nBtLXeAhWC-qQKHUO4CBQQMwhCKAIwAg&iact=mrc&uact=8#h=656&imgdii=DTs7Bc10UxKpWM:&vet=10ahUKEwiL8_nBtLXeAhWC-qQKHUO4CBQQMwhCKAIwAg..i&w=880
-    // https://www.google.com/imgres?imgurl=https%3A%2F%2Fwww.visualarq.com%2Fwp-content%2Fuploads%2Fsites%2F2%2F2014%2F07%2FSpiral-stair-landings.png&imgrefurl=https%3A%2F%2Fwww.visualarq.com%2Fsupport%2Ftips%2Fhow-can-i-create-spiral-stairs-can-i-add-landings%2F&docid=Tk82BDe0l2fZmM&tbnid=DTs7Bc10UxKpWM%3A&vet=10ahUKEwiL8_nBtLXeAhWC-qQKHUO4CBQQMwhCKAIwAg..i&w=880&h=656&client=firefox-b-ab&bih=625&biw=1649&q=spiral%20stairs%20parameters&ved=0ahUKEwiL8_nBtLXeAhWC-qQKHUO4CBQQMwhCKAIwAg&iact=mrc&uact=8#h=656&imgdii=DPwskqkaN7e_wM:&vet=10ahUKEwiL8_nBtLXeAhWC-qQKHUO4CBQQMwhCKAIwAg..i&w=880
     [Serializable]
 #if UNITY_6000_7_OR_NEWER
     [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
@@ -431,10 +432,36 @@ namespace Chisel.Core
 
         const float kHiddenDashSize = 2.0f;
 
+        // Read only, along an angle line: how wide a step is there, the guard rails included: from the inside of an inner
+        // rail, or the inner cylinder, to the outer cylinder
+        void StepMeasurements(IChiselHandles handles, float angleInDegrees, bool atTheTop)
+        {
+            var low     = settings.origin.y + math.min(0, settings.height);
+            var y       = atTheTop ? low + math.abs(settings.height) : low;
+            var angle   = math.radians(angleInDegrees);
+            var outward = new Vector3(math.sin(angle), 0, math.cos(angle));
+            var center  = new Vector3(settings.origin.x, y, settings.origin.z);
+
+            var outer   = ChiselSpiralStairs.RadiusOnSide(angle, angle, settings.outerDiameter * 0.5f * math.cos(math.PI / settings.outerSegments), settings.outerSegments);
+            var inner   = 0f;
+            if (settings.innerDiameter > 0)
+            {
+                var apothem = settings.innerDiameter * 0.5f * math.cos(math.PI / settings.innerSegments);
+                // beside a column the inner rail stands outside the cylinder, around an open middle inside it
+                if (settings.HaveInnerSide && !settings.HaveColumn)
+                    apothem = math.max(0, apothem - settings.sideWidth);
+                if (apothem > 0)
+                    inner = ChiselSpiralStairs.RadiusOnSide(angle, angle, apothem, settings.innerSegments);
+            }
+            handles.RenderDistanceMeasurement(center + outward * inner, center + outward * outer, outer - inner);
+        }
+
         // A cylinder's outline: the sides facing the camera drawn clearly over a dark edge, the ones facing away fainter,
         // and every line dashed where something in front of it hides it, so its shape reads
-        static void DrawCylinder(IChiselHandles handles, Vector3[] vertices, int sides, Vector3 center, bool inward, Color color, Color outlineColor)
+        // returns a corner on its horizon
+        static int DrawCylinder(IChiselHandles handles, Vector3[] vertices, int sides, Vector3 center, bool inward, Color color, Color outlineColor, bool uprights = true)
         {
+            var horizon = 0;
             var faint  = color; faint.a *= 0.6f;
             var hidden = Color.Lerp(color, Color.black, 0.45f); hidden.a = color.a;
             bool Facing(int i, int j)
@@ -464,48 +491,184 @@ namespace Chisel.Core
                 var sideFacing    = Facing(i, j);
                 var uprightFacing = sideFacing || Facing(k, i);
 
-                if (uprightFacing) { handles.color = outlineColor; handles.DrawLine(t0, b0, lineMode: LineMode.ZTest, thickness: 1.0f); }
+                // without all uprights only those on its horizon: between a side facing the camera and one facing away
+                var onHorizon   = sideFacing != Facing(k, i);
+                if (onHorizon)
+                    horizon = i;
+                var drawUpright = onHorizon;
+                // the others subtle
+                if (uprights && !onHorizon)
+                {
+                    var subtle = color; subtle.a *= 0.25f;
+                    handles.color = subtle;
+                    handles.DrawLine(t0, b0, lineMode: LineMode.NoZTest, thickness: 0.5f, dashSize: kHiddenDashSize);
+                    handles.DrawLine(t0, b0, lineMode: LineMode.ZTest, thickness: 0.5f);
+                }
+                if (drawUpright && uprightFacing) { handles.color = outlineColor; handles.DrawLine(t0, b0, lineMode: LineMode.ZTest, thickness: 1.0f); }
                 if (sideFacing)    { handles.color = outlineColor; handles.DrawLine(t0, t1, lineMode: LineMode.ZTest, thickness: 1.0f); handles.DrawLine(b0, b1, lineMode: LineMode.ZTest, thickness: 1.0f); }
 
-                Line(t0, b0, uprightFacing ? color : faint, 1.0f);
+                if (drawUpright)
+                    Line(t0, b0, uprightFacing ? color : faint, 1.0f);
                 Line(t0, t1, sideFacing ? color : faint, 1.0f);
                 Line(b0, b1, sideFacing ? color : faint, 1.0f);
                 if (inward)
                     Line((t0 + b0) * 0.5f, (t1 + b1) * 0.5f, sideFacing ? color : faint, sideFacing ? 2.0f : 1.0f);
             }
+            return horizon;
+        }
+
+        // A guard rail's top and bottom, as it is built: from the line through the treads' fronts, its bottom never below the floor
+        void DrawRailSpirals(IChiselHandles handles, Color color, StairsSideType side, float apothem, int sides)
+        {
+            var low   = settings.origin.y + math.min(0, settings.height);
+            var line  = low + settings.stepHeight;
+            var above = (side == StairsSideType.Up   || side == StairsSideType.DownAndUp) ? settings.sideHeight : 0;
+            var below = (side == StairsSideType.Down || side == StairsSideType.DownAndUp) ? settings.stepHeight + settings.sideDepth : 0;
+            if (settings.riserType == StairsRiserType.FillDown)
+                below = math.abs(settings.height) + settings.stepHeight;
+            DrawSpiral(handles, color, apothem, sides, line + above);
+            DrawSpiral(handles, color, apothem, sides, line - below, math.min(0, low));
+
+            // upright where each of its pieces starts and ends
+            var hidden    = Color.Lerp(color, Color.black, 0.45f); hidden.a = color.a;
+            var floor     = math.min(0, low);
+            var start     = math.radians(settings.startAngle);
+            var perStep   = math.radians(settings.AnglePerStep);
+            var end       = start + perStep * settings.StepCount;
+            var split     = settings.SideFloorAngle(start, perStep);
+            var firstStep = start + perStep;
+            var angle     = start;
+
+            void RailLine(Vector3 lineFrom, Vector3 lineTo)
+            {
+                handles.color = hidden;
+                handles.DrawLine(lineFrom, lineTo, lineMode: LineMode.NoZTest, thickness: 0.5f, dashSize: kHiddenDashSize);
+                handles.color = color;
+                handles.DrawLine(lineFrom, lineTo, lineMode: LineMode.ZTest, thickness: 1.0f);
+            }
+
+            // the piece in front of the first step: straight on from the rail's first piece, flat on top and at the bottom
+            if (settings.sideFrontOffset > 0 && start < end - ChiselSpiralStairs.kAngleEpsilon)
+            {
+                var first   = ChiselSpiralStairs.NextSidePieceEnd(start, end, sides, split);
+                var middle  = (start + first) * 0.5f;
+                float2 At(float at) => new float2(settings.origin.x, settings.origin.z) + new float2(math.sin(at), math.cos(at)) * ChiselSpiralStairs.RadiusOnSide(at, middle, apothem, sides);
+                var rail    = At(start);
+                var front   = rail + math.normalizesafe(rail - At(first)) * settings.sideFrontOffset;
+                var top     = line + above;
+                var bottom  = (below > 0 && low > floor) ? floor : math.max(floor, line - below);
+                var railTop = new Vector3(rail.x, top, rail.y);
+                var railLow = new Vector3(rail.x, bottom, rail.y);
+                var frontTop = new Vector3(front.x, top, front.y);
+                var frontLow = new Vector3(front.x, bottom, front.y);
+                RailLine(frontLow, frontTop);
+                RailLine(railTop, frontTop);
+                RailLine(railLow, frontLow);
+            }
+
+            for (int piece = 0; piece < sides * 64; piece++)
+            {
+                var y       = line + settings.stepHeight * (angle - start) / perStep;
+                // raised, beside the first step it goes down to the ground
+                var bottom  = (below > 0 && low > floor && angle <= firstStep + ChiselSpiralStairs.kAngleEpsilon) ? floor : math.max(floor, y - below);
+                var radius  = ChiselSpiralStairs.RadiusOnSide(angle, angle, apothem, sides);
+                var x       = settings.origin.x + math.sin(angle) * radius;
+                var z       = settings.origin.z + math.cos(angle) * radius;
+                var from    = new Vector3(x, bottom, z);
+                var to      = new Vector3(x, y + above, z);
+                handles.color = hidden;
+                handles.DrawLine(from, to, lineMode: LineMode.NoZTest, thickness: 0.5f, dashSize: kHiddenDashSize);
+                handles.color = color;
+                handles.DrawLine(from, to, lineMode: LineMode.ZTest, thickness: 1.0f);
+                if (angle >= end - ChiselSpiralStairs.kAngleEpsilon)
+                    break;
+                angle = ChiselSpiralStairs.NextSidePieceEnd(angle, end, sides, split);
+            }
+        }
+
+        // The line up the outer cylinder through the bottom of each step's front, and the guard rails' tops and bottoms
+        void DrawSpirals(IChiselHandles handles, Color color)
+        {
+            var low         = settings.origin.y + math.min(0, settings.height);
+            var outerSides  = settings.outerSegments;
+            var innerSides  = settings.innerSegments;
+            var outer       = settings.outerDiameter * 0.5f * math.cos(math.PI / outerSides);
+            var inner       = settings.innerDiameter * 0.5f * math.cos(math.PI / innerSides);
+
+            DrawSpiral(handles, color, outer, outerSides, low);
+            if (settings.HaveOuterSide)
+                DrawRailSpirals(handles, color, settings.outerSide, outer, outerSides);
+            if (settings.HaveInnerSide)
+                DrawRailSpirals(handles, color, settings.innerSide, settings.HaveColumn ? inner + settings.sideWidth : math.max(0, inner - settings.sideWidth), innerSides);
+        }
+
+        // Around the sides at this distance from the middle, starting at this height, a step up per step, never below the floor
+        void DrawSpiral(IChiselHandles handles, Color color, float apothem, int sides, float bottom, float floor = float.NegativeInfinity)
+        {
+            const int kSamplesPerSide = 4;
+            var hidden    = Color.Lerp(color, Color.black, 0.45f); hidden.a = color.a;
+            var start     = math.radians(settings.startAngle);
+            var stepCount = settings.StepCount;
+            var turn      = math.radians(settings.AnglePerStep) * stepCount;
+            var rise      = settings.stepHeight * stepCount;
+            var samples   = math.max(1, (int)math.ceil(math.abs(turn) / (math.PI * 2) * sides * kSamplesPerSide));
+            Vector3 At(int i)
+            {
+                var t      = i / (float)samples;
+                var angle  = start + turn * t;
+                var radius = ChiselSpiralStairs.RadiusOnSide(angle, angle, apothem, sides);
+                return new Vector3(settings.origin.x + math.sin(angle) * radius, math.max(floor, bottom + rise * t), settings.origin.z + math.cos(angle) * radius);
+            }
+            var from = At(0);
+            for (int i = 1; i <= samples; i++)
+            {
+                var to = At(i);
+                handles.color = hidden;
+                handles.DrawLine(from, to, lineMode: LineMode.NoZTest, thickness: 0.5f, dashSize: kHiddenDashSize);
+                handles.color = color;
+                handles.DrawLine(from, to, lineMode: LineMode.ZTest, thickness: 1.0f);
+                from = to;
+            }
         }
 
         public override void OnEdit(IChiselHandles handles)
         {
-            var normal					= Vector3.up;
-            var topDirection			= Vector3.forward;
-            var lowDirection			= Vector3.forward;
+            handles.DoMoveGizmo(Vector3.zero);
 
-            var originalOuterDiameter	= settings.outerDiameter;
-            var originalInnerDiameter	= settings.innerDiameter;
-            var originalStartAngle		= settings.startAngle;
-            var originalStepHeight		= settings.stepHeight;
-            var originalRotation		= settings.rotation;
-            var originalHeight			= settings.height;
-            var originalOrigin			= settings.origin;
-            var cylinderTop				= new BrushMeshFactory.ChiselCircleDefinition { diameterX = 1, diameterZ = 1, height = originalOrigin.y + originalHeight };
-            var cylinderLow				= new BrushMeshFactory.ChiselCircleDefinition { diameterX = 1, diameterZ = 1, height = originalOrigin.y };
-            var originalTopPoint		= normal * cylinderTop.height;
-            var originalLowPoint		= normal * cylinderLow.height;
-            var originalMidPoint		= (originalTopPoint + originalLowPoint) * 0.5f;
+            var normal		 = Vector3.up;
+            var topDirection = Vector3.forward;
+            var lowDirection = Vector3.forward;
+                                     
+            var originalOuterDiameter = settings.outerDiameter;
+            var originalInnerDiameter = settings.innerDiameter;
+            var originalStartAngle	  = settings.startAngle;
+            var originalStepHeight	  = settings.stepHeight;
+            var originalRotation	  = settings.rotation;
+            var originalHeight		  = settings.height;
+            var originalOrigin		  = settings.origin;
+            var cylinderTop			  = new BrushMeshFactory.ChiselCircleDefinition { diameterX = 1, diameterZ = 1, height = originalOrigin.y + originalHeight };
+            var cylinderLow			  = new BrushMeshFactory.ChiselCircleDefinition { diameterX = 1, diameterZ = 1, height = originalOrigin.y };
+            var originalTopPoint	  = normal * cylinderTop.height;
+            var originalLowPoint	  = normal * cylinderLow.height;
+            var originalMidPoint	  = (originalTopPoint + originalLowPoint) * 0.5f;
                     
-            var outerDiameter		= originalOuterDiameter;
-            var innerDiameter		= originalInnerDiameter;
-            var topPoint			= originalTopPoint;
-            var lowPoint			= originalLowPoint;
-            var midPoint			= originalMidPoint;
-            var startAngle			= originalStartAngle;
-            var rotation			= originalRotation;
+            var outerDiameter = originalOuterDiameter;
+            var innerDiameter = originalInnerDiameter;
+            var topPoint	  = originalTopPoint;
+            var lowPoint	  = originalLowPoint;
+            var midPoint	  = originalMidPoint;
+            var startAngle	  = originalStartAngle;
+            var rotation	  = originalRotation;
 
             {
                 var currRotation = startAngle + rotation;
-                handles.DoRotatableLineHandle(ref startAngle  , lowPoint, outerDiameter * 0.5f, normal, lowDirection, Vector3.Cross(normal, lowDirection));
-                handles.DoRotatableLineHandle(ref currRotation, topPoint, outerDiameter * 0.5f, normal, topDirection, Vector3.Cross(normal, topDirection));
+                handles.DoRotatableLineHandle(ref startAngle  , lowPoint, outerDiameter * 0.5f, normal, lowDirection, Vector3.Cross(normal, lowDirection), lineStart: innerDiameter * 0.5f);
+                var bottomAngleFocus = handles.lastHandleHadFocus;
+                if (bottomAngleFocus)
+                    StepMeasurements(handles, startAngle, atTheTop: false);
+                handles.DoRotatableLineHandle(ref currRotation, topPoint, outerDiameter * 0.5f, normal, topDirection, Vector3.Cross(normal, topDirection), lineStart: innerDiameter * 0.5f);
+                if (handles.lastHandleHadFocus)
+                    StepMeasurements(handles, currRotation, atTheTop: true);
                 if (handles.modified)
                     rotation = currRotation - startAngle;
 
@@ -515,25 +678,51 @@ namespace Chisel.Core
                 // TODO: FIXME: why aren't there any arrows?
                 handles.DoDirectionHandle(ref topPoint, normal, snappingStep: originalStepHeight);
                 topPoint.y		= math.max(lowPoint.y + originalStepHeight, topPoint.y);
-                handles.DoDirectionHandle(ref lowPoint, -normal, snappingStep: originalStepHeight);
-                lowPoint.y		= math.min(topPoint.y - originalStepHeight, lowPoint.y);
+
+                // at the bottom of the lowest step's front: how high the stairs start, the top staying where it is
+                var firstAngle = math.radians(startAngle);
+                var midRadius  = (outerDiameter + innerDiameter) * 0.25f;
+                var basePoint  = new Vector3(originalOrigin.x + math.sin(firstAngle) * midRadius, lowPoint.y, originalOrigin.z + math.cos(firstAngle) * midRadius);
+                if (handles.DoDirectionHandle(ref basePoint, normal, snappingStep: originalStepHeight, undoMessage: "Change Base Height"))
+                    lowPoint.y = math.clamp(basePoint.y, math.min(0, originalLowPoint.y), topPoint.y - originalStepHeight);
+
+                // how high that is above the object's position, which can be typed in
+                if (originalLowPoint.y > 0 && !bottomAngleFocus)
+                {
+                    var typedBase = originalLowPoint.y;
+                    var onGround  = new Vector3(basePoint.x, 0, basePoint.z);
+                    var atBase    = new Vector3(basePoint.x, originalLowPoint.y, basePoint.z);
+                    if (handles.DoDistanceMeasurement(ref typedBase, onGround, atBase, "Change Base Height"))
+                        lowPoint.y = math.clamp(typedBase, 0, topPoint.y - originalStepHeight);
+                }
 
                 float minOuterDiameter = innerDiameter + ChiselSpiralStairs.kMinStairsDepth;
-                { 
-                    var outerRadius = outerDiameter * 0.5f;
-                    handles.DoRadiusHandle(ref outerRadius, Vector3.up, topPoint, renderDisc: false);
-                    handles.DoRadiusHandle(ref outerRadius, Vector3.up, lowPoint, renderDisc: false);
-                    outerDiameter = math.max(minOuterDiameter, outerRadius * 2.0f);
+                // circles to drag directly, top and bottom of each cylinder, as a cylinder has
+                if (handles.generatorState is not IChiselEllipsoidHandle[] circles || circles.Length != 5)
+                {
+                    circles = new IChiselEllipsoidHandle[5];
+                    for (int c = 0; c < circles.Length; c++)
+                        circles[c] = handles.CreateEllipsoidHandle(Vector3.zero, Vector3.up, 0, 0);
+                    handles.generatorState = circles;
                 }
-                        
+                var groundPoint = normal * math.min(0, originalOrigin.y);
+                handles.DoDraggableCircle(ref outerDiameter, topPoint, circles[0]);
+                handles.DoDraggableCircle(ref outerDiameter, groundPoint, circles[1]);
+                handles.DoDiameterMeasurement(ref outerDiameter, topPoint, groundPoint);
+                outerDiameter = math.max(minOuterDiameter, outerDiameter);
+
                 float maxInnerDiameter = outerDiameter - ChiselSpiralStairs.kMinStairsDepth;
-                { 
-                    var innerRadius = innerDiameter * 0.5f;
-                    handles.DoRadiusHandle(ref innerRadius, Vector3.up, midPoint, renderDisc: false);
-                    innerDiameter = math.min(maxInnerDiameter, innerRadius * 2.0f);
-                }
+                handles.DoDraggableCircle(ref innerDiameter, topPoint, circles[2]);
+                handles.DoDraggableCircle(ref innerDiameter, groundPoint, circles[3]);
+                // and one halfway up the inner cylinder, on its middle line
+                handles.DoDraggableCircle(ref innerDiameter, (topPoint + groundPoint) * 0.5f, circles[4]);
+                handles.DoDiameterMeasurement(ref innerDiameter, topPoint, groundPoint, furthest: true);
+                innerDiameter = math.min(maxInnerDiameter, innerDiameter);
 
 
+
+                // the cylinders reach down to the ground, also when the stairs start higher up
+                cylinderLow.height = math.min(0, originalOrigin.y);
 
                 // TODO: somehow put this into a separate renderer
                 cylinderTop.diameterZ = cylinderTop.diameterX = cylinderLow.diameterZ = cylinderLow.diameterX = originalInnerDiameter;
@@ -547,8 +736,22 @@ namespace Chisel.Core
                 var outlineColor	= Color.black;
                 outlineColor.a = color.a;
 
-                DrawCylinder(handles, s_OuterVertices, settings.outerSegments, settings.origin, inward: false, color, outlineColor);
-                DrawCylinder(handles, s_InnerVertices, settings.innerSegments, settings.origin, inward: true,  color, outlineColor);
+                var horizon = DrawCylinder(handles, s_OuterVertices, settings.outerSegments, settings.origin, inward: false, color, outlineColor, uprights: false);
+
+                // the total height, base included, just outside a line on the horizon; can be typed in
+                if (originalHeight > 0)
+                {
+                    var ground     = cylinderLow.height;
+                    var totalTop   = originalOrigin.y + originalHeight;
+                    var corner     = s_OuterVertices[horizon];
+                    var outside    = new Vector3(corner.x, 0, corner.z);
+                    var typedTotal = totalTop - ground;
+                    if (handles.DoDistanceMeasurement(ref typedTotal, outside + normal * ground, outside + normal * totalTop, "Change Height", offsetDirection: outside.normalized))
+                        topPoint.y = math.max(lowPoint.y + originalStepHeight, ground + typedTotal);
+                    handles.color = originalColor;
+                }
+                DrawSpirals(handles, color);
+                DrawCylinder(handles, s_InnerVertices, settings.innerSegments, settings.origin, inward: true,  color, outlineColor, uprights: settings.HaveColumn);
                 handles.color = originalColor;
             }
             if (handles.modified)
@@ -568,18 +771,6 @@ namespace Chisel.Core
                     newOrigin.y += lowPoint.y - originalLowPoint.y;
                     settings.origin = newOrigin;
                 }
-            }
-
-            // the sizes of the box around it, as when it was placed; a typed width sets the outer diameter, a typed height the height
-            var box        = new Bounds(new Vector3(settings.origin.x, settings.origin.y + settings.height * 0.5f, settings.origin.z),
-                                        new Vector3(settings.outerDiameter, math.abs(settings.height), settings.outerDiameter));
-            var sizeBefore = box.size;
-            if (handles.DoBoxMeasurements(ref box))
-            {
-                var size = box.size;
-                if (size.x != sizeBefore.x) settings.outerDiameter = size.x;
-                if (size.z != sizeBefore.z) settings.outerDiameter = size.z;
-                if (size.y != sizeBefore.y) settings.height = (settings.height < 0 ? -1 : 1) * size.y;
             }
         }
         #endregion
