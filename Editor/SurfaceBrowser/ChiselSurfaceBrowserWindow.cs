@@ -618,7 +618,7 @@ namespace Chisel.Editors
         {
             var menu = new GenericMenu();
             menu.AddItem(new GUIContent("Show in Project Tab"), false, () => EditorGUIUtility.PingObject(material));
-            menu.AddItem(new GUIContent("Open Folder in Explorer"), false, () => EditorUtility.RevealInFinder(item.path));
+            menu.AddItem(new GUIContent("Show In Explorer"), false, () => EditorUtility.RevealInFinder(item.path));
             if (IsEditable(item.path))
                 menu.AddItem(new GUIContent("Rename"), false, () => StartRename(item));
             else
