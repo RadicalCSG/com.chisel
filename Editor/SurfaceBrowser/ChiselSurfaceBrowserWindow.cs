@@ -838,10 +838,9 @@ namespace Chisel.Editors
                     GUILayout.FlexibleSpace();
                     previewEditor.OnPreviewSettings();
                 }
-                // square up to the panel's width, not taller than a part of the window
-                var previewSize = Mathf.Min(contentWidth, Mathf.Max(120, position.height * 0.35f));
-                var previewRect = GUILayoutUtility.GetRect(contentWidth, previewSize, GUILayout.Width(contentWidth), GUILayout.Height(previewSize));
+                var previewRect = GUILayoutUtility.GetRect(contentWidth, previewHeight, GUILayout.Width(contentWidth), GUILayout.Height(previewHeight));
                 previewEditor.OnInteractivePreviewGUI(previewRect, EditorStyles.helpBox);
+                PreviewResizeGUI();
             }
 
             var editable = IsEditable(item.path);
@@ -907,6 +906,39 @@ namespace Chisel.Editors
                 SelectSurfacesUsing(material);
             if (GUILayout.Button("Ping in Project"))
                 EditorGUIUtility.PingObject(material);
+        }
+
+        internal const float kMinPreviewHeight = 60;
+        internal const float kMaxPreviewHeight = 1000;
+        [SerializeField] float previewHeight = 220;
+        bool draggingPreview;
+
+        internal static float ClampPreviewHeight(float height) { return Mathf.Clamp(height, kMinPreviewHeight, kMaxPreviewHeight); }
+
+        // a handle under the preview: dragging it makes the preview taller or shorter
+        void PreviewResizeGUI()
+        {
+            var handle = GUILayoutUtility.GetRect(0, 6, GUILayout.ExpandWidth(true));
+            EditorGUIUtility.AddCursorRect(handle, MouseCursor.ResizeVertical);
+            var evt = Event.current;
+            if (evt.type == EventType.Repaint)
+                EditorGUI.DrawRect(new Rect(handle.center.x - 12, handle.center.y - 1, 24, 2), new Color(1, 1, 1, 0.25f));
+            switch (evt.type)
+            {
+                case EventType.MouseDown when evt.button == 0 && handle.Contains(evt.mousePosition):
+                    draggingPreview = true;
+                    evt.Use();
+                    break;
+                case EventType.MouseDrag when draggingPreview:
+                    previewHeight = ClampPreviewHeight(previewHeight + evt.delta.y);
+                    Repaint();
+                    evt.Use();
+                    break;
+                case EventType.MouseUp when draggingPreview:
+                    draggingPreview = false;
+                    evt.Use();
+                    break;
+            }
         }
 
         static void InfoRow(string name, string value)

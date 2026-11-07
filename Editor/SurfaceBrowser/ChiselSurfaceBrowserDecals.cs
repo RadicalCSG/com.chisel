@@ -342,13 +342,13 @@ namespace Chisel.Editors
         void DecalDetailsContentGUI(ChiselSurfaceBrowserDecals.Image image, float contentWidth)
         {
             var material = image.material;
-            var previewSize = Mathf.Min(contentWidth, Mathf.Max(120, position.height * 0.35f));
-            var previewRect = GUILayoutUtility.GetRect(contentWidth, previewSize, GUILayout.Width(contentWidth), GUILayout.Height(previewSize));
+            var previewRect = GUILayoutUtility.GetRect(contentWidth, previewHeight, GUILayout.Width(contentWidth), GUILayout.Height(previewHeight));
             if (Event.current.type == EventType.Repaint)
             {
                 EditorGUI.DrawRect(previewRect, new Color(0.5f, 0.5f, 0.5f, 1));
                 DrawImage(new Rect(previewRect.x + 8, previewRect.y + 8, previewRect.width - 16, previewRect.height - 16), image);
             }
+            PreviewResizeGUI();
 
             GUILayout.Label(image.name, EditorStyles.boldLabel);
             GUILayout.Label($"Image {image.index} of {image.count} on {material.name}", EditorStyles.miniLabel);

@@ -195,6 +195,14 @@ namespace Chisel.Editors.Tests
         }
 
         [Test]
+        public void ThePreviewHeight_StaysWithinItsLimits()
+        {
+            Assert.That(ChiselSurfaceBrowserWindow.ClampPreviewHeight(5), Is.EqualTo(ChiselSurfaceBrowserWindow.kMinPreviewHeight));
+            Assert.That(ChiselSurfaceBrowserWindow.ClampPreviewHeight(300), Is.EqualTo(300));
+            Assert.That(ChiselSurfaceBrowserWindow.ClampPreviewHeight(1e6f), Is.EqualTo(ChiselSurfaceBrowserWindow.kMaxPreviewHeight));
+        }
+
+        [Test]
         public void TheDetailsPanel_KeepsWithinTheWindow()
         {
             Assert.That(ChiselSurfaceBrowserWindow.ClampDetailsWidth(1000, 1200), Is.EqualTo(1200 - ChiselSurfaceBrowserWindow.kSidebarWidth - ChiselSurfaceBrowserWindow.kMinGridWidth));
