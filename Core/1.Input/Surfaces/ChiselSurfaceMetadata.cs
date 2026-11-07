@@ -55,6 +55,9 @@ namespace Chisel.Core
 		// Other sheets drawn with it (materials whose metadata has a layout of its own, a trim sheet say): matching picks from
 		// their tiles too, and a surface given one of theirs is given that material (ChiselHotspotStore)
 		public System.Collections.Generic.List<Material> hotspotSheets = new();
+		// Whether the material is placed as a decal, and what its new decals start from; not used when building meshes
+		public ChiselDecalDefaults decalDefaults = ChiselDecalDefaults.Default;
+		public const string kDecalDefaultsFieldName = nameof(decalDefaults);
 
 
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]

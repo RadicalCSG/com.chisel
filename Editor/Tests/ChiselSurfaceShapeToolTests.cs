@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using Chisel.Components;
+using Chisel.Core;
 using NUnit.Framework;
 using UnityEditor;
 using UnityEngine;
