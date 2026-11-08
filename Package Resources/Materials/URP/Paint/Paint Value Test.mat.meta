@@ -1,5 +1,8 @@
 fileFormatVersion: 2
 guid: bccd75b0f7957884caa3b4fd03bc1c09
+labels:
+- default
+- paintable
 NativeFormatImporter:
   externalObjects: {}
   mainObjectFileID: 2100000
