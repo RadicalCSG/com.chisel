@@ -291,11 +291,11 @@ namespace Chisel.Core
                 var wallMinX  = bounds.Min.x - (sideWidth * 0.5f);
                 var sideCount = wall.rightSideDescription.subMeshCount;
                 GenerateStairsSide(brushMeshes, subMeshIndex, wall.stepCount, wallMinX, wallMinX + sideWidth, wall.rightSideType,
-                                   in wall, ref surfaceDefinition, wall.rightSideDescription, StairsPart.Wall, allocator);// Indirect
+                                   in wall, ref surfaceDefinition, wall.rightSideDescription, allocator);// Indirect
                 for (int m = 0; m < sideCount; m++)
                     brushMeshes[subMeshIndex + m] = TurnSideFaces(brushMeshes[subMeshIndex + m]);
                 if (wallCount > sideCount)
-                    brushMeshes[subMeshIndex + sideCount] = SideFront(brushMeshes, subMeshIndex, sideCount, wallMinX, wallMinX + sideWidth, in wall, ref surfaceDefinition, StairsPart.Wall, allocator);// Indirect
+                    brushMeshes[subMeshIndex + sideCount] = SideFront(brushMeshes, subMeshIndex, sideCount, wallMinX, wallMinX + sideWidth, in wall, ref surfaceDefinition, allocator);// Indirect
 
                 // square to the plane, along it, to the front of the stairs, which is at the path
                 var plane    = endPlane.xyz;

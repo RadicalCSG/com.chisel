@@ -114,7 +114,7 @@ namespace Chisel.Components.Tests
             return roles;
         }
 
-        // Smooth stairs without sides fill in under the steps at their ends: that is the steps, not a guard rail
+        // Smooth stairs without sides are only their steps: no guard rail pieces at their ends
         [Test]
         public void SmoothStairs_WithoutSides_HaveNoGuardRailSurfaces()
         {
@@ -130,14 +130,14 @@ namespace Chisel.Components.Tests
             var brushes = new List<CSGTreeBrush>();
             ChiselGeneratorParts.BrushesOf(stairs, brushes);
             Assert.That(brushes.Count, Is.GreaterThan(0));
-            foreach (var brush in brushes)
+            for (int b = 0; b < brushes.Count; b++)
             {
-                ref var mesh = ref BrushMeshManager.GetBrushMeshBlob(brush.BrushMesh).Value;
+                ref var mesh = ref BrushMeshManager.GetBrushMeshBlob(brushes[b].BrushMesh).Value;
                 for (int p = 0; p < mesh.polygons.Length; p++)
                 {
                     var surface = (StairsSurface)mesh.polygons[p].descriptionIndex;
                     Assert.That(surface, Is.Not.EqualTo(StairsSurface.Wall).And.Not.EqualTo(StairsSurface.WallTop).And.Not.EqualTo(StairsSurface.WallBottom),
-                                "no guard rail was asked for");
+                                $"no guard rail was asked for: brush {b} of {brushes.Count}, a {ChiselGeneratorParts.RoleName(stairs, ChiselGeneratorParts.RoleOf(stairs, b))}");
                 }
             }
         }
