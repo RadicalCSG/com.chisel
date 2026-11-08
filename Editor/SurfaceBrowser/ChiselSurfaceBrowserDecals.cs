@@ -326,7 +326,8 @@ namespace Chisel.Editors
         {
             normal.Normalize();
             var up = Mathf.Abs(Vector3.Dot(normal, Vector3.up)) < 0.99f ? Vector3.up : Vector3.forward;
-            decal.transform.SetPositionAndRotation(center, Quaternion.LookRotation(-normal, up));
+            // its blue arrow (Z) out of the surface, as one expects of something stuck on it
+            decal.transform.SetPositionAndRotation(center, Quaternion.LookRotation(normal, up));
             decal.Material  = material;
             decal.ImageTile = tile;
             var defaults = ChiselDecalComponent.DefaultsOf(material);

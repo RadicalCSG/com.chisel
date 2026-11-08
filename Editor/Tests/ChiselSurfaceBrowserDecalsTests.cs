@@ -90,7 +90,7 @@ namespace Chisel.Editors.Tests
             created.Add(decal.gameObject);
 
             Assert.That(decal.transform.position, Is.EqualTo(new Vector3(1, 1, 0)));
-            Assert.That(Vector3.Dot(decal.transform.forward, Vector3.forward), Is.EqualTo(1).Within(1e-5f), "projects into the surface");
+            Assert.That(Vector3.Dot(decal.transform.forward, Vector3.back), Is.EqualTo(1).Within(1e-5f), "its blue arrow out of the surface");
             Assert.That(decal.Shape, Is.EqualTo(ChiselDecalShape.Box));
             Assert.That(decal.ImageTile, Is.EqualTo(1));
             Assert.That(decal.Settings.projection, Is.EqualTo(ChiselDecalProjection.Perspective));
