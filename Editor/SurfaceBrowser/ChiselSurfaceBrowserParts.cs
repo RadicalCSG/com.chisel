@@ -170,7 +170,13 @@ namespace Chisel.Editors
             var generators = SelectedGenerators();
             var parts = PartsOf(generators);
             if (parts.Count == 0)
+            {
+                // no generator selected any more: no part either
+                if (selectedPart >= 0)
+                    DeselectPart();
+                partsFocused = false;
                 return;
+            }
             GUILayout.Space(6);
             var title = generators.Count == 1 ? generators[0].name : $"{generators.Count} generators";
             GUILayout.Label(new GUIContent("PARTS OF " + title.ToUpperInvariant(), "Drop a material on a part to put it there"), EditorStyles.miniBoldLabel);
@@ -227,20 +233,55 @@ namespace Chisel.Editors
                         evt.Use();
                         break;
                     case EventType.MouseDown when evt.button == 0 && hovering:
-                        // selected (again: no longer), with its material in the grid
-                        selectedPart = selectedPart == part.index ? -1 : part.index;
-                        if (selectedPart >= 0)
-                        {
-                            // all of the part's surfaces, selected in the scene
-                            ChiselSurfaceSelectionManager.UpdateSelection(SelectionType.Replace, SurfacesOfPart(generators, part.index));
-                            if (part.material != null)
-                                Select(ChiselSurfaceBrowserPrefs.ItemOf(part.material));
-                        }
+                        // selected (again: no longer); the list takes the keys
+                        partsFocused = true;
+                        GUIUtility.keyboardControl = 0;
+                        if (selectedPart == part.index) DeselectPart();
+                        else                            SelectPart(generators, part);
                         evt.Use();
                         break;
                 }
             }
+
+            // up and down go through the parts while the list has the keys
+            if (partsFocused && evt.type == EventType.KeyDown && !EditorGUIUtility.editingTextField &&
+                (evt.keyCode == KeyCode.UpArrow || evt.keyCode == KeyCode.DownArrow))
+            {
+                var at = parts.FindIndex(part => part.index == selectedPart);
+                var next = at < 0 ? 0 : Mathf.Clamp(at + (evt.keyCode == KeyCode.DownArrow ? 1 : -1), 0, parts.Count - 1);
+                SelectPart(generators, parts[next]);
+                evt.Use();
+            }
         }
+
+        // the list of parts has the arrow keys (after a part was clicked), not the grid
+        bool partsFocused;
+
+        // a part selected: all its surfaces selected in the scene (shown in any tool), its material in the grid
+        void SelectPart(IReadOnlyList<ChiselGeneratorComponent> generators, Part part)
+        {
+            selectedPart = part.index;
+            ChiselSurfaceSelectionManager.UpdateSelection(SelectionType.Replace, SurfacesOfPart(generators, part.index));
+            UpdatePartHighlight();
+            if (part.material != null)
+                Select(ChiselSurfaceBrowserPrefs.ItemOf(part.material));
+            Repaint();
+        }
+
+        void DeselectPart()
+        {
+            selectedPart = -1;
+            UpdatePartHighlight();
+            Repaint();
+        }
+
+        // the part's surfaces show in any tool while a part is selected and the browser has focus
+        void UpdatePartHighlight()
+        {
+            ChiselOutlineRenderer.ShowSelectedSurfaces = selectedPart >= 0 && hasFocus;
+        }
+
+        void OnLostFocus() { UpdatePartHighlight(); }
 
         // the material's menu: put it on a part of the selected generators
         void AddPartsMenu(GenericMenu menu, Material material)

@@ -102,12 +102,13 @@ namespace Chisel.Editors
             if (metadataEditor) DestroyImmediate(metadataEditor);
             if (previewEditor)  DestroyImmediate(previewEditor);
             DestroyDecalResources();
+            ChiselOutlineRenderer.ShowSelectedSurfaces = false;
         }
 
         void MarkDirty() { dirty = true; Repaint(); }
 
         // hidden folders are changed in the project settings
-        void OnFocus() { MarkDirty(); }
+        void OnFocus() { MarkDirty(); UpdatePartHighlight(); }
 
         // repaints now and then, so the selection and scene counts stay current
         void OnInspectorUpdate() { Repaint(); }
@@ -644,6 +645,7 @@ namespace Chisel.Editors
                         pendingRenameMouse = GUIUtility.GUIToScreenPoint(evt.mousePosition);
                     }
                     var changedMaterial = item.guid != selectedGuid;
+                    partsFocused = false;   // the grid takes the arrow keys again
                     Select(item.guid);
                     // with a part selected, another material picked goes on it at once
                     if (changedMaterial && !cardIsDecal)
@@ -883,7 +885,14 @@ namespace Chisel.Editors
                 default: return;
             }
             next = Mathf.Clamp(next < 0 && index < 0 ? 0 : next, 0, shown.Count - 1);
-            Select(shown[next].guid);
+            if (shown[next].guid != selectedGuid)
+            {
+                Select(shown[next].guid);
+                // with a part selected, the material moved to goes on it, as with a click
+                var material = Load(shown[next]);
+                if (!ChiselSurfaceBrowserDecals.IsDecal(material))
+                    ApplyToSelectedPart(material);
+            }
             evt.Use();
         }
         #endregion

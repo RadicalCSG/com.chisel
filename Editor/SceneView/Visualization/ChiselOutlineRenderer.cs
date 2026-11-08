@@ -63,6 +63,22 @@ namespace Chisel.Editors
         }
         #endregion
 
+        [System.NonSerialized] bool showSelectedSurfaces;
+
+        /// <summary>Whether the selected surfaces' outlines show in every tool, not only the surface tools</summary>
+        public static bool ShowSelectedSurfaces
+        {
+            get => Instance.showSelectedSurfaces;
+            set
+            {
+                if (Instance.showSelectedSurfaces == value)
+                    return;
+                Instance.showSelectedSurfaces = value;
+                s_UpdateSurfaceSelection = true;
+                SceneView.RepaintAll();
+            }
+        }
+
         #region Instance
         static ChiselOutlineRenderer s_Instance;
         public static ChiselOutlineRenderer Instance
@@ -724,10 +740,18 @@ namespace Chisel.Editors
                 UpdateSurfaceState();
                 surfaceOutlineRenderer.RenderAll(camera);
             } else
-            if ((VisualizationMode & (VisualizationMode.Outline | VisualizationMode.SimpleOutline)) != VisualizationMode.None)
             {
-                UpdateBrushState();
-                brushOutlineRenderer.RenderAll(camera);
+                if ((VisualizationMode & (VisualizationMode.Outline | VisualizationMode.SimpleOutline)) != VisualizationMode.None)
+                {
+                    UpdateBrushState();
+                    brushOutlineRenderer.RenderAll(camera);
+                }
+                // the selected surfaces shown in any tool, while asked (a part picked in the Surface Browser)
+                if (showSelectedSurfaces && ChiselSurfaceSelectionManager.Selection.Count > 0)
+                {
+                    UpdateSurfaceState();
+                    surfaceOutlineRenderer.RenderAll(camera);
+                }
             }
 
             var handleRenderer = GetHandleRenderer(camera);
