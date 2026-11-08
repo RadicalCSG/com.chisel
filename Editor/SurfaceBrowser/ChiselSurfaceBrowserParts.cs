@@ -70,6 +70,43 @@ namespace Chisel.Editors
             return parts;
         }
 
+        // the part clicked last, -1 for none; the footer's button then puts the selected material on it
+        [SerializeField] int selectedPart = -1;
+
+        /// <summary>The parts the selected surfaces are of: those of the generators' surfaces that are selected</summary>
+        public static HashSet<int> PartsOfSurfaces(IReadOnlyList<ChiselGeneratorComponent> generators, IEnumerable<SurfaceReference> surfaces)
+        {
+            var parts = new HashSet<int>();
+            if (generators == null || surfaces == null)
+                return parts;
+            foreach (var surface in surfaces)
+            {
+                if (surface?.node == null)
+                    continue;
+                foreach (var generator in generators)
+                {
+                    // the generator's surface (its part) is the description, not the brush's polygon
+                    if (surface.node == generator)
+                    {
+                        parts.Add(surface.descriptionIndex);
+                        break;
+                    }
+                }
+            }
+            return parts;
+        }
+
+        /// <summary>The part clicked, when the selected generators still have it</summary>
+        Part? SelectedPart(List<Part> parts)
+        {
+            foreach (var part in parts)
+            {
+                if (part.index == selectedPart)
+                    return part;
+            }
+            return null;
+        }
+
         /// <summary>Puts a material on a part (a surface) of each generator, undoably</summary>
         public static void ApplyToPart(IReadOnlyList<ChiselGeneratorComponent> generators, int surfaceIndex, Material material)
         {
@@ -104,13 +141,22 @@ namespace Chisel.Editors
             var title = generators.Count == 1 ? generators[0].name : $"{generators.Count} generators";
             GUILayout.Label(new GUIContent("PARTS OF " + title.ToUpperInvariant(), "Drop a material on a part to put it there"), EditorStyles.miniBoldLabel);
             var evt = Event.current;
+            // the parts the surfaces selected in the scene are of, lighter than the one clicked
+            var inScene = PartsOfSurfaces(generators, ChiselSurfaceSelectionManager.Selection);
             foreach (var part in parts)
             {
                 var rect = GUILayoutUtility.GetRect(new GUIContent(part.name), EditorStyles.label, GUILayout.ExpandWidth(true), GUILayout.Height(20));
                 var hovering = rect.Contains(evt.mousePosition);
                 var dragged = hovering && DragAndDrop.objectReferences.Length == 1 && DragAndDrop.objectReferences[0] is Material;
-                if (dragged && evt.type == EventType.Repaint)
-                    EditorGUI.DrawRect(rect, new Color(0.24f, 0.48f, 0.9f, 0.35f));
+                if (evt.type == EventType.Repaint)
+                {
+                    if (part.index == selectedPart)
+                        EditorGUI.DrawRect(rect, new Color(0.24f, 0.48f, 0.9f, 0.5f));
+                    else if (inScene.Contains(part.index))
+                        EditorGUI.DrawRect(rect, new Color(0.24f, 0.48f, 0.9f, 0.22f));
+                    if (dragged)
+                        EditorGUI.DrawRect(rect, new Color(0.24f, 0.48f, 0.9f, 0.35f));
+                }
 
                 var thumb = new Rect(rect.x + 6, rect.y + 2, 16, 16);
                 if (evt.type == EventType.Repaint && part.material != null)
@@ -136,9 +182,11 @@ namespace Chisel.Editors
                         MarkDirty();
                         evt.Use();
                         break;
-                    case EventType.MouseDown when evt.button == 0 && hovering && part.material != null:
-                        // its material, in the grid
-                        Select(ChiselSurfaceBrowserPrefs.ItemOf(part.material));
+                    case EventType.MouseDown when evt.button == 0 && hovering:
+                        // selected (again: no longer), with its material in the grid
+                        selectedPart = selectedPart == part.index ? -1 : part.index;
+                        if (selectedPart >= 0 && part.material != null)
+                            Select(ChiselSurfaceBrowserPrefs.ItemOf(part.material));
                         evt.Use();
                         break;
                 }

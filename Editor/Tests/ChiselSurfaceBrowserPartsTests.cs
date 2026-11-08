@@ -56,6 +56,22 @@ namespace Chisel.Editors.Tests
             Assert.That(stairs.SurfaceDefinition.surfaces[tread.index].RenderMaterial, Is.SameAs(before));
         }
 
+        // The parts the selected surfaces are of, for the generators shown; surfaces of other generators don't count
+        [Test]
+        public void SelectedSurfaces_MarkTheirParts()
+        {
+            var stairs = Stairs();
+            var other  = Stairs();
+            var surfaces = new[]
+            {
+                // a part is the generator's surface (the description), whichever polygon of whichever brush
+                new SurfaceReference(stairs, (int)Chisel.Core.StairsSurface.RiserFront, default, 7),
+                new SurfaceReference(other,  (int)Chisel.Core.StairsSurface.TreadTop,   default, 0),
+            };
+            var parts = ChiselSurfaceBrowserWindow.PartsOfSurfaces(new[] { stairs }, surfaces);
+            Assert.That(parts, Is.EquivalentTo(new[] { (int)Chisel.Core.StairsSurface.RiserFront }));
+        }
+
         // With several generators, a part whose materials differ is mixed; applying sets it on all of them
         [Test]
         public void SeveralGenerators_ShowMixed_AndAllTakeTheMaterial()

@@ -1169,6 +1169,17 @@ namespace Chisel.Editors
                         if (GUILayout.Button(PlaceActionText(material), GUILayout.Width(170)))
                             PlaceSelectedDecal();
                     }
+                } else if (SelectedPart(PartsOf(SelectedGenerators())) is Part part)
+                {
+                    // a part was clicked: the material goes on it, on every selected generator
+                    using (new EditorGUI.DisabledScope(material == null))
+                    {
+                        if (GUILayout.Button(new GUIContent("Apply to " + part.name, "Puts the selected material on this part of the selected generators"), GUILayout.MinWidth(140)))
+                        {
+                            ApplyToPart(SelectedGenerators(), part.index, material);
+                            MarkDirty();
+                        }
+                    }
                 } else
                 {
                     using (new EditorGUI.DisabledScope(count == 0 || material == null))
