@@ -114,6 +114,34 @@ namespace Chisel.Components.Tests
             return roles;
         }
 
+        // Smooth stairs without sides fill in under the steps at their ends: that is the steps, not a guard rail
+        [Test]
+        public void SmoothStairs_WithoutSides_HaveNoGuardRailSurfaces()
+        {
+            var stairs = Stairs();
+            stairs.RiserType = StairsRiserType.Smooth;
+            stairs.LeftSide  = StairsSideType.None;
+            stairs.RightSide = StairsSideType.None;
+            for (int i = 0; i < 3; i++)
+            {
+                stairs.UpdateGeneratorNodes();
+                UpdateModels();
+            }
+            var brushes = new List<CSGTreeBrush>();
+            ChiselGeneratorParts.BrushesOf(stairs, brushes);
+            Assert.That(brushes.Count, Is.GreaterThan(0));
+            foreach (var brush in brushes)
+            {
+                ref var mesh = ref BrushMeshManager.GetBrushMeshBlob(brush.BrushMesh).Value;
+                for (int p = 0; p < mesh.polygons.Length; p++)
+                {
+                    var surface = (StairsSurface)mesh.polygons[p].descriptionIndex;
+                    Assert.That(surface, Is.Not.EqualTo(StairsSurface.Wall).And.Not.EqualTo(StairsSurface.WallTop).And.Not.EqualTo(StairsSurface.WallBottom),
+                                "no guard rail was asked for");
+                }
+            }
+        }
+
         // Spiral stairs tell their steps apart from their column
         [Test]
         public void SpiralStairs_NameTheirParts()
