@@ -17,6 +17,9 @@ namespace Chisel.Components
 
         /// <summary>The brush's surface, or <see cref="kAllSurfaces"/> for all of them.</summary>
         public int surfaceIndex;
+
+        /// <summary>Which of the generator's brushes has the surface (a step of stairs); not valid: the first that has it</summary>
+        public ChiselPartReference part;
     }
 
     /// <summary>

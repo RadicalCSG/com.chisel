@@ -589,7 +589,7 @@ namespace Chisel.Components
                     if (distance >= best)
                         continue;
                     best = distance;
-                    target = new ChiselDecalSurfaceTarget { brush = generator, surfaceIndex = surfaceIndex };
+                    target = ChiselGeneratorParts.TargetOf(generator, brush, surfaceIndex);
                 }
             }
             return best < float.PositiveInfinity;
@@ -646,7 +646,7 @@ namespace Chisel.Components
         public static ulong MaterialOf(ChiselDecalSurfaceTarget target)
         {
             if (target.brush is not ChiselGeneratorComponent generator || target.surfaceIndex < 0 ||
-                !TryBrushOf(generator.TopTreeNode, target.surfaceIndex, out var brush, out var polygon))
+                !TryBrushOf(generator, target, out var brush, out var polygon))
                 return 0;
             return BrushMeshManager.GetBrushMeshBlob(brush.BrushMesh).Value.polygons[polygon].surface.parameters.parameter1;
         }
@@ -927,6 +927,19 @@ namespace Chisel.Components
             return false;
         }
 
+        // a target's brush: the one its part names, else the first of the generator with the surface
+        static bool TryBrushOf(ChiselGeneratorComponent generator, ChiselDecalSurfaceTarget target, out CSGTreeBrush brush, out int polygon)
+        {
+            if (target.part.valid)
+            {
+                polygon = -1;
+                if (!ChiselGeneratorParts.TryResolve(generator, target.part, out brush))
+                    return false;
+                return TryBrushOf(brush, target.surfaceIndex, out brush, out polygon);
+            }
+            return TryBrushOf(generator.TopTreeNode, target.surfaceIndex, out brush, out polygon);
+        }
+
         static bool TryBrushOf(CSGTreeNode node, int surfaceIndex, out CSGTreeBrush brush, out int polygon)
         {
             brush = default;
@@ -967,6 +980,9 @@ namespace Chisel.Components
             model = generator.hierarchyItem.Model;
             if (model == null)
                 return false;
+            // the brush its part names (a step of stairs); a part that is gone draws nothing
+            if (target.part.valid)
+                return ChiselGeneratorParts.TryResolve(generator, target.part, out var brush) && TryBrushFace(brush, target.surfaceIndex, out face);
             return TryFace(generator.TopTreeNode, target.surfaceIndex, out face);
         }
 

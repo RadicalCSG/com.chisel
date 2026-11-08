@@ -844,7 +844,7 @@ namespace Chisel.Editors
                     beyond.model == hit.model &&
                     ChiselTrimDecals.IsDrawn(hit.model, beyond.brushIntersection.brush, beyond.brushIntersection.surfaceIndex) &&
                     ChiselTrimDecals.PlaneHolds(beyond.brushIntersection.brush, beyond.brushIntersection.surfaceIndex, from, to))
-                    b = new ChiselDecalSurfaceTarget { brush = beyond.treeNode, surfaceIndex = ChiselTrimDecals.SurfaceOf(beyond.brushIntersection.brush, beyond.brushIntersection.surfaceIndex) };
+                    b = ChiselGeneratorParts.TargetOf(beyond.treeNode, beyond.brushIntersection.brush, ChiselTrimDecals.SurfaceOf(beyond.brushIntersection.brush, beyond.brushIntersection.surfaceIndex));
             }
             // the click past the edge can miss (it depends on the zoom and the angle): then another brush's drawn surface
             // that goes on across the edge, and only failing that the clicked brush's own face there, when it is drawn
@@ -856,13 +856,13 @@ namespace Chisel.Editors
                     b = acrossTarget;
             }
             if (b.brush == null && otherPolygon >= 0 && ChiselTrimDecals.IsDrawn(hit.model, brush, otherPolygon))
-                b = new ChiselDecalSurfaceTarget { brush = hit.treeNode, surfaceIndex = ChiselTrimDecals.SurfaceOf(brush, otherPolygon) };
+                b = ChiselGeneratorParts.TargetOf(hit.treeNode, brush, ChiselTrimDecals.SurfaceOf(brush, otherPolygon));
             if (b.brush == null || b.surfaceIndex < 0)
                 return default;
             return new EdgeCandidate
             {
                 valid = true,
-                a     = new ChiselDecalSurfaceTarget { brush = hit.treeNode, surfaceIndex = ChiselTrimDecals.SurfaceOf(brush, polygon) },
+                a     = ChiselGeneratorParts.TargetOf(hit.treeNode, brush, ChiselTrimDecals.SurfaceOf(brush, polygon)),
                 b     = b,
                 from  = modelToWorld.MultiplyPoint3x4(from),
                 to    = modelToWorld.MultiplyPoint3x4(to),
