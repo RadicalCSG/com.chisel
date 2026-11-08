@@ -924,9 +924,6 @@ namespace Chisel.Editors
             }
 
             EditorGUI.EndDisabledGroup();
-            GUILayout.Space(8);
-            if (GUILayout.Button("Set as default for...", EditorStyles.popup))
-                DefaultsMenu(material).ShowAsContext();
         }
 
         internal const float kMinPreviewHeight = 60;
@@ -1060,38 +1057,6 @@ namespace Chisel.Editors
             }
             GUILayout.FlexibleSpace();
             EditorGUILayout.EndHorizontal();
-        }
-
-        // Chisel's default parts: each with its current default, ticked where it's this material
-        static readonly (string name, Func<Material> get, Action<Material> set)[] kParts =
-        {
-            ("Wall",         () => ChiselProjectSettings.DefaultWallMaterial,        m => ChiselProjectSettings.DefaultWallMaterial = m),
-            ("Floor",        () => ChiselProjectSettings.DefaultFloorMaterial,       m => ChiselProjectSettings.DefaultFloorMaterial = m),
-            ("Tread",        () => ChiselProjectSettings.DefaultTreadMaterial,       m => ChiselProjectSettings.DefaultTreadMaterial = m),
-            ("Riser",        () => ChiselProjectSettings.DefaultRiserMaterial,       m => ChiselProjectSettings.DefaultRiserMaterial = m),
-            ("Step nose",    () => ChiselProjectSettings.DefaultStepNoseMaterial,    m => ChiselProjectSettings.DefaultStepNoseMaterial = m),
-            ("Step sides",   () => ChiselProjectSettings.DefaultStepSidesMaterial,   m => ChiselProjectSettings.DefaultStepSidesMaterial = m),
-            ("Tread bottom", () => ChiselProjectSettings.DefaultTreadBottomMaterial, m => ChiselProjectSettings.DefaultTreadBottomMaterial = m),
-            ("Column",       () => ChiselProjectSettings.DefaultColumnMaterial,      m => ChiselProjectSettings.DefaultColumnMaterial = m),
-        };
-
-        static GenericMenu DefaultsMenu(Material material)
-        {
-            var menu = new GenericMenu();
-            foreach (var part in kParts)
-            {
-                var current = part.get();
-                var text = $"{part.name}\t({(current != null ? current.name : "none")})";
-                var set = part.set;
-                menu.AddItem(new GUIContent(text), current == material, () =>
-                {
-                    Undo.RecordObject(ChiselProjectSettings.instance, "Set Default Material");
-                    set(material);
-                    EditorUtility.SetDirty(ChiselProjectSettings.instance);
-                    ChiselProjectSettings.instance.Save();
-                });
-            }
-            return menu;
         }
 
         static void SelectSurfacesUsing(Material material)
