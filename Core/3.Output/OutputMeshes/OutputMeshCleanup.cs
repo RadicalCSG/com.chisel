@@ -363,6 +363,10 @@ namespace Chisel.Core
         // Where a crack would show: a surface that is drawn
         static bool Drawn(ref ChiselSurfaceRenderBuffer surface) => (surface.destinationFlags & SurfaceDestinationFlags.Renderable) != 0;
 
+        // A transparent decal's piece, lifted off the surface below it (by about kJunctionDistance): it has no cracks to
+        // close, and its corners must not be snapped onto that surface's, or the surface hides it
+        static bool Lifted(ref ChiselSurfaceRenderBuffer surface) => surface.decalStack > 0;
+
         // The outline edges of a brush's drawn surfaces within a box
         // collider: the triangles of the surface's collider, where the cuts kept it apart from what is drawn
         static void OutlinesOf(BlobAssetReference<ChiselBrushRenderBuffer> buffer, bool own, MinMaxAABB box, NativeList<Outline> outlines, bool collider = false)
@@ -375,7 +379,7 @@ namespace Chisel.Core
             for (int s = 0; s < surfaces.Length; s++)
             {
                 ref var surface = ref surfaces[s];
-                if (surface.indexCount == 0 || !Drawn(ref surface) || !Overlap(surface.aabb, box))
+                if (surface.indexCount == 0 || !Drawn(ref surface) || Lifted(ref surface) || !Overlap(surface.aabb, box))
                     continue;
                 var kept = collider && surface.physicsIndices.Length > 0;
                 ref var indices = ref (kept ? ref surface.physicsIndices : ref surface.indices);
@@ -530,7 +534,7 @@ namespace Chisel.Core
             for (int s = 0; s < original.surfaces.Length; s++)
             {
                 ref var from = ref original.surfaces[s];
-                if (from.paintSurface >= 0 || from.indices.Length < 3 || !Drawn(ref from))
+                if (from.paintSurface >= 0 || from.indices.Length < 3 || !Drawn(ref from) || Lifted(ref from))
                     continue;
                 Load(ref from, indices, collider, select, render);
                 OpenEdgeCorners(indices, collider, shared, outlineCorner);
@@ -595,7 +599,7 @@ namespace Chisel.Core
                             if (math.all(outline.to   >= box.Min) && math.all(outline.to   <= box.Max)) onCollider.Add(Snap(outline.to, cornersAt));
                         }
                         var snappedAny = false;
-                        if (Drawn(ref from))
+                        if (Drawn(ref from) && !Lifted(ref from))
                         {
                             // corners a hair apart are one: the least of them by x, y and z, which every surface picks alike
                             for (int v = 0; v < render.Length; v++)

@@ -403,6 +403,28 @@ namespace Chisel.Core.Tests
             Assert.That(SurfaceArea(harness, new float3(0, 0, -1)), Is.EqualTo(16.0 - back).Within(kAreaTolerance), "what is left of the back");
         }
 
+        // A transparent decal on a floor up to a step: its corners at the step are a millimetre above the step's own
+        // corners, and stay there (snapped onto them, it lies in the floor, which hides it)
+        [Test]
+        public void TransparentDecal_UpToAStep_StaysLifted()
+        {
+            var scene = new ContentsScene()
+                .Add(Box("floor", new float3(-2, -1, -2), new float3(0, 0, 2)))
+                .Add(Box("step",  new float3(0, -1, -2), new float3(2, 0.2f, 2)));
+            using var harness = BuildAndUpdate(scene, Decal(1, new float3(-0.5f, 0, 0), kDown, new float3(1, 6, 0.5f), transparent: true));
+
+            var lifted = 0;
+            foreach (var triangle in harness.Triangles)
+            {
+                if (triangle.material != kDecalMaterial || triangle.Normal.y < 0.99f)
+                    continue;
+                foreach (var corner in new[] { triangle.a, triangle.b, triangle.c })
+                    Assert.That(corner.y, Is.EqualTo(ChiselDecalSettings.kDefaultSurfaceOffset).Within(1e-6), $"corner {corner} lifted off the floor");
+                lifted++;
+            }
+            Assert.That(lifted, Is.GreaterThan(0), "drawn on the floor");
+        }
+
         [Test]
         public void AngleLimit_KeepsTheDecalOffTheWall()
         {
