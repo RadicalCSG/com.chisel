@@ -138,6 +138,8 @@ namespace Chisel.Editors
                 if (surfaces == null || surfaceIndex < 0 || surfaceIndex >= surfaces.Length || surfaces[surfaceIndex] == null)
                     continue;
                 surfaces[surfaceIndex].RenderMaterial = material;
+                // rebuilt, so the scene shows it
+                generator.SetDirty();
                 EditorUtility.SetDirty(generator);
             }
             ChiselSurfaceBrowserPrefs.MarkUsed(ChiselSurfaceBrowserPrefs.ItemOf(material));

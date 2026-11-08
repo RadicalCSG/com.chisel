@@ -56,6 +56,44 @@ namespace Chisel.Editors.Tests
             Assert.That(stairs.SurfaceDefinition.surfaces[tread.index].RenderMaterial, Is.SameAs(before));
         }
 
+        static void UpdateModels()
+        {
+            for (int i = 0; i < 3; i++)
+            {
+                ChiselNodeHierarchyManager.Update();
+                ChiselModelManager.Instance.UpdateModels();
+            }
+        }
+
+        static bool Draws(ChiselModelComponent model, Material material)
+        {
+            foreach (var renderable in model.generated.renderables)
+            {
+                if (renderable == null || renderable.sharedMesh == null || renderable.sharedMesh.vertexCount == 0)
+                    continue;
+                if (System.Array.IndexOf(renderable.meshRenderer.sharedMaterials, material) >= 0)
+                    return true;
+            }
+            return false;
+        }
+
+        // A material put on a part shows in the scene: the generator is rebuilt with it
+        [Test]
+        public void APartsMaterial_ShowsInTheScene()
+        {
+            var model = new GameObject("Model").AddComponent<ChiselModelComponent>();
+            created.Add(model.gameObject);
+            var stairs = new GameObject("Stairs").AddComponent<ChiselLinearStairsComponent>();
+            stairs.transform.SetParent(model.transform, false);
+            UpdateModels();
+
+            var material = NewMaterial();
+            Assert.That(Draws(model, material), Is.False);
+            ChiselSurfaceBrowserWindow.ApplyToPart(new[] { stairs }, (int)Chisel.Core.StairsSurface.TreadTop, material);
+            UpdateModels();
+            Assert.That(Draws(model, material), Is.True);
+        }
+
         // The parts the selected surfaces are of, for the generators shown; surfaces of other generators don't count
         [Test]
         public void SelectedSurfaces_MarkTheirParts()
