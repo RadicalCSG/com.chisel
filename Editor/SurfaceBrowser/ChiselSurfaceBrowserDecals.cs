@@ -60,6 +60,7 @@ namespace Chisel.Editors
         // drag ends, leaves, is dropped, or anything else comes first (a reload, saving, play mode)
         public const string kPreviewName = "Decal Preview";
         static ChiselDecalComponent s_Preview;
+        static bool s_Every;
 
         public static ChiselDecalComponent PreviewDecal => s_Preview;
 
@@ -178,9 +179,12 @@ namespace Chisel.Editors
                 ClearPreview();
                 DragAndDrop.AcceptDrag();
                 DragAndDrop.SetGenericData(kDragKey, null);
-                Drop(image, shape, onSurface, hit, evt.mousePosition, evt.shift);
+                // the drop may not say shift is down; what the drag last showed is what is placed
+                Drop(image, shape, onSurface, hit, evt.mousePosition, evt.shift || s_Every);
+                s_Every = false;
             } else
             {
+                s_Every = evt.shift;
                 UpdatePreview(image, shape, onSurface, hit, evt.mousePosition, evt.shift);
                 sceneView.Repaint();
             }

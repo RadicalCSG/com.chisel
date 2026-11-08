@@ -218,6 +218,52 @@ namespace Chisel.Components.Tests
             Assert.That(halves.Count, Is.GreaterThan(one), "the edge of the other steps too");
         }
 
+        // A trim on a step in the middle, on every step: it is still on its own step's edge, not the first step's
+        [Test]
+        public void ATrim_OnEveryStep_StaysOnItsOwnStep()
+        {
+            var stairs  = Stairs();
+            var brushes = new List<CSGTreeBrush>();
+            ChiselGeneratorParts.BrushesOf(stairs, brushes);
+            var a = ChiselGeneratorParts.TargetOf(stairs, brushes[2], (int)StairsSurface.RiserFront);
+            var b = ChiselGeneratorParts.TargetOf(stairs, brushes[2], (int)StairsSurface.StepSides);
+            var decal = new GameObject("Trim").AddComponent<ChiselDecalComponent>();
+            created.Add(decal.gameObject);
+            decal.transform.SetParent(stairs.transform.parent, false);
+            decal.Shape = ChiselDecalShape.Trim;
+            decal.Size  = new Vector3(1, 0.1f, 1);
+            decal.SetTargets(new[] { a, b });
+            UpdateModels();
+
+            var halves = new List<ChiselTrimDecals.Half>();
+            Assume.That(ChiselTrimDecals.TryDescribe(decal, 1, 1, SurfaceDestinationFlags.Default, out _, halves, out var from, out var to), Is.True);
+            decal.OnEveryPart = true;
+            Assert.That(ChiselTrimDecals.TryDescribe(decal, 1, 1, SurfaceDestinationFlags.Default, out _, halves, out var everyFrom, out var everyTo), Is.True);
+            var same    = math.distance(everyFrom, from) + math.distance(everyTo, to);
+            var swapped = math.distance(everyFrom, to) + math.distance(everyTo, from);
+            Assert.That(math.min(same, swapped), Is.LessThan(1e-3f), "its own edge, either way round");
+        }
+
+        // A trim between one step and the next, on every step: each step with the one after it, not with itself
+        [Test]
+        public void ATrim_BetweenSteps_OnEveryStep_KeepsTheNextStep()
+        {
+            var targets = new List<ChiselDecalSurfaceTarget>();
+            var stairs  = Stairs();
+            var count   = ChiselGeneratorParts.CountOf(stairs, (int)ChiselLinearStairs.Part.Step);
+            var a = new ChiselDecalSurfaceTarget { brush = stairs, surfaceIndex = 0, part = new ChiselPartReference { valid = true, index = 1, all = true } };
+            var b = new ChiselDecalSurfaceTarget { brush = stairs, surfaceIndex = 1, part = new ChiselPartReference { valid = true, index = 2 } };
+            var decal = new GameObject("Trim").AddComponent<ChiselDecalComponent>();
+            created.Add(decal.gameObject);
+            decal.Shape = ChiselDecalShape.Trim;
+            decal.SetTargets(new[] { a, b });
+            ChiselTrimDecals.PairsOnEveryPart(decal.Targets, targets);
+            Assert.That(targets.Count, Is.EqualTo((count - 1) * 2), "every step but the last has a next");
+            Assert.That(targets[0].part.index, Is.EqualTo(1), "its own first");
+            for (int i = 0; i < targets.Count; i += 2)
+                Assert.That(targets[i + 1].part.index, Is.EqualTo(targets[i].part.index + 1), "the next step");
+        }
+
         // A trim on the edge of a step that isn't the first: its targets name that step, not the first with the surface
         [Test]
         public void ATrimsTarget_OnAStep_IsThatStep()

@@ -75,37 +75,47 @@ namespace Chisel.Components
             if (fill == ChiselTrimFill.Single)
                 edgeCount = 1;
 
-            var edges = new ChainEdge[edgeCount];
+            var found = new List<ChainEdge>(edgeCount);
+            var foundPairs = new List<int>(edgeCount);
             for (int i = 0; i < edgeCount; i++)
             {
                 // the edge it was given; without one, the first edge nearest to the decal, the others to the edge before them
                 var reference = i == 0 ? (float3)decal.transform.position
-                                       : (float3)model.transform.localToWorldMatrix.MultiplyPoint3x4(edges[i - 1].start + edges[i - 1].direction * edges[i - 1].length);
+                                       : (float3)model.transform.localToWorldMatrix.MultiplyPoint3x4(found[^1].start + found[^1].direction * found[^1].length);
                 var keep = i == 0 && decal.hasTrimLine;
                 var edgeIndex = decal.TrimEdgeOf(pairs[i], out var edgeOnSecond);
-                if (!TryEdge(targets[i * 2], targets[i * 2 + 1], edgeIndex, edgeOnSecond, reference, keep, decal.trimLinePoint, decal.trimLineDirection, out var edgeModel, out edges[i]) ||
+                if (!TryEdge(targets[i * 2], targets[i * 2 + 1], edgeIndex, edgeOnSecond, reference, keep, decal.trimLinePoint, decal.trimLineDirection, out var edgeModel, out var edge) ||
                     (model != null && edgeModel != model))
+                {
+                    // a copy on another brush of a part that hasn't the edge is left out
+                    if (i > 0 && pairs[i] == pairs[i - 1])
+                        continue;
                     return false;
+                }
+                found.Add(edge);
+                foundPairs.Add(i);
                 model = edgeModel;
                 if (i == 0)
                 {
                     var toWorld = model.transform.localToWorldMatrix;
                     decal.hasTrimLine       = true;
-                    decal.trimLinePoint     = toWorld.MultiplyPoint3x4(edges[0].start);
-                    decal.trimLineDirection = toWorld.MultiplyVector(edges[0].direction).normalized;
+                    decal.trimLinePoint     = toWorld.MultiplyPoint3x4(edge.start);
+                    decal.trimLineDirection = toWorld.MultiplyVector(edge.direction).normalized;
                 }
             }
             // an edge on the line of an earlier one that overlaps it is that edge again (the same surface's edge picked on
             // both brushes beside it): its halves would draw over the earlier ones
-            var pairOf = new List<int>(edgeCount);
-            var kept = new List<ChainEdge>(edgeCount);
-            for (int i = 0; i < edgeCount; i++)
+            var pairOf = new List<int>(found.Count);
+            var kept = new List<ChainEdge>(found.Count);
+            for (int i = 0; i < found.Count; i++)
             {
-                if (kept.Exists(earlier => Overlaps(earlier, edges[i])))
+                var edge = found[i];
+                if (kept.Exists(earlier => Overlaps(earlier, edge)))
                     continue;
-                kept.Add(edges[i]);
-                pairOf.Add(i);
+                kept.Add(edge);
+                pairOf.Add(foundPairs[i]);
             }
+            ChainEdge[] edges;
             edges = kept.ToArray();
             edgeCount = edges.Length;
             if (fill == ChiselTrimFill.Single)
@@ -208,6 +218,13 @@ namespace Chisel.Components
         // The pairs of targets with a pair on every brush of a part (all) in its place, one after another along the chain,
         // and for each the pair it came from. The other target of the pair goes along when it is of the same generator
         // and has as many brushes of its role.
+        /// <summary>A trim's pairs of targets with those on every brush of a part spelled out, its own first</summary>
+        public static void PairsOnEveryPart(IReadOnlyList<ChiselDecalSurfaceTarget> given, List<ChiselDecalSurfaceTarget> targets)
+        {
+            targets.Clear();
+            EveryPart(given, targets, new List<int>());
+        }
+
         static void EveryPart(IReadOnlyList<ChiselDecalSurfaceTarget> given, List<ChiselDecalSurfaceTarget> targets, List<int> pairs)
         {
             for (int p = 0; p < given.Count / 2; p++)
@@ -225,18 +242,32 @@ namespace Chisel.Components
                 var other     = everyA ? b : a;
                 var generator = every.brush as ChiselGeneratorComponent;
                 var count     = ChiselGeneratorParts.CountOf(generator, every.part.role);
-                var otherAlong = other.part.valid && other.brush == every.brush &&
-                                 ChiselGeneratorParts.CountOf(generator, other.part.role) == count;
+                var ownPlace  = ChiselGeneratorParts.PlaceOf(every.part, count);
+                // the other surface of the edge keeps its distance from it: the next step's top stays the next step's
+                var otherAlong = other.part.valid && other.brush == every.brush;
+                var otherCount = otherAlong ? ChiselGeneratorParts.CountOf(generator, other.part.role) : 0;
+                var otherPlace = otherAlong ? ChiselGeneratorParts.PlaceOf(other.part, otherCount) : -1;
+                if (ownPlace < 0)
+                    continue;
+                var placed = 0;
                 for (int place = 0; place < count; place++)
                 {
                     var one = every;
                     one.part = ChiselGeneratorParts.AtPlace(every.part, place);
                     var across = other;
-                    if (otherAlong)
-                        across.part = ChiselGeneratorParts.AtPlace(other.part, place);
-                    targets.Add(everyA ? one : across);
-                    targets.Add(everyA ? across : one);
-                    pairs.Add(p);
+                    if (otherAlong && otherPlace >= 0)
+                    {
+                        var acrossPlace = otherPlace + place - ownPlace;
+                        if (acrossPlace < 0 || acrossPlace >= otherCount)
+                            continue;
+                        across.part = ChiselGeneratorParts.AtPlace(other.part, acrossPlace);
+                    }
+                    // its own edge first: the chain's first edge is the one the decal sits on and keeps to
+                    var at = place == ownPlace ? pairs.Count - placed : pairs.Count;
+                    targets.Insert(at * 2, everyA ? one : across);
+                    targets.Insert(at * 2 + 1, everyA ? across : one);
+                    pairs.Insert(at, p);
+                    placed++;
                 }
             }
         }
