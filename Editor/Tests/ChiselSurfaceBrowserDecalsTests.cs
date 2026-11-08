@@ -140,15 +140,6 @@ namespace Chisel.Editors.Tests
             }
         }
 
-        // A decal goes on the side of the surface that is seen, whichever way the picked plane faces
-        [Test]
-        public void TheDecal_FacesTheSideThatIsSeen()
-        {
-            var lookingDown = Vector3.down;
-            Assert.That(ChiselSurfaceBrowserDecals.FacingViewer(Vector3.up, lookingDown), Is.EqualTo(Vector3.up));
-            Assert.That(ChiselSurfaceBrowserDecals.FacingViewer(Vector3.down, lookingDown), Is.EqualTo(Vector3.up), "a plane facing away is turned round");
-        }
-
         // A decal without a texture shows its color
         [Test]
         public void ADecalsColor_IsItsBaseColor()

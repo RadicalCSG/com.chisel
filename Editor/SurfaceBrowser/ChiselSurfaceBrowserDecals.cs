@@ -38,12 +38,6 @@ namespace Chisel.Editors
             DragAndDrop.StartDrag(image.name);
         }
 
-        /// <summary>A surface's normal turned toward whoever looks along viewDirection at it</summary>
-        public static Vector3 FacingViewer(Vector3 normal, Vector3 viewDirection)
-        {
-            return Vector3.Dot(normal, viewDirection) > 0 ? -normal : normal;
-        }
-
         // the brush surface under a point of the scene view
         static bool PickSurface(Vector2 mousePosition, out ChiselIntersection hit)
         {
@@ -55,10 +49,6 @@ namespace Chisel.Editors
                 if (intersection.treeNode != null && intersection.model != null && intersection.brushIntersection.brush.Valid)
                 {
                     hit = intersection;
-                    // the side of the surface seen is the one the decal goes on
-                    var normal = FacingViewer(hit.worldPlane.normal, HandleUtility.GUIPointToWorldRay(mousePosition).direction);
-                    if (normal != hit.worldPlane.normal)
-                        hit.worldPlane = new Plane(normal, hit.worldPlaneIntersection);
                     return true;
                 }
             }
