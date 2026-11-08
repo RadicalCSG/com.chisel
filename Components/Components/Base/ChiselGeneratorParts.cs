@@ -30,6 +30,40 @@ namespace Chisel.Components
     /// <summary>The brushes of a generator by the part they are, and back</summary>
     public static class ChiselGeneratorParts
     {
+        // A generator's brushes and their roles
+        internal sealed class Layout
+        {
+            public readonly List<CSGTreeBrush> brushes = new();
+            public int[] roles;
+            public readonly Dictionary<int, List<CSGTreeBrush>> byRole = new();
+        }
+
+        /// <summary>Each generator's brushes and parts worked out once, for many lookups at a time (all of one trim's)</summary>
+        public sealed class Lookup
+        {
+            internal readonly Dictionary<ChiselGeneratorComponent, Layout> layouts = new();
+        }
+
+        static Layout LayoutOf(ChiselGeneratorComponent generator, Lookup lookup = null)
+        {
+            if (lookup != null && generator != null && lookup.layouts.TryGetValue(generator, out var cached))
+                return cached;
+            var layout = new Layout();
+            BrushesOf(generator, layout.brushes);
+            layout.roles = new int[layout.brushes.Count];
+            for (int i = 0; i < layout.brushes.Count; i++)
+            {
+                var role = RoleOf(generator, i);
+                layout.roles[i] = role;
+                if (!layout.byRole.TryGetValue(role, out var list))
+                    layout.byRole.Add(role, list = new List<CSGTreeBrush>());
+                list.Add(layout.brushes[i]);
+            }
+            if (lookup != null && generator != null)
+                lookup.layouts[generator] = layout;
+            return layout;
+        }
+
         /// <summary>A generator's brushes in build order (depth first)</summary>
         public static void BrushesOf(ChiselGeneratorComponent generator, List<CSGTreeBrush> brushes)
         {
@@ -67,24 +101,15 @@ namespace Chisel.Components
 
         /// <summary>The part a brush of a generator is: its role, and its place among them counted from the nearer end;
         /// not valid when the brush isn't the generator's</summary>
-        public static ChiselPartReference PartOf(ChiselGeneratorComponent generator, CSGTreeBrush brush)
+        public static ChiselPartReference PartOf(ChiselGeneratorComponent generator, CSGTreeBrush brush, Lookup lookup = null)
         {
-            var brushes = new List<CSGTreeBrush>();
-            BrushesOf(generator, brushes);
-            var at = brushes.IndexOf(brush);
+            var layout = LayoutOf(generator, lookup);
+            var at = layout.brushes.IndexOf(brush);
             if (at < 0)
                 return default;
-            var role = RoleOf(generator, at);
-            int place = 0, count = 0;
-            for (int i = 0; i < brushes.Count; i++)
-            {
-                if (RoleOf(generator, i) != role)
-                    continue;
-                if (i < at)
-                    place++;
-                count++;
-            }
-            var part = PartAt(place, count);
+            var role = layout.roles[at];
+            var ofRole = layout.byRole[role];
+            var part = PartAt(ofRole.IndexOf(brush), ofRole.Count);
             part.role = role;
             return part;
         }
@@ -108,19 +133,13 @@ namespace Chisel.Components
         }
 
         /// <summary>The brush a part of a generator is now; false when it has no such brush</summary>
-        public static bool TryResolve(ChiselGeneratorComponent generator, ChiselPartReference part, out CSGTreeBrush brush)
+        public static bool TryResolve(ChiselGeneratorComponent generator, ChiselPartReference part, out CSGTreeBrush brush, Lookup lookup = null)
         {
             brush = default;
             if (!part.valid || generator == null)
                 return false;
-            var brushes = new List<CSGTreeBrush>();
-            BrushesOf(generator, brushes);
-            var ofRole = new List<CSGTreeBrush>();
-            for (int i = 0; i < brushes.Count; i++)
-            {
-                if (RoleOf(generator, i) == part.role)
-                    ofRole.Add(brushes[i]);
-            }
+            if (!LayoutOf(generator, lookup).byRole.TryGetValue(part.role, out var ofRole))
+                return false;
             var place = PlaceOf(part, ofRole.Count);
             if (place < 0)
                 return false;
@@ -129,17 +148,11 @@ namespace Chisel.Components
         }
 
         /// <summary>How many brushes of a generator have this role</summary>
-        public static int CountOf(ChiselGeneratorComponent generator, int role)
+        public static int CountOf(ChiselGeneratorComponent generator, int role, Lookup lookup = null)
         {
-            var brushes = new List<CSGTreeBrush>();
-            BrushesOf(generator, brushes);
-            var count = 0;
-            for (int i = 0; i < brushes.Count; i++)
-            {
-                if (RoleOf(generator, i) == role)
-                    count++;
-            }
-            return count;
+            if (generator == null)
+                return 0;
+            return LayoutOf(generator, lookup).byRole.TryGetValue(role, out var ofRole) ? ofRole.Count : 0;
         }
 
         /// <summary>The part at this place among its role, counted from the start, kept to one brush</summary>

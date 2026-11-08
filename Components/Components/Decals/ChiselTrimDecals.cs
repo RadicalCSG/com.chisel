@@ -57,12 +57,13 @@ namespace Chisel.Components
         public static bool TryDescribe(ChiselDecalComponent decal, ulong entityID, ulong renderMaterial, SurfaceDestinationFlags destinationFlags,
                                        out ChiselModelComponent model, List<Half> halves, out float3 edgeFrom, out float3 edgeTo)
         {
+            var lookup = new ChiselGeneratorParts.Lookup();
             halves.Clear();
             edgeFrom = edgeTo = float3.zero;
             model = null;
             var targets = new List<ChiselDecalSurfaceTarget>();
             var pairs   = new List<int>();
-            EveryPart(decal.Targets, targets, pairs);
+            EveryPart(decal.Targets, targets, pairs, lookup);
             var edgeCount = targets.Count / 2;
             if (edgeCount < 1)
                 return false;
@@ -84,7 +85,7 @@ namespace Chisel.Components
                                        : (float3)model.transform.localToWorldMatrix.MultiplyPoint3x4(found[^1].start + found[^1].direction * found[^1].length);
                 var keep = i == 0 && decal.hasTrimLine;
                 var edgeIndex = decal.TrimEdgeOf(pairs[i], out var edgeOnSecond);
-                if (!TryEdge(targets[i * 2], targets[i * 2 + 1], edgeIndex, edgeOnSecond, reference, keep, decal.trimLinePoint, decal.trimLineDirection, out var edgeModel, out var edge) ||
+                if (!TryEdge(targets[i * 2], targets[i * 2 + 1], edgeIndex, edgeOnSecond, reference, keep, decal.trimLinePoint, decal.trimLineDirection, out var edgeModel, out var edge, lookup) ||
                     (model != null && edgeModel != model))
                 {
                     // a copy on another brush of a part that hasn't the edge is left out
@@ -222,10 +223,10 @@ namespace Chisel.Components
         public static void PairsOnEveryPart(IReadOnlyList<ChiselDecalSurfaceTarget> given, List<ChiselDecalSurfaceTarget> targets)
         {
             targets.Clear();
-            EveryPart(given, targets, new List<int>());
+            EveryPart(given, targets, new List<int>(), new ChiselGeneratorParts.Lookup());
         }
 
-        static void EveryPart(IReadOnlyList<ChiselDecalSurfaceTarget> given, List<ChiselDecalSurfaceTarget> targets, List<int> pairs)
+        static void EveryPart(IReadOnlyList<ChiselDecalSurfaceTarget> given, List<ChiselDecalSurfaceTarget> targets, List<int> pairs, ChiselGeneratorParts.Lookup lookup)
         {
             for (int p = 0; p < given.Count / 2; p++)
             {
@@ -241,11 +242,11 @@ namespace Chisel.Components
                 var every     = everyA ? a : b;
                 var other     = everyA ? b : a;
                 var generator = every.brush as ChiselGeneratorComponent;
-                var count     = ChiselGeneratorParts.CountOf(generator, every.part.role);
+                var count     = ChiselGeneratorParts.CountOf(generator, every.part.role, lookup);
                 var ownPlace  = ChiselGeneratorParts.PlaceOf(every.part, count);
                 // the other surface of the edge keeps its distance from it: the next step's top stays the next step's
                 var otherAlong = other.part.valid && other.brush == every.brush;
-                var otherCount = otherAlong ? ChiselGeneratorParts.CountOf(generator, other.part.role) : 0;
+                var otherCount = otherAlong ? ChiselGeneratorParts.CountOf(generator, other.part.role, lookup) : 0;
                 var otherPlace = otherAlong ? ChiselGeneratorParts.PlaceOf(other.part, otherCount) : -1;
                 if (ownPlace < 0)
                     continue;
@@ -284,11 +285,11 @@ namespace Chisel.Components
         }
 
         static bool TryEdge(ChiselDecalSurfaceTarget a, ChiselDecalSurfaceTarget b, int edgeIndex, bool edgeOfB, float3 worldReference, bool keep,
-                            float3 worldKeepPoint, float3 worldKeepDirection, out ChiselModelComponent model, out ChainEdge edge)
+                            float3 worldKeepPoint, float3 worldKeepDirection, out ChiselModelComponent model, out ChainEdge edge, ChiselGeneratorParts.Lookup lookup = null)
         {
             edge = default;
             model = null;
-            if (!TryFace(a, out var modelA, out var faceA) || !TryFace(b, out var modelB, out var faceB) || modelA != modelB)
+            if (!TryFace(a, out var modelA, out var faceA, lookup) || !TryFace(b, out var modelB, out var faceB, lookup) || modelA != modelB)
                 return false;
             model = modelA;
 
@@ -1045,12 +1046,13 @@ namespace Chisel.Components
         /// </summary>
         public static void CopiesOnEveryPart(ChiselDecalSurfaceTarget target, List<float4x4> copies)
         {
+            var lookup = new ChiselGeneratorParts.Lookup();
             copies.Clear();
             if (!target.part.valid || !target.part.all || target.brush is not ChiselGeneratorComponent generator ||
-                !TryFace(target, out _, out var own) || !TryFrame(own, out var ownFrame))
+                !TryFace(target, out _, out var own, lookup) || !TryFrame(own, out var ownFrame))
                 return;
             var toOwn = math.fastinverse(ownFrame);
-            var count = ChiselGeneratorParts.CountOf(generator, target.part.role);
+            var count = ChiselGeneratorParts.CountOf(generator, target.part.role, lookup);
             var ownPlace = ChiselGeneratorParts.PlaceOf(target.part, count);
             for (int place = 0; place < count; place++)
             {
@@ -1058,7 +1060,7 @@ namespace Chisel.Components
                     continue;
                 var other = target;
                 other.part = ChiselGeneratorParts.AtPlace(target.part, place);
-                if (TryFace(other, out _, out var face) && TryFrame(face, out var frame))
+                if (TryFace(other, out _, out var face, lookup) && TryFrame(face, out var frame))
                     copies.Add(math.mul(frame, toOwn));
             }
         }
@@ -1091,7 +1093,7 @@ namespace Chisel.Components
         }
 
         // A target's surface, of the first brush of its component that has it (depth first)
-        static bool TryFace(ChiselDecalSurfaceTarget target, out ChiselModelComponent model, out Face face)
+        static bool TryFace(ChiselDecalSurfaceTarget target, out ChiselModelComponent model, out Face face, ChiselGeneratorParts.Lookup lookup = null)
         {
             face = default;
             model = null;
@@ -1102,7 +1104,7 @@ namespace Chisel.Components
                 return false;
             // the brush its part names (a step of stairs); a part that is gone draws nothing
             if (target.part.valid)
-                return ChiselGeneratorParts.TryResolve(generator, target.part, out var brush) && TryBrushFace(brush, target.surfaceIndex, out face);
+                return ChiselGeneratorParts.TryResolve(generator, target.part, out var brush, lookup) && TryBrushFace(brush, target.surfaceIndex, out face);
             return TryFace(generator.TopTreeNode, target.surfaceIndex, out face);
         }
 
