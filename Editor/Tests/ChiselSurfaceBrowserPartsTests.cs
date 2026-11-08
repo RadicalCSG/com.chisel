@@ -94,6 +94,27 @@ namespace Chisel.Editors.Tests
             Assert.That(Draws(model, material), Is.True);
         }
 
+        // Selecting a part selects all its surfaces: every brush's surface made from it, and nothing else
+        [Test]
+        public void APartsSurfaces_AreAllOfItsBrushes()
+        {
+            var model = new GameObject("Model").AddComponent<ChiselModelComponent>();
+            created.Add(model.gameObject);
+            var stairs = new GameObject("Stairs").AddComponent<ChiselLinearStairsComponent>();
+            stairs.transform.SetParent(model.transform, false);
+            UpdateModels();
+
+            var part = (int)Chisel.Core.StairsSurface.TreadTop;
+            var surfaces = ChiselSurfaceBrowserWindow.SurfacesOfPart(new[] { stairs }, part);
+            Assert.That(surfaces.Count, Is.GreaterThan(1), "a tread on every step");
+            foreach (var surface in surfaces)
+                Assert.That(surface.descriptionIndex, Is.EqualTo(part));
+            var brushes = new HashSet<Chisel.Core.CSGTreeBrush>();
+            foreach (var surface in surfaces)
+                brushes.Add(surface.brush);
+            Assert.That(brushes.Count, Is.GreaterThan(1), "of more than one brush");
+        }
+
         // The parts the selected surfaces are of, for the generators shown; surfaces of other generators don't count
         [Test]
         public void SelectedSurfaces_MarkTheirParts()

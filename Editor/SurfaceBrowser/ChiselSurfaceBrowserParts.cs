@@ -96,6 +96,25 @@ namespace Chisel.Editors
             return parts;
         }
 
+        /// <summary>Every surface of a part, on every brush of each generator that has it</summary>
+        public static HashSet<SurfaceReference> SurfacesOfPart(IReadOnlyList<ChiselGeneratorComponent> generators, int partIndex)
+        {
+            var result = new HashSet<SurfaceReference>();
+            var all = new List<SurfaceReference>();
+            foreach (var generator in generators)
+            {
+                all.Clear();
+                if (!ChiselSurfaceSelectionManager.GetAllSurfaceReferences(generator, all))
+                    continue;
+                foreach (var surface in all)
+                {
+                    if (surface.descriptionIndex == partIndex)
+                        result.Add(surface);
+                }
+            }
+            return result;
+        }
+
         /// <summary>The part clicked, when the selected generators still have it</summary>
         Part? SelectedPart(List<Part> parts)
         {
@@ -210,8 +229,13 @@ namespace Chisel.Editors
                     case EventType.MouseDown when evt.button == 0 && hovering:
                         // selected (again: no longer), with its material in the grid
                         selectedPart = selectedPart == part.index ? -1 : part.index;
-                        if (selectedPart >= 0 && part.material != null)
-                            Select(ChiselSurfaceBrowserPrefs.ItemOf(part.material));
+                        if (selectedPart >= 0)
+                        {
+                            // all of the part's surfaces, selected in the scene
+                            ChiselSurfaceSelectionManager.UpdateSelection(SelectionType.Replace, SurfacesOfPart(generators, part.index));
+                            if (part.material != null)
+                                Select(ChiselSurfaceBrowserPrefs.ItemOf(part.material));
+                        }
                         evt.Use();
                         break;
                 }
