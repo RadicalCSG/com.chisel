@@ -8,6 +8,9 @@ namespace Chisel.Editors
 {
     // The decal images of the materials marked as decals, and placing them: one per tile of a decal sheet, or the whole
     // texture for a material without a layout. An image dragged into the scene view is placed where it's dropped
+#if UNITY_6000_7_OR_NEWER
+    [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
+#endif
     [InitializeOnLoad]
     public static class ChiselSurfaceBrowserDecals
     {
@@ -45,21 +48,111 @@ namespace Chisel.Editors
             return false;
         }
 
+        // What a drag over the scene view shows: the decal where it would be placed, drawn for the scene view's camera
+        // only (no object is made for it, so none can be left behind), or for a trim the edge it would go on
+        public struct Preview
+        {
+            public bool      active;
+            public SceneView view;
+            public Image     image;
+            public bool      onEdge;
+            public Matrix4x4 quad;          // a box decal's image as a unit quad
+            public Vector3   edgeFrom, edgeTo;
+        }
+        static Preview s_Preview;
+
+        /// <summary>Where a box decal of an image shows at a point of a surface: a unit quad scaled to its size, facing
+        /// out of the surface, just off it</summary>
+        public static Matrix4x4 PreviewQuad(Material material, int tile, Vector3 point, Vector3 normal)
+        {
+            normal.Normalize();
+            var up   = Mathf.Abs(Vector3.Dot(normal, Vector3.up)) < 0.99f ? Vector3.up : Vector3.forward;
+            var size = ChiselDecalComponent.DefaultsOf(material).WithShape(ChiselDecalShape.Box)
+                                           .SizeFor(ChiselDecalComponent.ImageAspectOf(material, tile), 0);
+            return Matrix4x4.TRS(point + normal * 0.002f, Quaternion.LookRotation(-normal, up), new Vector3(size.x, size.y, 1));
+        }
+
+        static void ClearPreview()
+        {
+            if (!s_Preview.active)
+                return;
+            var view = s_Preview.view;
+            s_Preview = default;
+            if (view != null)
+                view.Repaint();
+        }
+
+        static Mesh s_Quad;
+        static MaterialPropertyBlock s_Block;
+
+        static void DrawPreview(SceneView sceneView)
+        {
+            if (!s_Preview.active || s_Preview.view != sceneView || s_Preview.image?.material == null)
+                return;
+            // a drag that ended without telling us shows nothing
+            if (DragAndDrop.GetGenericData(kDragKey) == null)
+            {
+                ClearPreview();
+                return;
+            }
+            if (s_Preview.onEdge)
+            {
+                using (new Handles.DrawingScope(new Color(0.2f, 0.9f, 1.0f, 1.0f)))
+                    Handles.DrawAAPolyLine(6.0f, s_Preview.edgeFrom, s_Preview.edgeTo);
+                return;
+            }
+            if (s_Quad == null)
+                s_Quad = Resources.GetBuiltinResource<Mesh>("Quad.fbx");
+            s_Block ??= new MaterialPropertyBlock();
+            var material = s_Preview.image.material;
+            var rect = ChiselDecalComponent.ImageRectOf(material, s_Preview.image.tile);
+            var st = new Vector4(rect.width, rect.height, rect.x, rect.y);
+            s_Block.Clear();
+            s_Block.SetVector("_BaseMap_ST", st);
+            s_Block.SetVector("_MainTex_ST", st);
+            Graphics.DrawMesh(s_Quad, s_Preview.quad, material, 0, sceneView.camera, 0, s_Block);
+        }
+
         static void OnSceneGUI(SceneView sceneView)
         {
             var evt = Event.current;
+            if (evt.type == EventType.Repaint)
+            {
+                DrawPreview(sceneView);
+                return;
+            }
+            if (evt.type == EventType.DragExited)
+            {
+                ClearPreview();
+                return;
+            }
             if (evt.type != EventType.DragUpdated && evt.type != EventType.DragPerform)
                 return;
             if (DragAndDrop.GetGenericData(kDragKey) is not Image image || image.material == null)
+            {
+                ClearPreview();
                 return;
+            }
             var shape = ShapeOf(image.material);
             var onSurface = PickSurface(evt.mousePosition, out var hit);
             DragAndDrop.visualMode = onSurface ? DragAndDropVisualMode.Copy : DragAndDropVisualMode.Rejected;
             if (evt.type == EventType.DragPerform)
             {
+                ClearPreview();
                 DragAndDrop.AcceptDrag();
                 DragAndDrop.SetGenericData(kDragKey, null);
                 Drop(image, shape, onSurface, hit, evt.mousePosition);
+            } else
+            {
+                s_Preview = default;
+                if (shape == ChiselDecalShape.Trim)
+                {
+                    if (ChiselDecalEditor.EdgeAt(evt.mousePosition, out var from, out var to))
+                        s_Preview = new Preview { active = true, view = sceneView, image = image, onEdge = true, edgeFrom = from, edgeTo = to };
+                } else if (onSurface)
+                    s_Preview = new Preview { active = true, view = sceneView, image = image,
+                                              quad = PreviewQuad(image.material, image.tile, hit.worldPlaneIntersection, hit.worldPlane.normal) };
+                sceneView.Repaint();
             }
             evt.Use();
         }

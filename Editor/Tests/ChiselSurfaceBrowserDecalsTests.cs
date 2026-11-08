@@ -99,6 +99,25 @@ namespace Chisel.Editors.Tests
             Assert.That(decal.Settings.size.y, Is.EqualTo(0.5f).Within(1e-5f));
         }
 
+        // While dragging, the decal shows where it would be placed: its size, facing out of the surface, just off it
+        [Test]
+        public void ThePreview_MatchesWhereTheDecalWouldGo()
+        {
+            var defaults = ChiselDecalDefaults.Default;
+            defaults.height = 0.5f;
+            var material = DecalMaterial(defaults, Layout((1, "Wide", Vector2Int.zero, new Vector2Int(100, 50))));
+            var quad = ChiselSurfaceBrowserDecals.PreviewQuad(material, 1, new Vector3(1, 2, 0), Vector3.back);
+            Assert.That(quad.lossyScale.x, Is.EqualTo(1.0f).Within(1e-5f));
+            Assert.That(quad.lossyScale.y, Is.EqualTo(0.5f).Within(1e-5f));
+            Assert.That(Vector3.Distance(quad.GetPosition(), new Vector3(1, 2, -0.002f)), Is.LessThan(1e-5f), "just off the surface");
+            Assert.That(Vector3.Dot(quad.MultiplyVector(Vector3.forward).normalized, Vector3.forward), Is.EqualTo(1).Within(1e-5f), "faces the viewer in front of the surface");
+
+            // and it is only drawn: no object is made for it
+            var before = Object.FindObjectsByType<ChiselDecalComponent>(FindObjectsInactive.Include).Length;
+            ChiselSurfaceBrowserDecals.PreviewQuad(material, 1, Vector3.zero, Vector3.up);
+            Assert.That(Object.FindObjectsByType<ChiselDecalComponent>(FindObjectsInactive.Include).Length, Is.EqualTo(before));
+        }
+
         // A decal without a texture shows its color
         [Test]
         public void ADecalsColor_IsItsBaseColor()

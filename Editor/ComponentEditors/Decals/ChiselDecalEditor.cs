@@ -686,6 +686,15 @@ namespace Chisel.Editors
         static ChiselDecalComponent s_PickingFor;
         static bool s_RemoveIfUnplaced;
 
+        /// <summary>The edge between two surfaces nearest a point of the scene view, in world space; false when there is none</summary>
+        internal static bool EdgeAt(Vector2 mousePosition, out Vector3 from, out Vector3 to)
+        {
+            var candidate = FindEdge(mousePosition);
+            from = candidate.from;
+            to   = candidate.to;
+            return candidate.valid;
+        }
+
         /// <summary>Puts a trim decal on the edge nearest a point of the scene view; false when there is none</summary>
         internal static bool PlaceTrimAt(ChiselDecalComponent decal, Vector2 mousePosition)
         {
