@@ -82,6 +82,7 @@ namespace Chisel.Editors
 
         static Ray s_InternalMouseRay;
         public Ray mouseRay => MouseRay;
+        public bool isEditingMeasurement => Measurements.IsEditing;
 
         static Ray MouseRay
         {
@@ -1202,6 +1203,14 @@ namespace Chisel.Editors
         public void RenderBoxMeasurements(Bounds bounds) { HandleRendering.RenderBoxMeasurements(matrix, bounds); }
         public void RenderDistanceMeasurement(Vector3 from, Vector3 to) { Measurements.DrawLength(from, to); }
         public void RenderDistanceMeasurement(Vector3 from, Vector3 to, float forceValue, string name = null) { Measurements.DrawLength(from, to, forceValue, name); }
+        public void RenderDistanceMeasurement(Vector3 from, Vector3 to, float forceValue, string name, float secondValue, string secondName) { Measurements.DrawLength(from, to, forceValue, name, secondValue, secondName); }
+        public void RenderLabel(Vector3 position, Vector3 toward, string text)
+        {
+            var prevColor = SceneHandles.Color;
+            SceneHandles.Color = SceneHandles.StateColor(SceneHandles.MeasureColor);
+            Measurements.DrawLabel(position, toward, 2, text);
+            SceneHandles.Color = prevColor;
+        }
         public void RenderCylinder(Bounds bounds, int segments) { HandleRendering.RenderCylinder(matrix, bounds, segments); }
         public void RenderShape(Curve2D shape, float height) { HandleRendering.RenderShape(matrix, shape, height); }
 

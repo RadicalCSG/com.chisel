@@ -28,6 +28,10 @@ namespace Chisel.Core
         void RenderCylinder(Bounds bounds, int segments);
         void RenderDistanceMeasurement(Vector3 from, Vector3 to);
         void RenderDistanceMeasurement(Vector3 from, Vector3 to, float forceValue, string name = null);
+        // with a second length on a line under the first in its label
+        void RenderDistanceMeasurement(Vector3 from, Vector3 to, float forceValue, string name, float secondValue, string secondName);
+        // a text in the scene, next to a point on the side it's put toward
+        void RenderLabel(Vector3 position, Vector3 toward, string text);
         void RenderShape(Curve2D shape, float height);
 
         void DrawLine(Vector3 from, Vector3 to, LineMode lineMode = LineMode.NoZTest, float thickness = 1.0f, float dashSize = 0.0f);
@@ -196,7 +200,7 @@ namespace Chisel.Core
 
 		// A line on the horizon of something round around the up axis, from its bottom to its top, dragged out or in to
 		// resize it; returns how much its diameter changes. While it has focus it's lit up, with its radius where the mouse is
-		public static float DoHorizonLineHandle(this IChiselHandles handles, Vector3 bottom, Vector3 top, Vector3 axisPoint, string radiusName = "Radius")
+		public static float DoHorizonLineHandle(this IChiselHandles handles, Vector3 bottom, Vector3 top, Vector3 axisPoint, string radiusName = "Radius", float innerRadius = 0, string innerName = null)
 		{
 			var outward = bottom - axisPoint; outward.y = 0;
 			if (outward.sqrMagnitude < 1e-8f)
@@ -222,12 +226,21 @@ namespace Chisel.Core
 				t = Mathf.Clamp01(Vector3.Dot(Vector3.Cross(ray.origin - bottom, ray.direction), cross) / cross.sqrMagnitude);
 			var at     = bottom + along * t;
 			var onAxis = new Vector3(axisPoint.x, at.y, axisPoint.z);
-			handles.RenderDistanceMeasurement(onAxis, at, Vector3.Distance(onAxis, at), radiusName);
+			RenderRadius(handles, onAxis, at, Vector3.Distance(onAxis, at), radiusName, innerRadius, innerName);
 			return change;
 		}
 
+		// A radius; with something inside the circle, what's between the two, like a step's width, on a second line of its label
+		static void RenderRadius(IChiselHandles handles, Vector3 center, Vector3 onCircle, float radius, string radiusName, float innerRadius, string innerName)
+		{
+			if (string.IsNullOrEmpty(innerName) || radius <= innerRadius)
+				handles.RenderDistanceMeasurement(center, onCircle, radius, radiusName);
+			else
+				handles.RenderDistanceMeasurement(center, onCircle, radius, radiusName, radius - innerRadius, innerName);
+		}
+
 		// A circle to drag; while it has focus, its radius
-		public static void DoDraggableCircle(this IChiselHandles handles, ref float diameter, Vector3 center, IChiselEllipsoidHandle circle, string radiusName = "Radius", Vector3 outward = default)
+		public static void DoDraggableCircle(this IChiselHandles handles, ref float diameter, Vector3 center, IChiselEllipsoidHandle circle, string radiusName = "Radius", Vector3 outward = default, float innerRadius = 0, string innerName = null)
 		{
 			circle.Center    = center;
 			circle.Normal    = Vector3.up;
@@ -237,7 +250,7 @@ namespace Chisel.Core
 			handles.DoDistanceHandle(ref diameter, center, Vector3.up, circle);
 			diameter = math.abs(diameter);
 			if (handles.lastHandleHadFocus && handles.TryGetClosestPoint(circle, out var closest, interpolate: false))
-				handles.RenderDistanceMeasurement(center, closest, diameter * 0.5f, radiusName);
+				RenderRadius(handles, center, closest, diameter * 0.5f, radiusName, innerRadius, innerName);
 		}
 
         public static void RenderBox(this IChiselHandleRenderer renderer, MinMaxAABB bounds)           { renderer.RenderBox(bounds.ToBounds()); }
@@ -350,6 +363,8 @@ namespace Chisel.Core
         bool TryGetClosestPoint(IChiselHandle handle, out Vector3 closestPoint, bool interpolate = true);
         // the ray under the mouse, in the space handles are in
         Ray mouseRay { get; }
+        // a measurement is being typed in: measurements aren't hidden then, so it isn't either
+        bool isEditingMeasurement { get; }
         void DoRenderHandles(IChiselHandle[] handles);
 
         bool DoSlider1DHandle(ref Vector3 position, Vector3 direction, IChiselHandle[] handles, float snappingStep = 0, string undoMessage = null);
