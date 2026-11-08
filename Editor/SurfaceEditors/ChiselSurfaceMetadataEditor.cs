@@ -193,24 +193,20 @@ namespace Chisel.Editors
 				return;
 			var paintable = ChiselPaintProfiles.Find(material.shader) != null;
 			EditorGUILayout.Space(kButtonSpacing);
-			using (new EditorGUILayout.HorizontalScope())
-			{
-				EditorGUILayout.PrefixLabel(kPaintingSettingsContents);
-				if (GUILayout.Button(kConfigurePaintContents, EditorStyles.miniButton))
-					ChiselPaintSettingsProvider.Configure(material.shader);
-			}
+			// the buttons in the value column, one under the other
+			var row = EditorGUILayout.GetControlRect(true);
+			var button = EditorGUI.PrefixLabel(row, kPaintingSettingsContents);
+			if (GUI.Button(button, kConfigurePaintContents, EditorStyles.miniButton))
+				ChiselPaintSettingsProvider.Configure(material.shader);
 			if (paintable)
 				return;
-			// on its own line, under the button
-			using (new EditorGUILayout.HorizontalScope())
+			row = EditorGUILayout.GetControlRect(true);
+			button = new Rect(button.x, row.y, button.width, row.height);
+			if (GUI.Button(button, kNeverPaintedContents, EditorStyles.miniButton))
 			{
-				EditorGUILayout.PrefixLabel(GUIContent.none);
-				if (GUILayout.Button(kNeverPaintedContents, EditorStyles.miniButton))
-				{
-					var settings = ChiselPaintSettings.Project ? ChiselPaintSettings.Project : ChiselPaintSettingsProvider.CreateProjectAsset();
-					ChiselPaintSettingsProvider.SetNotPaintable(settings, material.shader, true);
-					GUIUtility.ExitGUI();
-				}
+				var settings = ChiselPaintSettings.Project ? ChiselPaintSettings.Project : ChiselPaintSettingsProvider.CreateProjectAsset();
+				ChiselPaintSettingsProvider.SetNotPaintable(settings, material.shader, true);
+				GUIUtility.ExitGUI();
 			}
 		}
 
