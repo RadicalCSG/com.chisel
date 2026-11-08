@@ -103,7 +103,8 @@ namespace Chisel.Editors
 
             foreach (var decal in Object.FindObjectsByType<ChiselDecalComponent>(FindObjectsInactive.Exclude))
             {
-                if (EditorUtility.IsPersistent(decal) || decal.Material == null)
+                // a decal that is never saved (the preview while dragging) isn't placed
+                if (EditorUtility.IsPersistent(decal) || decal.Material == null || (decal.gameObject.hideFlags & HideFlags.DontSave) != 0)
                     continue;
                 var key = (decal.Material, decal.ImageTile);
                 s_Decals.TryGetValue(key, out var count);

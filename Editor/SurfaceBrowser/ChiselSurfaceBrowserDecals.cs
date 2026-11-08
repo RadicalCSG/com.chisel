@@ -20,6 +20,13 @@ namespace Chisel.Editors
         {
             SceneView.duringSceneGui -= OnSceneGUI;
             SceneView.duringSceneGui += OnSceneGUI;
+            AssemblyReloadEvents.beforeAssemblyReload -= ClearPreview;
+            AssemblyReloadEvents.beforeAssemblyReload += ClearPreview;
+            UnityEditor.SceneManagement.EditorSceneManager.sceneSaving -= OnSceneSaving;
+            UnityEditor.SceneManagement.EditorSceneManager.sceneSaving += OnSceneSaving;
+            EditorApplication.playModeStateChanged -= OnPlayModeChanged;
+            EditorApplication.playModeStateChanged += OnPlayModeChanged;
+            EditorApplication.delayCall += RemoveStrayPreviews;
         }
 
         /// <summary>Starts dragging an image; not as a material, so dropping it doesn't paint a surface</summary>
@@ -48,80 +55,99 @@ namespace Chisel.Editors
             return false;
         }
 
-        // What a drag over the scene view shows: the decal where it would be placed, drawn for the scene view's camera
-        // only (no object is made for it, so none can be left behind), or for a trim the edge it would go on
-        public struct Preview
-        {
-            public bool      active;
-            public SceneView view;
-            public Image     image;
-            public bool      onEdge;
-            public Matrix4x4 quad;          // a box decal's image as a unit quad
-            public Vector3   edgeFrom, edgeTo;
-        }
-        static Preview s_Preview;
+        // While an image is dragged over the scene view: a real decal where it would be placed, made like the placed one
+        // so it looks exactly the same. It is hidden, never saved and not in the undo history, and goes again when the
+        // drag ends, leaves, is dropped, or anything else comes first (a reload, saving, play mode)
+        public const string kPreviewName = "Decal Preview";
+        static ChiselDecalComponent s_Preview;
 
-        /// <summary>Where a box decal of an image shows at a point of a surface: a unit quad scaled to its size, facing
-        /// out of the surface, just off it</summary>
-        public static Matrix4x4 PreviewQuad(Material material, int tile, Vector3 point, Vector3 normal)
+        public static ChiselDecalComponent PreviewDecal => s_Preview;
+
+        /// <summary>The preview decal for an image, made when there is none or it shows another</summary>
+        public static ChiselDecalComponent EnsurePreview(Image image)
         {
-            normal.Normalize();
-            var up   = Mathf.Abs(Vector3.Dot(normal, Vector3.up)) < 0.99f ? Vector3.up : Vector3.forward;
-            var size = ChiselDecalComponent.DefaultsOf(material).WithShape(ChiselDecalShape.Box)
-                                           .SizeFor(ChiselDecalComponent.ImageAspectOf(material, tile), 0);
-            return Matrix4x4.TRS(point + normal * 0.002f, Quaternion.LookRotation(-normal, up), new Vector3(size.x, size.y, 1));
+            if (s_Preview != null && (s_Preview.Material != image.material || s_Preview.ImageTile != image.tile))
+                ClearPreview();
+            if (s_Preview != null)
+                return s_Preview;
+            var gameObject = new GameObject(kPreviewName) { hideFlags = HideFlags.HideAndDontSave };
+            s_Preview = gameObject.AddComponent<ChiselDecalComponent>();
+            s_Preview.Material  = image.material;
+            s_Preview.ImageTile = image.tile;
+            ChiselDecalManager.HierarchyChanged();
+            return s_Preview;
         }
 
-        static void ClearPreview()
+        public static void ClearPreview()
         {
-            if (!s_Preview.active)
+            if (s_Preview != null)
+                Object.DestroyImmediate(s_Preview.gameObject);
+            s_Preview = null;
+            ChiselDecalManager.SetDirty();
+            SceneView.RepaintAll();
+        }
+
+        // previews left over from anything that went wrong, found by their name and flags
+        static void RemoveStrayPreviews()
+        {
+            foreach (var decal in Resources.FindObjectsOfTypeAll<ChiselDecalComponent>())
+            {
+                if (decal != null && decal != s_Preview && decal.gameObject.name == kPreviewName &&
+                    (decal.gameObject.hideFlags & HideFlags.DontSave) != 0)
+                    Object.DestroyImmediate(decal.gameObject);
+            }
+        }
+
+        // a decal outside any model draws on the models of its scene; a hidden object isn't in one until moved there
+        internal static void MoveToScene(ChiselDecalComponent decal, UnityEngine.SceneManagement.Scene scene)
+        {
+            if (!scene.IsValid() || decal.gameObject.scene == scene)
                 return;
-            var view = s_Preview.view;
-            s_Preview = default;
-            if (view != null)
-                view.Repaint();
+            UnityEngine.SceneManagement.SceneManager.MoveGameObjectToScene(decal.gameObject, scene);
+            ChiselDecalManager.HierarchyChanged();
         }
 
-        static Mesh s_Quad;
-        static MaterialPropertyBlock s_Block;
+        static void OnSceneSaving(UnityEngine.SceneManagement.Scene scene, string path) { ClearPreview(); }
+        static void OnPlayModeChanged(PlayModeStateChange change) { ClearPreview(); }
 
-        static void DrawPreview(SceneView sceneView)
+        // The preview where a drop at this point would place the decal; hidden where nothing would be placed
+        static void UpdatePreview(Image image, ChiselDecalShape shape, bool onSurface, ChiselIntersection hit, Vector2 mousePosition)
         {
-            if (!s_Preview.active || s_Preview.view != sceneView || s_Preview.image?.material == null)
-                return;
-            // a drag that ended without telling us shows nothing
-            if (DragAndDrop.GetGenericData(kDragKey) == null)
+            if (shape == ChiselDecalShape.Trim)
+            {
+                var decal = EnsurePreview(image);
+                ConfigureTrim(decal);
+                if (!ChiselDecalEditor.PlaceTrimAt(decal, mousePosition, recordUndo: false))
+                {
+                    ClearPreview();
+                    return;
+                }
+                var target = decal.Targets.Count > 0 ? decal.Targets[0].brush : null;
+                if (target != null)
+                    MoveToScene(decal, target.gameObject.scene);
+            } else if (onSurface)
+            {
+                var decal = EnsurePreview(image);
+                ConfigureBox(decal, image.material, image.tile, hit.worldPlaneIntersection, hit.worldPlane.normal);
+                MoveToScene(decal, hit.model.gameObject.scene);
+            } else
             {
                 ClearPreview();
                 return;
             }
-            if (s_Preview.onEdge)
-            {
-                using (new Handles.DrawingScope(new Color(0.2f, 0.9f, 1.0f, 1.0f)))
-                    Handles.DrawAAPolyLine(6.0f, s_Preview.edgeFrom, s_Preview.edgeTo);
-                return;
-            }
-            if (s_Quad == null)
-                s_Quad = Resources.GetBuiltinResource<Mesh>("Quad.fbx");
-            s_Block ??= new MaterialPropertyBlock();
-            var material = s_Preview.image.material;
-            var rect = ChiselDecalComponent.ImageRectOf(material, s_Preview.image.tile);
-            var st = new Vector4(rect.width, rect.height, rect.x, rect.y);
-            s_Block.Clear();
-            s_Block.SetVector("_BaseMap_ST", st);
-            s_Block.SetVector("_MainTex_ST", st);
-            Graphics.DrawMesh(s_Quad, s_Preview.quad, material, 0, sceneView.camera, 0, s_Block);
+            ChiselDecalManager.SetDirty();
         }
 
         static void OnSceneGUI(SceneView sceneView)
         {
             var evt = Event.current;
-            if (evt.type == EventType.Repaint)
+            if (evt.type == EventType.DragExited)
             {
-                DrawPreview(sceneView);
+                ClearPreview();
                 return;
             }
-            if (evt.type == EventType.DragExited)
+            // a drag that ended without telling us leaves no preview
+            if (s_Preview != null && DragAndDrop.GetGenericData(kDragKey) == null)
             {
                 ClearPreview();
                 return;
@@ -144,14 +170,7 @@ namespace Chisel.Editors
                 Drop(image, shape, onSurface, hit, evt.mousePosition);
             } else
             {
-                s_Preview = default;
-                if (shape == ChiselDecalShape.Trim)
-                {
-                    if (ChiselDecalEditor.EdgeAt(evt.mousePosition, out var from, out var to))
-                        s_Preview = new Preview { active = true, view = sceneView, image = image, onEdge = true, edgeFrom = from, edgeTo = to };
-                } else if (onSurface)
-                    s_Preview = new Preview { active = true, view = sceneView, image = image,
-                                              quad = PreviewQuad(image.material, image.tile, hit.worldPlaneIntersection, hit.worldPlane.normal) };
+                UpdatePreview(image, shape, onSurface, hit, evt.mousePosition);
                 sceneView.Repaint();
             }
             evt.Use();
@@ -283,14 +302,21 @@ namespace Chisel.Editors
         {
             if (material == null || normal.sqrMagnitude < 1e-12f)
                 return null;
-            normal.Normalize();
-            var up = Mathf.Abs(Vector3.Dot(normal, Vector3.up)) < 0.99f ? Vector3.up : Vector3.forward;
-
             var gameObject = new GameObject(ChiselDecalComponent.kNodeTypeName);
-            gameObject.transform.SetPositionAndRotation(center, Quaternion.LookRotation(-normal, up));
+            var decal = gameObject.AddComponent<ChiselDecalComponent>();
+            ConfigureBox(decal, material, tile, center, normal);
             if (parent != null)
                 gameObject.transform.SetParent(parent, true);
-            var decal = gameObject.AddComponent<ChiselDecalComponent>();
+            return decal;
+        }
+
+        /// <summary>A decal made a box decal of an image at a point on a surface, facing it, with the material's decal
+        /// defaults; the same for the placed decal and its preview</summary>
+        public static void ConfigureBox(ChiselDecalComponent decal, Material material, int tile, Vector3 center, Vector3 normal)
+        {
+            normal.Normalize();
+            var up = Mathf.Abs(Vector3.Dot(normal, Vector3.up)) < 0.99f ? Vector3.up : Vector3.forward;
+            decal.transform.SetPositionAndRotation(center, Quaternion.LookRotation(-normal, up));
             decal.Material  = material;
             decal.ImageTile = tile;
             var defaults = ChiselDecalComponent.DefaultsOf(material);
@@ -304,7 +330,15 @@ namespace Chisel.Editors
             settings.transparent = defaults.transparent;
             settings.size        = defaults.SizeFor(ChiselDecalComponent.ImageAspectOf(material, tile), settings.size.z);
             decal.Settings = settings;
-            return decal;
+        }
+
+        /// <summary>A decal made a trim decal with its material's defaults; the same for the placed decal and its preview</summary>
+        public static void ConfigureTrim(ChiselDecalComponent decal)
+        {
+            if (decal.Shape == ChiselDecalShape.Trim)
+                return;
+            decal.ApplyMaterialDefaults();
+            decal.Shape = ChiselDecalShape.Trim;
         }
 
         /// <summary>A box decal on each selected surface, undoably</summary>
@@ -337,8 +371,7 @@ namespace Chisel.Editors
             var decal = gameObject.AddComponent<ChiselDecalComponent>();
             decal.Material  = material;
             decal.ImageTile = tile;
-            decal.ApplyMaterialDefaults();
-            decal.Shape = ChiselDecalShape.Trim;
+            ConfigureTrim(decal);
             Undo.RegisterCreatedObjectUndo(gameObject, "Place Trim Decal");
             return decal;
         }

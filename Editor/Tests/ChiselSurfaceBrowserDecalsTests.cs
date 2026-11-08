@@ -99,23 +99,45 @@ namespace Chisel.Editors.Tests
             Assert.That(decal.Settings.size.y, Is.EqualTo(0.5f).Within(1e-5f));
         }
 
-        // While dragging, the decal shows where it would be placed: its size, facing out of the surface, just off it
+        // While dragging, the preview is a decal set up exactly like the one that would be placed; it is hidden, never
+        // saved, not undoable, and gone once cleared
         [Test]
-        public void ThePreview_MatchesWhereTheDecalWouldGo()
+        public void ThePreview_IsTheDecalThatWouldBePlaced_AndLeavesNothingBehind()
         {
             var defaults = ChiselDecalDefaults.Default;
             defaults.height = 0.5f;
             var material = DecalMaterial(defaults, Layout((1, "Wide", Vector2Int.zero, new Vector2Int(100, 50))));
-            var quad = ChiselSurfaceBrowserDecals.PreviewQuad(material, 1, new Vector3(1, 2, 0), Vector3.back);
-            Assert.That(quad.lossyScale.x, Is.EqualTo(1.0f).Within(1e-5f));
-            Assert.That(quad.lossyScale.y, Is.EqualTo(0.5f).Within(1e-5f));
-            Assert.That(Vector3.Distance(quad.GetPosition(), new Vector3(1, 2, -0.002f)), Is.LessThan(1e-5f), "just off the surface");
-            Assert.That(Vector3.Dot(quad.MultiplyVector(Vector3.forward).normalized, Vector3.forward), Is.EqualTo(1).Within(1e-5f), "faces the viewer in front of the surface");
+            var image = ChiselSurfaceBrowserDecals.ImagesOf(material, "g")[0];
+            try
+            {
+                var undoBefore = UnityEditor.Undo.GetCurrentGroup();
+                var preview = ChiselSurfaceBrowserDecals.EnsurePreview(image);
+                ChiselSurfaceBrowserDecals.ConfigureBox(preview, material, 1, new Vector3(1, 2, 0), Vector3.back);
+                var placed = ChiselSurfaceBrowserDecals.CreateBoxAt(null, material, 1, new Vector3(1, 2, 0), Vector3.back);
+                created.Add(placed.gameObject);
 
-            // and it is only drawn: no object is made for it
-            var before = Object.FindObjectsByType<ChiselDecalComponent>(FindObjectsInactive.Include).Length;
-            ChiselSurfaceBrowserDecals.PreviewQuad(material, 1, Vector3.zero, Vector3.up);
-            Assert.That(Object.FindObjectsByType<ChiselDecalComponent>(FindObjectsInactive.Include).Length, Is.EqualTo(before));
+                Assert.That(preview.Settings, Is.EqualTo(placed.Settings));
+                Assert.That(preview.Shape, Is.EqualTo(placed.Shape));
+                Assert.That(preview.transform.position, Is.EqualTo(placed.transform.position));
+                Assert.That(preview.transform.rotation, Is.EqualTo(placed.transform.rotation));
+                Assert.That(preview.gameObject.hideFlags & HideFlags.DontSave, Is.EqualTo(HideFlags.DontSave), "never saved");
+                Assert.That(preview.gameObject.hideFlags & HideFlags.HideInHierarchy, Is.EqualTo(HideFlags.HideInHierarchy));
+                Assert.That(ChiselSurfaceBrowserDecals.EnsurePreview(image), Is.SameAs(preview), "one at a time");
+                // a hidden object isn't in a scene of its own accord, and a decal draws only on the models of its scene
+                ChiselSurfaceBrowserDecals.MoveToScene(preview, placed.gameObject.scene);
+                Assert.That(preview.gameObject.scene, Is.EqualTo(placed.gameObject.scene), "in the scene of what it draws on");
+                Assert.That(preview.gameObject.hideFlags & HideFlags.DontSave, Is.EqualTo(HideFlags.DontSave), "still never saved");
+
+                var go = preview.gameObject;
+                ChiselSurfaceBrowserDecals.ClearPreview();
+                Assert.That(go == null, Is.True, "gone");
+                Assert.That(ChiselSurfaceBrowserDecals.PreviewDecal == null, Is.True);
+                Assert.That(UnityEditor.Undo.GetCurrentGroup(), Is.EqualTo(undoBefore), "nothing to undo");
+            }
+            finally
+            {
+                ChiselSurfaceBrowserDecals.ClearPreview();
+            }
         }
 
         // A decal without a texture shows its color
