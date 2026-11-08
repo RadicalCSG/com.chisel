@@ -8,6 +8,28 @@ namespace Chisel.Editors.Tests
     [TestFixture]
     public sealed class ChiselNotPaintableTests
     {
+        // URP's Lit shader starts out never painted, once: taken off the list, it stays off
+        [Test]
+        public void URPLit_IsNeverPaintedByDefault_Once()
+        {
+            var lit = Shader.Find("Universal Render Pipeline/Lit");
+            Assume.That(lit, Is.Not.Null, "the project uses URP");
+            var settings = ScriptableObject.CreateInstance<ChiselPaintSettings>();
+            try
+            {
+                Assert.That(ChiselPaintSettingsProvider.AddDefaultNotPaintable(settings), Is.True);
+                Assert.That(settings.IsNotPaintable(lit), Is.True);
+
+                settings.notPaintable.Remove(lit);
+                Assert.That(ChiselPaintSettingsProvider.AddDefaultNotPaintable(settings), Is.False, "only once");
+                Assert.That(settings.IsNotPaintable(lit), Is.False, "the user's choice stays");
+            }
+            finally
+            {
+                Object.DestroyImmediate(settings);
+            }
+        }
+
         // A shader said to be never painted stops its materials asking to be set up as paintable; taken back, they ask again
         [Test]
         public void AShaderNeverPainted_StopsAsking_AndCanBeTakenBack()

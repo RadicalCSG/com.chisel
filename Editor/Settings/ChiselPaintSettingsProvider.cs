@@ -181,7 +181,9 @@ namespace Chisel.Editors
 				return ChiselPaintSettings.Project;
 			var settings = ChiselPaintSettings.Project;
 			if (!settings)
-				return CreateProjectAsset();
+				settings = CreateProjectAsset();
+			if (AddDefaultNotPaintable(settings))
+				AssetDatabase.SaveAssetIfDirty(settings);
 			EnsurePreloaded(settings);
 			return settings;
 		}
@@ -212,6 +214,27 @@ namespace Chisel.Editors
 			EditorUtility.SetDirty(settings);
 			ChiselPaintSettings.Changed();
 			return settings.profiles.Count - 1;
+		}
+
+		// shaders that are never painted unless said otherwise
+		static readonly string[] kDefaultNotPaintable = { "Universal Render Pipeline/Lit" };
+
+		/// <summary>Adds the shaders never painted by default, once for the settings; false when that was done before</summary>
+		public static bool AddDefaultNotPaintable(ChiselPaintSettings settings)
+		{
+			if (!settings || settings.defaultNotPaintableAdded)
+				return false;
+			settings.notPaintable ??= new List<Shader>();
+			foreach (var name in kDefaultNotPaintable)
+			{
+				var shader = Shader.Find(name);
+				if (shader && !settings.notPaintable.Contains(shader))
+					settings.notPaintable.Add(shader);
+			}
+			settings.defaultNotPaintableAdded = true;
+			EditorUtility.SetDirty(settings);
+			ChiselPaintSettings.Changed();
+			return true;
 		}
 
 		/// <summary>Says a shader is never painted, or (notPaintable false) takes that back, undoably</summary>
