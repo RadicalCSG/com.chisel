@@ -108,6 +108,7 @@ namespace Chisel.Core
         public int RequiredSurfaceCount { get { return IsGivenAsPlanes ? inputPlanes.Length : (brushOutline?.polygons?.Length ?? 0); } }
 
         public string GetSurfaceName(int index) { return null; }
+        public IChiselGeneratorParts Parts => null;
         public bool IsSurfaceUsed(int index) { return true; }
 
         public void UpdateSurfaces(ref ChiselSurfaceArray surfaceDefinition)

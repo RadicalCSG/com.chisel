@@ -60,15 +60,37 @@ namespace Chisel.Components.Tests
             ChiselGeneratorParts.BrushesOf(stairs, brushes);
             Assert.That(brushes.Count, Is.GreaterThan(2), "steps");
 
-            var last = ChiselGeneratorParts.PartOf(stairs, brushes[^1]);
-            Assert.That(last.fromEnd, Is.True);
-            Assert.That(last.index, Is.EqualTo(0));
             foreach (var brush in brushes)
             {
                 var part = ChiselGeneratorParts.PartOf(stairs, brush);
                 Assert.That(ChiselGeneratorParts.TryResolve(stairs, part, out var resolved), Is.True);
                 Assert.That(resolved, Is.EqualTo(brush));
             }
+        }
+
+        // Stairs say what their brushes are: a target on a tread is a tread, counted among the treads
+        [Test]
+        public void Stairs_NameTheirParts()
+        {
+            var stairs  = Stairs();
+            var brushes = new List<CSGTreeBrush>();
+            ChiselGeneratorParts.BrushesOf(stairs, brushes);
+            var roles = new HashSet<int>();
+            for (int i = 0; i < brushes.Count; i++)
+                roles.Add(ChiselGeneratorParts.RoleOf(stairs, i));
+            Assert.That(roles, Does.Contain((int)ChiselLinearStairs.Part.Step));
+            Assert.That(ChiselGeneratorParts.RoleName(stairs, (int)ChiselLinearStairs.Part.Step), Is.EqualTo("Step"));
+
+            var lastStep = -1;
+            for (int i = 0; i < brushes.Count; i++)
+            {
+                if (ChiselGeneratorParts.RoleOf(stairs, i) == (int)ChiselLinearStairs.Part.Step)
+                    lastStep = i;
+            }
+            var part = ChiselGeneratorParts.PartOf(stairs, brushes[lastStep]);
+            Assert.That(part.role, Is.EqualTo((int)ChiselLinearStairs.Part.Step));
+            Assert.That(part.fromEnd && part.index == 0, Is.True, "the last step, counted among the steps");
+            Assert.That(ChiselGeneratorParts.NameOf(stairs, part), Is.EqualTo("Step 1 from the end"));
         }
 
         // A trim on the edge of a step that isn't the first: its targets name that step, not the first with the surface
