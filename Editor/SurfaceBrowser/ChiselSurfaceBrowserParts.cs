@@ -173,12 +173,22 @@ namespace Chisel.Editors
                         EditorGUI.DrawRect(rect, new Color(0.24f, 0.48f, 0.9f, 0.35f));
                 }
 
+                // the material itself, as in the grid: its preview, or a decal's image flat
                 var thumb = new Rect(rect.x + 6, rect.y + 2, 16, 16);
                 if (evt.type == EventType.Repaint && part.material != null)
                 {
-                    var preview = AssetPreview.GetMiniThumbnail(part.material);
-                    if (preview != null)
-                        GUI.DrawTexture(thumb, preview, ScaleMode.ScaleToFit);
+                    if (ChiselSurfaceBrowserDecals.IsDecal(part.material))
+                        DrawImage(thumb, part.material, 0);
+                    else
+                    {
+                        // never the generic material icon: nothing until the preview has loaded
+                        var preview = IsSheet(part.material) && part.material.mainTexture != null
+                                    ? part.material.mainTexture : AssetPreview.GetAssetPreview(part.material);
+                        if (preview != null)
+                            GUI.DrawTexture(thumb, preview, ScaleMode.ScaleToFit);
+                        else if (AssetPreview.IsLoadingAssetPreview(part.material.GetEntityId()))
+                            Repaint();
+                    }
                 }
                 var materialName = part.mixed ? "(mixed)" : part.material != null ? part.material.name : "(none)";
                 GUI.Label(new Rect(thumb.xMax + 4, rect.y, rect.width * 0.45f, rect.height), part.name);
