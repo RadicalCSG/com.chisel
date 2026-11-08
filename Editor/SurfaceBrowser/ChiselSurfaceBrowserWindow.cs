@@ -23,9 +23,9 @@ namespace Chisel.Editors
         bool draggingSplitter;
 
         /// <summary>The details panel's width, leaving the grid its smallest; never under its own smallest</summary>
-        internal static float ClampDetailsWidth(float width, float bodyWidth)
+        internal static float ClampDetailsWidth(float width, float bodyWidth, float sidebarWidth = kSidebarWidth)
         {
-            return Mathf.Max(kMinDetailsWidth, Mathf.Min(width, bodyWidth - kSidebarWidth - kMinGridWidth));
+            return Mathf.Max(kMinDetailsWidth, Mathf.Min(width, bodyWidth - sidebarWidth - kMinGridWidth));
         }
         const float kFooterHeight = 28;
         const float kHeaderHeight = 22;
@@ -263,25 +263,70 @@ namespace Chisel.Editors
             var body    = new Rect(0, toolbar.yMax, full.width, footer.y - toolbar.yMax);
 
             ToolbarGUI(toolbar);
-            var sidebar = new Rect(body.x, body.y, kSidebarWidth, body.height);
-            DetailsSplitterGUI(body);
-            var details = new Rect(body.xMax - detailsWidth, body.y, detailsWidth, body.height);
+            // either side panel can be collapsed; both can be resized by dragging their edge
+            var sidebarShown = showSidebar ? ClampSidebarWidth(sidebarWidth, body.width, showDetails ? detailsWidth : 0) : 0;
+            if (showSidebar)
+                SidebarSplitterGUI(body);
+            sidebarShown = showSidebar ? sidebarWidth : 0;
+            if (showDetails)
+                DetailsSplitterGUI(body, sidebarShown);
+            var detailsShown = showDetails ? detailsWidth : 0;
+            var sidebar = new Rect(body.x, body.y, sidebarShown, body.height);
+            var details = new Rect(body.xMax - detailsShown, body.y, detailsShown, body.height);
             var grid    = new Rect(sidebar.xMax, body.y, details.x - sidebar.xMax, body.height);
 
-            SidebarGUI(sidebar);
+            if (showSidebar) SidebarGUI(sidebar);
             GridGUI(grid);
-            DetailsGUI(details);
+            if (showDetails) DetailsGUI(details);
             FooterGUI(footer);
 
-            EditorGUI.DrawRect(new Rect(sidebar.xMax, body.y, 1, body.height), new Color(0, 0, 0, 0.3f));
-            EditorGUI.DrawRect(new Rect(details.x - 1, body.y, 1, body.height), new Color(0, 0, 0, 0.3f));
+            if (showSidebar) EditorGUI.DrawRect(new Rect(sidebar.xMax, body.y, 1, body.height), new Color(0, 0, 0, 0.3f));
+            if (showDetails) EditorGUI.DrawRect(new Rect(details.x - 1, body.y, 1, body.height), new Color(0, 0, 0, 0.3f));
             EditorGUI.DrawRect(new Rect(0, footer.y, full.width, 1), new Color(0, 0, 0, 0.3f));
         }
 
-        // dragging the edge between the grid and the details panel resizes the panel
-        void DetailsSplitterGUI(Rect body)
+        internal const float kMinSidebarWidth = 140;
+        [SerializeField] float sidebarWidth = kSidebarWidth;
+        [SerializeField] bool  showSidebar  = true;
+        [SerializeField] bool  showDetails  = true;
+        bool draggingSidebar;
+
+        /// <summary>The sidebar's width, leaving the grid its smallest; never under its own smallest</summary>
+        internal static float ClampSidebarWidth(float width, float bodyWidth, float detailsWidth)
         {
-            detailsWidth = ClampDetailsWidth(detailsWidth, body.width);
+            return Mathf.Max(kMinSidebarWidth, Mathf.Min(width, bodyWidth - detailsWidth - kMinGridWidth));
+        }
+
+        // dragging the edge between the sidebar and the grid resizes the sidebar
+        void SidebarSplitterGUI(Rect body)
+        {
+            var others = showDetails ? detailsWidth : 0;
+            sidebarWidth = ClampSidebarWidth(sidebarWidth, body.width, others);
+            var splitter = new Rect(body.x + sidebarWidth - kSplitterWidth / 2, body.y, kSplitterWidth, body.height);
+            EditorGUIUtility.AddCursorRect(splitter, MouseCursor.ResizeHorizontal);
+            var evt = Event.current;
+            switch (evt.type)
+            {
+                case EventType.MouseDown when evt.button == 0 && splitter.Contains(evt.mousePosition):
+                    draggingSidebar = true;
+                    evt.Use();
+                    break;
+                case EventType.MouseDrag when draggingSidebar:
+                    sidebarWidth = ClampSidebarWidth(evt.mousePosition.x - body.x, body.width, others);
+                    Repaint();
+                    evt.Use();
+                    break;
+                case EventType.MouseUp when draggingSidebar:
+                    draggingSidebar = false;
+                    evt.Use();
+                    break;
+            }
+        }
+
+        // dragging the edge between the grid and the details panel resizes the panel
+        void DetailsSplitterGUI(Rect body, float sidebarShown)
+        {
+            detailsWidth = ClampDetailsWidth(detailsWidth, body.width, sidebarShown);
             var splitter = new Rect(body.xMax - detailsWidth - kSplitterWidth / 2, body.y, kSplitterWidth, body.height);
             EditorGUIUtility.AddCursorRect(splitter, MouseCursor.ResizeHorizontal);
             var evt = Event.current;
@@ -292,7 +337,7 @@ namespace Chisel.Editors
                     evt.Use();
                     break;
                 case EventType.MouseDrag when draggingSplitter:
-                    detailsWidth = ClampDetailsWidth(body.xMax - evt.mousePosition.x, body.width);
+                    detailsWidth = ClampDetailsWidth(body.xMax - evt.mousePosition.x, body.width, sidebarShown);
                     Repaint();
                     evt.Use();
                     break;
@@ -309,6 +354,8 @@ namespace Chisel.Editors
             GUILayout.BeginArea(rect, EditorStyles.toolbar);
             using (new EditorGUILayout.HorizontalScope())
             {
+                showSidebar = GUILayout.Toggle(showSidebar, new GUIContent("Sidebar", "Show quick access, filters, folders and labels"), EditorStyles.toolbarButton, GUILayout.ExpandWidth(false));
+                GUILayout.Space(4);
                 EditorGUI.BeginChangeCheck();
                 search = EditorGUILayout.TextField(search, EditorStyles.toolbarSearchField, GUILayout.MinWidth(120), GUILayout.MaxWidth(360));
                 if (EditorGUI.EndChangeCheck())
@@ -321,6 +368,8 @@ namespace Chisel.Editors
                 sort = EditorGUILayout.Popup(sort, kSortNames, EditorStyles.toolbarPopup, GUILayout.Width(100));
                 if (EditorGUI.EndChangeCheck())
                     Filter();
+                GUILayout.Space(4);
+                showDetails = GUILayout.Toggle(showDetails, new GUIContent("Details", "Show the selected material's details"), EditorStyles.toolbarButton, GUILayout.ExpandWidth(false));
             }
             GUILayout.EndArea();
         }
@@ -349,6 +398,8 @@ namespace Chisel.Editors
         {
             GUILayout.BeginArea(rect);
             sidebarScroll = EditorGUILayout.BeginScrollView(sidebarScroll);
+
+            PartsGUI();
 
             GUILayout.Label("QUICK ACCESS", EditorStyles.miniBoldLabel);
             for (int i = 0; i < kQuickNames.Length; i++)
@@ -638,6 +689,7 @@ namespace Chisel.Editors
             }
             menu.AddSeparator(string.Empty);
             menu.AddItem(new GUIContent("Select Surfaces Using This Material"), false, () => SelectSurfacesUsing(material));
+            AddPartsMenu(menu, material);
             return menu;
         }
 
@@ -1085,7 +1137,7 @@ namespace Chisel.Editors
         {
             var surfaces = ChiselSurfaceSelectionManager.Selection;
             if (surfaces.Count == 0)
-                return "Nothing selected";
+                return "No surfaces selected";
             var nodes = new HashSet<ChiselNodeComponent>();
             var materials = new HashSet<Material>();
             foreach (var surface in surfaces)

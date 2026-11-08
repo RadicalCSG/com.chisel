@@ -205,6 +205,15 @@ namespace Chisel.Editors.Tests
         }
 
         [Test]
+        public void TheSidebar_KeepsWithinTheWindow()
+        {
+            Assert.That(ChiselSurfaceBrowserWindow.ClampSidebarWidth(10, 1200, 380), Is.EqualTo(ChiselSurfaceBrowserWindow.kMinSidebarWidth));
+            Assert.That(ChiselSurfaceBrowserWindow.ClampSidebarWidth(300, 1200, 380), Is.EqualTo(300));
+            Assert.That(ChiselSurfaceBrowserWindow.ClampSidebarWidth(1000, 1200, 380), Is.EqualTo(1200 - 380 - ChiselSurfaceBrowserWindow.kMinGridWidth), "leaves the grid its smallest");
+            Assert.That(ChiselSurfaceBrowserWindow.ClampDetailsWidth(1000, 1200, 0), Is.EqualTo(1200 - ChiselSurfaceBrowserWindow.kMinGridWidth), "the sidebar collapsed leaves the details more room");
+        }
+
+        [Test]
         public void ThePreviewHeight_StaysWithinItsLimits()
         {
             Assert.That(ChiselSurfaceBrowserWindow.ClampPreviewHeight(5), Is.EqualTo(ChiselSurfaceBrowserWindow.kMinPreviewHeight));
