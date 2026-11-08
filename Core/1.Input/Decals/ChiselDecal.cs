@@ -34,6 +34,121 @@ namespace Chisel.Core
         Cube   = 1
     }
 
+    /// <summary>What a decal covers: a box it projects through, or the edge where two surfaces meet</summary>
+    public enum ChiselDecalShape : byte
+    {
+        Box,
+        /// <summary>On the edge between its first and second target: the image's lower half on the first, its upper half on the second</summary>
+        Trim,
+        /// <summary>An outline in the decal's XY plane, reaching as deep as its box</summary>
+        Polygon
+    }
+
+    /// <summary>How a trim decal fills its edge</summary>
+    public enum ChiselTrimFill : byte
+    {
+        /// <summary>One image over the whole edge</summary>
+        Stretch,
+        /// <summary>The image repeated at its length from the edge's start, the last one cut short</summary>
+        Repeat,
+        /// <summary>The whole number of images nearest to what fits, stretched to fill the edge</summary>
+        Fit,
+        /// <summary>One image at its length, round the decal's position on the edge</summary>
+        Single
+    }
+
+    /// <summary>
+    /// What a new decal of a material starts from, kept with the material: whether it is a decal material at all, and
+    /// the shape, projection, reach, blend, trim fill and size its decals start with. Each placed decal can still be
+    /// changed on its own.
+    /// </summary>
+    [Serializable]
+    public struct ChiselDecalDefaults : IEquatable<ChiselDecalDefaults>
+    {
+        public const float kDefaultHeight = 1.0f;
+        public const float kMinHeight     = 0.001f;
+
+        /// <summary>The material is meant to be placed as a decal</summary>
+        public bool isDecal;
+        public ChiselDecalShape      shape;
+        public ChiselDecalProjection projection;
+        public ChiselDecalReach      reach;
+        /// <summary>Drawn over the surface, or (false) replacing it where it covers it</summary>
+        public bool transparent;
+        public ChiselTrimFill trimFill;
+        /// <summary>The image's height; its width (a trim's repeat length) follows from the image's aspect. For a polygon,
+        /// how deep it reaches.</summary>
+        public float height;
+
+        public static ChiselDecalDefaults Default => new ChiselDecalDefaults
+        {
+            isDecal     = false,
+            shape       = ChiselDecalShape.Box,
+            projection  = ChiselDecalProjection.Orthographic,
+            reach       = ChiselDecalReach.Sphere,
+            transparent = true,
+            trimFill    = ChiselTrimFill.Repeat,
+            height      = kDefaultHeight
+        };
+
+        /// <summary>The projections a shape can take: a polygon only its own, a trim none (it doesn't use one), a box
+        /// any but the polygon's</summary>
+        public static bool AllowsProjection(ChiselDecalShape shape, ChiselDecalProjection projection)
+        {
+            switch (shape)
+            {
+                case ChiselDecalShape.Polygon: return projection == ChiselDecalProjection.Polygon;
+                case ChiselDecalShape.Box:     return projection != ChiselDecalProjection.Polygon;
+                default:                       return true;
+            }
+        }
+
+        /// <summary>With another shape, its projection kept one the shape takes: a polygon's is Polygon, and a box
+        /// coming from one goes back to Orthographic</summary>
+        public readonly ChiselDecalDefaults WithShape(ChiselDecalShape newShape)
+        {
+            var result = this;
+            result.shape = newShape;
+            return result.Valid();
+        }
+
+        /// <summary>Its projection made one its shape takes, and its height at least the smallest there is</summary>
+        public readonly ChiselDecalDefaults Valid()
+        {
+            var result = this;
+            if (result.shape == ChiselDecalShape.Polygon)
+                result.projection = ChiselDecalProjection.Polygon;
+            else if (result.shape == ChiselDecalShape.Box && result.projection == ChiselDecalProjection.Polygon)
+                result.projection = ChiselDecalProjection.Orthographic;
+            if (!(result.height >= kMinHeight))
+                result.height = (result.height > 0 || float.IsNaN(result.height)) ? kMinHeight : kDefaultHeight;
+            return result;
+        }
+
+        /// <summary>
+        /// The size a new decal of an image of this aspect (width / height) starts with: x its width, or a trim's repeat
+        /// length, from the height and the aspect; y the height; z how deep it reaches (a polygon's: the height).
+        /// </summary>
+        public readonly float3 SizeFor(float aspect, float depth)
+        {
+            var valid = Valid();
+            if (!(aspect > 0) || float.IsInfinity(aspect))
+                aspect = 1;
+            if (valid.shape == ChiselDecalShape.Polygon)
+                return new float3(1, 1, valid.height);
+            return new float3(valid.height * aspect, valid.height, depth);
+        }
+
+        public readonly bool Equals(ChiselDecalDefaults other)
+        {
+            return isDecal == other.isDecal && shape == other.shape && projection == other.projection && reach == other.reach &&
+                   transparent == other.transparent && trimFill == other.trimFill && height == other.height;
+        }
+        public override readonly bool Equals(object obj) => obj is ChiselDecalDefaults other && Equals(other);
+        public override readonly int GetHashCode() => (int)math.hash(new uint4((isDecal ? 1u : 0u) | ((uint)shape << 1) | ((uint)projection << 4) | ((uint)reach << 7),
+                                                                               (transparent ? 1u : 0u) | ((uint)trimFill << 1), math.asuint(height), 0));
+    }
+
     /// <summary>
     /// A decal as its component describes it, in the decal's own space. The decal is a box around
     /// <see cref="center"/>, and projects its image along +Z onto every surface of the model that the box reaches

@@ -19,29 +19,6 @@ namespace Chisel.Components
         public int surfaceIndex;
     }
 
-    /// <summary>What a decal covers: a box it projects through, or the edge where two surfaces meet</summary>
-    public enum ChiselDecalShape : byte
-    {
-        Box,
-        /// <summary>On the edge between its first and second target: the image's lower half on the first, its upper half on the second</summary>
-        Trim,
-        /// <summary>The outline <see cref="ChiselDecalComponent.Polygon"/> in the decal's XY plane, reaching as deep as its box</summary>
-        Polygon
-    }
-
-    /// <summary>How a trim decal fills its edge</summary>
-    public enum ChiselTrimFill : byte
-    {
-        /// <summary>One image over the whole edge</summary>
-        Stretch,
-        /// <summary>The image repeated at its length from the edge's start, the last one cut short</summary>
-        Repeat,
-        /// <summary>The whole number of images nearest to what fits, stretched to fill the edge</summary>
-        Fit,
-        /// <summary>One image at its length, round the decal's position on the edge</summary>
-        Single
-    }
-
     /// <summary>
     /// A decal: a box that draws its material onto every surface of a Chisel model it reaches, except surfaces that
     /// face away from the box's center. The image is projected along the box's forward (+Z) axis. A transparent
@@ -286,6 +263,53 @@ namespace Chisel.Components
             // the layout's rows run down from the top, texture coordinates up from the bottom
             var size = (Vector2)layout.size;
             return new Rect(min.x / size.x, (size.y - max.y) / size.y, (max.x - min.x) / size.x, (max.y - min.y) / size.y);
+        }
+
+        /// <summary>What a new decal of a material starts from (its metadata's decal defaults), made valid</summary>
+        public static ChiselDecalDefaults DefaultsOf(Material material)
+        {
+            var metadata = material != null ? material.GetMetadataOfType<ChiselSurfaceMetadata>() : null;
+            return (metadata != null ? metadata.decalDefaults : ChiselDecalDefaults.Default).Valid();
+        }
+
+        /// <summary>An image's width over its height: its tile's in the material's layout, or the whole texture's; 1
+        /// when there's nothing to tell</summary>
+        public static float ImageAspectOf(Material material, int tile)
+        {
+            if (material == null)
+                return 1;
+            var rect     = ImageRectOf(material, tile);
+            var metadata = material.GetMetadataOfType<ChiselSurfaceMetadata>();
+            var layout   = metadata != null ? metadata.hotspotLayout : null;
+            Vector2 size;
+            if (tile != 0 && layout != null && layout.size.x > 0 && layout.size.y > 0)
+                size = layout.size;
+            else if (material.mainTexture != null)
+                size = new Vector2(material.mainTexture.width, material.mainTexture.height);
+            else
+                size = Vector2.one;
+            var width  = rect.width  * size.x;
+            var height = rect.height * size.y;
+            return (width > 0 && height > 0) ? width / height : 1;
+        }
+
+        /// <summary>
+        /// Its shape, projection, reach, blend, trim fill and size set from its material's decal defaults, the size
+        /// following its image's aspect; how deep a box or trim reaches is kept
+        /// </summary>
+        public void ApplyMaterialDefaults()
+        {
+            var defaults = DefaultsOf(material);
+            shape    = defaults.shape;
+            trimFill = defaults.trimFill;
+            var s = settings;
+            if (defaults.shape != ChiselDecalShape.Trim)
+                s.projection = defaults.projection;
+            s.reach       = defaults.reach;
+            s.transparent = defaults.transparent;
+            s.size        = defaults.SizeFor(ImageAspectOf(material, imageTile), settings.size.z);
+            settings = s;
+            ChiselDecalManager.SetDirty();
         }
 
         /// <summary>How many times a box decal's image repeats across its box, in x and y (an image in a trim sheet is a tile per image)</summary>

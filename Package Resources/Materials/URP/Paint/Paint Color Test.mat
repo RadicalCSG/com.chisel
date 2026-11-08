@@ -1,5 +1,32 @@
 %YAML 1.1
 %TAG !u! tag:unity3d.com,2011:
+--- !u!114 &-5617829463226524174
+MonoBehaviour:
+  m_ObjectHideFlags: 1
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 902648afc5123584aa3cc714d683ab73, type: 3}
+  m_Name: ChiselSurfaceMetadata
+  m_EditorClassIdentifier: com.chisel.core::Chisel.Core.ChiselSurfaceMetadata
+  reference: {fileID: 2100000}
+  destinationFlags: 15
+  outputFlags: 0
+  physicsMaterial: {fileID: 13400000, guid: 9a131e27bee822f49bbeaa7ee131d929, type: 2}
+  hotspotLayout: {fileID: 0}
+  hotspotVariants: []
+  hotspotSheets: []
+  decalDefaults:
+    isDecal: 0
+    shape: 0
+    projection: 0
+    reach: 0
+    transparent: 1
+    trimFill: 1
+    height: 1
 --- !u!21 &2100000
 Material:
   serializedVersion: 8

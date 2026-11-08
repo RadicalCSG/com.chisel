@@ -684,6 +684,46 @@ namespace Chisel.Editors
 
         // Picking a trim decal's edge in the scene view (Pick Edge)
         static ChiselDecalComponent s_PickingFor;
+        static bool s_RemoveIfUnplaced;
+
+        /// <summary>Puts a trim decal on the edge nearest a point of the scene view; false when there is none</summary>
+        internal static bool PlaceTrimAt(ChiselDecalComponent decal, Vector2 mousePosition, bool recordUndo = true)
+        {
+            var candidate = FindEdge(mousePosition);
+            if (!candidate.valid)
+                return false;
+            if (recordUndo)
+                Undo.RecordObjects(new Object[] { decal, decal.transform }, "Place Trim Decal");
+            decal.SetTargets(new[] { candidate.a, candidate.b });
+            decal.SetTrimEdge(false, candidate.edgeIndex);
+            decal.transform.position = candidate.at;
+            PutInModelOf(decal, candidate.a.brush, recordUndo);
+            if (recordUndo)
+                EditorUtility.SetDirty(decal);
+            return true;
+        }
+
+        /// <summary>A decal outside any model is put under the brush it lies on, so it draws on that brush's model</summary>
+        internal static void PutInModelOf(ChiselDecalComponent decal, ChiselNodeComponent brush, bool recordUndo)
+        {
+            if (brush == null || decal.GetComponentInParent<ChiselModelComponent>() != null)
+                return;
+            if (recordUndo)
+                Undo.SetTransformParent(decal.transform, brush.transform, "Place Trim Decal");
+            else
+                decal.transform.SetParent(brush.transform, true);
+            ChiselDecalManager.HierarchyChanged();
+        }
+
+        /// <summary>Selects a trim decal and starts picking its edge in the scene view; removeIfCancelled: a decal made
+        /// only to be placed, removed again when Escape cancels</summary>
+        internal static void StartPickingEdge(ChiselDecalComponent decal, bool removeIfCancelled)
+        {
+            s_PickingFor       = decal;
+            s_RemoveIfUnplaced = removeIfCancelled;
+            Selection.activeGameObject = decal.gameObject;
+            SceneView.lastActiveSceneView?.Focus();
+        }
         static EdgeCandidate s_Candidate;
         static readonly Color kCandidateColor = new Color(0.2f, 0.9f, 1.0f, 1.0f);
 
@@ -725,17 +765,25 @@ namespace Chisel.Editors
                             decal.SetTargets(new[] { s_Candidate.a, s_Candidate.b });
                             decal.SetTrimEdge(false, s_Candidate.edgeIndex);
                             decal.transform.position = s_Candidate.at;
+                            PutInModelOf(decal, s_Candidate.a.brush, recordUndo: true);
                         }
                         EditorUtility.SetDirty(decal);
                     }
                     if (!addToChain)
+                    {
                         s_PickingFor = null;
+                        s_RemoveIfUnplaced = false;
+                    }
                     s_Candidate  = default;
                     evt.Use();
                     break;
                 case EventType.KeyDown:
                     if (evt.keyCode != KeyCode.Escape)
                         break;
+                    // a decal made only to be placed goes again when placing is cancelled
+                    if (s_RemoveIfUnplaced && decal.Targets.Count < 2)
+                        Undo.DestroyObjectImmediate(decal.gameObject);
+                    s_RemoveIfUnplaced = false;
                     s_PickingFor = null;
                     s_Candidate  = default;
                     evt.Use();

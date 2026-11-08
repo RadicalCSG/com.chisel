@@ -40,6 +40,106 @@ namespace Chisel.Core
 			get { return instance.hotspotMaxTriangles > 0 ? instance.hotspotMaxTriangles : kDefaultHotspotMaxTriangles; }
 			set { instance.hotspotMaxTriangles = Math.Max(1, value); }
 		}
+		// Folders whose materials and decals the surface tools leave out (models, characters, particles), and everything
+		// under them; shared by everyone on the project. Paths as the asset database has them, without a trailing slash
+		[SerializeField] private System.Collections.Generic.List<string> hiddenFolders = new();
+		public static System.Collections.Generic.IReadOnlyList<string> HiddenFolders => instance.hiddenFolders ??= new();
+
+		// A folder path, without a trailing slash and with forward slashes
+		static string FolderKey(string path)
+		{
+			if (string.IsNullOrEmpty(path))
+				return string.Empty;
+			return path.Replace('\\', '/').TrimEnd('/');
+		}
+
+		static bool IsUnder(string path, string folder)
+		{
+			return path.Length > folder.Length ? path.StartsWith(folder + "/", StringComparison.OrdinalIgnoreCase)
+											   : string.Equals(path, folder, StringComparison.OrdinalIgnoreCase);
+		}
+
+		/// <summary>Whether a folder or asset is in a hidden folder, or is one</summary>
+		public static bool IsHidden(string path)
+		{
+			var key = FolderKey(path);
+			if (key.Length == 0)
+				return false;
+			foreach (var folder in HiddenFolders)
+			{
+				if (IsUnder(key, folder))
+					return true;
+			}
+			return false;
+		}
+
+		/// <summary>Hides a folder and everything under it; folders hidden under it are then hidden through it</summary>
+		public static void HideFolder(string path)
+		{
+			var key = FolderKey(path);
+			if (key.Length == 0 || IsHidden(key))
+				return;
+			RecordChange("Hide Folder");
+			var folders = instance.hiddenFolders ??= new();
+			folders.RemoveAll(folder => IsUnder(folder, key));
+			folders.Add(key);
+			folders.Sort(StringComparer.OrdinalIgnoreCase);
+			SaveChange();
+		}
+
+		/// <summary>Shows a hidden folder again; a folder hidden through its parent is shown through its parent</summary>
+		public static bool UnhideFolder(string path)
+		{
+			var key = FolderKey(path);
+			var folders = instance.hiddenFolders ??= new();
+			var index = folders.FindIndex(folder => string.Equals(folder, key, StringComparison.OrdinalIgnoreCase));
+			if (index < 0)
+				return false;
+			RecordChange("Unhide Folder");
+			folders.RemoveAt(index);
+			SaveChange();
+			return true;
+		}
+
+		// the folders hidden by default (Unity's packages, Chisel's debug materials) were added once; after that only the
+		// user changes what is hidden
+		[SerializeField] private bool defaultHiddenFoldersAdded;
+
+		/// <summary>Hides the folders, once for the project; false when that was done before</summary>
+		public static bool AddDefaultHiddenFolders(System.Collections.Generic.IEnumerable<string> paths)
+		{
+			if (instance.defaultHiddenFoldersAdded)
+				return false;
+			var folders = instance.hiddenFolders ??= new();
+			foreach (var path in paths)
+			{
+				var key = FolderKey(path);
+				if (key.Length == 0 || IsHidden(key))
+					continue;
+				folders.RemoveAll(folder => IsUnder(folder, key));
+				folders.Add(key);
+			}
+			folders.Sort(StringComparer.OrdinalIgnoreCase);
+			instance.defaultHiddenFoldersAdded = true;
+			SaveChange();
+			return true;
+		}
+
+		static void RecordChange(string name)
+		{
+#if UNITY_EDITOR
+			UnityEditor.Undo.RecordObject(instance, name);
+#endif
+		}
+
+		static void SaveChange()
+		{
+#if UNITY_EDITOR
+			UnityEditor.EditorUtility.SetDirty(instance);
+			instance.Save();
+#endif
+		}
+
 		public static ChiselContentsList ContentsList
 		{
 			get { return instance.contentsList; }

@@ -37,6 +37,8 @@ namespace Chisel.Editors
 			public readonly static GUIContent kHotspotSection      = EditorGUIUtility.TrTextContent("Hotspot Mapping");
 			public readonly static GUIContent kHotspotMaxRepeats   = EditorGUIUtility.TrTextContent("Max repeats", "The most repeats a border strip, a repeating tile or a bordered tile's interior lays on one surface; more and it stretches instead. A layout can have its own");
 			public readonly static GUIContent kHotspotMaxTriangles = EditorGUIUtility.TrTextContent("Max triangles", "The most triangles a surface's cut may draw; more and its interior's repeats are left out, then the cut. A layout can have its own");
+
+			public readonly static GUIContent kHiddenFoldersSection = EditorGUIUtility.TrTextContent("Hidden folders", "Unticked folders are left out of the Surface Browser, with everything under them");
 		};
 
 		SerializedProperty m_DefaultFloorMaterialProp;
@@ -92,11 +94,23 @@ namespace Chisel.Editors
 			if (serializedObject == null)
 				return;
 			serializedObject.Update();
+			switch (section)
+			{
+				case Section.Materials:     MaterialsGUI(); break;
+				case Section.Hotspots:      HotspotsGUI(); break;
+				case Section.SurfaceBrowser:
+					GUILayout.Label(SettingsContent.kHiddenFoldersSection, EditorStyles.boldLabel);
+					HiddenFoldersGUI();
+					break;
+			}
+			if (serializedObject.ApplyModifiedProperties())
+			{
+				ChiselProjectSettings.instance.Save();
+			}
+		}
 
-			GUILayout.Label(SettingsContent.kMaterialSection, EditorStyles.boldLabel);
-			EditorGUILayout.Space();
-			
-			using (new EditorGUI.IndentLevelScope(1))
+		void MaterialsGUI()
+		{
 			{
 				EditorGUILayout.LabelField(SettingsContent.kDefaultMaterialsSection, EditorStyles.boldLabel);
 				using (new EditorGUI.IndentLevelScope(1))
@@ -132,10 +146,10 @@ namespace Chisel.Editors
 					ChiselProjectSettings.instance.ResetMaterials();
 				}
 			}
+		}
 
-			EditorGUILayout.Space();
-			GUILayout.Label(SettingsContent.kHotspotSection, EditorStyles.boldLabel);
-			using (new EditorGUI.IndentLevelScope(1))
+		static void HotspotsGUI()
+		{
 			{
 				EditorGUI.BeginChangeCheck();
 				var maxRepeats   = EditorGUILayout.IntField(SettingsContent.kHotspotMaxRepeats,   ChiselProjectSettings.HotspotMaxRepeats);
@@ -149,20 +163,131 @@ namespace Chisel.Editors
 					ChiselHotspotStore.SettingsChanged();
 				}
 			}
-
-			if (serializedObject.ApplyModifiedProperties())
-			{
-				ChiselProjectSettings.instance.Save();
-			}
 		}
 
-		[SettingsProvider]
-		public static SettingsProvider CreateMyCustomSettingsProvider()
+		// The project's folders as a tree, each ticked while the Surface Browser shows it; a folder hidden through its
+		// parent shows as hidden and can only be shown through its parent
+		System.Collections.Generic.Dictionary<string, int> materialCounts;
+
+		void HiddenFoldersGUI()
 		{
-			var provider = AssetSettingsProvider.CreateProviderFromObject(
-				"Project/Chisel", ChiselProjectSettings.instance,
-				SettingsProvider.GetSearchKeywordsFromGUIContentProperties<SettingsContent>());
-			return provider;
+			if (materialCounts == null)
+			{
+				var paths = new System.Collections.Generic.List<string>();
+				// the ones the Surface Browser lists: material files, not those inside models or other assets
+				foreach (var guid in AssetDatabase.FindAssets("t:Material", new[] { "Assets", "Packages" }))
+				{
+					var path = AssetDatabase.GUIDToAssetPath(guid);
+					if (path.EndsWith(".mat", System.StringComparison.OrdinalIgnoreCase))
+						paths.Add(path);
+				}
+				materialCounts = ChiselSurfaceBrowserModel.CountPerFolder(paths);
+			}
+			EnsureDefaultHiddenFolders();
+			var hiddenWithMaterials = HiddenWithMaterials(ChiselProjectSettings.HiddenFolders, materialCounts);
+			EditorGUILayout.LabelField(hiddenWithMaterials == 0 ? "No folders with materials are hidden" :
+									   hiddenWithMaterials == 1 ? "1 folder with materials is hidden" :
+									   $"{hiddenWithMaterials} folders with materials are hidden", EditorStyles.miniLabel);
+			if (foldersTree == null)
+			{
+				foldersTree = new ChiselHiddenFoldersTreeView(foldersTreeState ??= new UnityEditor.IMGUI.Controls.TreeViewState<int>(), materialCounts);
+				// Assets and Packages open at first
+				if (foldersTreeState.expandedIDs.Count == 0)
+				{
+					foreach (var top in foldersTree.GetRows())
+					{
+						if (top.depth == 0)
+							foldersTree.SetExpanded(top.id, true);
+					}
+				}
+			}
+			var treeRect = GUILayoutUtility.GetRect(0, foldersTree.totalHeight, GUILayout.ExpandWidth(true));
+			foldersTree.OnGUI(treeRect);
+		}
+
+		UnityEditor.IMGUI.Controls.TreeViewState<int> foldersTreeState;
+		ChiselHiddenFoldersTreeView foldersTree;
+
+		/// <summary>The folders hidden by default: Unity's own packages, and Chisel's debug visualization materials</summary>
+		internal static System.Collections.Generic.List<string> DefaultHiddenFolders()
+		{
+			var folders = new System.Collections.Generic.List<string>();
+			foreach (var package in UnityEditor.PackageManager.PackageInfo.GetAllRegisteredPackages())
+			{
+				if (package != null && package.name.StartsWith("com.unity.", System.StringComparison.Ordinal) && !string.IsNullOrEmpty(package.assetPath))
+					folders.Add(package.assetPath);
+			}
+			foreach (var guid in AssetDatabase.FindAssets("DebugVisualization t:Folder", new[] { "Packages/com.chisel" }))
+			{
+				var path = AssetDatabase.GUIDToAssetPath(guid);
+				if (path.EndsWith("/DebugVisualization", System.StringComparison.Ordinal))
+					folders.Add(path);
+			}
+			return folders;
+		}
+
+		/// <summary>Hides the default folders, once for the project</summary>
+		internal static void EnsureDefaultHiddenFolders()
+		{
+			ChiselProjectSettings.AddDefaultHiddenFolders(DefaultHiddenFolders());
+		}
+
+		/// <summary>How many of the hidden folders hold any materials</summary>
+		internal static int HiddenWithMaterials(System.Collections.Generic.IReadOnlyList<string> hidden, System.Collections.Generic.Dictionary<string, int> materialCounts)
+		{
+			var count = 0;
+			foreach (var folder in hidden)
+			{
+				if (materialCounts.TryGetValue(folder, out var materials) && materials > 0)
+					count++;
+			}
+			return count;
+		}
+
+		// the asset database gives no subfolders for "Packages" itself: those are the packages' own folders
+		internal static string[] SubFoldersOf(string path)
+		{
+			if (path != "Packages")
+				return AssetDatabase.GetSubFolders(path);
+			var packages = new System.Collections.Generic.List<string>();
+			foreach (var package in UnityEditor.PackageManager.PackageInfo.GetAllRegisteredPackages())
+			{
+				if (package != null && !string.IsNullOrEmpty(package.assetPath) && AssetDatabase.IsValidFolder(package.assetPath))
+					packages.Add(package.assetPath);
+			}
+			packages.Sort((a, b) => string.Compare(ChiselSurfaceBrowserModel.FolderLabel(a, a), ChiselSurfaceBrowserModel.FolderLabel(b, b), System.StringComparison.OrdinalIgnoreCase));
+			return packages.ToArray();
+		}
+
+		public enum Section { Materials, Hotspots, SurfaceBrowser }
+		public Section section;
+
+		public const string kRootPath           = "Project/Chisel";
+		public const string kMaterialsPath      = kRootPath + "/Materials";
+		public const string kHotspotsPath       = kRootPath + "/Hotspot Mapping";
+		public const string kSurfaceBrowserPath = kRootPath + "/Surface Browser";
+
+		static SettingsProvider SectionProvider(string path, Section section)
+		{
+			return new AssetSettingsProvider(path, () =>
+			{
+				var editor = (ChiselProjectSettingsEditor)CreateEditor(ChiselProjectSettings.instance);
+				editor.section = section;
+				return editor;
+			}, SettingsProvider.GetSearchKeywordsFromGUIContentProperties<SettingsContent>());
+		}
+
+		[SettingsProvider] static SettingsProvider CreateMaterialsProvider()      { return SectionProvider(kMaterialsPath, Section.Materials); }
+		[SettingsProvider] static SettingsProvider CreateHotspotsProvider()       { return SectionProvider(kHotspotsPath, Section.Hotspots); }
+		[SettingsProvider] static SettingsProvider CreateSurfaceBrowserProvider() { return SectionProvider(kSurfaceBrowserPath, Section.SurfaceBrowser); }
+
+		[SettingsProvider]
+		static SettingsProvider CreateRootProvider()
+		{
+			return new SettingsProvider(kRootPath, SettingsScope.Project)
+			{
+				guiHandler = _ => EditorGUILayout.LabelField("Chisel's project settings are on the pages under this one.", EditorStyles.wordWrappedLabel)
+			};
 		}
 	}
 }

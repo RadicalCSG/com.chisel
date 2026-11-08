@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using Chisel.Components;
+using Chisel.Core;
 using NUnit.Framework;
 using UnityEditor;
 using UnityEngine;
@@ -26,6 +27,19 @@ namespace Chisel.Editors.Tests
         {
             if (root)
                 Object.DestroyImmediate(root);
+        }
+
+        // Backspace takes back the last placed corner, never the point following the mouse
+        [Test]
+        public void Backspace_RemovesTheLastPlacedCorner()
+        {
+            var points = new List<Vector3> { Vector3.zero, Vector3.right, Vector3.up, new Vector3(5, 5, 0) };
+            Assert.That(ChiselSurfaceShapeTool.PlacedCorners(points), Is.EqualTo(3));
+            Assert.That(ChiselSurfaceShapeTool.RemoveLastCorner(points), Is.True);
+            Assert.That(points, Is.EqualTo(new[] { Vector3.zero, Vector3.right, new Vector3(5, 5, 0) }));
+            var onlyMouse = new List<Vector3> { Vector3.zero };
+            Assert.That(ChiselSurfaceShapeTool.RemoveLastCorner(onlyMouse), Is.False);
+            Assert.That(ChiselSurfaceShapeTool.PlacedCorners(new List<Vector3>()), Is.EqualTo(0));
         }
 
         static ChiselDecalComponent DecalOf(ChiselBoxComponent box) => box.GetComponentInChildren<ChiselDecalComponent>(true);
