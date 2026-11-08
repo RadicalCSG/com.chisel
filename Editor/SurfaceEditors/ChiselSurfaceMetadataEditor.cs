@@ -241,13 +241,7 @@ namespace Chisel.Editors
 			EditorGUI.showMixedValue = false;
 		}
 
-		static void DisabledReason(string reason)
-		{
-			using (new EditorGUI.IndentLevelScope(1))
-				EditorGUILayout.LabelField(reason, EditorStyles.centeredGreyMiniLabel);
-		}
-
-		// every row is always shown; the ones that don't apply to the shape are disabled with a reason
+		// only the rows that apply to the shape are shown
 		void DecalDefaultsGUI()
 		{
 			var shapeProp      = decalDefaultsProp.FindPropertyRelative(nameof(ChiselDecalDefaults.shape));
@@ -284,7 +278,7 @@ namespace Chisel.Editors
 			var current    = (ChiselDecalShape)shapeProp.enumValueIndex;
 			var trim       = !mixedShape && current == ChiselDecalShape.Trim;
 			var polygon    = !mixedShape && current == ChiselDecalShape.Polygon;
-			using (new EditorGUI.DisabledScope(trim || polygon))
+			if (!trim && !polygon)
 			{
 				EditorGUI.showMixedValue = projectionProp.hasMultipleDifferentValues;
 				EditorGUI.BeginChangeCheck();
@@ -294,14 +288,11 @@ namespace Chisel.Editors
 					projectionProp.enumValueIndex = (int)projection;
 				EditorGUI.showMixedValue = false;
 			}
-			if (trim)         DisabledReason("Not used by Trim");
-			else if (polygon) DisabledReason("Locked to Polygon");
 
 			var omni = !mixedShape && current == ChiselDecalShape.Box && !projectionProp.hasMultipleDifferentValues &&
 					   (ChiselDecalProjection)projectionProp.enumValueIndex == ChiselDecalProjection.Omni;
-			using (new EditorGUI.DisabledScope(!omni))
+			if (omni)
 				EditorGUILayout.PropertyField(reachProp, kReachContents);
-			if (!omni) DisabledReason("Only for Box with Omni");
 
 			EditorGUI.showMixedValue = blendProp.hasMultipleDifferentValues;
 			EditorGUI.BeginChangeCheck();
@@ -310,9 +301,8 @@ namespace Chisel.Editors
 				blendProp.boolValue = blend == 0;
 			EditorGUI.showMixedValue = false;
 
-			using (new EditorGUI.DisabledScope(!trim))
+			if (trim)
 				EditorGUILayout.PropertyField(trimFillProp, kTrimFillContents);
-			if (!trim) DisabledReason("Only for Trim");
 
 			EditorGUI.BeginChangeCheck();
 			EditorGUILayout.PropertyField(heightProp, polygon ? kDepthContents : kHeightContents);
