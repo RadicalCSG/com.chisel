@@ -697,9 +697,22 @@ namespace Chisel.Editors
             decal.SetTargets(new[] { candidate.a, candidate.b });
             decal.SetTrimEdge(false, candidate.edgeIndex);
             decal.transform.position = candidate.at;
+            PutInModelOf(decal, candidate.a.brush, recordUndo);
             if (recordUndo)
                 EditorUtility.SetDirty(decal);
             return true;
+        }
+
+        /// <summary>A decal outside any model is put under the brush it lies on, so it draws on that brush's model</summary>
+        internal static void PutInModelOf(ChiselDecalComponent decal, ChiselNodeComponent brush, bool recordUndo)
+        {
+            if (brush == null || decal.GetComponentInParent<ChiselModelComponent>() != null)
+                return;
+            if (recordUndo)
+                Undo.SetTransformParent(decal.transform, brush.transform, "Place Trim Decal");
+            else
+                decal.transform.SetParent(brush.transform, true);
+            ChiselDecalManager.HierarchyChanged();
         }
 
         /// <summary>Selects a trim decal and starts picking its edge in the scene view; removeIfCancelled: a decal made
@@ -752,6 +765,7 @@ namespace Chisel.Editors
                             decal.SetTargets(new[] { s_Candidate.a, s_Candidate.b });
                             decal.SetTrimEdge(false, s_Candidate.edgeIndex);
                             decal.transform.position = s_Candidate.at;
+                            PutInModelOf(decal, s_Candidate.a.brush, recordUndo: true);
                         }
                         EditorUtility.SetDirty(decal);
                     }

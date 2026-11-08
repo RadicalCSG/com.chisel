@@ -122,14 +122,23 @@ namespace Chisel.Editors
                     ClearPreview();
                     return;
                 }
+                // under the brush of the edge hovered now, as the placed decal will be
                 var target = decal.Targets.Count > 0 ? decal.Targets[0].brush : null;
-                if (target != null)
-                    MoveToScene(decal, target.gameObject.scene);
+                if (target != null && decal.transform.parent != target.transform)
+                {
+                    decal.transform.SetParent(target.transform, true);
+                    ChiselDecalManager.HierarchyChanged();
+                }
             } else if (onSurface)
             {
                 var decal = EnsurePreview(image);
                 ConfigureBox(decal, image.material, image.tile, hit.worldPlaneIntersection, hit.worldPlane.normal);
-                MoveToScene(decal, hit.model.gameObject.scene);
+                // under the brush, as the placed decal will be
+                if (decal.transform.parent != hit.treeNode.transform)
+                {
+                    decal.transform.SetParent(hit.treeNode.transform, true);
+                    ChiselDecalManager.HierarchyChanged();
+                }
             } else
             {
                 ClearPreview();

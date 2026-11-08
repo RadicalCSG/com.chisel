@@ -140,6 +140,26 @@ namespace Chisel.Editors.Tests
             }
         }
 
+        // A trim decal made outside any model goes under the brush of its edge, so it draws; one already in a model stays
+        [Test]
+        public void ATrimOutsideAModel_IsPutUnderItsBrush()
+        {
+            var model = new GameObject("Model").AddComponent<ChiselModelComponent>();
+            created.Add(model.gameObject);
+            var brush = new GameObject("Brush").AddComponent<ChiselBrushComponent>();
+            brush.transform.SetParent(model.transform, false);
+            var decal = new GameObject("Decal").AddComponent<ChiselDecalComponent>();
+            created.Add(decal.gameObject);
+
+            ChiselDecalEditor.PutInModelOf(decal, brush, recordUndo: false);
+            Assert.That(decal.transform.parent, Is.SameAs(brush.transform));
+
+            var other = new GameObject("Other").AddComponent<ChiselBrushComponent>();
+            other.transform.SetParent(model.transform, false);
+            ChiselDecalEditor.PutInModelOf(decal, other, recordUndo: false);
+            Assert.That(decal.transform.parent, Is.SameAs(brush.transform), "already in a model: left where it is");
+        }
+
         // A decal without a texture shows its color
         [Test]
         public void ADecalsColor_IsItsBaseColor()
