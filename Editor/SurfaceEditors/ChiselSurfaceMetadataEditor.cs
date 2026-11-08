@@ -170,9 +170,10 @@ namespace Chisel.Editors
 
 		const float kButtonSpacing = 4;
 
-		static readonly GUIContent kConfigurePaintContents = new("Configure Paintability Of Shader", "Opens Project Settings > Chisel > Paint on the paint profile of the material's shader, adding one when it has none");
+		static readonly GUIContent kPaintingSettingsContents = new("Painting Settings", "Whether surfaces with this material can be painted: their shader's paint profile");
+		static readonly GUIContent kConfigurePaintContents = new("Configure", "Opens Project Settings > Chisel > Paint on the paint profile of the material's shader, adding one when it has none");
 
-		static readonly GUIContent kNeverPaintedContents = new("Never Paintable", "This shader is never painted: stop asking (Project Settings > Chisel > Paint lists such shaders)");
+		static readonly GUIContent kNeverPaintedContents = new("Mark shader never paintable", "This shader is never painted: stop asking (Project Settings > Chisel > Paint lists such shaders)");
 
 		/// <summary>Whether a material asks about its shader's paintability: not when the shader was said to be never painted</summary>
 		internal static bool ShowsPaintability(Material material)
@@ -194,10 +195,17 @@ namespace Chisel.Editors
 			EditorGUILayout.Space(kButtonSpacing);
 			using (new EditorGUILayout.HorizontalScope())
 			{
-				EditorGUILayout.PrefixLabel(paintable ? "Paintable" : "Not Paintable");
+				EditorGUILayout.PrefixLabel(kPaintingSettingsContents);
 				if (GUILayout.Button(kConfigurePaintContents, EditorStyles.miniButton))
 					ChiselPaintSettingsProvider.Configure(material.shader);
-				if (!paintable && GUILayout.Button(kNeverPaintedContents, EditorStyles.miniButton, GUILayout.ExpandWidth(false)))
+			}
+			if (paintable)
+				return;
+			// on its own line, under the button
+			using (new EditorGUILayout.HorizontalScope())
+			{
+				EditorGUILayout.PrefixLabel(GUIContent.none);
+				if (GUILayout.Button(kNeverPaintedContents, EditorStyles.miniButton))
 				{
 					var settings = ChiselPaintSettings.Project ? ChiselPaintSettings.Project : ChiselPaintSettingsProvider.CreateProjectAsset();
 					ChiselPaintSettingsProvider.SetNotPaintable(settings, material.shader, true);
