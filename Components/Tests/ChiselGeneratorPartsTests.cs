@@ -114,6 +114,44 @@ namespace Chisel.Components.Tests
             return roles;
         }
 
+        // A step standing in the floor (as stairs' steps reach into the one below): the edge of its front nearest a point
+        // just above the floor is where it meets the floor, which is no edge of its own
+        [Test]
+        public void TheNearestDrawnEdge_IsWhereAFaceMeetsAnotherBrush()
+        {
+            var model = new GameObject("Model").AddComponent<ChiselModelComponent>();
+            created.Add(model.gameObject);
+            ChiselBoxComponent Box(float3 min, float3 max)
+            {
+                var box = new GameObject("Box").AddComponent<ChiselBoxComponent>();
+                box.transform.SetParent(model.transform, false);
+                box.Max = new float3(1e4f);
+                box.Min = min;
+                box.Max = max;
+                return box;
+            }
+            Box(new float3(-2, -1, -2), new float3(2, 0, 2));
+            var step = Box(new float3(0, -1, -2), new float3(2, 1, 2));
+            UpdateModels();
+
+            var brush = (CSGTreeBrush)step.TopTreeNode;
+            ref var mesh = ref BrushMeshManager.GetBrushMeshBlob(brush.BrushMesh).Value;
+            var front = -1;
+            for (int p = 0; p < mesh.localPlanes.Length; p++)
+            {
+                if (math.dot(math.normalize(mesh.localPlanes[p].xyz), new float3(-1, 0, 0)) > 0.999f)
+                    front = p;
+            }
+            Assert.That(front, Is.GreaterThanOrEqualTo(0));
+            var point = new float3(0, 0.05f, 0);
+
+            Assert.That(ChiselTrimDecals.NearestEdge(brush, front, point, out var ownFrom, out var ownTo, out _), Is.True);
+            Assert.That(ChiselTrimDecals.NearestDrawnEdge(model, brush, front, point, out var from, out var to), Is.True);
+            Assert.That(from.y, Is.EqualTo(0).Within(1e-4f), "on the floor");
+            Assert.That(to.y,   Is.EqualTo(0).Within(1e-4f), "on the floor");
+            Assert.That(ChiselTrimDecals.OnLine(from, to, ownFrom, ownTo), Is.False, "not an edge of the step's own front");
+        }
+
         // Smooth stairs without sides are only their steps: no guard rail pieces at their ends
         [Test]
         public void SmoothStairs_WithoutSides_HaveNoGuardRailSurfaces()

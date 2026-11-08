@@ -852,6 +852,16 @@ namespace Chisel.Editors
             var point   = (Unity.Mathematics.float3)hit.brushIntersection.surfaceIntersection.treePlaneIntersection;
             if (!ChiselTrimDecals.NearestEdge(brush, polygon, point, out var from, out var to, out var otherPolygon, out var edgeIndex))
                 return default;
+            // the edge of what is drawn of it: where the surface meets another brush (the bottom of a riser, on the step
+            // below) is no edge of its own; there the edge is found from where the surfaces meet
+            if (ChiselTrimDecals.NearestDrawnEdge(hit.model, brush, polygon, point, out var drawnFrom, out var drawnTo) &&
+                !ChiselTrimDecals.OnLine(drawnFrom, drawnTo, from, to))
+            {
+                from = drawnFrom;
+                to   = drawnTo;
+                edgeIndex    = -1;
+                otherPolygon = -1;
+            }
             var edge    = to - from;
             var nearest = from + edge * Unity.Mathematics.math.saturate(Unity.Mathematics.math.dot(point - from, edge) / Unity.Mathematics.math.max(Unity.Mathematics.math.lengthsq(edge), 1e-12f));
             var modelToWorld = hit.model.transform.localToWorldMatrix;

@@ -595,6 +595,76 @@ namespace Chisel.Components
             return nearest < float.PositiveInfinity;
         }
 
+        /// <summary>
+        /// The edge of what is drawn of a brush's polygon nearest a point, in the tree's space: where it meets another
+        /// brush, too (the bottom of a riser on the step below), not only its own edges. False when nothing of it is drawn.
+        /// </summary>
+        public static bool NearestDrawnEdge(ChiselModelComponent model, CSGTreeBrush brush, int polygonIndex, float3 treePoint, out float3 from, out float3 to)
+        {
+            from = to = float3.zero;
+            if (model == null || !model.Node.Valid || !brush.Valid)
+                return false;
+            var lookups = ChiselTreeLookup.Value;
+            if (!lookups.HasTree(model.Node))
+                return false;
+            var data = lookups[model.Node];
+            data.lastJobHandle.Complete();
+            if (!data.brushRenderBufferLookup.IsCreated ||
+                !data.brushRenderBufferLookup.TryGetValue(CompactHierarchyManager.GetCompactNodeID(brush), out var buffer) || !buffer.IsCreated)
+                return false;
+            ref var surfaces = ref buffer.Value.surfaces;
+            if (polygonIndex < 0 || polygonIndex >= surfaces.Length)
+                return false;
+            ref var indices   = ref surfaces[polygonIndex].indices;
+            ref var positions = ref surfaces[polygonIndex].colliderVertices;
+            // an edge of the outline is one only one of its triangles has (either way round)
+            var counts = new Dictionary<(int3, int3), int>();
+            static int3 Key(float3 p) => (int3)math.round(p * 10000);
+            for (int i = 0; i + 2 < indices.Length; i += 3)
+            {
+                for (int c = 0; c < 3; c++)
+                {
+                    var ka = Key(positions[indices[i + c]]);
+                    var kb = Key(positions[indices[i + (c + 1) % 3]]);
+                    var key = Less(ka, kb) ? (ka, kb) : (kb, ka);
+                    counts.TryGetValue(key, out var n);
+                    counts[key] = n + 1;
+                }
+            }
+            var nearest = float.PositiveInfinity;
+            for (int i = 0; i + 2 < indices.Length; i += 3)
+            {
+                for (int c = 0; c < 3; c++)
+                {
+                    var a = positions[indices[i + c]];
+                    var b = positions[indices[i + (c + 1) % 3]];
+                    var ka = Key(a); var kb = Key(b);
+                    if (counts[Less(ka, kb) ? (ka, kb) : (kb, ka)] != 1)
+                        continue;
+                    var ab = b - a;
+                    var t = math.saturate(math.dot(treePoint - a, ab) / math.max(math.lengthsq(ab), 1e-12f));
+                    var distance = math.distancesq(treePoint, a + ab * t);
+                    if (distance >= nearest)
+                        continue;
+                    nearest = distance;
+                    from = a;
+                    to = b;
+                }
+            }
+            return nearest < float.PositiveInfinity;
+
+            static bool Less(int3 a, int3 b) => a.x != b.x ? a.x < b.x : (a.y != b.y ? a.y < b.y : a.z < b.z);
+        }
+
+        /// <summary>Whether a segment lies on the line through two points (within kMargin)</summary>
+        public static bool OnLine(float3 a, float3 b, float3 lineFrom, float3 lineTo)
+        {
+            var direction = math.normalizesafe(lineTo - lineFrom);
+            if (math.lengthsq(direction) < 0.5f)
+                return false;
+            return math.length(math.cross(a - lineFrom, direction)) < kMargin && math.length(math.cross(b - lineFrom, direction)) < kMargin;
+        }
+
         static bool HasVertices(ref BrushMeshBlob mesh, int polygonIndex, int vertexA, int vertexB)
         {
             ref var polygon = ref mesh.polygons[polygonIndex];
