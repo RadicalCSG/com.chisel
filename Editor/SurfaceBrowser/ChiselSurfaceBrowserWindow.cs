@@ -647,9 +647,8 @@ namespace Chisel.Editors
                     var changedMaterial = item.guid != selectedGuid;
                     partsFocused = false;   // the grid takes the arrow keys again
                     Select(item.guid);
-                    // with a part selected, another material picked goes on it at once
-                    if (changedMaterial && !cardIsDecal)
-                        ApplyToSelectedPart(material);
+                    if (changedMaterial)
+                        ApplyOnSelection(material);
                     GUIUtility.hotControl = 0;
                     evt.Use();
                     break;
@@ -877,21 +876,13 @@ namespace Chisel.Editors
                 case KeyCode.LeftArrow:  next = index - 1; break;
                 case KeyCode.DownArrow:  next = index + columns; break;
                 case KeyCode.UpArrow:    next = index - columns; break;
-                case KeyCode.Return:
-                case KeyCode.KeypadEnter:
-                    if (index >= 0) Apply(Load(shown[index]));
-                    evt.Use();
-                    return;
                 default: return;
             }
             next = Mathf.Clamp(next < 0 && index < 0 ? 0 : next, 0, shown.Count - 1);
             if (shown[next].guid != selectedGuid)
             {
                 Select(shown[next].guid);
-                // with a part selected, the material moved to goes on it, as with a click
-                var material = Load(shown[next]);
-                if (!ChiselSurfaceBrowserDecals.IsDecal(material))
-                    ApplyToSelectedPart(material);
+                ApplyOnSelection(Load(shown[next]));
             }
             evt.Use();
         }
@@ -1170,39 +1161,30 @@ namespace Chisel.Editors
             {
                 GUILayout.Label("Selection  " + SelectionText(), EditorStyles.miniLabel);
                 GUILayout.FlexibleSpace();
-                if (GUILayout.Button("Close", GUILayout.Width(60)))
-                    Close();
-                var count = ChiselSurfaceSelectionManager.Selection.Count;
+                // a material is applied as it's selected; a decal is placed, which makes something new, so on asking
                 var material = Load(Selected);
                 if (ChiselSurfaceBrowserDecals.IsDecal(material))
                 {
-                    // a decal is placed, not put on surfaces
                     using (new EditorGUI.DisabledScope(!CanPlace(material)))
                     {
                         if (GUILayout.Button(PlaceActionText(material), GUILayout.Width(170)))
                             PlaceSelectedDecal();
                     }
-                } else if (SelectedPart(PartsOf(SelectedGenerators())) is Part part)
-                {
-                    // a part was clicked: the material goes on it, on every selected generator
-                    using (new EditorGUI.DisabledScope(material == null))
-                    {
-                        if (GUILayout.Button(new GUIContent("Apply to " + part.name, "Puts the selected material on this part of the selected generators"), GUILayout.MinWidth(140)))
-                        {
-                            ApplyToPart(SelectedGenerators(), part.index, material);
-                            MarkDirty();
-                        }
-                    }
-                } else
-                {
-                    using (new EditorGUI.DisabledScope(count == 0 || material == null))
-                    {
-                        if (GUILayout.Button($"Apply to {count} surface{(count == 1 ? "" : "s")}", GUILayout.Width(140)))
-                            Apply(material);
-                    }
                 }
             }
             GUILayout.EndArea();
+        }
+
+        /// <summary>A material picked goes on what's selected: the part clicked, else the selected surfaces. A decal
+        /// material is placed only on asking</summary>
+        void ApplyOnSelection(Material material)
+        {
+            if (material == null || ChiselSurfaceBrowserDecals.IsDecal(material))
+                return;
+            if (ApplyToSelectedPart(material))
+                return;
+            if (ChiselSurfaceSelectionManager.Selection.Count > 0)
+                Apply(material);
         }
 
         /// <summary>Gives the selected surfaces a material, undoably</summary>
