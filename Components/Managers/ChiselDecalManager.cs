@@ -480,6 +480,7 @@ namespace Chisel.Components
         }
 
         static readonly List<ChiselDecalInstance> s_Tiles = new();
+        static readonly List<Unity.Mathematics.float4x4> s_Copies = new();
 
         static readonly List<Vector2> s_Corners = new();
 
@@ -498,6 +499,25 @@ namespace Chisel.Components
         static void AddBox(ModelState state, ChiselDecalComponent decal, DecalState decalState)
         {
             Describe(decal, decalState, state.worldToLocal, s_Tiles);
+            // on every brush of a part: the same again on each of the others
+            if (decal.Targets.Count > 0)
+                ChiselTrimDecals.CopiesOnEveryPart(decal.Targets[0], s_Copies);
+            else
+                s_Copies.Clear();
+            var own = s_Tiles.Count;
+            for (int c = 0; c < s_Copies.Count; c++)
+            {
+                for (int t = 0; t < own; t++)
+                {
+                    var piece = (c + 1) * own + t;
+                    if (piece >= ChiselTrimDecals.MaxPieces)
+                        break;
+                    var copy = s_Tiles[t];
+                    copy.decalToTree = math.mul(s_Copies[c], copy.decalToTree);
+                    copy.entityID    = ChiselTrimDecals.PieceEntityID(decalState.entityID, piece);
+                    s_Tiles.Add(copy);
+                }
+            }
             foreach (var tile in s_Tiles)
             {
                 var described = tile;

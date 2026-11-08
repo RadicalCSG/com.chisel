@@ -60,7 +60,9 @@ namespace Chisel.Components
             halves.Clear();
             edgeFrom = edgeTo = float3.zero;
             model = null;
-            var targets = decal.Targets;
+            var targets = new List<ChiselDecalSurfaceTarget>();
+            var pairs   = new List<int>();
+            EveryPart(decal.Targets, targets, pairs);
             var edgeCount = targets.Count / 2;
             if (edgeCount < 1)
                 return false;
@@ -80,7 +82,7 @@ namespace Chisel.Components
                 var reference = i == 0 ? (float3)decal.transform.position
                                        : (float3)model.transform.localToWorldMatrix.MultiplyPoint3x4(edges[i - 1].start + edges[i - 1].direction * edges[i - 1].length);
                 var keep = i == 0 && decal.hasTrimLine;
-                var edgeIndex = decal.TrimEdgeOf(i, out var edgeOnSecond);
+                var edgeIndex = decal.TrimEdgeOf(pairs[i], out var edgeOnSecond);
                 if (!TryEdge(targets[i * 2], targets[i * 2 + 1], edgeIndex, edgeOnSecond, reference, keep, decal.trimLinePoint, decal.trimLineDirection, out var edgeModel, out edges[i]) ||
                     (model != null && edgeModel != model))
                     return false;
@@ -202,6 +204,42 @@ namespace Chisel.Components
             return true;
         }
 
+
+        // The pairs of targets with a pair on every brush of a part (all) in its place, one after another along the chain,
+        // and for each the pair it came from. The other target of the pair goes along when it is of the same generator
+        // and has as many brushes of its role.
+        static void EveryPart(IReadOnlyList<ChiselDecalSurfaceTarget> given, List<ChiselDecalSurfaceTarget> targets, List<int> pairs)
+        {
+            for (int p = 0; p < given.Count / 2; p++)
+            {
+                var a = given[p * 2];
+                var b = given[p * 2 + 1];
+                var everyA = a.part.valid && a.part.all;
+                var everyB = b.part.valid && b.part.all;
+                if (!everyA && !everyB)
+                {
+                    targets.Add(a); targets.Add(b); pairs.Add(p);
+                    continue;
+                }
+                var every     = everyA ? a : b;
+                var other     = everyA ? b : a;
+                var generator = every.brush as ChiselGeneratorComponent;
+                var count     = ChiselGeneratorParts.CountOf(generator, every.part.role);
+                var otherAlong = other.part.valid && other.brush == every.brush &&
+                                 ChiselGeneratorParts.CountOf(generator, other.part.role) == count;
+                for (int place = 0; place < count; place++)
+                {
+                    var one = every;
+                    one.part = ChiselGeneratorParts.AtPlace(every.part, place);
+                    var across = other;
+                    if (otherAlong)
+                        across.part = ChiselGeneratorParts.AtPlace(other.part, place);
+                    targets.Add(everyA ? one : across);
+                    targets.Add(everyA ? across : one);
+                    pairs.Add(p);
+                }
+            }
+        }
 
         // One edge of a trim: its surfaces, the stretch both reach, and per half the direction into its surface and how its
         // ends lean (x per y in the half's box, 0: square; a corner's mitre)
@@ -968,6 +1006,46 @@ namespace Chisel.Components
                     return true;
             }
             return false;
+        }
+
+        /// <summary>
+        /// For a target on every brush of a part: how what is on its own brush's surface moves onto the same surface of each
+        /// other brush of the part, in the model's space (one per brush that has the surface, its own left out)
+        /// </summary>
+        public static void CopiesOnEveryPart(ChiselDecalSurfaceTarget target, List<float4x4> copies)
+        {
+            copies.Clear();
+            if (!target.part.valid || !target.part.all || target.brush is not ChiselGeneratorComponent generator ||
+                !TryFace(target, out _, out var own) || !TryFrame(own, out var ownFrame))
+                return;
+            var toOwn = math.fastinverse(ownFrame);
+            var count = ChiselGeneratorParts.CountOf(generator, target.part.role);
+            var ownPlace = ChiselGeneratorParts.PlaceOf(target.part, count);
+            for (int place = 0; place < count; place++)
+            {
+                if (place == ownPlace)
+                    continue;
+                var other = target;
+                other.part = ChiselGeneratorParts.AtPlace(target.part, place);
+                if (TryFace(other, out _, out var face) && TryFrame(face, out var frame))
+                    copies.Add(math.mul(frame, toOwn));
+            }
+        }
+
+        // A surface's place and turn: its centroid, its normal as z, its first edge as x
+        static bool TryFrame(in Face face, out float4x4 frame)
+        {
+            frame = float4x4.identity;
+            if (face.outline == null || face.outline.Count < 2)
+                return false;
+            var x = face.outline[1] - face.outline[0];
+            x -= face.normal * math.dot(x, face.normal);
+            if (math.lengthsq(x) < kEpsilon * kEpsilon)
+                return false;
+            x = math.normalize(x);
+            var y = math.cross(face.normal, x);
+            frame = new float4x4(new float4(x, 0), new float4(y, 0), new float4(face.normal, 0), new float4(face.centroid, 1));
+            return true;
         }
 
         // A target's surface, of the first brush of its component that has it (depth first)

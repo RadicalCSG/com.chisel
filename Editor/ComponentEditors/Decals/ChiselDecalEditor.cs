@@ -82,6 +82,28 @@ namespace Chisel.Editors
             Selection.activeObject = gameObject;
         }
 
+        // The part of a generator the decal is on, and whether it is on every brush of that part
+        void PartField()
+        {
+            if (targets.Length != 1 || target is not ChiselDecalComponent decal || decal.Targets.Count == 0)
+                return;
+            var first = decal.Targets[0];
+            if (!first.part.valid || first.brush is not ChiselGeneratorComponent generator ||
+                ChiselGeneratorParts.CountOf(generator, first.part.role) < 2)
+                return;
+            var own = first.part;
+            own.all = false;
+            EditorGUILayout.LabelField("Part", ChiselGeneratorParts.NameOf(generator, own));
+            EditorGUI.BeginChangeCheck();
+            var every = EditorGUILayout.Toggle($"On Every {ChiselGeneratorParts.RoleName(generator, first.part.role)}", decal.OnEveryPart);
+            if (EditorGUI.EndChangeCheck())
+            {
+                Undo.RecordObject(decal, "Decal on every part");
+                decal.OnEveryPart = every;
+                EditorUtility.SetDirty(decal);
+            }
+        }
+
         public override void OnInspectorGUI()
         {
             serializedObject.Update();
@@ -106,6 +128,8 @@ namespace Chisel.Editors
             EnumToggles(shape, kShapeContent, kShapeOptions, 3);
             var trim    = !shape.hasMultipleDifferentValues && shape.enumValueIndex == (int)ChiselDecalShape.Trim;
             var polygon = !shape.hasMultipleDifferentValues && shape.enumValueIndex == (int)ChiselDecalShape.Polygon;
+            if (!polygon)
+                PartField();
             if (polygon)
                 PolygonFields(settings);
             else if (trim)

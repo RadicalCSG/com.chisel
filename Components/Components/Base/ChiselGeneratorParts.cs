@@ -19,10 +19,12 @@ namespace Chisel.Components
         /// <summary>The brush's place among the role's, from the start or (fromEnd) from the end</summary>
         public int  index;
         public bool fromEnd;
+        /// <summary>Every brush of the role, not just this one</summary>
+        public bool all;
 
-        public readonly bool Equals(ChiselPartReference other) => valid == other.valid && role == other.role && index == other.index && fromEnd == other.fromEnd;
+        public readonly bool Equals(ChiselPartReference other) => valid == other.valid && role == other.role && index == other.index && fromEnd == other.fromEnd && all == other.all;
         public override readonly bool Equals(object obj) => obj is ChiselPartReference other && Equals(other);
-        public override readonly int GetHashCode() => valid ? ((role * 1024 + index) * 2 + (fromEnd ? 1 : 0)) : -1;
+        public override readonly int GetHashCode() => valid ? (((role * 1024 + index) * 2 + (fromEnd ? 1 : 0)) * 2 + (all ? 1 : 0)) : -1;
     }
 
     /// <summary>The brushes of a generator by the part they are, and back</summary>
@@ -126,11 +128,33 @@ namespace Chisel.Components
             return true;
         }
 
-        /// <summary>A part as people say it: "Step 2 from the end"</summary>
+        /// <summary>How many brushes of a generator have this role</summary>
+        public static int CountOf(ChiselGeneratorComponent generator, int role)
+        {
+            var brushes = new List<CSGTreeBrush>();
+            BrushesOf(generator, brushes);
+            var count = 0;
+            for (int i = 0; i < brushes.Count; i++)
+            {
+                if (RoleOf(generator, i) == role)
+                    count++;
+            }
+            return count;
+        }
+
+        /// <summary>The part at this place among its role, counted from the start, kept to one brush</summary>
+        public static ChiselPartReference AtPlace(ChiselPartReference part, int place)
+        {
+            return new ChiselPartReference { valid = part.valid, role = part.role, index = place };
+        }
+
+        /// <summary>A part as people say it: "Step 2 from the end", or "Every Step"</summary>
         public static string NameOf(ChiselGeneratorComponent generator, ChiselPartReference part)
         {
             if (!part.valid)
                 return null;
+            if (part.all)
+                return $"Every {RoleName(generator, part.role)}";
             return $"{RoleName(generator, part.role)} {part.index + 1} from the {(part.fromEnd ? "end" : "start")}";
         }
 

@@ -351,6 +351,21 @@ namespace Chisel.Components
             return code < 0 ? -1 : code >> 1;
         }
 
+        /// <summary>Whether the decal is on every brush of its first target's part (a box decal on every step), or only its own</summary>
+        public bool OnEveryPart
+        {
+            get => targets.Count > 0 && targets[0].part.valid && targets[0].part.all;
+            set
+            {
+                if (targets.Count == 0 || !targets[0].part.valid || targets[0].part.all == value)
+                    return;
+                var target = targets[0];
+                target.part.all = value;
+                targets[0] = target;
+                ChiselDecalManager.SetDirty();
+            }
+        }
+
         /// <summary>The edge the first pair of targets lies on (see <see cref="TrimEdgeOf"/>)</summary>
         public void SetTrimEdge(bool onSecond, int edgeIndex)
         {
