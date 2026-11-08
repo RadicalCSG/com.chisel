@@ -53,6 +53,42 @@ namespace Chisel.Editors.Tests
             return layout;
         }
 
+        // A box decal dropped on stairs remembers the step it landed on; with shift, every step
+        [Test]
+        public void ABoxDropped_OnStairs_RemembersItsPart_OrEveryOne()
+        {
+            var model = new GameObject("Model").AddComponent<ChiselModelComponent>();
+            created.Add(model.gameObject);
+            var stairs = new GameObject("Stairs").AddComponent<ChiselLinearStairsComponent>();
+            stairs.transform.SetParent(model.transform, false);
+            for (int i = 0; i < 3; i++)
+            {
+                ChiselNodeHierarchyManager.Update();
+                ChiselModelManager.Instance.UpdateModels();
+            }
+            var brushes = new List<CSGTreeBrush>();
+            ChiselGeneratorParts.BrushesOf(stairs, brushes);
+            var decal = new GameObject("Decal").AddComponent<ChiselDecalComponent>();
+            created.Add(decal.gameObject);
+
+            var hit = new ChiselIntersection { treeNode = stairs };
+            hit.brushIntersection.brush        = brushes[1];
+            hit.brushIntersection.surfaceIndex = 0;
+            ChiselSurfaceBrowserDecals.OnPartOf(decal, hit, every: false);
+            Assert.That(decal.Targets.Count, Is.EqualTo(1));
+            Assert.That(decal.Targets[0].part.valid, Is.True, "the step it landed on");
+            Assert.That(ChiselGeneratorParts.TryResolve(stairs, decal.Targets[0].part, out var step) && step == brushes[1], Is.True);
+            Assert.That(decal.OnEveryPart, Is.False);
+
+            ChiselSurfaceBrowserDecals.OnPartOf(decal, hit, every: true);
+            Assert.That(decal.OnEveryPart, Is.True, "every step");
+
+            var box = new GameObject("Box").AddComponent<ChiselBoxComponent>();
+            created.Add(box.gameObject);
+            ChiselSurfaceBrowserDecals.OnPartOf(decal, new ChiselIntersection { treeNode = box }, every: true);
+            Assert.That(decal.Targets.Count, Is.EqualTo(0), "not a generator of parts: it reaches every surface");
+        }
+
         // A sheet's tiles are its images; without a layout the whole texture is one; a material not marked has none
         [Test]
         public void Images_AreTheTilesOfTheSheet()

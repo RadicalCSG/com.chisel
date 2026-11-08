@@ -111,7 +111,7 @@ namespace Chisel.Editors
         static void OnPlayModeChanged(PlayModeStateChange change) { ClearPreview(); }
 
         // The preview where a drop at this point would place the decal; hidden where nothing would be placed
-        static void UpdatePreview(Image image, ChiselDecalShape shape, bool onSurface, ChiselIntersection hit, Vector2 mousePosition)
+        static void UpdatePreview(Image image, ChiselDecalShape shape, bool onSurface, ChiselIntersection hit, Vector2 mousePosition, bool every)
         {
             if (shape == ChiselDecalShape.Trim)
             {
@@ -122,6 +122,7 @@ namespace Chisel.Editors
                     ClearPreview();
                     return;
                 }
+                decal.OnEveryPart = every;
                 // under the brush of the edge hovered now, as the placed decal will be
                 var target = decal.Targets.Count > 0 ? decal.Targets[0].brush : null;
                 if (target != null && decal.transform.parent != target.transform)
@@ -133,6 +134,7 @@ namespace Chisel.Editors
             {
                 var decal = EnsurePreview(image);
                 ConfigureBox(decal, image.material, image.tile, hit.worldPlaneIntersection, hit.worldPlane.normal);
+                OnPartOf(decal, hit, every);
                 // under the brush, as the placed decal will be
                 if (decal.transform.parent != hit.treeNode.transform)
                 {
@@ -176,17 +178,17 @@ namespace Chisel.Editors
                 ClearPreview();
                 DragAndDrop.AcceptDrag();
                 DragAndDrop.SetGenericData(kDragKey, null);
-                Drop(image, shape, onSurface, hit, evt.mousePosition);
+                Drop(image, shape, onSurface, hit, evt.mousePosition, evt.shift);
             } else
             {
-                UpdatePreview(image, shape, onSurface, hit, evt.mousePosition);
+                UpdatePreview(image, shape, onSurface, hit, evt.mousePosition, evt.shift);
                 sceneView.Repaint();
             }
             evt.Use();
         }
 
         // a box where it's dropped, a trim on the edge nearest to it; a polygon starts drawing
-        static void Drop(Image image, ChiselDecalShape shape, bool onSurface, ChiselIntersection hit, Vector2 mousePosition)
+        static void Drop(Image image, ChiselDecalShape shape, bool onSurface, ChiselIntersection hit, Vector2 mousePosition, bool every)
         {
             ChiselSurfaceBrowserPrefs.MarkUsed(image.guid);
             switch (shape)
@@ -197,7 +199,10 @@ namespace Chisel.Editors
                     if (!ChiselDecalEditor.PlaceTrimAt(decal, mousePosition))
                         ChiselDecalEditor.StartPickingEdge(decal, removeIfCancelled: true);
                     else
+                    {
+                        decal.OnEveryPart = every;
                         Selection.activeGameObject = decal.gameObject;
+                    }
                     return;
                 }
                 default:
@@ -207,6 +212,7 @@ namespace Chisel.Editors
                     var decal = CreateBoxAt(hit.treeNode.transform, image.material, image.tile, hit.worldPlaneIntersection, hit.worldPlane.normal);
                     if (decal == null)
                         return;
+                    OnPartOf(decal, hit, every);
                     Undo.RegisterCreatedObjectUndo(decal.gameObject, "Place Decal");
                     Selection.activeGameObject = decal.gameObject;
                     ChiselDecalManager.SetDirty();
@@ -215,6 +221,24 @@ namespace Chisel.Editors
                 }
             }
         }
+        /// <summary>A box decal dropped on a generator remembers the part it was dropped on (that tread), or with every
+        /// that part and every one like it (every tread); elsewhere it keeps reaching every surface</summary>
+        internal static void OnPartOf(ChiselDecalComponent decal, ChiselIntersection hit, bool every)
+        {
+            if (hit.treeNode is not ChiselGeneratorComponent generator || generator.Parts == null)
+            {
+                if (decal.Targets.Count > 0)
+                    decal.SetTargets(null);
+                return;
+            }
+            var brush   = hit.brushIntersection.brush;
+            var target  = ChiselGeneratorParts.TargetOf(generator, brush, ChiselTrimDecals.SurfaceOf(brush, hit.brushIntersection.surfaceIndex));
+            target.part.all = every && target.part.valid;
+            if (decal.Targets.Count == 1 && decal.Targets[0].Equals(target))
+                return;
+            decal.SetTargets(new[] { target });
+        }
+
         public sealed class Image
         {
             public Material material;
