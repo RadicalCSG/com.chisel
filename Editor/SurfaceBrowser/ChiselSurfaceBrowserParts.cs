@@ -107,6 +107,19 @@ namespace Chisel.Editors
             return null;
         }
 
+        /// <summary>Puts a material on the part clicked, of the selected generators; false when no part is selected</summary>
+        bool ApplyToSelectedPart(Material material)
+        {
+            if (material == null || selectedPart < 0)
+                return false;
+            var generators = SelectedGenerators();
+            if (SelectedPart(PartsOf(generators)) is not Part part || (!part.mixed && part.material == material))
+                return false;
+            ApplyToPart(generators, part.index, material);
+            MarkDirty();
+            return true;
+        }
+
         /// <summary>Puts a material on a part (a surface) of each generator, undoably</summary>
         public static void ApplyToPart(IReadOnlyList<ChiselGeneratorComponent> generators, int surfaceIndex, Material material)
         {

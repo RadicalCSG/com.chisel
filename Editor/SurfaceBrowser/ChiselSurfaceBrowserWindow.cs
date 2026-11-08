@@ -643,7 +643,11 @@ namespace Chisel.Editors
                         pendingRenameTime  = EditorApplication.timeSinceStartup;
                         pendingRenameMouse = GUIUtility.GUIToScreenPoint(evt.mousePosition);
                     }
+                    var changedMaterial = item.guid != selectedGuid;
                     Select(item.guid);
+                    // with a part selected, another material picked goes on it at once
+                    if (changedMaterial && !cardIsDecal)
+                        ApplyToSelectedPart(material);
                     GUIUtility.hotControl = 0;
                     evt.Use();
                     break;
