@@ -170,20 +170,43 @@ namespace Chisel.Editors
 
 		const float kButtonSpacing = 4;
 
-		static readonly GUIContent kConfigurePaintContents = new("Configure Paintability Of Shader", "Opens Project Settings > Chisel > Paint on the paint profile of the material's shader, adding one when it has none");
+		static readonly GUIContent kPaintingSettingsContents = new("Painting Settings", "Whether surfaces with this material can be painted: their shader's paint profile");
+		static readonly GUIContent kConfigurePaintContents = new("Configure", "Opens Project Settings > Chisel > Paint on the paint profile of the material's shader, adding one when it has none");
 
-		// Whether the material's shader can be painted, and the way to its paint profile
+		static readonly GUIContent kNeverPaintedContents = new("Mark shader never paintable", "This shader is never painted: stop asking (Project Settings > Chisel > Paint lists such shaders)");
+
+		/// <summary>Whether a material asks about its shader's paintability: not when the shader was said to be never painted</summary>
+		internal static bool ShowsPaintability(Material material)
+		{
+			if (!material || !material.shader)
+				return false;
+			var settings = ChiselPaintSettings.Project;
+			return !(settings && settings.IsNotPaintable(material.shader));
+		}
+
+		// Whether the material's shader can be painted, and the way to its paint profile; nothing for a shader said to
+		// be never painted
 		void PaintGUI()
 		{
 			var material = MaterialOf(target);
-			if (!material || !material.shader)
+			if (!ShowsPaintability(material))
 				return;
+			var paintable = ChiselPaintProfiles.Find(material.shader) != null;
 			EditorGUILayout.Space(kButtonSpacing);
-			using (new EditorGUILayout.HorizontalScope())
+			// the buttons in the value column, one under the other
+			var row = EditorGUILayout.GetControlRect(true);
+			var button = EditorGUI.PrefixLabel(row, kPaintingSettingsContents);
+			if (GUI.Button(button, kConfigurePaintContents, EditorStyles.miniButton))
+				ChiselPaintSettingsProvider.Configure(material.shader);
+			if (paintable)
+				return;
+			row = EditorGUILayout.GetControlRect(true);
+			button = new Rect(button.x, row.y, button.width, row.height);
+			if (GUI.Button(button, kNeverPaintedContents, EditorStyles.miniButton))
 			{
-				EditorGUILayout.PrefixLabel(ChiselPaintProfiles.Find(material.shader) != null ? "Paintable" : "Not Paintable");
-				if (GUILayout.Button(kConfigurePaintContents, EditorStyles.miniButton))
-					ChiselPaintSettingsProvider.Configure(material.shader);
+				var settings = ChiselPaintSettings.Project ? ChiselPaintSettings.Project : ChiselPaintSettingsProvider.CreateProjectAsset();
+				ChiselPaintSettingsProvider.SetNotPaintable(settings, material.shader, true);
+				GUIUtility.ExitGUI();
 			}
 		}
 

@@ -16,6 +16,18 @@ namespace Chisel.Components
 
         public List<ChiselPaintProfile> profiles = new();
 
+        // Shaders that are never painted: their materials don't ask to be set up as paintable
+        public List<Shader> notPaintable = new();
+
+        // the shaders never painted by default were added once; after that only the user changes the list
+        public bool defaultNotPaintableAdded;
+
+        /// <summary>Whether a shader was said to be never painted (one with a profile is paintable whatever this says)</summary>
+        public bool IsNotPaintable(Shader shader)
+        {
+            return shader != null && notPaintable != null && notPaintable.Contains(shader) && Find(shader) == null;
+        }
+
         static ChiselPaintSettings s_Project;
 
         /// <summary>The project's paint settings, null when it has none</summary>
