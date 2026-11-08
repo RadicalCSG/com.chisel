@@ -9,7 +9,7 @@ using Unity.Entities;
 namespace Chisel.Core
 {
     [Serializable]
-    public struct ChiselPathedStairs : IBranchGenerator, IChiselSurfaceNames
+    public struct ChiselPathedStairs : IBranchGenerator, IChiselSurfaceNames, IChiselGeneratorParts
     {
         readonly static ChiselPathedStairs kDefaultSettings = new()
 		{
@@ -42,6 +42,26 @@ namespace Chisel.Core
 
         [UnityEngine.HideInInspector, NonSerialized] public BlobAssetReference<ChiselCurve2DBlob> curveBlob;
         [UnityEngine.HideInInspector, NonSerialized] internal UnsafeList<SegmentVertex> shapeVertices;
+
+        #region Parts
+        // each part of the path is linear stairs (their parts), and a corner wall where it turns
+        public const int kCornerPart = 6;
+        static readonly string[] kPartNames = { "Step", "Tread", "Left Side", "Right Side", "Side Front", "Base", "Corner" };
+
+        public readonly int PartRoleCount => kPartNames.Length;
+        public readonly string GetPartRoleName(int role) { return role >= 0 && role < kPartNames.Length ? kPartNames[role] : null; }
+
+        public readonly int GetPartRole(int brushIndex)
+        {
+            if (!shapeVertices.IsCreated)
+                return 0;
+            return BrushMeshFactory.PathedStairsPartOf(brushIndex, shapeVertices, closed, stairs.bounds,
+                                                       stairs.stepHeight, stairs.stepDepth, stairs.treadHeight, stairs.nosingDepth,
+                                                       stairs.plateauHeight, stairs.riserType, stairs.riserDepth,
+                                                       stairs.leftSide, stairs.rightSide, cornerSide,
+                                                       stairs.sideWidth, stairs.sideHeight, stairs.sideDepth, stairs.sideFrontOffset, stairs.TopSideLength, CornerTopSideLength);
+        }
+        #endregion
 
         #region Generate
         public int PrepareAndCountRequiredBrushMeshes()

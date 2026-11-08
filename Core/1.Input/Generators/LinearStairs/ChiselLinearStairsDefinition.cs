@@ -202,12 +202,18 @@ namespace Chisel.Core
                                                                     riserType, riserDepth,
                                                                     leftSide, rightSide,
                                                                     sideWidth, sideHeight, sideDepth, sideFrontOffset: sideFrontOffset, topSideLength: TopSideLength);
-            if (brushIndex < description.startTread)      return (int)Part.Step;
-            if (brushIndex < description.startLeftSide)   return (int)Part.Tread;
-            if (brushIndex < description.startRightSide)  return (int)Part.LeftSide;
-            if (brushIndex < description.startSideFronts) return (int)Part.RightSide;
-            if (brushIndex < description.startBase)       return (int)Part.SideFront;
-            return (int)Part.Base;
+            return (int)PartOf(in description, brushIndex);
+        }
+
+        /// <summary>The part the brush at this place of stairs built from a description is</summary>
+        internal static Part PartOf(in BrushMeshFactory.LineairStairsData description, int brushIndex)
+        {
+            if (brushIndex < description.startTread)      return Part.Step;
+            if (brushIndex < description.startLeftSide)   return Part.Tread;
+            if (brushIndex < description.startRightSide)  return Part.LeftSide;
+            if (brushIndex < description.startSideFronts) return Part.RightSide;
+            if (brushIndex < description.startBase)       return Part.SideFront;
+            return Part.Base;
         }
         #endregion
 

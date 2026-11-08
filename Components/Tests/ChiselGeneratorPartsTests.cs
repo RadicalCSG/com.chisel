@@ -93,6 +93,45 @@ namespace Chisel.Components.Tests
             Assert.That(ChiselGeneratorParts.NameOf(stairs, part), Is.EqualTo("Step 1 from the end"));
         }
 
+        T Generator<T>() where T : ChiselGeneratorComponent
+        {
+            var model = new GameObject("Model").AddComponent<ChiselModelComponent>();
+            created.Add(model.gameObject);
+            var generator = new GameObject(typeof(T).Name).AddComponent<T>();
+            generator.transform.SetParent(model.transform, false);
+            UpdateModels();
+            return generator;
+        }
+
+        static HashSet<int> RolesOf(ChiselGeneratorComponent generator)
+        {
+            var brushes = new List<CSGTreeBrush>();
+            ChiselGeneratorParts.BrushesOf(generator, brushes);
+            var roles = new HashSet<int>();
+            for (int i = 0; i < brushes.Count; i++)
+                roles.Add(ChiselGeneratorParts.RoleOf(generator, i));
+            return roles;
+        }
+
+        // Spiral stairs tell their steps apart from their column
+        [Test]
+        public void SpiralStairs_NameTheirParts()
+        {
+            var roles = RolesOf(Generator<ChiselSpiralStairsComponent>());
+            Assert.That(roles.Contains((int)ChiselSpiralStairs.Part.Step) || roles.Contains((int)ChiselSpiralStairs.Part.Tread), Is.True, "steps");            Assert.That(roles.Count, Is.GreaterThan(1));
+        }
+
+        // Pathed stairs name the parts of each stretch as linear stairs do, and their corners
+        [Test]
+        public void PathedStairs_NameTheirParts()
+        {
+            var stairs = Generator<ChiselPathedStairsComponent>();
+            var roles  = RolesOf(stairs);
+            Assert.That(roles, Does.Contain((int)ChiselLinearStairs.Part.Step));
+            Assert.That(roles, Has.No.Member(-1), "every brush has a part");
+            Assert.That(ChiselGeneratorParts.RoleName(stairs, ChiselPathedStairs.kCornerPart), Is.EqualTo("Corner"));
+        }
+
         // A trim on the edge of a step that isn't the first: its targets name that step, not the first with the surface
         [Test]
         public void ATrimsTarget_OnAStep_IsThatStep()

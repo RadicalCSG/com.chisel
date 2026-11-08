@@ -64,6 +64,43 @@ namespace Chisel.Core
             return totalSubMeshCount;
         }
         
+        /// <summary>
+        /// The part the brush at this place of pathed stairs is, in the order they're built (as CountPathedStairBrushes
+        /// counts them): each part of the path as linear stairs (ChiselLinearStairs.Part), then its corner wall; -1 past the end
+        /// </summary>
+        public static int PathedStairsPartOf(int brushIndex, UnsafeList<SegmentVertex> shapeVertices, bool closedLoop, MinMaxAABB bounds,
+                                             float stepHeight, float stepDepth, float treadHeight, float nosingDepth, float plateauHeight,
+                                             StairsRiserType riserType, float riserDepth, StairsSideType leftSide, StairsSideType rightSide, StairsSideType cornerSide,
+                                             float sideWidth, float sideHeight, float sideDepth, float sideFrontOffset, float topSideLength, float cornerTopSideLength)
+        {
+            var offset = 0;
+            for (int i = 0; i < shapeVertices.Length; i++)
+            {
+                if (i == 0 && !closedLoop)
+                    continue;
+                SidesOf(closedLoop, i == 1, i == shapeVertices.Length - 1, leftSide, rightSide, out var segmentLeftSide, out var segmentRightSide);
+                var endIsCorner = (closedLoop || i != shapeVertices.Length - 1) && IsControlPoint(in shapeVertices, i);
+                var description = new LineairStairsData(bounds, stepHeight, stepDepth, treadHeight,
+                                                        nosingDepth, nosingWidth: 0, plateauHeight,
+                                                        riserType, riserDepth,
+                                                        segmentLeftSide, segmentRightSide,
+                                                        sideWidth, sideHeight, sideDepth,
+                                                        leftAsSet: true, rightAsSet: true, sideFrontOffset: sideFrontOffset, topSideLength: topSideLength);
+                if (brushIndex < offset + description.subMeshCount)
+                    return (int)ChiselLinearStairs.PartOf(in description, brushIndex - offset);
+                offset += description.subMeshCount;
+                if (!endIsCorner)
+                    continue;
+                var wall = CornerWallData(bounds, stepHeight, stepDepth, treadHeight, nosingDepth, plateauHeight,
+                                          riserType, riserDepth, cornerSide, sideWidth, sideHeight, sideDepth, sideFrontOffset, cornerTopSideLength);
+                var wallCount = CornerWallCount(in wall);
+                if (brushIndex < offset + wallCount)
+                    return ChiselPathedStairs.kCornerPart;
+                offset += wallCount;
+            }
+            return -1;
+        }
+
         // TODO: kind of broken, needs fixing
         // Each part of the path is the linear stairs as they are, so with their own UVs, moved onto it by its brushes'
         // transformations; brushTransformations is as long as brushMeshes

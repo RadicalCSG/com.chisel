@@ -17,7 +17,7 @@ namespace Chisel.Core
 
     // Spiral Stairs data
     [Serializable]
-    public struct ChiselSpiralStairs : IBranchGenerator, IChiselSurfaceNames
+    public struct ChiselSpiralStairs : IBranchGenerator, IChiselSurfaceNames, IChiselGeneratorParts
     {
         readonly static ChiselSpiralStairs kDefaultSettings = new()
         {
@@ -271,6 +271,42 @@ namespace Chisel.Core
 
         internal bool HaveRiser => riserType != StairsRiserType.None;
         internal int TreadStart => !HaveRiser ? 0 : RiserSubMeshCount;
+        #endregion
+
+        #region Parts
+        // the brushes are built in this order (GenerateSpiralStairs): the risers (several to a step when smooth), the
+        // cylinders that trim them, the treads, the cylinders that trim those, the column (and its hole), the outer side,
+        // the inner side, the base
+        public enum Part { Step, Tread, Trim, Column, OuterSide, InnerSide, Base }
+        static readonly string[] kPartNames = { "Step", "Tread", "Trim", "Column", "Outer Side", "Inner Side", "Base" };
+
+        public readonly int PartRoleCount => kPartNames.Length;
+        public readonly string GetPartRoleName(int role) { return role >= 0 && role < kPartNames.Length ? kPartNames[role] : null; }
+
+        public int GetPartRole(int brushIndex)
+        {
+            var at = brushIndex;
+            if (HaveRiser)
+            {
+                if (at < StepCount * SubMeshPerRiser) return (int)Part.Step;
+                at -= StepCount * SubMeshPerRiser;
+                if (at < CylinderSubMeshCount) return (int)Part.Trim;
+                at -= CylinderSubMeshCount;
+            }
+            if (HaveTread)
+            {
+                if (at < StepCount) return (int)Part.Tread;
+                at -= StepCount;
+                if (at < CylinderSubMeshCount) return (int)Part.Trim;
+                at -= CylinderSubMeshCount;
+            }
+            if (at < ColumnSubMeshCount) return (int)Part.Column;
+            at -= ColumnSubMeshCount;
+            if (at < OuterSideSubMeshCount) return (int)Part.OuterSide;
+            at -= OuterSideSubMeshCount;
+            if (at < InnerSideSubMeshCount) return (int)Part.InnerSide;
+            return (int)Part.Base;
+        }
         #endregion
 
         #region Generate
