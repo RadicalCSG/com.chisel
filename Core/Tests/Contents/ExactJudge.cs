@@ -1222,7 +1222,8 @@ namespace Chisel.Core.Tests
 		}
 
 		// Where OutputModelWeld.CollapseShortEdges put each corner (ContentsTreeHarness.CollapseMoves), checked: no further than
-		// kCollapseLength, onto a corner that stays, and each cluster onto its least corner (by x, y, z)
+		// kCollapseLength, onto a corner that stays, each cluster no wider than kCollapseLength (which of its corners stays is
+		// the weld's choice, OutputModelWeld.Cluster)
 		sealed class CollapseMap
 		{
 			readonly Dictionary<float3, float3> moved = new();
@@ -1248,8 +1249,6 @@ namespace Chisel.Core.Tests
 					foreach (var from in pair.Value)
 					{
 						lo = math.min(lo, from); hi = math.max(hi, from);
-						if (Less(from, pair.Key))
-							Problem(context, from, $"the weld moved {Format(from)} onto {Format(pair.Key)}, which is not its cluster's least corner");
 					}
 					if (!(math.length(hi - lo) <= OutputModelWeld.kCollapseLength))
 						Problem(context, pair.Key, $"the weld collapsed corners {math.length(hi - lo)} across onto {Format(pair.Key)}, further than it collapses");

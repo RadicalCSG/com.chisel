@@ -20,6 +20,59 @@ namespace Chisel.Editors
             var size = back * bounds.size;
             bounds = new Bounds(back * bounds.center, new Vector3(Mathf.Abs(size.x), Mathf.Abs(size.y), Mathf.Abs(size.z)));
         }
+
+        // The grid on a surface: the active grid tipped the least way that puts its up on the surface's normal, so on a
+        // surface that faces the way the grid does it is the grid itself, not turned round its up
+        public static Quaternion SurfaceTurn(Vector3 gridUp, Vector3 surfaceNormal)
+        {
+            return Quaternion.FromToRotation(gridUp, surfaceNormal);
+        }
+
+        // A generator that always stands up: its frame turned so its y is the axis of the frame closest to up, that
+        // axis's own way round, with a turn, never a mirror. The drawn box, and the way it was drawn out of the surface
+        // (extrusion, in the frame), are turned with it; each size stays as drawn, only along the axis it is now on
+        public static void FaceUp(ref Matrix4x4 transformation, ref Bounds bounds, ref Vector3 extrusion, Vector3 up)
+        {
+            var dots = new Vector3(Vector3.Dot(transformation.GetColumn(0), up),
+                                   Vector3.Dot(transformation.GetColumn(1), up),
+                                   Vector3.Dot(transformation.GetColumn(2), up));
+            var abs  = new Vector3(Mathf.Abs(dots.x), Mathf.Abs(dots.y), Mathf.Abs(dots.z));
+            // the frame's new axes, in the frame: x = y cross z, so it stays a turn
+            Vector3 newX, newY, newZ;
+            if (abs.y >= abs.x && abs.y >= abs.z)
+            {
+                if (dots.y >= 0)
+                    return;
+                newX = Vector3.right; newY = Vector3.down; newZ = Vector3.back;
+            } else if (abs.x >= abs.z)
+            {
+                var sign = dots.x < 0 ? -1.0f : 1.0f;
+                newY = Vector3.right * sign; newZ = Vector3.forward; newX = Vector3.down * sign;
+            } else
+            {
+                var sign = dots.z < 0 ? -1.0f : 1.0f;
+                newY = Vector3.forward * sign; newX = Vector3.right; newZ = Vector3.down * sign;
+            }
+            var turn = new Matrix4x4(newX, newY, newZ, new Vector4(0, 0, 0, 1));
+            transformation = transformation * turn;
+            var back = turn.transpose;
+            var size = bounds.size;
+            bounds = new Bounds(back.MultiplyVector(bounds.center),
+                                new Vector3(Vector3.Dot(Abs(newX), size), Vector3.Dot(Abs(newY), size), Vector3.Dot(Abs(newZ), size)));
+            extrusion = back.MultiplyVector(extrusion);
+        }
+
+        // The drawn box, height long along extrusion from the frame's middle: the frame moved to the middle of the box's
+        // bottom (y is up), the box above it. Drawn on a floor that is where the frame already was
+        public static void FromBottomMiddle(ref Matrix4x4 transformation, ref Bounds bounds, Vector3 extrusion, float height)
+        {
+            var middle = extrusion * (height * 0.5f);
+            var bottom = new Vector3(middle.x, middle.y - bounds.size.y * 0.5f, middle.z);
+            transformation = transformation * Matrix4x4.Translate(bottom);
+            bounds.center = middle - bottom;
+        }
+
+        static Vector3 Abs(Vector3 v) => new Vector3(Mathf.Abs(v.x), Mathf.Abs(v.y), Mathf.Abs(v.z));
     }
 
     public enum GeneratorModeState

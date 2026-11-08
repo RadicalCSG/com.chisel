@@ -818,6 +818,8 @@ namespace Chisel.Core
             // their short edges and kept corners (ShortEdgesOf), clustered (ClusterShortEdges)
             var pairs = new NativeList<float3x2>(64, Allocator.Temp);
             var kept  = new UnsafeHashSet<float3>(64, Allocator.Temp);
+            // the planes of the triangles their corners are on (Cluster)
+            var planesAt = new UnsafeParallelMultiHashMap<float3, float4>(64, Allocator.Temp);
             foreach (var key in surfaces)
             {
                 var b = (int)(key >> 32);
@@ -836,8 +838,10 @@ namespace Chisel.Core
                     var q0 = after.collider[c0] + 0.0f;
                     var q1 = after.collider[c1] + 0.0f;
                     var q2 = after.collider[c2] + 0.0f;
-                    if (!points.Contains(Bits(q0)) && !points.Contains(Bits(q1)) && !points.Contains(Bits(q2)))
+                    bool at0 = points.Contains(Bits(q0)), at1 = points.Contains(Bits(q1)), at2 = points.Contains(Bits(q2));
+                    if (!at0 && !at1 && !at2)
                         continue;
+                    AddPlanesAt(q0, q1, q2, at0, at1, at2, ref planesAt);
                     var changed = t >= sourceTriangles ||
                                   c0 != source.indices[t * 3] || c1 != source.indices[t * 3 + 1] || c2 != source.indices[t * 3 + 2];
                     if (IsNeedle(q0, q1, q2) || changed)
@@ -852,8 +856,8 @@ namespace Chisel.Core
                     FreeWorking(after);
             }
             var movedNow = new NativeList<float3x2>(64, Allocator.Temp);
-            ClusterPairs(pairs, kept, movedNow);
-            pairs.Dispose(); kept.Dispose();
+            ClusterPairs(pairs, kept, planesAt, movedNow);
+            pairs.Dispose(); kept.Dispose(); planesAt.Dispose();
 
             // the moves of those groups, and of the corners that are not in one any more, replaced
             for (int i = 0; i < memory.touched.Length; i++)
@@ -1024,7 +1028,8 @@ namespace Chisel.Core
         }
 
         // ClusterShortEdges for these short edges and kept corners: (from, to) of every corner that moves
-        static void ClusterPairs(NativeList<float3x2> pairs, UnsafeHashSet<float3> keptPoints, NativeList<float3x2> moved)
+        static void ClusterPairs(NativeList<float3x2> pairs, UnsafeHashSet<float3> keptPoints, UnsafeParallelMultiHashMap<float3, float4> planesAt,
+                                 NativeList<float3x2> moved)
         {
             var ids    = new UnsafeHashMap<float3, int>(64, Allocator.Temp);
             var points = new NativeList<float3>(64, Allocator.Temp);
@@ -1045,7 +1050,7 @@ namespace Chisel.Core
             if (edges.Length > 0)
             {
                 var to = new NativeArray<float3>(points.Length, Allocator.Temp);
-                Cluster(points.AsArray(), edges, to);
+                Cluster(points.AsArray(), edges, to, planesAt);
                 for (int i = 0; i < points.Length; i++)
                 {
                     if (!to[i].Equals(points[i]))

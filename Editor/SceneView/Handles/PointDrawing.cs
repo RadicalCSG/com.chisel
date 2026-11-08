@@ -62,12 +62,10 @@ namespace Chisel.Editors
                     var activeGridCenter				= Chisel.Editors.Grid.ActiveGrid.Center;
                     var surfaceGridPlane				= s_StartIntersection.plane;
                     var surfaceGridUp					= surfaceGridPlane.normal;
-                    var surfaceGridForward				= MathExtensions.CalculateBinormal(surfaceGridUp);
-                    
+
                     var activeGridFromWorldRotation		= Quaternion.LookRotation(activeGridUp, activeGridForward);
                     var worldFromActiveGridRotation		= Quaternion.Inverse(activeGridFromWorldRotation);
-                    var surfaceGridFromWorldRotation	= Quaternion.LookRotation(surfaceGridUp, surfaceGridForward);
-                    var activeGridToSurfaceGridRotation	= surfaceGridFromWorldRotation * worldFromActiveGridRotation;
+                    var activeGridToSurfaceGridRotation	= ChiselPlacementTurn.SurfaceTurn(activeGridUp, surfaceGridUp);
 
 
                     // Make sure the center of the new grid is as close to the active grid center as possible

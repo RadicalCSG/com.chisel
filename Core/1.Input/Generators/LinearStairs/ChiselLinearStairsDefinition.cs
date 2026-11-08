@@ -37,7 +37,7 @@ namespace Chisel.Core
     }
 
     [Serializable]
-    public struct ChiselLinearStairs : IBranchGenerator, IChiselSurfaceNames
+    public struct ChiselLinearStairs : IBranchGenerator, IChiselSurfaceNames, IChiselGeneratorParts
     {
         // TODO: set defaults using attributes?
         readonly static ChiselLinearStairs kDefaultSettings = new()
@@ -179,6 +179,41 @@ namespace Chisel.Core
             else                max.z = min.z - depth;
             bounds.Min = min;
             bounds.Max = max;
+        }
+        #endregion
+
+        #region Parts
+        // the brushes are built in this order: the steps (and the shape under them), the treads, each side, the side
+        // fronts, the base
+        public enum Part { Step, Tread, LeftSide, RightSide, SideFront, Base }
+        static readonly string[] kPartNames = { "Step", "Tread", "Left Side", "Right Side", "Side Front", "Base" };
+
+        public readonly int PartRoleCount => kPartNames.Length;
+        public readonly string GetPartRoleName(int role) { return role >= 0 && role < kPartNames.Length ? kPartNames[role] : null; }
+
+        [BurstDiscard]
+        public readonly int GetPartRole(int brushIndex)
+        {
+            var description = new BrushMeshFactory.LineairStairsData(SortedBounds,
+                                                                    stepHeight, stepDepth,
+                                                                    treadHeight,
+                                                                    nosingDepth, nosingWidth,
+                                                                    plateauHeight,
+                                                                    riserType, riserDepth,
+                                                                    leftSide, rightSide,
+                                                                    sideWidth, sideHeight, sideDepth, sideFrontOffset: sideFrontOffset, topSideLength: TopSideLength);
+            return (int)PartOf(in description, brushIndex);
+        }
+
+        /// <summary>The part the brush at this place of stairs built from a description is</summary>
+        internal static Part PartOf(in BrushMeshFactory.LineairStairsData description, int brushIndex)
+        {
+            if (brushIndex < description.startTread)      return Part.Step;
+            if (brushIndex < description.startLeftSide)   return Part.Tread;
+            if (brushIndex < description.startRightSide)  return Part.LeftSide;
+            if (brushIndex < description.startSideFronts) return Part.RightSide;
+            if (brushIndex < description.startBase)       return Part.SideFront;
+            return Part.Base;
         }
         #endregion
 

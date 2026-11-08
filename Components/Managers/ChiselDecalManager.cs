@@ -50,6 +50,9 @@ namespace Chisel.Components
             // a polygon decal: where its surface has its corners now (ChiselSurfaceShapes.Resolve), in localToWorld's XY
             public ChiselDecalComponent polygonDecal;
             public readonly List<Vector2> corners = new();
+            // a box decal on every brush of a part: its first target, and where its copies were at the last update
+            public ChiselDecalSurfaceTarget everyPart;
+            public readonly List<float4x4> copies = new();
         }
 
         sealed class ModelState
@@ -258,7 +261,8 @@ namespace Chisel.Components
                             renderMaterial   = EntityId.ToULong(decal.Material.GetEntityId()),
                             destinationFlags = GetDestinationFlags(decal.Material),
                             targets          = targets,
-                            polygonDecal     = decal.Shape == ChiselDecalShape.Polygon ? decal : null
+                            polygonDecal     = decal.Shape == ChiselDecalShape.Polygon ? decal : null,
+                            everyPart        = decal.OnEveryPart ? decal.Targets[0] : default
                         };
                     }
                 }
@@ -268,6 +272,17 @@ namespace Chisel.Components
                     // a trim decal follows its surfaces, which nothing announces either
                     if (decalState.trimDecal != null && UpdateTrim(decalState))
                         changed = true;
+                    // so does a box decal on every brush of a part: the brushes move, come and go with the generator
+                    if (decalState.everyPart.part.all)
+                    {
+                        ChiselTrimDecals.CopiesOnEveryPart(decalState.everyPart, s_Copies);
+                        if (!Same(s_Copies, decalState.copies))
+                        {
+                            decalState.copies.Clear();
+                            decalState.copies.AddRange(s_Copies);
+                            changed = true;
+                        }
+                    }
                     if (decalState.transform == null)
                         continue;
                     var localToWorld = decalState.transform.localToWorldMatrix;
@@ -480,6 +495,7 @@ namespace Chisel.Components
         }
 
         static readonly List<ChiselDecalInstance> s_Tiles = new();
+        static readonly List<Unity.Mathematics.float4x4> s_Copies = new();
 
         static readonly List<Vector2> s_Corners = new();
 
@@ -498,6 +514,22 @@ namespace Chisel.Components
         static void AddBox(ModelState state, ChiselDecalComponent decal, DecalState decalState)
         {
             Describe(decal, decalState, state.worldToLocal, s_Tiles);
+            // on every brush of a part: the same again on each of the others
+            var copies = decalState.copies;
+            var own = s_Tiles.Count;
+            for (int c = 0; c < copies.Count; c++)
+            {
+                for (int t = 0; t < own; t++)
+                {
+                    var piece = (c + 1) * own + t;
+                    if (piece >= ChiselTrimDecals.MaxPieces)
+                        break;
+                    var copy = s_Tiles[t];
+                    copy.decalToTree = math.mul(copies[c], copy.decalToTree);
+                    copy.entityID    = ChiselTrimDecals.PieceEntityID(decalState.entityID, piece);
+                    s_Tiles.Add(copy);
+                }
+            }
             foreach (var tile in s_Tiles)
             {
                 var described = tile;

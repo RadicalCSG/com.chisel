@@ -18,10 +18,12 @@ namespace Chisel.Core
             definition.settings.outerSegments    = outerSegments;
         }
 
+        // the stairs are built around the frame's middle, up from it (the box drawn is around it): a box drawn out of a
+        // wall, turned to stand up, can be drawn out either way
         public override void OnUpdate(ref ChiselSpiralStairsDefinition definition, Bounds bounds)
         {
             definition.settings.height			= bounds.size[(int)Axis.Y];
-            definition.settings.outerDiameter	= bounds.size[(int)Axis.X];
+            definition.settings.outerDiameter	= Mathf.Abs(bounds.size[(int)Axis.X]);
         }
 
         public override void OnPaint(IChiselHandleRenderer renderer, Bounds bounds)

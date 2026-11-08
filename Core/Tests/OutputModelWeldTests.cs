@@ -399,6 +399,32 @@ namespace Chisel.Core.Tests
 			buffer.Value.surfaces[surface].decalEntityID = 1;
 		}
 
+		// A corner where a side meets a top, and a point on the top half a millimetre off the side's plane, before the corner
+		// by x, y, z: the collapse keeps the corner, so the side stays where it is, and moves the point on the top onto it
+		[Test]
+		public void AShortEdgeFromACorner_KeepsTheCornerOnItsFaces()
+		{
+			var corner = new float3(0, 1, 0);
+			var onTop  = new float3(-0.0005f, 1, 0.0002f);
+			float3 s0 = new float3(0, 0, 0), s1 = new float3(0, 0, 1), s2 = new float3(0, 1, 1);
+			float3 t0 = new float3(-1, 1, 1), t1 = new float3(-1, 1, 0);
+			var side = new[] { corner, s0, s1,  corner, s1, s2 };
+			var top  = new[] { corner, s2, onTop,  onTop, s2, t0,  onTop, t0, t1 };
+			using var model = new Model(Brush(side, top));
+
+			var sideCorners = new List<float3>();
+			foreach (var (a, b, c) in Triangles(model[0], 0))
+				sideCorners.AddRange(new[] { a, b, c });
+			Assert.That(sideCorners, Has.Member(corner), "the side's corner moved");
+			foreach (var p in sideCorners)
+				Assert.That(p.x, Is.EqualTo(0), $"the side is moved off its plane at {p}");
+			foreach (var (a, b, c) in Triangles(model[0], 1))
+			{
+				foreach (var p in new[] { a, b, c })
+					Assert.That(p.Equals(onTop), Is.False, "the point on the top stayed");
+			}
+		}
+
 		[Test]
 		public void ASurfaceWithAShortEdge_IsCollapsed()
 		{

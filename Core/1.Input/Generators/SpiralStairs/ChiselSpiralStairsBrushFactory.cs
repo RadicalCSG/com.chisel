@@ -356,6 +356,9 @@ namespace Chisel.Core
                         var lastAngle = startAngle + (stepCount - 1) * anglePerStep;
                         var lastDir   = new float2(math.sin(lastAngle), math.cos(lastAngle));
                         var center    = new float2(origin.x, origin.z);
+                        // its sides are the wall's inside, the other way round
+                        if (definition.HaveOuterSide)
+                            brushMeshBlob = WithSidePlanes(brushMeshBlob, origin, OuterRailInside(in definition), outerSides);
                         brushMeshes[subMeshIndex] = LastTopRunsOn(AlignedToFront(Classified(brushMeshBlob, StairsPart.Step, origin, anglePerStep, in surfaceDefinitionBlob),
                                                                    center + lastDir * InnerRadiusAt(lastAngle, stepInnerRadius, innerSides), center + lastDir * stepOuterRadius),
                                                                    origin, lastDir, center, anglePerStep, stepHeight, in surfaceDefinitionBlob);
@@ -442,6 +445,8 @@ namespace Chisel.Core
                     var nextDir   = new float2(math.sin(lastAngle + anglePerStep), math.cos(lastAngle + anglePerStep));
                     var nose      = math.normalizesafe(lastDir - nextDir) * nosingDepth;
                     var center    = new float2(origin.x, origin.z);
+                    if (definition.HaveOuterSide)
+                        brushMeshBlob = WithSidePlanes(brushMeshBlob, origin, OuterRailInside(in definition), outerSides);
                     brushMeshes[subMeshIndex] = LastTopRunsOn(AlignedToFront(Classified(brushMeshBlob, StairsPart.Step, origin, anglePerStep, in surfaceDefinitionBlob),
                                                                center + lastDir * InnerRadiusAt(lastAngle, stepInnerRadius, innerSides) + nose,
                                                                center + lastDir * (stepOuterRadius + outerNosingWidth) + nose),
@@ -491,7 +496,7 @@ namespace Chisel.Core
                 {
                     // inside the outer cylinder, on the steps' outside, as thick as set inwards
                     var apothem = outerDiameter * 0.5f * math.cos(math.PI / outerSides);
-                    GenerateSide(brushMeshes, ref index, definition.outerSide, math.max(0, apothem - sideWidth), apothem, outerSides, in definition, origin, startAngle, anglePerStep, in surfaceDefinitionBlob, allocator);
+                    GenerateSide(brushMeshes, ref index, definition.outerSide, OuterRailInside(in definition), apothem, outerSides, in definition, origin, startAngle, anglePerStep, in surfaceDefinitionBlob, allocator);
                 }
                 if (definition.HaveInnerSide)
                 {
@@ -515,7 +520,7 @@ namespace Chisel.Core
         // the treads: above it for a wall above the steps, below it (under the steps) for one below, never below the floor.
         // There is one piece for each straight side of the cylinder (and one more where it reaches the floor), so each side
         // shows a single face; along it the wall's top and bottom are straight, a little off the steps' line in between.
-        // Each piece is two wedges, so every face is flat
+        // Each piece is one brush, its top and bottom two triangles where they lean two ways
         static void GenerateSide(NativeList<BlobAssetReference<BrushMeshBlob>> brushMeshes, ref int index, StairsSideType sideType,
                                  float innerApothem, float outerApothem, int segments, in ChiselSpiralStairs definition, float3 origin,
                                  float startAngle, float anglePerStep,
@@ -523,17 +528,16 @@ namespace Chisel.Core
         {
             var stepHeight  = definition.stepHeight;
             var above       = (sideType == StairsSideType.Up   || sideType == StairsSideType.DownAndUp) ? definition.sideHeight : 0;
-            var below       = (sideType == StairsSideType.Down || sideType == StairsSideType.DownAndUp) ? stepHeight + definition.sideDepth : 0;
             // steps that are solid down to the floor have walls that go down to the floor too
-            if (definition.riserType == StairsRiserType.FillDown)
-                below = math.abs(definition.height) + stepHeight;
-            var floor       = math.min(0, origin.y);
+            var below       = definition.SideBelowSteps(sideType);
+            var floor      = math.min(0, origin.y);
             // how far along the wall each piece starts, on its inner and its outer face, so the texture runs on across them
             var innerLength = 0.0f;
             var outerLength = 0.0f;
+            var middleLength = 0.0f;
 
             var end   = startAngle + anglePerStep * definition.StepCount;
-            var split = definition.SideFloorAngle(startAngle, anglePerStep);
+            var split = definition.SideFloorAngle(startAngle, anglePerStep, sideType);
             // raised above the object's position, a wall below the steps stands on it beside the first step, as that
             // step does (its pieces there end where that step does, see SideFloorAngle)
             var onGround  = below > 0 && origin.y > floor;
@@ -564,8 +568,14 @@ namespace Chisel.Core
                     var endsFrom  = origin;
                     innerLength = -math.distance(in0, in1);
                     outerLength = -math.distance(out0, out1);
-                    brushMeshes[index++] = AlignedUpright(WallFace(Classified(FlatBottomWedge(in0, top0, out0, top0, in1, top1, bottom, in surfaceDefinitionBlob, allocator), StairsPart.Wall, origin, anglePerStep, in surfaceDefinitionBlob), smoothing, in0, in1, innerLength), endsFrom, aroundOrigin: true, 0);
-                    brushMeshes[index++] = AlignedUpright(WallFace(Classified(FlatBottomWedge(out0, top0, out1, top1, in1, top1, bottom, in surfaceDefinitionBlob, allocator), StairsPart.Wall, origin, anglePerStep, in surfaceDefinitionBlob), smoothing, out0, out1, outerLength), endsFrom, aroundOrigin: true, 0);
+                    var frontStart = -math.distance((in0 + out0) * 0.5f, (in1 + out1) * 0.5f);
+                    float2 inUV0 = new float2(0, frontStart), outUV0 = new float2(math.distance(in0, out0), frontStart);
+                    float2 inUV1 = new float2(0, 0),          outUV1 = new float2(math.distance(in1, out1), 0);
+                    // where it meets the first piece both brushes have the one plane
+                    var piece = WithPlane(Classified(SidePiece(in0, out0, in1, out1, top0, top1, bottom, bottom, in surfaceDefinitionBlob, allocator), StairsPart.Wall, origin, anglePerStep, in surfaceDefinitionBlob),
+                                          RadialPlane(origin, a0));
+                    piece = WallFace(WallFace(piece, smoothing, in0, in1, innerLength), smoothing, out0, out1, outerLength);
+                    brushMeshes[index++] = TopFromCorners(AlignedUpright(piece, endsFrom, aroundOrigin: true, 0), in0, inUV0, out0, outUV0, in1, inUV1, out1, outUV1);
                     innerLength = 0;
                     outerLength = 0;
                 }
@@ -585,16 +595,27 @@ namespace Chisel.Core
                     var out1 = Around(origin, ChiselSpiralStairs.RadiusOnSide(a1, middle, outerApothem, segments), a1);
 
                     var smoothing = definition.sideSmoothingGroup;
-                    // the first wedge has the inner face, the second the outer one; the face between them is hidden
                     // its ends, pointing out from the middle, have their texture from the middle out and from the bottom of the
                     // step beside them up, as that step's front and back
                     var stepBeside = math.clamp((int)math.floor(((a0 + a1) * 0.5f - startAngle) / anglePerStep), 0, definition.StepCount - 1);
                     var endsFrom   = new float3(origin.x, origin.y + stepBeside * stepHeight, origin.z);
                     var pieceBelow = (onGround && a1 <= firstStep + ChiselSpiralStairs.kAngleEpsilon) ? kToTheGround : below;
-                    brushMeshes[index++] = AlignedUpright(WallFace(Classified(Wedge(in0, line0, out0, line0, in1, line1, above, pieceBelow, floor, in surfaceDefinitionBlob, allocator), StairsPart.Wall, origin, anglePerStep, in surfaceDefinitionBlob), smoothing, in0, in1, innerLength), endsFrom, aroundOrigin: true, 0);
-                    brushMeshes[index++] = AlignedUpright(WallFace(Classified(Wedge(out0, line0, out1, line1, in1, line1, above, pieceBelow, floor, in surfaceDefinitionBlob, allocator), StairsPart.Wall, origin, anglePerStep, in surfaceDefinitionBlob), smoothing, out0, out1, outerLength), endsFrom, aroundOrigin: true, 0);
+                    // the tops: u across the wall from its inside, v along its middle
+                    var middleNext = middleLength + math.distance((in0 + out0) * 0.5f, (in1 + out1) * 0.5f);
+                    float2 inUV0 = new float2(0, middleLength), outUV0 = new float2(math.distance(in0, out0), middleLength);
+                    float2 inUV1 = new float2(0, middleNext),   outUV1 = new float2(math.distance(in1, out1), middleNext);
+                    // where brushes meet (a piece and the next, the wall's inside and the steps' trimming cylinder) each has
+                    // the one plane, the other way round, so the CSG finds them exactly on each other
+                    SidePlanes(origin, middle, innerApothem, outerApothem, segments, out var innerSide, out var outerSide);
+                    var bottom0 = math.max(floor, line0 - pieceBelow);
+                    var bottom1 = math.max(floor, line1 - pieceBelow);
+                    var piece   = WithPlanes(Classified(SidePiece(in0, out0, in1, out1, line0 + above, line1 + above, bottom0, bottom1, in surfaceDefinitionBlob, allocator), StairsPart.Wall, origin, anglePerStep, in surfaceDefinitionBlob),
+                                             RadialPlane(origin, a0), RadialPlane(origin, a1), innerSide, outerSide);
+                    piece = WallFace(WallFace(piece, smoothing, in0, in1, innerLength), smoothing, out0, out1, outerLength);
+                    brushMeshes[index++] = TopFromCorners(AlignedUpright(piece, endsFrom, aroundOrigin: true, 0), in0, inUV0, out0, outUV0, in1, inUV1, out1, outUV1);
                     innerLength += math.distance(in0, in1);
                     outerLength += math.distance(out0, out1);
+                    middleLength = middleNext;
                     a0 = a1;
                 }
             }
@@ -667,26 +688,257 @@ namespace Chisel.Core
                                             in surfaceDefinitionBlob, allocator);// Indirect
         }
 
-        // A wedge standing on a triangle, each corner from below its line to above it; its corners are put in the order the
-        // steps' own wedges have them in, so it is never inside out
-        static BlobAssetReference<BrushMeshBlob> Wedge(float2 p0, float line0, float2 p1, float line1, float2 p2, float line2,
-                                                       float above, float below, float floor,
-                                                       in BlobAssetReference<InternalChiselSurfaceArray> surfaceDefinitionBlob, Allocator allocator)
+        // A piece of a wall as one convex brush, standing on the straight lines from in0 to in1 (its inside) and out0 to
+        // out1 (its outside), its top from top0 at the first end to top1 at the second, its bottom likewise. A top or
+        // bottom that leans two ways at once is two triangles, cut along the diagonal that keeps the brush convex
+        static BlobAssetReference<BrushMeshBlob> SidePiece(float2 in0, float2 out0, float2 in1, float2 out1, float top0, float top1, float bottom0, float bottom1,
+                                                          in BlobAssetReference<InternalChiselSurfaceArray> surfaceDefinitionBlob, Allocator allocator)
         {
-            var d1 = p1 - p0;
-            var d2 = p2 - p0;
-            if ((d1.x * d2.y - d1.y * d2.x) < 0)
+            ref var surfaces = ref surfaceDefinitionBlob.Value.surfaces;
+            if (surfaces.Length < 1)
+                return BlobAssetReference<BrushMeshBlob>.Null;
+
+            // a wall thicker than the middle it stands round has its inside on the middle itself: a wedge from there, its
+            // top and bottom each one flat triangle (only at the middle can its two ends meet on its inside). Its two
+            // ends rise to different heights on the middle; there it reaches from the lower bottom to the higher top
+            const float kOnePoint = 1e-5f;
+            var wedge = math.lengthsq(in1 - in0) < kOnePoint * kOnePoint;
+
+            // 0..3 the bottom, 4..7 the top, each: inside first end, outside first end, outside second end, inside second end
+            // (a wedge has no inside second end: 0..2 the bottom, 3..5 the top, each: inside, outside first end, outside second end)
+            var vertices = new NativeArray<float3>(wedge ? 6 : 8, Allocator.Temp);
+            var loops    = new NativeList<int>(32, Allocator.Temp);
+            var counts   = new NativeList<int>(8, Allocator.Temp);
+            try
             {
-                var p = p1; p1 = p2; p2 = p;
-                var line = line1; line1 = line2; line2 = line;
+                if (wedge)
+                {
+                    vertices[0] = new float3(in0.x,  math.min(bottom0, bottom1), in0.y);  vertices[1] = new float3(out0.x, bottom0, out0.y);
+                    vertices[2] = new float3(out1.x, bottom1, out1.y);
+                    vertices[3] = new float3(in0.x,  math.max(top0, top1), in0.y);        vertices[4] = new float3(out0.x, top0,    out0.y);
+                    vertices[5] = new float3(out1.x, top1,    out1.y);
+                } else
+                {
+                    vertices[0] = new float3(in0.x,  bottom0, in0.y);  vertices[1] = new float3(out0.x, bottom0, out0.y);
+                    vertices[2] = new float3(out1.x, bottom1, out1.y); vertices[3] = new float3(in1.x,  bottom1, in1.y);
+                    vertices[4] = new float3(in0.x,  top0,    in0.y);  vertices[5] = new float3(out0.x, top0,    out0.y);
+                    vertices[6] = new float3(out1.x, top1,    out1.y); vertices[7] = new float3(in1.x,  top1,    in1.y);
+                }
+                var middle = float3.zero;
+                for (int v = 0; v < vertices.Length; v++)
+                    middle += vertices[v];
+                middle /= vertices.Length;
+
+                if (wedge)
+                {
+                    AddFace(ref loops, ref counts, 1, 2, 5, 4);     // outside
+                    AddFace(ref loops, ref counts, 0, 1, 4, 3);     // first end
+                    AddFace(ref loops, ref counts, 0, 2, 5, 3);     // second end
+                    AddFace(ref loops, ref counts, 3, 4, 5);        // top
+                    AddFace(ref loops, ref counts, 0, 1, 2);        // bottom
+                } else
+                {
+                    AddFace(ref loops, ref counts, 0, 3, 7, 4);     // inside
+                    AddFace(ref loops, ref counts, 1, 2, 6, 5);     // outside
+                    AddFace(ref loops, ref counts, 0, 1, 5, 4);     // first end
+                    AddFace(ref loops, ref counts, 3, 2, 6, 7);     // second end
+                    AddConvexQuad(ref loops, ref counts, vertices, middle, 4, 5, 6, 7);
+                    AddConvexQuad(ref loops, ref counts, vertices, middle, 0, 1, 2, 3);
+                }
+                return FromFaces(vertices, loops, counts, middle, ref surfaces, allocator);
             }
-            return CreateWedgeAssetPolygons(new float3(p0.x, math.max(floor, line0 - below), p0.y),
-                                            new float3(p1.x, math.max(floor, line1 - below), p1.y),
-                                            new float3(p2.x, math.max(floor, line2 - below), p2.y),
-                                            new float3(p0.x, line0 + above, p0.y),
-                                            new float3(p1.x, line1 + above, p1.y),
-                                            new float3(p2.x, line2 + above, p2.y),
-                                            in surfaceDefinitionBlob, allocator);// Indirect
+            finally
+            {
+                vertices.Dispose();
+                loops.Dispose();
+                counts.Dispose();
+            }
+        }
+
+        static void AddFace(ref NativeList<int> loops, ref NativeList<int> counts, int a, int b, int c, int d = -1)
+        {
+            loops.Add(a); loops.Add(b); loops.Add(c);
+            if (d >= 0) loops.Add(d);
+            counts.Add(d >= 0 ? 4 : 3);
+        }
+
+        // A quad, or where it isn't flat the two triangles with the fourth corner inside the first's plane
+        static void AddConvexQuad(ref NativeList<int> loops, ref NativeList<int> counts, NativeArray<float3> vertices, float3 middle, int a, int b, int c, int d)
+        {
+            const float kFlat = 0.00001f;
+            var normal = math.normalizesafe(math.cross(vertices[b] - vertices[a], vertices[d] - vertices[a]));
+            if (math.dot(normal, vertices[a] - middle) < 0)
+                normal = -normal;
+            var away = math.dot(normal, vertices[c] - vertices[a]);
+            if (math.abs(away) < kFlat)
+                AddFace(ref loops, ref counts, a, b, c, d);
+            else if (away < 0)
+            {
+                AddFace(ref loops, ref counts, a, b, d);
+                AddFace(ref loops, ref counts, b, c, d);
+            } else
+            {
+                AddFace(ref loops, ref counts, a, b, c);
+                AddFace(ref loops, ref counts, a, c, d);
+            }
+        }
+
+        // A brush from its corners and the corners of each face (either way round: each is turned to face away from the
+        // middle), its edges paired up between the faces
+        static BlobAssetReference<BrushMeshBlob> FromFaces(NativeArray<float3> vertices, NativeList<int> loops, NativeList<int> counts, float3 middle,
+                                                          ref BlobArray<InternalChiselSurface> surfaces, Allocator allocator)
+        {
+            for (int f = 0, first = 0; f < counts.Length; first += counts[f], f++)
+            {
+                var normal = float3.zero;
+                var center = float3.zero;
+                for (int i = 0; i < counts[f]; i++)
+                {
+                    var a = vertices[loops[first + i]];
+                    normal += math.cross(a, vertices[loops[first + (i + 1) % counts[f]]]);
+                    center += a;
+                }
+                center /= counts[f];
+                // a polygon's corners turn so its plane (Newell's) faces out
+                if (math.dot(normal, center - middle) >= 0)
+                    continue;
+                for (int i = 0, j = counts[f] - 1; i < j; i++, j--)
+                {
+                    var swap = loops[first + i];
+                    loops[first + i] = loops[first + j];
+                    loops[first + j] = swap;
+                }
+            }
+
+            using var builder = new BlobBuilder(Allocator.Temp);
+            ref var root = ref builder.ConstructRoot<BrushMeshBlob>();
+            var localVertices          = builder.Allocate(ref root.localVertices, vertices.Length);
+            var halfEdges              = builder.Allocate(ref root.halfEdges, loops.Length);
+            var halfEdgePolygonIndices = builder.Allocate(ref root.halfEdgePolygonIndices, loops.Length);
+            var polygons               = builder.Allocate(ref root.polygons, counts.Length);
+            var localPlanes            = builder.Allocate(ref root.localPlanes, counts.Length);
+            root.localPlaneCount = polygons.Length;
+            for (int v = 0; v < vertices.Length; v++)
+                localVertices[v] = vertices[v];
+
+            for (int f = 0, first = 0; f < counts.Length; first += counts[f], f++)
+            {
+                polygons[f] = new BrushMeshBlob.Polygon { firstEdge = first, edgeCount = counts[f], descriptionIndex = 0, surface = surfaces[0] };
+                for (int i = 0; i < counts[f]; i++)
+                {
+                    halfEdges[first + i] = new BrushMeshBlob.HalfEdge { vertexIndex = loops[first + i], twinIndex = -1 };
+                    halfEdgePolygonIndices[first + i] = f;
+                }
+            }
+            // an edge ends in its corner, coming from the corner before it; its twin runs the other way
+            for (int f = 0, first = 0; f < counts.Length; first += counts[f], f++)
+            {
+                for (int i = 0; i < counts[f]; i++)
+                {
+                    var to   = loops[first + i];
+                    var from = loops[first + (i + counts[f] - 1) % counts[f]];
+                    for (int g = 0, other = 0; g < counts.Length && halfEdges[first + i].twinIndex < 0; other += counts[g], g++)
+                    {
+                        if (g == f)
+                            continue;
+                        for (int j = 0; j < counts[g]; j++)
+                        {
+                            if (loops[other + j] == from && loops[other + (j + counts[g] - 1) % counts[g]] == to)
+                            {
+                                halfEdges[first + i] = new BrushMeshBlob.HalfEdge { vertexIndex = to, twinIndex = other + j };
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+            CalculatePlanes(ref localPlanes, in polygons, in halfEdges, in localVertices);
+            root.localBounds = CalculateBounds(in localVertices);
+            return builder.CreateBlobAssetReference<BrushMeshBlob>(allocator);
+        }
+
+        // The CSG snaps every plane before it finds the corners where they meet, so two brushes only meet exactly where
+        // they have the one plane, the other way round: a plane snaps to exactly the opposite of its opposite. Planes
+        // made from each brush's own corners differ a little, and can snap apart. These give a place's plane once, for
+        // every brush that has a face there.
+
+        // How far out the inside of a guard rail on the outside is: the steps' trimming cylinders' sides are there too
+        static float OuterRailInside(in ChiselSpiralStairs definition)
+        {
+            return math.max(0, definition.outerDiameter * 0.5f * math.cos(math.PI / definition.outerSegments) - definition.sideWidth);
+        }
+
+        // The upright plane through the middle of the stairs, along one of their angles
+        static float4 RadialPlane(float3 origin, float angle)
+        {
+            var normal = new float3(math.cos(angle), 0, -math.sin(angle));
+            return new float4(normal, -(normal.x * origin.x + normal.z * origin.z));
+        }
+
+        // Which straight side of a cylinder of so many sides an angle of the stairs is on, counted from 0
+        static int SideOf(float angle, int segments)
+        {
+            var segmentAngle = (math.PI * 2) / segments;
+            var offset       = ((segments & 1) == 1) ? 0.0f : segmentAngle * 0.5f;
+            var t            = (math.PI * 0.5f) - angle;
+            var side         = (int)math.floor((t - offset) / segmentAngle);
+            return ((side % segments) + segments) % segments;
+        }
+
+        // The plane of a straight side of a cylinder around the origin, this far out, facing out. A cylinder has its corners
+        // at (cos t, sin t), so a side's middle is at (cos e, sin e)
+        static float4 SidePlane(float3 origin, int side, float apothem, int segments)
+        {
+            var segmentAngle = (math.PI * 2) / segments;
+            var offset       = ((segments & 1) == 1) ? 0.0f : segmentAngle * 0.5f;
+            var middle       = offset + (side + 0.5f) * segmentAngle;
+            var normal       = new float3(math.cos(middle), 0, math.sin(middle));
+            return new float4(normal, -(apothem + normal.x * origin.x + normal.z * origin.z));
+        }
+
+        // The planes of a wall's inside and outside along the side an angle of the stairs is on
+        static void SidePlanes(float3 origin, float angle, float innerApothem, float outerApothem, int segments, out float4 inner, out float4 outer)
+        {
+            var side = SideOf(angle, segments);
+            inner = SidePlane(origin, side, innerApothem, segments);
+            outer = SidePlane(origin, side, outerApothem, segments);
+        }
+
+        // Every side of a cylinder this far out gets the plane its side has
+        static BlobAssetReference<BrushMeshBlob> WithSidePlanes(BlobAssetReference<BrushMeshBlob> brushMesh, float3 origin, float apothem, int segments)
+        {
+            for (int side = 0; side < segments; side++)
+                brushMesh = WithPlane(brushMesh, SidePlane(origin, side, apothem, segments));
+            return brushMesh;
+        }
+
+        // The brush's face on a plane, either way round, gets that exact plane (or its opposite)
+        static BlobAssetReference<BrushMeshBlob> WithPlane(BlobAssetReference<BrushMeshBlob> brushMesh, float4 plane)
+        {
+            if (!brushMesh.IsCreated)
+                return brushMesh;
+            const float kSameDirection = 0.9999f;
+            const float kOnIt          = 0.001f;
+            ref var mesh = ref brushMesh.Value;
+            for (int p = 0; p < mesh.localPlanes.Length; p++)
+            {
+                var own    = mesh.localPlanes[p];
+                var length = math.length(own.xyz);
+                if (!(length > 0))
+                    continue;
+                own /= length;
+                var facing = math.dot(own.xyz, plane.xyz);
+                if (facing > kSameDirection && math.abs(own.w - plane.w) < kOnIt)
+                    mesh.localPlanes[p] = plane;
+                else if (facing < -kSameDirection && math.abs(own.w + plane.w) < kOnIt)
+                    mesh.localPlanes[p] = -plane;
+            }
+            return brushMesh;
+        }
+
+        static BlobAssetReference<BrushMeshBlob> WithPlanes(BlobAssetReference<BrushMeshBlob> brushMesh, float4 a, float4 b, float4 c, float4 d)
+        {
+            return WithPlane(WithPlane(WithPlane(WithPlane(brushMesh, a), b), c), d);
         }
 
         // The round faces of a column or a wall, the upright ones facing towards or away from the center, share a smoothing
@@ -711,6 +963,76 @@ namespace Chisel.Core
                     continue;
                 if (math.abs(math.dot(math.normalize(outwards), math.normalize(normal.xz))) > 0.7f)
                     polygon.surface.details.smoothingGroup = smoothingGroup;
+            }
+            return brushMesh;
+        }
+
+        // A wall piece's top, of one or two faces: its texture spread over each from the uvs at the piece's four corners
+        // (found by where they stand), so the tops of the pieces along a wall run on into each other
+        static BlobAssetReference<BrushMeshBlob> TopFromCorners(BlobAssetReference<BrushMeshBlob> brushMesh, float2 q0, float2 r0, float2 q1, float2 r1,
+                                                               float2 q2, float2 r2, float2 q3, float2 r3)
+        {
+            if (!brushMesh.IsCreated)
+                return brushMesh;
+            const float kEpsilon = 0.0001f;
+            ref var mesh = ref brushMesh.Value;
+            for (int p = 0; p < mesh.polygons.Length && p < mesh.localPlanes.Length; p++)
+            {
+                if (mesh.localPlanes[p].y < 0.1f)
+                    continue;
+                ref var polygon = ref mesh.polygons[p];
+                if (polygon.edgeCount < 3 || (polygon.surface.details.detailFlags & SurfaceDetailFlags.TextureIsInWorldSpace) != 0)
+                    continue;
+                // three of its corners and their uvs
+                float3 c0 = default, c1 = default, c2 = default;
+                float2 uv0 = default, uv1 = default, uv2 = default;
+                var found = 0;
+                for (int e = 0; e < polygon.edgeCount && found < 3; e++)
+                {
+                    var vertex = mesh.localVertices[mesh.halfEdges[polygon.firstEdge + e].vertexIndex];
+                    float2 uv;
+                    if      (math.lengthsq(vertex.xz - q0) < kEpsilon) uv = r0;
+                    else if (math.lengthsq(vertex.xz - q1) < kEpsilon) uv = r1;
+                    else if (math.lengthsq(vertex.xz - q2) < kEpsilon) uv = r2;
+                    else if (math.lengthsq(vertex.xz - q3) < kEpsilon) uv = r3;
+                    else break;
+                    if (found == 0)      { c0 = vertex; uv0 = uv; }
+                    else if (found == 1) { c1 = vertex; uv1 = uv; }
+                    else                 { c2 = vertex; uv2 = uv; }
+                    found++;
+                }
+                if (found < 3)
+                    continue;
+
+                // the linear function in the face's plane that is uv0, uv1 and uv2 at its corners
+                var e1 = c1 - c0;
+                var e2 = c2 - c0;
+                float a11 = math.dot(e1, e1), a12 = math.dot(e1, e2), a22 = math.dot(e2, e2);
+                var det = a11 * a22 - a12 * a12;
+                if (math.abs(det) < 1e-12f)
+                    continue;
+                var du1 = uv1 - uv0;
+                var du2 = uv2 - uv0;
+                // per uv axis: gradient = alpha * e1 + beta * e2, with gradient . e1 = d1 and gradient . e2 = d2
+                var alpha = (du1 * a22 - du2 * a12) / det;
+                var beta  = (du2 * a11 - du1 * a12) / det;
+                var gu = alpha.x * e1 + beta.x * e2;
+                var gv = alpha.y * e1 + beta.y * e2;
+                var bu = uv0.x - math.dot(gu, c0);
+                var bv = uv0.y - math.dot(gv, c0);
+
+                var toPlane  = MathExtensions.GenerateLocalToPlaneSpaceMatrix(mesh.localPlanes[p]);
+                var rotation = new float3x3(toPlane);
+                var shift    = toPlane.c3.xyz;
+                var ru = math.mul(rotation, gu);
+                var rv = math.mul(rotation, gv);
+                var u = new float4(ru, bu - math.dot(ru, shift));
+                var v = new float4(rv, bv - math.dot(rv, shift));
+
+                ref var uvs = ref polygon.surface.details.UV0;
+                float4 givenU = uvs.U, givenV = uvs.V;
+                uvs.U = givenU.x * u + givenU.y * v + new float4(0, 0, 0, givenU.w);
+                uvs.V = givenV.x * u + givenV.y * v + new float4(0, 0, 0, givenV.w);
             }
             return brushMesh;
         }

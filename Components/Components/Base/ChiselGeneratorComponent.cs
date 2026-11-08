@@ -112,6 +112,7 @@ namespace Chisel.Components
 
         public override string GetSurfaceName(int descriptionIndex) { return definition.GetSurfaceName(descriptionIndex); }
         public override bool IsSurfaceUsed(int descriptionIndex) { return definition.IsSurfaceUsed(descriptionIndex); }
+        public override IChiselGeneratorParts Parts => definition.Parts;
         public override ChiselSurface GetSurface(int descriptionIndex) { return surfaceArray.GetSurface(descriptionIndex); }
         public override SurfaceDetails GetSurfaceDetails(int descriptionIndex) { return surfaceArray.GetSurfaceDetails(descriptionIndex); }
         public override void SetSurfaceDetails(int descriptionIndex, SurfaceDetails description) { surfaceArray.SetSurfaceDetails(descriptionIndex, description); }
@@ -195,6 +196,9 @@ namespace Chisel.Components
 
         /// <summary>Whether the generator, as it is set up now, has faces with the surface at this place</summary>
         public virtual bool IsSurfaceUsed(int descriptionIndex) { return true; }
+
+        /// <summary>What its brushes are (ChiselGeneratorParts), null when it doesn't say</summary>
+        public virtual IChiselGeneratorParts Parts => null;
 
         [SerializeField, HideInInspector] protected CSGOperationType    operation;		    // NOTE: do not rename, name is directly used in editors
         // What every brush this generates is made of: an index into ChiselContentsList.Instance, 0 is Solid.

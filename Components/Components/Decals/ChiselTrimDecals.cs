@@ -57,10 +57,13 @@ namespace Chisel.Components
         public static bool TryDescribe(ChiselDecalComponent decal, ulong entityID, ulong renderMaterial, SurfaceDestinationFlags destinationFlags,
                                        out ChiselModelComponent model, List<Half> halves, out float3 edgeFrom, out float3 edgeTo)
         {
+            var lookup = new ChiselGeneratorParts.Lookup();
             halves.Clear();
             edgeFrom = edgeTo = float3.zero;
             model = null;
-            var targets = decal.Targets;
+            var targets = new List<ChiselDecalSurfaceTarget>();
+            var pairs   = new List<int>();
+            EveryPart(decal.Targets, targets, pairs, lookup);
             var edgeCount = targets.Count / 2;
             if (edgeCount < 1)
                 return false;
@@ -73,45 +76,60 @@ namespace Chisel.Components
             if (fill == ChiselTrimFill.Single)
                 edgeCount = 1;
 
-            var edges = new ChainEdge[edgeCount];
+            var found = new List<ChainEdge>(edgeCount);
+            var foundPairs = new List<int>(edgeCount);
             for (int i = 0; i < edgeCount; i++)
             {
                 // the edge it was given; without one, the first edge nearest to the decal, the others to the edge before them
                 var reference = i == 0 ? (float3)decal.transform.position
-                                       : (float3)model.transform.localToWorldMatrix.MultiplyPoint3x4(edges[i - 1].start + edges[i - 1].direction * edges[i - 1].length);
+                                       : (float3)model.transform.localToWorldMatrix.MultiplyPoint3x4(found[^1].start + found[^1].direction * found[^1].length);
                 var keep = i == 0 && decal.hasTrimLine;
-                var edgeIndex = decal.TrimEdgeOf(i, out var edgeOnSecond);
-                if (!TryEdge(targets[i * 2], targets[i * 2 + 1], edgeIndex, edgeOnSecond, reference, keep, decal.trimLinePoint, decal.trimLineDirection, out var edgeModel, out edges[i]) ||
+                var edgeIndex = decal.TrimEdgeOf(pairs[i], out var edgeOnSecond);
+                if (!TryEdge(targets[i * 2], targets[i * 2 + 1], edgeIndex, edgeOnSecond, reference, keep, decal.trimLinePoint, decal.trimLineDirection, out var edgeModel, out var edge, lookup) ||
                     (model != null && edgeModel != model))
+                {
+                    // a copy on another brush of a part that hasn't the edge is left out
+                    if (i > 0 && pairs[i] == pairs[i - 1])
+                        continue;
                     return false;
+                }
+                // a copy on faces the CSG doesn't draw (inside another brush) is left out
+                if (found.Count > 0 && pairs[i] == pairs[0] &&
+                    (!Drawn(edgeModel, targets[i * 2]) || !Drawn(edgeModel, targets[i * 2 + 1])))
+                    continue;
+                found.Add(edge);
+                foundPairs.Add(i);
                 model = edgeModel;
                 if (i == 0)
                 {
                     var toWorld = model.transform.localToWorldMatrix;
                     decal.hasTrimLine       = true;
-                    decal.trimLinePoint     = toWorld.MultiplyPoint3x4(edges[0].start);
-                    decal.trimLineDirection = toWorld.MultiplyVector(edges[0].direction).normalized;
+                    decal.trimLinePoint     = toWorld.MultiplyPoint3x4(edge.start);
+                    decal.trimLineDirection = toWorld.MultiplyVector(edge.direction).normalized;
                 }
             }
             // an edge on the line of an earlier one that overlaps it is that edge again (the same surface's edge picked on
             // both brushes beside it): its halves would draw over the earlier ones
-            var pairOf = new List<int>(edgeCount);
-            var kept = new List<ChainEdge>(edgeCount);
-            for (int i = 0; i < edgeCount; i++)
+            var pairOf = new List<int>(found.Count);
+            var kept = new List<ChainEdge>(found.Count);
+            for (int i = 0; i < found.Count; i++)
             {
-                if (kept.Exists(earlier => Overlaps(earlier, edges[i])))
+                var edge = found[i];
+                if (kept.Exists(earlier => Overlaps(earlier, edge)))
                     continue;
-                kept.Add(edges[i]);
-                pairOf.Add(i);
+                kept.Add(edge);
+                pairOf.Add(foundPairs[i]);
             }
+            var own = AlongTheChain(kept, pairOf);
+            ChainEdge[] edges;
             edges = kept.ToArray();
             edgeCount = edges.Length;
             if (fill == ChiselTrimFill.Single)
-                PlaceSingle(decal, model, size.x, ref edges[0]);
+                PlaceSingle(decal, model, size.x, ref edges[own]);
             Orient(edges);
             JoinCorners(edges, math.max(size.x, size.y));
-            edgeFrom = edges[0].start;
-            edgeTo   = edges[0].start + edges[0].direction * edges[0].length;
+            edgeFrom = edges[own].start;
+            edgeTo   = edges[own].start + edges[own].direction * edges[own].length;
 
             // where two edges meet on a surface they share, its pieces are cut where the corner is halved
             // (a chain that closes on itself has a corner between its last edge and its first too)
@@ -138,7 +156,24 @@ namespace Chisel.Components
                             meets = k;
                     }
                     if (meets >= 0)
+                    {
                         Mitre(ref edges[i], h, ref edges[n], meets);
+                        continue;
+                    }
+                    // a surface turning on into the next edge's (the faces of a rail round a spiral): cut where they meet
+                    var best = kTurningOn;
+                    for (int k = 0; k < 2; k++)
+                    {
+                        var nextFace = k == 0 ? edges[n].faceA : edges[n].faceB;
+                        var facing = math.dot(face.normal, nextFace.normal);
+                        if (facing > best)
+                        {
+                            best  = facing;
+                            meets = k;
+                        }
+                    }
+                    if (meets >= 0)
+                        Fold(ref edges[i], h, ref edges[n], meets);
                 }
             }
 
@@ -203,6 +238,63 @@ namespace Chisel.Components
         }
 
 
+        // The pairs of targets with a pair on every brush of a part (all) in its place, one after another along the chain,
+        // and for each the pair it came from. The other target of the pair goes along when it is of the same generator
+        // and has as many brushes of its role.
+        /// <summary>A trim's pairs of targets with those on every brush of a part spelled out, its own first</summary>
+        public static void PairsOnEveryPart(IReadOnlyList<ChiselDecalSurfaceTarget> given, List<ChiselDecalSurfaceTarget> targets)
+        {
+            targets.Clear();
+            EveryPart(given, targets, new List<int>(), new ChiselGeneratorParts.Lookup());
+        }
+
+        static void EveryPart(IReadOnlyList<ChiselDecalSurfaceTarget> given, List<ChiselDecalSurfaceTarget> targets, List<int> pairs, ChiselGeneratorParts.Lookup lookup)
+        {
+            for (int p = 0; p < given.Count / 2; p++)
+            {
+                var a = given[p * 2];
+                var b = given[p * 2 + 1];
+                var everyA = a.part.valid && a.part.all;
+                var everyB = b.part.valid && b.part.all;
+                if (!everyA && !everyB)
+                {
+                    targets.Add(a); targets.Add(b); pairs.Add(p);
+                    continue;
+                }
+                var every     = everyA ? a : b;
+                var other     = everyA ? b : a;
+                var generator = every.brush as ChiselGeneratorComponent;
+                var count     = ChiselGeneratorParts.CountOf(generator, every.part.role, lookup);
+                var ownPlace  = ChiselGeneratorParts.PlaceOf(every.part, count);
+                // the other surface of the edge keeps its distance from it: the next step's top stays the next step's
+                var otherAlong = other.part.valid && other.brush == every.brush;
+                var otherCount = otherAlong ? ChiselGeneratorParts.CountOf(generator, other.part.role, lookup) : 0;
+                var otherPlace = otherAlong ? ChiselGeneratorParts.PlaceOf(other.part, otherCount) : -1;
+                if (ownPlace < 0)
+                    continue;
+                var placed = 0;
+                for (int place = 0; place < count; place++)
+                {
+                    var one = every;
+                    one.part = ChiselGeneratorParts.AtPlace(every.part, place);
+                    var across = other;
+                    if (otherAlong && otherPlace >= 0)
+                    {
+                        var acrossPlace = otherPlace + place - ownPlace;
+                        if (acrossPlace < 0 || acrossPlace >= otherCount)
+                            continue;
+                        across.part = ChiselGeneratorParts.AtPlace(other.part, acrossPlace);
+                    }
+                    // its own edge first: the chain's first edge is the one the decal sits on and keeps to
+                    var at = place == ownPlace ? pairs.Count - placed : pairs.Count;
+                    targets.Insert(at * 2, everyA ? one : across);
+                    targets.Insert(at * 2 + 1, everyA ? across : one);
+                    pairs.Insert(at, p);
+                    placed++;
+                }
+            }
+        }
+
         // One edge of a trim: its surfaces, the stretch both reach, and per half the direction into its surface and how its
         // ends lean (x per y in the half's box, 0: square; a corner's mitre)
         struct ChainEdge
@@ -215,11 +307,11 @@ namespace Chisel.Components
         }
 
         static bool TryEdge(ChiselDecalSurfaceTarget a, ChiselDecalSurfaceTarget b, int edgeIndex, bool edgeOfB, float3 worldReference, bool keep,
-                            float3 worldKeepPoint, float3 worldKeepDirection, out ChiselModelComponent model, out ChainEdge edge)
+                            float3 worldKeepPoint, float3 worldKeepDirection, out ChiselModelComponent model, out ChainEdge edge, ChiselGeneratorParts.Lookup lookup = null)
         {
             edge = default;
             model = null;
-            if (!TryFace(a, out var modelA, out var faceA) || !TryFace(b, out var modelB, out var faceB) || modelA != modelB)
+            if (!TryFace(a, out var modelA, out var faceA, lookup) || !TryFace(b, out var modelB, out var faceB, lookup) || modelA != modelB)
                 return false;
             model = modelA;
 
@@ -369,6 +461,89 @@ namespace Chisel.Components
             if (k == 0) next.slantStartA = nextSlantStart; else next.slantStartB = nextSlantStart;
         }
 
+        // how alike two faces' directions are, at least, for one to turn on into the other
+        const float kTurningOn = 0.1f;
+        // the sine of the angle between two faces below which they count as one plane where they meet
+        const float kNearlyFlat = 0.05f;
+        // the most an end may lean, along the edge per unit across it
+        const float kMaxSlant = 4f;
+
+        // The ends of two halves on faces that turn into each other at a corner, cut along the line the two faces meet on
+        static void Fold(ref ChainEdge edge, int h, ref ChainEdge next, int k)
+        {
+            var face     = h == 0 ? edge.faceA : edge.faceB;
+            var nextFace = k == 0 ? next.faceA : next.faceB;
+            var line = math.cross(face.normal, nextFace.normal);
+            // faces all but in one plane meet on a line that is barely defined: the corner is halved as on one face
+            if (math.lengthsq(line) < kNearlyFlat * kNearlyFlat)
+            {
+                Mitre(ref edge, h, ref next, k);
+                return;
+            }
+            line = math.normalize(line);
+            var across     = h == 0 ? edge.acrossA : edge.acrossB;
+            var nextAcross = k == 0 ? next.acrossA : next.acrossB;
+            var y     = math.dot(line, across);
+            var nextY = math.dot(line, nextAcross);
+            if (math.abs(y) < kEpsilon || math.abs(nextY) < kEpsilon)
+                return;
+            var slantEnd       = math.dot(line, edge.direction) / y;
+            var nextSlantStart = math.dot(line, next.direction) / nextY;
+            // a cut lying almost along the edge is no corner of the two (their faces fold the other way round it)
+            if (math.abs(slantEnd) > kMaxSlant || math.abs(nextSlantStart) > kMaxSlant)
+                return;
+            if (h == 0) edge.slantEndA = slantEnd; else edge.slantEndB = slantEnd;
+            if (k == 0) next.slantStartA = nextSlantStart; else next.slantStartB = nextSlantStart;
+        }
+
+        // The edges in the order they run on into each other: a part's copies are found in the part's order, which needn't
+        // be along the chain. Edges joining none are kept after the chain. Returns where the decal's own edge (first) is now
+        static int AlongTheChain(List<ChainEdge> edges, List<int> pairOf)
+        {
+            if (edges.Count < 3)
+                return 0;
+            float3 EndOf(ChainEdge e) => e.start + e.direction * e.length;
+            float Gap(ChainEdge a, ChainEdge b) =>
+                math.min(math.min(math.distance(a.start, b.start), math.distance(a.start, EndOf(b))),
+                         math.min(math.distance(EndOf(a), b.start), math.distance(EndOf(a), EndOf(b))));
+            const float kJoined = 0.01f;
+
+            var left  = new List<int>();
+            for (int i = 1; i < edges.Count; i++)
+                left.Add(i);
+            // grow the chain from both ends of the first edge
+            var chain = new List<int> { 0 };
+            for (var grew = true; grew && left.Count > 0;)
+            {
+                grew = false;
+                for (int j = 0; j < left.Count; j++)
+                {
+                    var candidate = edges[left[j]];
+                    if (Gap(edges[chain[^1]], candidate) < kJoined && (chain.Count == 1 || Gap(edges[chain[^2]], candidate) >= kJoined))
+                    {
+                        chain.Add(left[j]); left.RemoveAt(j); grew = true; break;
+                    }
+                    if (chain.Count > 1 && Gap(edges[chain[0]], candidate) < kJoined && Gap(edges[chain[1]], candidate) >= kJoined)
+                    {
+                        chain.Insert(0, left[j]); left.RemoveAt(j); grew = true; break;
+                    }
+                }
+            }
+            chain.AddRange(left);
+            var ordered      = new List<ChainEdge>(edges.Count);
+            var orderedPairs = new List<int>(edges.Count);
+            foreach (var i in chain)
+            {
+                ordered.Add(edges[i]);
+                orderedPairs.Add(pairOf[i]);
+            }
+            edges.Clear();
+            edges.AddRange(ordered);
+            pairOf.Clear();
+            pairOf.AddRange(orderedPairs);
+            return chain.IndexOf(0);
+        }
+
         static bool InOnePlane(in Face a, in Face b) => math.dot(a.normal, b.normal) > kNearlyParallel && math.abs(a.distance - b.distance) <= kMargin;
 
         // Across the edge, into the surface: the side its outline is on, or where it lies on both (a wall standing on a
@@ -407,7 +582,9 @@ namespace Chisel.Components
             var userScale  = math.all((float2)settings.uvScale == float2.zero) ? new float2(1) : (float2)settings.uvScale;
             var half = settings;
             half.center     = new float3(0, height * 0.25f, 0);
-            half.size       = new float3(length, height * 0.5f, kMargin * 2);
+            // deep enough to reach a surface that bends a little away from this one across its width (a twisted rail's
+            // top is two triangles), still flat next to its width
+            half.size       = new float3(length, height * 0.5f, math.max(kMargin * 2, height * kHalfDepth));
             half.projection = ChiselDecalProjection.Orthographic;
             half.endSlant   = new float2(slantStart, slantEnd);
             // only the surfaces that face it, not ones standing across its range (a wall on the floor it lies on)
@@ -429,6 +606,9 @@ namespace Chisel.Components
         }
 
         const float kHalfMaxAngle = 45;
+        // how deep a half reaches in front of and behind its surface, per its height: a surface it draws on faces it within
+        // kHalfMaxAngle (45 degrees), so across the half's width it bends away by no more than that width
+        const float kHalfDepth = 1.0f;
 
         // The part of the line inside the face's outline, narrowing [from, to]
         static bool Clip(in Face face, float3 point, float3 direction, ref float from, ref float to)
@@ -525,6 +705,108 @@ namespace Chisel.Components
             return nearest < float.PositiveInfinity;
         }
 
+        /// <summary>
+        /// The edge of what is drawn of a brush's polygon nearest a point, in the tree's space: where it meets another
+        /// brush, too (the bottom of a riser on the step below), not only its own edges. False when nothing of it is drawn.
+        /// </summary>
+        public static bool NearestDrawnEdge(ChiselModelComponent model, CSGTreeBrush brush, int polygonIndex, float3 treePoint, out float3 from, out float3 to)
+        {
+            from = to = float3.zero;
+            if (model == null || !model.Node.Valid || !brush.Valid)
+                return false;
+            var lookups = ChiselTreeLookup.Value;
+            if (!lookups.HasTree(model.Node))
+                return false;
+            var data = lookups[model.Node];
+            data.lastJobHandle.Complete();
+            if (!data.brushRenderBufferLookup.IsCreated ||
+                !data.brushRenderBufferLookup.TryGetValue(CompactHierarchyManager.GetCompactNodeID(brush), out var buffer) || !buffer.IsCreated)
+                return false;
+            ref var surfaces = ref buffer.Value.surfaces;
+            if (polygonIndex < 0 || polygonIndex >= surfaces.Length)
+                return false;
+            ref var indices   = ref surfaces[polygonIndex].indices;
+            ref var positions = ref surfaces[polygonIndex].colliderVertices;
+            // an edge of the outline is one only one of its triangles has (either way round)
+            var counts = new Dictionary<(int3, int3), int>();
+            static int3 Key(float3 p) => (int3)math.round(p * 10000);
+            for (int i = 0; i + 2 < indices.Length; i += 3)
+            {
+                for (int c = 0; c < 3; c++)
+                {
+                    var ka = Key(positions[indices[i + c]]);
+                    var kb = Key(positions[indices[i + (c + 1) % 3]]);
+                    var key = Less(ka, kb) ? (ka, kb) : (kb, ka);
+                    counts.TryGetValue(key, out var n);
+                    counts[key] = n + 1;
+                }
+            }
+            var nearest = float.PositiveInfinity;
+            for (int i = 0; i + 2 < indices.Length; i += 3)
+            {
+                for (int c = 0; c < 3; c++)
+                {
+                    var a = positions[indices[i + c]];
+                    var b = positions[indices[i + (c + 1) % 3]];
+                    var ka = Key(a); var kb = Key(b);
+                    if (counts[Less(ka, kb) ? (ka, kb) : (kb, ka)] != 1)
+                        continue;
+                    var ab = b - a;
+                    var t = math.saturate(math.dot(treePoint - a, ab) / math.max(math.lengthsq(ab), 1e-12f));
+                    var distance = math.distancesq(treePoint, a + ab * t);
+                    if (distance >= nearest)
+                        continue;
+                    nearest = distance;
+                    from = a;
+                    to = b;
+                }
+            }
+            return nearest < float.PositiveInfinity;
+
+            static bool Less(int3 a, int3 b) => a.x != b.x ? a.x < b.x : (a.y != b.y ? a.y < b.y : a.z < b.z);
+        }
+
+        /// <summary>
+        /// A drawn face of the node's brushes (other than the one given) that holds an edge and is drawn up to it: the
+        /// surface across it when none can be seen past it (the underside of a tread's nose, above a riser)
+        /// </summary>
+        public static bool DrawnSurfaceOnEdge(ChiselModelComponent model, ChiselNodeComponent node, CSGTreeBrush exceptBrush, int exceptPolygon,
+                                              float3 from, float3 to, out ChiselDecalSurfaceTarget target)
+        {
+            target = default;
+            var brushes = new List<CSGTreeBrush>();
+            if (node is ChiselGeneratorComponent generator)
+                ChiselGeneratorParts.BrushesOf(generator, brushes);
+            var middle = (from + to) * 0.5f;
+            foreach (var brush in brushes)
+            {
+                var blob = BrushMeshManager.GetBrushMeshBlob(brush.BrushMesh);
+                if (!blob.IsCreated)
+                    continue;
+                var count = blob.Value.polygons.Length;
+                for (int p = 0; p < count; p++)
+                {
+                    if ((brush == exceptBrush && p == exceptPolygon) || !PlaneHolds(brush, p, from, to) || !IsDrawn(model, brush, p))
+                        continue;
+                    if (!NearestDrawnEdge(model, brush, p, middle, out var edgeFrom, out var edgeTo) ||
+                        !OnLine(edgeFrom, edgeTo, from, to))
+                        continue;
+                    target = ChiselGeneratorParts.TargetOfPolygon(node, brush, p);
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        /// <summary>Whether a segment lies on the line through two points (within kMargin)</summary>
+        public static bool OnLine(float3 a, float3 b, float3 lineFrom, float3 lineTo)
+        {
+            var direction = math.normalizesafe(lineTo - lineFrom);
+            if (math.lengthsq(direction) < 0.5f)
+                return false;
+            return math.length(math.cross(a - lineFrom, direction)) < kMargin && math.length(math.cross(b - lineFrom, direction)) < kMargin;
+        }
+
         static bool HasVertices(ref BrushMeshBlob mesh, int polygonIndex, int vertexA, int vertexB)
         {
             ref var polygon = ref mesh.polygons[polygonIndex];
@@ -576,8 +858,8 @@ namespace Chisel.Components
                     continue;
                 for (int p = 0; p < blob.Value.polygons.Length; p++)
                 {
-                    var surfaceIndex = blob.Value.polygons[p].descriptionIndex;
-                    if (!TryBrushFace(brush, surfaceIndex, out var face) || math.dot(face.normal, viewDirection) >= 0 || !IsDrawn(model, brush, p))
+                    var polygonTarget = ChiselGeneratorParts.TargetOfPolygon(generator, brush, p);
+                    if (!TryBrushFace(brush, polygonTarget, out var face) || math.dot(face.normal, viewDirection) >= 0 || !IsDrawn(model, brush, p))
                         continue;
                     if (math.abs(math.dot(face.normal, from) - face.distance) > kMargin || math.abs(math.dot(face.normal, to) - face.distance) > kMargin)
                         continue;
@@ -589,7 +871,7 @@ namespace Chisel.Components
                     if (distance >= best)
                         continue;
                     best = distance;
-                    target = new ChiselDecalSurfaceTarget { brush = generator, surfaceIndex = surfaceIndex };
+                    target = polygonTarget;
                 }
             }
             return best < float.PositiveInfinity;
@@ -646,7 +928,7 @@ namespace Chisel.Components
         public static ulong MaterialOf(ChiselDecalSurfaceTarget target)
         {
             if (target.brush is not ChiselGeneratorComponent generator || target.surfaceIndex < 0 ||
-                !TryBrushOf(generator.TopTreeNode, target.surfaceIndex, out var brush, out var polygon))
+                !TryBrushOf(generator, target, out var brush, out var polygon))
                 return 0;
             return BrushMeshManager.GetBrushMeshBlob(brush.BrushMesh).Value.polygons[polygon].surface.parameters.parameter1;
         }
@@ -690,8 +972,8 @@ namespace Chisel.Components
                             continue;
                         edges.Add(new Edge
                         {
-                            a         = new ChiselDecalSurfaceTarget { brush = generator, surfaceIndex = mesh.polygons[p].descriptionIndex },
-                            b         = new ChiselDecalSurfaceTarget { brush = generator, surfaceIndex = mesh.polygons[other].descriptionIndex },
+                            a         = new ChiselDecalSurfaceTarget { brush = generator, surfaceIndex = mesh.polygons[p].descriptionIndex, polygon = p + 1 },
+                            b         = new ChiselDecalSurfaceTarget { brush = generator, surfaceIndex = mesh.polygons[other].descriptionIndex, polygon = other + 1 },
                             middle    = math.transform(nodeToTree, middle),
                             edgeIndex = e
                         });
@@ -706,6 +988,7 @@ namespace Chisel.Components
         {
             public ChiselGeneratorComponent generator;
             public int    surfaceIndex;
+            public int    polygon;      // plus one, as a target has it
             public bool   isA, isB;
             public Face   face;
             public float3 min, max;
@@ -729,7 +1012,7 @@ namespace Chisel.Components
                     if (material != materialA && material != materialB)
                         continue;
                     var surfaceIndex = blob.Value.polygons[p].descriptionIndex;
-                    if (!TryBrushFace(brush, surfaceIndex, out var face))
+                    if (!TryBrushFace(brush, new ChiselDecalSurfaceTarget { surfaceIndex = surfaceIndex, polygon = p + 1 }, out var face))
                         continue;
                     float3 min = face.outline[0], max = face.outline[0];
                     foreach (var vertex in face.outline)
@@ -737,7 +1020,7 @@ namespace Chisel.Components
                         min = math.min(min, vertex);
                         max = math.max(max, vertex);
                     }
-                    faces.Add(new MaterialFace { generator = generator, surfaceIndex = surfaceIndex, isA = material == materialA, isB = material == materialB,
+                    faces.Add(new MaterialFace { generator = generator, surfaceIndex = surfaceIndex, polygon = p + 1, isA = material == materialA, isB = material == materialB,
                                                  face = face, min = min - kMargin, max = max + kMargin });
                 }
             }
@@ -754,13 +1037,13 @@ namespace Chisel.Components
                         continue;
                     var keyB = UnityEngine.EntityId.ToULong(b.generator.GetEntityId());
                     // each pair of surfaces once, also when both materials are the same
-                    var key = keyA < keyB ? (keyA, a.surfaceIndex, keyB, b.surfaceIndex) : (keyB, b.surfaceIndex, keyA, a.surfaceIndex);
+                    var key = keyA < keyB ? (keyA, a.polygon, keyB, b.polygon) : (keyB, b.polygon, keyA, a.polygon);
                     if (!Meet(a.face, b.face, out var middle, out var edgeIndex, out var edgeOnB) || !seen.Add(key))
                         continue;
                     edges.Add(new Edge
                     {
-                        a         = new ChiselDecalSurfaceTarget { brush = a.generator, surfaceIndex = a.surfaceIndex },
-                        b         = new ChiselDecalSurfaceTarget { brush = b.generator, surfaceIndex = b.surfaceIndex },
+                        a         = new ChiselDecalSurfaceTarget { brush = a.generator, surfaceIndex = a.surfaceIndex, polygon = a.polygon },
+                        b         = new ChiselDecalSurfaceTarget { brush = b.generator, surfaceIndex = b.surfaceIndex, polygon = b.polygon },
                         middle    = middle,
                         edgeIndex = edgeIndex,
                         edgeOnB   = edgeOnB
@@ -927,7 +1210,42 @@ namespace Chisel.Components
             return false;
         }
 
-        static bool TryBrushOf(CSGTreeNode node, int surfaceIndex, out CSGTreeBrush brush, out int polygon)
+        static bool Drawn(ChiselModelComponent model, ChiselDecalSurfaceTarget target)
+        {
+            if (target.brush is not ChiselGeneratorComponent generator || !TryBrushOf(generator, target, out var brush, out var polygon))
+                return true;
+            return IsDrawn(model, brush, polygon);
+        }
+
+        // A target's polygon of a brush: the one it was given, else the first with its surface (the surface is the
+        // generator's, the polygon's descriptionIndex, as the decals' targets match it)
+        static int PolygonOf(ref BrushMeshBlob mesh, ChiselDecalSurfaceTarget target)
+        {
+            var given = target.PolygonIn(ref mesh);
+            if (given >= 0)
+                return given;
+            for (int p = 0; p < mesh.polygons.Length; p++)
+            {
+                if (mesh.polygons[p].descriptionIndex == target.surfaceIndex)
+                    return p;
+            }
+            return -1;
+        }
+
+        // a target's brush: the one its part names, else the first of the generator with the surface
+        static bool TryBrushOf(ChiselGeneratorComponent generator, ChiselDecalSurfaceTarget target, out CSGTreeBrush brush, out int polygon)
+        {
+            if (target.part.valid)
+            {
+                polygon = -1;
+                if (!ChiselGeneratorParts.TryResolve(generator, target.part, out brush))
+                    return false;
+                return TryBrushOf(brush, target, out brush, out polygon);
+            }
+            return TryBrushOf(generator.TopTreeNode, target, out brush, out polygon);
+        }
+
+        static bool TryBrushOf(CSGTreeNode node, ChiselDecalSurfaceTarget target, out CSGTreeBrush brush, out int polygon)
         {
             brush = default;
             polygon = -1;
@@ -939,26 +1257,71 @@ namespace Chisel.Components
                 var blob = BrushMeshManager.GetBrushMeshBlob(brush.BrushMesh);
                 if (!blob.IsCreated)
                     return false;
-                for (int p = 0; p < blob.Value.polygons.Length; p++)
-                {
-                    if (blob.Value.polygons[p].descriptionIndex == surfaceIndex)
-                    {
-                        polygon = p;
-                        return true;
-                    }
-                }
-                return false;
+                polygon = PolygonOf(ref blob.Value, target);
+                return polygon >= 0;
             }
             for (int i = 0; i < node.Count; i++)
             {
-                if (TryBrushOf(node[i], surfaceIndex, out brush, out polygon))
+                if (TryBrushOf(node[i], target, out brush, out polygon))
                     return true;
             }
             return false;
         }
 
+        /// <summary>
+        /// For a target on every brush of a part: how what is on its own brush's surface moves onto the same surface of each
+        /// other brush of the part, in the model's space (one per brush that has the surface, its own left out)
+        /// </summary>
+        public static void CopiesOnEveryPart(ChiselDecalSurfaceTarget target, List<float4x4> copies)
+        {
+            var lookup = new ChiselGeneratorParts.Lookup();
+            copies.Clear();
+            if (!target.part.valid || !target.part.all || target.brush is not ChiselGeneratorComponent generator ||
+                !TryFace(target, out _, out var own, lookup) || !TryFrame(own, out var ownFrame))
+                return;
+            var toOwn = math.fastinverse(ownFrame);
+            var count = ChiselGeneratorParts.CountOf(generator, target.part.role, lookup);
+            var ownPlace = ChiselGeneratorParts.PlaceOf(target.part, count);
+            for (int place = 0; place < count; place++)
+            {
+                if (place == ownPlace)
+                    continue;
+                var other = target;
+                other.part = ChiselGeneratorParts.AtPlace(target.part, place);
+                if (TryFace(other, out _, out var face, lookup) && TryFrame(face, out var frame))
+                    copies.Add(math.mul(frame, toOwn));
+            }
+        }
+
+        /// <summary>The middle of a target's surface and its normal, in its model's space</summary>
+        public static bool TryCentre(ChiselDecalSurfaceTarget target, out float3 centre, out float3 normal)
+        {
+            centre = normal = float3.zero;
+            if (!TryFace(target, out _, out var face))
+                return false;
+            centre = face.centroid;
+            normal = face.normal;
+            return true;
+        }
+
+        // A surface's place and turn: its centroid, its normal as z, its first edge as x
+        static bool TryFrame(in Face face, out float4x4 frame)
+        {
+            frame = float4x4.identity;
+            if (face.outline == null || face.outline.Count < 2)
+                return false;
+            var x = face.outline[1] - face.outline[0];
+            x -= face.normal * math.dot(x, face.normal);
+            if (math.lengthsq(x) < kEpsilon * kEpsilon)
+                return false;
+            x = math.normalize(x);
+            var y = math.cross(face.normal, x);
+            frame = new float4x4(new float4(x, 0), new float4(y, 0), new float4(face.normal, 0), new float4(face.centroid, 1));
+            return true;
+        }
+
         // A target's surface, of the first brush of its component that has it (depth first)
-        static bool TryFace(ChiselDecalSurfaceTarget target, out ChiselModelComponent model, out Face face)
+        static bool TryFace(ChiselDecalSurfaceTarget target, out ChiselModelComponent model, out Face face, ChiselGeneratorParts.Lookup lookup = null)
         {
             face = default;
             model = null;
@@ -967,42 +1330,36 @@ namespace Chisel.Components
             model = generator.hierarchyItem.Model;
             if (model == null)
                 return false;
-            return TryFace(generator.TopTreeNode, target.surfaceIndex, out face);
+            // the brush its part names (a step of stairs); a part that is gone draws nothing
+            if (target.part.valid)
+                return ChiselGeneratorParts.TryResolve(generator, target.part, out var brush, lookup) && TryBrushFace(brush, target, out face);
+            return TryFace(generator.TopTreeNode, target, out face);
         }
 
-        static bool TryFace(CSGTreeNode node, int surfaceIndex, out Face face)
+        static bool TryFace(CSGTreeNode node, ChiselDecalSurfaceTarget target, out Face face)
         {
             face = default;
             if (!node.Valid)
                 return false;
             if (node.Type == CSGNodeType.Brush)
-                return TryBrushFace((CSGTreeBrush)node, surfaceIndex, out face);
+                return TryBrushFace((CSGTreeBrush)node, target, out face);
             for (int i = 0; i < node.Count; i++)
             {
-                if (TryFace(node[i], surfaceIndex, out face))
+                if (TryFace(node[i], target, out face))
                     return true;
             }
             return false;
         }
 
-        static bool TryBrushFace(CSGTreeBrush brush, int surfaceIndex, out Face face)
+        static bool TryBrushFace(CSGTreeBrush brush, ChiselDecalSurfaceTarget target, out Face face)
         {
             face = default;
             var blob = BrushMeshManager.GetBrushMeshBlob(brush.BrushMesh);
             if (!blob.IsCreated)
                 return false;
             ref var mesh = ref blob.Value;
-            // a target's surface is the generator's (the polygon's descriptionIndex), as the decals' targets match it
-            var polygonIndex = -1;
-            for (int p = 0; p < mesh.polygons.Length && p < mesh.localPlanes.Length; p++)
-            {
-                if (mesh.polygons[p].descriptionIndex == surfaceIndex)
-                {
-                    polygonIndex = p;
-                    break;
-                }
-            }
-            if (polygonIndex < 0)
+            var polygonIndex = PolygonOf(ref mesh, target);
+            if (polygonIndex < 0 || polygonIndex >= mesh.localPlanes.Length)
                 return false;
             var nodeToTree = brush.NodeToTreeSpaceMatrix;
             var planeToTree = math.transpose(math.inverse(nodeToTree));

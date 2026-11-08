@@ -17,6 +17,22 @@ namespace Chisel.Components
 
         /// <summary>The brush's surface, or <see cref="kAllSurfaces"/> for all of them.</summary>
         public int surfaceIndex;
+
+        /// <summary>Which of the generator's brushes has the surface (a step of stairs); not valid: the first that has it</summary>
+        public ChiselPartReference part;
+
+        /// <summary>Which of the brush's polygons with the surface it is, plus one: brushes have several faces with the
+        /// same surface (a rail's inside and outside); 0: the first that has it</summary>
+        public int polygon;
+
+        /// <summary>The polygon it was given, when the brush has it with the surface; otherwise -1</summary>
+        public readonly int PolygonIn(ref BrushMeshBlob mesh)
+        {
+            var index = polygon - 1;
+            if (index < 0 || index >= mesh.polygons.Length || mesh.polygons[index].descriptionIndex != surfaceIndex)
+                return -1;
+            return index;
+        }
     }
 
     /// <summary>
@@ -348,6 +364,48 @@ namespace Chisel.Components
             return code < 0 ? -1 : code >> 1;
         }
 
+        /// <summary>Whether the decal is on every brush of its first target's part (a box decal on every step), or only its own</summary>
+        public bool OnEveryPart
+        {
+            get => targets.Count > 0 && targets[0].part.valid && targets[0].part.all;
+            set
+            {
+                if (targets.Count == 0 || !targets[0].part.valid || targets[0].part.all == value)
+                    return;
+                var target = targets[0];
+                target.part.all = value;
+                targets[0] = target;
+                ChiselDecalManager.SetDirty();
+            }
+        }
+
+        /// <summary>The part of the decal's first target, and of every target on that same brush (a trim's two surfaces),
+        /// counted from the start or from the end of its role: the same brush now, and the one that place is when the
+        /// generator gets more or fewer of them</summary>
+        public void CountPartFrom(bool fromEnd)
+        {
+            if (targets.Count == 0 || !targets[0].part.valid || targets[0].brush is not ChiselGeneratorComponent generator)
+                return;
+            var first = targets[0];
+            var count = ChiselGeneratorParts.CountOf(generator, first.part.role);
+            var changed = false;
+            for (int i = 0; i < targets.Count; i++)
+            {
+                var target = targets[i];
+                if (target.brush != first.brush || !target.part.valid || target.part.role != first.part.role ||
+                    target.part.index != first.part.index || target.part.fromEnd != first.part.fromEnd)
+                    continue;
+                var counted = ChiselGeneratorParts.CountedFrom(target.part, fromEnd, count);
+                if (counted.Equals(target.part))
+                    continue;
+                target.part = counted;
+                targets[i]  = target;
+                changed = true;
+            }
+            if (changed)
+                ChiselDecalManager.SetDirty();
+        }
+
         /// <summary>The edge the first pair of targets lies on (see <see cref="TrimEdgeOf"/>)</summary>
         public void SetTrimEdge(bool onSecond, int edgeIndex)
         {
@@ -368,7 +426,8 @@ namespace Chisel.Components
             {
                 var existing = TrimEdgeOf(p, out var existingOnSecond);
                 var existingOwner = targets[p * 2 + (existingOnSecond ? 1 : 0)];
-                if (existing == edgeIndex && existingOwner.brush == owner.brush && existingOwner.surfaceIndex == owner.surfaceIndex)
+                if (existing == edgeIndex && existingOwner.brush == owner.brush && existingOwner.surfaceIndex == owner.surfaceIndex &&
+                    existingOwner.polygon == owner.polygon)
                     return false;
             }
             targets.RemoveRange(pair * 2, targets.Count - pair * 2);

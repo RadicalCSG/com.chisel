@@ -315,7 +315,10 @@ namespace Chisel.Core
                     var parentCompactNodeID = generatedNodeDefinitions[index].parentCompactNodeID; 
                     var compactNodeID       = generatedNodeDefinitions[index].compactNodeID;
                     var siblingIndex        = generatedNodeDefinitions[index].siblingIndex;
-                     
+                    // a node not in the hierarchy yet (a brush made under an inactive object) has no place to keep
+                    if (siblingIndex < 0)
+                        continue;
+
                     ref var compactHierarchy = ref hierarchyListPtr[hierarchyIndex];
                     compactHierarchy.AttachToParentAt(ref hierarchyIDLookup, hierarchyList, ref nodeIDLookup, nodesLookup, parentCompactNodeID, siblingIndex, compactNodeID); // TODO: need to be able to do this
                 }

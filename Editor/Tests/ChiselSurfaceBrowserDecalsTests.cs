@@ -53,6 +53,86 @@ namespace Chisel.Editors.Tests
             return layout;
         }
 
+        // The edge shown while a trim is dragged is the one it lies on: here the box's top front edge
+        [Test]
+        public void TheHoveredEdge_IsTheOneTheTrimLiesOn()
+        {
+            var model = new GameObject("Model").AddComponent<ChiselModelComponent>();
+            created.Add(model.gameObject);
+            var box = new GameObject("Box").AddComponent<ChiselBoxComponent>();
+            box.transform.SetParent(model.transform, false);
+            box.Max = new Vector3(1e4f, 1e4f, 1e4f);
+            box.Min = new Vector3(-1, -1, -1);
+            box.Max = new Vector3(1, 1, 1);
+            for (int i = 0; i < 3; i++)
+            {
+                ChiselNodeHierarchyManager.Update();
+                ChiselModelManager.Instance.UpdateModels();
+            }
+            int Facing(Vector3 normal)
+            {
+                ref var mesh = ref BrushMeshManager.GetBrushMeshBlob(((CSGTreeBrush)box.TopTreeNode).BrushMesh).Value;
+                for (int p = 0; p < mesh.localPlanes.Length; p++)
+                    if (Vector3.Dot(((Vector3)mesh.localPlanes[p].xyz).normalized, normal) > 0.999f)
+                        return mesh.polygons[p].descriptionIndex;
+                return -1;
+            }
+            var decal = new GameObject("Trim").AddComponent<ChiselDecalComponent>();
+            created.Add(decal.gameObject);
+            decal.transform.SetParent(model.transform, false);
+            decal.transform.position = new Vector3(0, 1, 1);
+            decal.Shape = ChiselDecalShape.Trim;
+            decal.Size  = new Vector3(1, 0.2f, 1);
+            decal.SetTargets(new[]
+            {
+                new ChiselDecalSurfaceTarget { brush = box, surfaceIndex = Facing(Vector3.up) },
+                new ChiselDecalSurfaceTarget { brush = box, surfaceIndex = Facing(Vector3.forward) }
+            });
+
+            Assert.That(ChiselSurfaceBrowserDecals.HoveredEdge(decal, out var from, out var to), Is.True);
+            Assert.That(from.y, Is.EqualTo(1).Within(1e-4f));
+            Assert.That(to.y,   Is.EqualTo(1).Within(1e-4f));
+            Assert.That(from.z, Is.EqualTo(1).Within(1e-4f));
+            Assert.That(to.z,   Is.EqualTo(1).Within(1e-4f));
+            Assert.That(Mathf.Abs(to.x - from.x), Is.EqualTo(2).Within(1e-4f), "the whole edge");
+        }
+
+        // A box decal dropped on stairs remembers the step it landed on; with shift, every step
+        [Test]
+        public void ABoxDropped_OnStairs_RemembersItsPart_OrEveryOne()
+        {
+            var model = new GameObject("Model").AddComponent<ChiselModelComponent>();
+            created.Add(model.gameObject);
+            var stairs = new GameObject("Stairs").AddComponent<ChiselLinearStairsComponent>();
+            stairs.transform.SetParent(model.transform, false);
+            for (int i = 0; i < 3; i++)
+            {
+                ChiselNodeHierarchyManager.Update();
+                ChiselModelManager.Instance.UpdateModels();
+            }
+            var brushes = new List<CSGTreeBrush>();
+            ChiselGeneratorParts.BrushesOf(stairs, brushes);
+            var decal = new GameObject("Decal").AddComponent<ChiselDecalComponent>();
+            created.Add(decal.gameObject);
+
+            var hit = new ChiselIntersection { treeNode = stairs };
+            hit.brushIntersection.brush        = brushes[1];
+            hit.brushIntersection.surfaceIndex = 0;
+            ChiselSurfaceBrowserDecals.OnPartOf(decal, hit, every: false);
+            Assert.That(decal.Targets.Count, Is.EqualTo(1));
+            Assert.That(decal.Targets[0].part.valid, Is.True, "the step it landed on");
+            Assert.That(ChiselGeneratorParts.TryResolve(stairs, decal.Targets[0].part, out var step) && step == brushes[1], Is.True);
+            Assert.That(decal.OnEveryPart, Is.False);
+
+            ChiselSurfaceBrowserDecals.OnPartOf(decal, hit, every: true);
+            Assert.That(decal.OnEveryPart, Is.True, "every step");
+
+            var box = new GameObject("Box").AddComponent<ChiselBoxComponent>();
+            created.Add(box.gameObject);
+            ChiselSurfaceBrowserDecals.OnPartOf(decal, new ChiselIntersection { treeNode = box }, every: true);
+            Assert.That(decal.Targets.Count, Is.EqualTo(0), "not a generator of parts: it reaches every surface");
+        }
+
         // A sheet's tiles are its images; without a layout the whole texture is one; a material not marked has none
         [Test]
         public void Images_AreTheTilesOfTheSheet()

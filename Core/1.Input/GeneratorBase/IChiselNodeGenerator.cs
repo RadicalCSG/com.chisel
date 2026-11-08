@@ -24,6 +24,19 @@ namespace Chisel.Core
         bool IsSurfaceUsed(int index);
     }
 
+    /// <summary>
+    /// A generator made of several brushes that says what each is: a role ("Step", "Tread", "Side") per brush in build
+    /// order, so something on a brush (a decal) keeps meaning the same part as the generator changes. A generator that
+    /// says nothing has one role, its brushes in build order.
+    /// </summary>
+    public interface IChiselGeneratorParts
+    {
+        int PartRoleCount { get; }
+        string GetPartRoleName(int role);
+        /// <summary>The role of the brush at this place in build order, as the generator is set up now</summary>
+        int GetPartRole(int brushIndex);
+    }
+
     /// <summary>The words generators name their surfaces with, so the same kind of surface has the same name in each</summary>
     public static class ChiselSurfaceNames
     {
@@ -57,6 +70,9 @@ namespace Chisel.Core
 
         void OnEdit(IChiselHandles handles);
 		void GetMessages(IChiselMessageHandler messages);
+
+        /// <summary>What its brushes are, or null when it doesn't say (one role, in build order)</summary>
+        IChiselGeneratorParts Parts { get; }
     }
 
     public interface IBrushGenerator
@@ -81,6 +97,7 @@ namespace Chisel.Core
 
         public virtual string GetSurfaceName(int index) { return (settings is IChiselSurfaceNames names) ? names.GetSurfaceName(index) : null; }
         public virtual bool IsSurfaceUsed(int index) { return (settings is IChiselSurfaceNames names) ? names.IsSurfaceUsed(index) : true; }
+        public virtual IChiselGeneratorParts Parts => settings as IChiselGeneratorParts;
 
         public virtual void Reset() { settings.Reset(); }
 
@@ -177,6 +194,7 @@ namespace Chisel.Core
 
         public virtual string GetSurfaceName(int index) { return (settings is IChiselSurfaceNames names) ? names.GetSurfaceName(index) : null; }
         public virtual bool IsSurfaceUsed(int index) { return (settings is IChiselSurfaceNames names) ? names.IsSurfaceUsed(index) : true; }
+        public virtual IChiselGeneratorParts Parts => settings as IChiselGeneratorParts;
 
         public virtual void Reset()     { settings.Reset(); }
         public virtual bool Validate()  { return settings.Validate(); }

@@ -180,17 +180,38 @@ namespace Chisel.Core
 		public static bool TryGetHorizonPoints(this IChiselHandles handles, Vector3 center, float radius, out Vector3 left, out Vector3 right)
 		{
 			left = right = center;
+			if (radius <= 0)
+				return false;
+			return TryGetHorizonPoints(handles, center, radius, out left, out right, out _);
+		}
+
+		// The same, also for a circle without a size: both points on its center. side: across the view, from left to right
+		public static bool TryGetHorizonPoints(this IChiselHandles handles, Vector3 center, float radius, out Vector3 left, out Vector3 right, out Vector3 side)
+		{
+			left = right = center;
+			side = Vector3.zero;
 			var camera = Camera.current;
-			if (camera == null || radius <= 0)
+			if (camera == null)
 				return false;
 			var toCamera = camera.orthographic ? -handles.inverseMatrix.MultiplyVector(camera.transform.forward)
 			                                   : handles.inverseMatrix.MultiplyPoint(camera.transform.position) - center;
+			return HorizonPoints(center, radius, toCamera, camera.orthographic, out left, out right, out side);
+		}
+
+		// The horizon points of a circle round the up axis, seen from toCamera (a point's offset from center, or for an
+		// orthographic camera the way back along its view)
+		public static bool HorizonPoints(Vector3 center, float radius, Vector3 toCamera, bool orthographic, out Vector3 left, out Vector3 right, out Vector3 side)
+		{
+			left = right = center;
+			side = Vector3.zero;
+			if (radius < 0)
+				return false;
 			toCamera.y = 0;
-			var distance = camera.orthographic ? float.PositiveInfinity : toCamera.magnitude;
+			var distance = orthographic ? float.PositiveInfinity : toCamera.magnitude;
 			if (toCamera.sqrMagnitude < 1e-8f || distance <= radius)
 				return false;
 			toCamera.Normalize();
-			var side   = Vector3.Cross(Vector3.up, toCamera);
+			side       = Vector3.Cross(Vector3.up, toCamera);
 			var toward = float.IsInfinity(distance) ? 0 : radius * radius / distance;
 			var across = float.IsInfinity(distance) ? radius : radius * Mathf.Sqrt(1 - (radius * radius) / (distance * distance));
 			left  = center + toCamera * toward - side * across;
@@ -199,10 +220,14 @@ namespace Chisel.Core
 		}
 
 		// A line on the horizon of something round around the up axis, from its bottom to its top, dragged out or in to
-		// resize it; returns how much its diameter changes. While it has focus it's lit up, with its radius where the mouse is
-		public static float DoHorizonLineHandle(this IChiselHandles handles, Vector3 bottom, Vector3 top, Vector3 axisPoint, string radiusName = "Radius", float innerRadius = 0, string innerName = null)
+		// resize it; returns how much its diameter changes. While it has focus it's lit up, with its radius where the mouse is.
+		// On the axis (no size) it is dragged out along outwardOnAxis, and has no handle without it
+		public static float DoHorizonLineHandle(this IChiselHandles handles, Vector3 bottom, Vector3 top, Vector3 axisPoint, string radiusName = "Radius", float innerRadius = 0, string innerName = null,
+		                                        Vector3 outwardOnAxis = default)
 		{
 			var outward = bottom - axisPoint; outward.y = 0;
+			if (outward.sqrMagnitude < 1e-8f)
+				outward = new Vector3(outwardOnAxis.x, 0, outwardOnAxis.z);
 			if (outward.sqrMagnitude < 1e-8f)
 				return 0;
 			outward.Normalize();
