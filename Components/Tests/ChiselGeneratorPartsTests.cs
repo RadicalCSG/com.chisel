@@ -161,6 +161,37 @@ namespace Chisel.Components.Tests
             Assert.That(moves.Count, Is.EqualTo(copies.Count), "each onto a step of its own");
         }
 
+        // In the model: a box decal on one step is one decal, on every step one on each
+        [Test]
+        public void ABoxDecal_OnEveryStep_ReachesTheModelOnEachStep()
+        {
+            var stairs  = Stairs();
+            var model   = stairs.GetComponentInParent<ChiselModelComponent>();
+            var brushes = new List<CSGTreeBrush>();
+            ChiselGeneratorParts.BrushesOf(stairs, brushes);
+            var target = ChiselGeneratorParts.TargetOf(stairs, brushes[1], (int)StairsSurface.RiserFront);
+            var steps  = ChiselGeneratorParts.CountOf(stairs, target.part.role);
+            Assert.That(ChiselTrimDecals.TryCentre(target, out var centre, out var normal), Is.True);
+
+            var material = new Material(Shader.Find("Standard"));
+            created.Add(material);
+            var go = new GameObject("Decal");
+            go.transform.SetParent(stairs.transform, false);
+            go.transform.SetPositionAndRotation(model.transform.TransformPoint(centre), Quaternion.LookRotation(model.transform.TransformDirection(normal)));
+            var decal = go.AddComponent<ChiselDecalComponent>();
+            decal.Material = material;
+            decal.Size     = new Vector3(0.1f, 0.1f, 0.2f);
+            decal.SetTargets(new[] { target });
+            UpdateModels();
+            ChiselDecalManager.Update();
+            Assert.That(model.Node.GetDecalCount(), Is.EqualTo(1), "its own step");
+
+            decal.OnEveryPart = true;
+            UpdateModels();
+            ChiselDecalManager.Update();
+            Assert.That(model.Node.GetDecalCount(), Is.EqualTo(steps), "every step");
+        }
+
         // A trim on every step runs along the same edge of each
         [Test]
         public void ATrim_OnEveryStep_RunsAlongEachStep()

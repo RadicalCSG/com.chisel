@@ -1032,6 +1032,17 @@ namespace Chisel.Components
             }
         }
 
+        /// <summary>The middle of a target's surface and its normal, in its model's space</summary>
+        public static bool TryCentre(ChiselDecalSurfaceTarget target, out float3 centre, out float3 normal)
+        {
+            centre = normal = float3.zero;
+            if (!TryFace(target, out _, out var face))
+                return false;
+            centre = face.centroid;
+            normal = face.normal;
+            return true;
+        }
+
         // A surface's place and turn: its centroid, its normal as z, its first edge as x
         static bool TryFrame(in Face face, out float4x4 frame)
         {
