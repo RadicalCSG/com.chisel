@@ -97,6 +97,36 @@ namespace Chisel.Editors
 				if (profile.FindOverlap(out var first, out var second))
 					EditorGUILayout.HelpBox($"Modes {first} and {second} both write a component of {profile.modes[first].attribute}: one of them overwrites the other.", MessageType.Warning);
 			}
+
+			NotPaintableGUI(settings);
+		}
+
+		static readonly GUIContent kNotPaintableContent    = EditorGUIUtility.TrTextContent("Not Paintable", "Shaders that are never painted: materials using them don't ask to be set up as paintable");
+		static readonly GUIContent kAddNotPaintableContent = EditorGUIUtility.TrTextContent("Add Shader", "Says this shader is never painted");
+		static readonly GUIContent kMaybePaintableContent  = EditorGUIUtility.TrTextContent("Remove", "Materials using this shader ask to be set up as paintable again");
+
+		static void NotPaintableGUI(ChiselPaintSettings settings)
+		{
+			EditorGUILayout.Space();
+			EditorGUILayout.LabelField(kNotPaintableContent, EditorStyles.boldLabel);
+			var added = (Shader)EditorGUILayout.ObjectField(kAddNotPaintableContent, null, typeof(Shader), false);
+			if (added)
+				ChiselPaintSettingsProvider.SetNotPaintable(settings, added, true);
+			if (settings.notPaintable == null)
+				return;
+			for (int i = 0; i < settings.notPaintable.Count; i++)
+			{
+				var shader = settings.notPaintable[i];
+				using (new EditorGUILayout.HorizontalScope())
+				{
+					EditorGUILayout.LabelField(shader ? shader.name : "(no shader)");
+					if (GUILayout.Button(kMaybePaintableContent, EditorStyles.miniButton, GUILayout.Width(60)))
+					{
+						ChiselPaintSettingsProvider.SetNotPaintable(settings, shader, false);
+						GUIUtility.ExitGUI();
+					}
+				}
+			}
 		}
 	}
 
@@ -182,6 +212,21 @@ namespace Chisel.Editors
 			EditorUtility.SetDirty(settings);
 			ChiselPaintSettings.Changed();
 			return settings.profiles.Count - 1;
+		}
+
+		/// <summary>Says a shader is never painted, or (notPaintable false) takes that back, undoably</summary>
+		public static void SetNotPaintable(ChiselPaintSettings settings, Shader shader, bool notPaintable)
+		{
+			if (!settings || !shader)
+				return;
+			settings.notPaintable ??= new List<Shader>();
+			if (settings.notPaintable.Contains(shader) == notPaintable)
+				return;
+			Undo.RecordObject(settings, notPaintable ? "Shader Not Paintable" : "Shader Maybe Paintable");
+			if (notPaintable) settings.notPaintable.Add(shader);
+			else              settings.notPaintable.Remove(shader);
+			EditorUtility.SetDirty(settings);
+			ChiselPaintSettings.Changed();
 		}
 
 		// Opens the page on the shader's profile, adding one when it has none

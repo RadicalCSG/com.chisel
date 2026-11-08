@@ -172,18 +172,37 @@ namespace Chisel.Editors
 
 		static readonly GUIContent kConfigurePaintContents = new("Configure Paintability Of Shader", "Opens Project Settings > Chisel > Paint on the paint profile of the material's shader, adding one when it has none");
 
-		// Whether the material's shader can be painted, and the way to its paint profile
+		static readonly GUIContent kNeverPaintedContents = new("Never Paintable", "This shader is never painted: stop asking (Project Settings > Chisel > Paint lists such shaders)");
+
+		/// <summary>Whether a material asks about its shader's paintability: not when the shader was said to be never painted</summary>
+		internal static bool ShowsPaintability(Material material)
+		{
+			if (!material || !material.shader)
+				return false;
+			var settings = ChiselPaintSettings.Project;
+			return !(settings && settings.IsNotPaintable(material.shader));
+		}
+
+		// Whether the material's shader can be painted, and the way to its paint profile; nothing for a shader said to
+		// be never painted
 		void PaintGUI()
 		{
 			var material = MaterialOf(target);
-			if (!material || !material.shader)
+			if (!ShowsPaintability(material))
 				return;
+			var paintable = ChiselPaintProfiles.Find(material.shader) != null;
 			EditorGUILayout.Space(kButtonSpacing);
 			using (new EditorGUILayout.HorizontalScope())
 			{
-				EditorGUILayout.PrefixLabel(ChiselPaintProfiles.Find(material.shader) != null ? "Paintable" : "Not Paintable");
+				EditorGUILayout.PrefixLabel(paintable ? "Paintable" : "Not Paintable");
 				if (GUILayout.Button(kConfigurePaintContents, EditorStyles.miniButton))
 					ChiselPaintSettingsProvider.Configure(material.shader);
+				if (!paintable && GUILayout.Button(kNeverPaintedContents, EditorStyles.miniButton, GUILayout.ExpandWidth(false)))
+				{
+					var settings = ChiselPaintSettings.Project ? ChiselPaintSettings.Project : ChiselPaintSettingsProvider.CreateProjectAsset();
+					ChiselPaintSettingsProvider.SetNotPaintable(settings, material.shader, true);
+					GUIUtility.ExitGUI();
+				}
 			}
 		}
 
