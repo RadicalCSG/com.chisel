@@ -171,12 +171,45 @@ namespace Chisel.Components
             return $"{RoleName(generator, part.role)} {part.index + 1} from the {(part.fromEnd ? "end" : "start")}";
         }
 
+        /// <summary>A part with the generator it is of: "Linear Stairs > Step 2 from the end"</summary>
+        public static string FullNameOf(ChiselGeneratorComponent generator, ChiselPartReference part)
+        {
+            var name = NameOf(generator, part);
+            if (name == null || generator == null)
+                return name;
+            return $"{generator.name} > {name}";
+        }
+
+        /// <summary>The same brush of so many of its role, counted from the start or from the end; a part that isn't
+        /// there (fewer brushes than its place) keeps what it says</summary>
+        public static ChiselPartReference CountedFrom(ChiselPartReference part, bool fromEnd, int count)
+        {
+            var place = PlaceOf(part, count);
+            if (place < 0 || part.fromEnd == fromEnd)
+                return part;
+            part.fromEnd = fromEnd;
+            part.index   = fromEnd ? count - 1 - place : place;
+            return part;
+        }
+
         /// <summary>A surface of a generator's brush as a decal target: the generator, its surface, and which of its brushes</summary>
         public static ChiselDecalSurfaceTarget TargetOf(ChiselNodeComponent node, CSGTreeBrush brush, int surfaceIndex)
         {
             var target = new ChiselDecalSurfaceTarget { brush = node, surfaceIndex = surfaceIndex };
             if (node is ChiselGeneratorComponent generator)
                 target.part = PartOf(generator, brush);
+            return target;
+        }
+
+        /// <summary>A polygon of a generator's brush as a decal target: as <see cref="TargetOf"/>, and which of the
+        /// brush's faces with that surface it is</summary>
+        public static ChiselDecalSurfaceTarget TargetOfPolygon(ChiselNodeComponent node, CSGTreeBrush brush, int polygonIndex)
+        {
+            var blob = BrushMeshManager.GetBrushMeshBlob(brush.BrushMesh);
+            if (!blob.IsCreated || polygonIndex < 0 || polygonIndex >= blob.Value.polygons.Length)
+                return TargetOf(node, brush, -1);
+            var target = TargetOf(node, brush, blob.Value.polygons[polygonIndex].descriptionIndex);
+            target.polygon = polygonIndex + 1;
             return target;
         }
     }

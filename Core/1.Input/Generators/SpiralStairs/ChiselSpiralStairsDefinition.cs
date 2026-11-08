@@ -163,8 +163,9 @@ namespace Chisel.Core
 
         // the base is in one piece for each straight side of the outer cylinder under the first step, so it has that
         // cylinder's shape without being trimmed by it, which would give its outside the cylinder's surface
-        // with a guard rail on the outside the steps end halfway into it, so its outer face isn't on theirs
-        internal float StepsOuterDiameter => HaveOuterSide ? math.max(0.001f, outerDiameter - sideWidth / math.cos(math.PI / outerSegments)) : outerDiameter;
+        // with a guard rail on the outside the steps end at its inner face: a cylinder they're trimmed by, standing inside
+        // the rail, would split the rail's faces along its own
+        internal float StepsOuterDiameter => HaveOuterSide ? math.max(0.001f, outerDiameter - 2 * sideWidth / math.cos(math.PI / outerSegments)) : outerDiameter;
 
         internal bool BaseHasOpenMiddle => innerDiameter >= 0.001f && !HaveColumn;
 
@@ -194,20 +195,19 @@ namespace Chisel.Core
         internal bool HaveColumnHole => HaveColumn && centerType == SpiralStairsCenterType.Hollow && ColumnHoleDiameter >= kEpsilon;
         internal int ColumnSubMeshCount => (HaveColumn ? 1 : 0) + (HaveColumnHole ? 1 : 0);
 
-        // each side is two wedges for every piece of a step: a step is cut where the round side it follows has a corner, so
-        // the side has the same straight pieces as the cylinder the steps are trimmed by
+        // each side is one brush for every straight piece of the cylinder the steps are trimmed by
         internal bool HaveOuterSide => outerSide != StairsSideType.None;
         internal bool HaveInnerSide => innerSide != StairsSideType.None && HaveInnerCylinder;
-        internal int OuterSideSubMeshCount => HaveOuterSide ? CountSidePieces(outerSegments) * 2 : 0;
-        internal int InnerSideSubMeshCount => HaveInnerSide ? CountSidePieces(innerSegments) * 2 : 0;
+        internal int OuterSideSubMeshCount => HaveOuterSide ? CountSidePieces(outerSegments, outerSide) : 0;
+        internal int InnerSideSubMeshCount => HaveInnerSide ? CountSidePieces(innerSegments, innerSide) : 0;
         internal int SideSubMeshCount => OuterSideSubMeshCount + InnerSideSubMeshCount;
 
-        int CountSidePieces(int segments)
+        int CountSidePieces(int segments, StairsSideType side)
         {
             var start   = math.radians(startAngle);
             var perStep = math.radians(rotation / StepCount);
             var end     = start + perStep * StepCount;
-            var split   = SideFloorAngle(start, perStep);
+            var split   = SideFloorAngle(start, perStep, side);
             var count   = 0;
             var angle   = start;
             while (angle < end - kAngleEpsilon)
@@ -221,15 +221,31 @@ namespace Chisel.Core
             return count;
         }
 
-        // Where the bottom of a wall below the steps reaches the floor: before it the wall stands on the floor, after it
-        // the wall follows the steps, so a piece of wall can't be flat across it
-        internal float SideFloorAngle(float start, float perStep)
+        // How far a wall reaches below the line through the fronts of the treads
+        internal float SideBelowSteps(StairsSideType side)
         {
-            var angle = start + perStep * (stepHeight > 0 ? sideDepth / stepHeight : 0);
+            if (riserType == StairsRiserType.FillDown)
+                return math.abs(height) + stepHeight;
+            return (side == StairsSideType.Down || side == StairsSideType.DownAndUp) ? stepHeight + sideDepth : 0;
+        }
+
+        // Where the bottom of a wall below the steps reaches the floor: before it the wall stands on the floor, after it
+        // the wall follows the steps, so a piece of wall can't be flat across it. A wall that doesn't reach below the
+        // steps, or stands on the floor all along, has no such place (infinity)
+        internal float SideFloorAngle(float start, float perStep, StairsSideType side)
+        {
+            var below = SideBelowSteps(side);
+            if (!(below > 0) || !(stepHeight > 0))
+                return float.PositiveInfinity;
+            // the line is origin.y + stepHeight * (1 + steps), its bottom that less below, on the floor before
+            var floor = math.min(0, origin.y);
+            var steps = (floor - origin.y + below) / stepHeight - 1;
             // raised above the object's position, it stands on that beside the first step, solid down to it there
             if (origin.y > 0)
-                angle = math.max(angle, start + perStep);
-            return angle;
+                steps = math.max(steps, 1);
+            if (!(steps > 0) || !(steps < StepCount))
+                return float.PositiveInfinity;
+            return start + perStep * steps;
         }
 
         // A wall runs along the straight sides of its cylinder in one piece each, so each side shows one face; it is also
@@ -565,13 +581,17 @@ namespace Chisel.Core
         // A cylinder's two lines on its horizon, from low to high, dragged out or in to resize it; returns whether one has focus
         bool HorizonHandles(IChiselHandles handles, float lowY, float highY, ref float diameter, string radiusName, float innerRadius = 0, string innerName = null)
         {
+            // without a size (no inner cylinder) the lines are on the axis, each dragged out to its own side: there is
+            // still something to drag, and the handles stay the same ones while a drag passes through nothing
             var center = new Vector3(settings.origin.x, 0, settings.origin.z);
-            if (highY <= lowY || !handles.TryGetHorizonPoints(center, diameter * 0.5f, out var left, out var right))
+            if (highY <= lowY || !handles.TryGetHorizonPoints(center, diameter * 0.5f, out var left, out var right, out var side))
                 return false;
             var focus = false;
-            foreach (var point in new[] { left, right })
+            for (int i = 0; i < 2; i++)
             {
-                var change = handles.DoHorizonLineHandle(new Vector3(point.x, lowY, point.z), new Vector3(point.x, highY, point.z), center, radiusName, innerRadius, innerName);
+                var point  = i == 0 ? left : right;
+                var change = handles.DoHorizonLineHandle(new Vector3(point.x, lowY, point.z), new Vector3(point.x, highY, point.z), center, radiusName, innerRadius, innerName,
+                                                         outwardOnAxis: i == 0 ? -side : side);
                 diameter = math.max(0, diameter + change);
                 focus |= handles.lastHandleHadFocus;
             }
@@ -584,9 +604,7 @@ namespace Chisel.Core
             var low   = settings.origin.y + math.min(0, settings.height);
             var line  = low + settings.stepHeight;
             var above = (side == StairsSideType.Up   || side == StairsSideType.DownAndUp) ? settings.sideHeight : 0;
-            var below = (side == StairsSideType.Down || side == StairsSideType.DownAndUp) ? settings.stepHeight + settings.sideDepth : 0;
-            if (settings.riserType == StairsRiserType.FillDown)
-                below = math.abs(settings.height) + settings.stepHeight;
+            var below = settings.SideBelowSteps(side);
             DrawSpiral(handles, color, apothem, sides, line + above);
             DrawSpiral(handles, color, apothem, sides, line - below, math.min(0, low));
 
@@ -596,7 +614,7 @@ namespace Chisel.Core
             var start     = math.radians(settings.startAngle);
             var perStep   = math.radians(settings.AnglePerStep);
             var end       = start + perStep * settings.StepCount;
-            var split     = settings.SideFloorAngle(start, perStep);
+            var split     = settings.SideFloorAngle(start, perStep, side);
             var firstStep = start + perStep;
             var angle     = start;
 

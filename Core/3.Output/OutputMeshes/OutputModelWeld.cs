@@ -279,7 +279,7 @@ namespace Chisel.Core
             for (int b = 0; b < brushes.Length; b++)
                 ShortEdgesOf(b, brushes.AsArray(), state.work, state.workIndex, state.scope,
                              (float3x2*)state.shortPairs.GetUnsafePtr() + state.edgeOffsets[b].x, (float3*)state.keptCorners.GetUnsafePtr() + state.edgeOffsets[b].y);
-            var collapsed = ClusterShortEdges(ref state, moves);
+            var collapsed = ClusterShortEdges(brushes.AsArray(), ref state, moves);
             var decisionCounts = state.decisionCounts.AsArray();
             for (int b = 0; b < brushes.Length; b++)
                 decisionCounts[b] = DecideCollapse(b, brushes.AsArray(), state.work, state.workIndex, state.scope, state.movedTo, null);
@@ -726,11 +726,36 @@ namespace Chisel.Core
 
         static int Less(float3 x, float3 y) => x.x != y.x ? x.x.CompareTo(y.x) : (x.y != y.y ? x.y.CompareTo(y.y) : x.z.CompareTo(y.z));
 
+        // The plane of a triangle that has one, for each of its corners that is a point of a short edge (planesAt, by position)
+        internal static void AddPlanesAt(float3 q0, float3 q1, float3 q2, UnsafeHashMap<float3, int> points, ref UnsafeParallelMultiHashMap<float3, float4> planesAt)
+        {
+            AddPlanesAt(q0, q1, q2, points.ContainsKey(q0), points.ContainsKey(q1), points.ContainsKey(q2), ref planesAt);
+        }
+
+        // The same, for the corners said to be points of short edges
+        internal static void AddPlanesAt(float3 q0, float3 q1, float3 q2, bool at0, bool at1, bool at2, ref UnsafeParallelMultiHashMap<float3, float4> planesAt)
+        {
+            if (!(at0 || at1 || at2) || IsNeedle(q0, q1, q2))
+                return;
+            var normal = math.cross(q1 - q0, q2 - q0);
+            var length = math.length(normal);
+            if (!(length > 0))
+                return;
+            normal /= length;
+            var plane = new float4(normal, -math.dot(normal, q0));
+            if (at0) planesAt.Add(q0, plane);
+            if (at1) planesAt.Add(q1, plane);
+            if (at2) planesAt.Add(q2, plane);
+        }
+
         // The short edges' corners made one, shortest edge first, as long as what becomes one fits within kCollapseLength
-        // (a chain of short edges never drags a corner further): where each point goes, its cluster's least corner by x, y,
-        // z. Edges of a and b in either order, a and b their points' indices. The same for the same edges in any order:
-        // what ExactJudge accounts for with it.
-        internal static void Cluster(NativeArray<float3> points, NativeList<ShortEdge> edges, NativeArray<float3> to)
+        // (a chain of short edges never drags a corner further). Each cluster goes to the corner of it that moves the others
+        // least off the triangles they are on (planesAt: by position, the planes of the triangles each corner is on), so a
+        // corner where faces meet is kept, not moved off one of them onto a point on another; of those as good, the least
+        // by x, y, z (without planes, that one). Edges of a and b in either order, a and b their points' indices. The same
+        // for the same edges in any order: what ExactJudge accounts for with it.
+        internal static void Cluster(NativeArray<float3> points, NativeList<ShortEdge> edges, NativeArray<float3> to,
+                                     UnsafeParallelMultiHashMap<float3, float4> planesAt = default)
         {
             for (int e = 0; e < edges.Length; e++)
             {
@@ -764,7 +789,84 @@ namespace Chisel.Core
             }
             for (int i = 0; i < points.Length; i++)
                 to[i] = least[Root(i)];
+            if (planesAt.IsCreated)
+                KeepTheCornersOnTheirFaces(points, parent, to, planesAt);
             parent.Dispose(); lo.Dispose(); hi.Dispose(); least.Dispose();
+        }
+
+        // Each cluster of more than one corner (parent: a union-find, compressed) given the corner of it that is off the
+        // other corners' planes least; to holds the least corner of each, which stays where nothing is better
+        static void KeepTheCornersOnTheirFaces(NativeArray<float3> points, NativeArray<int> parent, NativeArray<float3> to,
+                                               UnsafeParallelMultiHashMap<float3, float4> planesAt)
+        {
+            var members = new UnsafeParallelMultiHashMap<int, int>(points.Length, Allocator.Temp);
+            var roots   = new NativeList<int>(16, Allocator.Temp);
+            try
+            {
+                for (int i = 0; i < points.Length; i++)
+                {
+                    var root = i;
+                    while (parent[root] != root)
+                        root = parent[root];
+                    if (root == i)
+                        continue;
+                    if (!members.ContainsKey(root))
+                    {
+                        roots.Add(root);
+                        members.Add(root, root);
+                    }
+                    members.Add(root, i);
+                }
+                for (int r = 0; r < roots.Length; r++)
+                {
+                    var root     = roots[r];
+                    var best     = to[root];
+                    var bestOff  = OffTheOthers(best, root, points, members, planesAt);
+                    if (members.TryGetFirstValue(root, out var candidate, out var it))
+                    {
+                        do
+                        {
+                            var at  = points[candidate];
+                            var off = OffTheOthers(at, root, points, members, planesAt);
+                            if (off < bestOff || (off == bestOff && Less(at, best) < 0))
+                            {
+                                best    = at;
+                                bestOff = off;
+                            }
+                        } while (members.TryGetNextValue(out candidate, ref it));
+                    }
+                    if (members.TryGetFirstValue(root, out var member, out var mit))
+                    {
+                        do
+                            to[member] = best;
+                        while (members.TryGetNextValue(out member, ref mit));
+                    }
+                }
+            }
+            finally
+            {
+                members.Dispose();
+                roots.Dispose();
+            }
+        }
+
+        // How far a point is off the planes of the triangles the cluster's other corners are on, at most
+        static float OffTheOthers(float3 at, int root, NativeArray<float3> points, UnsafeParallelMultiHashMap<int, int> members,
+                                  UnsafeParallelMultiHashMap<float3, float4> planesAt)
+        {
+            var off = 0.0f;
+            if (!members.TryGetFirstValue(root, out var member, out var it))
+                return off;
+            do
+            {
+                var corner = points[member];
+                if (corner.Equals(at) || !planesAt.TryGetFirstValue(corner, out var plane, out var pit))
+                    continue;
+                do
+                    off = math.max(off, math.abs(math.dot(plane.xyz, at) + plane.w));
+                while (planesAt.TryGetNextValue(out plane, ref pit));
+            } while (members.TryGetNextValue(out member, ref it));
+            return off;
         }
 
         // The collapse of the model's edges shorter than kCollapseLength (Cluster), last, away from what the steps before
@@ -834,7 +936,7 @@ namespace Chisel.Core
         }
 
         // Where the corners that move go (movedTo); the number of them. moves: (from, to) of each
-        public static int ClusterShortEdges(ref WeldState state, NativeList<float3x2> moves)
+        public static int ClusterShortEdges(NativeArray<BrushData> brushes, ref WeldState state, NativeList<float3x2> moves)
         {
             var collapsed = 0;
             state.movedTo.Clear();
@@ -866,8 +968,29 @@ namespace Chisel.Core
                 if (edges.Length == 0)
                     return 0;
 
+                // the planes of every triangle their corners are on, in any brush (a decal's pieces only follow)
+                var planesAt = new UnsafeParallelMultiHashMap<float3, float4>(points.Length * 8, Allocator.Temp);
+                for (int b = 0; b < brushes.Length; b++)
+                {
+                    if (!brushes[b].brushRenderBuffer.IsCreated)
+                        continue;
+                    var surfaceCount = brushes[b].brushRenderBuffer.Value.surfaces.Length;
+                    for (int s = 0; s < surfaceCount; s++)
+                    {
+                        if (brushes[b].brushRenderBuffer.Value.surfaces[s].decalEntityID != 0)
+                            continue;
+                        var view = new SurfaceView(brushes, state.work, state.workIndex, b, s);
+                        for (int t = 0; t < view.TriangleCount; t++)
+                        {
+                            if (view.Corners(t, out var c0, out var c1, out var c2))
+                                AddPlanesAt(view.Position(c0) + 0.0f, view.Position(c1) + 0.0f, view.Position(c2) + 0.0f, ids, ref planesAt);
+                        }
+                    }
+                }
+
                 var to = new NativeArray<float3>(points.Length, Allocator.Temp);
-                Cluster(points.AsArray(), edges, to);
+                Cluster(points.AsArray(), edges, to, planesAt);
+                planesAt.Dispose();
                 for (int i = 0; i < points.Length; i++)
                 {
                     if (to[i].Equals(points[i]))

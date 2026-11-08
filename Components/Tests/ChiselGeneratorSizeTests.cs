@@ -969,7 +969,7 @@ namespace Chisel.Components.Tests
             Assert.That(triangles, Is.GreaterThan(0), "no inner wall");
             // each piece of the wall shows one face here, with about two corners of its own; split by the steps it had half
             // as many again
-            var pieces = settings.InnerSideSubMeshCount / 2;
+            var pieces = settings.InnerSideSubMeshCount;
             Assert.That(corners.Count, Is.LessThanOrEqualTo(pieces * 2.5f + 10), $"the wall's face is split ({triangles} triangles, {pieces} pieces)");
         }
 
@@ -994,8 +994,8 @@ namespace Chisel.Components.Tests
             // the sides it passes, plus where it starts part way along one and where it reaches the floor
             var innerSides = Mathf.CeilToInt(settings.rotation / (360f / settings.innerSegments)) + 2;
             var outerSides = Mathf.CeilToInt(settings.rotation / (360f / settings.outerSegments)) + 2;
-            Assert.That(settings.InnerSideSubMeshCount / 2, Is.LessThanOrEqualTo(innerSides), "inner wall pieces");
-            Assert.That(settings.OuterSideSubMeshCount / 2, Is.LessThanOrEqualTo(outerSides), "outer wall pieces");
+            Assert.That(settings.InnerSideSubMeshCount, Is.LessThanOrEqualTo(innerSides), "inner wall pieces");
+            Assert.That(settings.OuterSideSubMeshCount, Is.LessThanOrEqualTo(outerSides), "outer wall pieces");
         }
 
         // Spiral stairs solid down to the floor have their walls go down to the floor as well, whichever way they're set
@@ -1043,6 +1043,36 @@ namespace Chisel.Components.Tests
                 where += $" ({pair.Key.x / 1000f:F3}, {pair.Value:F3}, {pair.Key.y / 1000f:F3})";
             }
             Assert.That(hanging, Is.Zero, $"places along the wall that don't reach the floor, of {lowestAt.Count}:{where}");
+        }
+
+        // Spiral stairs round a middle that is narrow, or no middle at all, give every brush a mesh with planes that have a
+        // direction: an inner wall thicker than the middle has its inside on the middle itself
+        [Test]
+        public void SpiralStairsWithANarrowMiddle_GiveEveryBrushAMesh([Values(0f, 0.0005f, 0.002f, 0.05f, 0.3f)] float innerDiameter,
+                                                                      [Values(StairsSideType.Up, StairsSideType.DownAndUp)] StairsSideType side,
+                                                                      [Values(SpiralStairsCenterType.Open, SpiralStairsCenterType.Solid)] SpiralStairsCenterType center)
+        {
+            var stairs = WideSpiralStairs(out _);
+            stairs.definition.settings.innerDiameter = innerDiameter;
+            stairs.definition.settings.innerSide     = side;
+            stairs.definition.settings.outerSide     = side;
+            stairs.definition.settings.centerType    = center;
+            stairs.OnValidate();
+            Update();
+
+            var branch = (CSGTreeBranch)stairs.TopTreeNode;
+            Assert.That(branch.Count, Is.EqualTo(stairs.definition.settings.RequiredSubMeshCount), "brushes");
+            for (int i = 0; i < branch.Count; i++)
+            {
+                var blob = BrushMeshManager.GetBrushMeshBlob(((CSGTreeBrush)branch[i]).BrushMesh.BrushMeshID);
+                Assert.That(blob.IsCreated, Is.True, $"brush {i} has no mesh");
+                ref var mesh = ref blob.Value;
+                for (int p = 0; p < mesh.localPlanes.Length; p++)
+                {
+                    var plane = mesh.localPlanes[p];
+                    Assert.That(math.all(math.isfinite(plane)) && math.lengthsq(plane.xyz) > 0.5f, Is.True, $"brush {i} plane {p}: {plane}");
+                }
+            }
         }
 
         // A sloped underside is built for each step only: one step too many wrote past its own pieces, over the cylinders
@@ -1734,6 +1764,80 @@ namespace Chisel.Components.Tests
             Assert.That(top, Is.GreaterThan(stairs.definition.settings.height + 0.1f), "no wall beside the column");
         }
 
+        // A box whose end lies on the face of a wall of two boxes side by side, across where they meet (a step ending on a
+        // guard rail of pieces): all of it is one closed shape, not two faces left on top of each other where they touch
+        [Test]
+        public void ABoxEndingOnAWallOfTwoBoxes_IsClosed()
+        {
+            var first = Generator<ChiselBoxComponent>(out var model);
+            first.definition.settings.bounds = new MinMaxAABB { Min = new float3(1, 0, 0), Max = new float3(1.5f, 2, 1) };
+            first.OnValidate();
+            ChiselBoxComponent Box(MinMaxAABB bounds)
+            {
+                var go = new GameObject("box");
+                go.transform.SetParent(model.transform, false);
+                var box = go.AddComponent<ChiselBoxComponent>();
+                box.definition.settings.bounds = bounds;
+                box.OnValidate();
+                return box;
+            }
+            Box(new MinMaxAABB { Min = new float3(1, 0, 1), Max = new float3(1.5f, 2, 2) });
+            Box(new MinMaxAABB { Min = new float3(0, 0.5f, 0.6f), Max = new float3(1, 1, 1.4f) });
+            Update();
+            AssertClosed(model, "a box ending on a wall of two");
+        }
+
+        // As above, but the box reaches into the wall and is trimmed back to the wall's face by an intersecting box (as the
+        // steps of spiral stairs are trimmed by a cylinder ending on their guard rail's inside)
+        [Test]
+        public void ABoxTrimmedToAWallOfTwoBoxes_IsClosed()
+        {
+            var first = Generator<ChiselBoxComponent>(out var model);
+            first.definition.settings.bounds = new MinMaxAABB { Min = new float3(1, 0, 0), Max = new float3(1.5f, 2, 1) };
+            first.OnValidate();
+            ChiselBoxComponent Box(Transform parent, MinMaxAABB bounds, CSGOperationType operation = CSGOperationType.Additive)
+            {
+                var go = new GameObject("box");
+                go.transform.SetParent(parent, false);
+                var box = go.AddComponent<ChiselBoxComponent>();
+                box.definition.settings.bounds = bounds;
+                box.Operation = operation;
+                box.OnValidate();
+                return box;
+            }
+            Box(model.transform, new MinMaxAABB { Min = new float3(1, 0, 1), Max = new float3(1.5f, 2, 2) });
+            var step = new GameObject("step");
+            step.transform.SetParent(model.transform, false);
+            step.AddComponent<ChiselCompositeComponent>();
+            Box(step.transform, new MinMaxAABB { Min = new float3(0, 0.5f, 0.6f), Max = new float3(1.25f, 1, 1.4f) });
+            Box(step.transform, new MinMaxAABB { Min = new float3(-1, -1, -1), Max = new float3(1, 3, 3) }, CSGOperationType.Intersecting);
+            Update();
+            AssertClosed(model, "a box trimmed to a wall of two");
+        }
+
+        // As above, with the wall split where the box's side is (a step at the start of spiral stairs, where the guard rail's
+        // piece in front of it ends): still closed
+        [Test]
+        public void ABoxEndingOnAWallSplitAtItsSide_IsClosed()
+        {
+            var first = Generator<ChiselBoxComponent>(out var model);
+            first.definition.settings.bounds = new MinMaxAABB { Min = new float3(1, 0, 0), Max = new float3(1.5f, 2, 1) };
+            first.OnValidate();
+            ChiselBoxComponent Box(MinMaxAABB bounds)
+            {
+                var go = new GameObject("box");
+                go.transform.SetParent(model.transform, false);
+                var box = go.AddComponent<ChiselBoxComponent>();
+                box.definition.settings.bounds = bounds;
+                box.OnValidate();
+                return box;
+            }
+            Box(new MinMaxAABB { Min = new float3(1, 0, 1), Max = new float3(1.5f, 2, 2) });
+            Box(new MinMaxAABB { Min = new float3(0, 0.5f, 1), Max = new float3(1, 1, 1.4f) });
+            Update();
+            AssertClosed(model, "a box ending on a wall split at its side");
+        }
+
         // Spiral stairs with a column and walls are closed: no gaps, and no triangles without area, where they meet
         [Test]
         public void SpiralStairsWithAColumnAndWalls_AreClosed([Values] SpiralStairsCenterType center)
@@ -2002,11 +2106,44 @@ namespace Chisel.Components.Tests
                     var atAnEnd    = Mathf.Abs(Mathf.DeltaAngle(angle * Mathf.Rad2Deg, settings.startAngle)) < 0.1f ||
                                      Mathf.Abs(Mathf.DeltaAngle(angle * Mathf.Rad2Deg, settings.startAngle + settings.rotation)) < 0.1f;
                     // the wall has a piece end where it reaches the floor
-                    var split      = settings.SideFloorAngle(settings.startAngle * Mathf.Deg2Rad, settings.AnglePerStep * Mathf.Deg2Rad);
+                    var split      = settings.SideFloorAngle(settings.startAngle * Mathf.Deg2Rad, settings.AnglePerStep * Mathf.Deg2Rad, settings.outerSide);
                     var atItsSplit = Mathf.Abs(Mathf.DeltaAngle(angle * Mathf.Rad2Deg, split * Mathf.Rad2Deg)) < 0.1f;
                     Assert.That(nearCorner || atAnEnd || atItsSplit, Is.True, $"the rail's outer face is cut at {corner} (a side is {side} wide)");
                 }
             }
+        }
+
+        // A guard rail that never stands on the floor in part (only above the steps, or down to the floor all along) isn't
+        // cut where a wall below the steps would reach the floor: its outer face has corners only at the cylinder's
+        [TestCase(StairsRiserType.ThickRiser, StairsSideType.Up)]
+        [TestCase(StairsRiserType.FillDown, StairsSideType.Up)]
+        [TestCase(StairsRiserType.FillDown, StairsSideType.Down)]
+        public void SpiralStairsGuardRail_NotPartlyOnTheFloor_IsOnlyCutAtCorners(StairsRiserType riser, StairsSideType side)
+        {
+            var stairs = WideSpiralStairs(out var model);
+            ref var settings = ref stairs.definition.settings;
+            settings.riserType = riser;
+            settings.outerSide = side;
+            stairs.OnValidate();
+            Update();
+            var apothem = settings.outerDiameter * 0.5f * Mathf.Cos(Mathf.PI / settings.outerSegments);
+            var corners = 0;
+            foreach (var triangle in DrawnTriangles(model))
+            {
+                var normal = Vector3.Cross(triangle.b - triangle.a, triangle.c - triangle.a).normalized;
+                if (Mathf.Abs(normal.y) > 0.1f || (triangle.a.x * normal.x + triangle.a.z * normal.z) < apothem - 0.01f)
+                    continue;
+                foreach (var corner in new[] { triangle.a, triangle.b, triangle.c })
+                {
+                    var angle      = Mathf.Atan2(corner.x, corner.z) * Mathf.Rad2Deg;
+                    var nearCorner = Mathf.Abs(new Vector2(corner.x, corner.z).magnitude - settings.outerDiameter * 0.5f) < 1e-2f;
+                    var atAnEnd    = Mathf.Abs(Mathf.DeltaAngle(angle, settings.startAngle)) < 0.1f ||
+                                     Mathf.Abs(Mathf.DeltaAngle(angle, settings.startAngle + settings.rotation)) < 0.1f;
+                    Assert.That(nearCorner || atAnEnd, Is.True, $"the rail's outer face is cut at {corner}");
+                    corners++;
+                }
+            }
+            Assert.That(corners, Is.GreaterThan(0), "no outer face");
         }
 
         // A step's top runs on from its front without a seam, on linear, pathed and spiral stairs

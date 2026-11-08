@@ -201,7 +201,7 @@ namespace Chisel.Core
             switch (step)
             {
                 case 0: OutputModelWeld.OffsetShortEdges(ref weld); break;
-                case 1: OutputModelWeld.ClusterShortEdges(ref weld, collapseMoves); break;
+                case 1: OutputModelWeld.ClusterShortEdges(brushRenderData.AsArray(), ref weld, collapseMoves); break;
                 case 2: OutputModelWeld.OffsetDecisions(ref weld); break;
                 case 3:
                     OutputModelWeld.ApplyCollapse(brushRenderData, ref weld);

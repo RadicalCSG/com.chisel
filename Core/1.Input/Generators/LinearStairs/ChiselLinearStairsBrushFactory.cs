@@ -42,10 +42,13 @@ namespace Chisel.Core
                     // the right side is at min.x and the left at max.x, as the sides themselves are built (below); only a
                     // wall that goes down below the steps takes their place, one above them leaves the steps their width.
                     // Filled down, any wall goes down to the floor
+                    // A band under smooth steps leaves them their width too
                     var fillDown   = description.riserType == StairsRiserType.FillDown;
-                    var rightTaken = description.rightSideType == StairsSideType.Down || description.rightSideType == StairsSideType.DownAndUp ||
+                    var rightTaken = ((description.rightSideType == StairsSideType.Down && !description.rightSideDescription.isBand) ||
+                                      description.rightSideType == StairsSideType.DownAndUp) ||
                                      (fillDown && description.rightSideType != StairsSideType.None);
-                    var leftTaken  = description.leftSideType  == StairsSideType.Down || description.leftSideType  == StairsSideType.DownAndUp ||
+                    var leftTaken  = ((description.leftSideType  == StairsSideType.Down && !description.leftSideDescription.isBand) ||
+                                      description.leftSideType  == StairsSideType.DownAndUp) ||
                                      (fillDown && description.leftSideType  != StairsSideType.None);
                     min.x += rightTaken ? description.rightSideWidth : 0;
                     max.x -= leftTaken  ? description.leftSideWidth : 0;
@@ -81,7 +84,7 @@ namespace Chisel.Core
                             vertices[3] = new float3(min.x, max.y, minZ);	// 3
                         } else
                         {
-                            vertices[0] = new float3(min.x, min.y, minZ);	// 0
+                            vertices[0] = new float3(min.x, min.y - LowestBackDrop(i, in description), minZ);	// 0
                             vertices[1] = new float3(min.x, min.y, maxZ);	// 1
                             vertices[2] = new float3(min.x, max.y, maxZ);   // 2
                             vertices[3] = new float3(min.x, max.y, minZ - description.stepDepth);	// 3
@@ -111,7 +114,7 @@ namespace Chisel.Core
                             vertices[0] = new float3(min.x, floor, baseMinZ);
                             vertices[1] = new float3(min.x, floor, maxZ);
                             vertices[2] = new float3(min.x, min.y, maxZ);
-                            vertices[3] = new float3(min.x, min.y, baseMinZ);
+                            vertices[3] = new float3(min.x, min.y - LowestBackDrop(i, in description), baseMinZ);
                             brushMeshes[subMeshOffset + description.startBase] = TurnSideFaces(AlignedUpright(AlignedToFront(CreateExtrudedSubMeshBlob(vertices, extrusion, indices, StairsPart.Base, ref surfaceDefinition, allocator),
                                                                                                              new float2(min.x, maxZ), new float2(max.x, maxZ)),
                                                                                               // from where the step above it starts its texture, so it runs on across the two
@@ -195,10 +198,10 @@ namespace Chisel.Core
                 if (description.sideFrontOffset > 0)
                 {
                     var front = subMeshOffset + description.startSideFronts;
-                    if (description.leftSideDescription.enabled)
+                    if (LineairStairsData.HasFront(in description.leftSideDescription))
                         brushMeshes[front++] = SideFront(brushMeshes, subMeshOffset + description.startLeftSide, description.leftSideDescription.subMeshCount,
                                                          description.bounds.Max.x - description.leftSideWidth, description.bounds.Max.x, in description, ref surfaceDefinition, allocator);
-                    if (description.rightSideDescription.enabled)
+                    if (LineairStairsData.HasFront(in description.rightSideDescription))
                         brushMeshes[front++] = SideFront(brushMeshes, subMeshOffset + description.startRightSide, description.rightSideDescription.subMeshCount,
                                                          description.bounds.Min.x, description.bounds.Min.x + description.rightSideWidth, in description, ref surfaceDefinition, allocator);
                 }
@@ -207,6 +210,14 @@ namespace Chisel.Core
         }
 
         // where the texture of a step with its top here starts, as AlignedUpright has it for the steps
+        // The lowest smooth step, on a base, has its bottom a tread higher than the others; its back corner stays down
+        // on the slope of their undersides, and the base's corner under it with it
+        static float LowestBackDrop(int i, in LineairStairsData description)
+        {
+            return (i > 0 && i == description.stepCount - 1 && description.haveBase &&
+                    description.riserType == StairsRiserType.Smooth) ? description.treadHeight : 0;
+        }
+
         static float StepTextureBottom(float top, in LineairStairsData description)
         {
             var origin = description.bounds.Max.y;
@@ -424,6 +435,50 @@ namespace Chisel.Core
             // its faces to the sides are turned with the rest of the side walls'
             return AlignedUpright(wall, new float3(description.bounds.Min.x + description.rightSideWidth, description.bounds.Max.y, 0),
                                   aroundOrigin: false, description.stepHeight);
+        }
+
+        // A wall below smooth steps: a band under the slope their undersides make, as thick as the side's depth, from
+        // the top step back to where it reaches the floor (or the stairs' front). It stays clear of the steps, so nothing
+        // of it shows at their risers. Seen from the side (z towards the front, y up), the slope goes through the back of
+        // the second step's bottom, rising a step per step's depth towards the back.
+        static BlobAssetReference<BrushMeshBlob> BandUnderSlope(float minX, float maxX, in LineairStairsData description,
+                                                                 ref InternalChiselSurfaceArray surfaceDefinition, Allocator allocator)
+        {
+            var aspect    = description.stepHeight / description.stepDepth;
+            var thickness = math.max(description.sideDepth, kMinTopSide);
+            var floor     = description.bounds.Min.y;
+            var front     = description.bounds.Max.z;
+            // a base under the lowest step fills the stairs from where that step starts, so the band ends there
+            if (description.haveBase && description.stepCount > 1)
+                front =math.min(front, description.bounds.Min.z + description.stepDepthOffset + (description.stepCount - 1) * description.stepDepth);
+            // the second step's bottom back corner, where the slanted backs of the steps start
+            var slopeZ    = description.bounds.Min.z + description.stepDepthOffset + description.stepDepth;
+            var slopeY    = description.bounds.Max.y - description.treadHeight - 2 * description.stepHeight;
+            float Slope(float z) => slopeY + aspect * (slopeZ - z);
+
+            // from the top of the slope, behind the second step
+            var backZ = slopeZ - description.stepDepth;
+            var topEnd    = math.min(front, slopeZ + (slopeY - floor) / aspect);              // the slope reaches the floor
+            var bottomEnd = math.min(front, slopeZ + (slopeY - thickness - floor) / aspect);  // the band's bottom does
+            if (!(topEnd > backZ + kMinTopSide) || !(bottomEnd > backZ))
+                return BlobAssetReference<BrushMeshBlob>.Null;
+
+            var corners = new NativeList<float3>(6, Allocator.Temp);
+            try
+            {
+                AddCorner(corners, new float3(minX, Slope(backZ), backZ));
+                AddCorner(corners, new float3(minX, Slope(backZ) - thickness, backZ));
+                AddCorner(corners, new float3(minX, math.max(floor, Slope(bottomEnd) - thickness), bottomEnd));
+                AddCorner(corners, new float3(minX, math.max(floor, Slope(topEnd)), topEnd));
+                using var indices = FanIndices(corners);
+                if (indices.Length < 3)
+                    return BlobAssetReference<BrushMeshBlob>.Null;
+                return TexturedAsTheSteps(CreateExtrudedSubMeshBlob(corners.AsArray(), new float3(maxX - minX, 0, 0), indices.AsArray(), StairsPart.Wall, ref surfaceDefinition, allocator), in description);// Indirect
+            }
+            finally
+            {
+                corners.Dispose();
+            }
         }
 
         // A corner of a wall's outline, left out where it's where the one before is (or, last, where the first is): a side
@@ -854,6 +909,12 @@ namespace Chisel.Core
                     max.y -= description.stepHeight;
                 }
             } else
+            if (side.isBand)
+            {
+                brushMeshes[startIndex] = BandUnderSlope(minX, maxX, in description, ref surfaceDefinition, allocator);
+                return;
+            }
+
             if (sideType == StairsSideType.Down)
             {
                 var extrusion = new float3(max.x - min.x, 0, 0);
@@ -1305,6 +1366,16 @@ namespace Chisel.Core
                 return stepDepthOffset > sideDepth || (thickTop && stepDepthOffset > 0);
             }
 
+            // Smooth steps go down in one slope: a wall below them is a band under it, one piece, with no front. Not the
+            // wall at a corner of pathed stairs, which stands square across them
+            public static bool IsBandUnderSlope(StairsRiserType riserType, StairsSideType sideType, bool bandUnderSlope)
+            {
+                return bandUnderSlope && riserType == StairsRiserType.Smooth && sideType == StairsSideType.Down;
+            }
+
+            // whether this side is a band under the slope of smooth steps (see IsBandUnderSlope)
+            public bool isBand;
+
             // TODO: just turn into method that returns subMeshCount
             public LinearStairsSideData(float stepHeight,
                                         float stepDepth,
@@ -1313,9 +1384,10 @@ namespace Chisel.Core
                                         float absDepth,
                                         float stepDepthOffset,
                                         int stepCount, float sideDepth, MinMaxAABB bounds, StairsRiserType riserType, float riserDepth, StairsSideType sideType,
-                                        float topSideLength)
+                                        float topSideLength, bool bandUnderSlope)
             {
                 this.enabled = sideType != StairsSideType.None;
+                this.isBand  = enabled && IsBandUnderSlope(riserType, sideType, bandUnderSlope);
 
                 if (!enabled)
                 {
@@ -1323,6 +1395,10 @@ namespace Chisel.Core
                     return;
                 }
 
+                if (isBand)
+                {
+                    this.subMeshCount = 1;
+                } else
                 if (sideType == StairsSideType.Down)
                 {
                     this.subMeshCount = stepCount;
@@ -1384,6 +1460,12 @@ namespace Chisel.Core
             public bool haveRightSideUp;
 
             public float sideWidth;
+            /// <summary>Whether a side has a front a piece can be put in front of (a band under smooth steps has none)</summary>
+            public static bool HasFront(in LinearStairsSideData side)
+            {
+                return side.enabled && !side.isBand;
+            }
+
             // how wide each side wall is; both the side width, unless set apart
             public float leftSideWidth;
             public float rightSideWidth;
@@ -1443,7 +1525,8 @@ namespace Chisel.Core
                                      bool            leftAsSet = false,
                                      bool            rightAsSet = false,
                                      float           sideFrontOffset = 0,
-                                     float           topSideLength = float.PositiveInfinity)
+                                     float           topSideLength = float.PositiveInfinity,
+                                     bool            bandUnderSlope = true)
             {
                 // TODO: implement smooth riser-type
 
@@ -1536,10 +1619,10 @@ namespace Chisel.Core
 
                 this.leftSideDescription     = new LinearStairsSideData(stepHeight, stepDepth, plateauHeight, 
                                                                         this.treadHeight, this.absDepth, this.stepDepthOffset, 
-                                                                        this.stepCount, this.sideDepth, this.bounds, this.riserType, this.riserDepth, this.leftSideType, this.topSideLength);
+                                                                        this.stepCount, this.sideDepth, this.bounds, this.riserType, this.riserDepth, this.leftSideType, this.topSideLength, bandUnderSlope);
                 this.rightSideDescription    = new LinearStairsSideData(stepHeight, stepDepth, plateauHeight,
-                                                                        this.treadHeight, this.absDepth, this.stepDepthOffset, 
-                                                                        this.stepCount, this.sideDepth, this.bounds, this.riserType, this.riserDepth, this.rightSideType, this.topSideLength);
+                                                                        this.treadHeight, this.absDepth, this.stepDepthOffset,
+                                                                        this.stepCount, this.sideDepth, this.bounds, this.riserType, this.riserDepth, this.rightSideType, this.topSideLength, bandUnderSlope);
 
                 // filled down there is one more: the shape under all the steps
                 this.subMeshCount        = 0; if (haveRiser) this.subMeshCount = this.stepCount + (this.riserType == StairsRiserType.FillDown ? 1 : 0);
@@ -1550,7 +1633,7 @@ namespace Chisel.Core
                 // a piece in front of each side wall, when it reaches out past the steps' fronts
                 this.startSideFronts     = this.subMeshCount;
                 if (this.sideFrontOffset > 0)
-                    this.subMeshCount += (leftSideDescription.enabled ? 1 : 0) + (rightSideDescription.enabled ? 1 : 0);
+                    this.subMeshCount += (HasFront(in leftSideDescription) ? 1 : 0) + (HasFront(in rightSideDescription) ? 1 : 0);
                 // solid down to the floor, the base is part of the one shape under all the steps
                 this.haveBase            = haveRiser && this.riserType != StairsRiserType.FillDown && plateauHeight > kEpsilon;
                 this.startBase           = this.subMeshCount;

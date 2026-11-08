@@ -84,6 +84,7 @@ namespace Chisel.Editors
             if (s_Preview != null)
                 Object.DestroyImmediate(s_Preview.gameObject);
             s_Preview = null;
+            s_HasEdge = false;
             ChiselDecalManager.SetDirty();
             SceneView.RepaintAll();
         }
@@ -121,9 +122,17 @@ namespace Chisel.Editors
                 if (!ChiselDecalEditor.PlaceTrimAt(decal, mousePosition, recordUndo: false))
                 {
                     ClearPreview();
+                    // the edge under the mouse, which no trim can be put on
+                    s_HasEdge    = ChiselDecalEditor.LastHoveredEdge(out s_EdgeFrom, out s_EdgeTo);
+                    s_EdgeUsable = false;
                     return;
                 }
                 decal.OnEveryPart = every;
+                s_HasEdge    = HoveredEdge(decal, out s_EdgeFrom, out s_EdgeTo);
+                s_EdgeUsable = s_HasEdge;
+                // found, but no trim can be laid on it: the edge is shown as one that takes none
+                if (!s_HasEdge)
+                    s_HasEdge = ChiselDecalEditor.LastHoveredEdge(out s_EdgeFrom, out s_EdgeTo);
                 // under the brush of the edge hovered now, as the placed decal will be
                 var target = decal.Targets.Count > 0 ? decal.Targets[0].brush : null;
                 if (target != null && decal.transform.parent != target.transform)
@@ -150,9 +159,40 @@ namespace Chisel.Editors
             ChiselDecalManager.SetDirty();
         }
 
+        // The edge a trim dropped now would lie on, in world space, while the preview shows it
+        static bool s_HasEdge, s_EdgeUsable;
+        static Vector3 s_EdgeFrom, s_EdgeTo;
+        static readonly Color kEdgeColor      = new Color(1.0f, 0.85f, 0.1f, 1.0f);
+        // an edge under the mouse that no trim can be put on
+        static readonly Color kEdgeNoTrimColor = new Color(1.0f, 0.2f, 0.2f, 1.0f);
+        const float kEdgeWidth = 6;
+
+        /// <summary>The stretch of edge a trim decal lies on, in world space (its first edge, the one it was put on)</summary>
+        internal static bool HoveredEdge(ChiselDecalComponent decal, out Vector3 from, out Vector3 to)
+        {
+            from = to = Vector3.zero;
+            var halves = new List<ChiselTrimDecals.Half>();
+            if (!ChiselTrimDecals.TryDescribe(decal, 0, 0, SurfaceDestinationFlags.None, out var model, halves, out var edgeFrom, out var edgeTo) || model == null)
+                return false;
+            var toWorld = model.transform.localToWorldMatrix;
+            from = toWorld.MultiplyPoint3x4(edgeFrom);
+            to   = toWorld.MultiplyPoint3x4(edgeTo);
+            return true;
+        }
+
         static void OnSceneGUI(SceneView sceneView)
         {
             var evt = Event.current;
+            if (evt.type == EventType.Repaint && s_HasEdge && DragAndDrop.GetGenericData(kDragKey) != null)
+            {
+                var zTest = Handles.zTest;
+                using (new Handles.DrawingScope(s_EdgeUsable ? kEdgeColor : kEdgeNoTrimColor))
+                {
+                    Handles.zTest = UnityEngine.Rendering.CompareFunction.Always;
+                    Handles.DrawAAPolyLine(kEdgeWidth, s_EdgeFrom, s_EdgeTo);
+                }
+                Handles.zTest = zTest;
+            }
             if (evt.type == EventType.DragExited)
             {
                 ClearPreview();
@@ -199,14 +239,17 @@ namespace Chisel.Editors
             {
                 case ChiselDecalShape.Trim:
                 {
+                    // dropped where there is no edge, there is nothing to make
+                    if (!ChiselDecalEditor.HasEdgeAt(mousePosition))
+                        return;
                     var decal = CreateTrim(image.material, image.tile);
                     if (!ChiselDecalEditor.PlaceTrimAt(decal, mousePosition))
-                        ChiselDecalEditor.StartPickingEdge(decal, removeIfCancelled: true);
-                    else
                     {
-                        decal.OnEveryPart = every;
-                        Selection.activeGameObject = decal.gameObject;
+                        Undo.DestroyObjectImmediate(decal.gameObject);
+                        return;
                     }
+                    decal.OnEveryPart = every;
+                    Selection.activeGameObject = decal.gameObject;
                     return;
                 }
                 default:
@@ -236,7 +279,7 @@ namespace Chisel.Editors
                 return;
             }
             var brush   = hit.brushIntersection.brush;
-            var target  = ChiselGeneratorParts.TargetOf(generator, brush, ChiselTrimDecals.SurfaceOf(brush, hit.brushIntersection.surfaceIndex));
+            var target  = ChiselGeneratorParts.TargetOfPolygon(generator, brush, hit.brushIntersection.surfaceIndex);
             target.part.all = every && target.part.valid;
             if (decal.Targets.Count == 1 && decal.Targets[0].Equals(target))
                 return;

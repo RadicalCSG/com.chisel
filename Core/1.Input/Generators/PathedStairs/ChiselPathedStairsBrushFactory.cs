@@ -601,7 +601,8 @@ namespace Chisel.Core
             return new LineairStairsData(bounds, stepHeight, stepDepth, treadHeight, nosingDepth, nosingWidth: 0, plateauHeight,
                                          riserType, riserDepth, StairsSideType.None, cornerSide,
                                          sideWidth, sideHeight, sideDepth, leftAsSet: true, rightAsSet: true,
-                                         sideFrontOffset: math.max(nosingDepth + kInsideWall, sideFrontOffset), topSideLength: topSideLength);
+                                         sideFrontOffset: math.max(nosingDepth + kInsideWall, sideFrontOffset), topSideLength: topSideLength,
+                                         bandUnderSlope: false);
         }
 
         // its pieces: the wall's own, then the one in front of it

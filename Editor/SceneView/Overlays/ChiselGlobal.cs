@@ -254,10 +254,17 @@ namespace Chisel.Editors
             {
                 surfaces = new ChiselSurface[newBrushMesh.polygons.Length]
             };
+            ref var blobPolygons = ref brushMeshBlob.Value.polygons;
             for (int p = 0; p < newBrushMesh.polygons.Length; p++)
             {
                 var oldDescriptionIndex = newBrushMesh.polygons[p].descriptionIndex;
-                newSurfaceDefinition.surfaces[p] = srcSurfaceDefinition.surfaces[oldDescriptionIndex];
+                // the polygon's own details, as the generator made them (its uvs run on from the faces beside it), with its
+                // surface's material: the surface's details are only where the generator started from
+                var source  = srcSurfaceDefinition.surfaces[oldDescriptionIndex];
+                var surface = ChiselSurface.Create(source.HasMaterial ? source.RenderMaterial : null,
+                                                   p < blobPolygons.Length ? blobPolygons[p].surface.details : source.surfaceDetails);
+                surface.paintSpacing = source.paintSpacing;
+                newSurfaceDefinition.surfaces[p] = surface;
                 newBrushMesh.polygons[p].descriptionIndex = p;
             }
             return true;

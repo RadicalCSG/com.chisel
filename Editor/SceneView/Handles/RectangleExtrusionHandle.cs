@@ -199,62 +199,14 @@ namespace Chisel.Editors
                     center[(int)upAxis] -= height * 0.5f;
 
                 transformation      = s_Transformation * Matrix4x4.TRS(center, Quaternion.identity, Vector3.one);
+                // which way it was drawn out of the surface, in the frame (turned with it)
+                var extrusion = Vector3.zero;
+                extrusion[(int)upAxis] = 1;
 #if true
                 //if (height > 0)
                 {
                     if ((flags & PlacementFlags.AlwaysFaceUp) == PlacementFlags.AlwaysFaceUp)
-                    {
-                        var currentUp       = transformation.MultiplyVector(Vector3.up);
-                        var currentForward  = transformation.MultiplyVector(Vector3.forward);
-                        var currentRight    = transformation.MultiplyVector(Vector3.right);
-
-                        var desiredUp       = Grid.ActiveGrid.Up;
-                    
-                        var dotX = Vector3.Dot(currentRight,    desiredUp);
-                        var dotY = Vector3.Dot(currentUp,       desiredUp);
-                        var dotZ = Vector3.Dot(currentForward,  desiredUp);
-
-                        var absDotX = Mathf.Abs(dotX);
-                        var absDotY = Mathf.Abs(dotY);
-                        var absDotZ = Mathf.Abs(dotZ);
-
-                        if (absDotX > absDotZ)
-                        {
-                            if (absDotX > absDotY)
-                            {
-                                var size = bounds.size;
-                                var t = size.x; size.x = size.y; size.y = t;
-                                bounds.size = size;
-                                upAxis = Axis.X;
-                                var position = transformation.GetColumn(3);
-                                transformation.SetColumn(3, new Vector4(0,0,0,1)); 
-                                transformation *= Matrix4x4.TRS(position, Quaternion.identity, Vector3.one);
-                                transformation *= new Matrix4x4(new Vector4(0,1,0,0),
-                                                                new Vector4(1,0,0,0),
-                                                                new Vector4(0,0,1,0),
-                                                                new Vector4(0,0,0,1));
-                                transformation.SetColumn(3, position);
-                            }
-                        } else
-                        {
-                            if (absDotZ > absDotY)
-                            {
-                                var size = bounds.size;
-                                var t = size.z; size.z = size.y; size.y = t;
-                                bounds.size = size;
-                                upAxis = Axis.Z;
-                                var position = transformation.GetColumn(3);
-                                transformation.SetColumn(3, new Vector4(0,0,0,1));
-                                transformation *= Matrix4x4.TRS(position, Quaternion.identity, Vector3.one);
-                                transformation *= new Matrix4x4(new Vector4(1,0,0,0),
-                                                                new Vector4(0,0,1,0),
-                                                                new Vector4(0,1,0,0),
-                                                                new Vector4(0,0,0,1));
-                                transformation.SetColumn(3, position);
-                            }
-                        }
-
-                    }
+                        ChiselPlacementTurn.FaceUp(ref transformation, ref bounds, ref extrusion, Grid.ActiveGrid.Up);
 
                     if (!s_ModelBeneathCursor &&
                         (flags & PlacementFlags.AlwaysFaceCameraXZ) == PlacementFlags.AlwaysFaceCameraXZ)
@@ -279,28 +231,25 @@ namespace Chisel.Editors
                             else
                                 angle -= 90;
                             
-                            if (upAxis == Axis.X)
-                                upAxis = Axis.Z;
                             var size = bounds.size;
                             var t = size.x; size.x = size.z; size.z = t;
                             bounds.size = size;
                         }
-                    
-                        var position = transformation.GetColumn(3);
-                        transformation.SetColumn(3, new Vector4(0,0,0,1));
-                        transformation *= Matrix4x4.TRS(position, Quaternion.identity, Vector3.one);
-                        transformation *= Matrix4x4.TRS(Vector3.zero, Quaternion.Euler(0, angle, 0), Vector3.one);
-                        transformation.SetColumn(3, position);
+
+                        var turn = Quaternion.Euler(0, angle, 0);
+                        transformation *= Matrix4x4.Rotate(turn);
+                        extrusion = Quaternion.Inverse(turn) * extrusion;
                     }
                 }
 #endif
 
-                center = Vector3.zero;
+                // the box from where it was drawn out, along the way it was drawn; the frame moved to the middle of its
+                // bottom, so a generator built around its frame's middle is in the box also when the box was turned to
+                // stand up (drawn out of a wall, its middle is away from the wall, its bottom below where it was drawn)
                 if ((flags & PlacementFlags.GenerateFromCenterY) != PlacementFlags.GenerateFromCenterY)
-                    center[(int)upAxis] = height * 0.5f;
+                    ChiselPlacementTurn.FromBottomMiddle(ref transformation, ref bounds, extrusion, height);
                 else
-                    center[(int)upAxis] = 0;
-                bounds.center = center;
+                    bounds.center = Vector3.zero;
                 if (doCommit)
                 {
                     s_LastHeight = s_NextHeight;
