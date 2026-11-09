@@ -720,15 +720,15 @@ namespace Chisel.Editors
             else if (metadata != null && metadata.decalDefaults.isDecal)
                 GUI.Label(new Rect(thumbRect.x + 2, thumbRect.y + 2, 40, 14), new GUIContent("Decal", "A decal material"), badge);
             var favorite = ChiselSurfaceBrowserPrefs.IsFavorite(item.guid);
-            var starRect = new Rect(thumbRect.xMax - 18, thumbRect.y + 2, 16, 16);
-            // a star: bright when a favorite, faint otherwise
-            var star = new GUIStyle(badge) { fontStyle = FontStyle.Bold, normal = { textColor = favorite ? new Color(1f, 0.8f, 0.2f) : new Color(1, 1, 1, 0.35f) } };
-            if (GUI.Button(starRect, new GUIContent("*", favorite ? "Remove from favorites" : "Add to favorites"), star))
+            if (ChiselSurfaceBrowserIcons.FavoriteButton(thumbRect, favorite))
             {
                 ChiselSurfaceBrowserPrefs.SetFavorite(item.guid, !favorite);
                 Filter();
-                evt.Use();
+                Repaint();
             }
+            var readOnly = ReadOnlyReason(item.path);
+            if (readOnly != null)
+                ChiselSurfaceBrowserIcons.LockBadge(thumbRect, readOnly);
             var cardIsDecal = ChiselSurfaceBrowserDecals.IsDecal(material);
             var uses = cardIsDecal ? ChiselSceneMaterialUsage.DecalsUsing(material) : ChiselSceneMaterialUsage.SurfacesUsing(material);
             if (uses > 0)
@@ -828,23 +828,27 @@ namespace Chisel.Editors
             return MetadataOf(material) != null;
         }
 
-        /// <summary>Whether an asset can be changed: not locked or checked in by version control, not in a package that
-        /// can't be changed (one from a registry or built in)</summary>
-        internal static bool IsEditable(string path)
+        /// <summary>Whether the browser changes an asset: not in a package, not locked by version control</summary>
+        internal static bool IsEditable(string path) => ReadOnlyReason(path) == null;
+
+        /// <summary>Why the browser doesn't change an asset, null when it does</summary>
+        internal static string ReadOnlyReason(string path)
         {
             if (string.IsNullOrEmpty(path))
-                return false;
-            var package = path.StartsWith("Packages/", StringComparison.OrdinalIgnoreCase) ? UnityEditor.PackageManager.PackageInfo.FindForAssetPath(path) : null;
-            return IsEditable(package?.source, AssetDatabase.IsOpenForEdit(path, StatusQueryOptions.UseCachedIfPossible));
+                return "Not an asset";
+            var inPackage = path.StartsWith("Packages/", StringComparison.OrdinalIgnoreCase);
+            return ReadOnlyReason(inPackage, inPackage || AssetDatabase.IsOpenForEdit(path, StatusQueryOptions.UseCachedIfPossible));
         }
 
-        /// <summary>source: the package it is in, null outside packages; openForEdit: not locked by version control</summary>
-        internal static bool IsEditable(UnityEditor.PackageManager.PackageSource? source, bool openForEdit)
+        /// <summary>inPackage: under Packages, which the browser never changes; openForEdit: not locked by version
+        /// control</summary>
+        internal static string ReadOnlyReason(bool inPackage, bool openForEdit)
         {
-            if (source.HasValue && source.Value != UnityEditor.PackageManager.PackageSource.Embedded &&
-                source.Value != UnityEditor.PackageManager.PackageSource.Local)
-                return false;
-            return openForEdit;
+            if (inPackage)
+                return "Read only: it is in a package, and the Surface Browser doesn't change packages";
+            if (!openForEdit)
+                return "Read only: it is locked by version control";
+            return null;
         }
 
         const string kRenameControl     = "ChiselRenameMaterial";
@@ -1054,7 +1058,7 @@ namespace Chisel.Editors
             NameGUI(item, editable);
             GUILayout.Label(item.path, new GUIStyle(EditorStyles.miniLabel) { wordWrap = true });
             if (!editable)
-                ReadOnlyNote("This material can't be changed: it is locked by version control or in a read-only package");
+                ReadOnlyNote(ReadOnlyReason(item.path));
             var metadata = MetadataOf(material);
             InfoRow("Shader", material.shader != null ? material.shader.name : "None");
             if (material.mainTexture != null)
@@ -1142,7 +1146,14 @@ namespace Chisel.Editors
         // That something can't be changed, the reason in its tooltip
         internal static void ReadOnlyNote(string reason)
         {
-            GUILayout.Label(new GUIContent("Read only", reason), EditorStyles.miniBoldLabel);
+            using (new EditorGUILayout.HorizontalScope())
+            {
+                var icon = GUILayoutUtility.GetRect(16, 16, GUILayout.Width(16), GUILayout.Height(16));
+                if (Event.current.type == EventType.Repaint)
+                    ChiselSurfaceBrowserIcons.DrawLock(icon);
+                GUILayout.Label(new GUIContent("Read only", reason), EditorStyles.miniBoldLabel);
+                GUI.Label(icon, new GUIContent(string.Empty, reason));
+            }
         }
 
         static void InfoRow(string name, string value)

@@ -187,16 +187,17 @@ namespace Chisel.Editors
 
             var badge = new GUIStyle(EditorStyles.miniLabel) { normal = { textColor = Color.white } };
             var kind = preset != null ? ChiselGeneratorMaterialPresets.KindName(preset.generator) : "Preset";
-            GUI.Label(new Rect(thumbRect.x + 2, thumbRect.y + 2, thumbRect.width - 22, 14), new GUIContent("Preset", $"Materials for {kind}"), badge);
+            GUI.Label(new Rect(thumbRect.x + 2, thumbRect.y + 2, thumbRect.width - ChiselSurfaceBrowserIcons.kStarSize - 6, 14), new GUIContent("Preset", $"Materials for {kind}"), badge);
             var favorite = ChiselSurfaceBrowserPrefs.IsFavorite(item.guid);
-            var starRect = new Rect(thumbRect.xMax - 18, thumbRect.y + 2, 16, 16);
-            var star = new GUIStyle(badge) { fontStyle = FontStyle.Bold, normal = { textColor = favorite ? new Color(1f, 0.8f, 0.2f) : new Color(1, 1, 1, 0.35f) } };
-            if (GUI.Button(starRect, new GUIContent("*", favorite ? "Remove from favorites" : "Add to favorites"), star))
+            if (ChiselSurfaceBrowserIcons.FavoriteButton(thumbRect, favorite))
             {
                 ChiselSurfaceBrowserPrefs.SetFavorite(item.guid, !favorite);
                 Filter();
-                evt.Use();
+                Repaint();
             }
+            var readOnly = ReadOnlyReason(item.path);
+            if (readOnly != null)
+                ChiselSurfaceBrowserIcons.LockBadge(thumbRect, readOnly);
 
             var nameRect = new Rect(rect.x, thumbRect.yMax + 2, rect.width, EditorGUIUtility.singleLineHeight);
             if (cardRenameGuid == item.guid)
@@ -287,7 +288,7 @@ namespace Chisel.Editors
             GUILayout.Label(item.path, new GUIStyle(EditorStyles.miniLabel) { wordWrap = true });
             GUILayout.Label("Material preset for " + ChiselGeneratorMaterialPresets.KindName(preset.generator), EditorStyles.miniLabel);
             if (!editable)
-                ReadOnlyNote("This preset can't be changed: it is locked by version control or in a read-only package");
+                ReadOnlyNote(ReadOnlyReason(item.path));
             GUILayout.Space(6);
 
             // picking it puts it on the selected generators; this takes theirs into it

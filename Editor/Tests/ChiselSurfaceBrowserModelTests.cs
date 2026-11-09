@@ -185,17 +185,32 @@ namespace Chisel.Editors.Tests
             Assert.That(defaults, Has.None.EqualTo("Packages/com.chisel"));
         }
 
-        // A material in a package from a registry can't be changed; one in the project or an embedded package can
+        // The browser changes only what's in the project and not locked: every package's materials are read only, also
+        // embedded and local ones, each with the reason its lock's tooltip gives
         [Test]
-        public void Materials_InReadOnlyPackages_AreNotEditable()
+        public void Materials_InPackages_AreReadOnly()
         {
             Assert.That(ChiselSurfaceBrowserWindow.IsEditable((string)null), Is.False);
-            Assert.That(ChiselSurfaceBrowserWindow.IsEditable(null, openForEdit: true), Is.True, "in the project");
-            Assert.That(ChiselSurfaceBrowserWindow.IsEditable(null, openForEdit: false), Is.False, "locked by version control");
-            Assert.That(ChiselSurfaceBrowserWindow.IsEditable(UnityEditor.PackageManager.PackageSource.Embedded, true), Is.True);
-            Assert.That(ChiselSurfaceBrowserWindow.IsEditable(UnityEditor.PackageManager.PackageSource.Local, true), Is.True);
-            Assert.That(ChiselSurfaceBrowserWindow.IsEditable(UnityEditor.PackageManager.PackageSource.Registry, true), Is.False);
-            Assert.That(ChiselSurfaceBrowserWindow.IsEditable(UnityEditor.PackageManager.PackageSource.BuiltIn, true), Is.False);
+            Assert.That(ChiselSurfaceBrowserWindow.ReadOnlyReason(inPackage: false, openForEdit: true), Is.Null, "in the project");
+            Assert.That(ChiselSurfaceBrowserWindow.ReadOnlyReason(inPackage: false, openForEdit: false), Does.Contain("version control"));
+            Assert.That(ChiselSurfaceBrowserWindow.ReadOnlyReason(inPackage: true, openForEdit: true), Does.Contain("package"));
+            Assert.That(ChiselSurfaceBrowserWindow.IsEditable("Packages/com.chisel/Package Resources/Materials/URP/Defaults/Floor.mat"), Is.False,
+                        "Chisel's own materials, a local package here");
+            Assert.That(ChiselSurfaceBrowserWindow.IsEditable("Packages/anything/else.mat"), Is.False);
+        }
+
+        // The favorite star is large enough to hit, and the lock keeps clear of it and of the use count
+        [Test]
+        public void TheFavoriteStar_IsLargeEnoughToHit()
+        {
+            var thumb = new UnityEngine.Rect(0, 0, 96, 96);
+            var star = ChiselSurfaceBrowserIcons.StarRect(thumb);
+            Assert.That(star.width, Is.GreaterThanOrEqualTo(22));
+            Assert.That(star.height, Is.GreaterThanOrEqualTo(22));
+            Assert.That(thumb.Contains(star.min) && thumb.Contains(star.max), Is.True, "inside the thumbnail");
+            var lockRect = ChiselSurfaceBrowserIcons.LockRect(thumb);
+            Assert.That(lockRect.Overlaps(star), Is.False);
+            Assert.That(lockRect.xMax, Is.LessThan(thumb.xMax - 34), "clear of the use count in the bottom right");
         }
 
         [Test]
