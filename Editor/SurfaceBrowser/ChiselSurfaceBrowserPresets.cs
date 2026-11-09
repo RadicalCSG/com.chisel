@@ -190,8 +190,7 @@ namespace Chisel.Editors
             var readOnly = ReadOnlyReason(item.path);
             if (readOnly != null)
                 ChiselSurfaceBrowserIcons.LockBadge(thumbRect, readOnly);
-            var labelX = ChiselSurfaceBrowserIcons.LabelX(thumbRect, readOnly != null);
-            GUI.Label(new Rect(labelX, thumbRect.y + 2, thumbRect.xMax - ChiselSurfaceBrowserIcons.kStarSize - 4 - labelX, 14), new GUIContent("Preset", $"Materials for {kind}"), badge);
+            GUI.Label(ChiselSurfaceBrowserIcons.LabelRect(thumbRect, Mathf.Max(0, thumbRect.width - 4)), new GUIContent("Preset", $"Materials for {kind}"), badge);
             var favorite = ChiselSurfaceBrowserPrefs.IsFavorite(item.guid);
             if (ChiselSurfaceBrowserIcons.FavoriteButton(thumbRect, favorite))
             {

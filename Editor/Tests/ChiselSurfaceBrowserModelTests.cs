@@ -199,7 +199,8 @@ namespace Chisel.Editors.Tests
             Assert.That(ChiselSurfaceBrowserWindow.IsEditable("Packages/anything/else.mat"), Is.False);
         }
 
-        // The favorite star is large enough to hit, not much larger; the lock is in the top left, the card's label after it
+        // The favorite star is large enough to hit, not much larger; the lock is in the top left, the card's label in the
+        // bottom left
         [Test]
         public void TheFavoriteStar_IsLargeEnoughToHit()
         {
@@ -212,8 +213,10 @@ namespace Chisel.Editors.Tests
             Assert.That(lockRect.Overlaps(star), Is.False);
             Assert.That(lockRect.y, Is.LessThan(thumb.center.y), "at the top");
             Assert.That(lockRect.x, Is.LessThan(thumb.center.x), "on the left");
-            Assert.That(ChiselSurfaceBrowserIcons.LabelX(thumb, locked: true), Is.GreaterThanOrEqualTo(lockRect.xMax), "a label goes after the lock");
-            Assert.That(ChiselSurfaceBrowserIcons.LabelX(thumb, locked: false), Is.LessThan(lockRect.xMax), "and where it was without one");
+            var label = ChiselSurfaceBrowserIcons.LabelRect(thumb, 30);
+            Assert.That(label.Overlaps(lockRect), Is.False, "the label is clear of the lock");
+            Assert.That(label.y, Is.GreaterThan(thumb.center.y), "at the bottom");
+            Assert.That(label.x, Is.LessThan(thumb.center.x), "on the left");
         }
 
         [Test]

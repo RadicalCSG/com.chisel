@@ -17,8 +17,8 @@ namespace Chisel.Editors
         internal static Rect StarRect(Rect thumb) => new(thumb.xMax - kStarSize - 2, thumb.y + 2, kStarSize, kStarSize);
         internal static Rect LockRect(Rect thumb) => new(thumb.x + 2, thumb.y + 2, kLockSize, kLockSize);
 
-        // Where a card's top left label goes: after the lock when it has one
-        internal static float LabelX(Rect thumb, bool locked) => thumb.x + 2 + (locked ? kLockSize + 2 : 0);
+        // Where a card's label (HS, Decal, Preset) goes: its bottom left corner, the use count in the bottom right
+        internal static Rect LabelRect(Rect thumb, float width) => new(thumb.x + 2, thumb.yMax - 16, width, 14);
 
         // A star to click on a card: filled when a favorite, an outline when not; true when clicked
         internal static bool FavoriteButton(Rect thumb, bool favorite)

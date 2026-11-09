@@ -718,11 +718,10 @@ namespace Chisel.Editors
             var readOnly = ReadOnlyReason(item.path);
             if (readOnly != null)
                 ChiselSurfaceBrowserIcons.LockBadge(thumbRect, readOnly);
-            var labelX = ChiselSurfaceBrowserIcons.LabelX(thumbRect, readOnly != null);
             if (metadata != null && metadata.hotspotLayout != null)
-                GUI.Label(new Rect(labelX, thumbRect.y + 2, 30, 14), new GUIContent("HS", "Has a hotspot layout"), badge);
+                GUI.Label(ChiselSurfaceBrowserIcons.LabelRect(thumbRect, 30), new GUIContent("HS", "Has a hotspot layout"), badge);
             else if (metadata != null && metadata.decalDefaults.isDecal)
-                GUI.Label(new Rect(labelX, thumbRect.y + 2, 40, 14), new GUIContent("Decal", "A decal material"), badge);
+                GUI.Label(ChiselSurfaceBrowserIcons.LabelRect(thumbRect, 40), new GUIContent("Decal", "A decal material"), badge);
             var favorite = ChiselSurfaceBrowserPrefs.IsFavorite(item.guid);
             if (ChiselSurfaceBrowserIcons.FavoriteButton(thumbRect, favorite))
             {
