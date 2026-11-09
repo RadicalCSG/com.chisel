@@ -1189,6 +1189,70 @@ namespace Chisel.Components.Tests
             AssertClosed(model, "pathed stairs");
         }
 
+        // Pathed stairs with walls at their corners have the guard rail's materials, as linear stairs with side walls do,
+        // and those walls are made of them; the stairs' own left and right walls only count on an open path
+        [Test]
+        public void PathedStairs_WithCornerWalls_HaveGuardRailMaterials()
+        {
+            var guardRail = new[] { StairsSurface.Wall, StairsSurface.WallTop, StairsSurface.WallBottom };
+            var stairs = Generator<ChiselPathedStairsComponent>(out _);
+            stairs.definition.shape = new Curve2D(true, new CurveControlPoint2D(-2, -2), new CurveControlPoint2D(2, -2), new CurveControlPoint2D(2, 2), new CurveControlPoint2D(-2, 2));
+            stairs.definition.settings.stairs.leftSide  = StairsSideType.None;
+            stairs.definition.settings.stairs.rightSide = StairsSideType.None;
+            stairs.definition.settings.cornerSide       = StairsSideType.Up;
+            stairs.OnValidate();
+            Update();
+            foreach (var surface in guardRail)
+                Assert.That(stairs.IsSurfaceUsed((int)surface), Is.True, $"{surface} with walls at the corners");
+
+            // the walls are built of them
+            var used = new HashSet<int>();
+            var branch = (CSGTreeBranch)stairs.TopTreeNode;
+            for (int i = 0; i < branch.Count; i++)
+            {
+                var blob = BrushMeshManager.GetBrushMeshBlob(((CSGTreeBrush)branch[i]).BrushMesh.BrushMeshID);
+                if (!blob.IsCreated)
+                    continue;
+                ref var polygons = ref blob.Value.polygons;
+                for (int p = 0; p < polygons.Length; p++)
+                    used.Add(polygons[p].descriptionIndex);
+            }
+            foreach (var surface in guardRail)
+                Assert.That(used, Does.Contain((int)surface), $"{surface} on the corner walls");
+
+            // a closed path doesn't build its own left and right walls
+            stairs.definition.settings.cornerSide       = StairsSideType.None;
+            stairs.definition.settings.stairs.leftSide  = StairsSideType.Up;
+            stairs.definition.settings.stairs.rightSide = StairsSideType.Up;
+            stairs.OnValidate();
+            foreach (var surface in guardRail)
+                Assert.That(stairs.IsSurfaceUsed((int)surface), Is.False, $"{surface} without walls");
+        }
+
+        // Every kind of stairs lists the base as a part (in the Surface Browser and presets), even without a base, so they
+        // all have materials for the same parts; the inspector still only shows it when there is one
+        [Test]
+        public void EveryStairs_ListTheBase_EvenWithoutOne()
+        {
+            var linear = Generator<ChiselLinearStairsComponent>(out _);
+            linear.definition.settings.plateauHeight = 0;
+            linear.OnValidate();
+            var spiral = Generator<ChiselSpiralStairsComponent>(out _);
+            spiral.definition.settings.origin.y = 0;
+            spiral.OnValidate();
+            var pathed = Generator<ChiselPathedStairsComponent>(out _);
+            pathed.definition.settings.stairs.plateauHeight = 0;
+            pathed.OnValidate();
+            Update();
+            foreach (var stairs in new ChiselGeneratorComponent[] { linear, spiral, pathed })
+            {
+                Assert.That(stairs.IsSurfaceListed((int)StairsSurface.Base), Is.True, stairs.GetType().Name);
+                Assert.That(stairs.IsSurfaceUsed((int)StairsSurface.Base), Is.False, $"{stairs.GetType().Name} has no base");
+            }
+            // a part that is neither used nor always listed stays out
+            Assert.That(linear.IsSurfaceListed((int)StairsSurface.Column), Is.False, "linear stairs have no column");
+        }
+
         // At a corner the two parts of the path meet along its diagonal: nothing of either reaches past it, and they
         // leave no gap. Their ends were cut back by the wrong amounts, which left a sawtooth of gaps
         [Test]

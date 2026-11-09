@@ -230,6 +230,47 @@ namespace Chisel.Editors.Tests
             Assert.That(ChiselSurfaceBrowserWindow.ClampDetailsWidth(400, 500), Is.EqualTo(ChiselSurfaceBrowserWindow.kMinDetailsWidth), "a narrow window still keeps its smallest");
         }
 
+        // Materials and material presets are listed one or the other: each mode leaves the other's items out of the grid,
+        // counts, folders and labels. Presets are found like materials, by search, label, folder and favorite, and a
+        // material's traits don't filter them out
+        [Test]
+        public void MaterialsAndPresets_AreListedOneOrTheOther()
+        {
+            var model = Model("Assets/Models");
+            var items = new List<ChiselSurfaceBrowserModel.Item>(model.Items)
+            {
+                new() { guid = "Wooden", path = "Assets/Presets/Wooden Stairs.asset", name = "Wooden Stairs", labels = new[] { "Wood" }, preset = true },
+                new() { guid = "Stone",  path = "Assets/Presets/Stone Stairs.asset",  name = "Stone Stairs",  labels = new[] { "Metal" }, preset = true }
+            };
+            model.SetItems(items);
+            var metal = new ChiselSurfaceBrowserModel.Trait { name = "Metal", has = item => System.Array.Exists(item.labels, l => l.ToLower() == "metal") };
+            model.traits.Add(metal);
+            model.traits.Add(ChiselSurfaceBrowserModel.PlainTrait(new[] { metal }));
+            model.SetFilter("Plain", ChiselSurfaceBrowserModel.TraitFilter.Without);
+            model.isFavorite = item => item.name == "Wooden Stairs" || item.name == "Metal_Floor";
+
+            // materials: no presets anywhere
+            Assert.That(Names(model.Filter("", ChiselSurfaceBrowserModel.QuickAccess.All)), Has.None.EndsWith("Stairs"));
+            Assert.That(model.Count(ChiselSurfaceBrowserModel.QuickAccess.All), Is.EqualTo(4));
+            Assert.That(Names(model.Filter("", ChiselSurfaceBrowserModel.QuickAccess.Favorites)), Is.EqualTo(new[] { "Metal_Floor" }));
+            Assert.That(model.BuildFolders(includeHidden: false)[0].children.ConvertAll(folder => folder.name), Does.Not.Contain("Presets"));
+            Assert.That(model.Labels().ConvertAll(pair => pair.Key), Does.Not.Contain("Wood"));
+
+            // presets: no materials anywhere
+            model.presets = true;
+            Assert.That(Names(model.Filter("", ChiselSurfaceBrowserModel.QuickAccess.All)), Is.EqualTo(new[] { "Stone Stairs", "Wooden Stairs" }), "traits don't filter them");
+            Assert.That(model.Count(ChiselSurfaceBrowserModel.QuickAccess.All), Is.EqualTo(2));
+            Assert.That(Names(model.Filter("", ChiselSurfaceBrowserModel.QuickAccess.Favorites)), Is.EqualTo(new[] { "Wooden Stairs" }));
+            Assert.That(Names(model.Filter("wooden", ChiselSurfaceBrowserModel.QuickAccess.All)), Is.EqualTo(new[] { "Wooden Stairs" }));
+            Assert.That(Names(model.Filter("l:wood", ChiselSurfaceBrowserModel.QuickAccess.All)), Is.EqualTo(new[] { "Wooden Stairs" }));
+            Assert.That(Names(model.Filter("", ChiselSurfaceBrowserModel.QuickAccess.All, label: "Metal")), Is.EqualTo(new[] { "Stone Stairs" }), "by label");
+            Assert.That(Names(model.Filter("", ChiselSurfaceBrowserModel.QuickAccess.All, new[] { "Assets/Presets" })).Count, Is.EqualTo(2), "by folder");
+            Assert.That(model.BuildFolders(includeHidden: false)[0].children.ConvertAll(folder => folder.name), Is.EqualTo(new[] { "Presets" }));
+            Assert.That(model.Labels().ConvertAll(pair => pair.Key), Is.EquivalentTo(new[] { "Metal", "Wood" }));
+            Assert.That(model.CountWith(model.traits[1]), Is.Zero, "no materials to count");
+            Assert.That(ChiselSurfaceBrowserModel.AppliesToPresets(ChiselSurfaceBrowserModel.QuickAccess.Decals), Is.False);
+        }
+
         [Test]
         public void RecentlyUsed_KeepsItsOwnOrder()
         {

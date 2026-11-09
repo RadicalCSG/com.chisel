@@ -203,13 +203,13 @@ namespace Chisel.Editors.Tests
             }
         }
 
-        // A click on a selected name starts renaming after a while, as long as the mouse stays still
+        // A click on a selected name starts renaming after a second, as long as the mouse stays still
         [Test]
         public void RenameStarts_AfterAStillPause()
         {
             var at = new UnityEngine.Vector2(100, 100);
-            Assert.That(ChiselSurfaceBrowserWindow.ShouldStartRename(10, 11, at, at), Is.False, "too soon");
-            Assert.That(ChiselSurfaceBrowserWindow.ShouldStartRename(10, 12, at, at), Is.True);
+            Assert.That(ChiselSurfaceBrowserWindow.ShouldStartRename(10, 10.9, at, at), Is.False, "too soon");
+            Assert.That(ChiselSurfaceBrowserWindow.ShouldStartRename(10, 11, at, at), Is.True, "a second");
             Assert.That(ChiselSurfaceBrowserWindow.ShouldStartRename(10, 12, at, at + new UnityEngine.Vector2(2, 2)), Is.True, "a little jitter");
             Assert.That(ChiselSurfaceBrowserWindow.ShouldStartRename(10, 12, at, at + new UnityEngine.Vector2(20, 0)), Is.False, "moved");
         }

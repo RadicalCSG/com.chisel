@@ -9,7 +9,7 @@ using Unity.Entities;
 namespace Chisel.Core
 {
     [Serializable]
-    public struct ChiselPathedStairs : IBranchGenerator, IChiselSurfaceNames, IChiselGeneratorParts
+    public struct ChiselPathedStairs : IBranchGenerator, IChiselSurfaceNames, IChiselGeneratorParts, IChiselListedSurfaces
     {
         readonly static ChiselPathedStairs kDefaultSettings = new()
 		{
@@ -127,7 +127,19 @@ namespace Chisel.Core
         public int RequiredSurfaceCount { get { return stairs.RequiredSurfaceCount; } }
 
         public readonly string GetSurfaceName(int index) { return StairsSurfaces.Name(index); }
-        public readonly bool IsSurfaceUsed(int index) { return stairs.IsSurfaceUsed(index); }
+        public readonly bool IsSurfaceUsed(int index) { return IsSurfaceUsed(index, closed, haveCorners: true); }
+        public readonly bool IsSurfaceAlwaysListed(int index) { return StairsSurfaces.IsAlwaysAPart(index); }
+
+        // the guard rails are the walls at the path's corners, and the stairs' own left and right ones at an open path's
+        // start and end
+        public readonly bool IsSurfaceUsed(int index, bool closedPath, bool haveCorners)
+        {
+            var haveWall = (haveCorners && cornerSide != StairsSideType.None) ||
+                           (!closedPath && (stairs.leftSide != StairsSideType.None || stairs.rightSide != StairsSideType.None));
+            if ((StairsSurface)index == StairsSurface.Wall || (StairsSurface)index == StairsSurface.WallTop || (StairsSurface)index == StairsSurface.WallBottom)
+                return haveWall;
+            return stairs.IsSurfaceUsed(index);
+        }
 
         [BurstDiscard]
         public void UpdateSurfaces(ref ChiselSurfaceArray surfaceDefinition)
@@ -174,10 +186,18 @@ namespace Chisel.Core
             base.Reset();
         }
 
-        public override bool Validate() 
+        public override bool Validate()
         {
             shape ??= DefaultShape;
-            return base.Validate(); 
+            return base.Validate();
+        }
+
+        // a path turns at each of its points, but for an open one's first and last
+        public override bool IsSurfaceUsed(int index)
+        {
+            var closed = shape == null || shape.closed;
+            var points = shape?.controlPoints?.Length ?? 0;
+            return settings.IsSurfaceUsed(index, closed, haveCorners: closed ? points >= 2 : points >= 3);
         }
 
         const Allocator defaultAllocator = Allocator.TempJob;

@@ -14,6 +14,7 @@ namespace Chisel.Editors
             public string   path;      // as the asset database has it, "Assets/..." or "Packages/..."
             public string   name;
             public string[] labels = Array.Empty<string>();
+            public bool     preset;    // a generator material preset, not a material
 
             public string Folder
             {
@@ -35,8 +36,21 @@ namespace Chisel.Editors
             public List<Folder> children = new();
         }
 
-        // NotSetUp: no Chisel settings of its own yet, so surfaces using it take Chisel's defaults
+        // NotSetUp: no Chisel settings of its own yet, so surfaces using it take Chisel's defaults. In the presets' mode
+        // only All, Favorites and RecentlyUsed apply
         public enum QuickAccess { All, Favorites, RecentlyUsed, InThisScene, UnusedInThisScene, Decals, NotSetUp }
+
+        /// <summary>Whether a quick access list applies to presets (the others are about materials)</summary>
+        public static bool AppliesToPresets(QuickAccess quick)
+        {
+            return quick == QuickAccess.All || quick == QuickAccess.Favorites || quick == QuickAccess.RecentlyUsed;
+        }
+
+        /// <summary>What is listed: generator material presets, else materials. Each mode leaves the other's items out
+        /// of everything: the grid, counts, folders and labels</summary>
+        public bool presets;
+
+        bool InMode(Item item) { return item.preset == presets; }
 
         public Func<Item, bool> isDecal = _ => false;
         public Func<Item, bool> isSetUp = _ => true;
@@ -77,8 +91,11 @@ namespace Chisel.Editors
         /// <summary>The next of Any, With, Without, round again</summary>
         public static TraitFilter Next(TraitFilter filter) { return (TraitFilter)(((int)filter + 1) % 3); }
 
+        // traits are a material's: a preset has none to filter on
         bool PassesTraits(Item item)
         {
+            if (item.preset)
+                return true;
             foreach (var trait in traits)
             {
                 var filter = FilterOf(trait.name);
@@ -94,7 +111,7 @@ namespace Chisel.Editors
             var count = 0;
             foreach (var item in items)
             {
-                if (IsVisible(item) && trait.has(item))
+                if (IsVisible(item) && InMode(item) && !item.preset && trait.has(item))
                     count++;
             }
             return count;
@@ -186,6 +203,13 @@ namespace Chisel.Editors
             {
                 case QuickAccess.Favorites:    return isFavorite(item);
                 case QuickAccess.RecentlyUsed: return Contains(recent(), item.guid);
+                case QuickAccess.All:          return true;
+            }
+            // the others are about materials
+            if (item.preset)
+                return false;
+            switch (quick)
+            {
                 case QuickAccess.InThisScene:  return isInScene(item);
                 case QuickAccess.UnusedInThisScene: return !isInScene(item);
                 case QuickAccess.Decals:       return isDecal(item);
@@ -215,7 +239,7 @@ namespace Chisel.Editors
             var result = new List<Item>();
             foreach (var item in items)
             {
-                if (!IsVisible(item) || !InQuickAccess(item, quick) || !InFolders(item, folders) ||
+                if (!IsVisible(item) || !InMode(item) || !InQuickAccess(item, quick) || !InFolders(item, folders) ||
                     (!string.IsNullOrEmpty(label) && !HasLabel(item, label)) || !PassesTraits(item) || !Matches(item, search))
                     continue;
                 result.Add(item);
@@ -256,7 +280,7 @@ namespace Chisel.Editors
             var count = 0;
             foreach (var item in items)
             {
-                if (IsVisible(item) && InQuickAccess(item, quick))
+                if (IsVisible(item) && InMode(item) && InQuickAccess(item, quick))
                     count++;
             }
             return count;
@@ -272,6 +296,8 @@ namespace Chisel.Editors
             var byPath = new Dictionary<string, Folder>(StringComparer.OrdinalIgnoreCase);
             foreach (var item in items)
             {
+                if (!InMode(item))
+                    continue;
                 var hidden = !IsVisible(item);
                 if (hidden && !includeHidden)
                     continue;
@@ -352,7 +378,7 @@ namespace Chisel.Editors
             var names  = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             foreach (var item in items)
             {
-                if (!IsVisible(item))
+                if (!IsVisible(item) || !InMode(item))
                     continue;
                 foreach (var label in item.labels)
                 {
