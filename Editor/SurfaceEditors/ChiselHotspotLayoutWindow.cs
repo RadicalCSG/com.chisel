@@ -233,7 +233,7 @@ namespace Chisel.Editors
 
         static readonly GUIContent kSelectContents    = new("Select", HintOf(Tool.Select));
         static readonly GUIContent kSplitContents     = new("Split", HintOf(Tool.Split));
-        static readonly GUIContent kSplitDisabled     = new("Split", "This layout has no lines to split: use More > Find lines from the tiles");
+        internal static readonly GUIContent kSplitDisabled = new("Split", "This layout has no lines to split: its tiles were imported without them");
         static readonly GUIContent kDrawShapeContents = new("Draw shape", HintOf(Tool.DrawShape));
         static readonly GUIContent kDrawHoleContents  = new("Draw hole", HintOf(Tool.DrawHole));
         static readonly GUIContent kDrawHoleDisabled  = new("Draw hole", "Select a drawn shape first: holes go in drawn shapes");
@@ -251,7 +251,7 @@ namespace Chisel.Editors
         static readonly GUIContent kFitContents       = new("Fit", "Show the whole texture");
         static readonly GUIContent kOneToOneContents  = new("1:1", "One pixel of the screen for each pixel of the texture");
         static readonly GUIContent kImportContents    = new("Import...", "A Chisel layout (.json), Valve rectangles (.rect), an SVG, or a colour mask image (one flat colour per tile)");
-        static readonly GUIContent kMoreContents      = new("More", "Start over, or find lines from the tiles");
+        static readonly GUIContent kMoreContents      = new("More", kResetName.TrimEnd('.'));
 
         void Toolbar()
         {
@@ -338,27 +338,18 @@ namespace Chisel.Editors
             return kind;
         }
 
+        // The More menu's command, as it names it
+        internal const string kResetName = "Reset to One Tile...";
+
         void MoreMenu()
         {
             var menu = new GenericMenu();
-            menu.AddItem(new GUIContent("Start over"), false, () =>
+            menu.AddItem(new GUIContent(kResetName), false, () =>
             {
-                if (EditorUtility.DisplayDialog("Start over", "Replace every tile with one tile over the whole texture?", "Start over", "Cancel"))
+                if (EditorUtility.DisplayDialog("Reset to One Tile", "Remove every tile, line and drawn shape, leaving one tile over the whole texture?", "Reset", "Cancel"))
                     Edit("Reset Hotspot Layout", layout.ResetCuts);
             });
-            if (!layout.HasCuts)
-                menu.AddItem(new GUIContent("Find lines from the tiles"), false, FindLines);
-            else
-                menu.AddDisabledItem(new GUIContent("Find lines from the tiles"));
             menu.ShowAsContext();
-        }
-
-        void FindLines()
-        {
-            string error = null;
-            Edit("Find Hotspot Lines", () => layout.BuildCuts(out error));
-            if (error != null)
-                EditorUtility.DisplayDialog("Find lines", error, "OK");
         }
 
         // Switches the mouse's work; a shape being drawn is dropped

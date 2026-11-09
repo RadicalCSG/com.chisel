@@ -141,6 +141,8 @@ namespace Chisel.Editors.Tests
             window.SetLayout(layout);
             window.SetTool(ChiselHotspotLayoutWindow.Tool.Split);
             Assert.That(window.CurrentTool, Is.EqualTo(ChiselHotspotLayoutWindow.Tool.Select));
+            Assert.That(ChiselHotspotLayoutWindow.kSplitDisabled.tooltip, Does.Contain("no lines"), "the tooltip says why");
+            Assert.That(ChiselHotspotLayoutWindow.kResetName, Is.EqualTo("Reset to One Tile..."));
         }
 
         // Draw hole only with a drawn shape selected; the tools' tooltips hold their clicks and keys
