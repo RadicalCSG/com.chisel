@@ -150,6 +150,7 @@ namespace Chisel.Editors
                                                     CSGOperationType.Additive);
                         PlacementToolDefinition.OnUpdate(ref generatedComponent.definition, height);
                         generatedComponent.OnValidate();
+                        ChiselActiveMaterial.GiveTo(generatedComponent);
                         generatedComponent.ClearHashes(); // TODO: remove need for this
                     }
                     break;
@@ -249,6 +250,7 @@ namespace Chisel.Editors
                             PlacementToolDefinition.OnCreate(ref generatedComponent.definition);
                             PlacementToolDefinition.OnUpdate(ref generatedComponent.definition, bounds);
                             generatedComponent.OnValidate();
+                            ChiselActiveMaterial.GiveTo(generatedComponent);
 
                             Lift(generatoreModeFlags, height);
                             generatedComponent.ResetTreeNodes();
@@ -278,6 +280,7 @@ namespace Chisel.Editors
                                                     CSGOperationType.Additive);
                         PlacementToolDefinition.OnUpdate(ref generatedComponent.definition, bounds);
                         generatedComponent.OnValidate();
+                        ChiselActiveMaterial.GiveTo(generatedComponent);
 
                         Lift(generatoreModeFlags, height);
 

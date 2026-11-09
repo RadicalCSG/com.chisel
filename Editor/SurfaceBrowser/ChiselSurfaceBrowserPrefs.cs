@@ -6,7 +6,7 @@ using UnityEngine;
 namespace Chisel.Editors
 {
     // What the surface tools remember for this user in this project: favorite and recently used materials and decal
-    // images. An item is an asset's GUID, and for a decal image of a sheet its tile ("guid:tile")
+    // images, and the active material. An item is an asset's GUID, and for a decal image of a sheet its tile ("guid:tile")
 #if UNITY_6000_7_OR_NEWER
     [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
 #endif
@@ -16,6 +16,7 @@ namespace Chisel.Editors
 
         const string kFavoritesKey = "Chisel.SurfaceBrowser.Favorites";
         const string kRecentKey    = "Chisel.SurfaceBrowser.Recent";
+        const string kActiveKey    = "Chisel.SurfaceBrowser.ActiveMaterial";
 
         // per project: preferences are shared by every project on the machine
         static string Key(string name) { return name + "." + Application.dataPath.GetHashCode().ToString("x8"); }
@@ -69,7 +70,18 @@ namespace Chisel.Editors
             Write(kRecentKey, items);
         }
 
+        /// <summary>The material last picked in the Surface Browser, which new brushes get; none once deselected</summary>
+        public static Material ActiveMaterial
+        {
+            get
+            {
+                var guid = EditorPrefs.GetString(Key(kActiveKey), string.Empty);
+                return string.IsNullOrEmpty(guid) ? null : AssetDatabase.LoadAssetAtPath<Material>(AssetDatabase.GUIDToAssetPath(guid));
+            }
+            set { EditorPrefs.SetString(Key(kActiveKey), ItemOf(value) ?? string.Empty); }
+        }
+
         // where they're kept, so a test can put back what was there
-        internal static string[] StorageKeys => new[] { Key(kFavoritesKey), Key(kRecentKey) };
+        internal static string[] StorageKeys => new[] { Key(kFavoritesKey), Key(kRecentKey), Key(kActiveKey) };
     }
 }

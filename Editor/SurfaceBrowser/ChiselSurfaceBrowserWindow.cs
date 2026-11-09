@@ -660,7 +660,7 @@ namespace Chisel.Editors
             {
                 partsFocused = false;
                 pendingRenameGuid = null;
-                Select(null);
+                Deselect();
                 evt.Use();
             }
             GUI.EndScrollView();
@@ -1357,12 +1357,21 @@ namespace Chisel.Editors
             GUILayout.EndArea();
         }
 
-        /// <summary>A material picked goes on what's selected: the part clicked, else the selected surfaces. A decal
-        /// material is placed only on asking</summary>
-        void ApplyOnSelection(Material material)
+        /// <summary>Nothing selected in the grid; among the materials, no active material either</summary>
+        internal void Deselect()
+        {
+            Select(null);
+            if (!presetMode)
+                ChiselSurfaceBrowserPrefs.ActiveMaterial = null;
+        }
+
+        /// <summary>A material picked is the active material, and goes on what's selected: the part clicked, else the
+        /// selected surfaces. A decal material is placed only on asking</summary>
+        internal void ApplyOnSelection(Material material)
         {
             if (material == null || ChiselSurfaceBrowserDecals.IsDecal(material))
                 return;
+            ChiselSurfaceBrowserPrefs.ActiveMaterial = material;
             if (ApplyToSelectedPart(material))
                 return;
             if (ChiselSurfaceSelectionManager.Selection.Count > 0)
