@@ -95,6 +95,8 @@ namespace Chisel.Core
         // More than one section: repeats, or a part of one
         public readonly bool Repeated => repeatX > 1 || repeatY > 1 || (lastRepeat.x > 0 && lastRepeat.x < 1) || (lastRepeat.y > 0 && lastRepeat.y < 1);
         public float scale;     // how many texture pixels a pixel of the surface (at the tile's density) takes
+        // and across and up the surface's bounds (a rectangle; of a triangle the map's largest and smallest)
+        public float2 scales;
         public bool  lastResort; // repeated because no tile was large enough
         public int   variant;    // which of the layout's materials (HotspotLayoutData.variantCount), when it has more than one
         public int   variations; // how many choices the seed had: the tiles that tie times the materials
@@ -541,7 +543,7 @@ namespace Chisel.Core
                     var score = Distortion(scales.x, scales.y) + (lastResort ? repeats.x * repeats.y * kLastResortRepeatCost : 0);
                     if (score < best.score)
                         best = new HotspotChoice { tile = -1, score = score, rotated = quarter == 1, repeatX = repeats.x, repeatY = repeats.y,
-                                                   lastRepeat = last, scale = math.sqrt(scales.x * scales.y) };
+                                                   lastRepeat = last, scale = math.sqrt(scales.x * scales.y), scales = scales };
                 }
                 return best;
             }
@@ -567,7 +569,7 @@ namespace Chisel.Core
                     if (turn < bestTurn || (turn == bestTurn && score < best.score))
                     {
                         bestTurn = turn;
-                        best = new HotspotChoice { tile = -1, score = score, corner = corner, mirrored = flip == 1, scale = math.sqrt(s1 * s2) };
+                        best = new HotspotChoice { tile = -1, score = score, corner = corner, mirrored = flip == 1, scale = math.sqrt(s1 * s2), scales = new float2(s1, s2) };
                     }
                 }
             }

@@ -539,12 +539,7 @@ namespace Chisel.Core
                     using var rules = new NativeList<HotspotBorderCorner>(4, Allocator.Temp);
                     HotspotGroups.BordersOf(new int2(brush, s), bordersOf, rules);
                     HotspotGroups.AddDecalEdges(ref original, s, rules);
-                    // around what the surface draws (its border, its interior), unless it is a triangle (exact already) or
-                    // repeats
-                    var built = input.count == 4 && !input.Repeated
-                              ? sections.BuildConforming(input, indices, collider, rules.AsArray(), tileSides)
-                              : sections.Build(input);
-                    if (!built)
+                    if (!BuildSections(ref sections, input, indices, collider, rules.AsArray(), tileSides))
                     {
                         sections.Dispose();
                         to.CopyGeometry(builder, ref from);
@@ -707,9 +702,19 @@ namespace Chisel.Core
             indices.Dispose(); collider.Dispose(); select.Dispose(); render.Dispose();
         }
 
+        // A surface's sections: around what it draws (its border, its interior), unless it is a triangle (exact already) or
+        // repeats; false when it is one section
+        internal static bool BuildSections(ref HotspotSections sections, in HotspotSectionInput input, NativeList<int> indices, NativeList<float3> collider,
+                                           NativeArray<HotspotBorderCorner> rules, NativeArray<float4> tileSides)
+        {
+            return input.count == 4 && !input.Repeated
+                 ? sections.BuildConforming(input, indices, collider, rules, tileSides)
+                 : sections.Build(input);
+        }
+
         // What a surface draws cut where its sections meet (once; triangle by triangle when that would not cover it once),
         // and again where its interior's repeats meet (withRepeats), and given its uvs; how many repeats were laid
-        static int CutAndMap(in HotspotSections sections, in HotspotSectionInput input, float3 right, float3 up, bool withRepeats,
+        internal static int CutAndMap(in HotspotSections sections, in HotspotSectionInput input, float3 right, float3 up, bool withRepeats,
                              NativeList<int> indices, NativeList<float3> collider, NativeList<SelectVertex> select, NativeList<RenderVertex> render)
         {
             var normal = math.normalizesafe(math.cross(up, right));
