@@ -63,6 +63,21 @@ namespace Chisel.Editors.Tests
             Assert.That(ChiselSurfaceBrowserWindow.kChipCornerRadius, Is.GreaterThan(0), "with rounded corners");
         }
 
+        // A click in the grid where there's no card deselects
+        [Test]
+        public void AClickOnEmptyGridSpace_Deselects()
+        {
+            Assume.That(window.Shown.Count, Is.GreaterThan(0));
+            window.Select(window.Shown[0].guid);
+            // nothing found, so the whole grid is empty space
+            window.SetSearch("no material is called this");
+            Assume.That(window.Shown.Count, Is.Zero);
+            const float kTab = 24;
+            var inGrid = new Vector2(ChiselSurfaceBrowserWindow.kSidebarWidth + 100, kTab + 120);
+            window.SendEvent(new Event { type = EventType.MouseDown, button = 0, mousePosition = inGrid, clickCount = 1 });
+            Assert.That(window.SelectedGuid, Is.Null);
+        }
+
         // A sidebar row's count is as wide as its number, at the row's end, so the name before it gets the rest
         [Test]
         public void ASidebarCount_IsAsWideAsItsNumber()
