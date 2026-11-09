@@ -281,16 +281,13 @@ namespace Chisel.Editors
         void PresetDetailsGUI(ChiselSurfaceBrowserModel.Item item, ChiselGeneratorMaterialPreset preset, float contentWidth)
         {
             if (preset == null)
-            {
-                GUILayout.Label("Select a material to see its details.", EditorStyles.centeredGreyMiniLabel);
                 return;
-            }
             var editable = IsEditable(item.path);
             NameGUI(item, editable);
             GUILayout.Label(item.path, new GUIStyle(EditorStyles.miniLabel) { wordWrap = true });
             GUILayout.Label("Material preset for " + ChiselGeneratorMaterialPresets.KindName(preset.generator), EditorStyles.miniLabel);
             if (!editable)
-                EditorGUILayout.HelpBox("This preset can't be changed: it is locked by version control or in a read-only package.", MessageType.Info);
+                ReadOnlyNote("This preset can't be changed: it is locked by version control or in a read-only package");
             GUILayout.Space(6);
 
             // picking it puts it on the selected generators; this takes theirs into it

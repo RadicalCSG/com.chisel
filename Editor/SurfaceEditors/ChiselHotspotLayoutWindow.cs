@@ -44,6 +44,8 @@ namespace Chisel.Editors
         [SerializeField] float   panelWidth = 300;
         [SerializeField] View    view = View.Kinds;
         [SerializeField] bool    showNames = true, showSizes, showBorders = true, showPadding;
+        // the kind of split the Split tool makes (Shift swaps vertical and horizontal)
+        [SerializeField] HotspotCutKind splitKind = HotspotCutKind.Vertical;
 
         Tool tool;
         readonly List<HotspotLine> lines = new();
@@ -176,6 +178,9 @@ namespace Chisel.Editors
                 layout.ResetCuts();
                 EditorUtility.SetDirty(layout);
             }
+            // a layout without lines has nothing to split
+            if (tool == Tool.Split && !layout.HasCuts)
+                SetTool(Tool.Select);
             var top = EditorStyles.toolbar.fixedHeight > 0 ? EditorStyles.toolbar.fixedHeight : EditorGUIUtility.singleLineHeight + 4;
             var area = new Rect(0, top, position.width, position.height - top);
             var listWidth = Mathf.Min(kListWidth, Mathf.Max(0, area.width - 2 * 64));
@@ -226,11 +231,17 @@ namespace Chisel.Editors
             }
         }
 
-        static readonly GUIContent kSelectContents    = new("Select", "Click selects a tile; drag a line to move it; drag a drawn shape's corners, double-click its edge to add one, drag inside it to move it");
-        static readonly GUIContent kSplitContents     = new("Split", "Click splits the tile under the cursor at the dashed line, vertically, or horizontally with Shift; dragging a line still moves it");
-        static readonly GUIContent kDrawShapeContents = new("Draw shape", "Click the corners of a new tile of any shape, over the others; click its first corner or press Enter to finish, Backspace takes back a corner, Escape stops");
-        static readonly GUIContent kDrawHoleContents  = new("Draw hole", "Click the corners of a hole in the selected shape; click its first corner or press Enter to finish");
+        static readonly GUIContent kSelectContents    = new("Select", HintOf(Tool.Select));
+        static readonly GUIContent kSplitContents     = new("Split", HintOf(Tool.Split));
+        static readonly GUIContent kSplitDisabled     = new("Split", "This layout has no lines to split: use More > Find lines from the tiles");
+        static readonly GUIContent kDrawShapeContents = new("Draw shape", HintOf(Tool.DrawShape));
+        static readonly GUIContent kDrawHoleContents  = new("Draw hole", HintOf(Tool.DrawHole));
         static readonly GUIContent kDrawHoleDisabled  = new("Draw hole", "Select a drawn shape first: holes go in drawn shapes");
+        static readonly (HotspotCutKind kind, string name)[] kSplitKinds =
+        {
+            (HotspotCutKind.Vertical, "Vertical"), (HotspotCutKind.Horizontal, "Horizontal"),
+            (HotspotCutKind.Slash, "Diagonal /"), (HotspotCutKind.Backslash, "Diagonal \\"), (HotspotCutKind.Apex, "Apex"),
+        };
         static readonly GUIContent kKindsContents     = new("Kinds", "The tiles coloured by the kind of surface they're for");
         static readonly GUIContent kTextureContents   = new("Texture", "The texture as it is, with plain outlines");
         static readonly GUIContent kNamesContents     = new("Names", "Each tile's name, where it fits");
@@ -253,11 +264,20 @@ namespace Chisel.Editors
                 using (new EditorGUI.DisabledScope(layout == null))
                 {
                     ToolButton(Tool.Select, kSelectContents);
-                    ToolButton(Tool.Split, kSplitContents);
+                    var canSplit = layout != null && layout.HasCuts;
+                    using (new EditorGUI.DisabledScope(!canSplit))
+                        ToolButton(Tool.Split, canSplit ? kSplitContents : kSplitDisabled);
                     ToolButton(Tool.DrawShape, kDrawShapeContents);
                     var canHole = tool == Tool.DrawHole || (layout != null && layout.IsDrawn(selectedTile));
                     using (new EditorGUI.DisabledScope(!canHole))
                         ToolButton(Tool.DrawHole, canHole ? kDrawHoleContents : kDrawHoleDisabled);
+                    if (tool == Tool.Split)
+                    {
+                        GUILayout.Space(4);
+                        if (EditorGUILayout.DropdownButton(new GUIContent(SplitKindName(splitKind), "The kind of split; Shift swaps vertical and horizontal"),
+                                                           FocusType.Passive, EditorStyles.toolbarDropDown, GUILayout.Width(90)))
+                            SplitKindMenu();
+                    }
                     GUILayout.Space(6);
                     GUILayout.Label("Snap", EditorStyles.miniLabel, GUILayout.ExpandWidth(false));
                     snapIndex = EditorGUILayout.Popup(snapIndex, kSnapNames, EditorStyles.toolbarPopup, GUILayout.Width(52));
@@ -289,6 +309,35 @@ namespace Chisel.Editors
                 SetTool(which);
         }
 
+        internal static string SplitKindName(HotspotCutKind kind)
+        {
+            foreach (var (k, name) in kSplitKinds)
+                if (k == kind) return name;
+            return kind.ToString();
+        }
+
+        internal HotspotCutKind SplitKind { get => splitKind; set => splitKind = value; }
+
+        void SplitKindMenu()
+        {
+            var menu = new GenericMenu();
+            foreach (var (kind, name) in kSplitKinds)
+            {
+                var chosen = kind;
+                menu.AddItem(new GUIContent(name), splitKind == kind, () => { splitKind = chosen; Repaint(); });
+            }
+            menu.ShowAsContext();
+        }
+
+        // The kind of split a click makes: Shift swaps vertical and horizontal
+        internal static HotspotCutKind SplitKindWith(HotspotCutKind kind, bool shift)
+        {
+            if (!shift) return kind;
+            if (kind == HotspotCutKind.Vertical)   return HotspotCutKind.Horizontal;
+            if (kind == HotspotCutKind.Horizontal) return HotspotCutKind.Vertical;
+            return kind;
+        }
+
         void MoreMenu()
         {
             var menu = new GenericMenu();
@@ -316,6 +365,8 @@ namespace Chisel.Editors
         internal void SetTool(Tool which)
         {
             if (which == Tool.DrawHole && (layout == null || !layout.IsDrawn(selectedTile)))
+                which = Tool.Select;
+            if (which == Tool.Split && (layout == null || !layout.HasCuts))
                 which = Tool.Select;
             tool = which;
             drawn.Clear();
@@ -508,15 +559,37 @@ namespace Chisel.Editors
             return false;
         }
 
-        // The split the Split tool would make at a pixel: the tile, the way the line goes, and where; false where a click
-        // splits nothing (a drawn shape, a triangle, outside the tiles, or on a tile's edge)
-        internal static bool SplitAt(ChiselHotspotLayout layout, Vector2 pixel, bool horizontal, int snap, out int tile, out HotspotCutKind kind, out int position)
+        // The split of a kind the Split tool would make at a pixel: the tile, and where (x for a vertical line or an apex,
+        // y for a horizontal line, none for a diagonal); false where a click splits nothing (a drawn shape, a triangle,
+        // outside the tiles, or on a tile's edge)
+        internal static bool SplitAt(ChiselHotspotLayout layout, Vector2 pixel, HotspotCutKind kind, int snap, out int tile, out int position)
         {
-            kind = horizontal ? HotspotCutKind.Horizontal : HotspotCutKind.Vertical;
             tile = layout != null && layout.HasCuts ? layout.TileAt(pixel) : 0;
-            var value = horizontal ? pixel.y : pixel.x;
-            position = snap > 1 ? Mathf.RoundToInt(value / snap) * snap : Mathf.RoundToInt(value);
+            position = 0;
+            if (kind == HotspotCutKind.Vertical || kind == HotspotCutKind.Horizontal || kind == HotspotCutKind.Apex)
+            {
+                var value = kind == HotspotCutKind.Horizontal ? pixel.y : pixel.x;
+                position = snap > 1 ? Mathf.RoundToInt(value / snap) * snap : Mathf.RoundToInt(value);
+            }
             return tile != 0 && !layout.IsDrawn(tile) && layout.CanSplit(tile, kind, position);
+        }
+
+        // The lines a split of a kind would add to a tile's bounds (min, max in pixels), as the layout draws them
+        internal static List<(Vector2 a, Vector2 b)> SplitLines(HotspotCutKind kind, int position, Vector2Int min, Vector2Int max)
+        {
+            var lines = new List<(Vector2, Vector2)>();
+            switch (kind)
+            {
+                case HotspotCutKind.Vertical:   lines.Add((new Vector2(position, min.y), new Vector2(position, max.y))); break;
+                case HotspotCutKind.Horizontal: lines.Add((new Vector2(min.x, position), new Vector2(max.x, position))); break;
+                case HotspotCutKind.Slash:      lines.Add((new Vector2(min.x, max.y), new Vector2(max.x, min.y))); break;
+                case HotspotCutKind.Backslash:  lines.Add((new Vector2(min.x, min.y), new Vector2(max.x, max.y))); break;
+                case HotspotCutKind.Apex:
+                    lines.Add((new Vector2(min.x, max.y), new Vector2(position, min.y)));
+                    lines.Add((new Vector2(position, min.y), new Vector2(max.x, max.y)));
+                    break;
+            }
+            return lines;
         }
 
         // The Split tool: a click splits at the dashed line; a line under the mouse still drags. True when it was its
@@ -531,7 +604,8 @@ namespace Chisel.Editors
                     var line = LineAt(local);
                     if (line >= 0 && layout.MoveRange(lines[line].node, out _, out _))
                         return false;
-                    if (SplitAt(layout, ToPixel(local), current.shift, kSnaps[Mathf.Clamp(snapIndex, 0, kSnaps.Length - 1)], out var tile, out var kind, out var position))
+                    var kind = SplitKindWith(splitKind, current.shift);
+                    if (SplitAt(layout, ToPixel(local), kind, kSnaps[Mathf.Clamp(snapIndex, 0, kSnaps.Length - 1)], out var tile, out var position))
                     {
                         Edit("Split Hotspot Tile", () => layout.Split(tile, kind, position));
                         SelectedTile = tile;
@@ -548,26 +622,27 @@ namespace Chisel.Editors
             return false;
         }
 
-        // The dashed line the Split tool splits at, with its pixel position
-        void DrawSplitPreview(Vector2 local, bool horizontal)
+        // The dashed lines the Split tool splits along, with the pixel position of a line or an apex
+        void DrawSplitPreview(Vector2 local, bool shift)
         {
             if (tool != Tool.Split || dragNode >= 0 || !new Rect(0, 0, canvas.width, canvas.height).Contains(local))
                 return;
             var line = LineAt(local);
             if (line >= 0 && layout.MoveRange(lines[line].node, out _, out _))
                 return;
-            if (!SplitAt(layout, ToPixel(local), horizontal, kSnaps[Mathf.Clamp(snapIndex, 0, kSnaps.Length - 1)], out var tile, out _, out var position))
+            var kind = SplitKindWith(splitKind, shift);
+            if (!SplitAt(layout, ToPixel(local), kind, kSnaps[Mathf.Clamp(snapIndex, 0, kSnaps.Length - 1)], out var tile, out var position))
                 return;
             var index = layout.IndexOfTile(tile);
-            var size = HotspotTileKinds.SizeOf(layout.tiles[index]);
-            var min = layout.tiles[index].points[0];
-            foreach (var p in layout.tiles[index].points) min = Vector2Int.Min(min, p);
-            Vector2 a, b;
-            if (horizontal) { a = ToCanvas(new Vector2(min.x, position)); b = ToCanvas(new Vector2(min.x + size.x, position)); }
-            else            { a = ToCanvas(new Vector2(position, min.y)); b = ToCanvas(new Vector2(position, min.y + size.y)); }
+            var min = layout.tiles[index].points[0]; var max = min;
+            foreach (var p in layout.tiles[index].points) { min = Vector2Int.Min(min, p); max = Vector2Int.Max(max, p); }
             Handles.color = kHover;
-            Handles.DrawDottedLine(a, b, 4);
-            Tag((a + b) * 0.5f + (horizontal ? new Vector2(0, -10) : new Vector2(28, 0)), (horizontal ? "y " : "x ") + position, 1);
+            foreach (var (a, b) in SplitLines(kind, position, min, max))
+                Handles.DrawDottedLine(ToCanvas(a), ToCanvas(b), 4);
+            if (kind == HotspotCutKind.Horizontal)
+                Tag(ToCanvas(new Vector2((min.x + max.x) * 0.5f, position)) + new Vector2(0, -10), "y " + position, 1);
+            else if (kind == HotspotCutKind.Vertical || kind == HotspotCutKind.Apex)
+                Tag(ToCanvas(new Vector2(position, kind == HotspotCutKind.Apex ? min.y : (min.y + max.y) * 0.5f)) + new Vector2(28, kind == HotspotCutKind.Apex ? 10 : 0), "x " + position, 1);
         }
 
         // The selected drawn shape's corners, to drag
@@ -962,26 +1037,26 @@ namespace Chisel.Editors
             }
         }
 
-        // The cursor's pixel, and what the mouse and keys do in the current tool
+        // What the mouse and keys do in a tool, as its tooltip says; the keys every tool has follow
         internal static string HintOf(Tool tool)
         {
+            const string kEvery = "\nIn every tool: right click for the split and shape menu, V or H splits at the cursor, Delete removes the line or drawn shape under it, Alt or middle drag pans, the wheel zooms";
             switch (tool)
             {
-                case Tool.Split:     return "Click splits the tile vertically at the dashed line, Shift click horizontally \u00B7 Dragging a line still moves it";
-                case Tool.DrawShape: return "Click adds a corner \u00B7 Click the first corner or press Enter to finish \u00B7 Backspace takes one back \u00B7 Escape stops";
-                case Tool.DrawHole:  return "Click adds a corner inside the selected shape \u00B7 Click the first corner or press Enter to finish \u00B7 Backspace takes one back \u00B7 Escape stops";
-                default:             return "Click selects \u00B7 Drag a line to move it \u00B7 Drawn shape: drag corners, double-click an edge to add one, drag inside to move it \u00B7 V / H split at the cursor \u00B7 Delete removes a line or shape";
+                case Tool.Split:     return "Click splits the tile under the cursor along the dashed lines, with the kind of split chosen beside the tool. Shift swaps vertical and horizontal. Dragging a line still moves it" + kEvery;
+                case Tool.DrawShape: return "Click adds a corner of a new tile of any shape, over the others. Click the first corner or press Enter to finish, Backspace takes a corner back, Escape stops" + kEvery;
+                case Tool.DrawHole:  return "Click adds a corner of a hole in the selected shape. Click the first corner or press Enter to finish, Backspace takes a corner back, Escape stops" + kEvery;
+                default:             return "Click selects a tile. Drag a line to move it. On the selected drawn shape: drag a corner to move it, double-click an edge to add one, drag inside to move the shape, Delete or Backspace over a corner removes it" + kEvery;
             }
         }
 
+        // The cursor's pixel
         void StatusBar(Rect row)
         {
             if (Event.current.type == EventType.Repaint)
                 EditorGUI.DrawRect(row, new Color(0, 0, 0, 0.15f));
             var position = cursorPixel.HasValue ? $"{Mathf.FloorToInt(cursorPixel.Value.x)}, {Mathf.FloorToInt(cursorPixel.Value.y)} px" : string.Empty;
-            var positionWidth = 90f;
-            GUI.Label(new Rect(row.x + 6, row.y, positionWidth, row.height), position, EditorStyles.miniLabel);
-            GUI.Label(new Rect(row.x + 6 + positionWidth, row.y, row.width - positionWidth - 12, row.height), new GUIContent(HintOf(tool), HintOf(tool)), EditorStyles.miniLabel);
+            GUI.Label(new Rect(row.x + 6, row.y, row.width - 12, row.height), position, EditorStyles.miniLabel);
         }
 
         static void DrawLoop(Vector3[] points)

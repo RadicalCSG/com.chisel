@@ -1,7 +1,6 @@
 using System.Collections.Generic;
 using Chisel.Core;
 using NUnit.Framework;
-using Unity.Collections;
 using UnityEditor;
 using UnityEngine;
 
@@ -83,18 +82,25 @@ namespace Chisel.Editors.Tests
             Assert.That(ChiselHotspotLayoutWindow.LabelOf(Rect(1, "B1", 0, 0, 512, 256), true, true), Is.EqualTo($"B1 2:1 512{HotspotTileChoice.kTimes}256"));
         }
 
-        // The Split tool splits a tile of the lines strictly inside it, never a drawn shape or a triangle
+
+        // The Split tool splits a tile of the lines strictly inside it, never a drawn shape or a triangle, with the kind
+        // of split chosen; Shift swaps vertical and horizontal
         [Test]
         public void TheSplitTool_SplitsOnlyWhereALineCanGo()
         {
             layout.size = new Vector2Int(1024, 1024);
             layout.ResetCuts();
             var whole = layout.tiles[0].id;
-            Assert.That(ChiselHotspotLayoutWindow.SplitAt(layout, new Vector2(300, 100), false, 8, out var tile, out var kind, out var position), Is.True);
-            Assert.That((tile, kind, position), Is.EqualTo((whole, HotspotCutKind.Vertical, 304)), "snapped");
-            Assert.That(ChiselHotspotLayoutWindow.SplitAt(layout, new Vector2(300, 101), true, 8, out _, out kind, out position), Is.True);
-            Assert.That((kind, position), Is.EqualTo((HotspotCutKind.Horizontal, 104)), "Shift: horizontally");
-            Assert.That(ChiselHotspotLayoutWindow.SplitAt(layout, new Vector2(2, 100), false, 8, out _, out _, out _), Is.False, "on the tile's edge");
+            Assert.That(ChiselHotspotLayoutWindow.SplitAt(layout, new Vector2(300, 100), HotspotCutKind.Vertical, 8, out var tile, out var position), Is.True);
+            Assert.That((tile, position), Is.EqualTo((whole, 304)), "snapped");
+            var kind = ChiselHotspotLayoutWindow.SplitKindWith(HotspotCutKind.Vertical, shift: true);
+            Assert.That(kind, Is.EqualTo(HotspotCutKind.Horizontal), "Shift");
+            Assert.That(ChiselHotspotLayoutWindow.SplitAt(layout, new Vector2(300, 101), kind, 8, out _, out position), Is.True);
+            Assert.That(position, Is.EqualTo(104), "horizontally: at y");
+            Assert.That(ChiselHotspotLayoutWindow.SplitKindWith(HotspotCutKind.Apex, shift: true), Is.EqualTo(HotspotCutKind.Apex), "only vertical and horizontal swap");
+            Assert.That(ChiselHotspotLayoutWindow.SplitAt(layout, new Vector2(2, 100), HotspotCutKind.Vertical, 8, out _, out _), Is.False, "on the tile's edge");
+            Assert.That(ChiselHotspotLayoutWindow.SplitAt(layout, new Vector2(300, 100), HotspotCutKind.Slash, 8, out _, out position), Is.True);
+            Assert.That(position, Is.Zero, "a diagonal takes no position");
 
             Assert.That(layout.Split(whole, HotspotCutKind.Slash, 0), Is.True);
             var triangle = layout.TileAt(new Vector2(900, 100));
@@ -103,10 +109,41 @@ namespace Chisel.Editors.Tests
             layout.ResetCuts();
             var shape = layout.AddShape(new[] { new Vector2Int(100, 100), new Vector2Int(400, 100), new Vector2Int(250, 400) });
             Assume.That(shape, Is.Not.Zero);
-            Assert.That(ChiselHotspotLayoutWindow.SplitAt(layout, new Vector2(250, 200), false, 1, out _, out _, out _), Is.False, "a drawn shape");
+            Assert.That(ChiselHotspotLayoutWindow.SplitAt(layout, new Vector2(250, 200), HotspotCutKind.Vertical, 1, out _, out _), Is.False, "a drawn shape");
         }
 
-        // Draw hole only with a drawn shape selected; finishing a shape goes back to Select with it selected
+        // The dashed preview is the lines the layout gets: an apex's two from the bottom corners to the top
+        [Test]
+        public void TheSplitPreview_IsTheLinesTheSplitMakes()
+        {
+            layout.size = new Vector2Int(1024, 1024);
+            layout.ResetCuts();
+            var whole = layout.tiles[0].id;
+            var preview = ChiselHotspotLayoutWindow.SplitLines(HotspotCutKind.Apex, 400, Vector2Int.zero, new Vector2Int(1024, 1024));
+            Assert.That(layout.Split(whole, HotspotCutKind.Apex, 400), Is.True);
+            var made = new List<HotspotLine>();
+            layout.GetLines(made);
+            Assert.That(preview.Count, Is.EqualTo(made.Count));
+            for (int i = 0; i < made.Count; i++)
+                Assert.That((preview[i].a, preview[i].b), Is.EqualTo(((Vector2)made[i].a, (Vector2)made[i].b)));
+            Assert.That(ChiselHotspotLayoutWindow.SplitKindName(HotspotCutKind.Backslash), Is.EqualTo("Diagonal \\"));
+        }
+
+        // Without lines (an import whose tiles aren't a grid) there is nothing to split: the Split tool can't be chosen,
+        // and its tooltip says why
+        [Test]
+        public void TheSplitTool_NeedsALayoutWithLines()
+        {
+            layout.tiles = new List<HotspotTile> { Rect(1, "A1", 0, 0, 512, 512) };
+            Assume.That(layout.HasCuts, Is.False);
+            var window = ScriptableObject.CreateInstance<ChiselHotspotLayoutWindow>();
+            created.Add(window);
+            window.SetLayout(layout);
+            window.SetTool(ChiselHotspotLayoutWindow.Tool.Split);
+            Assert.That(window.CurrentTool, Is.EqualTo(ChiselHotspotLayoutWindow.Tool.Select));
+        }
+
+        // Draw hole only with a drawn shape selected; the tools' tooltips hold their clicks and keys
         [Test]
         public void DrawHole_NeedsADrawnShape()
         {
@@ -121,7 +158,23 @@ namespace Chisel.Editors.Tests
             window.SelectedTile = shape;
             window.SetTool(ChiselHotspotLayoutWindow.Tool.DrawHole);
             Assert.That(window.CurrentTool, Is.EqualTo(ChiselHotspotLayoutWindow.Tool.DrawHole));
-            Assert.That(ChiselHotspotLayoutWindow.HintOf(ChiselHotspotLayoutWindow.Tool.Split), Does.Contain("Shift"), "the status bar says Shift splits horizontally");
+            Assert.That(ChiselHotspotLayoutWindow.HintOf(ChiselHotspotLayoutWindow.Tool.Split), Does.Contain("Shift"), "Split's tooltip says Shift swaps");
+        }
+
+        // One dropdown sets whether a tile is the pieces of inside corners: none, four pieces or one turned
+        [Test]
+        public void CornerPieces_AreOneChoice()
+        {
+            var flags = HotspotTileFlags.RepeatU;
+            Assert.That(ChiselHotspotLayoutWindow.CornerPiecesOf(flags), Is.EqualTo(ChiselHotspotLayoutWindow.CornerPieces.None));
+            flags = ChiselHotspotLayoutWindow.WithCornerPieces(flags, ChiselHotspotLayoutWindow.CornerPieces.Four);
+            Assert.That(flags, Is.EqualTo(HotspotTileFlags.RepeatU | HotspotTileFlags.InsideCorners));
+            flags = ChiselHotspotLayoutWindow.WithCornerPieces(flags, ChiselHotspotLayoutWindow.CornerPieces.OneTurned);
+            Assert.That(flags, Is.EqualTo(HotspotTileFlags.RepeatU | HotspotTileFlags.InsideCornerTurned), "the other one taken off");
+            flags = ChiselHotspotLayoutWindow.WithCornerPieces(flags, ChiselHotspotLayoutWindow.CornerPieces.None);
+            Assert.That(flags, Is.EqualTo(HotspotTileFlags.RepeatU));
+            var both = HotspotTileFlags.InsideCorners | HotspotTileFlags.InsideCornerTurned;
+            Assert.That(ChiselHotspotLayoutWindow.WithCornerPieces(both, ChiselHotspotLayoutWindow.CornerPieces.Four), Is.EqualTo(both), "left as it is when unchanged");
         }
 
         // A budget of 0 says what it takes: the project's setting
@@ -131,64 +184,6 @@ namespace Chisel.Editors.Tests
             Assert.That(ChiselHotspotLayoutWindow.ProjectSettingText(ChiselProjectSettings.HotspotMaxRepeats),
                         Is.EqualTo($"Project setting ({ChiselProjectSettings.HotspotMaxRepeats})"));
             Assert.That(ChiselHotspotLayoutWindow.OnASurface(new Vector2Int(512, 256), 256), Is.EqualTo($"2 {HotspotTileChoice.kTimes} 1 m"));
-        }
-
-        // A tile of the surface's aspect fits it exactly: the mapping's uvs are the tile's bounds
-        [Test]
-        public void TryingATile_OnItsOwnAspect_FitsWithoutStretching()
-        {
-            layout.tiles = new List<HotspotTile> { Rect(1, "B1", 1024, 0, 1024, 512) };
-            var tried = HotspotTryOn.Run(layout, 1, 2);
-            Assert.That(tried.mapped, Is.True);
-            Assert.That(tried.size, Is.EqualTo(new Vector2(4, 2)), "its longer side at the layout's pixels per unit");
-            Assert.That(tried.Describe(out var good), Is.EqualTo("Fits without stretching"));
-            Assert.That(good, Is.True);
-            Assert.That(tried.indices.Count, Is.GreaterThan(0));
-            var min = new Vector2(float.MaxValue, float.MaxValue); var max = new Vector2(float.MinValue, float.MinValue);
-            foreach (var uv in tried.uvs) { min = Vector2.Min(min, uv); max = Vector2.Max(max, uv); }
-            // the tile's pixels, y up
-            Assert.That(Vector2.Distance(min, new Vector2(0.5f, 0.75f)), Is.LessThan(1e-4f));
-            Assert.That(Vector2.Distance(max, new Vector2(1, 1)), Is.LessThan(1e-4f));
-        }
-
-        // On a surface of another aspect it says how matching lays it: stretched, the border keeping its width, or
-        // repeated; never an estimate from the aspects
-        [Test]
-        public void TryingATile_SaysHowMatchingLaysIt()
-        {
-            layout.tiles = new List<HotspotTile>
-            {
-                Rect(1, "B1", 1024, 0, 1024, 512, border: 32),
-                Rect(2, "T1", 0, 1024, 1024, 64, HotspotTileFlags.RepeatU),
-            };
-            var bordered = HotspotTryOn.Run(layout, 1, 4);
-            var text = bordered.Describe(out var good);
-            Assert.That(good, Is.False);
-            Assert.That(text, Does.Contain("taller").Or.Contain("lower").Or.Contain("wider").Or.Contain("narrower"));
-            Assert.That(text, Does.Contain("the border keeps its width"));
-
-            // the stretch is matching's own (its choice's scales)
-            Assert.That(bordered.Stretch.x, Is.EqualTo(1 / bordered.choice.scales.x).Within(1e-5f));
-
-            var repeating = HotspotTryOn.Run(layout, 2, 8);
-            Assert.That(repeating.mapped, Is.True);
-            Assert.That(repeating.size, Is.EqualTo(new Vector2(4, 0.5f)));
-            Assert.That(repeating.Describe(out _), Does.Contain("taller"), "8:1 is twice as high as 16:1 at the tile's length");
-        }
-
-        // The matcher says how much a tile stretches along each of the surface's axes
-        [Test]
-        public void TheMatcher_SaysTheStretchAlongEachAxis()
-        {
-            layout.tiles = new List<HotspotTile> { Rect(1, "B1", 1024, 0, 1024, 512) };
-            using var tiles = new NativeList<HotspotTileData>(Allocator.Temp);
-            HotspotMatcher.AddTiles(layout, tiles, out var data);
-            // a 4 x 1 unit surface: 1024 x 256 pixels at 256 a unit
-            using var positions = new NativeArray<Unity.Mathematics.float3>(new Unity.Mathematics.float3[] { new(0, 0, 0), new(4, 0, 0), new(4, 1, 0), new(0, 1, 0) }, Allocator.Temp);
-            var shape = HotspotMatcher.ShapeOf(positions, new Unity.Mathematics.float3(1, 0, 0), new Unity.Mathematics.float3(0, 1, 0));
-            var choice = HotspotMatcher.Choose(tiles.AsArray(), data, shape, 0, 1);
-            Assert.That(choice.scales.x, Is.EqualTo(1).Within(1e-4f), "as long as the tile");
-            Assert.That(choice.scales.y, Is.EqualTo(2).Within(1e-4f), "half as high: two tile pixels to a surface pixel");
         }
     }
 }

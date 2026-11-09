@@ -13,23 +13,10 @@ namespace Chisel.Editors
 
         [SerializeField] string tileFilter = string.Empty;
         [SerializeField] bool   layoutFoldout;
-        [SerializeField] int    tryAspect = 1;
         Vector2 listScroll;
         // the list scrolls to the selected tile once it changed; it takes the arrow keys after a click in it
         bool revealSelected;
         bool listFocused;
-
-        // what was tried on a surface last, and for what (the layout's changes, the tile, the aspect)
-        HotspotTryOn tried;
-        (int dirty, int tile, int aspect) triedFor = (-1, 0, -1);
-        RenderTexture tryPreview;
-        Material tryMaterial;
-
-        void OnDestroy()
-        {
-            if (tryPreview != null) { tryPreview.Release(); DestroyImmediate(tryPreview); }
-            if (tryMaterial != null) DestroyImmediate(tryMaterial);
-        }
 
         // The tiles the list shows: those whose name or tags match the filter, in the layout's order
         internal List<int> ListedTiles()
@@ -128,15 +115,8 @@ namespace Chisel.Editors
             Separator();
 
             var index = layout.IndexOfTile(selectedTile);
-            if (index < 0)
-            {
-                EditorGUILayout.LabelField("Click a tile, or pick one in the list, to edit it", EditorStyles.centeredGreyMiniLabel);
-                return;
-            }
-            if (TileFields(layout, index))
+            if (index >= 0 && TileFields(layout, index))
                 Repaint();
-            Separator();
-            TryOnSurface(index);
         }
 
         static void Separator()
@@ -241,8 +221,31 @@ namespace Chisel.Editors
         static readonly GUIContent kRepeatsDownContents   = new("Repeats down", "Meant to repeat along its height");
         static readonly GUIContent kRepeatsCutContents    = new("Repeats cut off", "Repeats keep their exact size and the last one is cut off, instead of all stretching to fit");
         static readonly GUIContent kBorderRepeatsContents = new("Border repeats", "The border's strips repeat along the edges instead of stretching");
-        static readonly GUIContent kPiecesContents        = new("Inside corners", "Four inside corner pieces for bordered tiles, one for each way an inside corner turns, their outer edges meeting in the middle; never matched");
-        static readonly GUIContent kPieceTurnedContents   = new("Inside corner (turned)", "One inside corner piece, drawn as the top left of the four (its outer edges along its bottom and right), turned for the others; never matched");
+        static readonly GUIContent kCornerPiecesContents  = new("Corner pieces", "Whether this tile is the pieces other bordered tiles use at inside corners (never matched itself): four pieces, one for each way an inside corner turns, their outer edges meeting in the middle; or one piece, drawn as the top left of the four (its outer edges along its bottom and right), turned for the others");
+
+        // What a tile is for other tiles' inside corners, as its Corner pieces dropdown says (InsideCorners,
+        // InsideCornerTurned; four pieces first when both are set)
+        internal enum CornerPieces { None, [InspectorName("Four pieces")] Four, [InspectorName("One, turned")] OneTurned }
+
+        internal static CornerPieces CornerPiecesOf(HotspotTileFlags flags)
+        {
+            if ((flags & HotspotTileFlags.InsideCorners) != 0)      return CornerPieces.Four;
+            if ((flags & HotspotTileFlags.InsideCornerTurned) != 0) return CornerPieces.OneTurned;
+            return CornerPieces.None;
+        }
+
+        internal static HotspotTileFlags WithCornerPieces(HotspotTileFlags flags, CornerPieces pieces)
+        {
+            if (CornerPiecesOf(flags) == pieces)
+                return flags;
+            flags &= ~(HotspotTileFlags.InsideCorners | HotspotTileFlags.InsideCornerTurned);
+            switch (pieces)
+            {
+                case CornerPieces.Four:      return flags | HotspotTileFlags.InsideCorners;
+                case CornerPieces.OneTurned: return flags | HotspotTileFlags.InsideCornerTurned;
+                default:                     return flags;
+            }
+        }
         static readonly GUIContent kBorderWidthContents   = new("Width", "The width of the tile's border in pixels, a band along its outline (0 for none)");
         static readonly GUIContent kTilePixelsPerUnitContents = new("Pixels per unit", "The texture density this tile is meant for; 0 takes the layout's");
 
@@ -283,15 +286,14 @@ namespace Chisel.Editors
             tile.flags = FlagRow(tile.flags, (HotspotTileFlags.RepeatU, kRepeatsAcrossContents), (HotspotTileFlags.RepeatV, kRepeatsDownContents));
             tile.flags = FlagRow(tile.flags, (HotspotTileFlags.PartialRepeats, kRepeatsCutContents), (HotspotTileFlags.RepeatBorder, kBorderRepeatsContents));
 
-            Section("INSIDE CORNER PIECES");
-            tile.flags = FlagRow(tile.flags, (HotspotTileFlags.InsideCorners, kPiecesContents), (HotspotTileFlags.InsideCornerTurned, kPieceTurnedContents));
-
             Section("BORDER");
             tile.border = Mathf.Max(0, EditorGUILayout.IntField(kBorderWidthContents, tile.border));
             if (tile.border > 0 && tile.points != null && tile.points.Length >= 3 && !IsShaped(tile))
                 SideFields(ref tile);
             if (tile.border > 0)
                 tile.insideCorners = InsideCornersField(layout, tile);
+            var pieces = (CornerPieces)EditorGUILayout.EnumPopup(kCornerPiecesContents, CornerPiecesOf(tile.flags));
+            tile.flags = WithCornerPieces(tile.flags, pieces);
             if (!EditorGUI.EndChangeCheck())
                 return false;
             EditLayout(layout, "Change Hotspot Tile", () => layout.tiles[index] = tile);
@@ -393,102 +395,6 @@ namespace Chisel.Editors
             for (int i = 0; i < names.Count; i++)
                 contents[i] = new GUIContent(names[i]);
             return ids[EditorGUILayout.Popup(kInsideCornersContents, index, contents)];
-        }
-
-        static readonly GUIContent[] kAspectContents = { new("1:1"), new("2:1"), new("4:1"), new("8:1") };
-        static readonly Color kGood = new(0.45f, 0.8f, 0.45f);
-        static readonly Color kWarn = new(1f, 0.65f, 0.3f);
-
-        // The selected tile on a surface of an aspect, as Chisel's matching and mapping lay it (HotspotTryOn)
-        internal HotspotTryOn TriedOn(int tileId)
-        {
-            tryAspect = Mathf.Clamp(tryAspect, 0, HotspotTryOn.kAspects.Length - 1);
-            var key = (EditorUtility.GetDirtyCount(layout), tileId, tryAspect);
-            if (tried == null || key != triedFor)
-            {
-                tried = HotspotTryOn.Run(layout, tileId, HotspotTryOn.kAspects[tryAspect]);
-                triedFor = key;
-            }
-            return tried;
-        }
-
-        internal int TryAspect { get => tryAspect; set => tryAspect = value; }
-
-        void TryOnSurface(int index)
-        {
-            using (new EditorGUILayout.HorizontalScope())
-            {
-                GUILayout.Label("TRY ON A SURFACE", EditorStyles.miniBoldLabel);
-                GUILayout.FlexibleSpace();
-                tryAspect = GUILayout.Toolbar(Mathf.Clamp(tryAspect, 0, kAspectContents.Length - 1), kAspectContents, EditorStyles.miniButton, GUILayout.Width(150));
-            }
-            var result = TriedOn(layout.tiles[index].id);
-            if (result == null)
-                return;
-            var box = GUILayoutUtility.GetRect(0, 110, GUILayout.ExpandWidth(true));
-            if (Event.current.type == EventType.Repaint)
-            {
-                EditorGUI.DrawRect(box, new Color(0.12f, 0.12f, 0.12f));
-                var inner = new Rect(box.x + 8, box.y + 8, box.width - 16, box.height - 16);
-                var aspect = result.size.y > 0 ? result.size.x / result.size.y : 1;
-                var surface = inner;
-                if (inner.width / inner.height > aspect) surface.width = inner.height * aspect;
-                else                                     surface.height = inner.width / aspect;
-                surface.center = inner.center;
-                DrawTried(result, surface);
-            }
-            var text = result.Describe(out var good);
-            var style = new GUIStyle(EditorStyles.label) { wordWrap = true, normal = { textColor = good ? kGood : kWarn } };
-            GUILayout.Label(text, style);
-        }
-
-        // What the mapping draws, its triangles with their uvs on the layout's texture, into the preview
-        void DrawTried(HotspotTryOn result, Rect surface)
-        {
-            var texture = layout.texture;
-            if (texture == null || result.indices.Count == 0 || surface.width < 2 || surface.height < 2)
-            {
-                EditorGUI.DrawRect(surface, new Color(0.35f, 0.35f, 0.35f));
-                return;
-            }
-            var w = Mathf.CeilToInt(surface.width); var h = Mathf.CeilToInt(surface.height);
-            if (tryPreview == null || tryPreview.width != w || tryPreview.height != h)
-            {
-                if (tryPreview != null) { tryPreview.Release(); DestroyImmediate(tryPreview); }
-                tryPreview = new RenderTexture(w, h, 0, RenderTextureFormat.ARGB32, RenderTextureReadWrite.sRGB) { hideFlags = HideFlags.HideAndDontSave };
-            }
-            if (tryMaterial == null)
-            {
-                var shader = Shader.Find("Sprites/Default") ?? Shader.Find("Unlit/Texture");
-                if (shader == null)
-                    return;
-                tryMaterial = new Material(shader) { hideFlags = HideFlags.HideAndDontSave };
-            }
-            tryMaterial.mainTexture = texture;
-            var previous = RenderTexture.active;
-            RenderTexture.active = tryPreview;
-            GL.PushMatrix();
-            try
-            {
-                GL.LoadPixelMatrix(0, w, 0, h);
-                GL.Clear(true, true, new Color(0.3f, 0.3f, 0.3f, 1));
-                tryMaterial.SetPass(0);
-                GL.Begin(GL.TRIANGLES);
-                GL.Color(Color.white);
-                var scale = new Vector2(w / Mathf.Max(1e-6f, result.size.x), h / Mathf.Max(1e-6f, result.size.y));
-                foreach (var i in result.indices)
-                {
-                    GL.TexCoord2(result.uvs[i].x, result.uvs[i].y);
-                    GL.Vertex3(result.positions[i].x * scale.x, result.positions[i].y * scale.y, 0);
-                }
-                GL.End();
-            }
-            finally
-            {
-                GL.PopMatrix();
-                RenderTexture.active = previous;
-            }
-            GUI.DrawTexture(surface, tryPreview, ScaleMode.StretchToFill, false);
         }
     }
 }

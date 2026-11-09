@@ -169,8 +169,9 @@ namespace Chisel.Editors.Tests
             Assert.That(group.FitCount(b1), Is.EqualTo(2), "the first, and the one not known");
             Assert.That(group.FitOf(b1), Is.EqualTo(HotspotTileFit.Some));
             Assert.That(group.FitOf(new Vector2Int(1, 1)), Is.EqualTo(HotspotTileFit.Some), "only the one not known: another sheet's tile");
-            Assert.That(HotspotTileChoice.Summary(group, group.layout, 0), Is.EqualTo("1 fit all 4 \u00B7 1 fit some"));
-            Assert.That(HotspotTileChoice.FitText(group, b1), Is.EqualTo("Fits 2 of 4"));
+            // said without counting the surfaces
+            Assert.That(HotspotTileChoice.FitText(group, a1), Is.EqualTo("Fits all"));
+            Assert.That(HotspotTileChoice.FitText(group, b1), Is.EqualTo("Fits some"));
             Assert.That(group.CanPin(b1), Is.True);
         }
 
@@ -183,8 +184,7 @@ namespace Chisel.Editors.Tests
             var group = HotspotTileChoice.GroupsOf(trims, (_, _) => null)[0];
             Assert.That(group.FitOf(pieces), Is.EqualTo(HotspotTileFit.None));
             Assert.That(group.CanPin(pieces), Is.False);
-            Assert.That(HotspotTileChoice.Summary(group, group.layout, 0), Is.EqualTo($"2 fit all {trims.Count}"), "counted as not fitting");
-            Assert.That(HotspotTileChoice.FitText(group, pieces), Is.EqualTo("Inside corner pieces, never matched"));
+            Assert.That(HotspotTileChoice.FitText(group, pieces), Is.EqualTo("Doesn't fit"));
         }
 
         // A bordered tile names the tile with its inside corner pieces, and those pieces the tiles that use them
