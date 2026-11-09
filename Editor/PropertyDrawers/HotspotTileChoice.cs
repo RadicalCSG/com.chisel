@@ -145,35 +145,19 @@ namespace Chisel.Editors
             return metadata?.hotspotSheets?.Count ?? 0;
         }
 
-        /// <summary>How many tiles of a sheet fit all the surfaces, and how many some: "3 fit all 4, 9 fit some", dot separated</summary>
-        public static string Summary(HotspotTileGroup group, ChiselHotspotLayout layout, int sheet)
-        {
-            int all = 0, some = 0;
-            if (layout != null && layout.tiles != null)
-            {
-                foreach (var tile in layout.tiles)
-                {
-                    switch (group.FitOf(new Vector2Int(sheet, tile.id)))
-                    {
-                        case HotspotTileFit.All:  all++;  break;
-                        case HotspotTileFit.Some: some++; break;
-                    }
-                }
-            }
-            return some > 0 ? $"{all} fit all {group.Count} {kDot} {some} fit some" : $"{all} fit all {group.Count}";
-        }
-
         internal const string kDot   = "\u00B7";
         internal const string kTimes = "\u00D7";
         internal const string kDash  = "\u2014";
 
-        /// <summary>How many of the surfaces a tile fits, as the info row says it</summary>
+        /// <summary>How a tile fits the surfaces, as the info row says it, without counting them</summary>
         public static string FitText(HotspotTileGroup group, Vector2Int tile)
         {
-            if (group.pieces.Contains(tile))
-                return "Inside corner pieces, never matched";
-            var count = group.FitCount(tile);
-            return count >= group.Count ? $"Fits all {group.Count}" : count > 0 ? $"Fits {count} of {group.Count}" : "Doesn't fit";
+            switch (group.FitOf(tile))
+            {
+                case HotspotTileFit.All:  return "Fits all";
+                case HotspotTileFit.Some: return "Fits some";
+                default:                  return "Doesn't fit";
+            }
         }
 
         /// <summary>The id of the tile with a tile's inside corner pieces, 0 for none</summary>

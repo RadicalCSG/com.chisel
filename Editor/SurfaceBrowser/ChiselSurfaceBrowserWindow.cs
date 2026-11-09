@@ -425,10 +425,12 @@ namespace Chisel.Editors
                 else if (materials != !presetMode && materials)        SetPresetMode(false);
                 GUILayout.Space(4);
                 EditorGUI.BeginChangeCheck();
-                search = EditorGUILayout.TextField(search, EditorStyles.toolbarSearchField, GUILayout.MinWidth(120), GUILayout.MaxWidth(360));
+                var searchRect = GUILayoutUtility.GetRect(120, 360, EditorGUIUtility.singleLineHeight, EditorGUIUtility.singleLineHeight, EditorStyles.toolbarSearchField,
+                                                          GUILayout.MinWidth(120), GUILayout.MaxWidth(360));
+                search = EditorGUI.TextField(searchRect, search, EditorStyles.toolbarSearchField);
+                GUI.Label(searchRect, kSearchTooltip);
                 if (EditorGUI.EndChangeCheck())
                     Filter();
-                GUILayout.Label(new GUIContent("l:label", "Type l: and a label to find the materials with it"), EditorStyles.miniLabel, GUILayout.ExpandWidth(false));
                 GUILayout.FlexibleSpace();
                 thumbSize = GUILayout.HorizontalSlider(thumbSize, kMinThumb, kMaxThumb, GUILayout.Width(100));
                 GUILayout.Space(6);
@@ -713,19 +715,19 @@ namespace Chisel.Editors
             // indicators: a hotspot layout, a decal material, a favorite, its use in the scene
             var metadata = MetadataOf(material);
             var badge = new GUIStyle(EditorStyles.miniLabel) { normal = { textColor = Color.white } };
+            var readOnly = ReadOnlyReason(item.path);
+            if (readOnly != null)
+                ChiselSurfaceBrowserIcons.LockBadge(thumbRect, readOnly);
             if (metadata != null && metadata.hotspotLayout != null)
-                GUI.Label(new Rect(thumbRect.x + 2, thumbRect.y + 2, 30, 14), new GUIContent("HS", "Has a hotspot layout"), badge);
+                GUI.Label(ChiselSurfaceBrowserIcons.LabelRect(thumbRect, 30), new GUIContent("HS", "Has a hotspot layout"), badge);
             else if (metadata != null && metadata.decalDefaults.isDecal)
-                GUI.Label(new Rect(thumbRect.x + 2, thumbRect.y + 2, 40, 14), new GUIContent("Decal", "A decal material"), badge);
+                GUI.Label(ChiselSurfaceBrowserIcons.LabelRect(thumbRect, 40), new GUIContent("Decal", "A decal material"), badge);
             var favorite = ChiselSurfaceBrowserPrefs.IsFavorite(item.guid);
-            var starRect = new Rect(thumbRect.xMax - 18, thumbRect.y + 2, 16, 16);
-            // a star: bright when a favorite, faint otherwise
-            var star = new GUIStyle(badge) { fontStyle = FontStyle.Bold, normal = { textColor = favorite ? new Color(1f, 0.8f, 0.2f) : new Color(1, 1, 1, 0.35f) } };
-            if (GUI.Button(starRect, new GUIContent("*", favorite ? "Remove from favorites" : "Add to favorites"), star))
+            if (ChiselSurfaceBrowserIcons.FavoriteButton(thumbRect, favorite))
             {
                 ChiselSurfaceBrowserPrefs.SetFavorite(item.guid, !favorite);
                 Filter();
-                evt.Use();
+                Repaint();
             }
             var cardIsDecal = ChiselSurfaceBrowserDecals.IsDecal(material);
             var uses = cardIsDecal ? ChiselSceneMaterialUsage.DecalsUsing(material) : ChiselSceneMaterialUsage.SurfacesUsing(material);
@@ -826,23 +828,27 @@ namespace Chisel.Editors
             return MetadataOf(material) != null;
         }
 
-        /// <summary>Whether an asset can be changed: not locked or checked in by version control, not in a package that
-        /// can't be changed (one from a registry or built in)</summary>
-        internal static bool IsEditable(string path)
+        /// <summary>Whether the browser changes an asset: not in a package, not locked by version control</summary>
+        internal static bool IsEditable(string path) => ReadOnlyReason(path) == null;
+
+        /// <summary>Why the browser doesn't change an asset, null when it does</summary>
+        internal static string ReadOnlyReason(string path)
         {
             if (string.IsNullOrEmpty(path))
-                return false;
-            var package = path.StartsWith("Packages/", StringComparison.OrdinalIgnoreCase) ? UnityEditor.PackageManager.PackageInfo.FindForAssetPath(path) : null;
-            return IsEditable(package?.source, AssetDatabase.IsOpenForEdit(path, StatusQueryOptions.UseCachedIfPossible));
+                return "Not an asset";
+            var inPackage = path.StartsWith("Packages/", StringComparison.OrdinalIgnoreCase);
+            return ReadOnlyReason(inPackage, inPackage || AssetDatabase.IsOpenForEdit(path, StatusQueryOptions.UseCachedIfPossible));
         }
 
-        /// <summary>source: the package it is in, null outside packages; openForEdit: not locked by version control</summary>
-        internal static bool IsEditable(UnityEditor.PackageManager.PackageSource? source, bool openForEdit)
+        /// <summary>inPackage: under Packages, which the browser never changes; openForEdit: not locked by version
+        /// control</summary>
+        internal static string ReadOnlyReason(bool inPackage, bool openForEdit)
         {
-            if (source.HasValue && source.Value != UnityEditor.PackageManager.PackageSource.Embedded &&
-                source.Value != UnityEditor.PackageManager.PackageSource.Local)
-                return false;
-            return openForEdit;
+            if (inPackage)
+                return "Read only: it is in a package, and the Surface Browser doesn't change packages";
+            if (!openForEdit)
+                return "Read only: it is locked by version control";
+            return null;
         }
 
         const string kRenameControl     = "ChiselRenameMaterial";
@@ -1027,10 +1033,7 @@ namespace Chisel.Editors
                 return;
             }
             if (material == null)
-            {
-                GUILayout.Label("Select a material to see its details.", EditorStyles.centeredGreyMiniLabel);
                 return;
-            }
 
             // a large preview; Unity's own material preview, with its sphere, cube, plane and other shapes; a decal's
             // image flat (a decal draws nothing on the preview's shapes)
@@ -1055,7 +1058,7 @@ namespace Chisel.Editors
             NameGUI(item, editable);
             GUILayout.Label(item.path, new GUIStyle(EditorStyles.miniLabel) { wordWrap = true });
             if (!editable)
-                EditorGUILayout.HelpBox("This material can't be changed: it is locked by version control or in a read-only package.", MessageType.Info);
+                ReadOnlyNote(ReadOnlyReason(item.path));
             var metadata = MetadataOf(material);
             InfoRow("Shader", material.shader != null ? material.shader.name : "None");
             if (material.mainTexture != null)
@@ -1078,7 +1081,7 @@ namespace Chisel.Editors
             LabelsGUI(material, contentWidth);
 
             GUILayout.Space(8);
-            GUILayout.Label("MATERIAL SETTINGS", EditorStyles.miniBoldLabel);
+            GUILayout.Label(new GUIContent("MATERIAL SETTINGS", SettingsTooltip(isDecal, uses)), EditorStyles.miniBoldLabel);
             if (metadata == null)
             {
                 if (GUILayout.Button(kAddParametersText))
@@ -1090,10 +1093,6 @@ namespace Chisel.Editors
                 }
             } else
             {
-                var applies = new GUIStyle(EditorStyles.miniLabel) { wordWrap = true, normal = { textColor = new Color(1f, 0.75f, 0.3f) } };
-                GUILayout.Label(isDecal ? "Applies to every decal of this material" :
-                                uses == 1 ? "Applies to 1 surface using this material" :
-                                uses > 1 ? $"Applies to all {uses} surfaces using this material" : "Applies to every surface using this material", applies);
                 Editor.CreateCachedEditor(metadata, typeof(ChiselSurfaceMetadataEditor), ref metadataEditor);
                 metadataEditor?.OnInspectorGUI();
             }
@@ -1134,6 +1133,29 @@ namespace Chisel.Editors
             }
         }
 
+        static readonly GUIContent kSearchTooltip = new(string.Empty, "Find by name; type l: and a label to find the materials with it");
+
+        // What the material settings apply to, said in their header's tooltip
+        internal static string SettingsTooltip(bool isDecal, int uses)
+        {
+            return isDecal  ? "Applies to every decal of this material" :
+                   uses == 1 ? "Applies to the 1 surface using this material" :
+                   uses > 1  ? $"Applies to all {uses} surfaces using this material" : "Applies to every surface using this material";
+        }
+
+        // That something can't be changed, the reason in its tooltip
+        internal static void ReadOnlyNote(string reason)
+        {
+            using (new EditorGUILayout.HorizontalScope())
+            {
+                var icon = GUILayoutUtility.GetRect(16, 16, GUILayout.Width(16), GUILayout.Height(16));
+                if (Event.current.type == EventType.Repaint)
+                    ChiselSurfaceBrowserIcons.DrawLock(icon);
+                GUILayout.Label(new GUIContent("Read only", reason), EditorStyles.miniBoldLabel);
+                GUI.Label(icon, new GUIContent(string.Empty, reason));
+            }
+        }
+
         static void InfoRow(string name, string value)
         {
             using (new EditorGUILayout.HorizontalScope())
@@ -1147,17 +1169,15 @@ namespace Chisel.Editors
         void HotspotBoxGUI(Material material, ChiselSurfaceMetadata metadata)
         {
             var group = HotspotTileChoice.GroupsOf(ChiselSurfaceSelectionManager.Selection, (_, _) => null).Find(g => g.material == material);
-            var using_ = group?.Count ?? 0;
             using (new EditorGUILayout.VerticalScope(EditorStyles.helpBox))
             {
                 InfoRow("Hotspot tile", group != null ? HotspotTileChoice.ChoiceOf(group) : "-");
-                var count = ChiselSurfaceSelectionManager.Selection.Count;
-                GUILayout.Label($"{using_} of the {count} selected surface{(count == 1 ? "" : "s")} use it", EditorStyles.miniLabel);
                 using (new EditorGUILayout.HorizontalScope())
                 {
                     using (new EditorGUI.DisabledScope(group == null))
                     {
-                        if (GUILayout.Button("Choose tile..."))
+                        var choose = new GUIContent("Choose tile...", group == null ? "None of the selected surfaces use this material" : "Choose the tile the selected surfaces using this material keep");
+                        if (GUILayout.Button(choose))
                             HotspotTilePicker.Show(GUILayoutUtility.GetLastRect(), () => ChiselSurfaceSelectionManager.Selection, material);
                     }
                     if (GUILayout.Button("Edit layout..."))
@@ -1329,7 +1349,7 @@ namespace Chisel.Editors
                 {
                     using (new EditorGUI.DisabledScope(!CanPlace(material)))
                     {
-                        if (GUILayout.Button(PlaceActionText(material), GUILayout.Width(170)))
+                        if (GUILayout.Button(new GUIContent(PlaceActionText(material), PlaceActionTooltip(material)), GUILayout.Width(120)))
                             PlaceSelectedDecal();
                     }
                 }

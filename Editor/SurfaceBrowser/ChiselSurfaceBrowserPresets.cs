@@ -187,15 +187,16 @@ namespace Chisel.Editors
 
             var badge = new GUIStyle(EditorStyles.miniLabel) { normal = { textColor = Color.white } };
             var kind = preset != null ? ChiselGeneratorMaterialPresets.KindName(preset.generator) : "Preset";
-            GUI.Label(new Rect(thumbRect.x + 2, thumbRect.y + 2, thumbRect.width - 22, 14), new GUIContent("Preset", $"Materials for {kind}"), badge);
+            var readOnly = ReadOnlyReason(item.path);
+            if (readOnly != null)
+                ChiselSurfaceBrowserIcons.LockBadge(thumbRect, readOnly);
+            GUI.Label(ChiselSurfaceBrowserIcons.LabelRect(thumbRect, Mathf.Max(0, thumbRect.width - 4)), new GUIContent("Preset", $"Materials for {kind}"), badge);
             var favorite = ChiselSurfaceBrowserPrefs.IsFavorite(item.guid);
-            var starRect = new Rect(thumbRect.xMax - 18, thumbRect.y + 2, 16, 16);
-            var star = new GUIStyle(badge) { fontStyle = FontStyle.Bold, normal = { textColor = favorite ? new Color(1f, 0.8f, 0.2f) : new Color(1, 1, 1, 0.35f) } };
-            if (GUI.Button(starRect, new GUIContent("*", favorite ? "Remove from favorites" : "Add to favorites"), star))
+            if (ChiselSurfaceBrowserIcons.FavoriteButton(thumbRect, favorite))
             {
                 ChiselSurfaceBrowserPrefs.SetFavorite(item.guid, !favorite);
                 Filter();
-                evt.Use();
+                Repaint();
             }
 
             var nameRect = new Rect(rect.x, thumbRect.yMax + 2, rect.width, EditorGUIUtility.singleLineHeight);
@@ -281,16 +282,13 @@ namespace Chisel.Editors
         void PresetDetailsGUI(ChiselSurfaceBrowserModel.Item item, ChiselGeneratorMaterialPreset preset, float contentWidth)
         {
             if (preset == null)
-            {
-                GUILayout.Label("Select a material to see its details.", EditorStyles.centeredGreyMiniLabel);
                 return;
-            }
             var editable = IsEditable(item.path);
             NameGUI(item, editable);
             GUILayout.Label(item.path, new GUIStyle(EditorStyles.miniLabel) { wordWrap = true });
             GUILayout.Label("Material preset for " + ChiselGeneratorMaterialPresets.KindName(preset.generator), EditorStyles.miniLabel);
             if (!editable)
-                EditorGUILayout.HelpBox("This preset can't be changed: it is locked by version control or in a read-only package.", MessageType.Info);
+                ReadOnlyNote(ReadOnlyReason(item.path));
             GUILayout.Space(6);
 
             // picking it puts it on the selected generators; this takes theirs into it

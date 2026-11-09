@@ -552,7 +552,7 @@ namespace Chisel.Editors
             }
             var chosen = images.Find(image => image.tile == selectedTile);
             if (chosen != null)
-                GUILayout.Label($"{chosen.name}  -  image {chosen.index} of {chosen.count}", EditorStyles.miniLabel);
+                GUILayout.Label(chosen.name, EditorStyles.miniLabel);
         }
 
         void DecalInfoGUI(Material material)
@@ -566,10 +566,15 @@ namespace Chisel.Editors
 
         static string PlaceActionText(Material material)
         {
+            return ChiselSurfaceBrowserDecals.ShapeOf(material) == ChiselDecalShape.Trim ? "Pick edge" : "Place";
+        }
+
+        // What the primary button does, and why it is disabled when it is
+        static string PlaceActionTooltip(Material material)
+        {
             if (ChiselSurfaceBrowserDecals.ShapeOf(material) == ChiselDecalShape.Trim)
-                return "Pick edge in Scene view";
-            var count = ChiselSurfaceSelectionManager.Selection.Count;
-            return $"Place on {count} surface{(count == 1 ? "" : "s")}";
+                return "Pick the edge between two surfaces in the Scene view to place a trim along it";
+            return CanPlace(material) ? "Place one decal on each selected surface, centered on it and facing it" : "Select the surfaces to place decals on first";
         }
 
         static bool CanPlace(Material material)

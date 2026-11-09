@@ -379,9 +379,9 @@ namespace Chisel.Core
             return -1;
         }
 
-        // Splits a tile with a new line; the first part keeps the tile, the others are new tiles like it.
-        // A position is the line's x (Vertical, Apex) or y (Horizontal), strictly inside the tile; diagonals take none.
-        public bool Split(int tileId, HotspotCutKind kind, int position)
+        // Whether Split would split a tile there: a tile of the lines (not a drawn shape), not a triangle, the position
+        // strictly inside it
+        public bool CanSplit(int tileId, HotspotCutKind kind, int position)
         {
             var node = NodeOfTile(tileId);
             if (node < 0 || kind == HotspotCutKind.Tile)
@@ -395,10 +395,21 @@ namespace Chisel.Core
             switch (kind)
             {
                 case HotspotCutKind.Vertical:
-                case HotspotCutKind.Apex:       if (position <= r.xMin || position >= r.xMax) return false; break;
-                case HotspotCutKind.Horizontal: if (position <= r.yMin || position >= r.yMax) return false; break;
-                default:                        position = 0; break;
+                case HotspotCutKind.Apex:       return position > r.xMin && position < r.xMax;
+                case HotspotCutKind.Horizontal: return position > r.yMin && position < r.yMax;
+                default:                        return true;
             }
+        }
+
+        // Splits a tile with a new line; the first part keeps the tile, the others are new tiles like it.
+        // A position is the line's x (Vertical, Apex) or y (Horizontal), strictly inside the tile; diagonals take none.
+        public bool Split(int tileId, HotspotCutKind kind, int position)
+        {
+            if (!CanSplit(tileId, kind, position))
+                return false;
+            var node = NodeOfTile(tileId);
+            if (kind != HotspotCutKind.Vertical && kind != HotspotCutKind.Apex && kind != HotspotCutKind.Horizontal)
+                position = 0;
             var original = tiles[IndexOfTile(tileId)];
             int Child(int id)
             {

@@ -402,8 +402,6 @@ namespace Chisel.Editors
                     }
                 }
                 var bounds = HotspotSheetView.BoundsOf(points);
-                if (fit == HotspotTileFit.Some)
-                    view.Label(bounds.max, $"{group.FitCount(key)}/{group.Count}", TextAnchor.LowerRight);
                 if (HotspotTileChoice.IsPinOnly(tile) && fit != HotspotTileFit.None)
                     HotspotSheetView.PinMark(new Rect(bounds.xMax - 14, bounds.y + 3, 10, 12), HotspotSheetView.kPinMark);
             }
@@ -453,16 +451,10 @@ namespace Chisel.Editors
             Item("Fits some", kSome);
             Item("Doesn't fit", kNone);
             Item("Pin only", Color.clear, pin: true);
-            if (group != null && Shown.layout != null)
-            {
-                var summary = new GUIContent(HotspotTileChoice.Summary(group, Shown.layout, Shown.sheet));
-                var width = EditorStyles.miniLabel.CalcSize(summary).x;
-                GUI.Label(new Rect(row.xMax - kPad - width, row.y, width, row.height), summary, EditorStyles.miniLabel);
-            }
         }
 
         // The hovered tile, or else the pinned one: name, pixels, aspect, flags, its inside corner pieces (or the tiles
-        // using it), and how many surfaces it fits
+        // using it), and whether it fits the surfaces
         void InfoRow(Rect row, HotspotTileGroup group)
         {
             var page = Shown;
@@ -482,10 +474,7 @@ namespace Chisel.Editors
                 return;
             var id = hover != 0 ? hover : group.pinned.x == page.sheet && group.pinned.y > 0 ? group.pinned.y : 0;
             if (id == 0 || layout.IndexOfTile(id) < 0)
-            {
-                GUI.Label(new Rect(row.x + kPad, row.y, linkRect.x - row.x - kPad, row.height), "Click a tile to pin it on these surfaces", EditorStyles.miniLabel);
                 return;
-            }
             var x = row.x + kPad;
             var nameContent = new GUIContent(HotspotTileChoice.NameOf(layout, id));
             var nameWidth = EditorStyles.boldLabel.CalcSize(nameContent).x;
