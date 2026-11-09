@@ -253,19 +253,17 @@ namespace Chisel.Editors
             }
         }
 
-        // a preset on all the parts at once, or the parts as they are saved as one
+        // the parts as they are saved as a new preset; a preset is put on them by picking it in the presets' mode
         void PresetButtonsGUI(List<ChiselGeneratorComponent> generators)
         {
             using (new EditorGUILayout.HorizontalScope())
             {
                 GUILayout.Space(4);
-                var apply = new GUIContent("Apply Preset...", "Put a material preset on all of their parts at once");
-                var rect = GUILayoutUtility.GetRect(apply, EditorStyles.miniButtonLeft);
-                if (GUI.Button(rect, apply, EditorStyles.miniButtonLeft))
-                    ChiselGeneratorMaterialPresets.ApplyMenu(generators, MarkDirty).DropDown(rect);
                 using (new EditorGUI.DisabledScope(generators.Count != 1))
                 {
-                    if (GUILayout.Button(new GUIContent("Save as Preset", "Save the materials of its parts as a new preset"), EditorStyles.miniButtonRight))
+                    var tooltip = generators.Count == 1 ? "Save the materials of its parts as a new preset"
+                                                        : "Select one generator to save its materials as a preset";
+                    if (GUILayout.Button(new GUIContent("Save as Preset", tooltip), EditorStyles.miniButton))
                     {
                         NewPreset(generators[0]);
                         GUIUtility.ExitGUI();

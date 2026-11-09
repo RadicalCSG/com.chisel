@@ -33,11 +33,6 @@ namespace Chisel.Editors
             }
         }
 
-        const float kNewPresetWidth = 90;
-
-        // the grid offers a new preset where presets are shown: their own list, or a folder
-        bool ShowsNewPreset => presetMode;
-
         // the browser lists presets, else materials; the two don't mix
         [SerializeField] bool presetMode;
 
@@ -61,21 +56,6 @@ namespace Chisel.Editors
             if (presets)
                 SelectPresetOf(SelectedGenerators());
             Repaint();
-        }
-
-        void NewPresetButtonGUI(Rect rect)
-        {
-            var generators = SelectedGenerators();
-            var tooltip = generators.Count == 1 ? $"A preset with the materials of {generators[0].name}'s parts"
-                                                : "Select one generator to make a preset from its materials";
-            using (new EditorGUI.DisabledScope(generators.Count != 1))
-            {
-                if (GUI.Button(rect, new GUIContent("New Preset", tooltip), EditorStyles.miniButton))
-                {
-                    NewPreset(generators[0]);
-                    GUIUtility.ExitGUI();
-                }
-            }
         }
 
         // the preset made last, renamed on its card once the grid has it
@@ -313,13 +293,8 @@ namespace Chisel.Editors
                 EditorGUILayout.HelpBox("This preset can't be changed: it is locked by version control or in a read-only package.", MessageType.Info);
             GUILayout.Space(6);
 
+            // picking it puts it on the selected generators; this takes theirs into it
             var generators = SelectedGenerators();
-            using (new EditorGUI.DisabledScope(generators.Count == 0))
-            {
-                var text = generators.Count > 1 ? $"Apply to {generators.Count} Selected Generators" : "Apply to Selected Generator";
-                if (GUILayout.Button(new GUIContent(text, "Put its materials on the parts it sets of the selected generators")))
-                    ApplyPresetOnSelection(preset);
-            }
             using (new EditorGUI.DisabledScope(generators.Count != 1 || !editable))
             {
                 if (GUILayout.Button(new GUIContent("Copy from Selected Generator", "Take the selected generator's materials, as it is now")))

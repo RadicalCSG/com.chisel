@@ -260,6 +260,13 @@ namespace Chisel.Editors
             Filter();
         }
 
+        /// <summary>Searches, as typing in the search field does</summary>
+        internal void SetSearch(string text)
+        {
+            search = text ?? string.Empty;
+            Filter();
+        }
+
         internal string SelectedGuid => selectedGuid;
         internal IReadOnlyList<ChiselSurfaceBrowserModel.Item> Shown => shown;
         internal bool IsRenamingCard => cardRenameGuid != null;
@@ -621,19 +628,17 @@ namespace Chisel.Editors
 
         void GridGUI(Rect rect)
         {
-            var headerWidth = rect.width - 16;
-            if (ShowsNewPreset)
-            {
-                headerWidth -= kNewPresetWidth + 4;
-                NewPresetButtonGUI(new Rect(rect.xMax - 8 - kNewPresetWidth, rect.y + 3, kNewPresetWidth, kHeaderHeight - 4));
-            }
-            GUI.Label(new Rect(rect.x + 8, rect.y + 2, headerWidth, kHeaderHeight), HeaderText(), EditorStyles.boldLabel);
+            GUI.Label(new Rect(rect.x + 8, rect.y + 2, rect.width - 16, kHeaderHeight), HeaderText(), EditorStyles.boldLabel);
             var area = new Rect(rect.x, rect.y + kHeaderHeight + 2, rect.width, rect.height - kHeaderHeight - 2);
             var cell = thumbSize + 12;
             var cellHeight = thumbSize + EditorGUIUtility.singleLineHeight + 14;
             var columns = Mathf.Max(1, Mathf.FloorToInt((area.width - 16) / cell));
             var rows = Mathf.CeilToInt(shown.Count / (float)columns);
             var content = new Rect(0, 0, area.width - 16, rows * cellHeight + 8);
+            // a click in the grid that no card takes, left of its scrollbar, deselects
+            var evt = Event.current;
+            var clickInGrid = evt.type == EventType.MouseDown && evt.button == 0 &&
+                              new Rect(area.x, area.y, area.width - 16, area.height).Contains(evt.mousePosition);
             gridScroll = GUI.BeginScrollView(area, gridScroll, content);
             // only the rows in view are drawn
             var firstRow = Mathf.Max(0, Mathf.FloorToInt(gridScroll.y / cellHeight));
@@ -648,6 +653,13 @@ namespace Chisel.Editors
                     var cellRect = new Rect(8 + column * cell, 4 + row * cellHeight, cell - 6, cellHeight - 6);
                     CardGUI(cellRect, shown[index]);
                 }
+            }
+            if (clickInGrid && evt.type == EventType.MouseDown)
+            {
+                partsFocused = false;
+                pendingRenameGuid = null;
+                Select(null);
+                evt.Use();
             }
             GUI.EndScrollView();
             KeyboardGUI(columns);
