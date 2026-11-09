@@ -138,17 +138,18 @@ namespace Chisel.Editors.Tests
             Assert.That(groups[1].Count, Is.EqualTo(2));
         }
 
-        // "Applies to N of M" counts the surfaces with a hotspot material only; the others aren't changed either
+        // A row to switch materials only when the surfaces have more than one hotspot material; ordinary ones don't count
         [Test]
-        public void AppliesTo_CountsOnlyHotspotSurfaces()
+        public void TheMaterialsRow_IsOnlyThereWithMoreThanOneHotspotMaterial()
         {
             var (trims, facades, plains) = Boxes();
-            var selected = new List<SurfaceReference>(facades.GetRange(0, 2));
-            selected.AddRange(trims);
-            selected.AddRange(plains);
-            var groups = HotspotTileChoice.GroupsOf(selected, (_, _) => null);
-            var facadeGroup = groups.Find(group => group.material == facade);
-            Assert.That(HotspotTileChoice.AppliesTo(facadeGroup, groups), Is.EqualTo($"Applies to 2 of {2 + trims.Count} surfaces"));
+            var given = new List<SurfaceReference>(trims);
+            given.AddRange(plains);
+            var picker = new HotspotTilePicker(() => given);
+            Assert.That(picker.ShowsMaterials, Is.False, "one hotspot material and an ordinary one");
+            given.AddRange(facades);
+            picker.Refresh();
+            Assert.That(picker.ShowsMaterials, Is.True);
         }
 
         // How many surfaces each tile fits: all, some or none; a surface whose shape isn't known yet counts as fitting

@@ -274,15 +274,6 @@ namespace Chisel.Editors
             return string.Join(" / ", parts);
         }
 
-        /// <summary>"Applies to 4 of 6 surfaces": of the surfaces with a hotspot material, those of all the groups</summary>
-        public static string AppliesTo(HotspotTileGroup group, IReadOnlyList<HotspotTileGroup> groups)
-        {
-            var all = 0;
-            foreach (var other in groups)
-                all += other.Count;
-            return $"Applies to {group.Count} of {all} surface{(all == 1 ? "" : "s")}";
-        }
-
         /// <summary>Whether a tile's name has what's typed in it, ignoring case; anything does when nothing is typed</summary>
         public static bool NameMatches(string name, string find)
         {

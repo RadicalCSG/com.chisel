@@ -8,7 +8,7 @@ using UnityEngine;
 
 namespace Chisel.Editors
 {
-    // Choosing the tile surfaces keep: for each hotspot material on them ("Sheet of") its sheet as it is, how each tile
+    // Choosing the tile surfaces keep: for each hotspot material on them its sheet as it is, how each tile
     // fits the surfaces using it, and a click pins a tile on those surfaces. Follows the surfaces it is given live (the
     // surface selection), and stays open to choose for each material
     sealed class HotspotTilePicker : ResizablePopup
@@ -38,12 +38,10 @@ namespace Chisel.Editors
         static readonly Color kSome     = new(0, 0, 0, 0.38f);
         static readonly Color kNone     = new(0, 0, 0, 0.72f);
         static readonly Color kDim      = new(0, 0, 0, 0.6f);
-        static readonly Color kHidden   = new(0.16f, 0.16f, 0.16f, 1);
         static readonly Color kRowColor = new(0, 0, 0, 0.12f);
         static readonly Color kWarm     = new(1f, 0.65f, 0.3f);
 
-        static readonly GUIContent kAutomaticContent   = new("Automatic", "Let matching choose the tile for these surfaces");
-        static readonly GUIContent kFittingOnlyContent = new("Fitting only", "Hide the tiles that fit none of these surfaces");
+        static readonly GUIContent kAutomaticContent   = new("Automatic tile selection", "Let matching choose the tile for these surfaces");
         static readonly GUIContent kFitContent         = new("Fit", "Show the whole sheet");
         static readonly GUIContent kOneToOneContent    = new("1:1", "One pixel of the screen for each pixel of the texture");
         static readonly GUIContent kEditLayoutContent  = new("Edit layout...", "Open the layout editor for this sheet");
@@ -56,7 +54,6 @@ namespace Chisel.Editors
         List<Page> pages = new();
         int shown;
         string find = string.Empty;
-        bool fittingOnly;
         int hover;
 
         // surfaces: the ones to choose for, asked again as the picker is drawn; material: the one whose sheet is shown
@@ -76,7 +73,7 @@ namespace Chisel.Editors
             PopupWindow.Show(activator, new HotspotTilePicker(surfaces, material));
         }
 
-        float Chrome => kRow * 2 + (pages.Count > 1 ? kPagesRow : 0) + kLegend + kInfo + 2 * kPad;
+        float Chrome => kRow * (ShowsMaterials ? 2 : 1) +(pages.Count > 1 ? kPagesRow : 0) + kLegend + kInfo + 2 * kPad;
 
         public IReadOnlyList<HotspotTileGroup> Groups => groups;
         public HotspotTileGroup Group => groups.Find(group => group.material == shownMaterial);
@@ -220,8 +217,11 @@ namespace Chisel.Editors
 
             var group = Group;
             var y = rect.y;
-            SheetOfRow(new Rect(rect.x, y, rect.width, kRow), group);
-            y += kRow;
+            if (ShowsMaterials)
+            {
+                MaterialsRow(new Rect(rect.x, y, rect.width, kRow), group);
+                y += kRow;
+            }
             ToolbarRow(new Rect(rect.x, y, rect.width, kRow), group);
             y += kRow;
             if (pages.Count > 1)
@@ -241,23 +241,20 @@ namespace Chisel.Editors
                 Keys(current, group);
         }
 
-        void SheetOfRow(Rect row, HotspotTileGroup group)
+        // A row to switch between the hotspot materials of the surfaces, only when there's more than one
+        public bool ShowsMaterials => groups.Count > 1;
+
+        void MaterialsRow(Rect row, HotspotTileGroup group)
         {
             if (Event.current.type == EventType.Repaint)
                 EditorGUI.DrawRect(row, kRowColor);
             var x = row.x + kPad;
-            var label = new GUIContent("Sheet of");
-            var labelSize = EditorStyles.label.CalcSize(label);
-            GUI.Label(new Rect(x, row.y + 4, labelSize.x, row.height - 8), label, EditorStyles.label);
-            x += labelSize.x + 6;
-            var applies = group != null ? new GUIContent(HotspotTileChoice.AppliesTo(group, groups)) : GUIContent.none;
-            var appliesWidth = EditorStyles.miniLabel.CalcSize(applies).x;
-            var right = row.xMax - kPad - appliesWidth - 6;
+            var right = row.xMax - kPad;
             for (int i = 0; i < groups.Count; i++)
             {
                 var g = groups[i];
-                var content = new GUIContent($"{g.material.name}  {g.Count}", AssetPreview.GetMiniThumbnail(g.material), g.material.name);
-                var style = groups.Count == 1 ? EditorStyles.miniButton : i == 0 ? EditorStyles.miniButtonLeft : i == groups.Count - 1 ? EditorStyles.miniButtonRight : EditorStyles.miniButtonMid;
+                var content = new GUIContent(g.material.name, AssetPreview.GetMiniThumbnail(g.material), "Choose the tile for the surfaces using " + g.material.name);
+                var style = i == 0 ? EditorStyles.miniButtonLeft : i == groups.Count - 1 ? EditorStyles.miniButtonRight : EditorStyles.miniButtonMid;
                 var width = Mathf.Min(style.CalcSize(content).x + 4, Mathf.Max(60, right - x));
                 var button = new Rect(x, row.y + 4, width, row.height - 8);
                 if (GUI.Toggle(button, g == group, content, style) && g != group)
@@ -266,7 +263,6 @@ namespace Chisel.Editors
                 if (x >= right)
                     break;
             }
-            GUI.Label(new Rect(row.xMax - kPad - appliesWidth, row.y + 4, appliesWidth, row.height - 8), applies, EditorStyles.miniLabel);
         }
 
         void ToolbarRow(Rect row, HotspotTileGroup group)
@@ -277,15 +273,14 @@ namespace Chisel.Editors
             using (new EditorGUI.DisabledScope(group == null))
             {
                 var automatic = group != null && group.pinned.y == 0;
-                if (GUI.Toggle(new Rect(x, top, 80, height), automatic, kAutomaticContent, EditorStyles.miniButton) && !automatic)
+                var automaticWidth = EditorStyles.miniButton.CalcSize(kAutomaticContent).x + 8;
+                if (GUI.Toggle(new Rect(x, top, automaticWidth, height), automatic, kAutomaticContent, EditorStyles.miniButton) && !automatic)
                     Pin(Vector2Int.zero);
+                x += automaticWidth + 6;
             }
-            x += 86;
-            const float kFitWidth = 70, kFittingWidth = 84;
+            const float kFitWidth = 70;
             var fitX = row.xMax - kPad - kFitWidth;
-            var fittingX = fitX - 6 - kFittingWidth;
-            find = EditorGUI.TextField(new Rect(x, top + 1, Mathf.Max(40, fittingX - 6 - x), height), find, EditorStyles.toolbarSearchField);
-            fittingOnly = GUI.Toggle(new Rect(fittingX, top, kFittingWidth, height), fittingOnly, kFittingOnlyContent, EditorStyles.miniButton);
+            find = EditorGUI.TextField(new Rect(x, top + 1, Mathf.Max(40, fitX - 6 - x), height), find, EditorStyles.toolbarSearchField);
             if (GUI.Toggle(new Rect(fitX, top, kFitWidth * 0.5f, height), view.fit, kFitContent, EditorStyles.miniButtonLeft) && !view.fit)
                 view.Fit();
             if (GUI.Toggle(new Rect(fitX + kFitWidth * 0.5f, top, kFitWidth * 0.5f, height), view.IsOneToOne, kOneToOneContent, EditorStyles.miniButtonRight) && !view.IsOneToOne)
@@ -343,9 +338,6 @@ namespace Chisel.Editors
                     return;
                 }
                 var at = inside ? layout.TileAt(view.ToPixel(local)) : 0;
-                var key = new Vector2Int(page.sheet, at);
-                if (at != 0 && (fittingOnly && group.FitOf(key) == HotspotTileFit.None))
-                    at = 0;
                 switch (current.type)
                 {
                     case EventType.MouseMove:
@@ -388,11 +380,6 @@ namespace Chisel.Editors
                 var shaped = ChiselHotspotLayout.IsShaped(tile);
                 var key = new Vector2Int(page.sheet, tile.id);
                 var fit = group.FitOf(key);
-                if (fittingOnly && fit == HotspotTileFit.None)
-                {
-                    HotspotSheetView.Fill(points, kHidden, shaped);
-                    continue;
-                }
                 if (Finding && !Matches(tile))
                     HotspotSheetView.Fill(points, kDim, shaped);
                 else if (fit == HotspotTileFit.None)
@@ -424,9 +411,6 @@ namespace Chisel.Editors
             foreach (var tile in layout.tiles)
             {
                 if (tile.points == null || tile.points.Length < 3)
-                    continue;
-                var key = new Vector2Int(page.sheet, tile.id);
-                if (fittingOnly && group.FitOf(key) == HotspotTileFit.None)
                     continue;
                 var points = view.PointsOf(tile);
                 var pinned = IsPinned(group, page, tile.id);
