@@ -251,7 +251,7 @@ namespace Chisel.Editors
         static readonly GUIContent kFitContents       = new("Fit", "Show the whole texture");
         static readonly GUIContent kOneToOneContents  = new("1:1", "One pixel of the screen for each pixel of the texture");
         static readonly GUIContent kImportContents    = new("Import...", "A Chisel layout (.json), Valve rectangles (.rect), an SVG, or a colour mask image (one flat colour per tile)");
-        static readonly GUIContent kMoreContents      = new("More", kResetName.TrimEnd('.'));
+        static readonly GUIContent kMoreContents      = new("More", "Reset the layout to one tile over the whole texture");
 
         void Toolbar()
         {
@@ -339,14 +339,14 @@ namespace Chisel.Editors
         }
 
         // The More menu's command, as it names it
-        internal const string kResetName = "Reset to One Tile...";
+        internal const string kResetName = "Reset";
 
         void MoreMenu()
         {
             var menu = new GenericMenu();
             menu.AddItem(new GUIContent(kResetName), false, () =>
             {
-                if (EditorUtility.DisplayDialog("Reset to One Tile", "Remove every tile, line and drawn shape, leaving one tile over the whole texture?", "Reset", "Cancel"))
+                if (EditorUtility.DisplayDialog("Reset", "Remove every tile, line and drawn shape, leaving one tile over the whole texture?", "Reset", "Cancel"))
                     Edit("Reset Hotspot Layout", layout.ResetCuts);
             });
             menu.ShowAsContext();
