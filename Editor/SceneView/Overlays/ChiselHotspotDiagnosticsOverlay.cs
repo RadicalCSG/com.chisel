@@ -17,6 +17,12 @@ namespace Chisel.Editors
         readonly static GUIContent kGroups = new("Groups", "The outline of each group of surfaces mapped as one (connected by themselves or by hand)");
         readonly static GUIContent kLinks  = new("Links", "Surfaces connected, kept apart, or given a border by hand: along the edge they share, dotted between them while they do not touch");
 
+        // Whether a scene view shows this overlay: the view is only drawn where its controls are
+        internal static bool IsShownIn(SceneView sceneView)
+        {
+            return sceneView && sceneView.TryGetOverlay(kOverlayId, out var overlay) && overlay.displayed;
+        }
+
         [MenuItem("Tools/Chisel/Hotspot Diagnostics")]
         static void Show()
         {

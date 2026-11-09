@@ -114,9 +114,13 @@ namespace Chisel.Editors
 
         static void OnPostUpdateModels() { s_Dirty = true; }
 
+        // Whether a scene view draws the view: only while it shows the overlay with its controls, so it can't be left on
+        // unseen
+        internal static bool DrawsIn(SceneView sceneView) => ChiselHotspotDiagnosticsOverlay.IsShownIn(sceneView);
+
         static void OnSceneGUI(SceneView sceneView)
         {
-            if (Event.current.type != EventType.Repaint)
+            if (Event.current.type != EventType.Repaint || !DrawsIn(sceneView))
                 return;
             if (ShowLinks)
                 DrawLinks();

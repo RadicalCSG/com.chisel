@@ -178,11 +178,8 @@ namespace Chisel.Editors
                     if (layout != null)
                     {
                         position.height = HotspotTransformGUI.Height;
-                        var material = MaterialOf(property);
                         HotspotTransformGUI.OnGUI(position, property.FindPropertyRelative(nameof(SurfaceDetails.hotspot)), layout, hasLabel,
-                                                  ChiselHotspotGroupEdit.MostVariations(surfaces),
-                                                  () => HotspotTransformGUI.PagesOf(material, layout),
-                                                  () => surfaces.Count > 0 ? ChiselHotspotGroupEdit.FitsOf(surfaces[0], layout, material) : null,
+                                                  ChiselHotspotGroupEdit.MostVariations(surfaces), () => surfaces,
                                                   surfaces.Count > 0 ? surfaces[0].descriptionIndex : 0);
                     } else
                     {
