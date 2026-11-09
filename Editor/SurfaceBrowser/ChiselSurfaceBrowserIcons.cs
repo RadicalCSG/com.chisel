@@ -13,6 +13,7 @@ namespace Chisel.Editors
         static readonly Color kFavorite  = new(1f, 0.8f, 0.2f);
         static readonly Color kNotYet    = new(1, 1, 1, 0.75f);
         static readonly Color kLock      = new(1, 1, 1, 0.9f);
+        static readonly Color kOutline   = new(0.15f, 0.15f, 0.15f, 1);
 
         internal static Rect StarRect(Rect thumb) => new(thumb.xMax - kStarSize - 2, thumb.y + 2, kStarSize, kStarSize);
         internal static Rect LockRect(Rect thumb) => new(thumb.x + 2, thumb.y + 2, kLockSize, kLockSize);
@@ -64,8 +65,14 @@ namespace Chisel.Editors
             var loop = new Vector3[points.Length + 1];
             points.CopyTo(loop, 0);
             loop[points.Length] = points[0];
-            Handles.color = color;
-            Handles.DrawAAPolyLine(1.75f, loop);
+            // a dark outline around it: around the fill, or around the coloured outline of one that isn't a favorite
+            Handles.color = kOutline;
+            Handles.DrawAAPolyLine(filled ? 1.5f : 3.5f, loop);
+            if (!filled)
+            {
+                Handles.color = color;
+                Handles.DrawAAPolyLine(1.5f, loop);
+            }
         }
 
         // A lock in a card's corner, why it is read only in its tooltip
