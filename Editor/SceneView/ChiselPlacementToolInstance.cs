@@ -167,6 +167,7 @@ namespace Chisel.Editors
                 return;
             }
 
+            ChiselActiveMaterial.GiveTo(generatorComponent);
             if (createAsBrush)
             {
                 ConvertToBrushesButton.ConvertToBrushes(generatorComponent);
