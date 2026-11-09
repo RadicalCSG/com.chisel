@@ -1,6 +1,7 @@
 fileFormatVersion: 2
 guid: 985b7e9e6e89fbd4da9acda8fd0eec2c
 labels:
+- default
 - floor
 NativeFormatImporter:
   externalObjects: {}

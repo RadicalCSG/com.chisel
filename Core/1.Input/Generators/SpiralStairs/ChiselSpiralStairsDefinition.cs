@@ -17,7 +17,7 @@ namespace Chisel.Core
 
     // Spiral Stairs data
     [Serializable]
-    public struct ChiselSpiralStairs : IBranchGenerator, IChiselSurfaceNames, IChiselGeneratorParts
+    public struct ChiselSpiralStairs : IBranchGenerator, IChiselSurfaceNames, IChiselGeneratorParts, IChiselListedSurfaces
     {
         readonly static ChiselSpiralStairs kDefaultSettings = new()
         {
@@ -392,6 +392,8 @@ namespace Chisel.Core
 
         [BurstDiscard]
         public readonly string GetSurfaceName(int index) { return StairsSurfaces.Name(index); }
+
+        public readonly bool IsSurfaceAlwaysListed(int index) { return StairsSurfaces.IsAlwaysAPart(index); }
 
         [BurstDiscard]
         public bool IsSurfaceUsed(int index)

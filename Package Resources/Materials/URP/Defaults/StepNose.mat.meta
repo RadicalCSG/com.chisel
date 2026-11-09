@@ -1,5 +1,8 @@
 fileFormatVersion: 2
 guid: d632ba4e29632704fb378214513ea3a6
+labels:
+- default
+- stepnose
 NativeFormatImporter:
   externalObjects: {}
   mainObjectFileID: 2100000

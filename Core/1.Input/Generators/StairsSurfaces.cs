@@ -48,10 +48,8 @@ namespace Chisel.Core
         public static string Name(int index) { return (index >= 0 && index < kNames.Length) ? kNames[index] : null; }
 
         // Whether stairs with these parts have faces with this surface
-        public static bool IsUsed(int index, bool haveTread, bool haveRiser, bool haveWall, bool haveColumn, bool haveBase = false)
+        public static bool IsUsed(int index, bool haveTread, bool haveRiser, bool haveWall, bool haveColumn, bool haveBase)
         {
-            if ((StairsSurface)index == StairsSurface.Base)
-                return haveBase;
             switch ((StairsSurface)index)
             {
                 case StairsSurface.TreadTop:    return haveTread || haveRiser;
@@ -65,9 +63,14 @@ namespace Chisel.Core
                 case StairsSurface.WallTop:
                 case StairsSurface.WallBottom:  return haveWall;
                 case StairsSurface.Column:      return haveColumn;
+                case StairsSurface.Base:        return haveBase;
                 default:                        return false;
             }
         }
+
+        // The parts every kind of stairs has a material for, used or not, so their materials are the same: the base,
+        // which is there only when the stairs start above the floor
+        public static bool IsAlwaysAPart(int index) { return (StairsSurface)index == StairsSurface.Base; }
 
         // A face's surface from what it is part of and the way it faces, where a step's front faces +z and its sides
         // face along x

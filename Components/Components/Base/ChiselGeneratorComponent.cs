@@ -112,6 +112,11 @@ namespace Chisel.Components
 
         public override string GetSurfaceName(int descriptionIndex) { return definition.GetSurfaceName(descriptionIndex); }
         public override bool IsSurfaceUsed(int descriptionIndex) { return definition.IsSurfaceUsed(descriptionIndex); }
+        public override bool IsSurfaceListed(int descriptionIndex)
+        {
+            return definition.IsSurfaceUsed(descriptionIndex) ||
+                   (definition is IChiselListedSurfaces listed && listed.IsSurfaceAlwaysListed(descriptionIndex));
+        }
         public override IChiselGeneratorParts Parts => definition.Parts;
         public override ChiselSurface GetSurface(int descriptionIndex) { return surfaceArray.GetSurface(descriptionIndex); }
         public override SurfaceDetails GetSurfaceDetails(int descriptionIndex) { return surfaceArray.GetSurfaceDetails(descriptionIndex); }
@@ -196,6 +201,10 @@ namespace Chisel.Components
 
         /// <summary>Whether the generator, as it is set up now, has faces with the surface at this place</summary>
         public virtual bool IsSurfaceUsed(int descriptionIndex) { return true; }
+
+        /// <summary>Whether the surface is one of its parts in the Surface Browser and material presets: used now, or one
+        /// every generator of its kind has a material for</summary>
+        public virtual bool IsSurfaceListed(int descriptionIndex) { return IsSurfaceUsed(descriptionIndex); }
 
         /// <summary>What its brushes are (ChiselGeneratorParts), null when it doesn't say</summary>
         public virtual IChiselGeneratorParts Parts => null;

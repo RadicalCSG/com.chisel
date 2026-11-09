@@ -37,7 +37,7 @@ namespace Chisel.Core
     }
 
     [Serializable]
-    public struct ChiselLinearStairs : IBranchGenerator, IChiselSurfaceNames, IChiselGeneratorParts
+    public struct ChiselLinearStairs : IBranchGenerator, IChiselSurfaceNames, IChiselGeneratorParts, IChiselListedSurfaces
     {
         // TODO: set defaults using attributes?
         readonly static ChiselLinearStairs kDefaultSettings = new()
@@ -280,6 +280,8 @@ namespace Chisel.Core
 
         [BurstDiscard]
         public readonly string GetSurfaceName(int index) { return StairsSurfaces.Name(index); }
+
+        public readonly bool IsSurfaceAlwaysListed(int index) { return StairsSurfaces.IsAlwaysAPart(index); }
 
         [BurstDiscard]
         public readonly bool IsSurfaceUsed(int index)

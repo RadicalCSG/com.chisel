@@ -87,9 +87,14 @@ namespace Chisel.Editors
                 if (saved.Length > 1 && saved[0] == '-')
                     model.SetFilter(saved.Substring(1), ChiselSurfaceBrowserModel.TraitFilter.Without);
             }
+            model.presets = presetMode;
+            // a list kept from before the modes, or one that doesn't apply to presets
+            if (quick < 0 || quick > (int)ChiselSurfaceBrowserModel.QuickAccess.NotSetUp ||
+                (presetMode && !ChiselSurfaceBrowserModel.AppliesToPresets((ChiselSurfaceBrowserModel.QuickAccess)quick)))
+                quick = (int)ChiselSurfaceBrowserModel.QuickAccess.All;
             wantsMouseMove = true;     // moving the mouse cancels a rename that's waiting to start
             EditorApplication.projectChanged += MarkDirty;
-            Selection.selectionChanged       += Repaint;
+            Selection.selectionChanged       += OnSelectionChanged;
             Undo.undoRedoPerformed           += MarkDirty;
             dirty = true;
         }
@@ -97,7 +102,7 @@ namespace Chisel.Editors
         void OnDisable()
         {
             EditorApplication.projectChanged -= MarkDirty;
-            Selection.selectionChanged       -= Repaint;
+            Selection.selectionChanged       -= OnSelectionChanged;
             Undo.undoRedoPerformed           -= MarkDirty;
             if (metadataEditor) DestroyImmediate(metadataEditor);
             if (previewEditor)  DestroyImmediate(previewEditor);
@@ -186,10 +191,11 @@ namespace Chisel.Editors
             {
                 var shown = model.FilterOf(trait.name) != ChiselSurfaceBrowserModel.TraitFilter.Without;
                 var rect = GUILayoutUtility.GetRect(new GUIContent(trait.name), EditorStyles.label, GUILayout.ExpandWidth(true));
-                var newShown = EditorGUI.ToggleLeft(new Rect(rect.x + 4, rect.y, rect.width - 52, rect.height),
+                var count = model.CountWith(trait);
+                var countRect = CountRect(rect, count);
+                var newShown = EditorGUI.ToggleLeft(new Rect(rect.x + 4, rect.y, WidthBefore(countRect, rect.x + 4), rect.height),
                                                     new GUIContent(trait.name, "Show the materials with this"), shown);
-                GUI.Label(new Rect(rect.xMax - 44, rect.y, 40, rect.height), model.CountWith(trait).ToString(),
-                          new GUIStyle(EditorStyles.miniLabel) { alignment = TextAnchor.MiddleRight });
+                CountGUI(countRect, count);
                 if (newShown == shown)
                     continue;
                 model.SetFilter(trait.name, newShown ? ChiselSurfaceBrowserModel.TraitFilter.Any : ChiselSurfaceBrowserModel.TraitFilter.Without);
@@ -219,19 +225,46 @@ namespace Chisel.Editors
                     labels = ChiselAssetLabels.Get(asset)
                 });
             }
+            AddPresetItems(items);
             model.SetItems(items);
             folderTree = model.BuildFolders(includeHidden: false);
             labels  = model.Labels();
             Filter();
+            RenameNewPreset();
         }
 
         void Filter()
         {
             shown = model.Filter(search, (ChiselSurfaceBrowserModel.QuickAccess)quick, folders, label,
                                  (ChiselSurfaceBrowserModel.Sort)sort, item => ChiselSceneMaterialUsage.SurfacesUsing(Load(item)));
+            // a card being renamed that is no longer shown is renamed as typed so far, not left waiting
+            if (cardRenameGuid != null && !shown.Exists(item => item.guid == cardRenameGuid))
+            {
+                ChiselSurfaceBrowserModel.Item renamed = null;
+                foreach (var item in model.Items)
+                {
+                    if (item.guid == cardRenameGuid)
+                        renamed = item;
+                }
+                if (renamed != null) FinishCardRename(renamed);
+                else                 cardRenameGuid = null;
+            }
         }
 
-        void Select(string guid)
+        /// <summary>Shows one of the quick access lists, as clicking it does</summary>
+        internal void ShowQuickAccess(ChiselSurfaceBrowserModel.QuickAccess list)
+        {
+            quick = (int)list;
+            folders.Clear();
+            label = null;
+            Filter();
+        }
+
+        internal string SelectedGuid => selectedGuid;
+        internal IReadOnlyList<ChiselSurfaceBrowserModel.Item> Shown => shown;
+        internal bool IsRenamingCard => cardRenameGuid != null;
+
+        internal void Select(string guid)
         {
             selectedGuid = guid;
             newLabel = string.Empty;
@@ -255,8 +288,29 @@ namespace Chisel.Editors
             }
         }
 
+        // a click anywhere ends typing in a text field (a text field clicked on takes the keys again itself), as does
+        // the window losing focus
+        bool dropTextFocus;
+
+        internal static void DropTextFocus()
+        {
+            GUIUtility.keyboardControl = 0;
+            EditorGUIUtility.editingTextField = false;
+        }
+
+        /// <summary>Whether the arrow keys go through the grid: not while typing in a text field that has the keys</summary>
+        internal static bool GridTakesKeys(bool editingTextField, int keyboardControl)
+        {
+            return !editingTextField || keyboardControl == 0;
+        }
+
         void OnGUI()
         {
+            if (Event.current.type == EventType.MouseDown || dropTextFocus)
+            {
+                dropTextFocus = false;
+                DropTextFocus();
+            }
             Refresh();
             var full = new Rect(0, 0, position.width, position.height);
             var toolbar = new Rect(0, 0, full.width, EditorGUIUtility.singleLineHeight + 6);
@@ -357,6 +411,12 @@ namespace Chisel.Editors
             {
                 showSidebar = GUILayout.Toggle(showSidebar, new GUIContent("Sidebar", "Show quick access, filters, folders and labels"), EditorStyles.toolbarButton, GUILayout.ExpandWidth(false));
                 GUILayout.Space(4);
+                // materials or generator material presets: one or the other is listed
+                var materials = GUILayout.Toggle(!presetMode, new GUIContent("Materials", "List materials"), EditorStyles.toolbarButton, GUILayout.ExpandWidth(false));
+                var presets   = GUILayout.Toggle(presetMode,  new GUIContent("Presets", "List generator material presets"), EditorStyles.toolbarButton, GUILayout.ExpandWidth(false));
+                if (presets != presetMode && presets)                  SetPresetMode(true);
+                else if (materials != !presetMode && materials)        SetPresetMode(false);
+                GUILayout.Space(4);
                 EditorGUI.BeginChangeCheck();
                 search = EditorGUILayout.TextField(search, EditorStyles.toolbarSearchField, GUILayout.MinWidth(120), GUILayout.MaxWidth(360));
                 if (EditorGUI.EndChangeCheck())
@@ -379,18 +439,42 @@ namespace Chisel.Editors
         #region Sidebar
         static readonly string[] kQuickNames = { "All materials", "Favorites", "Recently used", "In this scene", "Unused in this scene", "Decals", "Not set up" };
 
+        string QuickName(int list)
+        {
+            return presetMode && list == (int)ChiselSurfaceBrowserModel.QuickAccess.All ? "All presets" : kQuickNames[list];
+        }
+
+        // a sidebar row's count, at its end: as wide as its number, so the name before it gets the rest of the row
+        const float kCountMargin = 4;
+        const float kCountGap    = 4;
+
+        internal static Rect CountRect(Rect row, int count)
+        {
+            var width = EditorStyles.miniLabel.CalcSize(new GUIContent(count.ToString())).x;
+            return new Rect(row.xMax - kCountMargin - width, row.y, width, row.height);
+        }
+
+        /// <summary>How wide something starting at x can be, up to a count with a gap before it</summary>
+        internal static float WidthBefore(Rect count, float x) { return Mathf.Max(0, count.x - kCountGap - x); }
+
+        static void CountGUI(Rect rect, int count)
+        {
+            GUI.Label(rect, count.ToString(), new GUIStyle(EditorStyles.miniLabel) { alignment = TextAnchor.MiddleRight });
+        }
+
         bool Row(string text, int count, bool selected, int depth = 0, bool greyed = false)
         {
             var rect = GUILayoutUtility.GetRect(new GUIContent(text), EditorStyles.label, GUILayout.ExpandWidth(true));
             if (selected)
                 EditorGUI.DrawRect(rect, new Color(0.24f, 0.48f, 0.9f, 0.5f));
-            var textRect = new Rect(rect.x + 6 + depth * 14, rect.y, rect.width - 50 - depth * 14, rect.height);
+            var textX    = rect.x + 6 + depth * 14;
+            var textRect = new Rect(textX, rect.y, count >= 0 ? WidthBefore(CountRect(rect, count), textX) : rect.xMax - textX, rect.height);
             var style = greyed ? EditorStyles.miniLabel : EditorStyles.label;
             var prev = GUI.color;
             if (greyed) GUI.color = new Color(prev.r, prev.g, prev.b, 0.5f);
             GUI.Label(textRect, greyed ? "<i>" + text + "</i>" : text, new GUIStyle(style) { richText = true });
             if (count >= 0)
-                GUI.Label(new Rect(rect.xMax - 44, rect.y, 40, rect.height), count.ToString(), new GUIStyle(EditorStyles.miniLabel) { alignment = TextAnchor.MiddleRight });
+                CountGUI(CountRect(rect, count), count);
             GUI.color = prev;
             return Event.current.type == EventType.MouseDown && Event.current.button == 0 && rect.Contains(Event.current.mousePosition);
         }
@@ -405,7 +489,9 @@ namespace Chisel.Editors
             GUILayout.Label("QUICK ACCESS", EditorStyles.miniBoldLabel);
             for (int i = 0; i < kQuickNames.Length; i++)
             {
-                if (Row(kQuickNames[i], model.Count((ChiselSurfaceBrowserModel.QuickAccess)i), quick == i && folders.Count == 0 && string.IsNullOrEmpty(label)))
+                if (presetMode && !ChiselSurfaceBrowserModel.AppliesToPresets((ChiselSurfaceBrowserModel.QuickAccess)i))
+                    continue;
+                if (Row(QuickName(i), model.Count((ChiselSurfaceBrowserModel.QuickAccess)i), quick == i && folders.Count == 0 && string.IsNullOrEmpty(label)))
                 {
                     quick = i; folders.Clear(); label = null;
                     Filter();
@@ -413,7 +499,9 @@ namespace Chisel.Editors
                 }
             }
 
-            TraitsGUI();
+            // the filters are a material's
+            if (!presetMode)
+                TraitsGUI();
 
             GUILayout.Space(6);
             GUILayout.Label("FOLDERS", EditorStyles.miniBoldLabel);
@@ -456,8 +544,9 @@ namespace Chisel.Editors
                     if (expanded) expandedFolders.Add(node.path); else expandedFolders.Remove(node.path);
                 }
             }
-            GUI.Label(new Rect(foldRect.xMax, rect.y, rect.width - foldRect.xMax - 44, rect.height), new GUIContent(node.name, node.path));
-            GUI.Label(new Rect(rect.xMax - 44, rect.y, 40, rect.height), node.count.ToString(), new GUIStyle(EditorStyles.miniLabel) { alignment = TextAnchor.MiddleRight });
+            var countRect = CountRect(rect, node.count);
+            GUI.Label(new Rect(foldRect.xMax, rect.y, WidthBefore(countRect, foldRect.xMax), rect.height), new GUIContent(node.name, node.path));
+            CountGUI(countRect, node.count);
 
             if (evt.type == EventType.MouseDown && evt.button == 0 && hovering && !foldRect.Contains(evt.mousePosition))
             {
@@ -525,13 +614,20 @@ namespace Chisel.Editors
         #region Grid
         string HeaderText()
         {
-            var what = folders.Count == 1 ? folders[0] : folders.Count > 1 ? $"{folders.Count} folders" : (!string.IsNullOrEmpty(label) ? "Label: " + label : kQuickNames[quick]);
-            return $"{what}  -  {shown.Count} material{(shown.Count == 1 ? "" : "s")}";
+            var what = folders.Count == 1 ? folders[0] : folders.Count > 1 ? $"{folders.Count} folders" : (!string.IsNullOrEmpty(label) ? "Label: " + label : QuickName(quick));
+            var kind = presetMode ? "preset" : "material";
+            return $"{what}  -  {shown.Count} {kind}{(shown.Count == 1 ? "" : "s")}";
         }
 
         void GridGUI(Rect rect)
         {
-            GUI.Label(new Rect(rect.x + 8, rect.y + 2, rect.width - 16, kHeaderHeight), HeaderText(), EditorStyles.boldLabel);
+            var headerWidth = rect.width - 16;
+            if (ShowsNewPreset)
+            {
+                headerWidth -= kNewPresetWidth + 4;
+                NewPresetButtonGUI(new Rect(rect.xMax - 8 - kNewPresetWidth, rect.y + 3, kNewPresetWidth, kHeaderHeight - 4));
+            }
+            GUI.Label(new Rect(rect.x + 8, rect.y + 2, headerWidth, kHeaderHeight), HeaderText(), EditorStyles.boldLabel);
             var area = new Rect(rect.x, rect.y + kHeaderHeight + 2, rect.width, rect.height - kHeaderHeight - 2);
             var cell = thumbSize + 12;
             var cellHeight = thumbSize + EditorGUIUtility.singleLineHeight + 14;
@@ -576,6 +672,11 @@ namespace Chisel.Editors
 
         void CardGUI(Rect rect, ChiselSurfaceBrowserModel.Item item)
         {
+            if (item.preset)
+            {
+                PresetCardGUI(rect, item);
+                return;
+            }
             var evt = Event.current;
             var selected = item.guid == selectedGuid;
             if (selected)
@@ -737,7 +838,7 @@ namespace Chisel.Editors
         bool focusRename;
 
         // renaming in place on a card
-        const double kRenameDelay       = 2.0;
+        const double kRenameDelay       = 1.0;
         const float  kRenameStillPixels = 4;
         string  cardRenameGuid;
         string  cardRenameText;
@@ -752,7 +853,7 @@ namespace Chisel.Editors
             return now - clickTime >= kRenameDelay && (mouse - clickMouse).sqrMagnitude <= kRenameStillPixels * kRenameStillPixels;
         }
 
-        void StartRename(ChiselSurfaceBrowserModel.Item item)
+        internal void StartRename(ChiselSurfaceBrowserModel.Item item)
         {
             pendingRenameGuid = null;
             cardRenameGuid    = item.guid;
@@ -788,7 +889,7 @@ namespace Chisel.Editors
                 if (evt.keyCode == KeyCode.Escape)
                 {
                     cardRenameGuid = null;
-                    GUIUtility.keyboardControl = 0;
+                    DropTextFocus();
                     evt.Use();
                     Repaint();
                     return;
@@ -819,7 +920,7 @@ namespace Chisel.Editors
         {
             var text = cardRenameText;
             cardRenameGuid = null;
-            GUIUtility.keyboardControl = 0;
+            DropTextFocus();
             var error = Rename(item.path, text);
             if (error != null)
                 ShowNotification(new GUIContent(error));
@@ -866,7 +967,7 @@ namespace Chisel.Editors
         void KeyboardGUI(int columns)
         {
             var evt = Event.current;
-            if (evt.type != EventType.KeyDown || shown.Count == 0 || EditorGUIUtility.editingTextField)
+            if (evt.type != EventType.KeyDown || shown.Count == 0 || !GridTakesKeys(EditorGUIUtility.editingTextField, GUIUtility.keyboardControl))
                 return;
             var index = shown.FindIndex(item => item.guid == selectedGuid);
             var next = index;
@@ -882,7 +983,8 @@ namespace Chisel.Editors
             if (shown[next].guid != selectedGuid)
             {
                 Select(shown[next].guid);
-                ApplyOnSelection(Load(shown[next]));
+                if (shown[next].preset) ApplyPresetOnSelection(LoadPreset(shown[next]));
+                else                    ApplyOnSelection(Load(shown[next]));
             }
             evt.Use();
         }
@@ -907,6 +1009,11 @@ namespace Chisel.Editors
 
         void DetailsContentGUI(ChiselSurfaceBrowserModel.Item item, Material material, float contentWidth)
         {
+            if (item != null && item.preset)
+            {
+                PresetDetailsGUI(item, LoadPreset(item), contentWidth);
+                return;
+            }
             if (material == null)
             {
                 GUILayout.Label("Select a material to see its details.", EditorStyles.centeredGreyMiniLabel);
@@ -1049,7 +1156,7 @@ namespace Chisel.Editors
         }
 
         // Its labels as chips; Enter adds the typed one
-        void LabelsGUI(Material material, float width)
+        void LabelsGUI(UnityEngine.Object material, float width)
         {
             var current = ChiselAssetLabels.Get(material);
             using (new EditorGUILayout.HorizontalScope())
@@ -1057,7 +1164,7 @@ namespace Chisel.Editors
                 GUILayout.Label("Labels", EditorStyles.miniBoldLabel);
                 GUILayout.FlexibleSpace();
             }
-            Chips(current, width, label => { ChiselAssetLabels.Remove(material, label); MarkDirty(); }, "x");
+            Chips(current, width, label => { ChiselAssetLabels.Remove(material, label); MarkDirty(); }, "x", applied: true);
 
             const string kControl = "ChiselNewLabel";
             var evt = Event.current;
@@ -1087,32 +1194,76 @@ namespace Chisel.Editors
             Chips(suggestions.ToArray(), width, label => { ChiselAssetLabels.Add(material, label); newLabel = string.Empty; MarkDirty(); }, "+", prefix: true);
         }
 
-        static void Chips(string[] items, float maxWidth, Action<string> clicked, string mark, bool prefix = false)
+        internal const int kChipSpacing = 3;
+
+        /// <summary>A label chip: apart from the ones beside and below it</summary>
+        internal static GUIStyle ChipStyle()
+        {
+            return new GUIStyle(EditorStyles.miniButton)
+            {
+                stretchWidth = false,
+                margin = new RectOffset(0, kChipSpacing, 0, kChipSpacing)
+            };
+        }
+
+        /// <summary>The tint of a label chip: a label it has stands out from the ones that can be added</summary>
+        internal static Color ChipTint(bool applied)
+        {
+            return applied ? new Color(0.45f, 0.7f, 1f) : Color.white;
+        }
+
+        /// <summary>The outline of a label chip: a label it has is outlined, one that can be added isn't (clear)</summary>
+        internal static Color ChipBorder(bool applied)
+        {
+            return applied ? new Color(0.4f, 0.7f, 1f, 1f) : Color.clear;
+        }
+
+        // rounded as a button's corners are
+        internal const float kChipCornerRadius = 3;
+
+        static void DrawBorder(Rect rect, Color color)
+        {
+            GUI.DrawTexture(rect, Texture2D.whiteTexture, ScaleMode.StretchToFill, true, 0, color, 1, kChipCornerRadius);
+        }
+
+        // applied: the item's own labels (a click removes one), else labels that can be added
+        static void Chips(string[] items, float maxWidth, Action<string> clicked, string mark, bool prefix = false, bool applied = false)
         {
             if (items.Length == 0)
                 return;
-            var style = new GUIStyle(EditorStyles.miniButton) { stretchWidth = false };
-            var width = 0f;
-            EditorGUILayout.BeginHorizontal();
-            foreach (var item in items)
+            var style = ChipStyle();
+            var oldTint = GUI.backgroundColor;
+            GUI.backgroundColor = ChipTint(applied);
+            try
             {
-                var text = prefix ? mark + " " + item : item + " " + mark;
-                var size = style.CalcSize(new GUIContent(text)).x + 4;
-                if (width + size > maxWidth && width > 0)
+                var width = 0f;
+                EditorGUILayout.BeginHorizontal();
+                foreach (var item in items)
                 {
-                    EditorGUILayout.EndHorizontal();
-                    EditorGUILayout.BeginHorizontal();
-                    width = 0;
+                    var text = prefix ? mark + " " + item : item + " " + mark;
+                    var size = style.CalcSize(new GUIContent(text)).x + style.margin.horizontal;
+                    if (width + size > maxWidth && width > 0)
+                    {
+                        GUILayout.FlexibleSpace();
+                        EditorGUILayout.EndHorizontal();
+                        EditorGUILayout.BeginHorizontal();
+                        width = 0;
+                    }
+                    width += size;
+                    var pressed = GUILayout.Button(text, style);
+                    var border = ChipBorder(applied);
+                    if (border.a > 0 && Event.current.type == EventType.Repaint)
+                        DrawBorder(GUILayoutUtility.GetLastRect(), border);
+                    if (pressed)
+                    {
+                        clicked(item);
+                        GUIUtility.ExitGUI();
+                    }
                 }
-                width += size;
-                if (GUILayout.Button(text, style))
-                {
-                    clicked(item);
-                    GUIUtility.ExitGUI();
-                }
+                GUILayout.FlexibleSpace();
+                EditorGUILayout.EndHorizontal();
             }
-            GUILayout.FlexibleSpace();
-            EditorGUILayout.EndHorizontal();
+            finally { GUI.backgroundColor = oldTint; }
         }
 
         static void SelectSurfacesUsing(Material material)

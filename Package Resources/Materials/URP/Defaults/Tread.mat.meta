@@ -1,5 +1,8 @@
 fileFormatVersion: 2
 guid: b44b3d7cb1546df4798208bd3771a04e
+labels:
+- default
+- tread
 NativeFormatImporter:
   externalObjects: {}
   mainObjectFileID: 2100000

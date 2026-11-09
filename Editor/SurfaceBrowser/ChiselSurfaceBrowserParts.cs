@@ -44,18 +44,16 @@ namespace Chisel.Editors
                 return parts;
             for (int i = 0; i < surfaces.Length; i++)
             {
-                if (!first.IsSurfaceUsed(i))
+                if (!first.IsSurfaceListed(i))
                     continue;
-                var name = first.GetSurfaceName(i);
-                if (string.IsNullOrEmpty(name))
-                    name = "Surface " + (i + 1);
+                var name = ChiselGeneratorMaterialPreset.PartName(first, i);
                 var part = new Part { index = i, name = name, material = surfaces[i]?.RenderMaterial };
                 var shared = true;
                 for (int g = 1; g < generators.Count && shared; g++)
                 {
                     var other = generators[g];
                     var otherSurfaces = other != null ? other.SurfaceDefinition?.surfaces : null;
-                    if (otherSurfaces == null || i >= otherSurfaces.Length || !other.IsSurfaceUsed(i) ||
+                    if (otherSurfaces == null || i >= otherSurfaces.Length || !other.IsSurfaceListed(i) ||
                         (other.GetSurfaceName(i) ?? string.Empty) != (first.GetSurfaceName(i) ?? string.Empty))
                         shared = false;
                     else if (otherSurfaces[i]?.RenderMaterial != part.material)
@@ -180,6 +178,7 @@ namespace Chisel.Editors
             GUILayout.Space(6);
             var title = generators.Count == 1 ? generators[0].name : $"{generators.Count} generators";
             GUILayout.Label(new GUIContent("PARTS OF " + title.ToUpperInvariant(), "Drop a material on a part to put it there"), EditorStyles.miniBoldLabel);
+            PresetButtonsGUI(generators);
             var evt = Event.current;
             // the parts the surfaces selected in the scene are of, lighter than the one clicked
             var inScene = PartsOfSurfaces(generators, ChiselSurfaceSelectionManager.Selection);
@@ -254,6 +253,28 @@ namespace Chisel.Editors
             }
         }
 
+        // a preset on all the parts at once, or the parts as they are saved as one
+        void PresetButtonsGUI(List<ChiselGeneratorComponent> generators)
+        {
+            using (new EditorGUILayout.HorizontalScope())
+            {
+                GUILayout.Space(4);
+                var apply = new GUIContent("Apply Preset...", "Put a material preset on all of their parts at once");
+                var rect = GUILayoutUtility.GetRect(apply, EditorStyles.miniButtonLeft);
+                if (GUI.Button(rect, apply, EditorStyles.miniButtonLeft))
+                    ChiselGeneratorMaterialPresets.ApplyMenu(generators, MarkDirty).DropDown(rect);
+                using (new EditorGUI.DisabledScope(generators.Count != 1))
+                {
+                    if (GUILayout.Button(new GUIContent("Save as Preset", "Save the materials of its parts as a new preset"), EditorStyles.miniButtonRight))
+                    {
+                        NewPreset(generators[0]);
+                        GUIUtility.ExitGUI();
+                    }
+                }
+                GUILayout.Space(4);
+            }
+        }
+
         // the list of parts has the arrow keys (after a part was clicked), not the grid
         bool partsFocused;
 
@@ -281,7 +302,12 @@ namespace Chisel.Editors
             ChiselOutlineRenderer.ShowSelectedSurfaces = selectedPart >= 0 && hasFocus;
         }
 
-        void OnLostFocus() { UpdatePartHighlight(); }
+        void OnLostFocus()
+        {
+            UpdatePartHighlight();
+            dropTextFocus = true;
+            Repaint();
+        }
 
         // the material's menu: put it on a part of the selected generators
         void AddPartsMenu(GenericMenu menu, Material material)

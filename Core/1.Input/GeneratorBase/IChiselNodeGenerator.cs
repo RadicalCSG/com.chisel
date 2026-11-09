@@ -24,6 +24,13 @@ namespace Chisel.Core
         bool IsSurfaceUsed(int index);
     }
 
+    /// <summary>A generator with surfaces that are listed as its parts (in the Surface Browser and material presets) even
+    /// when it isn't set up to use them now, so generators of a kind all have materials for the same parts</summary>
+    public interface IChiselListedSurfaces
+    {
+        bool IsSurfaceAlwaysListed(int index);
+    }
+
     /// <summary>
     /// A generator made of several brushes that says what each is: a role ("Step", "Tread", "Side") per brush in build
     /// order, so something on a brush (a decal) keeps meaning the same part as the generator changes. A generator that
@@ -86,7 +93,7 @@ namespace Chisel.Core
     }
 
     [System.Serializable]
-    public abstract class SerializedBrushGenerator<BrushGenerator> : IChiselNodeGenerator
+    public abstract class SerializedBrushGenerator<BrushGenerator> : IChiselNodeGenerator, IChiselListedSurfaces
         where BrushGenerator : unmanaged, IBrushGenerator
     {
         [HideFoldout] public BrushGenerator settings;
@@ -97,6 +104,7 @@ namespace Chisel.Core
 
         public virtual string GetSurfaceName(int index) { return (settings is IChiselSurfaceNames names) ? names.GetSurfaceName(index) : null; }
         public virtual bool IsSurfaceUsed(int index) { return (settings is IChiselSurfaceNames names) ? names.IsSurfaceUsed(index) : true; }
+        public virtual bool IsSurfaceAlwaysListed(int index) { return settings is IChiselListedSurfaces listed && listed.IsSurfaceAlwaysListed(index); }
         public virtual IChiselGeneratorParts Parts => settings as IChiselGeneratorParts;
 
         public virtual void Reset() { settings.Reset(); }
@@ -183,7 +191,7 @@ namespace Chisel.Core
     }
 
     [System.Serializable]
-    public abstract class SerializedBranchGenerator<BranchGenerator> : IChiselNodeGenerator
+    public abstract class SerializedBranchGenerator<BranchGenerator> : IChiselNodeGenerator, IChiselListedSurfaces
         where BranchGenerator : unmanaged, IBranchGenerator
     {
         [HideFoldout] public BranchGenerator settings;
@@ -194,6 +202,7 @@ namespace Chisel.Core
 
         public virtual string GetSurfaceName(int index) { return (settings is IChiselSurfaceNames names) ? names.GetSurfaceName(index) : null; }
         public virtual bool IsSurfaceUsed(int index) { return (settings is IChiselSurfaceNames names) ? names.IsSurfaceUsed(index) : true; }
+        public virtual bool IsSurfaceAlwaysListed(int index) { return settings is IChiselListedSurfaces listed && listed.IsSurfaceAlwaysListed(index); }
         public virtual IChiselGeneratorParts Parts => settings as IChiselGeneratorParts;
 
         public virtual void Reset()     { settings.Reset(); }

@@ -1181,6 +1181,7 @@ namespace Chisel.Editors
                 {
                     serializedObject.ApplyModifiedProperties();
                 }
+                ChiselGeneratorMaterialPresets.InspectorGUI(targets);
             }
             catch (ExitGUIException) { }
             catch (Exception ex) { Debug.LogException(ex); }

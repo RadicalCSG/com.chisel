@@ -2,6 +2,7 @@ fileFormatVersion: 2
 guid: 9ad9332ac60226d43a844ce2a96b2f80
 labels:
 - AssetMetadata
+- default
 - paintable
 NativeFormatImporter:
   externalObjects: {}
