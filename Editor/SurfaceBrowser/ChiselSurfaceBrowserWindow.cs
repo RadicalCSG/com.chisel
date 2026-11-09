@@ -1146,24 +1146,23 @@ namespace Chisel.Editors
         // The tile choice of the selected surfaces using this hotspot material, and the way to its layout
         void HotspotBoxGUI(Material material, ChiselSurfaceMetadata metadata)
         {
-            int using_ = 0, pinned = 0;
-            foreach (var surface in ChiselSurfaceSelectionManager.Selection)
-            {
-                if (surface.RenderMaterial != material)
-                    continue;
-                using_++;
-                var details = surface.Surface?.surfaceDetails;
-                if (details.HasValue && details.Value.hotspot.pinnedTile != 0)
-                    pinned++;
-            }
+            var group = HotspotTileChoice.GroupsOf(ChiselSurfaceSelectionManager.Selection, (_, _) => null).Find(g => g.material == material);
+            var using_ = group?.Count ?? 0;
             using (new EditorGUILayout.VerticalScope(EditorStyles.helpBox))
             {
-                var choice = using_ == 0 ? "-" : pinned == 0 ? "Automatic" : pinned == using_ ? "Pinned" : "Mixed";
-                InfoRow("Hotspot tile", choice);
+                InfoRow("Hotspot tile", group != null ? HotspotTileChoice.ChoiceOf(group) : "-");
                 var count = ChiselSurfaceSelectionManager.Selection.Count;
                 GUILayout.Label($"{using_} of the {count} selected surface{(count == 1 ? "" : "s")} use it", EditorStyles.miniLabel);
-                if (GUILayout.Button("Edit layout..."))
-                    ChiselHotspotLayoutWindow.Open(metadata.hotspotLayout, material);
+                using (new EditorGUILayout.HorizontalScope())
+                {
+                    using (new EditorGUI.DisabledScope(group == null))
+                    {
+                        if (GUILayout.Button("Choose tile..."))
+                            HotspotTilePicker.Show(GUILayoutUtility.GetLastRect(), () => ChiselSurfaceSelectionManager.Selection, material);
+                    }
+                    if (GUILayout.Button("Edit layout..."))
+                        ChiselHotspotLayoutWindow.Open(metadata.hotspotLayout, material);
+                }
             }
         }
 

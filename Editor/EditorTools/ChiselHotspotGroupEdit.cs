@@ -62,29 +62,62 @@ namespace Chisel.Editors
         // material (ChiselSurfaceMetadata.hotspotSheets, by place)
         public static HashSet<UnityEngine.Vector2Int> FitsOf(SurfaceReference surface, ChiselHotspotLayout layout, UnityEngine.Material material = null)
         {
-            if (surface == null || !surface.node || !surface.brush.Valid || layout == null)
+            if (layout == null)
                 return null;
+            using var tiles = new Unity.Collections.NativeList<HotspotTileData>(Unity.Collections.Allocator.Temp);
+            var sheetOf = new List<int>();
+            TilesOf(layout, material, tiles, sheetOf);
+            return FitsOf(surface, tiles, sheetOf);
+        }
+
+        // The tiles matching chooses from for a material: its layout's (sheet 0), then those of each other sheet drawn
+        // with it (ChiselSurfaceMetadata.hotspotSheets, by place), and the sheet each is of
+        public static void TilesOf(ChiselHotspotLayout layout, UnityEngine.Material material, Unity.Collections.NativeList<HotspotTileData> tiles, List<int> sheetOf)
+        {
+            tiles.Clear();
+            sheetOf.Clear();
+            if (layout == null)
+                return;
+            HotspotMatcher.AddTiles(layout, tiles, out _);
+            while (sheetOf.Count < tiles.Length) sheetOf.Add(0);
+            var metadata = material != null ? material.GetMetadataOfType<ChiselSurfaceMetadata>() : null;
+            for (int i = 0; metadata != null && metadata.hotspotSheets != null && i < metadata.hotspotSheets.Count; i++)
+            {
+                var sheet = metadata.hotspotSheets[i];
+                var sheetLayout = sheet != null && sheet != material ? sheet.GetMetadataOfType<ChiselSurfaceMetadata>()?.hotspotLayout : null;
+                if (sheetLayout == null)
+                    continue;
+                HotspotMatcher.AddTiles(sheetLayout, tiles, out _);
+                while (sheetOf.Count < tiles.Length) sheetOf.Add(i + 1);
+            }
+        }
+
+        // A surface's shape as matching saw it when it was last mapped; false when not known
+        static bool TryShapeOf(SurfaceReference surface, out HotspotShape shape)
+        {
+            shape = default;
+            if (surface == null || !surface.node || !surface.brush.Valid)
+                return false;
             var model = surface.node.hierarchyItem.Model;
             if (!model || !model.Node.Valid)
-                return null;
+                return false;
             var lookups = ChiselTreeLookup.Value;
             if (!lookups.HasTree(model.Node))
-                return null;
+                return false;
             var data = lookups[model.Node];
             data.lastJobHandle.Complete();
             if (!data.brushRenderBufferLookup.IsCreated ||
                 !data.brushRenderBufferLookup.TryGetValue(CompactHierarchyManager.GetCompactNodeID(surface.brush), out var buffer) || !buffer.IsCreated)
-                return null;
+                return false;
             ref var surfaces = ref buffer.Value.surfaces;
             if (surface.surfaceIndex < 0 || surface.surfaceIndex >= surfaces.Length)
-                return null;
+                return false;
             ref var drawn = ref surfaces[surface.surfaceIndex];
             var source = drawn.hotspotSource;
             if (source.layout == 0 || drawn.colliderVertices.Length == 0)
-                return null;
+                return false;
             var positions = new Unity.Collections.NativeArray<Unity.Mathematics.float3>(drawn.colliderVertices.Length, Unity.Collections.Allocator.Temp);
             var indices   = new Unity.Collections.NativeArray<int>(drawn.indices.Length, Unity.Collections.Allocator.Temp);
-            HotspotShape shape;
             try
             {
                 for (int i = 0; i < positions.Length; i++)
@@ -99,20 +132,14 @@ namespace Chisel.Editors
                 positions.Dispose();
                 indices.Dispose();
             }
-            using var tiles = new Unity.Collections.NativeList<HotspotTileData>(Unity.Collections.Allocator.Temp);
-            var sheetOf = new List<int>();
-            HotspotMatcher.AddTiles(layout, tiles, out _);
-            while (sheetOf.Count < tiles.Length) sheetOf.Add(0);
-            var metadata = material != null ? material.GetMetadataOfType<ChiselSurfaceMetadata>() : null;
-            for (int i = 0; metadata != null && metadata.hotspotSheets != null && i < metadata.hotspotSheets.Count; i++)
-            {
-                var sheet = metadata.hotspotSheets[i];
-                var sheetLayout = sheet != null && sheet != material ? sheet.GetMetadataOfType<ChiselSurfaceMetadata>()?.hotspotLayout : null;
-                if (sheetLayout == null)
-                    continue;
-                HotspotMatcher.AddTiles(sheetLayout, tiles, out _);
-                while (sheetOf.Count < tiles.Length) sheetOf.Add(i + 1);
-            }
+            return true;
+        }
+
+        // (sheet, id) of the tiles (TilesOf) a surface can take; null when its shape is not known
+        public static HashSet<UnityEngine.Vector2Int> FitsOf(SurfaceReference surface, Unity.Collections.NativeList<HotspotTileData> tiles, List<int> sheetOf)
+        {
+            if (!TryShapeOf(surface, out var shape))
+                return null;
             var fits = new HashSet<UnityEngine.Vector2Int>();
             for (int t = 0; t < tiles.Length; t++)
             {

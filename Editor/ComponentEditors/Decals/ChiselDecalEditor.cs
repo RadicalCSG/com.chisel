@@ -293,26 +293,13 @@ namespace Chisel.Editors
             using (new EditorGUI.PropertyScope(rect, kImageContent, tile))
             {
                 var field = EditorGUI.PrefixLabel(rect, kImageContent);
-                var name  = tile.hasMultipleDifferentValues ? "—" : tile.intValue == 0 ? kWholeTextureContent.text : HotspotTilePicker.NameOf(layout, tile.intValue);
+                var name  = tile.hasMultipleDifferentValues ? HotspotTileChoice.kDash : tile.intValue == 0 ? kWholeTextureContent.text : HotspotTileChoice.NameOf(layout, tile.intValue);
                 if (string.IsNullOrEmpty(name))
                     name = "Missing Tile " + tile.intValue;
                 if (!GUI.Button(field, name, EditorStyles.popup))
                     return;
-                var pages = HotspotTransformGUI.PagesOf((Material)material.objectReferenceValue, layout).FindAll(page => page.sheet == 0);
-                var decals = targets;
-                var current = tile.hasMultipleDifferentValues ? -1 : tile.intValue;
-                PopupWindow.Show(field, new HotspotTilePicker(pages, null, new Vector2Int(0, current), picked =>
-                {
-                    Undo.RecordObjects(decals, "Decal Image");
-                    foreach (var decal in decals)
-                    {
-                        if (decal is ChiselDecalComponent component)
-                        {
-                            component.ImageTile = picked.y;
-                            EditorUtility.SetDirty(component);
-                        }
-                    }
-                }, kWholeTextureContent));
+                var decals = System.Array.ConvertAll(targets, target => target as ChiselDecalComponent);
+                PopupWindow.Show(field, new DecalImagePicker(decals, (Material)material.objectReferenceValue, layout));
             }
         }
 
