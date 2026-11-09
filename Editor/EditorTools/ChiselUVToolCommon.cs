@@ -348,7 +348,7 @@ namespace Chisel.Editors
 			var prevIndent = EditorGUI.indentLevel;
 			EditorGUI.indentLevel = 0;
 			{
-				if (renderMaterialProp != null) EditorGUI.PropertyField(renderMaterialPropRect, renderMaterialProp, GUIContent.none, false);
+				if (renderMaterialProp != null) ChiselMaterialField.Draw(renderMaterialPropRect, renderMaterialProp);
                 if (renderMaterialProp != null)
                 { 
 				    if (surfaceDestinationFlagsProp != null)
