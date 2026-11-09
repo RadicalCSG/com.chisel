@@ -3,21 +3,22 @@ using UnityEngine;
 
 namespace Chisel.Editors
 {
-    // The Surface Browser's card icons, drawn so they read on any thumbnail: a favorite star to click, and a lock on
-    // what the browser doesn't change
+    // The Surface Browser's card icons: a favorite star to click, and a lock on what the browser doesn't change
     static class ChiselSurfaceBrowserIcons
     {
-        // the star's click area and the lock's, in the thumbnail's top right and bottom left corners
-        internal const float kStarSize = 24;
-        internal const float kLockSize = 20;
+        // the star's click area and the lock's, in the thumbnail's top right and top left corners
+        internal const float kStarSize = 18;
+        internal const float kLockSize = 16;
 
-        static readonly Color kBacking   = new(0, 0, 0, 0.55f);
         static readonly Color kFavorite  = new(1f, 0.8f, 0.2f);
         static readonly Color kNotYet    = new(1, 1, 1, 0.75f);
         static readonly Color kLock      = new(1, 1, 1, 0.9f);
 
         internal static Rect StarRect(Rect thumb) => new(thumb.xMax - kStarSize - 2, thumb.y + 2, kStarSize, kStarSize);
-        internal static Rect LockRect(Rect thumb) => new(thumb.x + 2, thumb.yMax - kLockSize - 2, kLockSize, kLockSize);
+        internal static Rect LockRect(Rect thumb) => new(thumb.x + 2, thumb.y + 2, kLockSize, kLockSize);
+
+        // Where a card's top left label goes: after the lock when it has one
+        internal static float LabelX(Rect thumb, bool locked) => thumb.x + 2 + (locked ? kLockSize + 2 : 0);
 
         // A star to click on a card: filled when a favorite, an outline when not; true when clicked
         internal static bool FavoriteButton(Rect thumb, bool favorite)
@@ -51,9 +52,7 @@ namespace Chisel.Editors
 
         static void DrawStar(Rect rect, bool filled, bool hover)
         {
-            Handles.color = kBacking;
-            Handles.DrawSolidDisc(rect.center, Vector3.forward, rect.width * 0.5f);
-            var points = StarPoints(rect.center, rect.width * 0.4f, rect.width * 0.17f);
+            var points = StarPoints(rect.center, rect.width * 0.48f, rect.width * 0.2f);
             var color = filled ? kFavorite : kNotYet;
             if (hover) color = Color.Lerp(color, Color.white, 0.35f);
             if (filled)
@@ -78,12 +77,10 @@ namespace Chisel.Editors
             GUI.Label(rect, new GUIContent(string.Empty, reason));
         }
 
-        // A padlock in a rect, on a dark backing
+        // A padlock in a rect
         internal static void DrawLock(Rect rect)
         {
-            Handles.color = kBacking;
-            Handles.DrawSolidDisc(rect.center, Vector3.forward, rect.width * 0.5f);
-            var body = new Rect(rect.x + rect.width * 0.27f, rect.y + rect.height * 0.47f, rect.width * 0.46f, rect.height * 0.33f);
+            var body = new Rect(rect.x + rect.width * 0.2f, rect.y + rect.height * 0.45f, rect.width * 0.6f, rect.height * 0.45f);
             EditorGUI.DrawRect(body, kLock);
             // the shackle: half a ring over the body
             var center = new Vector2(rect.center.x, body.y);

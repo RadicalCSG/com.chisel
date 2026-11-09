@@ -715,10 +715,14 @@ namespace Chisel.Editors
             // indicators: a hotspot layout, a decal material, a favorite, its use in the scene
             var metadata = MetadataOf(material);
             var badge = new GUIStyle(EditorStyles.miniLabel) { normal = { textColor = Color.white } };
+            var readOnly = ReadOnlyReason(item.path);
+            if (readOnly != null)
+                ChiselSurfaceBrowserIcons.LockBadge(thumbRect, readOnly);
+            var labelX = ChiselSurfaceBrowserIcons.LabelX(thumbRect, readOnly != null);
             if (metadata != null && metadata.hotspotLayout != null)
-                GUI.Label(new Rect(thumbRect.x + 2, thumbRect.y + 2, 30, 14), new GUIContent("HS", "Has a hotspot layout"), badge);
+                GUI.Label(new Rect(labelX, thumbRect.y + 2, 30, 14), new GUIContent("HS", "Has a hotspot layout"), badge);
             else if (metadata != null && metadata.decalDefaults.isDecal)
-                GUI.Label(new Rect(thumbRect.x + 2, thumbRect.y + 2, 40, 14), new GUIContent("Decal", "A decal material"), badge);
+                GUI.Label(new Rect(labelX, thumbRect.y + 2, 40, 14), new GUIContent("Decal", "A decal material"), badge);
             var favorite = ChiselSurfaceBrowserPrefs.IsFavorite(item.guid);
             if (ChiselSurfaceBrowserIcons.FavoriteButton(thumbRect, favorite))
             {
@@ -726,9 +730,6 @@ namespace Chisel.Editors
                 Filter();
                 Repaint();
             }
-            var readOnly = ReadOnlyReason(item.path);
-            if (readOnly != null)
-                ChiselSurfaceBrowserIcons.LockBadge(thumbRect, readOnly);
             var cardIsDecal = ChiselSurfaceBrowserDecals.IsDecal(material);
             var uses = cardIsDecal ? ChiselSceneMaterialUsage.DecalsUsing(material) : ChiselSceneMaterialUsage.SurfacesUsing(material);
             if (uses > 0)

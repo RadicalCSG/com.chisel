@@ -199,18 +199,21 @@ namespace Chisel.Editors.Tests
             Assert.That(ChiselSurfaceBrowserWindow.IsEditable("Packages/anything/else.mat"), Is.False);
         }
 
-        // The favorite star is large enough to hit, and the lock keeps clear of it and of the use count
+        // The favorite star is large enough to hit, not much larger; the lock is in the top left, the card's label after it
         [Test]
         public void TheFavoriteStar_IsLargeEnoughToHit()
         {
             var thumb = new UnityEngine.Rect(0, 0, 96, 96);
             var star = ChiselSurfaceBrowserIcons.StarRect(thumb);
-            Assert.That(star.width, Is.GreaterThanOrEqualTo(22));
-            Assert.That(star.height, Is.GreaterThanOrEqualTo(22));
+            Assert.That(star.width, Is.InRange(18, 20));
+            Assert.That(star.height, Is.InRange(18, 20));
             Assert.That(thumb.Contains(star.min) && thumb.Contains(star.max), Is.True, "inside the thumbnail");
             var lockRect = ChiselSurfaceBrowserIcons.LockRect(thumb);
             Assert.That(lockRect.Overlaps(star), Is.False);
-            Assert.That(lockRect.xMax, Is.LessThan(thumb.xMax - 34), "clear of the use count in the bottom right");
+            Assert.That(lockRect.y, Is.LessThan(thumb.center.y), "at the top");
+            Assert.That(lockRect.x, Is.LessThan(thumb.center.x), "on the left");
+            Assert.That(ChiselSurfaceBrowserIcons.LabelX(thumb, locked: true), Is.GreaterThanOrEqualTo(lockRect.xMax), "a label goes after the lock");
+            Assert.That(ChiselSurfaceBrowserIcons.LabelX(thumb, locked: false), Is.LessThan(lockRect.xMax), "and where it was without one");
         }
 
         [Test]

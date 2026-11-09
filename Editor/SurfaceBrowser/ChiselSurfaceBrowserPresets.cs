@@ -187,7 +187,11 @@ namespace Chisel.Editors
 
             var badge = new GUIStyle(EditorStyles.miniLabel) { normal = { textColor = Color.white } };
             var kind = preset != null ? ChiselGeneratorMaterialPresets.KindName(preset.generator) : "Preset";
-            GUI.Label(new Rect(thumbRect.x + 2, thumbRect.y + 2, thumbRect.width - ChiselSurfaceBrowserIcons.kStarSize - 6, 14), new GUIContent("Preset", $"Materials for {kind}"), badge);
+            var readOnly = ReadOnlyReason(item.path);
+            if (readOnly != null)
+                ChiselSurfaceBrowserIcons.LockBadge(thumbRect, readOnly);
+            var labelX = ChiselSurfaceBrowserIcons.LabelX(thumbRect, readOnly != null);
+            GUI.Label(new Rect(labelX, thumbRect.y + 2, thumbRect.xMax - ChiselSurfaceBrowserIcons.kStarSize - 4 - labelX, 14), new GUIContent("Preset", $"Materials for {kind}"), badge);
             var favorite = ChiselSurfaceBrowserPrefs.IsFavorite(item.guid);
             if (ChiselSurfaceBrowserIcons.FavoriteButton(thumbRect, favorite))
             {
@@ -195,9 +199,6 @@ namespace Chisel.Editors
                 Filter();
                 Repaint();
             }
-            var readOnly = ReadOnlyReason(item.path);
-            if (readOnly != null)
-                ChiselSurfaceBrowserIcons.LockBadge(thumbRect, readOnly);
 
             var nameRect = new Rect(rect.x, thumbRect.yMax + 2, rect.width, EditorGUIUtility.singleLineHeight);
             if (cardRenameGuid == item.guid)
