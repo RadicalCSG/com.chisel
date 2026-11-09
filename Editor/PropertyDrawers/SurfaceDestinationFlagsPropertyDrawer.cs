@@ -40,6 +40,12 @@ namespace Chisel.Editors
             return LineHeight * (FitsTwoColumns(fieldWidth) ? 3 : 5);
         }
 
+        // Two toggles to a row when they fit and the rows were made for that, one to a row otherwise
+        internal static bool TwoColumnsIn(Rect position) => FitsTwoColumns(position.width) && position.height < LineHeight * 4;
+
+        // How high the toggles are drawn in this rect
+        internal static float UsedHeight(Rect position) => LineHeight * (TwoColumnsIn(position) ? 3 : 5);
+
         public override float GetPropertyHeight(SerializedProperty property, GUIContent label)
         {
             // the field's width isn't given here; the view's, less the label and margins, is close to it
@@ -81,7 +87,7 @@ namespace Chisel.Editors
                     var line = position;
                     line.height = EditorGUIUtility.singleLineHeight;
                     // one toggle per row when they don't fit two to a row, or when the rows were made for that
-                    if (FitsTwoColumns(position.width) && position.height < LineHeight * 4)
+                    if (TwoColumnsIn(position))
                     {
                         var textWidthLeft  = LeftTextWidth + kToggleWidth;
                         var textWidthRight = RightTextWidth + kToggleWidth;

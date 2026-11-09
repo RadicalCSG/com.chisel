@@ -146,6 +146,7 @@ namespace Chisel.Editors
         }
 
         bool initialized = false;
+        [NonSerialized] float materialWidth;
         SerializedObject serializedObject;
 		SerializedProperty chiselMaterialProp;
 
@@ -173,6 +174,30 @@ namespace Chisel.Editors
 				return physicsMaterialHeight + renderMaterialHeight + kSpacing + surfaceDestinationFlagsHeight;
 			}
 		}
+
+		// The material, its flags and its physics material (ShowMaterialProp) in this width: the flags one to a row when
+		// they don't fit two, beside a preview as high as all of it
+		internal static float MaterialPropHeight(float width)
+		{
+			var lines = 2 * EditorGUIUtility.singleLineHeight + kSpacing;
+			var height = DefaultMaterialSurfaceDestinationFlagsHeight;
+			var flagsWidth = width > kMinPreviewWidth ? width - height - kSpacing : width;
+			if (SurfaceDestinationFlagsPropertyDrawer.FitsTwoColumns(flagsWidth))
+				return height;
+			return lines + SurfaceDestinationFlagsPropertyDrawer.HeightFor(0);
+		}
+
+		// the room for the flags, between the material and the physics material, in ShowMaterialProp's position
+		internal static Rect FlagsRect(Rect position)
+		{
+			var lineHeight = EditorGUIUtility.singleLineHeight;
+			var rect = new Rect(position.x, position.y + lineHeight, position.width, position.height - 2 * lineHeight);
+			if (position.width > kMinPreviewWidth)
+				rect.xMin += position.height + kSpacing;
+			return rect;
+		}
+
+		const float kMinPreviewWidth = 260;
 
 		static void GetAllUnityObjects(SerializedProperty prop, List<UnityEngine.Object> output)
 		{
@@ -277,22 +302,21 @@ namespace Chisel.Editors
 			var physicsRect = position;
 
 			var renderMaterialProp = chiselMaterialProp.FindPropertyRelative(ChiselMaterial.kMaterialFieldName);
-			var showMaterial = (position.width > 260 && renderMaterialProp != null);
+			var showMaterial = (position.width > kMinPreviewWidth && renderMaterialProp != null);
 			if (showMaterial)
 			{
 				renderMaterialPropRect.xMin += previewSize + kSpacing;
 				surfaceDestinationFlagsPropRect.xMin += previewSize + kSpacing;
 
-				surfacePropRect.xMin += previewSize + kSpacing;
-				surfacePropRect.yMin = renderMaterialPropRect.yMax;
+				surfacePropRect = FlagsRect(position);
 
 				physicsRect.xMin += previewSize + kSpacing;
-				physicsRect.yMin = surfacePropRect.yMax - lineHeight;
+				physicsRect.yMin = position.yMax - lineHeight;
 			} else
             if (renderMaterialProp != null)
 			{
-				surfacePropRect.yMin = renderMaterialPropRect.yMax;
-				physicsRect.yMin = surfacePropRect.yMax - lineHeight;
+				surfacePropRect = FlagsRect(position);
+				physicsRect.yMin = position.yMax - lineHeight;
 			}
 
 			SerializedProperty metadataProp = chiselMaterialProp.FindPropertyRelative(ChiselMaterial.kSurfaceMetadataFieldName);
@@ -493,8 +517,15 @@ namespace Chisel.Editors
 			{
 				UpdateChiselMaterials(chiselMaterialProp);
 
-				var desiredHeight   = DefaultMaterialSurfaceDestinationFlagsHeight;
+				// as high as the flags need in the width the overlay had when it was last drawn
+				var desiredHeight   = MaterialPropHeight(materialWidth > 0 ? materialWidth : ChiselSurfaceOverlay.kMinWidth);
                 var position        = EditorGUILayout.GetControlRect(false, desiredHeight);
+				if (Event.current.type == EventType.Repaint && position.width > 1 && !Mathf.Approximately(position.width, materialWidth))
+				{
+					materialWidth = position.width;
+					if (!Mathf.Approximately(MaterialPropHeight(materialWidth), desiredHeight))
+						sceneView?.Repaint();
+				}
 				ShowMaterialProp(position, chiselMaterialProp);
 
 				var prevLabelWidth = EditorGUIUtility.labelWidth;
