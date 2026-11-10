@@ -33,7 +33,8 @@ namespace Chisel.Core
             fitToBounds         = true,
             sides               = 16,
             smoothingGroup      = 1,
-            type                = CylinderShapeType.Cylinder
+            type                = CylinderShapeType.Cylinder,
+            surfaceUVVersion    = kSurfaceUVVersion
         };
 		public static ref readonly ChiselCylinder DefaultSettings => ref kDefaultSettings;
 
@@ -77,7 +78,13 @@ namespace Chisel.Core
 
         [UnityEngine.HideInInspector, AngleValue]
         public float rotation;
-        
+
+        // 1: each surface holds its own uvs, and the cylinder lays out its caps and sides on top of them when it is
+        // built. 0, saved before: the surfaces hold the layout itself
+        public const int kSurfaceUVVersion = 1;
+        [UnityEngine.HideInInspector]
+        public int surfaceUVVersion;
+
 
         #region Properties
         public float TopDiameterX
@@ -235,13 +242,23 @@ namespace Chisel.Core
                 bottomDiameter.y = bottomDiameter.x;
             }
 
-            if (!BrushMeshFactory.GenerateConicalFrustumSubMesh(topDiameter,    topHeight, 
+            if (!BrushMeshFactory.GenerateConicalFrustumSubMesh(topDiameter,    topHeight,
                                                                 bottomDiameter, bottomHeight,
-                                                                rotation, sides, fitToBounds, 
-                                                                in surfaceDefinitionBlob, 
-                                                                out var newBrushMesh, 
+                                                                rotation, sides, fitToBounds,
+                                                                in surfaceDefinitionBlob,
+                                                                out var newBrushMesh,
                                                                 allocator))// Indirect
 				return default;
+
+            // Each face's surface with the layout put on it (a surface mapped in world space keeps its own); the mesh is
+            // only hashed when it is registered, after this
+            ref var polygons = ref newBrushMesh.Value.polygons;
+            for (int p = 0; p < polygons.Length; p++)
+            {
+                ref var details = ref polygons[p].surface.details;
+                if ((details.detailFlags & SurfaceDetailFlags.TextureIsInWorldSpace) == 0)
+                    details.UV0 = OnLayout(details.UV0, Layout(polygons[p].descriptionIndex));
+            }
             return newBrushMesh;
         }
         #endregion
@@ -264,25 +281,43 @@ namespace Chisel.Core
         [BurstDiscard]
         public void UpdateSurfaces(ref ChiselSurfaceArray surfaceDefinition)
         {
-            // Top plane
-            surfaceDefinition.surfaces[0].surfaceDetails.UV0 = UVMatrix.Centered;
+            var surfaces = surfaceDefinition.surfaces;
 
-            // Bottom plane
-            surfaceDefinition.surfaces[1].surfaceDetails.UV0 = UVMatrix.Centered;
-
-            float radius = topDiameterX * 0.5f;
-            float angle = (360.0f / sides);
-            float sideLength = (2 * math.sin(math.radians(angle / 2.0f))) * radius;
-
-            // Side planes
-            for (int i = 2; i < 2 + sides; i++)
+            // Saved before, every surface held the layout (written into it again on every change): they become
+            // untouched surfaces, which the layout is put on when the cylinder is built, so it looks the same
+            if (surfaceUVVersion < kSurfaceUVVersion)
             {
-                var uv0 = UVMatrix.Identity;
-                uv0.U.w = ((i - 2) + 0.5f) * sideLength;
-                //uv0.V.w = 0.5f;
-                surfaceDefinition.surfaces[i].surfaceDetails.UV0 = uv0;
-                surfaceDefinition.surfaces[i].surfaceDetails.smoothingGroup = smoothingGroup;
+                for (int i = 0; i < surfaces.Length; i++)
+                    surfaces[i].surfaceDetails.UV0 = SurfaceDetails.Default.UV0;
+                surfaceUVVersion = kSurfaceUVVersion;
             }
+
+            for (int i = 2; i < 2 + sides && i < surfaces.Length; i++)
+                surfaces[i].surfaceDetails.smoothingGroup = smoothingGroup;
+        }
+
+        // Where a surface's texture starts: the caps centered, each side after the one before it round the cylinder, so
+        // the texture runs on from side to side
+        public readonly UVMatrix Layout(int descriptionIndex)
+        {
+            if (descriptionIndex < 2)
+                return UVMatrix.Centered;
+            float radius     = topDiameterX * 0.5f;
+            float angle      = 360.0f / sides;
+            float sideLength = (2 * math.sin(math.radians(angle / 2.0f))) * radius;
+            var uv0 = UVMatrix.Identity;
+            uv0.U.w = ((descriptionIndex - 2) + 0.5f) * sideLength;
+            return uv0;
+        }
+
+        // The surface's own uvs applied to the layout (its u and v are the layout's), as the sphere does with its map. They
+        // count from a new surface's uvs, so a surface left as it is gets the layout itself
+        public static UVMatrix OnLayout(UVMatrix own, UVMatrix layout)
+        {
+            var neutral = SurfaceDetails.Default.UV0;
+            float4 layoutU = layout.U, layoutV = layout.V, ownU = own.U, ownV = own.V;
+            return new UVMatrix(ownU.x * layoutU + ownU.y * layoutV + new float4(0, 0, 0, ownU.w - neutral.U.w),
+                                ownV.x * layoutU + ownV.y * layoutV + new float4(0, 0, 0, ownV.w - neutral.V.w));
         }
         #endregion
 

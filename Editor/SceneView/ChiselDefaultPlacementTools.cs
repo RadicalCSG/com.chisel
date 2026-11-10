@@ -149,6 +149,7 @@ namespace Chisel.Editors
                         PlacementToolDefinition.OnUpdate(ref generatedComponent.definition, height);
                         generatedComponent.OnValidate();
                         ChiselActiveMaterial.GiveTo(generatedComponent);
+                        ChiselDefaultUVScale.GiveTo(generatedComponent);
                         generatedComponent.ClearHashes();
                     }
                     break;
@@ -249,6 +250,7 @@ namespace Chisel.Editors
                             PlacementToolDefinition.OnUpdate(ref generatedComponent.definition, bounds);
                             generatedComponent.OnValidate();
                             ChiselActiveMaterial.GiveTo(generatedComponent);
+                            ChiselDefaultUVScale.GiveTo(generatedComponent);
 
                             Lift(generatoreModeFlags, height);
                             generatedComponent.ResetTreeNodes();
@@ -279,6 +281,7 @@ namespace Chisel.Editors
                         PlacementToolDefinition.OnUpdate(ref generatedComponent.definition, bounds);
                         generatedComponent.OnValidate();
                         ChiselActiveMaterial.GiveTo(generatedComponent);
+                        ChiselDefaultUVScale.GiveTo(generatedComponent);
 
                         Lift(generatoreModeFlags, height);
 

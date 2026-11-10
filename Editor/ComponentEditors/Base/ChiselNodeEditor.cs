@@ -411,7 +411,10 @@ namespace Chisel.Editors
                 component = ChiselComponentFactory.Create<T>(name);
 
             if (component is ChiselGeneratorComponent generator)
+            {
                 ChiselActiveMaterial.GiveTo(generator);
+                ChiselDefaultUVScale.GiveTo(generator);
+            }
 
             var gameObject  = component.gameObject;
             GameObjectUtility.SetParentAndAlign(gameObject, parentGameObject);

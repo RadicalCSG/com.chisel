@@ -38,6 +38,8 @@ namespace Chisel.Editors
         public static bool				ShowMoveGizmo   { get; set; } = false;
         // the unit lengths are shown and typed in
         public static DistanceUnit		DistanceUnit	{ get { return Units.ActiveDistanceUnit; } set { Units.ActiveDistanceUnit = value; } }
+        // the UV scale new brushes start with
+        public static float				DefaultUVScale	{ get; set; } = 1;
 
         /// <summary>Which helper surfaces (collider, shadow-only, discarded, ...) are drawn in the
         /// scene view on top of the regular geometry. Read by <see cref="ChiselDrawModes"/> every
@@ -64,6 +66,7 @@ namespace Chisel.Editors
             ShowMoveGizmo	= EditorPrefs.GetBool ("ShowMoveGizmo",		false);
 
             DistanceUnit	= (DistanceUnit)EditorPrefs.GetInt("DistanceUnit", (int)DistanceUnit.Meters);
+            DefaultUVScale	= EditorPrefs.GetFloat("DefaultUVScale", 1);
 
             HelperSurfaceFlags = (DrawModeFlags)EditorPrefs.GetInt("HelperSurfaceFlags", (int)DrawModeFlags.Default);
 
@@ -100,6 +103,7 @@ namespace Chisel.Editors
             EditorPrefs.SetBool("ShowMoveGizmo",	ShowMoveGizmo);
 
             EditorPrefs.SetInt  ("DistanceUnit",	(int)DistanceUnit);
+            EditorPrefs.SetFloat("DefaultUVScale",	DefaultUVScale);
 
             EditorPrefs.SetInt("HelperSurfaceFlags", (int)HelperSurfaceFlags);
 
