@@ -26,9 +26,6 @@ namespace Chisel.Core
         };
 		public static ref readonly ChiselTorus DefaultSettings => ref kDefaultSettings;
 
-		// TODO: add scale the tube in y-direction (use transform instead?)
-		// TODO: add start/total angle of tube
-
 		public float    outerDiameter;
         public float    tubeWidth;
         public float    tubeHeight;
@@ -128,7 +125,7 @@ namespace Chisel.Core
             horizontalSegments	= math.max(horizontalSegments, 3);
             verticalSegments	= math.max(verticalSegments, 3);
 
-            totalAngle			= math.clamp(totalAngle, 1, 360); // TODO: constants
+            totalAngle			= math.clamp(totalAngle, 1, 360);
             return true;
         }
 
@@ -151,7 +148,6 @@ namespace Chisel.Core
 
         #region OnEdit
         //
-        // TODO: code below needs to be cleaned up & simplified 
         //
 
 
@@ -219,7 +215,6 @@ namespace Chisel.Core
                 settings.outerDiameter	= outerRadius * 2.0f;
                 settings.InnerDiameter	= innerRadius * 2.0f;
                 settings.tubeHeight		= (topPoint.y - bottomPoint.y);
-                // TODO: handle sizing down
             }
 
             // the sizes of the box around it; a typed width or depth sets the outer diameter, keeping the tube as wide

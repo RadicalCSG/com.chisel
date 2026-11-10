@@ -92,7 +92,6 @@ namespace Chisel.Core
 			var rotation2d      = Quaternion.AngleAxis(rotation, Vector3.forward);
             var scale3d         = new Vector3(scale.x, scale.y, 1.0f);
 
-            // TODO: optimize
             return (UVMatrix)
                     (Matrix4x4.TRS(translation, Quaternion.identity, Vector3.one) *
                      Matrix4x4.TRS(Vector3.zero, Quaternion.identity, scale3d) *
@@ -129,7 +128,6 @@ namespace Chisel.Core
             translation.y = (float)(Math.Round(translation.y / min_translation) * min_translation);
 
 
-            // TODO: figure out a better way to find if we scale negatively
             var newUvMatrix = UVMatrix.TRS(translation, normal, rotation, scale);
             if (Vector3.Dot(((float4)V).xyz, ((float4)newUvMatrix.V).xyz) < 0) scale.y = -scale.y;
             if (Vector3.Dot(((float4)U).xyz, ((float4)newUvMatrix.U).xyz) < 0) scale.x = -scale.x;

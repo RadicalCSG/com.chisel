@@ -658,8 +658,6 @@ namespace Chisel
 		public static NativeArray<T> ToNativeArray<T>(this List<T> src, Allocator allocator) where T : unmanaged
 		{
 			CollectionChecks.CheckReadAndThrow(src);
-			// TODO: once Unity supports .NET 8.0 API use this instead:
-			//System.Runtime.InteropServices.CollectionsMarshal.AsSpan<T>(list) + fixed to get ptr
 			var nativeList = new NativeArray<T>(src.Count, allocator);
 			for (int i = 0; i < src.Count; i++)
 				nativeList[i] = src[i];
@@ -669,8 +667,6 @@ namespace Chisel
 		public static NativeArray<T> ToNativeArray<T>(this HashSet<T> src, Allocator allocator) where T : unmanaged
 		{
 			CollectionChecks.CheckReadAndThrow(src);
-			// TODO: once Unity supports .NET 8.0 API use this instead:
-			//System.Runtime.InteropServices.CollectionsMarshal.AsSpan<T>(list) + fixed to get ptr
 			var nativeList = new NativeArray<T>(src.Count, allocator);
 			int i = 0;
 			foreach (var item in src)
@@ -694,8 +690,6 @@ namespace Chisel
 		public static NativeList<T> ToNativeList<T>(this List<T> src, Allocator allocator) where T : unmanaged
 		{
 			CollectionChecks.CheckReadAndThrow(src);
-			// TODO: once Unity supports .NET 8.0 API use this instead:
-			//System.Runtime.InteropServices.CollectionsMarshal.AsSpan<T>(list) + fixed to get ptr
 			var nativeList = new NativeList<T>(src.Count, allocator);
 			for (int i = 0; i < src.Count; i++)
 				nativeList.AddNoResize(src[i]);
@@ -705,8 +699,6 @@ namespace Chisel
 		public static NativeList<T> ToNativeList<T>(this HashSet<T> src, Allocator allocator) where T : unmanaged
 		{
 			CollectionChecks.CheckReadAndThrow(src);
-			// TODO: once Unity supports .NET 8.0 API use this instead:
-			//System.Runtime.InteropServices.CollectionsMarshal.AsSpan<T>(list) + fixed to get ptr
 			var nativeList = new NativeList<T>(src.Count, allocator);
 			foreach (var item in src)
 				nativeList.AddNoResize(item);
@@ -716,8 +708,6 @@ namespace Chisel
 		public static NativeList<T> ToNativeList<T>(this T[] src, Allocator allocator) where T : unmanaged
 		{
 			CollectionChecks.CheckReadAndThrow(src);
-			// TODO: once Unity supports .NET 8.0 API use this instead:
-			//System.Runtime.InteropServices.CollectionsMarshal.AsSpan<T>(list) + fixed to get ptr
 			var nativeList = new NativeList<T>(src.Length, allocator);
 			for (int i = 0; i < src.Length; i++)
 				nativeList.AddNoResize(src[i]);
@@ -1338,8 +1328,6 @@ namespace Chisel
 			CollectionChecks.CheckWriteAndThrow(dst);
 			CollectionChecks.CheckReadAndThrow(src);
 			if (src.Length == 0) return;
-			// TODO: once Unity supports .NET 8.0 API use this instead:
-			//System.Runtime.InteropServices.CollectionsMarshal.SetCount<T>(list, list.Count + collection.Length);
 			for (int i = 0; i < src.Length; i++) dst.Add(src[i]);
 		}
 
@@ -1348,8 +1336,6 @@ namespace Chisel
 			CollectionChecks.CheckWriteAndThrow(dst);
 			CollectionChecks.CheckReadAndThrow(src);
 			if (src.Length == 0) return;
-			// TODO: once Unity supports .NET 8.0 API use this instead:
-			//System.Runtime.InteropServices.CollectionsMarshal.SetCount<T>(list, list.Count + collection.Length);
 			for (int i = 0; i < src.Length; i++) dst.Add(src[i]);
 		}
 
@@ -1358,8 +1344,6 @@ namespace Chisel
 			CollectionChecks.CheckWriteAndThrow(dst);
 			CollectionChecks.CheckReadAndThrow(src);
 			if (src.Length == 0) return;
-			// TODO: once Unity supports .NET 8.0 API use this instead:
-			//System.Runtime.InteropServices.CollectionsMarshal.SetCount<T>(list, list.Count + collection.Length);
 			for (int i = 0; i < src.Length; i++) dst.Add(src[i]);
 		}
 
@@ -1368,8 +1352,6 @@ namespace Chisel
 			CollectionChecks.CheckWriteAndThrow(dst);
 			CollectionChecks.CheckReadAndThrow(src);
 			if (src.Length == 0) return;
-			// TODO: once Unity supports .NET 8.0 API use this instead:
-			//System.Runtime.InteropServices.CollectionsMarshal.SetCount<T>(list, list.Count + collection.Length);
 			for (int i = 0; i < src.Length; i++) dst.Add(src[i]);
 		}
 
@@ -1378,8 +1360,6 @@ namespace Chisel
 			CollectionChecks.CheckWriteAndThrow(dst);
 			CollectionChecks.CheckReadAndThrow(ref src);
 			if (src.Length == 0) return;
-			// TODO: once Unity supports .NET 8.0 API use this instead:
-			//System.Runtime.InteropServices.CollectionsMarshal.SetCount<T>(list, list.Count + collection.Length);
 			for (int i = 0; i < src.Length; i++) dst.Add(src[i]);
 		}
 
@@ -1391,8 +1371,6 @@ namespace Chisel
 			CollectionChecks.CheckReadAndThrow(src);
 			CollectionChecks.CheckLengthInRange(length, src.Length);
 			if (length <= 0) return;
-			// TODO: once Unity supports .NET 8.0 API use this instead:
-			//System.Runtime.InteropServices.CollectionsMarshal.SetCount<T>(list, list.Count + collection.Length);
 			for (int i = 0; i < length; i++) dst.Add(src[i]);
 		}
 
@@ -1402,8 +1380,6 @@ namespace Chisel
 			CollectionChecks.CheckReadAndThrow(src);
 			CollectionChecks.CheckLengthInRange(length, src.Length);
 			if (length <= 0) return;
-			// TODO: once Unity supports .NET 8.0 API use this instead:
-			//System.Runtime.InteropServices.CollectionsMarshal.SetCount<T>(list, list.Count + collection.Length);
 			for (int i = 0; i < length; i++) dst.Add(src[i]);
 		}
 
@@ -1413,8 +1389,6 @@ namespace Chisel
 			CollectionChecks.CheckReadAndThrow(src);
 			CollectionChecks.CheckLengthInRange(length, src.Length);
 			if (length <= 0) return;
-			// TODO: once Unity supports .NET 8.0 API use this instead:
-			//System.Runtime.InteropServices.CollectionsMarshal.SetCount<T>(list, list.Count + collection.Length);
 			for (int i = 0; i < length; i++) dst.Add(src[i]);
 		}
 
@@ -1424,8 +1398,6 @@ namespace Chisel
 			CollectionChecks.CheckReadAndThrow(src);
 			CollectionChecks.CheckLengthInRange(length, src.Length);
 			if (length <= 0) return;
-			// TODO: once Unity supports .NET 8.0 API use this instead:
-			//System.Runtime.InteropServices.CollectionsMarshal.SetCount<T>(list, list.Count + collection.Length);
 			for (int i = 0; i < length; i++) dst.Add(src[i]);
 		}
 
@@ -1435,8 +1407,6 @@ namespace Chisel
 			CollectionChecks.CheckReadAndThrow(ref src);
 			CollectionChecks.CheckLengthInRange(length, src.Length);
 			if (length <= 0) return;
-			// TODO: once Unity supports .NET 8.0 API use this instead:
-			//System.Runtime.InteropServices.CollectionsMarshal.SetCount<T>(list, list.Count + collection.Length);
 			for (int i = 0; i < length; i++) dst.Add(src[i]);
 		}
 
@@ -1451,8 +1421,6 @@ namespace Chisel
 			CollectionChecks.CheckReadAndThrow(src);
 			CollectionChecks.CheckRangeInRange(index, length, src.Length);
 			if (length <= 0) return;
-			// TODO: once Unity supports .NET 8.0 API use this instead:
-			//System.Runtime.InteropServices.CollectionsMarshal.SetCount<T>(list, list.Count + collection.Length);
 			for (int i = 0; i < length; i++) dst.Add(src[i + index]);
 		}
 
@@ -1462,8 +1430,6 @@ namespace Chisel
 			CollectionChecks.CheckReadAndThrow(src);
 			CollectionChecks.CheckRangeInRange(index, length, src.Length);
 			if (length <= 0) return;
-			// TODO: once Unity supports .NET 8.0 API use this instead:
-			//System.Runtime.InteropServices.CollectionsMarshal.SetCount<T>(list, list.Count + collection.Length);
 			for (int i = 0; i < length; i++) dst.Add(src[i + index]);
 		}
 
@@ -1473,8 +1439,6 @@ namespace Chisel
 			CollectionChecks.CheckReadAndThrow(src);
 			CollectionChecks.CheckRangeInRange(index, length, src.Length);
 			if (length <= 0) return;
-			// TODO: once Unity supports .NET 8.0 API use this instead:
-			//System.Runtime.InteropServices.CollectionsMarshal.SetCount<T>(list, list.Count + collection.Length);
 			for (int i = 0; i < length; i++) dst.Add(src[i + index]);
 		}
 
@@ -1484,8 +1448,6 @@ namespace Chisel
 			CollectionChecks.CheckReadAndThrow(src);
 			CollectionChecks.CheckRangeInRange(index, length, src.Length);
 			if (length <= 0) return;
-			// TODO: once Unity supports .NET 8.0 API use this instead:
-			//System.Runtime.InteropServices.CollectionsMarshal.SetCount<T>(list, list.Count + collection.Length);
 			for (int i = 0; i < length; i++) dst.Add(src[i + index]);
 		}
 
@@ -1495,8 +1457,6 @@ namespace Chisel
 			CollectionChecks.CheckReadAndThrow(ref src);
 			CollectionChecks.CheckRangeInRange(index, length, src.Length);
 			if (length <= 0) return;
-			// TODO: once Unity supports .NET 8.0 API use this instead:
-			//System.Runtime.InteropServices.CollectionsMarshal.SetCount<T>(list, list.Count + collection.Length);
 			for (int i = 0; i < length; i++) dst.Add(src[i + index]);
 		}
 

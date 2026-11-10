@@ -44,7 +44,6 @@ namespace Chisel.Core
 			using var _generatedBrushMeshes = generatedBrushMeshes = new NativeList<BlobAssetReference<BrushMeshBlob>>(nodes.Length, Allocator.Temp);
 			generatedBrushMeshes.Resize(nodes.Length, NativeArrayOptions.ClearMemory);
 
-			// TODO: maybe just not bother with pathblob and just convert to path-matrices directly?
 			using var pathMatrices = pathBlob.Value.GetUnsafeMatrices(Allocator.Temp);
 
 			if (!BrushMeshFactory.GenerateExtrudedShape(generatedBrushMeshes,
@@ -171,7 +170,6 @@ namespace Chisel.Core
 
         #region OnEdit
         //
-        // TODO: code below needs to be cleaned up & simplified 
         //
 
 
@@ -246,8 +244,6 @@ namespace Chisel.Core
                     handles.color = baseColor;
                 }
 
-                // TODO: cannot rotate so far that one path plane intersects with shape on another plane
-                //			... or just fail when it's wrong?
             }
 
             for (int i = 0; i < path.segments.Length; i++)
@@ -263,7 +259,6 @@ namespace Chisel.Core
                 }
             }
 
-            // TODO: draw curved path
         }
         #endregion
     }

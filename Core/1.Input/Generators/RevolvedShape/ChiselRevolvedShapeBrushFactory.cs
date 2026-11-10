@@ -5,7 +5,6 @@ using Unity.Collections.LowLevel.Unsafe;
 
 namespace Chisel.Core
 {
-    // TODO: rename
     public sealed partial class BrushMeshFactory
     {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]

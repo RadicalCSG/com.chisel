@@ -227,7 +227,6 @@ namespace Chisel.Core
 		bool IsBrushVisible(ulong entityID);
 	}
 
-	// TODO: use the native blob instead
 	[Serializable]
 	public class ManagedSubMeshTriangleLookup
 	{
@@ -247,8 +246,6 @@ namespace Chisel.Core
 			hashCode = 0;
 		}
 
-		// TODO: put this in a job so we can optimize this
-		// TODO: refactor this so we work on groups of meshes instead
 		public void GenerateSubMesh<BrushVisibilityLookup>(BrushVisibilityLookup visibilityLookup, Mesh srcMesh, Mesh dstMesh)
 			where BrushVisibilityLookup : unmanaged, IBrushVisibilityLookup
 		{
@@ -318,8 +315,6 @@ namespace Chisel.Core
 		public delegate bool NeedToRenderForPicking(GameObject go);
 
 
-		// TODO: put this in a job so we can optimize this
-		// TODO: refactor this so we work on groups of meshes instead
 		public void GenerateSelectionSubMesh(HashSet<int> skipSelectionID, Mesh srcMesh, Mesh dstMesh)
 		{
 			dstMesh.Clear(keepVertexLayout: true);

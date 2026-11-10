@@ -137,7 +137,6 @@ namespace Chisel.Core
         };
 		public static ref readonly MeshQuery[] CollisionOnly => ref kCollisionOnly;
 
-		// TODO: do not make this hardcoded
 		readonly static MeshQuery[] kDefaultQueries =
         {
             // Renderables

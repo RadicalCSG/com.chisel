@@ -4,7 +4,6 @@ namespace Chisel.Core
 {
     public sealed class ToggleFlagAttribute : PropertyAttribute
     {
-        // TODO: turn this in separate attribute
         public ToggleFlagAttribute(bool ignore)
         {
             this.Ignore = ignore;

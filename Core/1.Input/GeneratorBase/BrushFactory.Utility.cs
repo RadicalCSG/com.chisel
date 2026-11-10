@@ -13,7 +13,6 @@ using WriteOnlyAttribute = Unity.Collections.WriteOnlyAttribute;
 
 namespace Chisel.Core
 {
-    // TODO: rename
     public sealed partial class BrushMeshFactory
     {
         public ref struct BrushMeshArrays
@@ -133,7 +132,7 @@ namespace Chisel.Core
                                                                       in BlobBuilder builder,
                                                                       ref BrushMeshBlob root)
         {
-            // FIXME: workaround for the math below
+            // The counts below are written for one more than the given number of vertical segments
             vertSegments++;
 
             //if (bottomCap || topCap)
@@ -307,9 +306,6 @@ namespace Chisel.Core
         {
             ref var surfaceArray = ref internalSurfaceArrayBlob.Value;
 
-            // TODO: vertex reverse winding when it's not clockwise
-            // TODO: handle duplicate vertices, remove them or avoid them being created in the first place (maybe use indices?)
-
             Span<SegmentTopology> segmentTopology = stackalloc SegmentTopology[segments];
             Span<int> edgeIndices     = stackalloc int[segments * 2];
             var polygonCount    = 2;
@@ -420,8 +416,7 @@ namespace Chisel.Core
                     case SegmentTopology.TrianglesNegative:
                     case SegmentTopology.TrianglesPositive:
                     {
-                        var smoothingGroup = surfaceID + 1; // TODO: create an unique smoothing group for faceted surfaces that are split in two, 
-                                                            //			unless there's already a smoothing group for this edge; then use that
+                        var smoothingGroup = surfaceID + 1;
 
                         polygons[surfaceID + 0] = new BrushMeshBlob.Polygon { firstEdge = firstEdge,     edgeCount = 3, descriptionIndex = descriptionIndex, surface = surfaceArray.surfaces[descriptionIndex] };
                         polygons[surfaceID + 1] = new BrushMeshBlob.Polygon { firstEdge = firstEdge + 3, edgeCount = 3, descriptionIndex = descriptionIndex, surface = surfaceArray.surfaces[descriptionIndex] };
@@ -695,7 +690,6 @@ namespace Chisel.Core
         {
             int sideVerticesLength = sideVertices.Length;
             
-            // TODO: fix this
             /*
             const float kDistanceEpsilon = 0.0000001f;
             for (int i = sideVerticesLength - 1; i >= 0; i--)
@@ -704,7 +698,6 @@ namespace Chisel.Core
                 var magnitude = math.lengthsq(sideVertices[j] - sideVertices[i]);
                 if (magnitude < kDistanceEpsilon)
                 {
-                    // TODO: improve on this
                     NativeListExtensions.MemMove(sideVertices, sideVerticesLength, i, i + 1, sideVerticesLength - (i + 1));
                     sideVerticesLength--;
                 }
@@ -790,8 +783,7 @@ namespace Chisel.Core
                     surfaceID++;
                 } else
                 {
-                    var smoothingGroup = surfaceID + 1; // TODO: create an unique smoothing group for faceted surfaces that are split in two, 
-                                                        //			unless there's already a smoothing group for this edge; then use that
+                    var smoothingGroup = surfaceID + 1;
 
                     polygons[surfaceID + 0] = new BrushMeshBlob.Polygon { firstEdge = firstEdge, edgeCount = 3, descriptionIndex = descriptionIndex, surface = internalSurfaceArray.surfaces[descriptionIndex] };
                     polygons[surfaceID + 1] = new BrushMeshBlob.Polygon { firstEdge = firstEdge + 3, edgeCount = 3, descriptionIndex = descriptionIndex, surface = internalSurfaceArray.surfaces[descriptionIndex] };
@@ -1089,7 +1081,6 @@ namespace Chisel.Core
         
         public static bool IsSelfIntersecting(in BlobBuilderArray<float3> vertices, in BlobBuilderArray<BrushMeshBlob.HalfEdge> halfEdges, in BlobBuilderArray<BrushMeshBlob.Polygon> polygons)
         {
-            // TODO: determine if the brush is intersecting itself
             return false;
         }
 
@@ -1102,7 +1093,6 @@ namespace Chisel.Core
             if (halfEdges.Length == 0)
                 return false;
 
-            // TODO: determine if the brush is a singularity (1D) or flat (2D), or has a volume (3D)
             return true;
         }
 

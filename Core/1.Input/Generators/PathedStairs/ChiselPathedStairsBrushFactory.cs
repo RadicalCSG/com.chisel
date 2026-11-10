@@ -6,7 +6,6 @@ using Unity.Entities;
 
 namespace Chisel.Core
 {
-    // TODO: rename
     public sealed partial class BrushMeshFactory
     {
         public static int CountPathedStairBrushes(UnsafeList<SegmentVertex> shapeVertices,
@@ -101,7 +100,6 @@ namespace Chisel.Core
             return -1;
         }
 
-        // TODO: kind of broken, needs fixing
         // Each part of the path is the linear stairs as they are, so with their own UVs, moved onto it by its brushes'
         // transformations; brushTransformations is as long as brushMeshes
         public static bool GeneratePathedStairs(NativeList<BlobAssetReference<BrushMeshBlob>> brushMeshes,
@@ -157,7 +155,6 @@ namespace Chisel.Core
                 if (vi2 == 0 && !closedLoop)
                     continue;
 
-                // TODO: optimize this, we're probably redoing a lot of stuff for every iteration
                 var v0 = shapeVertices[vi0].position;
                 var v1 = shapeVertices[vi1].position;
                 var v2 = shapeVertices[vi2].position;

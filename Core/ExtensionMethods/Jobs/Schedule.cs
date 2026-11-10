@@ -223,7 +223,7 @@ namespace Chisel.Core
 				return result;
 			}
 
-			currentHandle.Complete();// TODO: get rid of this
+			currentHandle.Complete();
 			reference.Dispose();
 			reference = default;
 			return default;
@@ -242,7 +242,7 @@ namespace Chisel.Core
                 return result;
             }
 
-            currentHandle.Complete();// TODO: get rid of this
+            currentHandle.Complete();
             reference.Dispose();
             reference = default;
             return default;
@@ -310,7 +310,6 @@ namespace Chisel.Core
         }
     }
 
-	// TODO: make CompactHierarchyManager.Dispose()/CompactHierarchyManager.FreeHierarchyID work inside jobs
 	//[BurstCompile(CompileSynchronously = true)]
 	public struct DisposeListChildrenJob<T> : IJob
         where T : unmanaged, IDisposable

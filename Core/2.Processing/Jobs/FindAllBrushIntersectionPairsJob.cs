@@ -86,7 +86,6 @@ namespace Chisel.Core
 			using var _foundBrushes = foundBrushes = new NativeBitArray(allTreeBrushIndexOrders.Length, Allocator.Temp);
 			//NativeCollectionHelpers.EnsureMinimumSizeAndClear(ref foundBrushes, allTreeBrushIndexOrders.Length);
 
-            // TODO: figure out a way to avoid needing this
             for (int a = 0; a < rebuildTreeBrushIndexOrders.Length; a++)
                 foundBrushes.Set(rebuildTreeBrushIndexOrders[a].nodeOrder, true);
 
@@ -185,7 +184,6 @@ namespace Chisel.Core
     }
     
 
-    // TODO: make this a parallel job somehow
     [BurstCompile(CompileSynchronously = true)]
     struct FindAllIndirectBrushIntersectionPairsJob : IJobParallelForDefer
     {
@@ -233,10 +231,8 @@ namespace Chisel.Core
                 {
                     var entry               = brushBoundsSweep[i];
                     int brush0NodeOrder     = entry.nodeOrder;
-                    if (brush0NodeOrder == brush1NodeOrder
-                        // TODO: figure out why this optimization causes iterative updates to fail
-                        //|| foundBrushes.IsSet(brush0IndexOrder.nodeOrder)
-                        )
+                    // Also skipping brushes that are being rebuilt themselves (foundBrushes) breaks iterative updates
+                    if (brush0NodeOrder == brush1NodeOrder)
                         continue;
                     if (!entry.bounds.Intersects(bounds1, BoundsMargin))
                         continue;
@@ -263,9 +259,6 @@ namespace Chisel.Core
     }
 
 
-    // TODO: create separate job to dispose all the items that need to be disposed & 
-    //          just set them to default in these arrays .. then we can just let the 
-    //          dispose job run without us having to wait for it
     [BurstCompile(CompileSynchronously = true)]
     struct InvalidateBrushCacheJob : IJobParallelForDefer
     {
@@ -559,7 +552,6 @@ namespace Chisel.Core
             return type;
         }
 
-        // TODO: check if each intersection is unique, store in stream
         public static void StoreIntersection([NoAlias] ref UnsafeList<BrushIntersectWith> intersections, IndexOrder brush1IndexOrder, IntersectionType result)
         {
             if (intersections.Capacity < intersections.Length + 1)

@@ -158,8 +158,6 @@ namespace Chisel.Core
             linePoint = plane2Position + t * ldir;
         }
 
-        // TODO: use these two methods to first calculate all valid pairs
-
         public static void IntersectionFirst(double4 inPlane2, double4 inPlane3, out double4 outN0, out double4 outN1)
         {
             outN0 = inPlane2.wzyx * inPlane3.yxwz - inPlane2.yxwz * inPlane3.wzyx;
@@ -183,9 +181,6 @@ namespace Chisel.Core
 /*
             var N2 = -N1.yzwx;
 
-            // TODO: it should be possible to put all these steps in a single 4x4 matrix
-            //       figure out what this matrix would look like and then track back
-            //       to input to simplify
             var tx = inPlane1 * N0;
             var ty = inPlane1 * N1;
             var tz = inPlane1 * N2;

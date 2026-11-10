@@ -39,7 +39,6 @@ namespace Chisel.Core
     [Serializable]
     public struct ChiselLinearStairs : IBranchGenerator, IChiselSurfaceNames, IChiselGeneratorParts, IChiselListedSurfaces
     {
-        // TODO: set defaults using attributes?
         readonly static ChiselLinearStairs kDefaultSettings = new()
 		{
             stepHeight		= 0.20f,
@@ -63,8 +62,6 @@ namespace Chisel.Core
             sideHeight		= 0.5f
         };
 		public static ref readonly ChiselLinearStairs DefaultSettings => ref kDefaultSettings;
-
-		// TODO: add all spiral stairs improvements to linear stairs
 
 		public MinMaxAABB bounds;
 
@@ -367,7 +364,6 @@ namespace Chisel.Core
 
         #region OnEdit
         //
-        // TODO: code below needs to be cleaned up & simplified 
         //
 
         // the lines dragged to change the base, the steps and the top: thicker than the others

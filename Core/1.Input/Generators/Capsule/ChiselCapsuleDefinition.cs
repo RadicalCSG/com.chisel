@@ -69,7 +69,6 @@ namespace Chisel.Core
         internal int		Segments            { get { return math.max(1, RingCount); } }
 
 
-        // TODO: store somewhere else
         internal int		ExtraVertexCount	{ get { return ((HaveRoundedTop) ? 1 : 0) + ((HaveRoundedBottom) ? 1 : 0); } }
         internal int		BottomVertex		{ get { return (0); } }
         internal int		TopVertex			{ get { return (HaveRoundedBottom) ? 1 : 0; } }
@@ -173,7 +172,6 @@ namespace Chisel.Core
         
         #region OnEdit
         //
-        // TODO: code below needs to be cleaned up & simplified 
         //
 
 
@@ -205,8 +203,6 @@ namespace Chisel.Core
         static void DrawOutline(IChiselHandleRenderer renderer, ChiselCapsuleDefinition definition, Vector3[] vertices, LineMode lineMode)
         {
             var sides			    = definition.settings.sides;
-            
-            // TODO: share this logic with GenerateCapsuleVertices
             
             var topHemisphere		= definition.settings.HaveRoundedTop;
             var bottomHemisphere	= definition.settings.HaveRoundedBottom;
@@ -250,7 +246,7 @@ namespace Chisel.Core
             renderer.color = prevColor;
         }
 
-        static Vector3[] vertices = null; // TODO: store this per instance? or just allocate every frame?
+        static Vector3[] vertices = null;
         
         public override void OnEdit(IChiselHandles handles)
         {
@@ -381,7 +377,6 @@ namespace Chisel.Core
                 }
                 settings.topHeight      = topHeight;
                 settings.bottomHeight   = bottomHeight;
-                // TODO: handle sizing down (needs to modify transformation?)
             }
 
             // elliptical: the box around it, as a box's, its sides dragged and its sizes typed in

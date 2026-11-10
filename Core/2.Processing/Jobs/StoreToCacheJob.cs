@@ -11,7 +11,6 @@ using WriteOnlyAttribute = Unity.Collections.WriteOnlyAttribute;
 
 namespace Chisel.Core
 {
-    // TODO: move somewhere else
     [BurstCompile(CompileSynchronously = true)]
     struct StoreToCacheJob : IJob
     {

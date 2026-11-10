@@ -6,7 +6,6 @@ using UnityEngine;
 
 namespace Chisel.Core
 {
-    // TODO: rename
     public sealed partial class BrushMeshFactory
     {
         //
@@ -51,7 +50,6 @@ namespace Chisel.Core
 			var polygons = builder.Allocate(ref root.polygons, kTotalPolygons);
 			var localPlanes = builder.Allocate(ref root.localPlanes, kTotalPolygons);
 			root.localPlaneCount = polygons.Length;
-			// TODO: calculate corner planes
 
 			const int vertIndex0 = 0;
 			const int vertIndex1 = 1;
@@ -156,7 +154,7 @@ namespace Chisel.Core
 			polygons[polygon1] = new BrushMeshBlob.Polygon { firstEdge = polygon1_offset, edgeCount = polygon1_count, descriptionIndex = 1, surface = surfaces[1] };
 			polygons[polygon2] = new BrushMeshBlob.Polygon { firstEdge = polygon2_offset, edgeCount = polygon2_count, descriptionIndex = 2, surface = surfaces[2] };
 			polygons[polygon3] = new BrushMeshBlob.Polygon { firstEdge = polygon3_offset, edgeCount = polygon3_count, descriptionIndex = 3, surface = surfaces[3] };
-			polygons[polygon4] = new BrushMeshBlob.Polygon { firstEdge = polygon4_offset, edgeCount = polygon4_count, descriptionIndex = 4, surface = surfaces[3] };// TODO: figure out if this should be [4]
+			polygons[polygon4] = new BrushMeshBlob.Polygon { firstEdge = polygon4_offset, edgeCount = polygon4_count, descriptionIndex = 4, surface = surfaces[4] };
 
 			CalculatePlanes(ref localPlanes, in polygons, in halfEdges, in localVertices);
 			root.localBounds = CalculateBounds(in localVertices);
@@ -235,7 +233,6 @@ namespace Chisel.Core
 			var polygons = builder.Allocate(ref root.polygons, kTotalPolygons);
 			var localPlanes = builder.Allocate(ref root.localPlanes, kTotalPolygons);
 			root.localPlaneCount = polygons.Length;
-			// TODO: calculate corner planes
 
 			const int vertIndex0 = 0;
 			const int vertIndex1 = 1;
@@ -402,7 +399,6 @@ namespace Chisel.Core
 			var polygons = builder.Allocate(ref root.polygons, kTotalPolygons);
 			var localPlanes = builder.Allocate(ref root.localPlanes, kTotalPolygons);
 			root.localPlaneCount = polygons.Length;
-			// TODO: calculate corner planes
 
 			const int vertIndex0 = 0;
 			const int vertIndex1 = 1;

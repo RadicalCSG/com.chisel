@@ -30,7 +30,6 @@ namespace Chisel.Core
         public float                topLength;
         public float                bottomLength;
         
-        // TODO: better naming
         public int                  topSides;
         public int                  bottomSides;
 
@@ -124,7 +123,6 @@ namespace Chisel.Core
 
         #region OnEdit
         //
-        // TODO: code below needs to be cleaned up & simplified 
         //
 
 
@@ -312,7 +310,6 @@ namespace Chisel.Core
                 settings.height		= topPoint.y - bottomPoint.y;
                 settings.length		= math.max(0, frontPoint.z - backPoint.z);
                 settings.width	= leftPoint.x - rightPoint.x;
-                // TODO: handle sizing in some directions (needs to modify transformation?)
             }
 
             // the sizes of the box around it

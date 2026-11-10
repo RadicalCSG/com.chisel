@@ -27,7 +27,6 @@ namespace Chisel.Core
         public int              brushMeshHash;          // the hash of the brush-mesh (which is also the ID we lookup meshes with) this node uses (if any)
     }
 
-    // TODO: move to core
     [BurstCompile(CompileSynchronously = true)]
 #if UNITY_6000_7_OR_NEWER
     [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
@@ -65,7 +64,7 @@ namespace Chisel.Core
             foreach (var pool in s_Instance.generatorPools.ToArray())
             {
                 pool.Dispose();
-                Register(pool); // Dispose() unregistered it; without this I don't think the the pool ever runs again and its brushes get no mesh!
+                Register(pool); // Dispose() unregistered it; registered again so the pool keeps running and its brushes get a mesh
                 pool.AllocateOrClear();
             }
         }
@@ -102,7 +101,6 @@ namespace Chisel.Core
 
 		readonly static List<IGeneratorJobPool> s_GeneratorJobs = new List<IGeneratorJobPool>();
 
-        // TODO: Optimize this
         public static JobHandle ScheduleJobs(bool runInParallel, JobHandle dependsOn = default)
         {
             var hierarchyList = CompactHierarchyManager.HierarchyList;
@@ -157,7 +155,7 @@ namespace Chisel.Core
                 Profiler.EndSample();
             
                 Profiler.BeginSample("GenPool_Complete");
-                allocateJobHandle.Complete(); // TODO: get rid of this somehow
+                allocateJobHandle.Complete();
                 Profiler.EndSample();
 
                 Profiler.BeginSample("GenPool_Schedule");
@@ -255,7 +253,6 @@ namespace Chisel.Core
         [BurstCompile(CompileSynchronously = true)]
         unsafe struct AssignMeshesJob : IJob
         {          
-            // TODO: get rid of this
             public void InitializeLookups()
             {
                 hierarchyIDLookupPtr = (SlotIndexMap*)UnsafeUtility.AddressOf(ref CompactHierarchyManager.HierarchyIDLookup);
@@ -284,7 +281,6 @@ namespace Chisel.Core
                 //ref var hierarchyIDLookup   = ref UnsafeUtility.AsRef<IDManager>(hierarchyIDLookupPtr);
                 ref var nodeIDLookup        = ref UnsafeUtility.AsRef<SlotIndexMap>(nodeIDLookupPtr);
 
-                // TODO: set all unique hierarchies dirty separately, somehow. Make this job parallel
                 var hierarchyListPtr = (CompactHierarchy*)hierarchyList.GetUnsafePtr();
                 for (int index = 0; index < generatedNodeDefinitions.Length; index++)
                 {
@@ -320,7 +316,7 @@ namespace Chisel.Core
                         continue;
 
                     ref var compactHierarchy = ref hierarchyListPtr[hierarchyIndex];
-                    compactHierarchy.AttachToParentAt(ref hierarchyIDLookup, hierarchyList, ref nodeIDLookup, nodesLookup, parentCompactNodeID, siblingIndex, compactNodeID); // TODO: need to be able to do this
+                    compactHierarchy.AttachToParentAt(ref hierarchyIDLookup, hierarchyList, ref nodeIDLookup, nodesLookup, parentCompactNodeID, siblingIndex, compactNodeID);
                 }
             }
         }
@@ -372,7 +368,6 @@ namespace Chisel.Core
         }
     }
 
-    // TODO: move to core
     public interface IGeneratorJobPool : System.IDisposable
     {
         void AllocateOrClear();
@@ -425,7 +420,6 @@ namespace Chisel.Core
     [BurstCompile(CompileSynchronously = true)] 
     unsafe struct InitializeArraysJob : IJob
     {
-        // TODO: get rid of this
         public void InitializeLookups()
         {
             hierarchyIDLookupPtr = (SlotIndexMap*)UnsafeUtility.AddressOf(ref CompactHierarchyManager.HierarchyIDLookup);
@@ -478,7 +472,6 @@ namespace Chisel.Core
         }
     }
 
-    // TODO: move to core, call ScheduleUpdate when hash of definition changes (no more manual calls)
     [BurstCompile(CompileSynchronously = true)]
     public class GeneratorBrushJobPool<Generator> : IGeneratorJobPool
         where Generator : unmanaged, IBrushGenerator
@@ -547,7 +540,6 @@ namespace Chisel.Core
             var index = generatorNodes.IndexOf(nodeID);
             if (index != -1)
             {
-                // TODO: get rid of this
                 if (surfaceArrays[index].IsCreated)
                     surfaceArrays[index].Dispose();
 
@@ -819,7 +811,6 @@ namespace Chisel.Core
             var index = generatorRootNodeIDs.IndexOf(nodeID);
             if (index != -1)
             {
-                // TODO: get rid of this
                 if (surfaceArrays[index].IsCreated)
                     surfaceArrays[index].Dispose();
 
@@ -916,8 +907,6 @@ namespace Chisel.Core
         }
         
 
-        // TODO: implement a way to setup a full hierarchy here, instead of a list of brushes
-        // TODO: make this burstable
         internal struct UpdateHierarchyJob : IJob
         {
             [NoAlias, ReadOnly] public NativeList<NodeID>   generatorRootNodeIDs;
@@ -995,7 +984,7 @@ namespace Chisel.Core
                 index                = index,
                 totalCounts          = totalCounts
             };
-            // TODO: make this work in parallel (create new linear stairs => errors)
+            // Runs on the main thread: as a scheduled job, creating new linear stairs gave errors
 #if true
             dependsOn.Complete();
             updateHierarchyJob.Execute();
@@ -1047,14 +1036,10 @@ namespace Chisel.Core
                     var hierarchyIndex       = CompactHierarchyManager.GetHierarchyIndexUnsafe(ref hierarchyIDLookup, rootCompactNodeID);
                     ref var compactHierarchy = ref hierarchyListPtr[hierarchyIndex];
 
-                    // TODO: just pass an array of compactNodeIDs along from the place were we create these nodes (no lookup needed)
-                    // TODO: how can we re-use existing compactNodeIDs instead re-creating them when possible?
                     NativeArray<CompactNodeID> childCompactNodeIDs;
 					using var _childCompactNodeIDs = childCompactNodeIDs = new NativeArray<CompactNodeID>(range.Length, Allocator.Temp);
                     for (int b = 0; b < range.Length; b++)
                         childCompactNodeIDs[b] = compactHierarchy.GetChildCompactNodeIDAtNoError(rootCompactNodeID, b);
-
-                    // TODO: sort generatedNodes span, by parentIndex + original index so that all parentIndices are sequential, and in order from small to large
 
                     int siblingIndex = 0;
                     int prevParentIndex = -1;

@@ -12,7 +12,6 @@ using WriteOnlyAttribute = Unity.Collections.WriteOnlyAttribute;
 
 namespace Chisel.Core
 {
-    // TODO: make cache part of compactHierarchy? no need for remapping?
     [BurstCompile(CompileSynchronously = true)]
     struct CacheRemappingJob : IJob
     {
@@ -82,7 +81,6 @@ namespace Chisel.Core
             var nodeIDValueToNodeOrderOffset = nodeIDValueToNodeOrderOffsetRef.Value;
 
             // Remaps all cached data from previous brush order in tree, to new brush order
-            // TODO: if all brushes need to be rebuild, don't bother to remap since everything is going to be redone anyway
             var previousBrushIDValuesLength = brushIDValues.Length;
             if (previousBrushIDValuesLength > 0)
             {
@@ -143,7 +141,6 @@ namespace Chisel.Core
 							if (!compactHierarchy.IsValidCompactNodeID(otherBrushID))
 								continue;
 
-							// TODO: investigate how a brush can be "valid" but not be part of treeBrushes
 							if (!inTree.Contains(otherBrushID))
 								continue;
 

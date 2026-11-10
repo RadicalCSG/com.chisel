@@ -478,7 +478,6 @@ namespace Chisel.Core
         }
 
 
-        // TODO: return inside and outside polygon index
         static bool SplitPolygon(int polygonIndex, List<VertexSide> vertexDistances, List<Polygon> polygons, List<float4> planes, List<HalfEdge> halfEdges, List<int> halfEdgePolygonIndices, List<float3> vertices)
         {
             var polygon     = polygons[polygonIndex];
@@ -623,7 +622,6 @@ namespace Chisel.Core
 
                     // Create a new vertex
                     var newVertexIndex  = vertices.Count;
-                    // TODO: would be nice if we could do allocations just once in CutPolygon
                     vertices.Add(newVertex);
 
                     // Update the vertex indices for the new vertex
@@ -1172,7 +1170,6 @@ namespace Chisel.Core
 
             var oldLength       = halfEdges.Length;
             
-            // TODO: would be nice if we could do allocations just once in CutPolygon
             var newHalfEdges    = new HalfEdge[oldLength + 2];
 
 
@@ -1317,7 +1314,6 @@ namespace Chisel.Core
 
             { 
                 /*
-                // TODO: would be nice if we could do allocations just once in CutPolygon
                 var newHalfEdges    = new HalfEdge[oldLength + 2];
                 // copy all edges until selfEdgeIndex (excluding)
                 // |****

@@ -9,7 +9,6 @@ namespace Chisel.Core
         internal float3[]	  vertices          = null;
         internal Int32[]	  visibleOuterLines = null;
         
-        // TODO: use hash values instead of 'generation'
         internal uint		  outlineHash		= 0;
         internal CSGTreeBrush originBrush		= default;
         internal int		  originSurfaceID	= 0;

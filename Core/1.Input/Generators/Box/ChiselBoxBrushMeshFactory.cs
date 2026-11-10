@@ -7,7 +7,6 @@ using Unity.Entities;
 
 namespace Chisel.Core
 {
-    // TODO: rename
     public sealed partial class BrushMeshFactory
     {
         public enum BoxSides
@@ -91,7 +90,6 @@ namespace Chisel.Core
 			var polygons = builder.Allocate(ref root.polygons, 6);
 			var localPlanes = builder.Allocate(ref root.localPlanes, 6);
 			root.localPlaneCount = polygons.Length;
-			// TODO: calculate corner planes
 
 			const int vertIndex0 = 0;
 			const int vertIndex1 = 1;

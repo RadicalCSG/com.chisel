@@ -65,7 +65,7 @@ namespace Chisel.Core
 
 	struct BrushData
 	{
-		public IndexOrder brushIndexOrder; //<- TODO: if we use NodeOrder maybe this could be explicit based on the order in array?
+		public IndexOrder brushIndexOrder;
 		public int brushSurfaceOffset;
 		public int brushSurfaceCount;
 
@@ -1204,7 +1204,7 @@ namespace Chisel.Core
 
         public void Execute()
         {
-            // TODO: figure out why this order matters
+            // The sub-mesh lists must be processed in this order
             for (int t = 0; t < subMeshSurfaces.Length; t++)
             {
                 Execute(t);

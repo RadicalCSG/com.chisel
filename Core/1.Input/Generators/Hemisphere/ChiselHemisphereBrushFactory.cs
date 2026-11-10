@@ -5,7 +5,6 @@ using Unity.Entities;
 
 namespace Chisel.Core
 {
-    // TODO: rename
     public sealed partial class BrushMeshFactory
     {
         public static bool GenerateHemisphere(float3 diameterXYZ, float rotation, int horzSegments, int vertSegments, 
@@ -90,13 +89,11 @@ namespace Chisel.Core
 			for (int p = 0; p < polygons.Length; p++)
 				SetSurface(ref polygons[p], p == 0 ? 0 : 1, ref surfaceDefinitionBlob.Value);
 
-			// TODO: eventually remove when it's more battle tested
 			if (!Validate(in localVertices, in halfEdges, in polygons, logErrors: true))
 				return false;
 
 			var localPlanes = builder.Allocate(ref root.localPlanes, polygons.Length);
 			root.localPlaneCount = polygons.Length;
-			// TODO: calculate corner planes
 			var halfEdgePolygonIndices = builder.Allocate(ref root.halfEdgePolygonIndices, halfEdges.Length);
 			CalculatePlanes(ref localPlanes, in polygons, in halfEdges, in localVertices);
 			UpdateHalfEdgePolygonIndices(ref halfEdgePolygonIndices, in polygons);

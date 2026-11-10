@@ -25,7 +25,6 @@ namespace Chisel.Core
 		public const uint kMinimumPolygons = 3;
 		public const uint kMinimumHalfEdges = 3 * 3;
 
-        // TODO: create logging class that encapsulates StringBuilder and only allocates it when needed?
 		static System.Text.StringBuilder errorMessageBuilder = new();
 		public bool ValidateData(out string errorMessage)
         {
@@ -239,13 +238,13 @@ namespace Chisel.Core
                 return false;
             }
 
-            if (IsConcave())           // TODO: eventually allow concave shapes
+            if (IsConcave())
 			{
 				errorMessage = "BrushMesh: Brush is concave";
 				return false;
 			}
 
-			if (IsSelfIntersecting())    // TODO: in which case this needs to be implemented
+			if (IsSelfIntersecting())
 			{
 				errorMessage = "BrushMesh: Brush is self intersecting";
 				return false;

@@ -4,11 +4,8 @@ using Unity.Entities;
 
 namespace Chisel.Core
 {
-    // TODO: rename
     public sealed partial class BrushMeshFactory
     {
-        // TODO: create helper method to cut brushes, use that instead of intersection + subtraction brushes
-        // TODO: create spiral sides support
         public static bool GenerateSpiralStairs(NativeList<BlobAssetReference<BrushMeshBlob>>     brushMeshes, // Confirmed to dispose
 												ref ChiselSpiralStairs                            definition, 
                                                 in BlobAssetReference<InternalChiselSurfaceArray> surfaceDefinitionBlob,
@@ -44,7 +41,8 @@ namespace Chisel.Core
             var pm = new float2(math.sin(anglePerStep * 0.5f), math.cos(anglePerStep * 0.5f));
             var pn = (p0 + p1) * 0.5f;
 
-            var stepOuterDiameter		= outerDiameter + ((math.length(pm) - math.length(pn)) * (outerDiameter * 1.25f)); // TODO: figure out why we need the 1.25 magic number to fit the step in the outerDiameter?
+            // Widened past outerDiameter so the straight outer edge of a step reaches the circle; 1.25 makes the step fit
+            var stepOuterDiameter		= outerDiameter + ((math.length(pm) - math.length(pn)) * (outerDiameter * 1.25f));
             var stepOuterRadius			= stepOuterDiameter * 0.5f;
             var outerNosingWidth        = nosingWidth;
             // with a guard rail on the outside the steps' own shapes end inside it, their outer edges halfway in: shapes that
@@ -78,7 +76,6 @@ namespace Chisel.Core
             // raised above the object's position, the first step is solid down to it, as are the walls and the cylinders
             var ground = math.min(0, origin.y);
 
-            // TODO: expose this to user
             var smoothSubDivisions		= 3;
 
             var cylinderSubMeshCount	= haveInnerCyl ? 2 : 1;
@@ -197,7 +194,6 @@ namespace Chisel.Core
                             var stepMin = (i == 0 && !haveBase) ? ground : minY;
                             for (int subDiv = 1; subDiv < smoothSubDivisions; subDiv++)
                             {
-                                // TODO: need to space the subdivisions from smallest spaces to bigger spaces
                                 float stepMidRadius;
                                 stepMidRadius = (((outerDiameter * 0.5f) * (1.0f / (smoothSubDivisions + 1))) * ((smoothSubDivisions - 1) - (subDiv - 1)));
                                 if (subDiv == (smoothSubDivisions - 1))

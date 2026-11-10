@@ -5,7 +5,6 @@ using Unity.Entities;
 
 namespace Chisel.Core
 {
-    // TODO: put somewhere else
     public struct SegmentVertex
     {
         public float2   position;
@@ -142,7 +141,6 @@ namespace Chisel.Core
             return shapeVertices;
         }
 
-        // TODO: put somewhere else
         public static float CalculateOrientation(UnsafeList<SegmentVertex> vertices, Range range)
         {
             // Newell's algorithm to create a plane for concave polygons.
@@ -374,7 +372,6 @@ namespace Chisel.Core
 			root.closed = curve.closed;
 			var srcControlPoints = curve.controlPoints;
 			var dstControlPoints = builder.Allocate(ref root.controlPoints, srcControlPoints.Length);
-			// TODO: just use fixed-array + memcpy
 			for (int i = 0; i < srcControlPoints.Length; i++)
 				dstControlPoints[i] = Convert(srcControlPoints[i]);
 			return builder.CreateBlobAssetReference<ChiselCurve2DBlob>(allocator);

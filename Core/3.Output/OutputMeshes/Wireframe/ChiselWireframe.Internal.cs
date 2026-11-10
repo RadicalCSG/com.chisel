@@ -28,7 +28,6 @@ namespace Chisel.Core
                 return false;
             }
 
-            // TODO: once we switch to managed code, remove need to copy outlines
             vertices          = brushOutline.vertices.ToArray();
             visibleOuterLines = brushOutline.visibleOuterLines.ToArray();
             return true;

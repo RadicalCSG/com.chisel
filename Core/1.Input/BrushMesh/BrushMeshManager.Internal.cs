@@ -210,7 +210,6 @@ namespace Chisel.Core
             return builder.CreateBlobAssetReference<BrushMeshBlob>(allocator);// Allocator.Persistent / Confirmed to be disposed
         }
 
-        // TODO: store handles separately?
         unsafe struct BrushMeshPointers
         {
             public int                  index;
@@ -305,7 +304,6 @@ namespace Chisel.Core
                             continue;
                         }
 
-                        // TODO: eventually remove when it's more battle tested
                         if (!brushMesh.Validate(logErrors: true))
 						{
 							brush.BrushMesh = BrushMeshInstance.InvalidInstance;
@@ -448,7 +446,6 @@ namespace Chisel.Core
                     jobHandle.Complete();
                     Profiler.EndSample();
 
-                    // TODO: use ScheduleBrushRegistration
                     Profiler.BeginSample("RegisterBrushMeshes");
                     try
                     {
@@ -622,7 +619,6 @@ namespace Chisel.Core
                 }
 
                 var newBrushMeshBlob = builder.CreateBlobAssetReference<BrushMeshBlob>(Allocator.Persistent);// Confirmed to be disposed
-                // TODO: use ScheduleBrushRegistration
                 //var instance = new BrushMeshInstance { brushMeshHash = BrushMeshManager.RegisterBrushMesh(brushMeshBlobCache, newBrushMeshBlob) };
                 brushMeshBlobs[index] = newBrushMeshBlob;
             }
@@ -921,7 +917,6 @@ namespace Chisel.Core
             [NoAlias] public NativeList<GeneratedNodeDefinition>                    generatedNodeDefinition;
             [NoAlias] public NativeParallelHashMap<int, RefCountedBrushMeshBlob>    brushMeshBlobCache;
 
-            // TODO: this is based on RegisterBrushMesh in BrushMeshManager, remove redundancy
             internal Int32 RegisterBrushMesh([NoAlias] ref NativeParallelHashMap<int, RefCountedBrushMeshBlob> brushMeshBlobCache, [NoAlias] in BlobAssetReference<BrushMeshBlob> brushMeshBlobRef)
             {
                 if (brushMeshBlobRef == BlobAssetReference<BrushMeshBlob>.Null || !brushMeshBlobRef.IsCreated)
@@ -933,7 +928,6 @@ namespace Chisel.Core
                 var edgeCount       = brushMeshBlob.halfEdges.Length;
                 var polygonCount    = brushMeshBlob.polygons.Length;
                 var vertexCount     = brushMeshBlob.localVertices.Length;
-                // TODO: do this at creation time, so we don't have to worry about disposing the memory of invalid brushes
                 if (edgeCount < BrushMesh.kMinimumHalfEdges || polygonCount < BrushMesh.kMinimumPolygons || vertexCount < BrushMesh.kMinimumVertices)
 				{
 					brushMeshBlobRef.Dispose();
@@ -974,7 +968,6 @@ namespace Chisel.Core
                 generatedNodeDefinition = generatedNodeDefinitions,
                 brushMeshBlobCache      = brushMeshBlobCache
             };
-            // FIXME: generates null reference exception when generating capsule, but only when using job system?
             /*
             dependsOn.Complete();
             registerBrushesJob.Run();

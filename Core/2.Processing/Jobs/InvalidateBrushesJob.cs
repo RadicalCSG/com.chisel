@@ -55,7 +55,6 @@ namespace Chisel.Core
                     if (!compactHierarchy.IsValidCompactNodeID(otherBrushID))
                         continue;
 
-                    // TODO: investigate how a brush can be "valid" but not be part of treeBrushes
                     var otherBrushIDValue   = otherBrushID.slotIndex.index - nodeIDValueToNodeOrderOffset;
                     if (otherBrushIDValue < 0 || otherBrushIDValue >= nodeIDValueToNodeOrder.Length)
                         continue;

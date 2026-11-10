@@ -27,7 +27,6 @@ namespace Chisel.Core
 
         public override void OnPaint(IChiselHandleRenderer renderer, Bounds bounds)
         {
-            // TODO: Make a RenderSphere method
             renderer.RenderCylinder(bounds, horizontalSegments);
             renderer.RenderBoxMeasurements(bounds);
         }

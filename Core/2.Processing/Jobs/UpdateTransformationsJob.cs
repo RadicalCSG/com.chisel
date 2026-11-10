@@ -25,7 +25,6 @@ namespace Chisel.Core
 
         public void Execute(int index)
         {
-            // TODO: optimize, only do this when necessary
             var lookup = transformTreeBrushIndicesList[index];
             transformationCache[lookup.nodeOrder] = CompactHierarchyManager.GetNodeTransformation(in compactHierarchy, lookup.compactNodeID);
         }

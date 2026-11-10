@@ -25,7 +25,7 @@ namespace Chisel.Core
     }
 
     // Note: Stored in BlobAsset at runtime/editor-time
-    struct BaseSurface // TODO: what is the difference with InternalChiselSurface?
+    struct BaseSurface
 	{
 		public SurfaceDestinationFlags      destinationFlags;
 		public SurfaceDestinationParameters destinationParameters;
