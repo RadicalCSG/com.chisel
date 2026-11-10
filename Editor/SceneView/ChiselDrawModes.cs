@@ -67,9 +67,6 @@ namespace Chisel.Editors
 		}
 		private static void CustomOnPostRender(ScriptableRenderContext context, Camera camera) { DrawWithCamera(camera); }
 
-		// TODO: Maybe have a manager to handle rendering for all models at the same time?
-		// TODO:       -> can we still do lightmaps / navmeshes?
-		// TODO: use commandbuffers instead?
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
 		private static void DrawWithCamera(Camera camera)
 		{

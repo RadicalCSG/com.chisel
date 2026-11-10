@@ -332,7 +332,6 @@ namespace Chisel.Editors
                         outline.brush.BrushMesh == BrushMeshInstance.InvalidInstance)
                         continue;
                     
-                    // TODO: should only re-create the wireframe when the brush has changed it's hashes
                     var wireframe = ChiselWireframe.CreateWireframe(outline.brush);
                     brushOutlines[outline] = wireframe;
                 }
@@ -520,7 +519,6 @@ namespace Chisel.Editors
             s_UpdateBrushLineCache = true;
         }
 
-        // TODO: put somewhere else
         public static ChiselWireframe GetSurfaceWireframe(SurfaceReference surface)
         {
             if (!s_SurfaceOutlineCache.TryGetValue(surface, out ChiselWireframe wireframe))
@@ -599,7 +597,6 @@ namespace Chisel.Editors
                     if (!outline.brush.Valid)
                         continue;
 
-                    // TODO: simplify this
                     var wireframeValue	= pair.Value;
                     var modelTransform	= outline.transform;
                     //var brushes		= outline.brush.AllSynchronizedVariants;
@@ -620,8 +617,6 @@ namespace Chisel.Editors
                             var directSelect = (ChiselUVMoveTool.IsActive() || ChiselUVRotateTool.IsActive() || ChiselUVScaleTool.IsActive() || ChiselUVConnectTool.IsActive()) &&
                                                ((brush == outline.brush && !anySelected) || (anySelected && ChiselSyncSelection.IsBrushVariantSelected(brush)));
 
-                            // TODO: tweak look of selection, figure out how to do backfaced lighting of edges, for clarity
-                            // TODO: support selecting surfaces/edges/points (without showing the entire object selection)
                             if (directSelect)
                                 brushOutlineRenderer.DrawOutlines(transformation, wireframeValue, ColorManager.kSelectedOutlineColor, thickness: 3.0f, onlyInnerLines: false);
                             else

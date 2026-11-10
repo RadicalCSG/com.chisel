@@ -290,7 +290,6 @@ namespace Chisel.Editors
 
         readonly static List<UnityEngine.Object> s_AllChiselSurfaces = new();
 
-		// TODO: move methods like this in a separate file
 		public static void ShowMaterialProp(Rect position, SerializedProperty chiselMaterialProp)
 		{
             var previewSize = position.height;
@@ -734,7 +733,6 @@ namespace Chisel.Editors
             var bestDistSqr			= float.PositiveInfinity;
             var bestVertex			= snappedPoint;
 
-            // TODO: when we use new CSG algorithm, use its intersection loops instead
             var outline = ChiselOutlineRenderer.GetSurfaceWireframe(surfaceReference);
             if (outline != null)
             {
@@ -856,10 +854,7 @@ namespace Chisel.Editors
                     var twin            = halfEdges[e].twinIndex;
                     var polygonIndex    = halfEdgePolygonIndices[twin];
 
-                    var surfaceIndex    = polygonIndex; // FIXME: throughout the code we're making assumptions about polygonIndices being the same as surfaceIndices, 
-                                                        //        this needs to be fixed
-
-                    var localPlaneVector = localPlanes[surfaceIndex];
+                    var localPlaneVector = localPlanes[polygonIndex];
                     var edgeLocalPlane   = new Plane(localPlaneVector.xyz, localPlaneVector.w);
                     var edgeWorldPlane   = localToWorldSpace.TransformPlane(edgeLocalPlane);
                     var edgeDirection    = Vector3.Cross(surfacePlane.normal, edgeWorldPlane.normal);
@@ -1008,8 +1003,6 @@ namespace Chisel.Editors
                 return intersectionPoint;
             }
 
-            // TODO: visualize what we're snapping against
-
             var bestDist			= float.PositiveInfinity;
             var snappedPoint		= intersectionPoint;
             var handleSize          = HandleUtility.GetHandleSize(intersectionPoint);
@@ -1025,8 +1018,6 @@ namespace Chisel.Editors
             // snap to vertices of surface that are closest to the intersection point
             SnapSurfaceVertices(snapSettings, surfaceReference, intersectionPoint, 0.5f, ref snappedPoint, ref bestDist, ref snapState);
             SnapSurfaceVertices(snapSettings, surfaceReference, snappedPoint, 0.5f, ref snappedPoint, ref bestDist, ref snapState);
-
-            // TODO: snap to UV space bounds (and more?)
 
 
             var gridSnappingenabled = (CurrentSnapSettings & SnapSettings.UVGeometryGrid) != SnapSettings.None;
@@ -1167,7 +1158,6 @@ namespace Chisel.Editors
                             break;
                         } else
                         {
-                            // TODO: this works, but something else is deselecting our gameobjects, disabling the editortool?
                             if (ChiselSurfaceSelectionManager.HaveSelection)
                             {
                                 ChiselSurfaceSelectionManager.DeselectAll();
@@ -1453,18 +1443,11 @@ namespace Chisel.Editors
             s_WorldProjectionPlane = s_HoverIntersection.Value.worldPlane;
             s_WorldIntersection    = s_WorldStartPosition;
 
-            // TODO: we want to be able to determine delta movement over a plane. Ideally it would match the position of the cursor perfectly.
-            //		 unfortunately when moving the cursor towards the horizon of the plane, relative to the camera, the delta movement 
-            //		 becomes too large or even infinity. Ideally we'd switch to a camera facing plane for these cases and determine movement in 
-            //		 a less perfect way that would still allow the user to move or rotate things in a reasonable way.
-
             // more accurate for small movements
             s_WorldDragPlane		= s_WorldProjectionPlane;
 
-			// TODO: (unfinished) prevents drag-plane from intersecting near plane (makes movement slow down to a singularity when further away from click position)
 			//worldDragPlane	= new Plane(Camera.current.transform.forward, worldStartPosition); 
 
-			// TODO: ideally we'd interpolate the configuration of the worldPlane between near and far configuration
 			UpdateDragVector();
             return true;
         }
@@ -1649,7 +1632,6 @@ namespace Chisel.Editors
                     break;
                 }
             }
-			// TODO: figure out how to handle this properly
 			/*
             if (snapState.SnapGridAxis != SnapAxis.None)
             {

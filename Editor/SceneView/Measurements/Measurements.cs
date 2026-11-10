@@ -375,10 +375,6 @@ namespace Chisel.Editors
 
 		public static void DrawLengthsXY(Rect rect, Axes activeAxes = Axes.XYZ, Axes visibleAxes = Axes.XYZ, Axes selectedAxes = Axes.None)
 		{
-			// TODO: what if camera is inside of rect?
-			// TODO: what if length is outside of camera, but other option is inside of camera view?
-			// TODO: don't make the side lines move around when resizing, be smarter about handlesize
-			//			-> maybe limit the projected line to the screen?
 			
 			var invMatrix	= SceneHandles.InverseMatrix;
 			var prevColor	= SceneHandles.Color;
@@ -520,10 +516,6 @@ namespace Chisel.Editors
 
 		public static void DrawLengthsXZ(Rect rect, Axes activeAxes = Axes.XYZ, Axes visibleAxes = Axes.XYZ, Axes selectedAxes = Axes.None)
 		{
-			// TODO: what if camera is inside of bounds?
-			// TODO: what if length is outside of camera, but other option is inside of camera view?
-			// TODO: don't make the side lines move around when resizing, be smarter about handlesize
-			//			-> maybe limit the projected line to the screen?
 			
 			var invMatrix	= SceneHandles.InverseMatrix;
 			var prevColor	= SceneHandles.Color;
@@ -673,10 +665,6 @@ namespace Chisel.Editors
 		// the lengths of the bounds; when editable, a clicked length can be typed in, and true is returned when it changed bounds
 		public static bool DrawLengths(ref Bounds bounds, bool editable, Axes activeAxes = Axes.XYZ, Axes visibleAxes = Axes.XYZ, Axes selectedAxes = Axes.None)
 		{
-			// TODO: what if camera is inside of bounds?
-			// TODO: what if length is outside of camera, but other option is inside of camera view?
-			// TODO: don't make the side lines move around when resizing, be smarter about handlesize
-			//			-> maybe limit the projected line to the screen?
 			
 			var invMatrix	= SceneHandles.InverseMatrix;
 			var prevColor	= SceneHandles.Color;

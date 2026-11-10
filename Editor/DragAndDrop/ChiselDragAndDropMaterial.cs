@@ -8,7 +8,6 @@ using UnityEngine.Pool;
 
 namespace Chisel.Editors
 {
-    // TODO: register all changes in undo to ensure that even when something goes wrong, it's still undoable
     public sealed class ChiselDragAndDropMaterial : IChiselDragAndDropOperation
     {
         public ChiselDragAndDropMaterial(Material dragMaterial)
@@ -35,7 +34,6 @@ namespace Chisel.Editors
             if (!dragMaterial)
                 return null;
 
-            // TODO: do this without allocation
             return new ChiselDragAndDropMaterial(dragMaterial);
         }
 
@@ -121,7 +119,6 @@ namespace Chisel.Editors
                 ChiselUVConnectTool.IsActive())
                 return surfaceReferences;
 
-            // TODO: implement the ability to query this from the edit mode
             if (!ChiselSurfaceSelectionManager.IsSelected(surfaceReferences[0]))
                 return surfaceReferences;
 

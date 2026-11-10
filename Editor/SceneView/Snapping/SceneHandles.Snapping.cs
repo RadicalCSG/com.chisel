@@ -14,17 +14,17 @@ namespace Chisel.Editors
 
         GeometryPivotToGrid     = 1,
         GeometryBoundsToGrid    = 2,
-        GeometryVertex          = 4,    // TODO: implement
-        GeometryEdge            = 8,    // TODO: implement
-        GeometrySurface         = 16,   // TODO: implement
+        GeometryVertex          = 4,
+        GeometryEdge            = 8,
+        GeometrySurface         = 16,
 
         AllGeometry             = GeometryPivotToGrid | GeometryBoundsToGrid | GeometryVertex | GeometryEdge | GeometrySurface,
 
         UVGeometryGrid          = 32,
         UVGeometryEdges         = 64,
         UVGeometryVertices      = 128,
-        UVGrid                  = 256,  // TODO: implement
-        UVBounds                = 512,  // TODO: implement
+        UVGrid                  = 256,
+        UVBounds                = 512,
 
         AllUV                   = UVGeometryGrid | UVGeometryEdges | UVGeometryVertices | UVGrid | UVBounds,
 
@@ -36,8 +36,8 @@ namespace Chisel.Editors
     {
         None                    = 0,
 
-        Scale                   = 1, // TODO: implement
-        Rotate                  = 2, // TODO: implement
+        Scale                   = 1,
+        Rotate                  = 2,
         Translate               = 4,
 
         All                     = ~0
@@ -673,7 +673,6 @@ namespace Chisel.Editors
         }
     }
 
-    // TODO: better naming
 #if UNITY_6000_7_OR_NEWER
     [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
 #endif
@@ -886,7 +885,6 @@ namespace Chisel.Editors
         Never
     }
 
-    // TODO: better naming
     public class Snapping2D
     {
         private Vector3     startWorldPlanePosition;

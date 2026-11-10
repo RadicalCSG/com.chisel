@@ -96,7 +96,6 @@ namespace Chisel.Editors
                 var value           = ToggleButton(temp, content, isSelected, style, isActive);
                 if (EditorGUI.EndChangeCheck() && value)
                 {
-                    // TODO: make undoable
                     generator.InToolBox = true;
                     ChiselPlacementTool.ActivateTool();
                     ChiselGeneratorManager.GeneratorMode = generator;
@@ -106,10 +105,8 @@ namespace Chisel.Editors
             }
         }
 
-        // TODO: move somewhere else
         public static void SetInToolBox(ChiselPlacementToolInstance generator, bool value)
         {
-            // TODO: make undoable
             generator.InToolBox = value;
             if (ChiselGeneratorManager.GeneratorMode == generator)
             {
@@ -246,8 +243,6 @@ namespace Chisel.Editors
 
         public void OnGUI()
         {
-            // TODO: add search functionality
-            // TODO: add automatic finding node based generators in project
 
             InitStyles();
             var generatorModes  = ChiselGeneratorManager.s_GeneratorModes;
@@ -267,7 +262,6 @@ namespace Chisel.Editors
             }
 
             scrollPosition = EditorGUILayout.BeginScrollView(scrollPosition);
-            // TODO: figure out how to do this without needing layout stuff?
             EditorGUILayout.GetControlRect(false, height);
 
             var togglePosition  = new Rect(0,0, EditorGUIUtility.currentViewWidth, kSingleLineHeight);
@@ -288,7 +282,6 @@ namespace Chisel.Editors
             EditorGUILayout.EndScrollView();
         }
         
-        // TODO: CLEAN THIS UP
         public const int kMinWidth = ((248 + 32) - ((32 + 2) * ChiselPlacementToolsSelectionWindow.kToolsWide)) + (ChiselPlacementToolsSelectionWindow.kButtonSize * ChiselPlacementToolsSelectionWindow.kToolsWide);
         public readonly static GUILayoutOption kMinWidthLayout = GUILayout.MinWidth(kMinWidth);
         public readonly static GUILayoutOption kMinInnerWidthLayout = GUILayout.MinWidth(kMinWidth - 8);

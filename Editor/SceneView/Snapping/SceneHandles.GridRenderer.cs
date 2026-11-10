@@ -159,7 +159,6 @@ namespace Chisel.Editors
                 Graphics.DrawMeshNow(gridMesh, grid.GridToWorldSpace, 0);
             } else
             {
-                // TODO: store this for each SceneView
                 if (s_MaterialProperties == null)
                     s_MaterialProperties = new MaterialPropertyBlock();
 

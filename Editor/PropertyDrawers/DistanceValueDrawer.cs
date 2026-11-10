@@ -5,7 +5,6 @@ using Chisel.Core;
 
 namespace Chisel.Editors
 {
-    // TODO: show unit
     [CustomPropertyDrawer(typeof(DistanceValueAttribute))]
     public class DistanceValuesDrawer : PropertyDrawer
     {

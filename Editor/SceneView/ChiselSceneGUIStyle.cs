@@ -3,8 +3,6 @@ using UnityEngine;
 
 namespace Chisel.Editors
 {
-	// TODO: cleanup
-	// TODO: find all places that have an IsProSkin check, and make them more consistent
 #if UNITY_6000_7_OR_NEWER
 	[Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
 #endif

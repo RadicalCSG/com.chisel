@@ -6,11 +6,6 @@ using Chisel.Core;
 
 namespace Chisel.Editors
 {
-    // TODO: make sure this works well with 
-    //	- a non-identity Handles.Matrix set
-    //	- a non 90 degrees rotated grid
-    //	- it works correctly with the right axis enabled/disabled etc. etc.
-    //	- it works correctly when handles.disabled = true;
 
     //	- clicking on points should cycle between tangent modes
     //	- it should be possible to modify tangents
@@ -175,7 +170,6 @@ namespace Chisel.Editors
                             tangentA = (vertex1 - vertex0).normalized;
                         }
 
-                        //TODO: optimize away
                         if (side == 1)
                             tangentA = -tangentA;
 
@@ -798,7 +792,6 @@ namespace Chisel.Editors
 
                         if (!state.s_PointHasMoved)
                         {
-                            // TODO: (potentially) Apply selection here, NOT in MouseDown
                         }
                         
                         state.s_PointHasMoved = true;
@@ -830,7 +823,7 @@ namespace Chisel.Editors
                             break;
 
                         if (curveSelection != null &&
-                            state.s_NewCurveSelection != null) // TODO: should only continue if we actually changed something
+                            state.s_NewCurveSelection != null)
                         {
                             curveSelection.selectedPoints = state.s_NewCurveSelection.selectedPoints;
                             GUI.changed = true;
@@ -841,7 +834,6 @@ namespace Chisel.Editors
                         {
                             if (state.s_HoverOverTangent != -1)
                             {
-                                // TODO: when clicking on tangent, toggle between curve types (but skip straight)
                             }
                             if (state.s_HoverOverEdge != -1)
                             {
@@ -860,7 +852,6 @@ namespace Chisel.Editors
                                     }
                                 }			
                                 
-                                // TODO: when clicking on edge, toggle between curve types on both points
                             }
                             if (state.s_HoverOverPoint != -1)
                             { 

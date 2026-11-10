@@ -5,7 +5,6 @@ using Chisel.Core;
 
 namespace Chisel.Editors
 {
-    // TODO: show angle
     [CustomPropertyDrawer(typeof(AngleValueAttribute))]
     public class AngleValuesDrawer : PropertyDrawer
     {

@@ -41,7 +41,6 @@ namespace Chisel.Editors
             {
                 case EventType.ValidateCommand:
                 {
-                    // TODO: implement
                     // "Copy", "Cut", "Paste", "Delete", "SoftDelete", "Duplicate", "FrameSelected", "FrameSelectedWithLock", "SelectAll", "Find" and "FocusProjectWindow".
                     //Debug.Log(Event.current.commandName);
                     break;

@@ -9,8 +9,6 @@ using ToolManager = UnityEditor.EditorTools;
 
 namespace Chisel.Editors
 {
-    // TODO: make it possible to 'F' focus on selected surfaces
-    // TODO: hovering on surfaces in inspector should highlight in scene
 
     //[EditorTool("Chisel " + kToolName + " Tool", typeof(ChiselNode))]
 #if UNITY_6000_7_OR_NEWER
@@ -24,7 +22,6 @@ namespace Chisel.Editors
 
 		const float kMinRotateDiameter = 1.0f;
 
-        // TODO: see if we can get rid of these statics
 		static Vector3 s_FromWorldVector = default;
 		static bool s_HaveRotateStartAngle = false;
 		static float s_RotateAngle = 0;
@@ -104,10 +101,6 @@ namespace Chisel.Editors
                 }
                 var rotationInPlaneSpace = ChiselUVToolCommon.s_SelectedSurfaceReferences[i].WorldSpaceToPlaneSpace(worldspaceRotation);
 
-                // TODO: Finish this. If we have multiple surfaces selected, we want other non-aligned surfaces to move/rotate in a nice way
-                //		 last thing we want is that these surfaces are rotated in such a way that the uvs are rotated into infinity.
-                //		 ideally the rotation would change into a translation on 90 angles, think selecting all surfaces on a cylinder 
-                //	     and rotating the cylinder cap. You would want the sides to move with the rotation and not actually rotate themselves.
                 var rotateToPlane = Quaternion.FromToRotation(rotationInPlaneSpace.GetColumn(2), Vector3.forward);
                 var fixedRotation = Matrix4x4.TRS(Vector3.zero, rotateToPlane, Vector3.one) * rotationInPlaneSpace;
 
@@ -131,7 +124,6 @@ namespace Chisel.Editors
             
             switch (Event.current.GetTypeForControl(id))
             {
-                // TODO: support rotating texture using keyboard?
                 case EventType.Repaint:
                 {
                     if (s_HaveRotateStartAngle)
@@ -140,7 +132,6 @@ namespace Chisel.Editors
                         var magnitude       = toWorldVector.magnitude;
                         toWorldVector /= magnitude;
 
-                        // TODO: need a nicer visualization here, show delta rotation, angles etc.
                         Handles.DrawWireDisc(ChiselUVToolCommon.s_WorldStartPosition, ChiselUVToolCommon.s_WorldProjectionPlane.normal, magnitude);
                         if (s_HaveRotateStartAngle)
                         {
@@ -201,7 +192,7 @@ namespace Chisel.Editors
                         // If we snapped against something, ignore angle snapping
                         if (!ChiselUVToolCommon.s_PointHasSnapped) s_RotateAngle = ChiselUVToolCommon.SnapAngle(s_RotateAngle);
 
-                        RotateSurfacesInWorldSpace(ChiselUVToolCommon.s_WorldStartPosition, ChiselUVToolCommon.s_WorldDragPlane.normal, -s_RotateAngle); // TODO: figure out why this is reversed
+                        RotateSurfacesInWorldSpace(ChiselUVToolCommon.s_WorldStartPosition, ChiselUVToolCommon.s_WorldDragPlane.normal, -s_RotateAngle);
                     }
                     break;
                 }

@@ -5,7 +5,6 @@ using Chisel.Core;
 
 namespace Chisel.Editors
 {
-    // TODO: show percentages
     [CustomPropertyDrawer(typeof(ScaleValueAttribute))]
     public class ScaleValuesDrawer : PropertyDrawer
     {

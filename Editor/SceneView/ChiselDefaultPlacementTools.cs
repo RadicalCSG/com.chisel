@@ -108,8 +108,6 @@ namespace Chisel.Editors
 
         public override void OnSceneGUI(SceneView sceneView, Rect dragArea)
         {
-            // TODO: handle snapping against own points
-            // TODO: handle ability to 'commit' last point
             switch (ShapeExtrusionHandle.Do(dragArea, out Curve2D shape, out float height, out ChiselModelComponent modelBeneathCursor, out Matrix4x4 transformation, Axis.Y))
             {
                 case ShapeExtrusionState.Modified:
@@ -151,7 +149,7 @@ namespace Chisel.Editors
                         PlacementToolDefinition.OnUpdate(ref generatedComponent.definition, height);
                         generatedComponent.OnValidate();
                         ChiselActiveMaterial.GiveTo(generatedComponent);
-                        generatedComponent.ClearHashes(); // TODO: remove need for this
+                        generatedComponent.ClearHashes();
                     }
                     break;
                 }
@@ -284,7 +282,7 @@ namespace Chisel.Editors
 
                         Lift(generatoreModeFlags, height);
 
-                        generatedComponent.ClearHashes(); // TODO: remove need for this
+                        generatedComponent.ClearHashes();
                     }
                     break;
                 }

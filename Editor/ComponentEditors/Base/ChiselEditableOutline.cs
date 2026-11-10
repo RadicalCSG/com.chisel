@@ -10,9 +10,6 @@ using UnityEngine.Pool;
 
 namespace Chisel.Editors
 {
-    // TODO: lots of different responsibilities in here, we should try and separate responsibilities 
-    //       into multiple classes to make it easier to understand 
-    //       (but at the same time be careful to not over-engineer and make it too abstract)
 #if UNITY_6000_7_OR_NEWER
     [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
 #endif
@@ -35,7 +32,6 @@ namespace Chisel.Editors
         public BrushMesh               brushMesh;
         public ChiselTopologySelection selection;
 
-        // TODO: figure out a better place for these
         // These are temporary helpers to allow us to remap selection when modifying a brushMesh 
         // (so that selected vertices,edges, polygons still point to the 'correct' items after we removed something)
         public int[] vertexRemap;
@@ -379,7 +375,6 @@ namespace Chisel.Editors
 
         void DeleteSelectedEdges()
         {
-            // TODO: handle actual deletion of vertices
 
             var halfEdges = brushMesh.halfEdges;
 
@@ -528,7 +523,6 @@ namespace Chisel.Editors
         }
 
 
-        // TODO: improve naming
         struct SoftEdge
         {
             public int vertexIndex1;
@@ -536,7 +530,6 @@ namespace Chisel.Editors
             public int afterPolygonIndexA;
             public int afterPolygonIndexB;
 
-            // TODO: might want to put this somewhere else (order of struct is exactly wrong too)
             public Vector3 afterPolygonCenterA;
             public Vector3 afterPolygonCenterB;
             public Vector4 afterLocalPlaneA;
@@ -713,7 +706,6 @@ namespace Chisel.Editors
             //if (!brush.GetUsedGeneratedBrushes(brushContainers))
             //    return;
 
-            // TODO: for now, just assume we have one submesh
             //var brushMeshes = (brushContainers == null || brushContainers.Count != 1) ? null : brushContainers[0].BrushMeshes;
             var afterBrushMesh = brush.BrushMesh;
             if (afterBrushMesh == null)
@@ -742,7 +734,6 @@ namespace Chisel.Editors
             for (int i = 0; i < afterPolygons.Length; i++)
                 tempPolygon1ToPolygon2.Add(-1);
 
-            // TODO: optimize this
             // NOTE: assumes vertices are the same on both the original brushMesh and the optimized one
             var softEdgeList = new List<SoftEdge>();
             for (int afterEdgeA = 0; afterEdgeA < afterHalfEdges.Length; afterEdgeA++)
@@ -945,7 +936,6 @@ namespace Chisel.Editors
 
                 case EventType.ValidateCommand:
                 {
-                    // TODO: shouldn't just hijack these commands, should only use them in the right toolmode
                     if (evt.commandName == kSelectAllCommand ||
                         evt.commandName == kSoftDeleteCommand)
                         evt.Use();
@@ -954,7 +944,6 @@ namespace Chisel.Editors
 
                 case EventType.ExecuteCommand:
                 {
-                    // TODO: shouldn't just hijack these commands, should only use them in the right toolmode
                     if (evt.commandName == kSelectAllCommand)
                     {
                         evt.Use();
@@ -1016,7 +1005,6 @@ namespace Chisel.Editors
             //if (!brush.GetUsedGeneratedBrushes(brushContainers))
             //    return false;
 
-            // TODO: for now, just assume we have one submesh
             //var brushMeshes = (brushContainers.Count != 1) ? null : brushContainers[0].BrushMeshes;
             var afterBrushMesh = brush.BrushMesh;// (brushMeshes == null) ? null : brushMeshes[0];
             if (afterBrushMesh == null)
@@ -1052,8 +1040,6 @@ namespace Chisel.Editors
 
             var validState = brush.definition.ValidState;
 
-            // TODO: improve polygon color and make it handle transparency (polygon rendering does not work with alpha?)
-            // TODO: make it possible to modify these colors from a settings page
             #region Default Colors
             var FrontfacedPolygonColor = SceneHandles.YAxisColor;
             var BackfacedPolygonColor = new Color(FrontfacedPolygonColor.r, FrontfacedPolygonColor.g, FrontfacedPolygonColor.b, FrontfacedPolygonColor.a * SceneHandles.BackfaceAlphaMultiplier);
@@ -1541,8 +1527,6 @@ namespace Chisel.Editors
             if (Event.current.type != EventType.Repaint)
                 return;
 
-            // TODO: highlight what we're snapping with (grid, vertex, edges)
-
             SceneHandles.RenderBorderedCircle(prevNewVertex, HandleUtility.GetHandleSize(prevNewVertex) * HandleRendering.kPointScale);
             if (secondVertex)
             {
@@ -1561,7 +1545,6 @@ namespace Chisel.Editors
         {
             get
             {
-                // TODO: handle this in a more efficient way
                 var currentFocusControl = SceneHandleUtility.FocusControl;
                 for (int e = 0; e < s_TempEdgesIDCount; e++)
                 {
@@ -1590,7 +1573,6 @@ namespace Chisel.Editors
         {
             get
             {
-                // TODO: handle this in a more efficient way
                 var currentFocusControl = SceneHandleUtility.FocusControl;
                 for (int p = 0; p < s_TempPolygonsIDCount; p++)
                 {
@@ -1632,8 +1614,6 @@ namespace Chisel.Editors
             {
                 var id = s_TempVerticesIDs[v];
 
-                // TODO: instead of hardcoding this to this edit-mode, have some way to turn rendering off for 
-                //       a vertex or multiple vertices and use that from the editmode
                 if (inCreateEdgeEditMode &&
                     currentFocusControl == id)
                     continue;
@@ -1938,10 +1918,6 @@ namespace Chisel.Editors
         // This method returns true when the brushMesh has changed
         public bool HandleEdgeCreationFromEdge()
         {
-            // TODO: handle polygons that are camera aligned -> pick edge that is closest to camera
-            // TODO: make this make sense in ortho mode (we can't see which polygon we're splitting)
-            //          do a split instead?? or properly handle distance (see previous TODO) and 
-            //          just let user make sure their sceneview is set to, for instance, bottom or top??
 
             for (int e = 0; e < s_TempEdgesIDCount; e++)
             {
@@ -1985,10 +1961,6 @@ namespace Chisel.Editors
         // This method returns true when the brushMesh has changed
         public bool HandleEdgeCreationFromVertex()
         {
-            // TODO: handle edges that are camera aligned -> pick vertex that is closest to camera
-            // TODO: make this make sense in ortho mode (we can't see which polygon we're splitting)
-            //          do a split instead?? or properly handle distance (see previous TODO) and 
-            //          just let user make sure their sceneview is set to, for instance, bottom or top??
 
             for (int v = 0; v < s_TempVerticesIDCount; v++)
             {
@@ -2066,7 +2038,7 @@ namespace Chisel.Editors
         {
             // Capture the click so we don't actually pass through to another control
             for (int v = 0; v < s_TempVerticesIDCount; v++)
-                HandleClick(s_TempVerticesIDs[v], captureControl: true); // TODO: do this in a different way
+                HandleClick(s_TempVerticesIDs[v], captureControl: true);
             return false;
         }
 
@@ -2094,7 +2066,6 @@ namespace Chisel.Editors
         // This method returns true when the brushMesh has changed
         public bool HandlePolygonMovement3D(Vector3 cameraDirection, bool isOutlineInsideOut)
         {
-            // TODO: handle moving in axis aligned direction instead of along normal
 
             var planes = brushMesh.planes;
 
@@ -2133,7 +2104,6 @@ namespace Chisel.Editors
                 if ((s_TempEdgesState[e] & (ItemState.Hovering | ItemState.Active)) != ItemState.None)
                 {
                     var direction = math.length(vertex1 - vertex2) * 1000.0f;
-                    // TODO: make this line go into infinity
                     SceneHandles.DrawDottedLine(vertex1 + direction, vertex1, 2.0f);
                     SceneHandles.DrawDottedLine(vertex2, vertex2 - direction, 2.0f);
                 }
@@ -2175,9 +2145,6 @@ namespace Chisel.Editors
             // you're not accidentally grabbing the wrong thing
             bool enablePositionHandle = !HaveFocusOnPolygon;
 
-            // TODO: somehow handle snapping against all other non-selected vertices
-            //          this way, when we move an edge of a polygon on another edge, *which is not grid aligned*, it would still snap to it.
-
             using (new EditorGUI.DisabledScope(!enablePositionHandle))
             {
                 var offset = Vector3.zero;
@@ -2189,7 +2156,6 @@ namespace Chisel.Editors
 
         bool InAlternateEditMode    { get { return Event.current.shift; } }
 
-        // TODO: have a more scalable way to handle brush "edit modes"
         bool InCreateEdgeEditMode   { get { return InAlternateEditMode; } }
 
         bool InDefaultEditMode      { get { return !InAlternateEditMode; } }
@@ -2207,19 +2173,6 @@ namespace Chisel.Editors
             var in2DMode            = handles.IsIn2DMode;
 
             // Ortho mode
-            //      TODO: handle being able to move brushes when dragging from the selected brush itself 
-            //              (might be better to handle this outside the generator so we can do this for all types of generators)
-            //      TODO: move polygon -> needs to always be grid axis aligned movement
-
-            // TODO: add ability to delete vertices
-            // TODO: add scaling/rotating of vertices
-
-            // TODO: need support for multiple edit modes (maybe use EditorTool?)
-            //       TODO: add marquee selection edit mode
-            //       TODO: add create split brush edit mode
-
-            // TODO: have ability to click on each XY/YZ/XZ square of the position handle to select a working plane, 
-            //          then dragging objects/vertices directly works on that selected plane (3ds-max style)
 
             if (HandleDeletion())
                 return true;

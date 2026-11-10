@@ -72,7 +72,6 @@ namespace Chisel.Editors
             s_RotatedAngleOffset += MathExtensions.SignedAngle(vector, (newPosition - origin).normalized, handleDir);
             
             
-            // TODO: put somewhere else
             if (!Snapping.RotateSnappingActive)
             {
                 return s_RotatedStartAngle + s_RotatedAngleOffset;

@@ -11,7 +11,6 @@ using UnityEngine;
 
 namespace Chisel.Editors
 {
-    // TODO: merge all "Intersection" types into one "Intersection" thing
 	public class PlaneIntersection
     {
         public PlaneIntersection(Vector3 point, Plane plane) { this.point = point; this.plane = plane; }
@@ -31,7 +30,6 @@ namespace Chisel.Editors
         public ChiselModelComponent model;
     }
 
-	// TODO: merge with ChiselSelectionManager
 	public static class ChiselClickSelectionManager
     {
         public static PlaneIntersection GetPlaneIntersection(Vector2 mousePosition)

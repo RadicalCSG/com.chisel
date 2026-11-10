@@ -77,8 +77,6 @@ namespace Chisel.Editors
 			{
 			}
 
-			// TODO: how to handle these kind of message in the hierarchy? cannot show buttons, 
-			//       but still want to show a coherent message
 			public void Warning(string message, Action buttonAction, string buttonText)
             {
             }

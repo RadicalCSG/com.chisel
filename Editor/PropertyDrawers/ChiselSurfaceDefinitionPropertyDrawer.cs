@@ -11,7 +11,6 @@ namespace Chisel.Editors
 #endif
     public sealed class ChiselSurfaceDefinitionPropertyDrawer : PropertyDrawer
     {
-		// TODO: make these shared resources since this name is used in several places (with identical context)
 		private readonly static GUIContent  kSurfacesContent        = new("Surfaces");
 		private const string                kSurfacePropertyName    = "Surface {0}";
         private static GUIContent           s_SurfacePropertyContent = new();

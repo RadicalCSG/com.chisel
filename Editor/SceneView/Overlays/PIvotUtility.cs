@@ -54,7 +54,6 @@ namespace Chisel.Editors
 
         public static void MovePivotTo(IReadOnlyList<ChiselNodeComponent> nodes, Vector3 newPosition)
         {
-            // TODO: optimize
             var nodesWithChildObjects = new HashSet<UnityEngine.Object>();
             var nodesWithChildren = new HashSet<ChiselNodeComponent>();
             foreach (var node in nodes)
@@ -75,7 +74,6 @@ namespace Chisel.Editors
 
         public static void MovePivotToCenter(IReadOnlyList<ChiselNodeComponent> nodes)
         {
-            // TODO: optimize
             var nodesWithChildObjects = new HashSet<UnityEngine.Object>();
             var nodesWithChildren = new HashSet<ChiselNodeComponent>();
             foreach (var node in nodes)

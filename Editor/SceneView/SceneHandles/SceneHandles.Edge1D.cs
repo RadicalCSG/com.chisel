@@ -79,7 +79,6 @@ namespace Chisel.Editors
             return Edge1DHandleOffset(id, axis, from, to, 0, 0, capFunction);
         }
 
-        // TODO: improve this
         public static Vector3 Edge1DHandleOffset(Axis axis, Vector3 from, Vector3 to, Vector3 direction, float snappingStep= 0 , float handleSize = 0)
         {
             var position = (from + to) * 0.5f;

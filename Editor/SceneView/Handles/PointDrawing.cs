@@ -6,8 +6,6 @@ using UnityEngine;
 
 namespace Chisel.Editors
 {
-    // TODO: need to snap to edges
-    // TODO: need to snap to vertices
 #if UNITY_6000_7_OR_NEWER
     [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
 #endif
@@ -23,7 +21,6 @@ namespace Chisel.Editors
         }
 
 
-        // TODO: how to get rid of this??
         public static void Reset()
         {
             s_CurrentPointIndex = 0;
@@ -42,7 +39,6 @@ namespace Chisel.Editors
         private static Vector2			    s_MousePosition = Vector2.zero;
         private static bool			        s_MouseJumping = false;
 
-        // TODO: put these constants somewhere
         public const KeyCode    kCancelKey			= KeyCode.Escape;
         public const KeyCode    kCommitKey			= KeyCode.Return;
         public const string		kSoftDeleteCommand	= "SoftDelete";
@@ -54,9 +50,8 @@ namespace Chisel.Editors
             {
 				s_StartIntersection = dragArea.Contains(mousePosition) ? ChiselClickSelectionManager.GetPlaneIntersection(mousePosition) : null;
                 if (s_StartIntersection != null &&
-                    s_StartIntersection.plane.normal.sqrMagnitude > 0) // TODO: figure out how this could happen
+                    s_StartIntersection.plane.normal.sqrMagnitude > 0)
                 {
-                    // TODO: try to cache this ..
                     var activeGridUp					= Chisel.Editors.Grid.ActiveGrid.Up;
                     var activeGridForward				= Chisel.Editors.Grid.ActiveGrid.Forward;
                     var activeGridCenter				= Chisel.Editors.Grid.ActiveGrid.Center;
@@ -89,8 +84,6 @@ namespace Chisel.Editors
                         if (surfaceGridPlane.SignedRaycast(upRay,   out dist)) { var abs_dist = Mathf.Abs(dist); if (abs_dist < bestDist) { bestDist = abs_dist; surfaceGridCenter = upRay     .GetPoint(dist); } }
                         if (surfaceGridPlane.SignedRaycast(downRay, out dist)) { var abs_dist = Mathf.Abs(dist); if (abs_dist < bestDist) { bestDist = abs_dist; surfaceGridCenter = downRay   .GetPoint(dist); } }
                     }
-
-                    // TODO: try to snap the new surface grid point in other directions on the active-grid? (do we need to?)
 
                     var center = surfaceGridCenter - activeGridCenter;
                     s_Transform = Matrix4x4.TRS(center, activeGridToSurfaceGridRotation, Vector3.one) *

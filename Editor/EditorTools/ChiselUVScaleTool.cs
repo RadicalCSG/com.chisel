@@ -9,8 +9,6 @@ using ToolManager = UnityEditor.EditorTools;
 
 namespace Chisel.Editors
 {
-    // TODO: make it possible to 'F' focus on selected surfaces
-    // TODO: hovering on surfaces in inspector should highlight in scene
 
     //[EditorTool("Chisel " + kToolName + " Tool", typeof(ChiselNode))]
 #if UNITY_6000_7_OR_NEWER
@@ -23,7 +21,6 @@ namespace Chisel.Editors
 
 		const float kMinScaleDiameter = 2.0f;
 
-		// TODO: see if we can get rid of these statics
 		static bool s_HaveScaleStartLength = false;
 		static float s_CompareDistance = 0;
 		public static bool IsActive() { return ToolManager.activeToolType == typeof(ChiselUVScaleTool); }
@@ -106,10 +103,6 @@ namespace Chisel.Editors
                 }
                 var rotationInPlaneSpace = ChiselUVToolCommon.s_SelectedSurfaceReferences[i].WorldSpaceToPlaneSpace(worldspaceRotation);
 
-                // TODO: Finish this. If we have multiple surfaces selected, we want other non-aligned surfaces to move/rotate in a nice way
-                //		 last thing we want is that these surfaces are rotated in such a way that the uvs are rotated into infinity.
-                //		 ideally the rotation would change into a translation on 90 angles, think selecting all surfaces on a cylinder 
-                //	     and rotating the cylinder cap. You would want the sides to move with the rotation and not actually rotate themselves.
                 var rotateToPlane = Quaternion.FromToRotation(rotationInPlaneSpace.GetColumn(2), Vector3.forward);
                 var fixedRotation = Matrix4x4.TRS(Vector3.zero, rotateToPlane, Vector3.one) * rotationInPlaneSpace;
 
@@ -126,7 +119,6 @@ namespace Chisel.Editors
             bool needRepaint = false;            
             switch (Event.current.GetTypeForControl(id))
             {
-                // TODO: support scaling texture using keyboard
                 case EventType.Repaint:
                 {
                     if (s_HaveScaleStartLength)
@@ -179,7 +171,6 @@ namespace Chisel.Editors
                         }
                     } else
                     {
-                        // TODO: drag from one position to another -> texture should fit in between and tile accordingly, taking rotation into account
                         ScaleSurfacesInWorldSpace(ChiselUVToolCommon.s_WorldStartPosition, ChiselUVToolCommon.s_WorldDragPlane.normal, s_CompareDistance / toWorldVector.sqrMagnitude);
                     }
                     break;

@@ -27,7 +27,6 @@ namespace Chisel.Editors
         static Curve2D              s_Curve2D = null;
         static bool                 s_ExtrusionMode = false;
         
-        // TODO: somehow get rid of this
         public static void Reset()
         {
             s_ExtrusionMode = false;
@@ -77,8 +76,6 @@ namespace Chisel.Editors
             { 
                 if (!s_ExtrusionMode)
                 {
-                    // TODO: handle snapping against own points
-                    // TODO: handle ability to 'commit'
                     PointDrawing.PointDrawHandle(dragArea, ref s_Points, out s_Transformation, out s_ModelBeneathCursor, releaseOnMouseUp: true, Chisel.Editors.SceneHandles.OutlinedDotHandleCap);
 
                     if (s_Points.Count <= 1)

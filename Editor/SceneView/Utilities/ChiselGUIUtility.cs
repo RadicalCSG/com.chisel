@@ -22,7 +22,6 @@ namespace Chisel.Editors
             {
                 return true;
             }
-            // @TODO: find out why checking for GUIContent.none doesn't work
             return label.text != string.Empty || label.image != null;
         }
     }
