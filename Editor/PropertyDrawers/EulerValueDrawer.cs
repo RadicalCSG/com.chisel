@@ -40,13 +40,9 @@ namespace Chisel.Editors
                     context.ShowAsContext ();
                 }
                 
-                var euler = property.quaternionValue.eulerAngles;
-                EditorGUI.BeginChangeCheck();
-                {
-                    euler = EditorGUI.Vector3Field(position, label, euler);
-                }
-                if (EditorGUI.EndChangeCheck())
-                    property.quaternionValue = Quaternion.Euler(euler);
+                var euler = ChiselValueFieldGUI.VectorField(position, label, property.quaternionValue.eulerAngles, 3, ChiselValueKind.Angle, property.hasMultipleDifferentValues);
+                if (euler.HasValue)
+                    property.quaternionValue = Quaternion.Euler(euler.Value);
             }
             catch (ExitGUIException) { }
             catch (Exception ex) { Debug.LogException(ex); }

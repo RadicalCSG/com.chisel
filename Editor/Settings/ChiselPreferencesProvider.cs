@@ -11,7 +11,7 @@ namespace Chisel.Editors
     {
         public const string kPath = "Preferences/Chisel";
 
-        static readonly GUIContent kDistanceUnitContent = new("Distance Unit", "The unit lengths are shown in in the scene view, and typed in when one is edited there. A length typed with a unit after it (\"50 cm\") is read in that unit.");
+        static readonly GUIContent kDistanceUnitContent = new("Distance Unit", "The unit lengths are shown in, in the scene view and the inspector, and typed in when one is edited in the scene view. A length typed with a unit after it (\"50 cm\") is read in that unit.");
 
         ChiselPreferencesProvider(string path, SettingsScope scope) : base(path, scope) { }
 
