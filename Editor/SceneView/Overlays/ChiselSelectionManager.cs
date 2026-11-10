@@ -19,7 +19,20 @@ namespace Chisel.Editors
         {
             Selection.selectionChanged -= UpdateSelection;
             Selection.selectionChanged += UpdateSelection;
+            ObjectChangeEvents.changesPublished -= OnChangesPublished;
+            ObjectChangeEvents.changesPublished += OnChangesPublished;
             UpdateSelection();
+        }
+
+        // An operation can also change outside SetOperationForSelection: in the inspector, a context menu, an undo
+        static void OnChangesPublished(ref ObjectChangeEventStream stream)
+        {
+            if (s_OperationNodes.Count == 0)
+                return;
+            var prevOperation = s_CurrOperation;
+            UpdateOperationSelection();
+            if (prevOperation != s_CurrOperation)
+                NodeOperationUpdated?.Invoke();
         }
 
         public static Action NodeOperationUpdated;
@@ -33,7 +46,7 @@ namespace Chisel.Editors
         readonly static List<IChiselHasOperation> s_OperationNodes = new();
         readonly static List<ChiselGeneratorComponent> s_Generators = new();
 
-        static void UpdateSelection()
+        internal static void UpdateSelection()
         {
             s_Nodes.Clear();
             s_Nodes.AddRange(Selection.GetFiltered<ChiselNodeComponent>(SelectionMode.DeepAssets));
@@ -71,7 +84,6 @@ namespace Chisel.Editors
         }
 
 
-        // TODO: needs to be called when any operation changes, anywhere
         public static void UpdateOperationSelection()
         {
             s_CurrOperation = null;
@@ -208,17 +220,17 @@ namespace Chisel.Editors
 			ref var planes = ref brushMesh.localPlanes;
 			var nodeToTreeSpace = (Matrix4x4)treeBrush.NodeToTreeSpaceMatrix;
 			var plane = new Plane(planes[surfaceIndex].xyz, planes[surfaceIndex].w);
-			var result_localPlane = plane;
-			var result_isReversed = false; // TODO: make this work somehow?
-
-			var treePlane = nodeToTreeSpace.TransformPlane(result_localPlane);
-			var result_treePlane = result_isReversed ? treePlane.flipped : treePlane;
+			var treePlane = nodeToTreeSpace.TransformPlane(plane);
 
 			var worldToLocalMatrix = model.transform.worldToLocalMatrix;
 
 			var localRayStart = worldToLocalMatrix.MultiplyPoint(extraPickingData.worldCameraOrigin);
 			var localRayVector = worldToLocalMatrix.MultiplyVector((extraPickingData.worldIntersectionPos - extraPickingData.worldCameraOrigin).normalized);
 			var localRay = new Ray(localRayStart, localRayVector);
+
+			// The plane facing the viewer, as the surface is drawn: seen from inside a brush (a subtractive brush's walls)
+			// it is turned around
+			var result_treePlane = Vector3.Dot(treePlane.normal, localRayVector) > 0 ? treePlane.flipped : treePlane;
 
 			var result_treeIntersection = Vector3.zero;
 			if (result_treePlane.Raycast(localRay, out float result_dist))
@@ -243,6 +255,19 @@ namespace Chisel.Editors
             var chiselIntersection = ChiselSceneQuery.Convert(brushIntersection);
             chiselIntersection.gameObject = extraPickingData.selectionGameObject;
 			return chiselIntersection;
+		}
+
+		// The intersection picking reports for a brush's surface, seen from worldCameraOrigin at worldIntersectionPos
+		internal static ChiselIntersection PickedIntersection(GameObject gameObject, CSGTreeBrush brush, int surfaceIndex, Vector3 worldCameraOrigin, Vector3 worldIntersectionPos)
+		{
+			return Convert(new ExtraPickingData
+			{
+				selectionDescription = new SelectionDescription { brushNodeID = brush.CompactNodeID, surfaceIndex = surfaceIndex },
+				worldIntersectionPos = worldIntersectionPos,
+				worldCameraOrigin    = worldCameraOrigin,
+				cameraDistance       = (worldIntersectionPos - worldCameraOrigin).magnitude,
+				selectionGameObject  = gameObject
+			});
 		}
 
 		public static ChiselIntersection LastIntersection

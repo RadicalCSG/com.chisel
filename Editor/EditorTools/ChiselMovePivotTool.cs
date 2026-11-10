@@ -132,7 +132,6 @@ namespace Chisel.Editors
             Intersection
         }
 
-        // TODO: put somewhere else
         static ClosestLineResult ClosestPointsBetweenTwoLines(Vector3 rayOriginA, Vector3 rayDirectionA, Vector3 lineB1, Vector3 lineB2, out Vector3 pointA, out Vector3 pointB)
         {
             var deltaB = lineB2 - lineB1;
@@ -168,10 +167,8 @@ namespace Chisel.Editors
 	    }
 
 
-        // TODO: put somewhere else
         static bool ClosestPointToLine(Vector3 point, Vector3 lineB1, Vector3 lineB2, out Vector3 pointB)
         {
-            // TODO: optimize
             var deltaA = (lineB2 - lineB1).normalized;
             var deltaB = (lineB2 - point);
             var t = Vector3.Dot(deltaB, deltaA);
@@ -270,7 +267,6 @@ namespace Chisel.Editors
 
                     if (result == ClosestLineResult.Aligned)
                     {
-                        // TODO: draw edge as being intersecting if we're on the edge right now
                         continue;
                     }
 
@@ -328,8 +324,6 @@ namespace Chisel.Editors
 			}
         }
 
-
-        // TODO: When grid snapping, make it only get points that go through grid lines
 
         // 2D:
         // Find edges that intersect with plane
@@ -411,7 +405,6 @@ namespace Chisel.Editors
                     ref var planes = ref brushMesh.localPlanes;
                     ref var halfEdgePolygonIndices = ref brushMesh.halfEdgePolygonIndices;
 
-                    // TODO: store this information with brush 
                     var model = Resources.EntityIdToObject(csgTree.EntityId) as ChiselModelComponent;
                     var worldToNode = (Matrix4x4)csgBrush.TreeToNodeSpaceMatrix * model.hierarchyItem.WorldToLocalMatrix;
                     var nodeToWorld = model.hierarchyItem.LocalToWorldMatrix * (Matrix4x4)csgBrush.NodeToTreeSpaceMatrix;
@@ -469,8 +462,6 @@ namespace Chisel.Editors
                         var firstEdge = polygon.firstEdge;
                         var lastEdge = firstEdge + polygon.edgeCount;
 
-                        // TODO: If point is ON plane, ignore. We don't want to "snap" to every point on that surface b/c then we won't be snapping at all
-
                         foundEdgeCount = 0;
                         for (int e0 = lastEdge - 1, e1 = firstEdge; e1 < lastEdge; e0 = e1, e1++)
                         {
@@ -519,7 +510,6 @@ namespace Chisel.Editors
                                     (distance0 > snapDistanceSqr && distance1 > snapDistanceSqr))
                                     continue;
 
-                                // TODO: Find intersection between plane and edge
                                 var vector = vertex0 - vertex1;
                                 var length = distance0 - distance1;
                                 var delta = distance0 / length;
@@ -644,14 +634,13 @@ namespace Chisel.Editors
             }
         }
 
-        // TODO: get rid of these statics
         readonly static Dictionary<int, SnappingContext> s_SnappingContext = new();
         readonly static List<SurfaceSnap> s_DrawSurfaceSnapEvents = new();
         readonly static List<EdgeSnap>    s_DrawEdgeSnapEvents    = new();
         readonly static List<VertexSnap>  s_DrawVertexSnapEvents  = new();
         
 
-        const float kArbitrarySnapDistance = 5; // TODO: use fixed step when no grid snapping, otherwise grid step size
+        const float kArbitrarySnapDistance = 5;
 
         static bool FindCustomSnappingRayPoints(Vector3 worldRayStart, Vector3 worldRayDirection, int contextIndex, List<Vector3> foundWorldspacePoints)
         {

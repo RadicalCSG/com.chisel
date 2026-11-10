@@ -144,7 +144,6 @@ namespace Chisel.Editors
         }
 
 
-        // TODO: create proper delegate for this, with named parameters for clarity
         public static event Action<ChiselPlacementToolInstance, ChiselPlacementToolInstance> GeneratorSelectionChanged;
 
 

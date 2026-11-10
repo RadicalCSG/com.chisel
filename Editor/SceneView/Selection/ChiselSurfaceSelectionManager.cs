@@ -384,8 +384,6 @@ namespace Chisel.Editors
                 modified = DeselectAllInternal();
             }
             
-            // TODO: handle replace in a single step (using 'Set') to detect modifications
-
             if (surfaces != null)
             { 
                 if (selectionType == SelectionType.Subtractive)

@@ -45,7 +45,7 @@ namespace Chisel.Editors
             }
         }
 
-		static void MenuSetOperationTo(MenuCommand menuCommand, CSGOperationType operationType)
+		internal static void MenuSetOperationTo(MenuCommand menuCommand, CSGOperationType operationType)
         {
             var context     = (menuCommand.context as GameObject);
             var gameObject  = (context == null) ? Selection.activeGameObject : context;
@@ -61,7 +61,7 @@ namespace Chisel.Editors
             var composite = gameObject.GetComponent<ChiselCompositeComponent>();
             if (composite && composite.Operation != operationType)
             {
-                Undo.RecordObject(generator, "Modified Operation");
+                Undo.RecordObject(composite, "Modified Operation");
                 composite.Operation = operationType;
             }
         }
@@ -96,7 +96,6 @@ namespace Chisel.Editors
 
 		static void MenuCreateComposite(MenuCommand menuCommand, CSGOperationType operationType)
 		{
-            // TODO: if we have multiple selected gameobjects, then those as children
 
 			GameObject go = new($"{operationType} Composite");
 			GameObjectUtility.SetParentAndAlign(go, menuCommand.context as GameObject);
@@ -130,16 +129,20 @@ namespace Chisel.Editors
         {
             var gameObjects = Selection.gameObjects;
 
-            if (gameObjects == null || gameObjects.Length == 0 ||                
+            if (gameObjects == null || gameObjects.Length == 0 ||
                 // Workaround for "Unity calls each object in selection individually in menu item"
                 menuCommand.context != gameObjects[0])
                 return;
 
+            EncapsulateInComposite(gameObjects);
+        }
+
+        internal static ChiselCompositeComponent EncapsulateInComposite(GameObject[] gameObjects)
+        {
             if (!ValidateEncapsulateInCompositeInternal(gameObjects))
-                return;
+                return null;
 
-            // TODO: sort gameObjects by their siblingIndex / hierarchy position
-
+            gameObjects = InHierarchyOrder(gameObjects);
             var childTransform      = gameObjects[0].transform;
             var childSiblingIndex   = childTransform.GetSiblingIndex();
             var childParent         = childTransform.parent;
@@ -159,6 +162,98 @@ namespace Chisel.Editors
             EditorGUIUtility.PingObject(compositeGameObject);
             for (int i = 0; i < gameObjects.Length; i++)
                 EditorGUIUtility.PingObject(gameObjects[i]);
+            return composite;
+        }
+
+        // The CSG combines nodes in hierarchy order, so objects moved together under a new parent keep that order,
+        // whatever order they were selected in
+        internal static T[] InHierarchyOrder<T>(T[] objects) where T : UnityEngine.Object
+        {
+            var sorted = (T[])objects.Clone();
+            Array.Sort(sorted, (a, b) => CompareHierarchyOrder(TransformOf(a), TransformOf(b)));
+            return sorted;
+        }
+
+        static Transform TransformOf(UnityEngine.Object obj)
+        {
+            if (obj is Component component) return component.transform;
+            if (obj is GameObject gameObject) return gameObject.transform;
+            return null;
+        }
+
+        static int CompareHierarchyOrder(Transform a, Transform b)
+        {
+            if (a == b) return 0;
+            if (!a) return 1;
+            if (!b) return -1;
+            var sceneOrder = SceneOrder(a.gameObject.scene).CompareTo(SceneOrder(b.gameObject.scene));
+            if (sceneOrder != 0)
+                return sceneOrder;
+            var pathA = SiblingPath(a);
+            var pathB = SiblingPath(b);
+            for (int i = 0; i < pathA.Count && i < pathB.Count; i++)
+            {
+                if (pathA[i] != pathB[i])
+                    return pathA[i].CompareTo(pathB[i]);
+            }
+            return pathA.Count.CompareTo(pathB.Count);
+        }
+
+        static int SceneOrder(UnityEngine.SceneManagement.Scene scene)
+        {
+            for (int i = 0; i < UnityEngine.SceneManagement.SceneManager.sceneCount; i++)
+            {
+                if (UnityEngine.SceneManagement.SceneManager.GetSceneAt(i) == scene)
+                    return i;
+            }
+            return int.MaxValue;
+        }
+
+        // The sibling indices from the root down to the transform
+        static List<int> SiblingPath(Transform transform)
+        {
+            var path = new List<int>();
+            for (; transform; transform = transform.parent)
+                path.Add(transform.GetSiblingIndex());
+            path.Reverse();
+            return path;
+        }
+
+        internal static ChiselModelComponent CreateModelFor(UnityEngine.Object[] targetObjects)
+        {
+            targetObjects = InHierarchyOrder(targetObjects);
+            var childTransform      = (targetObjects[0] as MonoBehaviour).transform;
+            var childSiblingIndex   = childTransform.GetSiblingIndex();
+            var childParent         = childTransform.parent;
+
+            var model               = ChiselModelManager.Instance.CreateNewModel(childParent);
+            var modelGameObject     = model.gameObject;
+            var modelTransform      = model.transform;
+            modelTransform.SetSiblingIndex(childSiblingIndex);
+            Undo.RegisterCreatedObjectUndo(modelGameObject, "Create " + modelGameObject.name);
+            MoveTargetsUnderModel(targetObjects, model);
+            return model;
+        }
+
+        internal static void MoveTargetsUnderModel(UnityEngine.Object[] targetObjects, ChiselModelComponent model)
+        {
+            targetObjects = InHierarchyOrder(targetObjects);
+            var modelTransform  = model.transform;
+            var modelGameObject = model.gameObject;
+            for (int t = 0; t < targetObjects.Length; t++)
+            {
+                var targetComponent = (targetObjects[t] as MonoBehaviour);
+                var targetTransform = targetComponent.transform;
+                Undo.SetTransformParent(targetTransform, modelTransform, "Moved GameObject under Model");
+            }
+
+            Selection.activeObject = modelGameObject;
+            ChiselModelManager.Instance.ActiveModel = model;
+
+            // This forces the model to be opened when we create it
+            EditorGUIUtility.PingObject(modelGameObject);
+            for (int t = 0; t < targetObjects.Length; t++)
+                EditorGUIUtility.PingObject(targetObjects[t]);
         }
 
         [MenuItem(ChiselNodeEditorBase.kGameObjectMenuPath + "Encapsulate selection in Composite", true)]
@@ -378,26 +473,6 @@ namespace Chisel.Editors
 		readonly static GUIContent kCreateAndAddToModel  = new("Insert into new model");
 		readonly static GUIContent kAddToActiveModel     = new("Move to active model");
 
-        static void MoveTargetsUnderModel(UnityEngine.Object[] targetObjects, ChiselModelComponent model)
-        {
-            var modelTransform  = model.transform;
-            var modelGameObject = model.gameObject;
-            for (int t = 0; t < targetObjects.Length; t++)
-            {
-                var targetComponent = (targetObjects[t] as MonoBehaviour);
-                var targetTransform = targetComponent.transform;
-                Undo.SetTransformParent(targetTransform, modelTransform, "Moved GameObject under Model");
-            }
-
-            Selection.activeObject = modelGameObject;
-            ChiselModelManager.Instance.ActiveModel = model;
-
-            // This forces the model to be opened when we create it
-            EditorGUIUtility.PingObject(modelGameObject);
-            for (int t = 0; t < targetObjects.Length; t++)
-                EditorGUIUtility.PingObject(targetObjects[t]);
-        }
-
         public static void ShowDefaultModelMessage(UnityEngine.Object[] targetObjects)
         {
             if (!IsPartOfDefaultModel(targetObjects))
@@ -406,26 +481,9 @@ namespace Chisel.Editors
             EditorGUILayout.BeginVertical(EditorStyles.helpBox);
             EditorGUILayout.HelpBox(kDefaultModelContents, MessageType.Warning);
             if (GUILayout.Button(kCreateAndAddToModel))
-            {
-                // TODO: sort gameObjects by their siblingIndex / hierarchy position, pick top one
-
-                var childTransform      = (targetObjects[0] as MonoBehaviour).transform;
-                var childSiblingIndex   = childTransform.GetSiblingIndex();
-                var childParent         = childTransform.parent;
-
-                var model               = ChiselModelManager.Instance.CreateNewModel(childParent);
-                var modelGameObject     = model.gameObject;
-                var modelTransform      = model.transform;
-                modelTransform.SetSiblingIndex(childSiblingIndex);
-                Undo.RegisterCreatedObjectUndo(modelGameObject, "Create " + modelGameObject.name);
-                MoveTargetsUnderModel(targetObjects, model);
-            }
+                CreateModelFor(targetObjects);
             if (ChiselModelManager.Instance.ActiveModel && GUILayout.Button(kAddToActiveModel))
-            {
-                // TODO: sort gameObjects by their siblingIndex / hierarchy position
-
                 MoveTargetsUnderModel(targetObjects, ChiselModelManager.Instance.ActiveModel);
-            }
             EditorGUILayout.EndVertical();
         }
 
@@ -445,7 +503,6 @@ namespace Chisel.Editors
 
                         var transform = node.transform;
 
-                        // TODO: probably not a good idea to use these matrices for this, since it calculates this all the way up the transformation tree
                         var curLocalToWorldMatrix = transform.localToWorldMatrix;
                         var oldLocalToWorldMatrix = node.hierarchyItem.LocalToWorldMatrix;
                         if (curLocalToWorldMatrix.m00 != oldLocalToWorldMatrix.m00 ||
@@ -477,7 +534,7 @@ namespace Chisel.Editors
                     if (modifiedNodes.Count > 0)
                     {
                         ChiselNodeHierarchyManager.NotifyTransformationChanged(modifiedNodes);
-                        ResetGridBounds(); // TODO: should only do this when rotating, not when moving
+                        ResetGridBounds();
                     }
                 }
                 finally
@@ -491,7 +548,6 @@ namespace Chisel.Editors
 		readonly static GUIContent kConvertToBrushContent    = new("Convert to Brush");
 
         
-        // TODO: put somewhere else
         internal static void ConvertIntoBrushesButton(Rect rect, SerializedObject serializedObject)
         {
             rect.height = 22;
@@ -605,7 +661,6 @@ namespace Chisel.Editors
             var rotation = Tools.handleRotation;
 
             EditorGUI.BeginChangeCheck();
-            // TODO: make this work with bounds!
             SceneHandles.Initialize(ref s_HandleIDs);
             s_SelectionBoundPoints[0] = position;
             var newPosition = SceneHandles.PositionHandle(ref s_HandleIDs, s_SelectionBoundPoints, position, rotation)[0];
@@ -632,14 +687,13 @@ namespace Chisel.Editors
         {
             UpdateGridBounds();
 
-            // TODO: somehow make snapped controls work with *any* transform
             switch (Tools.current)
             {
                 case Tool.Move:         Tools.hidden = true; OnMoveTool(); break;
-                case Tool.Rotate:       Tools.hidden = false; break;// TODO: implement 
-                case Tool.Scale:        Tools.hidden = false; break;// TODO: implement
-                case Tool.Rect:         Tools.hidden = false; break;// TODO: implement
-                case Tool.Transform:    Tools.hidden = false; break;// TODO: implement
+                case Tool.Rotate:       Tools.hidden = false; break;
+                case Tool.Scale:        Tools.hidden = false; break;
+                case Tool.Rect:         Tools.hidden = false; break;
+                case Tool.Transform:    Tools.hidden = false; break;
                 default:
                 {
                     Tools.hidden = false;
@@ -842,7 +896,6 @@ namespace Chisel.Editors
 
 			GUILayoutUtility.GetRect(298, 0);
 
-            // TODO: figure out how to make this work with multiple (different) editors when selecting a combination of nodes
             using (var scope = new EditorGUILayout.ScrollViewScope(s_Position, GUILayout.ExpandWidth(true), GUILayout.MaxHeight(150)))
             {
                 OnDefaultSettingsGUI(target, sceneView);

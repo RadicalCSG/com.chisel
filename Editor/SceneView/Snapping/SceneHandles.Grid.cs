@@ -392,7 +392,6 @@ namespace Chisel.Editors
             try
             { 
 			    customSnapPoints.Clear();
-                // TODO: have a method that handles multiple dimensions at the same time
                 var haveCustomSnapping = Snapping.GetCustomSnappingPoints(worldStartPosition, worldCurrentPosition, worldSlideGrid, 0, customSnapPoints);
             
                 var boundsActive    = Snapping.BoundsSnappingActive;

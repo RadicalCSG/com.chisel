@@ -4,7 +4,6 @@ using UnityEditor;
 
 namespace Chisel.Editors
 {
-    // TODO: see if we can get this to work on any array instead
     [CustomPropertyDrawer(typeof(NamedItemsAttribute))]
 #if UNITY_6000_7_OR_NEWER
     [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
@@ -49,7 +48,6 @@ namespace Chisel.Editors
 
             if (surfacesArrayProperty.hasMultipleDifferentValues)
             {
-                // TODO: figure out how to detect if we have multiple selected generators with arrays of same size, or not
                 EditorGUILayout.HelpBox(kMultipleDifferentSurfacesContents.text, MessageType.None);
                 return;
             }

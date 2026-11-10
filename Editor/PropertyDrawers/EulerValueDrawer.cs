@@ -5,7 +5,6 @@ using Chisel.Core;
 
 namespace Chisel.Editors
 {
-    // TODO: show angle
     [CustomPropertyDrawer(typeof(EulerValueAttribute))]
     public class EulerValueDrawer : PropertyDrawer
     {

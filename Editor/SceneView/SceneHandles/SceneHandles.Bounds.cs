@@ -114,8 +114,6 @@ namespace Chisel.Editors
             s_BoundsSidePoint[4] = rotation * new Vector3(center.x, s_BoundsValues[4], center.z);
             s_BoundsSidePoint[5] = rotation * new Vector3(center.x, center.y, s_BoundsValues[5]);
 
-            // TODO: add handles in the corners of each quad on the bounds, with an offset from the vertex, to drag from there
-
             
             using (new SceneHandles.DrawingScope())
             {
@@ -172,7 +170,6 @@ namespace Chisel.Editors
                             var cosV = isCameraOrthographic ? Vector3.Dot(normal, -cameraLocalForward) :
                                                               Vector3.Dot(normal, (cameraLocalPos - localPoint));
                             if (cosV < -0.0001f)
-                                // TODO: do not set backfaced to true when side is infinitely thin
                                 s_BoundsBackfaced[i] = !(isControlHot && !s_BoundsAxisHot[i % 3]);
                         }
 
@@ -234,7 +231,7 @@ namespace Chisel.Editors
                     }
 
                     // only use capFunction (render point) when in ortho mode & aligned with box or when side size is 0
-                    bool isSideAlignedWithCamera = false; // TODO: determine if aligned with camera direction & in ortho mode
+                    bool isSideAlignedWithCamera = false;
                     bool showSidePoint = !isSideAlignedWithCamera && ((point2 - point1).sqrMagnitude < kShowPointThreshold);
 
                     float pointSize;
@@ -287,8 +284,6 @@ namespace Chisel.Editors
                     bounds.size = size;
                 }
 
-                // TODO: paint XZ intersection with grid plane + 'shadow' 
-            
                 SceneHandles.Disabled = prevDisabled;
             }
             

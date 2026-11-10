@@ -18,7 +18,6 @@ namespace Chisel.Editors
 		readonly static GUIContent kClockWiseRotation     = new("↻");
 		readonly static GUIContent kAntiClockWiseRotation = new("↺");
 
-        // TODO: put somewhere else
         public static Color kIconColor = new(201f / 255, 200f / 255, 144f / 255, 1.00f);
 
         public static TurnState DoHandle(Bounds bounds)
@@ -61,10 +60,6 @@ namespace Chisel.Editors
 
             var result = TurnState.None;
 
-            // TODO: consider putting both buttons next to each other
-            //  - buttons closer to each other, which is nicer when you need to go back and forth (although you could just click 3 times to go back)
-            //  - since you'd only have 1 button group, the chance is higher it's outside of the screen. 
-            //    so a better solution should be found to make sure the button group doesn't overlap the stairs, yet is close to it, and on screen.
             if (SceneHandles.ClickableLabel(pLabel1, dir1, kClockWiseRotation, fontSize: 32, fontStyle: FontStyle.Bold))
             {
                 result = TurnState.ClockWise;

@@ -140,7 +140,6 @@ namespace Chisel.Editors
             return false;
         }
 
-        // TODO: add a AssetPostProcessor to detect if images changed/added/removed and remove those from the lookup
         readonly static Dictionary<string, Texture2D> s_ImagesLookup              = new();
         readonly static Dictionary<int, Texture2D[]>  s_IconImagesLookup          = new();
         readonly static Dictionary<int, GUIContent[]> s_IconContentLookup         = new();

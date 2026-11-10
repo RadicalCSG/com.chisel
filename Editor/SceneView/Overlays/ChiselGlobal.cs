@@ -12,7 +12,6 @@ using UnityEngine.UIElements;
 // Just a misc. collections of buttons we don't have a more sensible place for
 namespace Chisel.Editors
 {
-    // TODO: move this to its own file
     [EditorToolContext("Chisel Tools")]
     public class ChiselToolsContext : EditorToolContext
     {
@@ -42,7 +41,6 @@ namespace Chisel.Editors
 		}
 
 
-        // TODO: put all tool functionality in here instead, so it's easy to find
         public override void OnToolGUI(EditorWindow window)
         {
         }
@@ -171,7 +169,6 @@ namespace Chisel.Editors
             finally { UnityEngine.Profiling.Profiler.EndSample(); }
         }
 
-        // TODO: put somewhere else
         public static bool ConvertToBrushes(ChiselGeneratorComponent chiselNode)
         {
             chiselNode.OnValidate();
@@ -474,7 +471,7 @@ namespace Chisel.Editors
     }
 
     [Overlay(typeof(SceneView), "Chisel Global")]
-    public class ChiselGlobalToolbar : ToolbarOverlay // TODO: better name
+    public class ChiselGlobalToolbar : ToolbarOverlay
     {
         ChiselGlobalToolbar() : base(
             ConvertToBrushesButton.id,

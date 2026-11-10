@@ -125,7 +125,6 @@ namespace Chisel.Editors
         }
     }
 
-    // TODO: clean up, rename
 #if UNITY_6000_7_OR_NEWER
     [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
 #endif
@@ -142,7 +141,6 @@ namespace Chisel.Editors
         static bool     s_MouseDragged        = false;
         static Vector2  s_ClickMousePosition  = Vector2.zero;
         
-        // TODO: put somewhere else
         public static SelectionType GetCurrentSelectionType()
         {            
             var selectionType = SelectionType.Replace;
@@ -231,7 +229,6 @@ namespace Chisel.Editors
                                 s_RectFoundGameObjects.Clear();
                             }
 
-                            // TODO: modify this depending on debug rendermode
                             SurfaceDestinationFlags visibleLayerFlags = SurfaceDestinationFlags.Renderable;
 
                             // Find all the brushes (and it's gameObjects) that are inside the frustum

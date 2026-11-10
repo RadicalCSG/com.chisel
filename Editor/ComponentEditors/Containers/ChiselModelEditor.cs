@@ -561,7 +561,6 @@ namespace Chisel.Editors
 
         static internal bool AreLightProbesAllowed(ChiselModelComponent model)
         {
-            // TODO: return false if lightmapped or dynamic lightmapped
 
             /*
             if (!renderer) 
@@ -776,7 +775,6 @@ namespace Chisel.Editors
             if (serializedObject == null || gameObjectsSerializedObject == null || gameObjectsSerializedObject.targetObjects.Length == 0)
                 return;
 
-            // TODO: Make Position show up instead of "None" when nothing is selected
             ChiselEditorUtility.EnumFlagsField(kVertexChannelMaskContents, vertexChannelMaskProp, typeof(VertexChannelFlags), EditorStyles.popup);
         }
 
@@ -874,7 +872,7 @@ namespace Chisel.Editors
             if (target == null || Tools.current != Tool.Custom || !ChiselEditGeneratorTool.IsActive())
                 return;
 
-            // TODO: why are we doing this again?
+            // Rendering layers are only used by scriptable render pipelines
             bool usingSRP = GraphicsSettings.currentRenderPipeline != null;
             if (!usingSRP)
                 return;

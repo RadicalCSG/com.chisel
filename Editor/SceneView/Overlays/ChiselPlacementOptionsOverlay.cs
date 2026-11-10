@@ -12,7 +12,6 @@ namespace Chisel.Editors
     {
         public const string kOverlayTitle = "Placement Options";
 
-        // TODO: CLEAN THIS UP
         public const int kMinWidth = ((245 + 32) - ((32 + 2) * ChiselPlacementToolsSelectionWindow.kToolsWide)) + (ChiselPlacementToolsSelectionWindow.kButtonSize * ChiselPlacementToolsSelectionWindow.kToolsWide);
         public readonly static GUILayoutOption kMinWidthLayout = GUILayout.MinWidth(kMinWidth);
 

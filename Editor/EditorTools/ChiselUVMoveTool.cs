@@ -8,8 +8,6 @@ using ToolManager = UnityEditor.EditorTools;
 
 namespace Chisel.Editors
 {
-    // TODO: make it possible to 'F' focus on selected surfaces
-    // TODO: hovering on surfaces in inspector should highlight in scene
 
     //[EditorTool("Chisel " + kToolName + " Tool", typeof(ChiselNode))]
     sealed class ChiselUVMoveTool : ChiselEditToolBase
@@ -102,7 +100,6 @@ namespace Chisel.Editors
             bool needRepaint = false;
             switch (Event.current.GetTypeForControl(id))
             {
-                // TODO: support moving texture using keyboard
                 case EventType.Repaint:
                 {
                     if (!ChiselUVToolCommon.ToolIsDragging)
@@ -111,7 +108,6 @@ namespace Chisel.Editors
                     ChiselUVToolCommon.RenderIntersectionPoint();
                     ChiselUVToolCommon.RenderSnapEvent();
 
-                    // TODO: show delta movement of uv
                     break;
                 }
                 case EventType.MouseDrag:

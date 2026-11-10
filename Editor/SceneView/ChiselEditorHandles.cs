@@ -15,12 +15,6 @@ using ToolManager = UnityEditor.EditorTools;
 
 namespace Chisel.Editors
 {
-    // TODO: TEST EVERYTHING WHILE ROTATED
-    // TODO: make radius dragging snap better, no weird values
-    // TODO: add polygon support (hover over surface, but not necessarily render the surface itself)
-    // TODO: rewrite all "editors" to use new handle solution
-    // TODO: move brush "editor" to handles
-    // TODO: add support for "editors" to have an init/shutdown/update part so we can cache handles
 #if UNITY_6000_7_OR_NEWER
     [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
 #endif
@@ -124,7 +118,6 @@ namespace Chisel.Editors
         public bool lastHandleIsDragged => lastHandleHadFocus && GUIUtility.hotControl != 0;
         public bool disabled { get; private set; }
 
-        // TODO: get rid of this
         public bool backfaced { get; set; }
         public Color color
         {
@@ -169,10 +162,8 @@ namespace Chisel.Editors
         }
 
 
-        // TODO: get rid of this
         public bool IsSufaceBackFaced(Vector3 point, Vector3 normal)
         {
-            // TODO: make matrix and Handles.matrix/Handles.inverseMatrix work together in a reasonable way
             var inverseMatrix = UnityEditor.Handles.inverseMatrix;
             var cameraLocalPos = inverseMatrix.MultiplyPoint(camera.transform.position);
             var cameraLocalForward = inverseMatrix.MultiplyVector(camera.transform.forward);
@@ -322,7 +313,6 @@ namespace Chisel.Editors
 
                 if (interpolate)
                 {
-                    // TODO: polyline isn't closed ..
                     closestPoint = HandleUtility.ClosestPointToPolyLine(Vertices);
                     return true;
                 }
@@ -399,7 +389,6 @@ namespace Chisel.Editors
                 {
                     if (Count < 2)
                         return false;
-                    // TODO: polyline isn't closed ..
                     closestPoint = HandleUtility.ClosestPointToPolyLine(Vertices);
                     return true;
                 }
@@ -449,7 +438,6 @@ namespace Chisel.Editors
                     handles.color = handles.GetStateColor(Color, focus, true);
                     ChiselOutlineRenderer.DrawLine(Origin, dstPoint, LineMode.NoZTest, kDefaultThickness, DashSize);
                 }
-                // TODO: be able to render dots "backfaced"
                 SceneHandles.RenderBorderedCircle(Origin, size);
             }
 
@@ -1596,7 +1584,6 @@ namespace Chisel.Editors
         public bool DoPlanarScaleHandle(ref Vector2 scale2D, Vector3 position, Quaternion rotation, string undoMessage = null)
         {
             EditorGUI.BeginChangeCheck();
-            // TODO: create a 2D planar/bounds scale handle
             var scale3D = UnityEditor.Handles.ScaleHandle(new Vector3(scale2D.x, 1, scale2D.y), position, rotation, UnityEditor.HandleUtility.GetHandleSize(position));
             if (!EditorGUI.EndChangeCheck())
                 return false;

@@ -4,7 +4,6 @@ using UnityEngine;
 
 namespace Chisel.Editors
 {
-    // TODO: put somewhere else
     public static class ChiselCameraUtility
     {
         public static Frustum GetCameraSubFrustum(Camera camera, Rect rect)

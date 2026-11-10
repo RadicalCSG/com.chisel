@@ -28,7 +28,6 @@ namespace Chisel.Editors
             element.tooltip = tooltipName;
         }
         
-        // TODO: move somewhere else
         public static bool HaveNodesInSelection()
         {
             if (Selection.count == 0)

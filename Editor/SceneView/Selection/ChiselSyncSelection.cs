@@ -38,7 +38,6 @@ namespace Chisel.Editors
         readonly HashSet<CSGTreeBrush> selectedBrushesLookup = new HashSet<CSGTreeBrush>();
 
 
-        // TODO: can we make this work across domain reloads?
         public void OnBeforeSerialize()
         {
             selectedBrushesArray = selectedBrushesLookup.ToArray();

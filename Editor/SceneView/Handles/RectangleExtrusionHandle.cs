@@ -19,7 +19,6 @@ namespace Chisel.Editors
         static float            s_NextHeight = 1.0f;
         static float            s_DefaultHeight = 0;
         
-        // TODO: somehow get rid of this
         public static void Reset()
         {
             s_Points.Clear();
@@ -126,10 +125,6 @@ namespace Chisel.Editors
 
         public static GeneratorModeState Do(Rect dragArea, out Bounds bounds, out float height, out ChiselModelComponent modelBeneathCursor, out Matrix4x4 transformation, PlacementFlags flags, Axis upAxis, float? snappingSteps = null)
         {
-            // TODO: shift should do SameLengthXZ, shift control includes Y
-            // TODO: fixed height should be possible to change sign
-
-            // TODO: have some sort of click placement of previously used bounds (alt?)
 
             bool doCommit = false;
             try
@@ -211,7 +206,6 @@ namespace Chisel.Editors
                     if (!s_ModelBeneathCursor &&
                         (flags & PlacementFlags.AlwaysFaceCameraXZ) == PlacementFlags.AlwaysFaceCameraXZ)
                     {
-                        // TODO: take grid orientation into account to decide what is "X" and what is "Z"
                         var currentForward  = transformation.MultiplyVector(Vector3.forward);
                         var currentRight    = transformation.MultiplyVector(Vector3.right);
                         var cameraOffset    = Camera.current.transform.forward;

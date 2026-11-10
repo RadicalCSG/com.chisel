@@ -276,7 +276,6 @@ namespace Chisel.Editors
                     serializedObject.Update();
                     var currentProperty = serializedObject.FindProperty(propertyPath);
                     currentProperty.intValue = newValue;
-                    // TODO: this can crash unity .. 
                     serializedObject.ApplyModifiedProperties();
                 }
             };

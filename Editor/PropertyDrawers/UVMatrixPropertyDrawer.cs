@@ -80,8 +80,6 @@ namespace Chisel.Editors
                 var rotationContent     = (label == null) ? GUIContent.none : kRotationContent;
 
 
-                // TODO: add right click menus to "reset" values
-
                 position.height = EditorGUI.GetPropertyHeight(SerializedPropertyType.Vector2, GUIContent.none);
                 var fieldRect = EditorGUI.PrefixLabel(position, translationID, !hasLabel ? GUIContent.none : translationContent);
                 EditorGUI.indentLevel = 0;

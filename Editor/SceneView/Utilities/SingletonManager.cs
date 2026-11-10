@@ -9,7 +9,6 @@ namespace Chisel.Editors
         void OnBeforeSerialize();
     }
 
-    // TODO: Move all singletons over to this ..
 #if UNITY_6000_7_OR_NEWER
     [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
 #endif
