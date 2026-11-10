@@ -552,7 +552,8 @@ namespace Chisel.Components
 			if (brushCount == 0)
 				return null;
 
-            var foundNodes = ListPool<CSGTreeNode>.Get();
+            var foundNodes   = ListPool<CSGTreeNode>.Get();
+            var partlyOutside = HashSetPool<EntityId>.Get();
 			try
 			{
 			    var brushRenderBufferLookup = ChiselTreeLookup.Value[tree].brushRenderBufferLookup;
@@ -574,7 +575,7 @@ namespace Chisel.Components
 				    for (int p = 0; p < 6; p++)
 				    {
 					    if (planes[p].IsOutside(bounds))
-						    goto SkipBrush;
+						    goto OutsideBrush;
 
 					    if (!planes[p].IsInside(bounds))
 						    intersectsFrustum = true;
@@ -610,7 +611,7 @@ namespace Chisel.Components
 								    if (distance > MathExtensions.kFrustumDistanceEpsilon)
 									    // If we have a visible surface that is outside the frustum, we skip the brush
 									    // (we only want brushes that are completely inside the frustum)
-									    goto SkipBrush;
+									    goto OutsideBrush;
 							    }
 						    }
 						    // Make sure we find at least one single visible surface inside the frustum
@@ -625,9 +626,17 @@ namespace Chisel.Components
 				    }
 
 				    foundNodes.Add((CSGTreeNode)brush);
+				    continue;
+			    OutsideBrush:
+				    // A node (a generator) is only found when all of its brushes that can be seen are inside
+				    if (HasVisibleSurfaces(brushRenderBufferLookup, brush, meshQueries))
+					    partlyOutside.Add(brush.EntityId);
 			    SkipBrush:
 				    ;
 			    }
+
+			    if (partlyOutside.Count > 0)
+				    foundNodes.RemoveAll(node => partlyOutside.Contains(node.EntityId));
 
 			    if (foundNodes.Count == 0)
 				    return null;
@@ -637,7 +646,25 @@ namespace Chisel.Components
             finally
 			{
 				ListPool<CSGTreeNode>.Release(foundNodes);
+				HashSetPool<EntityId>.Release(partlyOutside);
 			}
+		}
+
+		static bool HasVisibleSurfaces(NativeParallelHashMap<CompactNodeID, BlobAssetReference<ChiselBrushRenderBuffer>> brushRenderBufferLookup, CSGTreeBrush brush, MeshQuery[] meshQueries)
+		{
+			var brushCompactNodeID = CompactHierarchyManager.GetCompactNodeID(brush);
+			if (!brushRenderBufferLookup.TryGetValue(brushCompactNodeID, out var brushRenderBuffers) ||
+				!brushRenderBuffers.IsCreated)
+				return false;
+
+			ref var surfaceRenderBuffers = ref brushRenderBuffers.Value.surfaces;
+			for (int s = 0; s < surfaceRenderBuffers.Length; s++)
+			{
+				if (IsSurfaceVisible(meshQueries, ref surfaceRenderBuffers[s]) &&
+					surfaceRenderBuffers[s].colliderVertices.Length > 0)
+					return true;
+			}
+			return false;
 		}
 	}
 }
