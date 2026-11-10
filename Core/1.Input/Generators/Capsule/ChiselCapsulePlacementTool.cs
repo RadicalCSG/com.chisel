@@ -41,7 +41,6 @@ namespace Chisel.Core
 
         public override void OnPaint(IChiselHandleRenderer renderer, Bounds bounds)
         {
-            // TODO: render capsule here
             renderer.RenderCylinder(bounds, sides);
             renderer.RenderBoxMeasurements(bounds);
         }

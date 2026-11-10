@@ -193,8 +193,6 @@ namespace Chisel.Core
 		/// <seealso cref="Chisel.Core.SurfaceParameterIndex.Parameter2"/>.
 		public ulong			parameter2 { get { return parameters[kColliderLayer]; } set { parameters[kColliderLayer] = value; } }
 
-		// TODO: add parameter for collider layers
-
         // .. this could be extended in the future, when necessary
         public SurfaceParameterValues parameters;
     }

@@ -5,15 +5,12 @@ using Unity.Entities;
 
 namespace Chisel.Core
 {
-    // TODO: rename
     public sealed partial class BrushMeshFactory
     {
-        // TODO: Fix all overlapping brushes
         internal static bool GenerateLinearStairsSubMeshes(NativeList<BlobAssetReference<BrushMeshBlob>> brushMeshes, int subMeshOffset, 
                                                            in LineairStairsData description, in BlobAssetReference<InternalChiselSurfaceArray> surfaceDefinitionBlob, 
                                                            Allocator allocator = Allocator.Persistent)// Indirect
 		{
-            // TODO: properly assign all materials
 
             ref var surfaceDefinition = ref surfaceDefinitionBlob.Value;
             if (surfaceDefinition.surfaces.Length < StairsSurfaces.kCount)
@@ -402,13 +399,11 @@ namespace Chisel.Core
 			var localVertices = arrays.localVertices;
 			if (localVertices.Length > 0)
 			{
-				// TODO: eventually remove when it's more battle tested
 				if (!Validate(in localVertices, in halfEdges, in polygons, logErrors: true))
 					return BlobAssetReference<BrushMeshBlob>.Null;
 
 				var localPlanes = builder.Allocate(ref root.localPlanes, polygons.Length);
 				root.localPlaneCount = polygons.Length;
-				// TODO: calculate corner planes
 				var halfEdgePolygonIndices = builder.Allocate(ref root.halfEdgePolygonIndices, halfEdges.Length);
 				CalculatePlanes(ref localPlanes, in polygons, in halfEdges, in localVertices);
 				// the steps go down towards +z, so a step's front faces +z
@@ -654,7 +649,7 @@ namespace Chisel.Core
                         indices[5] = 3;
                         indices[6] = 0;
                         indices[7] = 3;
-                        indices[8] = 4; // TODO: fix this
+                        indices[8] = 4;
                                 
                         brushMeshes[startIndex + 1] = TexturedAsTheSteps(CreateExtrudedSubMeshBlob(vertices, extrusion, indices, StairsPart.Wall, ref surfaceDefinition, allocator), in description);// Indirect
 					} else
@@ -1352,7 +1347,7 @@ namespace Chisel.Core
 
         internal struct LinearStairsSideData
         {
-            public bool enabled;        // TODO: just check if subMeshCount == 0
+            public bool enabled;
             public int  subMeshCount;
 
             // A wall going down beside the top floor has a piece of its own there when the top floor reaches further back
@@ -1376,7 +1371,6 @@ namespace Chisel.Core
             // whether this side is a band under the slope of smooth steps (see IsBandUnderSlope)
             public bool isBand;
 
-            // TODO: just turn into method that returns subMeshCount
             public LinearStairsSideData(float stepHeight,
                                         float stepDepth,
                                         float plateauHeight,
@@ -1528,7 +1522,6 @@ namespace Chisel.Core
                                      float           topSideLength = float.PositiveInfinity,
                                      bool            bandUnderSlope = true)
             {
-                // TODO: implement smooth riser-type
 
                 const float kEpsilon = 0.001f;
 

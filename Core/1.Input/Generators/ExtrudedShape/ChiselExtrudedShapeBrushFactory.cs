@@ -7,7 +7,6 @@ using Unity.Entities;
 
 namespace Chisel.Core
 {
-    // TODO: rename
     public sealed partial class BrushMeshFactory
     {
         static BlobBuilderArray<float3> GetExtrudedVertices(UnsafeList<SegmentVertex> shapeVertices, Range range, Matrix4x4 matrix0, Matrix4x4 matrix1, in BlobBuilder builder, ref BrushMeshBlob root, out NativeArray<int> segmentIndices, Allocator allocator)
@@ -61,17 +60,6 @@ namespace Chisel.Core
                                                         in BlobAssetReference<InternalChiselSurfaceArray> surfaceDefinitionBlob,
                                                         Allocator allocator = Allocator.Persistent)// Indirect
 		{
-            // TODO: make each extruded quad split into two triangles when it's not a perfect plane,
-            //			split it to make sure it's convex
-
-            // TODO: make it possible to smooth (parts) of the shape
-
-            // TODO: make materials work well
-            // TODO: make it possible to 'draw' shapes on any surface
-
-            // TODO: make path work as a spline, with subdivisions
-            // TODO:	make this work well with twisted rotations
-            // TODO: make shape/path subdivisions be configurable / automatic
 
             if (!brushMeshes.IsCreated)
             {
@@ -125,7 +113,6 @@ namespace Chisel.Core
 
                         var localPlanes = builder.Allocate(ref root.localPlanes, polygons.Length);
                         root.localPlaneCount = polygons.Length;
-                        // TODO: calculate corner planes
                         var halfEdgePolygonIndices = builder.Allocate(ref root.halfEdgePolygonIndices, halfEdges.Length);
                         CalculatePlanes(ref localPlanes, in polygons, in halfEdges, in localVertices);
                         UpdateHalfEdgePolygonIndices(ref halfEdgePolygonIndices, in polygons);

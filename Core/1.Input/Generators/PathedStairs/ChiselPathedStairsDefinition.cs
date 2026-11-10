@@ -37,7 +37,6 @@ namespace Chisel.Core
             _                        => float.PositiveInfinity
         };
 
-        // TODO: do not use this data structure, find common stuff and share between the definitions ...
         [HideFoldout] public ChiselLinearStairs stairs;
 
         [UnityEngine.HideInInspector, NonSerialized] public BlobAssetReference<ChiselCurve2DBlob> curveBlob;
@@ -177,7 +176,6 @@ namespace Chisel.Core
 
 		public Curve2D shape;
         
-        // TODO: do not use this data structure, find common stuff and share between the definitions ...
         //public ChiselLinearStairsDefinition stairs;
 
         public override void Reset()

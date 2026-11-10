@@ -353,7 +353,6 @@ namespace Chisel.Core
 		}
 	}
 
-	// TODO: use entityIDs so we can also use this for picking
 	[BurstCompile(CompileSynchronously = true, OptimizeFor = OptimizeFor.Performance)]
     struct FindTriangleBrushIndicesJob : IJobParallelForDefer
     {

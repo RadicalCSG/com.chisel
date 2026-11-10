@@ -10,17 +10,15 @@ using WriteOnlyAttribute = Unity.Collections.WriteOnlyAttribute;
 
 namespace Chisel.Core
 {
-    // TODO: make sure everything is covered in tests
     [GenerateTestsForBurstCompatibility]
     public struct SectionManager : IDisposable
     {
-        // TODO: use uints instead?
         [System.Diagnostics.DebuggerDisplay("Start = {start}, End = {end}, Length = {length}")]
         [StructLayout(LayoutKind.Sequential)]
         struct Section
         {
             public int  start;
-            public int  length; // TODO: make this explicit as the difference between start and the next integer
+            public int  length;
             public readonly int end { [MethodImpl(MethodImplOptions.AggressiveInlining)] get { return start + length - 1; } }
         }
         [NoAlias, ReadOnly] UnsafeList<Section> sections;
@@ -54,7 +52,6 @@ namespace Chisel.Core
         {
             if (count <= 0)
                 return false;
-            // TODO: optimize
             for (int i = index; i < index + count; i++)
             {
                 if (!FindSectionByOffset(i, out var sectionIndex))
@@ -237,8 +234,6 @@ namespace Chisel.Core
                 throw new ArgumentException("Length cannot be negative");
             if (length == 0)
                 return -1;
-
-            // TODO: have some way to quickly find a free section with a given size without going through ALL free sections
 
             // Since we alternate between free and allocated sections, we can quickly find all free sections by skipping the allocated sections
             for (int sectionIndex = firstElementFree ? 0 : 1; sectionIndex < sections.Length; sectionIndex += 2)

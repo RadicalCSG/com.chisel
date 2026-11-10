@@ -4,7 +4,6 @@ using Unity.Entities;
 
 namespace Chisel.Core
 {
-    // TODO: rename
     public sealed partial class BrushMeshFactory
     {
         public static NativeArray<float3> GenerateTorusVertices(float   outerDiameter,
@@ -100,7 +99,6 @@ namespace Chisel.Core
 					localVertices[v + verticalSegments] = vertices[(n1 * verticalSegments) + v];
 				}
 
-				// TODO: could probably just create one torus section and repeat that with different transformations
 				var arrays = CreateExtrudedSubMesh(verticalSegments, segmentIndices, segmentIndices.Length, 0, 1, in localVertices, in surfaceDefinitionBlob, in builder, ref root);
 				var polygons = arrays.polygons;
 				var halfEdges = arrays.halfEdges;
@@ -135,7 +133,6 @@ namespace Chisel.Core
 
 				var localPlanes = builder.Allocate(ref root.localPlanes, polygons.Length);
 				root.localPlaneCount = polygons.Length;
-				// TODO: calculate corner planes
 				var halfEdgePolygonIndices = builder.Allocate(ref root.halfEdgePolygonIndices, halfEdges.Length);
 				CalculatePlanes(ref localPlanes, in polygons, in halfEdges, in localVertices);
 				UpdateHalfEdgePolygonIndices(ref halfEdgePolygonIndices, in polygons);

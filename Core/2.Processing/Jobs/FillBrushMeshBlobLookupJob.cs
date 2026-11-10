@@ -51,7 +51,7 @@ namespace Chisel.Core
                     }
                 }
             }
-            surfaceCountRef.Value = surfaceCount * 2; // TODO: figure out why we need to allocate more surfaces than we have?
+            surfaceCountRef.Value = surfaceCount * 2;
         }
     }
 }

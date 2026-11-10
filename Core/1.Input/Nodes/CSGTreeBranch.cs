@@ -275,7 +275,6 @@ namespace Chisel.Core
 		public static ref readonly CSGTreeBranch Invalid => ref kInvalid;
 
 
-		// Temporary workaround until we can switch to hashes
 		internal readonly bool IsAnyStatusFlagSet()                  { return Hierarchy.IsAnyStatusFlagSet(CompactNodeID); }
         internal readonly bool IsStatusFlagSet(NodeStatusFlags flag) { return Hierarchy.IsStatusFlagSet(CompactNodeID, flag); }
         internal void SetStatusFlag(NodeStatusFlags flag)   { Hierarchy.SetStatusFlag(CompactNodeID, flag); }

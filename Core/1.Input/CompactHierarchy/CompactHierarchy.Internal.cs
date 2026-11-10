@@ -11,7 +11,6 @@ using WriteOnlyAttribute = Unity.Collections.WriteOnlyAttribute;
 
 namespace Chisel.Core
 {
-    // TODO: Should be its own container with its own array pointers (fewer indirections)
     [GenerateTestsForBurstCompatibility]
     public partial struct CompactHierarchy : IDisposable
     {
@@ -555,14 +554,6 @@ namespace Chisel.Core
             return true;
         }
 
-        // "optimize" - remove holes, reorder them in hierarchy order
-        bool CompactInternal()
-        {
-            // TODO: implement
-            //       could just create a new hierarchy and insert everything in it in order, and replace the hierarchy with this one
-            throw new NotImplementedException();
-        }
-
         bool DetachAllChildrenInternal(int parentIndex)
         {
             Debug.Assert(parentIndex >= 0 && parentIndex < compactNodes.Length);
@@ -848,7 +839,6 @@ namespace Chisel.Core
                 UnityEngine.Profiling.Profiler.EndSample();
             }
 
-            // TODO: comment this out after adding enough tests 
             UnityEngine.Profiling.Profiler.BeginSample("CheckConsistency");
             Debug.Assert(CheckConsistency(ref hierarchyIDLookup, hierarchies, ref nodeIDLookup, nodes, ignoreBrushMeshHashes));
             UnityEngine.Profiling.Profiler.EndSample();
@@ -992,7 +982,6 @@ namespace Chisel.Core
                 compactNodes[parentIndex] = parentHierarchy;
             }
 
-            // TODO: comment this out after adding enough tests 
             Debug.Assert(CheckConsistency(ref hierarchyIDLookup, hierarchies, ref nodeIDLookup, nodes, ignoreBrushMeshHashes)); 
             return true;
         }
@@ -1078,7 +1067,6 @@ namespace Chisel.Core
         }
 
         
-        // Temporary workaround until we can switch to hashes
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal readonly bool IsAnyStatusFlagSet(CompactNodeID compactNodeID)
         {

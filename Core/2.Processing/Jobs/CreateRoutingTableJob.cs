@@ -199,7 +199,6 @@ namespace Chisel.Core
                 ref var root = ref builder.ConstructRoot<RoutingTable>();
                 var routingRows = builder.Allocate(ref root.routingRows, categoryStackNodeCount);
 
-                // TODO: clean up
                 int nodeCounter = 1;
                 routingRows[0] = routingTable[0].routingRow;
                 var prevNodeID = routingTable[0].NodeIDValue;
@@ -215,7 +214,6 @@ namespace Chisel.Core
                 var routingLookups = builder.Allocate(ref root.routingLookups, nodeCounter);
 
                 {
-                    // TODO: clean up
                     nodeCounter = 0;
                     for (int i = 0; i < categoryStackNodeCount;)
                     {
@@ -667,7 +665,7 @@ namespace Chisel.Core
                     int endRightStackRowIndex   = startRightStackRowIndex + routingLength;
 
                     // duplicate route multiple times
-                    for (int t = 0, vIndex = 0, inputRowIndex = 0, routingOffset = 0; t < CategoryRoutingRow.Length; t++, routingOffset += routingStep) // TODO: left table might not output every one of these?
+                    for (int t = 0, vIndex = 0, inputRowIndex = 0, routingOffset = 0; t < CategoryRoutingRow.Length; t++, routingOffset += routingStep)
                     {
                         for (var rightStackRowIndex = startRightStackRowIndex; rightStackRowIndex < endRightStackRowIndex; rightStackRowIndex++, vIndex++)
                         {
@@ -718,7 +716,7 @@ namespace Chisel.Core
                     int endRightStackRowIndex = startRightStackRowIndex + routingLength;
 
                     // Duplicate route multiple times, bake operation into table for last node
-                    for (int t = 0, vIndex = 0, inputRowIndex = 0; t < CategoryRoutingRow.Length; t++) // TODO: left table might not output every one of these?
+                    for (int t = 0, vIndex = 0, inputRowIndex = 0; t < CategoryRoutingRow.Length; t++)
                     {
                         var leftCategoryIndex = (CategoryIndex)t;
                         for (var rightStackRowIndex = startRightStackRowIndex; rightStackRowIndex < endRightStackRowIndex; rightStackRowIndex++, vIndex++)

@@ -6,7 +6,6 @@ using UnityEngine;
 
 namespace Chisel.Core.External
 {
-    // TODO: propertly encapusulate this w/ license etc.
 
     // From https://github.com/craftworkgames/FarseerPhysics.Portable
 
@@ -585,7 +584,6 @@ namespace Chisel.Core.External
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         static Range Copy(int lowerIndex, int upperIndex, NativeList<SegmentVertex> vertices, Range range, NativeList<SegmentVertex> dstVertices)
         {
-            // TODO: do this with math instead
             var count = range.Length;
             while (upperIndex < lowerIndex)
                 upperIndex += count;

@@ -46,8 +46,6 @@ namespace Chisel.Core
 		#endregion
 	}
 
-	// TODO: make sure everything is covered in tests
-	// TODO: use native containers, make hierarchy use this as well
 	[GenerateTestsForBurstCompatibility]
     struct SlotIndexMap : IDisposable
     {
@@ -62,7 +60,7 @@ namespace Chisel.Core
         [NoAlias, ReadOnly] UnsafeList<IndexLookup> slotToIndex;
         [NoAlias, ReadOnly] UnsafeList<int>         indexToSlot;
         [NoAlias, ReadOnly] SectionManager          sectionManager;
-        [NoAlias, ReadOnly] UnsafeList<int>         freeSlots; // TODO: use SectionManager, or something like that, so we can easily allocate ids/id ranges in order
+        [NoAlias, ReadOnly] UnsafeList<int>         freeSlots;
 
 
         [GenerateTestsForBurstCompatibility]
@@ -346,7 +344,6 @@ namespace Chisel.Core
                 indexToSlot.Resize((index + range), NativeArrayOptions.ClearMemory);
 
             int indexInternal, generation;
-            // TODO: should make it possible to allocate ids in a range as well, for cache locality
             if (freeSlots.Length >= range)
             {
                 var childIndex = index;
@@ -499,7 +496,6 @@ namespace Chisel.Core
                 }
                 for (int index = originalOffset, lastIndex = (originalOffset + originalCount); index < lastIndex; index++)
                 {
-                    // TODO: figure out if there's an off by one here
                     if (index >= newOffset && index < newOffset + newCount)
                         continue;
 

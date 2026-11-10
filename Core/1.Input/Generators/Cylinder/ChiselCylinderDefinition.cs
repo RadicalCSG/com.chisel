@@ -7,9 +7,6 @@ using Unity.Entities;
 
 namespace Chisel.Core
 {
-    // TODO: beveled edges (for top and/or bottom)
-    //			-> makes this a capsule
-    // TODO: maybe just have different generators + support converting between generators
     [Serializable]
     public enum CylinderShapeType : byte
     {
@@ -18,10 +15,6 @@ namespace Chisel.Core
         ConicalFrustum
     }
 
-    // TODO: in circle mode use max(radiusx,radiusz) instead of just radiusx => toggling from ellipsoid to circle will make more sense
-    // TODO: make handles snappable so we can snap circles to the grid
-    // TODO: can end up with non convex shape when top ellipsoid is scaled larger than bottom on one (or more?) axi
-    //          the quad triangulation needs to be reversed (figure out how to detect this)
     [Serializable]
     public struct ChiselCylinder : IBrushGenerator, IChiselSurfaceNames
     {
@@ -79,11 +72,11 @@ namespace Chisel.Core
         [DistanceValue] public float height;
         [DistanceValue] public float bottomOffset;
 
-        [UnityEngine.HideInInspector]
-        public uint smoothingGroup; // TODO: show when we actually have normal smoothing + have custom property drawer for this
+        // the smoothing group of its sides, not its flat caps (0 for none)
+        public uint smoothingGroup;
 
         [UnityEngine.HideInInspector, AngleValue]
-        public float rotation;      // TODO: just get rid of this
+        public float rotation;
         
 
         #region Properties
@@ -286,7 +279,6 @@ namespace Chisel.Core
             {
                 var uv0 = UVMatrix.Identity;
                 uv0.U.w = ((i - 2) + 0.5f) * sideLength;
-                // TODO: align with bottom
                 //uv0.V.w = 0.5f;
                 surfaceDefinition.surfaces[i].surfaceDetails.UV0 = uv0;
                 surfaceDefinition.surfaces[i].surfaceDetails.smoothingGroup = smoothingGroup;
@@ -330,13 +322,11 @@ namespace Chisel.Core
     {
         public const string kNodeTypeName = "Cylinder";
 
-        // TODO: show this in scene somehow
         //[NamedItems("Top", "Bottom", overflow = "Side {0}")]
         //public ChiselSurfaceDefinition surfaceDefinition;
 
         #region OnEdit
         //
-        // TODO: code below needs to be cleaned up & simplified 
         //
 
         static void DraggableRadius(IChiselHandles handles, ref float diameterX, ref float diameterZ, Vector3 center, Vector3 up, Vector3 xVector, Vector3 zVector, IChiselHandle[] radiusHandles, bool isElliptical)
@@ -477,7 +467,6 @@ namespace Chisel.Core
             
             
                 // Render vertical horizon of cylinder
-                // TODO: make this work with math instead of "finding" it
                 Vector3 bottomPointA, topPointA;
                 Vector3 bottomPointB, topPointB;
                 var camera = UnityEngine.Camera.current;

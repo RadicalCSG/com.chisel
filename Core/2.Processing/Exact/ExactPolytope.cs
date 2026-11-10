@@ -272,7 +272,7 @@ namespace Chisel.Core
                     }
                     newIndex[e] = edgeVertex.Count;
                     edgeVertex.Add(nv);
-                    edgeTwin.Add(e);    // the old index for now
+                    edgeTwin.Add(e);    // the old index, remapped to the new twin below
                 }
             }
             for (int e = 0; e < edgeTwin.Count; e++)

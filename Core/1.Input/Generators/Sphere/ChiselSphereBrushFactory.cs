@@ -36,13 +36,11 @@ namespace Chisel.Core
 					polygons[i].surface.details.smoothingGroup = smoothingGroup;
 			}
 
-			// TODO: eventually remove when it's more battle tested
 			if (!Validate(in localVertices, in halfEdges, in polygons, logErrors: true))
 				return false;
 
 			var localPlanes = builder.Allocate(ref root.localPlanes, polygons.Length);
 			root.localPlaneCount = polygons.Length;
-			// TODO: calculate corner planes
 			var halfEdgePolygonIndices = builder.Allocate(ref root.halfEdgePolygonIndices, halfEdges.Length);
 			CalculatePlanes(ref localPlanes, in polygons, in halfEdges, in localVertices);
 			var halfEdgeUVs = builder.Allocate(ref root.halfEdgeUVs, halfEdges.Length);
@@ -225,7 +223,6 @@ namespace Chisel.Core
                     {
                         firstEdge   = edgeIndex,
                         edgeCount   = polygonEdgeCount,
-                        // TODO: do something more intelligent with surface assignment
                         surface     = surfaceDefinition.surfaces[0]
                     };
                     
@@ -253,8 +250,6 @@ namespace Chisel.Core
 
             vertices[0].y += offset;
             vertices[1].y += offset;
-
-            // TODO: optimize
 
             var doublePI            = math.PI * 2;
             var degreePerSegment    = doublePI / horzSegments;
@@ -317,8 +312,6 @@ namespace Chisel.Core
 
             vertices[0].y += offset;
             vertices[1].y += offset;
-
-            // TODO: optimize
 
             var degreePerSegment = (360.0f / horzSegments) * Mathf.Deg2Rad;
             var angleOffset = ((horzSegments & 1) == 1) ? 0.0f : ((360.0f / horzSegments) * 0.5f) * Mathf.Deg2Rad;

@@ -38,9 +38,6 @@ namespace Chisel.Core
         #endregion
     }
 
-    // TODO: unify/clean up error messages
-    // TODO: use struct, make this non static somehow?
-    // TODO: rename
     [GenerateTestsForBurstCompatibility]
     internal struct CompactHierarchyManagerInstance : IDisposable
     {
@@ -52,7 +49,7 @@ namespace Chisel.Core
         public NativeList<CSGTree>          allTrees;
         public NativeList<CSGTree>          updatedTrees;
         public CompactHierarchyID           defaultHierarchyID;
-		public BrushWireframeManager        brushOutlineManager; // TODO: move somewhere else
+		public BrushWireframeManager        brushOutlineManager;
 
 		public void Initialize()
         {
@@ -666,7 +663,6 @@ namespace Chisel.Core
             }
         }
 
-        // TODO: Optimize
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal IEnumerable<CompactNodeID> GetAllChildren(CompactNodeID compactNodeID)
         {
@@ -978,7 +974,6 @@ namespace Chisel.Core
         };
 
 
-        // TODO: Optimize this, doing A LOT of redundant work here
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal static NodeTransformations GetNodeTransformation(in CompactHierarchy.ReadOnly hierarchy, CompactNodeID compactNodeID)
         {
@@ -1009,7 +1004,6 @@ namespace Chisel.Core
             };
         }
 
-        // TODO: Optimize
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal static void FlagTransformationChangedDeep(ref CompactHierarchy hierarchy, CompactNodeID compactNodeID)
         {
@@ -1050,7 +1044,6 @@ namespace Chisel.Core
                 nodeRef.transformation = transformation;
                 //nodeRef.bounds = BrushMeshManager.CalculateBounds(nodeRef.brushMeshHash, in nodeRef.transformation);
 
-                // TODO: not sure why this test doesn't work?
                 //if ((nodeRef.flags & NodeStatusFlags.TransformationModified) != NodeStatusFlags.TransformationModified)
                 {
                     nodeRef.flags |= NodeStatusFlags.TransformationModified;
@@ -1075,7 +1068,6 @@ namespace Chisel.Core
             if (!IsValidCompactNodeID(compactNodeID))
                 return false;
 
-            // TODO: Optimize
             var hierarchy = GetReadOnlyHierarchy(compactNodeID);
             var nodeTransformation = GetNodeTransformation(in hierarchy, compactNodeID);
             result = nodeTransformation.treeToNode;
@@ -1094,7 +1086,6 @@ namespace Chisel.Core
             if (!IsValidCompactNodeID(compactNodeID))
                 return false;
 
-            // TODO: Optimize
             var hierarchy = GetReadOnlyHierarchy(compactNodeID);
             var nodeTransformation = GetNodeTransformation(in hierarchy, compactNodeID);
             result = nodeTransformation.nodeToTree;
@@ -1965,7 +1956,6 @@ namespace Chisel.Core
         }
     }
 
-    // TODO: create "ReadOnlyCompact...Manager" wrapper can be used in jobs
     public static partial class CompactHierarchyManager
     {
         static CompactHierarchyManagerInstance instance = default;
@@ -2006,7 +1996,6 @@ namespace Chisel.Core
 			instance.Dispose(); instance = default;
 		}
 
-        // TODO: need a runtime equivalent
         static void OnAfterAssemblyReload()
 		{ 
 			instance.Initialize(); 

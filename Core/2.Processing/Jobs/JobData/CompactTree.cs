@@ -6,7 +6,6 @@ namespace Chisel.Core
 {
     struct CompactHierarchyNode
     {
-        // TODO: combine bits
         public CSGNodeType      Type;
         public CSGOperationType Operation;
         public CompactNodeID    CompactNodeID;

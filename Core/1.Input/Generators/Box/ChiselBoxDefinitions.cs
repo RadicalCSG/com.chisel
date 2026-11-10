@@ -6,7 +6,6 @@ using Unity.Entities;
 
 namespace Chisel.Core
 {
-    // TODO: beveled edges?
     [Serializable]
     public struct ChiselBox : IBrushGenerator, IChiselSurfaceNames
     {

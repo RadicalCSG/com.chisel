@@ -5,7 +5,6 @@ using Unity.Entities;
 
 namespace Chisel.Core
 {
-    // TODO: rename
     public sealed partial class BrushMeshFactory
     {
         public static bool GenerateStadium(float width, float height, float length,
@@ -48,13 +47,11 @@ namespace Chisel.Core
 				SetSurface(ref polygons[p], (int)side, ref surfaceDefinition);
 			}
 
-			// TODO: eventually remove when it's more battle tested
 			if (!Validate(in localVertices, in halfEdges, in polygons, logErrors: true))
 				return false;
 
 			var localPlanes = builder.Allocate(ref root.localPlanes, polygons.Length);
 			root.localPlaneCount = polygons.Length;
-			// TODO: calculate corner planes
 			var halfEdgePolygonIndices = builder.Allocate(ref root.halfEdgePolygonIndices, halfEdges.Length);
 			CalculatePlanes(ref localPlanes, in polygons, in halfEdges, in localVertices);
 			UpdateHalfEdgePolygonIndices(ref halfEdgePolygonIndices, in polygons);

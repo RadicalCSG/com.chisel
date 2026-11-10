@@ -597,7 +597,6 @@ namespace Chisel.Core
                 Temporaries.vertexBufferContents.EnsureInitialized();
 
                 #region MeshQueries
-                // TODO: have more control over the queries
                 Temporaries.meshQueries         = MeshQuery.DefaultQueries.ToNativeArray(defaultAllocator);
                 Temporaries.meshQueriesLength   = Temporaries.meshQueries.Length;
                 Temporaries.meshQueries.Sort(kMeshQueryComparer);
@@ -808,7 +807,6 @@ namespace Chisel.Core
                 }
                 #endregion
 
-                // TODO: make this unnecessary
                 generatorPoolJobHandle.Complete();
 
 				var treeUpdateLength = 0;
@@ -911,7 +909,6 @@ namespace Chisel.Core
                                 for (int t = treeUpdateLength - 1; t >= 0; t--)
                                 {
                                     ref var treeUpdate = ref treeUpdates[t];
-                                    // TODO: figure out if there's a way around this ....
                                     treeUpdate.JobHandles[JobHandleType.transformTreeBrushIndicesListJobHandle].readWriteBarrier.Complete();
                                     treeUpdate.JobHandles[JobHandleType.rebuildTreeBrushIndexOrdersJobHandle].writeBarrier.Complete();
                                     treeUpdate.JobHandles[JobHandleType.needRemappingRefJobHandle].writeBarrier.Complete();
@@ -976,7 +973,6 @@ namespace Chisel.Core
                                                                                               treeUpdate.JobHandles[JobHandleType.vertexBufferContents_triangleBrushIndicesJobHandle].writeBarrier,
                                                                                               treeUpdate.JobHandles[JobHandleType.vertexBufferContents_meshesJobHandle].writeBarrier);
 
-                            // TODO: get rid of these crazy legacy flags
                             #region Clear tree/brush status flags 
                             ref var compactHierarchy = ref CompactHierarchyManager.GetHierarchy(treeUpdate.treeCompactNodeID);
                             using (kClearFlagsProfilerMarker.Auto())
@@ -1047,8 +1043,6 @@ namespace Chisel.Core
                         #endregion
 
                         #region Free temporaries
-                        // TODO: most of these disposes can be scheduled before we complete and write to the meshes, 
-                        // so that these disposes can happen at the same time as the mesh updates in finishMeshUpdates
                         using (kFreeTemporariesProfilerMarker.Auto())
                         {
                             using var freeJobs = new JobHandleAccumulator(treeUpdateLength, Allocator.Temp);
@@ -1092,7 +1086,6 @@ namespace Chisel.Core
 
             public void RunMeshInitJobs(JobHandle dependsOn)
 			{
-				// TODO: Try to get rid of this Complete
 				dependsOn.Complete(); // <-- Initialize has code that depends on the current state of the tree
 				dependsOn = default;
 
@@ -1130,7 +1123,6 @@ namespace Chisel.Core
                     using (kJobCacheRemappingJobProfilerMarker.Auto())
                     {
                         const bool runInParallel = false;// runInParallelDefault;
-                        // TODO: update "previous siblings" when something with an intersection operation has been modified
                         var cacheRemappingJob = new CacheRemappingJob
                         {
                             // Read
@@ -1546,7 +1538,6 @@ namespace Chisel.Core
                 using (kJob_CreateTreeSpaceVerticesAndBoundsJobProfilerMarker.Auto())
                 {
                     const bool runInParallel = runInParallelDefault;
-                    // TODO: should only do this once at creation time, part of brushMeshBlob? store with brush component itself
                     var createTreeSpaceVerticesAndBoundsJob = new CreateTreeSpaceVerticesAndBoundsJob
                     {
                         // Read
@@ -1606,7 +1597,6 @@ namespace Chisel.Core
                 using (kJob_FindAllBrushIntersectionPairsProfilerMarker.Auto())
                 {
                     const bool runInParallel = runInParallelDefault;
-                    // TODO: only change when brush or any touching brush has been added/removed or changes operation/order
                     var findAllBrushIntersectionPairsJob = new FindAllBrushIntersectionPairsJob
                     {
                         // Read
@@ -1643,7 +1633,6 @@ namespace Chisel.Core
                 using (kJob_FindUniqueIndirectBrushIntersectionsProfilerMarker.Auto())
                 {
                     const bool runInParallel = runInParallelDefault;
-                    // TODO: optimize, use hashed grid
                     var findUniqueIndirectBrushIntersectionsJob = new FindUniqueIndirectBrushIntersectionsJob
                     {
                         // Read
@@ -1843,7 +1832,6 @@ namespace Chisel.Core
                 using (kJob_GenerateBasePolygonLoopsProfilerMarker.Auto())
                 {
                     const bool runInParallel = runInParallelDefault;
-                    // TODO: should only do this once at creation time, part of brushMeshBlob? store with brush component itself
                     var createBlobPolygonsBlobs = new CreateBlobPolygonsBlobsJob
                     {
                         // Read
@@ -1877,8 +1865,6 @@ namespace Chisel.Core
                 using (kJob_UpdateBrushCategorizationTablesProfilerMarker.Auto())
                 {
                     const bool runInParallel = runInParallelDefault;
-                    // TODO: only update when brush or any touching brush has been added/removed or changes operation/order                    
-                    // TODO: determine when a brush is completely inside another brush (might not have *any* intersection loops)
                     var createRoutingTableJob = new CreateRoutingTableJob // Build categorization trees for brushes
                     {
                         // Read
@@ -2004,8 +1990,6 @@ namespace Chisel.Core
 
 
 				#region Store Results
-
-				// TODO: move this out of this method, make it ON DEMAND
 
 				//
 				// Create meshes from all cached surfaces (which already contains the updated surfaces)
@@ -2446,7 +2430,7 @@ namespace Chisel.Core
                     };
                     gatherSurfacesJob.Schedule(runInParallel,
                         JobHandles.Read(
-                            JobHandleType.subMeshDescriptionsJobHandle), // TODO: Can't do empty ReadJobHandles, fix this
+                            JobHandleType.subMeshDescriptionsJobHandle),
                         JobHandles.Write(
                             JobHandleType.subMeshDescriptionsJobHandle,
                             JobHandleType.vertexBufferContents_subMeshSectionsJobHandle));
@@ -2518,7 +2502,6 @@ namespace Chisel.Core
                 ref var brushMeshBlobs = ref ChiselMeshLookup.Value.brushMeshBlobCache;
 
                 #region Store Results
-				// TODO: Make creation of different kinds of 'meshes' consistent
 				#region Create Meshes
 				using (kMesh_AllocateWritableMeshDataProfilerMarker.Auto())
                 {
@@ -2696,8 +2679,6 @@ namespace Chisel.Core
 
 					// Triangle lookups / selection
 
-					// TODO: Create selection meshes that use entityID colors
-
 					JobHandle jobHandle1, jobHandle2;
 					{
 						var allocateVertexBuffersJob = new AllocateVertexBuffersJob
@@ -2759,8 +2740,6 @@ namespace Chisel.Core
 				#endregion
 
 
-				// TODO: Create selection meshes that use entityID colors
-				// TODO: -> then we can get rid of this
 				#region Store cached values back into cache (by node Index)
 				using (kJob_StoreToCacheProfilerMarker.Auto())//*
                 {
@@ -2934,8 +2913,6 @@ namespace Chisel.Core
             {
                 // Combine all JobHandles of all jobs to ensure that we wait for ALL of them to finish 
                 // before we dispose of our temporaries.
-                // Eventually we might want to put this in between other jobs, but for now this is safer
-                // to work with while things are still being re-arranged.
                 var dependencies = JobHandleExtensions.CombineDependencies(
                                                 JobHandleExtensions.CombineDependencies(
                                                     JobHandles[JobHandleType.allBrushMeshIDsJobHandle].writeBarrier,
@@ -2994,7 +2971,6 @@ namespace Chisel.Core
                                         );
 
                 // Technically not necessary, but Unity will complain about memory leaks that aren't there (jobs just haven't finished yet)
-                // TODO: see if we can use domain reload events to ensure this job is completed before a domain reload occurs
                 dependencies.Complete(); 
                                             
 

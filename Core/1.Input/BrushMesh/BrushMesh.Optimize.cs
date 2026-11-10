@@ -44,7 +44,6 @@ namespace Chisel.Core
             try
             {
                 snapPlaneIndices.Clear();
-                // TODO: precalculate this somehow
                 for (int e = 0; e < halfEdges.Length; e++)
                 {
                     if (halfEdges[e].vertexIndex != vertexIndex)
@@ -87,7 +86,6 @@ namespace Chisel.Core
                     {
                         for (int c = b + 1; c < snapPlanes.Count; c++)
                         {
-                            // TODO: accumulate in a better way
                             var vertex = PlaneExtensions.Intersection(snapPlanes[a], snapPlanes[b], snapPlanes[c]);
                             if (double.IsNaN(vertex.x) || double.IsInfinity(vertex.x) ||
                                 double.IsNaN(vertex.y) || double.IsInfinity(vertex.y) ||
@@ -301,7 +299,6 @@ namespace Chisel.Core
 
         public bool IsSelfIntersecting()
         {
-            // TODO: determine if the brush is intersecting itself
             return false;
         }
 
@@ -313,7 +310,6 @@ namespace Chisel.Core
                 return false;
             if (halfEdges == null || halfEdges.Length == 0)
                 return false;
-            // TODO: determine if the brush is a singularity (1D) or flat (2D), or has a volume (3D)
             return true;
         }
 
@@ -593,17 +589,14 @@ namespace Chisel.Core
         {
             edgeRemap = null;
             polygonRemap = null;
-            const float kDistanceEpsilon = 0.0001f; // TODO: why??
+            const float kDistanceEpsilon = 0.0001f;
 
 			var originalVertices = (float3[])vertices.Clone();
 			var originalHalfEdges = (HalfEdge[])halfEdges.Clone();
 			var originalPolygons = (Polygon[])polygons.Clone();
 
-            // TODO: optimize
-
-            // FIXME: This piece of code might not work correctly when you have vertices very close to each other, 
-            //        but in a row so that the last vertices are not close to the first, but each is close to it's neighbor
-            //        VERIFY CORRECTNESS
+            // Each vertex merges with the first vertex it is close to. Merging isn't transitive: in a row of vertices that are
+            // each close to their neighbor, but not to the first, only the ones close to the first are merged
             int[] vertexRemapping = null;
             for (int v0 = 0; v0 < vertices.Length - 1; v0++)
             {
@@ -649,9 +642,6 @@ namespace Chisel.Core
                     continue;
                 halfEdges[h].vertexIndex = remap - 1;
             }
-
-            // TODO: remove unused vertices. Note that we might want to keep the original vertex indices so we can 
-            //      detect newly generated "soft" edges when splitting non planar polygons
 
             // Make sure polygons are laid out sequentially
             Array.Sort(polygons, delegate (Polygon x, Polygon y) { return x.firstEdge - y.firstEdge; });
@@ -808,8 +798,6 @@ namespace Chisel.Core
             vertices = newVertices.ToArray();
             for (int e = 0; e < halfEdges.Length; e++)
                 halfEdges[e].vertexIndex = vertexLookup[halfEdges[e].vertexIndex];
-
-            // TODO: fixup vertexRemap table to include overlapping vertices
 
             return vertexLookup;
         }

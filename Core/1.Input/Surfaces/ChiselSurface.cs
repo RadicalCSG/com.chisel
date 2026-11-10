@@ -7,7 +7,6 @@ using UnityEngine;
 namespace Chisel.Core
 {
 	// Encapsulated data so we can more easily make a propertydrawer for it
-	//TODO: make a property drawer for it
 	[Serializable]
 	public struct ChiselMaterial
 	{

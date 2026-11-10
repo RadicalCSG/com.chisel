@@ -7,7 +7,6 @@ using Unity.Entities;
 
 namespace Chisel.Core
 {
-    // TODO: rename
     public sealed partial class BrushMeshFactory
     {
         [Serializable]
@@ -70,7 +69,6 @@ namespace Chisel.Core
 
 			var localPlanes = builder.Allocate(ref root.localPlanes, polygons.Length);
 			root.localPlaneCount = polygons.Length;
-			// TODO: calculate corner planes
 			var halfEdgePolygonIndices = builder.Allocate(ref root.halfEdgePolygonIndices, halfEdges.Length);
 			CalculatePlanes(ref localPlanes, in polygons, in halfEdges, in localVertices);
 			UpdateHalfEdgePolygonIndices(ref halfEdgePolygonIndices, in polygons);
@@ -85,7 +83,6 @@ namespace Chisel.Core
                                                           in BlobAssetReference<InternalChiselSurfaceArray> surfaceDefinitionBlob,
                                                           in BlobBuilder builder, ref BrushMeshBlob root)
         {
-            // TODO: handle situation where ellipsoid is a line
 
             if (topDiameter.x == 0)
             {
@@ -94,7 +91,6 @@ namespace Chisel.Core
                                                            rotation, segments,
                                                            in builder, ref root, inverse: false, fitToBounds: fitToBounds);
 
-                // TODO: the polygon/half-edge part would be the same for any extruded shape and should be re-used
                 return CreateConeSubMesh(segments, in localVertices, in surfaceDefinitionBlob, in builder, ref root);
             }
 
@@ -105,7 +101,6 @@ namespace Chisel.Core
                                                            rotation, segments,
                                                            in builder, ref root, inverse: true, fitToBounds: fitToBounds);
 
-                // TODO: the polygon/half-edge part would be the same for any extruded shape and should be re-used
                 return CreateConeSubMesh(segments, in localVertices, in surfaceDefinitionBlob, in builder, ref root);
             }
 
@@ -115,12 +110,10 @@ namespace Chisel.Core
                                                               rotation, segments,
                                                               in builder, ref root, fitToBounds: fitToBounds);
 
-                // TODO: the polygon/half-edge part would be the same for any extruded shape and should be re-used
                 return CreateExtrudedSubMesh(segments, 0, 1, in localVertices, in surfaceDefinitionBlob, in builder, ref root);
             }
         }
 
-        // TODO: could probably figure out "inverse" from direction of topY compared to bottomY
         public static BlobBuilderArray<float3> GetConeFrustumVertices(float topHeight, float2 bottomDiameter, float bottomHeight, float rotation, int segments,
                                                                       in BlobBuilder builder, ref BrushMeshBlob root,
                                                                       bool inverse = false, bool fitToBounds = false)
@@ -174,8 +167,6 @@ namespace Chisel.Core
             var bottomAxisZ = math.mul(rotate, new float3(0, 0, bottomDiameter.y * 0.5f));
             var topY		= new float3(0, topHeight, 0);
             var bottomY		= new float3(0, bottomHeight, 0);
-
-            // TODO: handle situation where diameterX & diameterZ are 0 (only create one vertex)
 
             var localVertices = builder.Allocate(ref root.localVertices, segments * 2);
             
@@ -232,7 +223,7 @@ namespace Chisel.Core
             var halfEdges = builder.Allocate(ref root.halfEdges, 4 * segments);
             for (int n = 0, e = segments - 1; n < segments; e=n, n++)
             {
-                var p = (n + 1) % segments; // TODO: optimize away
+                var p = (n + 1) % segments;
                 //			 	    v0	 
                 //	                 *             
                 //                ^ /^ \
@@ -350,8 +341,6 @@ namespace Chisel.Core
             var bottomAxisZ = rotate * Vector3.forward	* bottom.diameterZ * 0.5f;
             var topY		= Vector3.up * top.height;
             var bottomY		= Vector3.up * bottom.height;
-
-            // TODO: handle situation where diameterX & diameterZ are 0 (only create one vertex)
 
             if (vertices == null ||
                 vertices.Length != segments * 2)

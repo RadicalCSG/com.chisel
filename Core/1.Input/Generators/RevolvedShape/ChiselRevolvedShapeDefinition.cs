@@ -94,7 +94,7 @@ namespace Chisel.Core
             curveSegments	    = math.max(curveSegments, 2);
             revolveSegments	    = math.max(revolveSegments, 1);
 
-            totalAngle		    = math.clamp(totalAngle, 1, 360); // TODO: constants
+            totalAngle		    = math.clamp(totalAngle, 1, 360);
             return true;
         }
 
@@ -159,7 +159,6 @@ namespace Chisel.Core
 
         #region OnEdit
         //
-        // TODO: code below needs to be cleaned up & simplified 
         //
 
 
@@ -221,7 +220,6 @@ namespace Chisel.Core
             handles.color = baseColor;
 
             {
-                // TODO: make this work non grid aligned so we can place it upwards
                 handles.DoShapeHandle(ref shape, float4x4.identity);
                 handles.DrawLine(normal * 10, normal * -10, dashSize: 4.0f);
             }

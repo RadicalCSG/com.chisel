@@ -13,7 +13,6 @@ namespace Chisel.Core
         [HideInInspector]
         [SerializeField] int version = 0;
         
-        // TODO: avoid storing surfaceDefinition and surfaces in brushOutline twice, which is wasteful and causes potential conflicts
         [HideInInspector]
         public BrushMesh        brushOutline;
 
@@ -49,7 +48,6 @@ namespace Chisel.Core
         [HideInInspector]
         [SerializeField] bool   validState = true;
 
-        // TODO: clean this up
         public void ResetValidState() 
         {
 			validState = true;
@@ -195,7 +193,6 @@ namespace Chisel.Core
 					return false;
 				}
 
-				// TODO: shouldn't do this all the time:
 				{
                     // Detect if outline is inside-out and if so, just invert all polygons.
                     isInsideOut = brushOutline.IsInsideOut();

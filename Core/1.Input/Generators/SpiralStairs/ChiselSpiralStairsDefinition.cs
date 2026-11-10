@@ -57,7 +57,6 @@ namespace Chisel.Core
         };
 		public static ref readonly ChiselSpiralStairs DefaultSettings => ref kDefaultSettings;
 
-		// TODO: expose this to user
 		const int smoothSubDivisions = 3;
 
         // how far above the object's position the bottom of the stairs is, set by dragging the bottom handle; only its
@@ -477,7 +476,6 @@ namespace Chisel.Core
 
         #region OnEdit
         //
-        // TODO: code below needs to be cleaned up & simplified 
         //
 
 
@@ -760,9 +758,6 @@ namespace Chisel.Core
                     rotation = turn;
 
 
-                // TODO: properly show things as backfaced
-                // TODO: temporarily show inner or outer diameter as disabled when resizing one or the other
-                // TODO: FIXME: why aren't there any arrows?
                 // dashed from the height's handle down to the object's position
                 {
                     var prevColor = handles.color;
@@ -880,7 +875,6 @@ namespace Chisel.Core
                 // the cylinders reach down to the ground, also when the stairs start higher up
                 cylinderLow.height = math.min(0, originalOrigin.y);
 
-                // TODO: somehow put this into a separate renderer
                 cylinderTop.diameterZ = cylinderTop.diameterX = cylinderLow.diameterZ = cylinderLow.diameterX = originalInnerDiameter;
                 BrushMeshFactory.GetConicalFrustumVertices(cylinderLow, cylinderTop, 0, settings.innerSegments, ref s_InnerVertices);
 

@@ -48,7 +48,7 @@ namespace Chisel.Core
         {
             public static ulong Create(int a, int b, int c)
             {
-                // FIXME: assumes vertex indices are 16-bit
+                // The sorted indices are packed 16 bits apart, so keys are only unique for vertex indices below 65536
                 var a32 = (ulong)a;
                 var b32 = (ulong)b;
                 var c32 = (ulong)c;
@@ -207,7 +207,7 @@ namespace Chisel.Core
                         {
                             for (var i = startIndex; i <= t1; i++)
                             {
-                                var newSubPath = new TriangulationPath {vertexIndex = vertexIndices[i]}; // FIXME: shouldn't this be tempEdges?
+                                var newSubPath = new TriangulationPath {vertexIndex = vertexIndices[i]};
                                 if (leftPath.subPaths == null) { leftPath.subPaths = new[] { newSubPath }; }
                                 else
                                 {
@@ -325,7 +325,6 @@ namespace Chisel.Core
             return curHeuristic;
         }
 
-        // TODO: make this non-allocating
         private static Triangle[] SplitNonPlanarPolygon(BrushMesh subMesh, ref Polygon polygon)
         {
             var sTrianglePathCache      = new TrianglePathCache();
@@ -399,7 +398,6 @@ namespace Chisel.Core
 
                     sNewTriangles.Add(triangle);
 
-                    // TODO: optimize
                     var list = new List<int>(foundTriangleIndices);
                     list.RemoveAt(found);
                     foundTriangleIndices = list.ToArray();

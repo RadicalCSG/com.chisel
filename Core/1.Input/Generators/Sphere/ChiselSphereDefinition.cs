@@ -25,7 +25,7 @@ namespace Chisel.Core
 		[DistanceValue] public float3	diameterXYZ;
         public float    offsetY;
         public bool     generateFromCenter;
-        public float    rotation; // TODO: useless?
+        public float    rotation;
         public int	    horizontalSegments;
         public int	    verticalSegments;
         // the smoothing group of all its faces (0 for none)
@@ -38,7 +38,7 @@ namespace Chisel.Core
 		{
             if (!BrushMeshFactory.GenerateSphere(diameterXYZ,
                                                  offsetY,
-                                                 rotation,  // TODO: useless?
+                                                 rotation,
                                                  generateFromCenter,
                                                  horizontalSegments,
                                                  verticalSegments,
@@ -104,7 +104,6 @@ namespace Chisel.Core
 
         #region OnEdit
         //
-        // TODO: code below needs to be cleaned up & simplified 
         //
 
 
@@ -142,7 +141,7 @@ namespace Chisel.Core
             renderer.color = prevColor;
         }
 
-        static Vector3[] vertices = null; // TODO: store this per instance? or just allocate every frame?
+        static Vector3[] vertices = null;
 
         public override void OnEdit(IChiselHandles handles)
         {
@@ -178,13 +177,12 @@ namespace Chisel.Core
             var radius2D = new float2(settings.diameterXYZ.x, settings.diameterXYZ.z) * 0.5f;
 
             {
-                // TODO: make it possible to (optionally) size differently in x & z
                 var radiusX = radius2D.x;
                 handles.DoRadiusHandle(ref radiusX, normal, center);
                 radius2D.x = radiusX;
 
                 {
-                    var isBottomBackfaced	= false; // TODO: how to do this?
+                    var isBottomBackfaced	= false;
                     
                     handles.backfaced = isBottomBackfaced;
                     handles.DoDirectionHandle(ref bottomPoint, -normal);
@@ -192,7 +190,7 @@ namespace Chisel.Core
                 }
 
                 {
-                    var isTopBackfaced		= false; // TODO: how to do this?
+                    var isTopBackfaced		= false;
                     
                     handles.backfaced = isTopBackfaced;
                     handles.DoDirectionHandle(ref topPoint, normal);
@@ -211,7 +209,6 @@ namespace Chisel.Core
                     settings.offsetY = bottomPoint.y;
                 }
                 settings.diameterXYZ = diameter;
-                // TODO: handle sizing down (needs to modify transformation?)
             }
 
             // the sizes of the box around it, as when it was placed

@@ -46,7 +46,6 @@ namespace Chisel.Core
 
         public static Matrix4x4 ScaleFromPoint(Vector3 center, Vector3 normal, float scale)
         {
-            // TODO: take normal into account
             return MathExtensions.ScaleFromPoint(center, new Vector3(scale, scale, scale));
         }
 

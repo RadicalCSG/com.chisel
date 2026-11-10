@@ -5,7 +5,6 @@ using UnityEngine;
 
 namespace Chisel.Core
 {
-    // TODO: turn into an asset so we can share it between multiple generators??
     [Serializable]
 #if UNITY_6000_7_OR_NEWER
     [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]

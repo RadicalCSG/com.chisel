@@ -21,7 +21,7 @@ namespace Chisel.Core
 
 
 		[DistanceValue] public float3   diameterXYZ;
-        public float                    rotation; // TODO: useless?
+        public float                    rotation;
         public int                      horizontalSegments;
         public int                      verticalSegments;
 
@@ -31,7 +31,7 @@ namespace Chisel.Core
                                                                        Allocator allocator = Allocator.Persistent)// Indirect
 		{
             if (!BrushMeshFactory.GenerateHemisphere(diameterXYZ,
-                                                     rotation, // TODO: useless?
+                                                     rotation,
                                                      horizontalSegments,
                                                      verticalSegments,
                                                      in surfaceDefinitionBlob,
@@ -92,7 +92,6 @@ namespace Chisel.Core
 
         #region OnEdit
         //
-        // TODO: code below needs to be cleaned up & simplified 
         //
 
 
@@ -137,7 +136,7 @@ namespace Chisel.Core
         }
         
 
-        static Vector3[] vertices = null; // TODO: store this per instance? or just allocate every frame?
+        static Vector3[] vertices = null;
 
         public override void OnEdit(IChiselHandles handles)
         {
@@ -164,11 +163,10 @@ namespace Chisel.Core
             previousModified = handles.modified;
             {
                 handles.color = baseColor;
-                // TODO: make it possible to (optionally) size differently in x & z
                 handles.DoRadiusHandle(ref radius2D.x, normal, Vector3.zero);
 
                 {
-                    var isTopBackfaced		= false; // TODO: how to do this?
+                    var isTopBackfaced		= false;
                     
                     handles.backfaced = isTopBackfaced;
                     handles.DoDirectionHandle(ref topPoint, normal);

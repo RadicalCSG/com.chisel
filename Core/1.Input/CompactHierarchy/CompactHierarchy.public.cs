@@ -10,7 +10,6 @@ using Debug = UnityEngine.Debug;
 
 namespace Chisel.Core
 {
-    // Temporary workaround until we can switch to hashes
     public enum NodeStatusFlags : UInt16
     {
         None                        = 0,
@@ -114,10 +113,10 @@ namespace Chisel.Core
         public CSGOperationType     operation;
         public int                  contents;       // brushes only: index into ChiselContentsList, 0 is Solid
         public float4x4             transformation; // local (may include non-ChiselNode parent transformations)
-        public NodeStatusFlags      flags;          // TODO: replace with using hashes to compare changes        
+        public NodeStatusFlags      flags;
         
-        public Int32                brushMeshHash;  // TODO: use hash of mesh as "ID"
-        public MinMaxAABB           bounds;         // TODO: move this somewhere else, 1:1 relationship with brushMeshID
+        public Int32                brushMeshHash;
+        public MinMaxAABB           bounds;
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public int GetHashcode() { unchecked { return (int)this.Hash(); } }
@@ -126,14 +125,13 @@ namespace Chisel.Core
     }
 
     [GenerateTestsForBurstCompatibility]
-	internal struct CompactChildNode // TODO: rename
+	internal struct CompactChildNode
     {
-		// TODO: probably need to split this up into multiple pieces, figure out how this will actually be used in practice first
 
 		internal CompactNode    nodeInformation;
-        public NodeID           nodeID;         // TODO: figure out how to get rid of this
+        public NodeID           nodeID;
         public CompactNodeID    compactNodeID;     
-        public CompactNodeID    parentID;       // TODO: rewrite updating code to use index here instead of ID (removes indirection)
+        public CompactNodeID    parentID;
 		public Int32            childCount;
         public Int32            childOffset;
 
@@ -143,7 +141,6 @@ namespace Chisel.Core
 		public override readonly string ToString() { return $"{nameof(compactNodeID)} = {compactNodeID}, {nameof(parentID)} = {parentID}, {nameof(nodeInformation.entityID)} = {nodeInformation.entityID}, {nameof(childCount)} = {childCount}, {nameof(childOffset)} = {childOffset}, {nameof(nodeInformation.brushMeshHash)} = {nodeInformation.brushMeshHash}, {nameof(nodeInformation.operation)} = {nodeInformation.operation}, {nameof(nodeInformation.transformation)} = {nodeInformation.transformation}"; }
     }
 
-    // TODO: make sure everything is covered in tests
     [GenerateTestsForBurstCompatibility]
 	partial struct CompactHierarchy //: IDisposable
     {
@@ -363,14 +360,6 @@ namespace Chisel.Core
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public readonly CompactNodeID GetChildCompactNodeIDAt(CompactNodeID compactNodeID, int index) { return GetChildCompactNodeIDAtInternal(compactNodeID, index); }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        [return: MarshalAs(UnmanagedType.U1)]
-        public bool Compact()
-        {
-            Debug.Assert(IsCreated);
-            return CompactInternal();
-        }
 
         [return: MarshalAs(UnmanagedType.U1)]
         public bool Delete(CompactNodeID compactNodeID)

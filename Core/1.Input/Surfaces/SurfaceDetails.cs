@@ -6,7 +6,7 @@ namespace Chisel.Core
 {
     // Separate struct so that we can create a property drawer for it
     [Serializable, StructLayout(LayoutKind.Sequential)]
-    public struct SmoothingGroup // TODO: should be part of "postprocessing" data
+    public struct SmoothingGroup
     {
         public UInt32 value;
 
