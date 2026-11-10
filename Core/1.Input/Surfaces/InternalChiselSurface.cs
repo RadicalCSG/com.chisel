@@ -13,7 +13,8 @@ namespace Chisel.Core
 			details          = SurfaceDetails.Default,
 			parameters       = SurfaceDestinationParameters.Empty,
 			destinationFlags = SurfaceDestinationFlags.None,
-			outputFlags      = SurfaceOutputFlags.Default
+			outputFlags      = SurfaceOutputFlags.Default,
+			textureScale     = 1
 		};
 
 		public SurfaceDetails               details;
@@ -22,7 +23,9 @@ namespace Chisel.Core
 		public SurfaceOutputFlags           outputFlags;
 		// The hotspot layout the surface's material has (ChiselHotspotStore), 0 for none
 		public int                          hotspotLayout;
-		
+		// The scale of its material's texture along the texture's axes (ChiselTextureScale), 0 taken as 1
+		public Unity.Mathematics.float2     textureScale;
+
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public static InternalChiselSurface Convert(ChiselSurface surface)
 		{
@@ -38,6 +41,7 @@ namespace Chisel.Core
 				destinationFlags = surface.DestinationFlags,
 				outputFlags	     = surface.OutputFlags,
 				hotspotLayout    = ChiselHotspotStore.Register(surface.HotspotLayout, surface.RenderMaterial, surface.HotspotVariants, surface.HotspotSheets),
+				textureScale     = ChiselTextureScale.Of(surface.RenderMaterial),
             };
 		}
 	}

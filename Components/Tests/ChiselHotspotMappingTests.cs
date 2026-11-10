@@ -188,6 +188,31 @@ namespace Chisel.Components.Tests
             AreEqual(new float2(1.0f, 1.0f),  UVAt(model, new float3(2, 2, -0.125f), kFront), "top right");
         }
 
+        // A tile maps the surface in the layout's pixels: the material's texture scale (ChiselTextureScale) is left out
+        [Test]
+        public void AHotspotMappedSurface_LeavesOutTheTextureScale()
+        {
+            var model = Model();
+            var box = Box(model, new float3(-2, 0, -0.125f), new float3(2, 2, 0.125f));
+            var texture = new Texture2D(256, 64);
+            try
+            {
+                material.mainTexture = texture;
+                ChiselTextureScale.Refresh(null);
+                Assume.That(ChiselTextureScale.Of(material), Is.EqualTo(new float2(1, 4)));
+                box.SetDirty();
+                Update();
+                AreEqual(new float2(0.5f, 0.75f), UVAt(model, new float3(-2, 0, -0.125f), kFront), "bottom left");
+                AreEqual(new float2(1.0f, 1.0f),  UVAt(model, new float3(2, 2, -0.125f), kFront), "top right");
+            }
+            finally
+            {
+                material.mainTexture = null;
+                ChiselTextureScale.Refresh(null);
+                Object.DestroyImmediate(texture);
+            }
+        }
+
         [Test]
         public void AFloor_TakesTheTallTile_UpAlongPlusZ()
         {

@@ -10,7 +10,7 @@ namespace Chisel.Components
     public static class ChiselStagedInputHashes
     {
         // Bump when a stage hashes something else, or the same values differently
-        const int kGeneratorInputHashVersion = 1;
+        const int kGeneratorInputHashVersion = 2;
         const int kNodeGraphHashVersion      = 1;
         const int kCSGInputHashVersion       = 1;
 
@@ -185,6 +185,8 @@ namespace Chisel.Components
                 hash.Append(ref outputFlags);
                 AppendAssetIdentity(ref hash, surface.RenderMaterial, surfaceParameterIdentity);
                 AppendAssetIdentity(ref hash, surface.PhysicsMaterial, surfaceParameterIdentity);
+                var textureScale = (Vector2)ChiselTextureScale.Of(surface.RenderMaterial);
+                hash.Append(ref textureScale);
             }
         }
 

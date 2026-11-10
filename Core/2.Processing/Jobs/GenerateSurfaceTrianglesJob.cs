@@ -74,7 +74,8 @@ namespace Chisel.Core
 			var flags = baseSurfaces[surf].destinationFlags;
 			var outputFlags = baseSurfaces[surf].outputFlags;
 			var parms = baseSurfaces[surf].destinationParameters;
-			var UV0 = baseSurfaces[surf].UV0;
+			// a texture that isn't square is scaled along its short axis; a hotspot tile maps the surface without it
+			var UV0 = baseSurfaces[surf].UV0.Scaled(TextureScaleOf(ref baseSurfaces, surf));
 			var uvMat = math.mul(UV0.ToFloat4x4(), treeToPlane);
 			// A surface whose material has a hotspot layout takes its uvs from the tile that fits what it draws
 			var hotspot = baseSurfaces[surf].hotspotLayout;
@@ -308,6 +309,12 @@ namespace Chisel.Core
 				FinishBackFace(surf, entityID, flags, parms, outputFlags, surfaceIndexList, ref uniqueVertexMapper, builder, surfaceBuffers, slots);
 		}
 
+		static float2 TextureScaleOf(ref BlobArray<BaseSurface> baseSurfaces, int surf)
+		{
+			var scale = baseSurfaces[surf].textureScale;
+			return math.select(scale, 1, scale <= 0);
+		}
+
 		// How far from a surface a vertex may be and still be on it, for smoothing
 		const float kSmoothingDistance = 0.005f;
 
@@ -346,6 +353,8 @@ namespace Chisel.Core
 			public NativeList<float3> corners;
 			public NativeList<float3> normals;
 			public NativeList<float2> uvs;
+			// the texture's scale on the uvs, as the surface's mapping has it (UVMatrix.Scaled)
+			public float2      uvScale;
 			// how much each corner counts at a position
 			public NativeList<float>  weights;
 
@@ -433,7 +442,7 @@ namespace Chisel.Core
 					var uv = float2.zero;
 					for (int i = 0; i < weights.Length; i++)
 						uv += uvs[i] * weights[i];
-					vertex.uv0 = uv;
+					vertex.uv0 = uv * uvScale;
 					vertices[v] = vertex;
 				}
 			}
@@ -481,6 +490,7 @@ namespace Chisel.Core
 			}
 			result.areaNormal = math.normalizesafe(newell, finalFaceNormal);
 			result.hasUVs = wantsUVs;
+			result.uvScale  = TextureScaleOf(ref baseSurfaces, surf);
 			if (!wantsNormals)
 				return result;
 			result.normals = new NativeList<float3>(cornerCount, Allocator.Temp);

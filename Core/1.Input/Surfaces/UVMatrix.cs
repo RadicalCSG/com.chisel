@@ -63,6 +63,12 @@ namespace Chisel.Core
 
 		public readonly float3 PlaneNormal { get { return math.normalizesafe(math.cross(((float4)U).xyz, ((float4)V).xyz)); } }
 
+		/// <summary>The mapping with a texture's scale (ChiselTextureScale) on the uvs it gives</summary>
+		[MethodImpl(MethodImplOptions.AggressiveInlining)]
+		public readonly UVMatrix Scaled(float2 scale)
+		{
+			return new UVMatrix((float4)U * scale.x, (float4)V * scale.y);
+		}
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static implicit operator Matrix4x4(UVMatrix input) { return input.ToMatrix4x4(); }
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
