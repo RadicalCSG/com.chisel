@@ -203,7 +203,6 @@ namespace Chisel.Components
         {
             var colliderSettings = model.ColliderSettings;
             //*
-            // TODO: find all the entity IDs before the CSG runs, so the bakes can be done in the job that sets the meshes
             var bakingSettings = new NativeArray<BakeData>(colliders.Length, defaultAllocator);
             for (int i = 0; i < colliders.Length; i++)
             {
@@ -232,7 +231,6 @@ namespace Chisel.Components
             {
                 bakingSettings = bakingSettings
             };
-            // WHY ARE ALL OF THESE JOBS SEQUENTIAL ON A SINGLE WORKER THREAD?
             var allJobHandles = bakeColliderJob.Schedule(colliders.Length, 1);
             /*/
             var allJobHandles = default(JobHandle);
@@ -255,7 +253,6 @@ namespace Chisel.Components
 
 			//*/
 			//*
-			// TODO: is there a way to defer forcing the collider to update?
 			for (int i = 0; i < colliders.Length; i++)
             {
                 var meshCollider = colliders[i] == null ? null : colliders[i].meshCollider;

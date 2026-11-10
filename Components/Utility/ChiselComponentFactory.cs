@@ -6,7 +6,6 @@ using UnityEngine;
 
 namespace Chisel.Components
 {
-    // TODO: rename
 #if UNITY_6000_7_OR_NEWER
     [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
 #endif
@@ -14,9 +13,6 @@ namespace Chisel.Components
 	{
 		public static T AddComponent<T>(GameObject gameObject) where T : ChiselNodeComponent
         {
-            // TODO: ensure we're creating this in the active scene
-            // TODO: handle scene being locked by version control
-
             if (!gameObject)
                 return null;
 
@@ -74,14 +70,10 @@ namespace Chisel.Components
                 transform.SetLocal(trsMatrix);
         }
 
-        // TODO: put in its own class
 		readonly static Dictionary<string, string> s_CleanedupTypenames = new();
 
         public static T Create<T>(string name, Transform parent, Matrix4x4 trsMatrix) where T : ChiselNodeComponent
         {
-            // TODO: ensure we're creating this in the active scene
-            // TODO: handle scene being locked by version control
-
             if (string.IsNullOrEmpty(name))
 			{
 				string orgTypename = typeof(T).Name;
@@ -137,9 +129,6 @@ namespace Chisel.Components
         
         public static Component Create(Type type, string name, Transform parent, Matrix4x4 trsMatrix)
         {
-            // TODO: ensure we're creating this in the active scene
-            // TODO: handle scene being locked by version control
-
             if (string.IsNullOrEmpty(name))
             {
 #if UNITY_EDITOR

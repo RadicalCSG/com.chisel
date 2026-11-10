@@ -8,7 +8,6 @@ using UnityEngine.Profiling;
 
 namespace Chisel.Components
 {
-    // TODO: properly dispose native memory
 #if UNITY_6000_7_OR_NEWER
     [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
 #endif

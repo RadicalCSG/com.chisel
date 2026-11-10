@@ -8,7 +8,7 @@ namespace Chisel.Components
     //[ExcludeFromObjectFactoryAttribute]
     public abstract class ChiselNodeComponent : MonoBehaviour, IChiselMessageProvider
 	{
-        public const string kDocumentationBaseURL = "http://example.com/docs/"; // TODO: put somewhere else / put documentation online
+        public const string kDocumentationBaseURL = "http://example.com/docs/";
         public const string kDocumentationExtension = ".html";
 
         public const string kIconBasePath = "Packages/com.chisel/Editor Resources/Icons/";
@@ -86,7 +86,6 @@ namespace Chisel.Components
             if (transform == null)
                 return;
 
-            // TODO: Optimize
             var localTransformation = Matrix4x4.TRS(transform.localPosition, transform.localRotation, transform.localScale);
             // We can't just use the transformation of this brush, because it might have gameobjects as parents that 
             // do not have any chisel components. So we need to consider all transformations in between as well.
@@ -109,7 +108,6 @@ namespace Chisel.Components
             node.LocalTransformation = localTransformation;
         }
 
-        // TODO: remove need for this
         public virtual void UpdateGeneratorNodes() { }
         internal abstract CSGTreeNode RebuildTreeNodes();
 

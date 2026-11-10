@@ -196,10 +196,6 @@ namespace Chisel.Components
 
         public void UpdateVisibility(IEnumerable<ChiselModelComponent> models)
         {
-            // TODO: 1. turn off rendering regular meshes when we have partial visibility of model contents
-            //       2. find a way to render partial mesh instead
-            //          A. needs to show lightmap of original mesh, even when modified
-            //          B. updating lightmaps needs to still work as if original mesh is changed
             EnsureCreated();
 			compactNodeIDVisibilityStateLookup.Clear();
 			entityIDVisibilityStateLookup.Clear();

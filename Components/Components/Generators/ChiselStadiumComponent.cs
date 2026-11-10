@@ -9,7 +9,5 @@ namespace Chisel.Components
     {
         public const string kNodeTypeName = Core.ChiselStadiumDefinition.kNodeTypeName;
         public override string ChiselNodeTypeName { get { return kNodeTypeName; } }
-
-        // TODO: add all properties of ChiselStadiumDefinition
     }
 }

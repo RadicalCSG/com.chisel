@@ -20,6 +20,12 @@
             var prop = serializedObject.FindProperty(name);
             if (prop != null) prop.intValue = value;
         }
+
+        public static void SetPropertyValue(this UnityEditor.SerializedObject serializedObject, string name, UnityEngine.Object value)
+        {
+            var prop = serializedObject.FindProperty(name);
+            if (prop != null) prop.objectReferenceValue = value;
+        }
     }
 #endif
 }

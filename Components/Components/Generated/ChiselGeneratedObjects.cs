@@ -21,12 +21,7 @@ namespace Chisel.Components
         ShowUserHidden      = 64,
         ShowPickingModel    = 128
     }
-    
-    // TODO:
-    // 1. Find out what the dictionary is for, and remove the need for it.
-    // 2. Do the same for the rendering equivalent.
-    // 3. Separate building/updating the components from building a combined (physics) materials/mesh/render setting.
-    // 4. Move the colliders to a single GameObject.
+
     [Serializable]
 #if UNITY_6000_7_OR_NEWER
     [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
@@ -795,8 +790,6 @@ namespace Chisel.Components
                 {
                     // foundMeshes has to be exactly as long as meshDataArray; the extra entries are set to empty.
 
-                    // TODO: figure out why the maximum meshDataArray.Length does not match the maximum used meshes?
-
                     int meshDataArrayOffset = foundMeshes.Count;
 
                     // the mesh data allocated for materials no renderer drew this time
@@ -841,7 +834,6 @@ namespace Chisel.Components
                 meshUpdates.meshDataArray = default;
                 Profiler.EndSample();
 
-                // TODO: user meshDataArray data to determine if colliders are visible or not, then we can move this before the Apply
                 Profiler.BeginSample("UpdateColliders");
                 ChiselColliderObjects.UpdateProperties(model, this.colliders);
                 Profiler.EndSample();
@@ -849,7 +841,6 @@ namespace Chisel.Components
                 // So we need to update the bounds ourselves
                 Profiler.BeginSample("Mesh.UpdateBounds");
                 ChiselRenderObjects.UpdateBounds(renderObjectUpdates);
-                // TODO: user meshDataArray data to determine the bounds and set it directly
                 for (int i = 0; i < changedColliders.Length; i++)
                     changedColliders[i].sharedMesh.RecalculateBounds();
                 Profiler.EndSample();

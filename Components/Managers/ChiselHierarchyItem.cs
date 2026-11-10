@@ -55,7 +55,6 @@ namespace Chisel.Components
         
         public readonly ChiselNodeComponent  Component;
 
-        // TODO: should cache this instead
         public ChiselModelComponent Model
         {
             get
@@ -103,7 +102,6 @@ namespace Chisel.Components
                 return false;
 
             var parentTransform = (parentComponent == null) ? null : parentComponent.transform;
-            // TODO: handle scene root transforms
             if (parentTransform == null)
                 return false;
 
@@ -126,7 +124,6 @@ namespace Chisel.Components
             return false;
         }
 
-        // TODO: Move bounds handling code to separate class, keep this clean
         public void	UpdateBounds()
         {
             if (BoundsDirty)
@@ -143,14 +140,12 @@ namespace Chisel.Components
             if (ChildBoundsDirty)
             {
                 SelfWithChildrenBounds = SelfBounds;
-                // TODO: make this non-iterative
                 for (int i = 0; i < Children.Count; i++)
                     Children[i].EncapsulateBounds(ref SelfWithChildrenBounds);
                 ChildBoundsDirty = false;
             }
         }
 
-        // TODO: Move bounds handling code to separate class, keep this clean
         public Bounds CalculateBounds(Matrix4x4 transformation)
         {
             var gridBounds = new Bounds();
@@ -161,7 +156,6 @@ namespace Chisel.Components
                     SelfBounds = ChiselBoundsUtility.CalculateBounds(generator, transformation);
             }
 
-            // TODO: make this non-iterative
             for (int i = 0; i < Children.Count; i++)
                 Children[i].EncapsulateBounds(ref gridBounds, transformation);
             return gridBounds;

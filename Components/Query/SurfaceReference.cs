@@ -242,10 +242,6 @@ namespace Chisel.Components
 
         public void PlaneSpaceTransformUV(Matrix4x4 planeSpaceTransformation, UVMatrix originalMatrix)
         {
-            // TODO: We're modifying uv coordinates for the generated brush-meshes, 
-            //       when we should be changing surfaces descriptions in the generators that generate the brush-meshes ..
-            //       Now all UVs are overridden everytime we rebuild the geometry
-
             Matrix4x4 rotation = originalMatrix;
             Matrix4x4 input = rotation * planeSpaceTransformation;
             UV0 = input;
@@ -295,10 +291,7 @@ namespace Chisel.Components
 
         public int GetHashCode(SurfaceReference obj)
         {
-            // TODO: use a better hash combiner ..
-            return  obj.brush.GetHashCode() ^
-                    obj.descriptionIndex ^
-                    obj.surfaceIndex;
+            return HashCode.Combine(obj.brush, obj.descriptionIndex, obj.surfaceIndex);
         }
         #endregion
     }

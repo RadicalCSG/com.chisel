@@ -35,7 +35,6 @@ namespace Chisel.Components
         }
     }
 
-    //TODO: Move this somewhere else
     public static class ChiselObjectUtility
     {
         // A preview scene (prefab mode, prefab contents) can't be made the active one; parenting a new object to one of
