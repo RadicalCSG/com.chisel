@@ -94,23 +94,26 @@ namespace Chisel.Components
         public bool UpdateSiblingIndices(bool ignoreWhenParentIsChiselNode)
         {
             var index = (SiblingIndices?.Count ?? 0) - 1;
-            if (index <= 0)
+            if (index < 0)
                 return false;
-            
+
             var iterator = (Component == null) ? null : Component.transform;
             if (iterator == null)
                 return false;
 
-            var parentTransform = (parentComponent == null) ? null : parentComponent.transform;
-            if (parentTransform == null)
-                return false;
+            // In the scene's default model (which isn't an ancestor) the node is ordered by its sibling indices all the
+            // way up to the scene root
+            var inDefaultModel  = parentComponent == null || ReferenceEquals(parentComponent, sceneHierarchy?.DefaultModel);
+            var parentTransform = inDefaultModel ? null : parentComponent.transform;
+            if (parentTransform != null)
+            {
+                if (parentTransform == iterator.parent &&
+                    ignoreWhenParentIsChiselNode)
+                    return false;
 
-            if (parentTransform == iterator.parent &&
-                ignoreWhenParentIsChiselNode)
-                return false;
-
-            if (!iterator.IsChildOf(parentTransform))
-                return true;
+                if (!iterator.IsChildOf(parentTransform))
+                    return true;
+            }
 
             do
             {
