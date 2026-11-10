@@ -109,6 +109,7 @@ namespace Chisel.Core
                     destinationParameters = polygon.surface.parameters,
                     outputFlags           = polygon.surface.outputFlags,
                     UV0                   = polygon.surface.details.UV0,
+                    textureScale          = polygon.surface.textureScale,
                     localPlane            = p < localPlanes.Length ? localPlanes[p] : default,
                     descriptionIndex      = polygon.descriptionIndex,
                     smoothingGroup        = polygon.surface.details.smoothingGroup,

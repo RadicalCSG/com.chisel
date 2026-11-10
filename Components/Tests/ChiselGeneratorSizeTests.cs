@@ -45,6 +45,17 @@ namespace Chisel.Components.Tests
             }
         }
 
+        // The uvs a renderer draws, before its material's texture scale (ChiselTextureScale): how the generator maps
+        // its surfaces, the same across a seam between materials whose textures have other shapes
+        static Vector2[] MappedUVs(ChiselRenderObjects renderable)
+        {
+            var uvs = renderable.sharedMesh.uv;
+            var scale = (Vector2)ChiselTextureScale.Of(renderable.meshRenderer != null ? renderable.meshRenderer.sharedMaterial : null);
+            for (int i = 0; i < uvs.Length; i++)
+                uvs[i] /= scale;
+            return uvs;
+        }
+
         T Generator<T>(out ChiselModelComponent model) where T : ChiselGeneratorComponent
         {
             var root = new GameObject("generator size test");
@@ -226,7 +237,7 @@ namespace Chisel.Components.Tests
                 if (renderable == null || renderable.sharedMesh == null)
                     continue;
                 var v  = renderable.sharedMesh.vertices;
-                var uv = renderable.sharedMesh.uv;
+                var uv = MappedUVs(renderable);
                 var t  = renderable.sharedMesh.triangles;
                 for (int i = 0; i < t.Length; i += 3)
                 {
@@ -270,7 +281,7 @@ namespace Chisel.Components.Tests
                 if (renderable == null || renderable.sharedMesh == null)
                     continue;
                 var v  = renderable.sharedMesh.vertices;
-                var uv = renderable.sharedMesh.uv;
+                var uv = MappedUVs(renderable);
                 var t  = renderable.sharedMesh.triangles;
                 for (int i = 0; i < t.Length; i += 3)
                 {
@@ -332,7 +343,7 @@ namespace Chisel.Components.Tests
                 if (renderable == null || renderable.sharedMesh == null)
                     continue;
                 var v  = renderable.sharedMesh.vertices;
-                var uv = renderable.sharedMesh.uv;
+                var uv = MappedUVs(renderable);
                 var t  = renderable.sharedMesh.triangles;
                 for (int i = 0; i < t.Length; i += 3)
                 {
@@ -402,7 +413,7 @@ namespace Chisel.Components.Tests
                 if (renderable == null || renderable.sharedMesh == null)
                     continue;
                 var v  = renderable.sharedMesh.vertices;
-                var uv = renderable.sharedMesh.uv;
+                var uv = MappedUVs(renderable);
                 var t  = renderable.sharedMesh.triangles;
                 for (int i = 0; i < t.Length; i += 3)
                 {
@@ -525,7 +536,7 @@ namespace Chisel.Components.Tests
                 if (renderable == null || renderable.sharedMesh == null)
                     continue;
                 var v  = renderable.sharedMesh.vertices;
-                var uv = renderable.sharedMesh.uv;
+                var uv = MappedUVs(renderable);
                 var t  = renderable.sharedMesh.triangles;
                 for (int i = 0; i < t.Length; i += 3)
                 {
@@ -576,7 +587,7 @@ namespace Chisel.Components.Tests
                 if (renderable == null || renderable.sharedMesh == null)
                     continue;
                 var v  = renderable.sharedMesh.vertices;
-                var uv = renderable.sharedMesh.uv;
+                var uv = MappedUVs(renderable);
                 var t  = renderable.sharedMesh.triangles;
                 for (int i = 0; i < t.Length; i += 3)
                 {
@@ -635,7 +646,7 @@ namespace Chisel.Components.Tests
                 if (renderable == null || renderable.sharedMesh == null)
                     continue;
                 var v  = renderable.sharedMesh.vertices;
-                var uv = renderable.sharedMesh.uv;
+                var uv = MappedUVs(renderable);
                 var t  = renderable.sharedMesh.triangles;
                 for (int i = 0; i < t.Length; i += 3)
                 {
@@ -770,7 +781,7 @@ namespace Chisel.Components.Tests
                 if (renderable == null || renderable.sharedMesh == null)
                     continue;
                 var v  = renderable.sharedMesh.vertices;
-                var uv = renderable.sharedMesh.uv;
+                var uv = MappedUVs(renderable);
                 var t  = renderable.sharedMesh.triangles;
                 for (int i = 0; i < t.Length; i += 3)
                 {
@@ -812,7 +823,7 @@ namespace Chisel.Components.Tests
                 if (renderable == null || renderable.sharedMesh == null)
                     continue;
                 var v  = renderable.sharedMesh.vertices;
-                var uv = renderable.sharedMesh.uv;
+                var uv = MappedUVs(renderable);
                 var t  = renderable.sharedMesh.triangles;
                 for (int i = 0; i < t.Length; i += 3)
                 {
@@ -862,7 +873,7 @@ namespace Chisel.Components.Tests
                 if (renderable == null || renderable.sharedMesh == null)
                     continue;
                 var v  = renderable.sharedMesh.vertices;
-                var uv = renderable.sharedMesh.uv;
+                var uv = MappedUVs(renderable);
                 var t  = renderable.sharedMesh.triangles;
                 for (int i = 0; i < t.Length; i += 3)
                 {
@@ -2256,7 +2267,7 @@ namespace Chisel.Components.Tests
                 if (renderable == null || renderable.sharedMesh == null)
                     continue;
                 var v  = renderable.sharedMesh.vertices;
-                var uv = renderable.sharedMesh.uv;
+                var uv = MappedUVs(renderable);
                 var t  = renderable.sharedMesh.triangles;
                 for (int i = 0; i < t.Length; i += 3)
                 {

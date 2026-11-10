@@ -31,6 +31,8 @@ namespace Chisel.Core
 		public SurfaceDestinationParameters destinationParameters;
 		public SurfaceOutputFlags           outputFlags;
         public UVMatrix UV0;
+        // its material's texture scale (InternalChiselSurface.textureScale), 0 taken as 1
+        public float2   textureScale;
         public float4   localPlane;
         // The brush's surface this polygon shows (its index in the generator's surface array)
         public int      descriptionIndex;

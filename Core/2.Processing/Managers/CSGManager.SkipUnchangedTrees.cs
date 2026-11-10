@@ -25,7 +25,7 @@ namespace Chisel.Core
     static partial class CompactHierarchyManager
     {
         // Bump when GetTreeInputHash hashes something else, or the same things differently
-        const int kTreeInputHashVersion = 2;
+        const int kTreeInputHashVersion = 3;
 
         // The trees whose update was skipped, see Flush(FinishMeshUpdate, CanSkipTreeUpdate)
         static readonly HashSet<NodeID> s_SkippedTrees = new();
@@ -195,6 +195,7 @@ namespace Chisel.Core
                 buffer.Add((int)surface.details.detailFlags);
                 buffer.Add(surface.details.UV0.U);
                 buffer.Add(surface.details.UV0.V);
+                buffer.Add(surface.textureScale);
                 buffer.Add((int)surface.destinationFlags);
                 buffer.Add((int)surface.outputFlags);
                 buffer.Add(GetIdentity(identities, surfaceParameterIdentity, surface.parameters.parameter1));
