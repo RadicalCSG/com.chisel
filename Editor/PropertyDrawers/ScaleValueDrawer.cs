@@ -41,7 +41,7 @@ namespace Chisel.Editors
                     context.ShowAsContext ();
                 }
                 
-                EditorGUI.PropertyField(position, property, label);
+                ChiselValueFieldGUI.PropertyField(position, property, label, ChiselValueKind.Scale);
             }
             catch (ExitGUIException) { }
             catch (Exception ex) { Debug.LogException(ex); }

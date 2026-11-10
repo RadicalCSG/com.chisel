@@ -36,6 +36,48 @@ namespace Chisel.Editors
         readonly static GUIContent kScaleContent        = new("Scale");
         readonly static GUIContent kRotationContent     = new("Rotation");
 
+        public enum UVPart { Translation, Rotation, Scale, All }
+
+        readonly static GUIContent kResetTranslationContent = new("Reset Translation");
+        readonly static GUIContent kResetRotationContent    = new("Reset Rotation");
+        readonly static GUIContent kResetScaleContent       = new("Reset Scale");
+        readonly static GUIContent kResetAllContent         = new("Reset All");
+
+        // The matrix with one of its parts (or all) back at its default, the others as they were
+        public static UVMatrix Reset(UVMatrix uvMatrix, UVPart part)
+        {
+            uvMatrix.Decompose(out var translation, out var rotation, out var scale);
+            if (part == UVPart.Translation || part == UVPart.All) translation = Vector2.zero;
+            if (part == UVPart.Rotation    || part == UVPart.All) rotation    = 0;
+            if (part == UVPart.Scale       || part == UVPart.All) scale       = Vector2.one;
+            return UVMatrix.TRS(translation, uvMatrix.PlaneNormal, rotation, scale);
+        }
+
+        static void ShowResetMenu(Rect rowRect, SerializedProperty property, UVPart part, GUIContent partContent)
+        {
+            var evt = Event.current;
+            if (evt.type != EventType.ContextClick || !rowRect.Contains(evt.mousePosition))
+                return;
+
+            var menu = new GenericMenu();
+            var copy = property.Copy();
+            menu.AddItem(partContent, false, () => ApplyReset(copy, part));
+            menu.AddItem(kResetAllContent, false, () => ApplyReset(copy, UVPart.All));
+            menu.ShowAsContext();
+            evt.Use();
+        }
+
+        static void ApplyReset(SerializedProperty property, UVPart part)
+        {
+            property.serializedObject.Update();
+            var UProp = property.FindPropertyRelative(nameof(UVMatrix.U));
+            var VProp = property.FindPropertyRelative(nameof(UVMatrix.V));
+            var reset = Reset(new UVMatrix(UProp.vector4Value, VProp.vector4Value), part);
+            UProp.vector4Value = reset.U;
+            VProp.vector4Value = reset.V;
+            property.serializedObject.ApplyModifiedProperties();
+        }
+
         class UVMatrixState
         {
             public bool     initialized = false;
@@ -81,6 +123,7 @@ namespace Chisel.Editors
 
 
                 position.height = EditorGUI.GetPropertyHeight(SerializedPropertyType.Vector2, GUIContent.none);
+                ShowResetMenu(position, property, UVPart.Translation, kResetTranslationContent);
                 var fieldRect = EditorGUI.PrefixLabel(position, translationID, !hasLabel ? GUIContent.none : translationContent);
                 EditorGUI.indentLevel = 0;
                 state.translation = EditorGUI.Vector2Field(fieldRect,  GUIContent.none,     state.translation);
@@ -88,6 +131,7 @@ namespace Chisel.Editors
                 position.y += position.height + kSpacing;
 
                 position.height = EditorGUI.GetPropertyHeight(SerializedPropertyType.Vector2, GUIContent.none);
+                ShowResetMenu(position, property, UVPart.Scale, kResetScaleContent);
                 fieldRect = EditorGUI.PrefixLabel(position, scaleID, !hasLabel ? GUIContent.none : scaleContent);
                 EditorGUI.indentLevel = 0;
                 state.scale = EditorGUI.Vector2Field(fieldRect,        GUIContent.none,     state.scale);
@@ -96,6 +140,7 @@ namespace Chisel.Editors
                 position.y += position.height + kSpacing;
 
                 position.height = EditorGUI.GetPropertyHeight(SerializedPropertyType.Float, GUIContent.none);
+                ShowResetMenu(position, property, UVPart.Rotation, kResetRotationContent);
                 fieldRect = EditorGUI.PrefixLabel(position, rotationID, !hasLabel ? GUIContent.none : rotationContent);
                 EditorGUI.indentLevel = 0;
                 state.rotation = HotspotTransformGUI.RotationField(fieldRect, state.rotation);
