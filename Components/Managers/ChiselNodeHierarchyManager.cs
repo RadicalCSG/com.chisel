@@ -1484,6 +1484,13 @@ ForceRerun:
                             if (hierarchyItem.Component.IsContainer)
                                 updateChildrenQueue.Add(hierarchyItem);
                         }
+
+                        // A node whose parent GameObject isn't its Chisel parent (at the scene root, under a plain
+                        // GameObject) gets no OnTransformChildrenChanged when its siblings are reordered, so the
+                        // hierarchy-changed check looks after it
+                        if (!(hierarchyItem.Component is ChiselModelComponent) &&
+                            (hierarchyItem.Parent == null || hierarchyItem.Transform.parent != hierarchyItem.Parent.Transform))
+                            nonNodeChildren.Add(hierarchyItem.Component);
                     }
                     addToHierarchyQueue.Clear();
                     addToHierarchyLookup.Clear();
