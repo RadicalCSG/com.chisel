@@ -9,7 +9,6 @@ namespace Chisel.Components
     /// <summary>
     /// Keeps generated UV1 layouts synchronized with the active lightmap resolution and each model's scale.
     /// </summary>
-    // TODO: Modifying a lightmap index *should also be undoable*
     public static class ChiselLightmapUVManager
 	{
         /// <summary>

@@ -1141,8 +1141,6 @@ namespace Chisel.Components
         {
             get
             {
-                // TODO: clean this up
-
                 if (pivotOffset.x != 0 || pivotOffset.y != 0 || pivotOffset.z != 0)
                     return Matrix4x4.TRS(pivotOffset, Quaternion.identity, Vector3.one);
                 return Matrix4x4.identity;
@@ -1153,8 +1151,6 @@ namespace Chisel.Components
         {
             get
             {
-                // TODO: clean this up
-
                 if (pivotOffset.x != 0 || pivotOffset.y != 0 || pivotOffset.z != 0)
                     return Matrix4x4.TRS(-pivotOffset, Quaternion.identity, Vector3.one);
                 return Matrix4x4.identity;
@@ -1165,7 +1161,6 @@ namespace Chisel.Components
         {
             get
             {
-                // TODO: Optimize
                 var transform       = hierarchyItem.Transform;
 
                 var localTransformation = Matrix4x4.TRS(transform.localPosition, transform.localRotation, transform.localScale);
@@ -1182,7 +1177,6 @@ namespace Chisel.Components
         {
             get
             {
-                // TODO: Optimize
                 var transform = hierarchyItem.Transform;
 
                 var localTransformation = LocalPivotTransformation;
@@ -1214,7 +1208,6 @@ namespace Chisel.Components
         {
             get
             {
-                // TODO: Optimize
                 var transform = hierarchyItem.Transform;
 
                 var localTransformation = LocalPivotTransformation;
@@ -1233,7 +1226,6 @@ namespace Chisel.Components
         public abstract void SetSurfaceUV0(int descriptionIndex, UVMatrix uv0);
 
 
-        // TODO: improve warning messages
         const string kFailedToGenerateNodeMessage = "Failed to generate internal representation of generator (this should never happen)";
 		const string kBrushNodeIsInvalidMessage = "The internal brush representation is invalid.";
 		const string kGeneratorIsPartOfDefaultModel = "This generator is part of the default model, please place it underneath a GameObject with a " + ChiselModelComponent.kNodeTypeName + " component";
@@ -1295,7 +1287,6 @@ namespace Chisel.Components
 
         public override void UpdateTransformation()
         {
-            // TODO: recalculate transformation based on hierarchy up to (but not including) model
             var transform = hierarchyItem.Transform;
             if (!transform)
                 return;

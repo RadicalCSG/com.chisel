@@ -364,7 +364,6 @@ namespace Chisel.Components
 			}
 		}
 
-		// TODO: potentially have a history per scene, so when one model turns out to be invalid, go back to the previously selected model
 		readonly Dictionary<Scene, ChiselModelComponent> activeModels = new();
 
         #region ActiveModel Serialization
@@ -550,7 +549,6 @@ namespace Chisel.Components
 			}
 		}
 
-		// TODO: find a better place for this
 		public bool IsValidModelToBeSelected(ChiselModelComponent model)
 		{
 			if (!model || !model.isActiveAndEnabled || model.generated == null)
@@ -707,7 +705,6 @@ namespace Chisel.Components
             var activeModel = ActiveModel;
             if (!activeModel)
             {
-                // TODO: handle scene being locked by version control
                 activeModel = CreateNewModel();
                 ActiveModel = activeModel; 
             }
@@ -729,7 +726,7 @@ namespace Chisel.Components
             if (allRootGameObjects == null)
                 return null;
 
-            // We prever last model (more likely last created), so we iterate backwards
+            // The last model is preferred (more likely the last created), so this goes backwards
             for (int n = allRootGameObjects.Length - 1; n >= 0; n--)
             {
                 var rootGameObject = allRootGameObjects[n];

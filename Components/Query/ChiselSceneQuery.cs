@@ -207,7 +207,6 @@ namespace Chisel.Components
 
 		public static MeshQuery[] GetMeshQuery(ChiselModelComponent model)
 		{
-			// TODO: make this depended on the model settings / helper surface view settings
 			if (model.CreateRenderComponents &&
 				model.CreateColliderComponents)
 				return MeshQuery.DefaultQueries;
@@ -422,16 +421,6 @@ namespace Chisel.Components
 
 
 
-		// TODO:	problem with RayCastMulti is that this code is too slow
-		//			solution:	1.	replace RayCastMulti with a way to 'simply' changing the in_rayStart 
-		//							and only finding the closest brush.
-		//						2.	cache the categorization-table per brush (the generation is the slow part)
-		//							in a way that we only need to regenerate it if it doesn't touch an 'ignored' brush
-		//							(in fact, we could still cache the generated table w/ ignored brushes while moving the mouse)
-		//						3.	have a ray-brush acceleration data structure so that we reduce the number of brushes to 'try'
-		//							to only the ones that the ray actually intersects with (instead of -all- brushes)
-		
-        // TODO: make this non allocating
 		public static CSGTreeBrushIntersection[] RayCastMulti(MeshQuery[]       meshQueries, 
                                                               CSGTree           tree,
                                                               Vector3           treeSpaceRayStart,
@@ -536,7 +525,7 @@ namespace Chisel.Components
 		}
 
         public static CSGTreeNode[] GetNodesInFrustum(CSGTree       tree,
-                                                      MeshQuery[]   meshQueries, // TODO: add meshquery support here
+                                                      MeshQuery[]   meshQueries,
                                                       Plane[]       planes)
         {
             ChiselModelManager.Instance.BuildModelsWithSavedOutputs();
@@ -580,7 +569,6 @@ namespace Chisel.Components
 					    continue;
 
 				    var bounds = new Bounds((minMaxAABB.Max + minMaxAABB.Min) / 2, minMaxAABB.Max - minMaxAABB.Min);
-				    // TODO: take transformations into account? (frustum is already in tree space)
 
 				    bool intersectsFrustum = false;
 				    for (int p = 0; p < 6; p++)
@@ -635,8 +623,6 @@ namespace Chisel.Components
 					    if (!haveVisibleSurfaces)
 						    goto SkipBrush;
 				    }
-
-				    // TODO: handle generators, where we only select a generator when ALL of it's brushes are selected
 
 				    foundNodes.Add((CSGTreeNode)brush);
 			    SkipBrush:

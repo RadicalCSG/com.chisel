@@ -158,7 +158,7 @@ namespace Chisel.Components
 #if UNITY_EDITOR
         // SerializedObject access Only
         [SerializeField] 
-        UnityEditor.LightmapParameters      lightmapParameters				= null;		// TODO: figure out how to apply this, safely, using SerializedObject
+        UnityEditor.LightmapParameters      lightmapParameters				= null;
         [SerializeField] 
         bool								importantGI						= false;
         [SerializeField] 
@@ -264,7 +264,6 @@ namespace Chisel.Components
         public ChiselGeneratedRenderSettings renderSettings;
 
 
-        // TODO: put all bools in flags (makes it harder to work with in the ModelEditor though)
         public bool               CreateRenderComponents   = true;
         public bool               CreateColliderComponents = true;
         public VertexChannelFlags VertexChannelMask        = VertexChannelFlags.All;
@@ -276,7 +275,6 @@ namespace Chisel.Components
         // Will show a warning icon in hierarchy when generator has a problem (do not make this method slow, it is called a lot!)
         public override void GetMessages(IChiselMessageHandler messages)
         {
-            // TODO: improve warning messages
             const string kModelHasNoChildrenMessage   = kNodeTypeName + " has no children and will not have an effect";
             const string kFailedToGenerateNodeMessage = "Failed to generate internal representation of " + kNodeTypeName + " (this should never happen)";
 		    //const string kChildNodesWithProblems    = kNodeTypeName + " has children with errors";
@@ -343,7 +341,6 @@ namespace Chisel.Components
 
             generated ??= ChiselGeneratedObjects.Create(gameObject);
 
-            // TODO: move out of here
 #if !UNITY_EDITOR
             // A player has no editor drawing: the renderers draw themselves, debug visualizations never
             if (generated != null && generated.renderables != null)
@@ -443,7 +440,6 @@ namespace Chisel.Components
         }
 
 #if UNITY_EDITOR
-        // TODO: remove from here, shouldn't be public
 		[System.NonSerialized] public MaterialPropertyBlock materialPropertyBlock;
 
         public VisibilityState VisibilityState

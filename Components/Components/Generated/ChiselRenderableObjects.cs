@@ -105,8 +105,7 @@ namespace Chisel.Components
             var meshFilter      = renderContainer.AddComponent<MeshFilter>();
             var meshRenderer    = renderContainer.AddComponent<MeshRenderer>();
             meshRenderer.enabled = false;
-            meshRenderer.staticShadowCaster = true; // TODO: this should depend on the model being occluder static, 
-                                                    // we have the information here but we also need to update it when the model's static flags change
+            meshRenderer.staticShadowCaster = true;
 
 			var renderObjects = new ChiselRenderObjects
             {
@@ -352,6 +351,8 @@ namespace Chisel.Components
 				serializedObject.SetPropertyValue("m_AutoUVMaxDistance",              renderSettings.AutoUVMaxDistance);
 				serializedObject.SetPropertyValue("m_AutoUVMaxAngle",                 renderSettings.AutoUVMaxAngle);
 				serializedObject.SetPropertyValue("m_MinimumChartSize",               renderSettings.MinimumChartSize);
+				serializedObject.SetPropertyValue("m_LightmapParameters",             renderSettings.LightmapParameters);
+				serializedObject.ApplyModifiedPropertiesWithoutUndo();
 			}
             Profiler.EndSample();
 #endif
@@ -881,7 +882,6 @@ namespace Chisel.Components
 					surfaceHashValue = math.hash(new uint2(surfaceHashValue, meshDescription.surfaceHashValue));
 				}
 
-				// TODO: why is geometryHashValue not stable
 				objectUpdate.meshIsModified = (instance.geometryHashValue != geometryHashValue) ||
 					                          (instance.surfaceHashValue != surfaceHashValue);
                 if (objectUpdate.meshIsModified)
@@ -1005,8 +1005,6 @@ namespace Chisel.Components
 
 
 
-		// TODO: improve on this, make this work well with debug modes
-
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public bool IsRendered()
         {
@@ -1025,7 +1023,6 @@ namespace Chisel.Components
                 return meshRenderer && visible;
             } else
 			{
-                // TODO: get rid of needing meshRenderer?
 				return meshRenderer && meshRenderer.enabled;
 			}
 		}
@@ -1040,7 +1037,6 @@ namespace Chisel.Components
 
 		public void RenderScenePickingPass(int hashcode, HashSet<int> skipSelectionID, int offset)
 		{
-			// TODO: use commandbuffers instead?
 			hashcode = HashCode.Combine(triangleBrushes.hashCode, hashcode, sharedMesh.GetHashCode(),
 										geometryHashValue, surfaceHashValue);
 			if (selectionMeshDirty || selectionMeshHashcode != hashcode || selectionMesh == null)
@@ -1109,10 +1105,8 @@ namespace Chisel.Components
                 } else
 				    enableLightmaps = false;
                   
-                // TODO: support all lightmaps functionality
 			}
 
-			// TODO: use commandbuffers instead?
 			var materialCount = (renderMaterials == null) ? 0 : renderMaterials.Length;
 			for (int submeshIndex = 0; submeshIndex < mesh.subMeshCount; submeshIndex++)
             {
@@ -1131,7 +1125,6 @@ namespace Chisel.Components
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
 		internal static void RenderChiselRenderPartialObjects(ChiselRenderObjects[] renderables, MaterialPropertyBlock materialPropertyBlock, Matrix4x4 matrix, int layer, Camera camera, bool hasLightmaps)
 		{
-			// TODO: use commandbuffers instead?
 			foreach (var renderable in renderables)
 			{
 				if (renderable == null)
@@ -1146,7 +1139,6 @@ namespace Chisel.Components
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
 		internal static void RenderChiselRenderObjects(ChiselRenderObjects[] renderables, MaterialPropertyBlock materialPropertyBlock, Matrix4x4 matrix, int layer, Camera camera, bool hasLightmaps)
 		{
-			// TODO: use commandbuffers instead?
 			foreach (var renderable in renderables)
 			{
                 if (renderable == null)
@@ -1203,13 +1195,6 @@ namespace Chisel.Components
 					continue;
 
 				var generated = model.generated;
-
-				// TODO: remove gameobject/meshrenderer generation for our meshes
-				//          -> although we do need this for lightmapping? and as a final bake?
-
-				// TODO: remove mesh generation from CSG code, request on demand w/ hashcode for caching
-
-				// TODO: combine generated.renderables & generated.debugVisualizationRenderables
 				foreach (var renderObjects in generated.renderables)
 				{
 					if (renderObjects == null || !renderObjects.IsRendered())

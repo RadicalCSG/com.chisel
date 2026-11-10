@@ -28,7 +28,6 @@ using UnityEngine.SceneManagement;
 */
 namespace Chisel.Components
 {
-    // TODO: rewrite this, shouldn't be static & have more control over lifetime
 #if UNITY_6000_7_OR_NEWER
     [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
 #endif
@@ -148,7 +147,6 @@ namespace Chisel.Components
             ChiselNodeHierarchyManager.firstStart = false;
         }
 
-        // TODO: Clean up API
         public static void Rebuild()
         {
             double endTime, startTime;
@@ -1520,7 +1518,6 @@ ForceRerun:
                         if (!item.Component.IsContainer)
                             continue;
                     
-                        // TODO: create a virtual updateChildrenQueue list for the default model instead?
                         if (item.Children.Count == 0 &&
 							ChiselModelManager.Instance.IsDefaultModel(item.Component))
                         {
@@ -1551,7 +1548,6 @@ ForceRerun:
                     //Debug.Log($"destroyNodesList {destroyNodesList.Count}");
 
                     // Destroy all old nodes after we created new nodes, to make sure we don't get conflicting IDs
-                    // TODO: add 'generation' to indices to avoid needing to do this
                     foreach (var item in destroyNodesList)
                     {
                         if (item.Valid)
@@ -1575,7 +1571,6 @@ ForceRerun:
                     }
                     Profiler.EndSample();
 
-                    // TODO: rewrite the update queue
                     {
                         Profiler.BeginSample("UpdateTrampoline.updateChildrenQueue2.RebuildTreeNodes");
                         for (int i = updateChildrenQueueList.Count - 1; i >= 0; i--)
@@ -1742,7 +1737,7 @@ ForceRerun:
                 ListPool<KeyValuePair<SceneHandle, ChiselSceneHierarchy>>.Release(prevSceneHierarchy);
 
                 // Used to redraw windows etc.
-                NodeHierarchyModified?.Invoke(); // TODO: Should only call this when necessary!!!
+                NodeHierarchyModified?.Invoke();
                 Profiler.EndSample();
             }
             finally
@@ -1829,7 +1824,6 @@ ForceRerun:
 
         public static Transform FindModelTransformOfTransform(Transform transform)
         {
-            // TODO: optimize this
             do
             {
                 if (!transform)
@@ -1848,7 +1842,6 @@ ForceRerun:
 
         public static Matrix4x4 FindModelTransformMatrixOfTransform(Transform transform)
         {
-            // TODO: optimize this
             do
             {
                 if (!transform)
