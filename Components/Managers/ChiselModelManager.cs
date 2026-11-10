@@ -364,29 +364,26 @@ namespace Chisel.Components
 			}
 		}
 
-		readonly Dictionary<Scene, ChiselModelComponent> activeModels = new();
+		// The models made active in each scene, the current one last. One that is deleted or disabled is skipped, so the
+		// one before it is active again; a disabled one stays, to be active again once it is enabled
+		readonly Dictionary<Scene, List<ChiselModelComponent>> activeModels = new();
+		const int kActiveModelHistoryLength = 16;
 
         #region ActiveModel Serialization
+        // Each scene's history as pairs, in order
         [Serializable] public struct SceneModelPair { public Scene Key; public ChiselModelComponent Value; }
         [SerializeField] SceneModelPair[] activeModelsArray;
 
         public void OnBeforeSerialize()
         {
             var foundModels = ListPool<SceneModelPair>.Get();
-            //if (foundModels != null)
+            foreach (var pair in activeModels)
             {
-                if (foundModels.Capacity < activeModels.Count)
-                    foundModels.Capacity = activeModels.Count;
-                foreach (var pair in activeModels)
-                    foundModels.Add(new SceneModelPair { Key = pair.Key, Value = pair.Value });
-                if (activeModelsArray != null && activeModelsArray.Length == foundModels.Count)
-                {
-                    foundModels.CopyTo(activeModelsArray);
-                }
-                else
-                    activeModelsArray = foundModels.ToArray();
-                ListPool<SceneModelPair>.Release(foundModels);
+                foreach (var model in pair.Value)
+                    foundModels.Add(new SceneModelPair { Key = pair.Key, Value = model });
             }
+            activeModelsArray = foundModels.ToArray();
+            ListPool<SceneModelPair>.Release(foundModels);
         }
 
         public void OnAfterDeserialize()
@@ -394,10 +391,42 @@ namespace Chisel.Components
             if (activeModelsArray == null)
                 return;
             foreach (var pair in activeModelsArray)
-                activeModels[pair.Key] = pair.Value;
+                HistoryOf(pair.Key).Add(pair.Value);
             activeModelsArray = null;
         }
 		#endregion
+
+		List<ChiselModelComponent> HistoryOf(Scene scene)
+		{
+			if (!activeModels.TryGetValue(scene, out var history))
+				activeModels[scene] = history = new List<ChiselModelComponent>();
+			return history;
+		}
+
+		// The model goes to the end of its scene's history, as the active one
+		void MakeActive(Scene scene, ChiselModelComponent model)
+		{
+			var history = HistoryOf(scene);
+			history.Remove(model);
+			history.Add(model);
+			if (history.Count > kActiveModelHistoryLength)
+				history.RemoveAt(0);
+		}
+
+		// The most recent model in the scene's history that is still there and can be used
+		ChiselModelComponent ActiveModelOf(Scene scene)
+		{
+			if (!activeModels.TryGetValue(scene, out var history))
+				return null;
+			for (int i = history.Count - 1; i >= 0; i--)
+			{
+				var model = history[i];
+				if (!model || model.gameObject.scene != scene || !IsSelectable(model))
+					continue;
+				return model;
+			}
+			return null;
+		}
 
 
 		readonly HashSet<ChiselModelComponent> s_RegisteredModels = new();
@@ -622,31 +651,23 @@ namespace Chisel.Components
         { 
             get
             {
-                // Find our active model for the current active scene
+                // A disabled model isn't used: generators added to it would be invisible
                 var activeScene = SceneManager.GetActiveScene();
-                Instance.activeModels.TryGetValue(activeScene, out var activeModel);
+                var activeModel = Instance.ActiveModelOf(activeScene);
+                if (activeModel)
+                    return activeModel;
 
-                // Check if the activeModel is valid & if it's scene actually points to the active Scene
-                if (ReferenceEquals(activeModel, null) ||
-                    !activeModel || activeModel.gameObject.scene != activeScene)
-                {
-                    // If active model is invalid or missing, find another model the active model
-                    Instance.activeModels[activeScene] = FindModelInScene(activeScene);
-                    return null;
-                }
-
-                // If we have an active model, but it's actually disabled, do not use it
-                // This prevents users from accidentally adding generators to a model that is inactive, 
-                // and then be confused why nothing is visible.
-                if (!IsSelectable(activeModel))
-                    return null;
+                // None in the history can be used: another model in the scene, if there is one
+                activeModel = FindModelInScene(activeScene);
+                if (activeModel)
+                    Instance.MakeActive(activeScene, activeModel);
                 return activeModel;
             }
             set
             {
                 // When we set a model to be active, make sure we use the scene of its gameobject
                 var modelScene = value.gameObject.scene;
-                Instance.activeModels[modelScene] = value;
+                Instance.MakeActive(modelScene, value);
 
                 // And then make sure that scene is active
                 if (modelScene != SceneManager.GetActiveScene())
@@ -753,7 +774,7 @@ namespace Chisel.Components
             // Go through all activeModels, which we store per scene, and make sure they still make sense
 
             var removeScenes = ListPool<Scene>.Get();
-            var setSceneModels = DictionaryPool<Scene, ChiselModelComponent>.Get();
+            var movedModels = ListPool<ChiselModelComponent>.Get();
             try
             {
                 foreach (var pair in Instance.activeModels)
@@ -762,38 +783,32 @@ namespace Chisel.Components
                     if (!pair.Key.isLoaded || !pair.Key.IsValid())
                     {
                         removeScenes.Add(pair.Key);
-                    }
-
-                    // Check if a current activeModel still exists
-                    var sceneActiveModel = pair.Value;
-                    if (!sceneActiveModel)
-                    {
-                        setSceneModels[pair.Key] = FindModelInScene(pair.Key);
-                        //Instance.activeModels[pair.Key] = FindModelInScene(pair.Key);
                         continue;
                     }
 
-                    // Check if a model has been moved to another scene, and correct this if it has
-                    var gameObjectScene = sceneActiveModel.gameObject.scene;
-                    if (gameObjectScene != pair.Key)
+                    // A model moved to another scene goes into that scene's history (a deleted one is kept, an undo
+                    // can bring it back)
+                    var history = pair.Value;
+                    for (int i = history.Count - 1; i >= 0; i--)
                     {
-                        setSceneModels[pair.Key] = FindModelInScene(pair.Key);
-                        setSceneModels[gameObjectScene] = FindModelInScene(pair.Key);
+                        var model = history[i];
+                        if (!model || model.gameObject.scene == pair.Key)
+                            continue;
+                        history.RemoveAt(i);
+                        movedModels.Add(model);
                     }
                 }
-
 
                 foreach (var scene in removeScenes)
                     Instance.activeModels.Remove(scene);
 
-
-                foreach (var pair in setSceneModels)
-                    Instance.activeModels[pair.Key] = pair.Value;
+                foreach (var model in movedModels)
+                    Instance.MakeActive(model.gameObject.scene, model);
             }
             finally
             {
                 ListPool<Scene>.Release(removeScenes);
-                DictionaryPool<Scene, ChiselModelComponent>.Release(setSceneModels);
+                ListPool<ChiselModelComponent>.Release(movedModels);
             }
         }
 
@@ -1083,10 +1098,12 @@ namespace Chisel.Components
          
         public void OnActiveSceneChanged(Scene _, Scene newScene)
         {
-            if (Instance.activeModels.TryGetValue(newScene, out var activeModel) && IsSelectable(activeModel))
+            if (Instance.ActiveModelOf(newScene))
                 return;
 
-            Instance.activeModels[newScene] = FindModelInScene(newScene);
+            var found = FindModelInScene(newScene);
+            if (found)
+                Instance.MakeActive(newScene, found);
             CheckActiveModels();
         }
 
