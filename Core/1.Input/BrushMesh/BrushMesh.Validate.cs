@@ -234,19 +234,19 @@ namespace Chisel.Core
             errorMessage = null;			
 			if (!HasVolume())
             {
-				errorMessage = "BrushMesh: Brush has no volume";
+				errorMessage = "The brush has no volume: its corners all lie on one plane, line or point";
                 return false;
             }
 
             if (IsConcave())
 			{
-				errorMessage = "BrushMesh: Brush is concave";
+				errorMessage = "The brush is concave";
 				return false;
 			}
 
 			if (IsSelfIntersecting())
 			{
-				errorMessage = "BrushMesh: Brush is self intersecting";
+				errorMessage = "The brush's faces cross or fold over each other";
 				return false;
 			}
 			return true;
