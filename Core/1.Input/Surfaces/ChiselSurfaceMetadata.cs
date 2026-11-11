@@ -52,6 +52,12 @@ namespace Chisel.Core
 		// Whether the material is placed as a decal, and what its new decals start from; not used when building meshes
 		public ChiselDecalDefaults decalDefaults = ChiselDecalDefaults.Default;
 		public const string kDecalDefaultsFieldName = nameof(decalDefaults);
+		// The scale the uvs of surfaces with this material get before their own uv matrix, instead of the one from the
+		// texture's aspect (ChiselTextureScale); it reaches the meshes through ChiselTextureScale, not this hash
+		public bool    overrideUVScale;
+		public Vector2 uvScale = Vector2.one;
+		public const string kOverrideUVScaleFieldName = nameof(overrideUVScale);
+		public const string kUVScaleFieldName         = nameof(uvScale);
 
 
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]

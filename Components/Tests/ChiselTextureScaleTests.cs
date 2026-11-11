@@ -31,6 +31,8 @@ namespace Chisel.Components.Tests
             foreach (var item in created)
                 if (item) Object.DestroyImmediate(item);
             created.Clear();
+            if (UnityEditor.AssetDatabase.IsValidFolder(kFolder))
+                UnityEditor.AssetDatabase.DeleteAsset(kFolder);
             ChiselTextureScale.Refresh(null);
         }
 
@@ -55,6 +57,21 @@ namespace Chisel.Components.Tests
             var material = new Material(ChiselProjectSettings.DefaultWallMaterial) { mainTexture = texture };
             created.Add(material);
             return material;
+        }
+
+        const string kFolder = "Assets/ChiselTextureScaleTests";
+
+        // A material saved as an asset, with Chisel Surface Parameters (only an asset can have them)
+        ChiselSurfaceMetadata MaterialAssetWith(Texture texture, out Material material)
+        {
+            if (!UnityEditor.AssetDatabase.IsValidFolder(kFolder))
+                UnityEditor.AssetDatabase.CreateFolder("Assets", kFolder.Substring("Assets/".Length));
+            material = new Material(ChiselProjectSettings.DefaultWallMaterial);
+            UnityEditor.AssetDatabase.CreateAsset(material, UnityEditor.AssetDatabase.GenerateUniqueAssetPath(kFolder + "/material.mat"));
+            var metadata = material.AddMetadataOfType<ChiselSurfaceMetadata>();
+            // last: the texture isn't an asset, so the material loses it when it is saved or loaded again
+            material.mainTexture = texture;
+            return metadata;
         }
 
         ChiselModelComponent Model()
@@ -157,6 +174,48 @@ namespace Chisel.Components.Tests
             changed.Clear();
             ChiselTextureScale.Refresh(changed);
             Assert.That(changed, Is.Empty, "nothing changed since");
+        }
+
+        // A material can set its own uv scale (its Chisel Surface Parameters), used instead of its texture's
+        [Test]
+        public void AMaterialsOwnUVScale_ReplacesItsTexturesScale()
+        {
+            var metadata = MaterialAssetWith(Texture(256, 64), out var material);
+            Assert.That(ChiselTextureScale.Of(material), Is.EqualTo(new float2(1, 4)), "not set: the texture's");
+
+            metadata.overrideUVScale = true;
+            metadata.uvScale = new Vector2(2, 3);
+            var changed = new List<Material>();
+            ChiselTextureScale.Refresh(changed);
+            Assert.That(changed, Is.EqualTo(new[] { material }), "noticed, so the surfaces using it are built again");
+            Assert.That(ChiselTextureScale.Of(material), Is.EqualTo(new float2(2, 3)));
+
+            metadata.overrideUVScale = false;
+            ChiselTextureScale.Refresh(null);
+            Assert.That(ChiselTextureScale.Of(material), Is.EqualTo(new float2(1, 4)), "not set again");
+        }
+
+        [Test]
+        public void AMaterialsOwnUVScale_IsDrawn()
+        {
+            var model = Model();
+            var metadata = MaterialAssetWith(Texture(256, 64), out var material);
+            metadata.overrideUVScale = true;
+            metadata.uvScale = new Vector2(2, 0.5f);
+            Box(model, material);
+            var range = TopRange(model, material);
+            Assert.That(range.x, Is.EqualTo(2).Within(1e-4f));
+            Assert.That(range.y, Is.EqualTo(0.5f).Within(1e-4f));
+        }
+
+        // A scale of zero or less would collapse the texture: it is kept at the smallest scale
+        [Test]
+        public void AMaterialsOwnUVScale_IsNeverZero()
+        {
+            var metadata = MaterialAssetWith(Texture(64, 64), out var material);
+            metadata.overrideUVScale = true;
+            metadata.uvScale = new Vector2(0, -1);
+            Assert.That(ChiselTextureScale.Of(material), Is.EqualTo(new float2((float)UVMatrix.kMinScale)));
         }
 
         // The scale goes on the uvs the matrix gives, along the texture's own axes, its translation too
