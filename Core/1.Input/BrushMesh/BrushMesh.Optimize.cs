@@ -297,11 +297,15 @@ namespace Chisel.Core
             return (hasConcaveEdges && hasConvexEdges);
         }
 
+        /// <summary>Whether its faces cross or fold over each other (BrushShapeChecks.IsSelfIntersecting)</summary>
         public bool IsSelfIntersecting()
         {
-            return false;
+            if (polygons == null || vertices == null || halfEdges == null)
+                return false;
+            return BrushShapeChecks.IsSelfIntersecting(new BrushMeshShape(this));
         }
 
+        /// <summary>Whether its corners span a volume, rather than lying on one plane, line or point</summary>
         public bool HasVolume()
         {
             if (polygons == null || polygons.Length == 0)
@@ -310,7 +314,7 @@ namespace Chisel.Core
                 return false;
             if (halfEdges == null || halfEdges.Length == 0)
                 return false;
-            return true;
+            return BrushShapeChecks.HasVolume(new BrushMeshShape(this));
         }
 
         public bool IsInsideOut()

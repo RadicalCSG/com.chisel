@@ -1058,32 +1058,30 @@ namespace Chisel.Core
             if (fail)
                 return false;
 
+            // A piece of a generator with no volume (an extruded shape without area, a wall with no depth) is nothing to
+            // build, not a mistake: it is left out without an error
+            if (!HasVolume(in vertices, in halfEdges, in polygons))
+                return false;
+
             if (IsSelfIntersecting(in vertices, in halfEdges, in polygons))
             {
                 if (logErrors)
                 {
-                    Debug.LogError("Brush is self intersecting");
-                }
-                return false;
-            }
-
-            if (!HasVolume(in vertices, in halfEdges, in polygons))
-            {
-                if (logErrors)
-                {
-                    Debug.LogError("Brush has no volume");
+                    Debug.LogError("Brush faces cross or fold over each other");
                 }
                 return false;
             }
 
             return true;
         }
-        
+
+        /// <summary>Whether its faces cross or fold over each other (BrushShapeChecks.IsSelfIntersecting)</summary>
         public static bool IsSelfIntersecting(in BlobBuilderArray<float3> vertices, in BlobBuilderArray<BrushMeshBlob.HalfEdge> halfEdges, in BlobBuilderArray<BrushMeshBlob.Polygon> polygons)
         {
-            return false;
+            return BrushShapeChecks.IsSelfIntersecting(new BrushBlobShape(in vertices, in halfEdges, in polygons));
         }
 
+        /// <summary>Whether its corners span a volume, rather than lying on one plane, line or point</summary>
         public static bool HasVolume(in BlobBuilderArray<float3> vertices, in BlobBuilderArray<BrushMeshBlob.HalfEdge> halfEdges, in BlobBuilderArray<BrushMeshBlob.Polygon> polygons)
         {
             if (polygons.Length == 0)
@@ -1092,8 +1090,7 @@ namespace Chisel.Core
                 return false;
             if (halfEdges.Length == 0)
                 return false;
-
-            return true;
+            return BrushShapeChecks.HasVolume(new BrushBlobShape(in vertices, in halfEdges, in polygons));
         }
 
 

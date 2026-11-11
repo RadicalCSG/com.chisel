@@ -5,6 +5,7 @@ using NUnit.Framework;
 using Unity.Collections;
 using Unity.Mathematics;
 using UnityEngine;
+using UnityEngine.TestTools;
 
 namespace Chisel.Components.Tests
 {
@@ -1402,6 +1403,44 @@ namespace Chisel.Components.Tests
             }
             Assert.That(sides, Is.GreaterThan(0), "no sides to the wall at the corner");
             AssertClosed(model, "pathed stairs with a wall at the corner");
+        }
+
+        // A corner wall below and above smooth risers has pieces with no depth (no steps of its own to run along): they
+        // are left out, not built as brushes with no volume (whose check would log an error on every rebuild)
+        [Test]
+        public void PathedStairs_CornerWallsWithSmoothRisers_BuildWithoutErrors()
+        {
+            // the pathed stairs of the sample scene
+            var stairs = Generator<ChiselPathedStairsComponent>(out var model);
+            var bend = new CurveControlPoint2D(7, -7) { tangent1 = new Vector2(-1, 3), tangent2 = new Vector2(1, -3),
+                                                        constraint1 = ControlPointConstraint.Mirrored, constraint2 = ControlPointConstraint.Mirrored };
+            stairs.definition.shape = new Curve2D(false, new CurveControlPoint2D(12, -12), bend, new CurveControlPoint2D(6, 5), new CurveControlPoint2D(9, 8));
+            ref var settings = ref stairs.definition.settings;
+            settings.stairs.bounds          = new MinMaxAABB { Min = new float3(0, -4.0909f, -4.42294f), Max = new float3(0.0001f, 5.1571f, 5.33251f) };
+            settings.stairs.stepHeight      = 0.29832f;
+            settings.stairs.stepDepth       = 0.3442f;
+            settings.stairs.treadHeight     = 0.02f;
+            settings.stairs.nosingDepth     = 0.02f;
+            settings.stairs.nosingWidth     = 0.01f;
+            settings.stairs.plateauHeight   = 5.66814f;
+            settings.stairs.riserType       = StairsRiserType.Smooth;
+            settings.stairs.riserDepth      = 0.05f;
+            settings.stairs.leftSide        = StairsSideType.None;
+            settings.stairs.rightSide       = StairsSideType.None;
+            settings.stairs.sideWidth       = 0.2f;
+            settings.stairs.sideHeight      = 0.5f;
+            settings.stairs.sideDepth       = 0.125f;
+            settings.stairs.sideFrontOffset = 0.2f;
+            settings.stairs.topSide         = StairsTopSideType.Full;
+            settings.stairs.topSideLength   = 0.5f;
+            settings.cornerSide             = StairsSideType.DownAndUp;
+            settings.cornerTopSide          = StairsTopSideType.Length;
+            settings.cornerTopSideLength    = 0.25f;
+            stairs.OnValidate();
+            Update();
+
+            Assert.That(DrawnVertices(model, out _), Is.Not.Empty, "nothing drawn");
+            LogAssert.NoUnexpectedReceived();
         }
 
         // A curved span is cut into many short parts; only its control points are corners with a wall, not the
