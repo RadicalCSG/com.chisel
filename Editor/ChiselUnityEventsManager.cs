@@ -66,6 +66,12 @@ namespace Chisel.Editors
             UnityEditor.Undo.willFlushUndoRecord -= OnWillFlushUndoRecord;
             UnityEditor.Undo.willFlushUndoRecord += OnWillFlushUndoRecord;
 
+            // The lightmaps kept for undone edits belong to the bake that made them
+            UnityEditor.Lightmapping.bakeCompleted -= ChiselLightmapUVManager.ForgetBakedLightmaps;
+            UnityEditor.Lightmapping.bakeCompleted += ChiselLightmapUVManager.ForgetBakedLightmaps;
+            UnityEditor.Lightmapping.lightingDataCleared -= ChiselLightmapUVManager.ForgetBakedLightmaps;
+            UnityEditor.Lightmapping.lightingDataCleared += ChiselLightmapUVManager.ForgetBakedLightmaps;
+
             UnityEditor.SceneView.beforeSceneGui -= OnBeforeSceneGUI;
             UnityEditor.SceneView.beforeSceneGui += OnBeforeSceneGUI;
 

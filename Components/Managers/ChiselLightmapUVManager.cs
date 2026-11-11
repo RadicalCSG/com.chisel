@@ -21,17 +21,54 @@ namespace Chisel.Components
                    model.RenderSettings.receiveGI == ReceiveGI.Lightmaps;
         }
 
-        /// <summary>Clears stale lightmap assignments after a lightmapped mesh changes.</summary>
-        public static bool ClearLightmapData(ChiselModelComponent model, GameObjectState state, ChiselRenderObjects renderable)
+        /// <summary>
+        /// A lightmapped mesh's lightmap layout changed, from previousLayout to the renderable's: the lightmap it was baked
+        /// with no longer fits it and is taken off. It is kept with the layout it was baked for, and given back when the
+        /// mesh has that layout again, as when the edit is undone.
+        /// </summary>
+        public static bool LightmapLayoutChanged(ChiselModelComponent model, GameObjectState state, ChiselRenderObjects renderable, uint previousLayout)
         {
             if (!IsLightmapped(model, state.staticFlags))
                 return false;
 
+            var renderer = renderable.meshRenderer;
+            // it had a lightmap, baked for the layout it had until now
+            if (renderer.lightmapIndex != -1 && previousLayout != 0)
+            {
+                renderable.bakedLightmapHashValue   = previousLayout;
+                renderable.bakedLightmapIndex       = renderer.lightmapIndex;
+                renderable.bakedLightmapScaleOffset = renderer.lightmapScaleOffset;
 #if !UNITY_6000_7_OR_NEWER
-            renderable.meshRenderer.realtimeLightmapIndex = -1;
+                renderable.bakedRealtimeLightmapIndex       = renderer.realtimeLightmapIndex;
+                renderable.bakedRealtimeLightmapScaleOffset = renderer.realtimeLightmapScaleOffset;
 #endif
-            renderable.meshRenderer.lightmapIndex = -1;
+            }
+
+            var backToTheBakedLayout = renderable.lightmapHashValue != 0 && renderable.lightmapHashValue == renderable.bakedLightmapHashValue;
+            renderer.lightmapIndex = backToTheBakedLayout ? renderable.bakedLightmapIndex : -1;
+            if (backToTheBakedLayout)
+                renderer.lightmapScaleOffset = renderable.bakedLightmapScaleOffset;
+#if !UNITY_6000_7_OR_NEWER
+            renderer.realtimeLightmapIndex = backToTheBakedLayout ? renderable.bakedRealtimeLightmapIndex : -1;
+            if (backToTheBakedLayout)
+                renderer.realtimeLightmapScaleOffset = renderable.bakedRealtimeLightmapScaleOffset;
+#endif
             return true;
+        }
+
+        /// <summary>The lightmaps were baked again or cleared: the ones kept for undone edits are no longer theirs</summary>
+        public static void ForgetBakedLightmaps()
+        {
+            if (ChiselModelManager.Instance == null)
+                return;
+            foreach (var model in ChiselModelManager.Instance.Models)
+            {
+                var renderables = model ? model.generated?.renderables : null;
+                if (renderables == null)
+                    continue;
+                foreach (var renderable in renderables)
+                    renderable?.ForgetBakedLightmap();
+            }
         }
 
         /// <summary>Returns the active scene's lightmap resolution, or the default resolution.</summary>

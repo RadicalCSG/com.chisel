@@ -96,6 +96,22 @@ namespace Chisel.Components
         public uint             surfaceHashValue;
         public uint             lightmapHashValue;
 
+        // The lightmap the renderer was baked with and the lightmap layout it was baked for, kept while an edit has taken
+        // it off: given back when the mesh has that layout again (the edit undone), forgotten when lightmaps are baked
+        // again or cleared (ChiselLightmapUVManager)
+        [HideInInspector] public uint    bakedLightmapHashValue;
+        [HideInInspector] public int     bakedLightmapIndex = -1;
+        [HideInInspector] public Vector4 bakedLightmapScaleOffset;
+        [HideInInspector] public int     bakedRealtimeLightmapIndex = -1;
+        [HideInInspector] public Vector4 bakedRealtimeLightmapScaleOffset;
+
+        public void ForgetBakedLightmap()
+        {
+            bakedLightmapHashValue     = 0;
+            bakedLightmapIndex         = -1;
+            bakedRealtimeLightmapIndex = -1;
+        }
+
         public bool             debugVisualizationRenderer;
 
         internal ChiselRenderObjects() { }
@@ -295,7 +311,7 @@ namespace Chisel.Components
 		}
 #endif
 
-		void UpdateSettings(ChiselModelComponent model, GameObjectState state, bool lightmapIsModified)
+		void UpdateSettings(ChiselModelComponent model, GameObjectState state, bool lightmapIsModified, uint previousLightmapHashValue)
         {
             ApplyShadowSettings(model.RenderSettings);
 #if UNITY_EDITOR
@@ -317,11 +333,8 @@ namespace Chisel.Components
                 UnityEditor.EditorUtility.SetDirty(model);
                 Profiler.EndSample();
 
-                Profiler.BeginSample("ClearLightmapData");
-				if (ChiselLightmapUVManager.ClearLightmapData(model, state, this))
-                {
-					//Debug.Log($"ClearLightmapData for {container.name}", container);
-				}
+                Profiler.BeginSample("LightmapLayoutChanged");
+				ChiselLightmapUVManager.LightmapLayoutChanged(model, state, this, previousLightmapHashValue);
                 Profiler.EndSample();
             }
 #endif 
@@ -895,6 +908,7 @@ namespace Chisel.Components
                 // a hotspot change redraws the mesh without moving its lightmap
                 objectUpdate.lightmapIsModified = (instance.lightmapHashValue != meshUpdate.lightmapHashValue) ||
                                                   (objectUpdate.meshIsModified && meshUpdate.lightmapHashValue == 0);
+                var previousLightmapHashValue = instance.lightmapHashValue;
                 instance.lightmapHashValue = meshUpdate.lightmapHashValue;
 #if UNITY_EDITOR
                 // Geometry re-uploaded => the selection and partial meshes mirroring it must be rebuilt too.
@@ -913,7 +927,7 @@ namespace Chisel.Components
                 if (instance.meshRenderer.enabled != expectedEnabled)
                     instance.meshRenderer.enabled = expectedEnabled;
 
-                instance.UpdateSettings(objectUpdate.model, gameObjectState, objectUpdate.lightmapIsModified);
+                instance.UpdateSettings(objectUpdate.model, gameObjectState, objectUpdate.lightmapIsModified, previousLightmapHashValue);
 			}
             Profiler.EndSample();
         }
@@ -1060,6 +1074,13 @@ namespace Chisel.Components
 		}
 
 
+        const string kLightmapKeyword            = "LIGHTMAP_ON";
+        const string kDirectionalLightmapKeyword = "DIRLIGHTMAP_COMBINED";
+        static readonly int kLightmapID            = Shader.PropertyToID("unity_Lightmap");
+        static readonly int kLightmapScaleOffsetID = Shader.PropertyToID("unity_LightmapST");
+        static readonly int kLightmapDirectionID   = Shader.PropertyToID("unity_LightmapInd");
+        static readonly int kShadowMaskID          = Shader.PropertyToID("unity_ShadowMask");
+
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
 		void RenderMesh(Mesh mesh, MaterialPropertyBlock materialPropertyBlock, Matrix4x4 matrix, int layer, Camera camera, bool enableLightmaps)
 		{
@@ -1090,8 +1111,11 @@ namespace Chisel.Components
                 worldBounds              = meshRenderer.bounds
 			};
 
+            // The baked lighting Unity draws the renderer with: its lightmap, its direction when the lightmaps are directional,
+            // and its shadow mask (whose keywords the render pipeline sets for the whole frame)
+            var directional = false;
             if (enableLightmaps)
-            { 
+            {
                 var lightmapScaleOffset = meshRenderer.lightmapScaleOffset;
                 // Only an index into the baked lightmaps has one: it is -1 before a bake, 0xFFFE for a renderer the bake
                 // took into account without giving it a lightmap, and whatever it was while the lightmaps are gone
@@ -1100,11 +1124,16 @@ namespace Chisel.Components
                 if (lightmapIndex >= 0 && lightmapIndex < lightmaps.Length)
                 {
                     var lightmapData = lightmaps[lightmapIndex];
-                    materialPropertyBlock.SetTexture("unity_Lightmap", lightmapData.lightmapColor);
-                    materialPropertyBlock.SetVector("unity_LightmapST", lightmapScaleOffset);
+                    materialPropertyBlock.SetTexture(kLightmapID, lightmapData.lightmapColor);
+                    materialPropertyBlock.SetVector(kLightmapScaleOffsetID, lightmapScaleOffset);
+                    directional = LightmapSettings.lightmapsMode == LightmapsMode.CombinedDirectional && lightmapData.lightmapDir != null;
+                    if (directional)
+                        materialPropertyBlock.SetTexture(kLightmapDirectionID, lightmapData.lightmapDir);
+                    if (lightmapData.shadowMask != null)
+                        materialPropertyBlock.SetTexture(kShadowMaskID, lightmapData.shadowMask);
                 } else
 				    enableLightmaps = false;
-                  
+
 			}
 
 			var materialCount = (renderMaterials == null) ? 0 : renderMaterials.Length;
@@ -1115,8 +1144,10 @@ namespace Chisel.Components
                     continue;
 
                 renderParams.material = material;
-                if (enableLightmaps) material.EnableKeyword("LIGHTMAP_ON");
-                else material.DisableKeyword("LIGHTMAP_ON");
+                if (enableLightmaps) material.EnableKeyword(kLightmapKeyword);
+                else material.DisableKeyword(kLightmapKeyword);
+                if (directional) material.EnableKeyword(kDirectionalLightmapKeyword);
+                else material.DisableKeyword(kDirectionalLightmapKeyword);
                 Graphics.RenderMesh(in renderParams, mesh, submeshIndex, matrix);
             }
 		}
