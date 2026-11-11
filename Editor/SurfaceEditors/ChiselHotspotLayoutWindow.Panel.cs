@@ -40,7 +40,7 @@ namespace Chisel.Editors
                 return;
             var current = Event.current;
             if (current.type == EventType.Repaint)
-                EditorGUI.DrawRect(area, new Color(0, 0, 0, 0.12f));
+                EditorGUI.DrawRect(area, ChiselEditorColors.Panel);
             var header = new Rect(area.x + 6, area.y + 4, area.width - 12, kRowHeight);
             GUI.Label(header, "TILES", EditorStyles.miniBoldLabel);
             var count = new GUIContent($"{layout.tiles.Count} tiles");
@@ -76,7 +76,7 @@ namespace Chisel.Editors
                 if (current.type == EventType.Repaint)
                 {
                     if (tile.id == selectedTile)
-                        EditorGUI.DrawRect(row, new Color(0.17f, 0.36f, 0.53f, 1));
+                        EditorGUI.DrawRect(row, ChiselEditorColors.ChosenRow);
                     EditorGUI.DrawRect(new Rect(row.x + 8, row.y + 5, 10, 10), HotspotTileKinds.ColorOf(HotspotTileKinds.KindOf(tile)));
                     GUI.Label(new Rect(row.x + 24, row.y, 56, row.height), string.IsNullOrEmpty(tile.name) ? "Tile " + tile.id : tile.name);
                     var size = HotspotTileKinds.SizeOf(tile);
@@ -124,7 +124,7 @@ namespace Chisel.Editors
             GUILayout.Space(4);
             var rect = GUILayoutUtility.GetRect(1, 1, GUILayout.ExpandWidth(true));
             if (Event.current.type == EventType.Repaint)
-                EditorGUI.DrawRect(rect, new Color(0, 0, 0, 0.3f));
+                EditorGUI.DrawRect(rect, ChiselEditorColors.Separator);
             GUILayout.Space(4);
         }
 

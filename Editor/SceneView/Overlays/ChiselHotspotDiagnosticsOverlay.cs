@@ -60,19 +60,19 @@ namespace Chisel.Editors
             switch (mode)
             {
                 case HotspotDiagnosticMode.Density:
-                    Legend(Color.red,   "stretched: half the tile's pixels or fewer");
-                    Legend(Color.green, "the tile's own density");
-                    Legend(Color.blue,  "squeezed: twice the tile's pixels or more");
+                    Legend(ChiselHotspotDiagnosticsView.kBadColor,      "stretched: half the tile's pixels or fewer");
+                    Legend(ChiselHotspotDiagnosticsView.kGoodColor,     "the tile's own density");
+                    Legend(ChiselHotspotDiagnosticsView.kSqueezedColor, "squeezed: twice the tile's pixels or more");
                     break;
                 case HotspotDiagnosticMode.Anisotropy:
-                    Legend(Color.green,  "as much one way as the other");
-                    Legend(Color.yellow, "1.4 times");
-                    Legend(Color.red,    "twice or more");
+                    Legend(ChiselHotspotDiagnosticsView.kGoodColor,     "as much one way as the other");
+                    Legend(ChiselHotspotDiagnosticsView.kSomeColor,     "1.4 times");
+                    Legend(ChiselHotspotDiagnosticsView.kBadColor,      "twice or more");
                     break;
                 default:
-                    Legend(Color.green,  "no distortion");
-                    Legend(Color.yellow, "some");
-                    Legend(Color.red,    "much (energy 4 or more)");
+                    Legend(ChiselHotspotDiagnosticsView.kGoodColor,     "no distortion");
+                    Legend(ChiselHotspotDiagnosticsView.kSomeColor,     "some");
+                    Legend(ChiselHotspotDiagnosticsView.kBadColor,      "much (energy 4 or more)");
                     break;
             }
             Legend(ChiselHotspotDiagnosticsView.kMirroredColor,   "mirrored against the rest of its surface");

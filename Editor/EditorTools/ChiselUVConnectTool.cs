@@ -158,11 +158,11 @@ namespace Chisel.Editors
             return s_Edge != before || !Equals(s_EdgeSurface, beforeSurface);
         }
 
-        // yellow: clicking hides the border along it; cyan: it has none, clicking brings it back
+        // clicking hides the border along it, or, when it has none, brings it back
         static void RenderHoverEdge()
         {
             var hidden = ChiselHotspotLinks.EdgeBorderOf(s_EdgeSurface, s_Edge) == ChiselHotspotBorderState.Hidden;
-            ChiselOutlineRenderer.DrawLine(s_EdgeFrom, s_EdgeTo, hidden ? Color.cyan : Color.yellow, LineMode.NoZTest, 4, 0);
+            ChiselOutlineRenderer.DrawLine(s_EdgeFrom, s_EdgeTo, hidden ? ChiselColors.HotspotHiddenEdgeBorder.Value : ChiselColors.HotspotEdgeBorder.Value, LineMode.NoZTest, 4, 0);
         }
 
         static void ToggleEdgeBorder()
@@ -192,10 +192,10 @@ namespace Chisel.Editors
             s_Disconnects = ChiselHotspotLinks.StateOf(start, surface) == ChiselHotspotLinkState.Connected;
         }
 
-        // green: they will be connected; red: they are, and will be disconnected; white: nothing to connect to
+        // they will be connected, or they are and will be disconnected; white: nothing to connect to
         static void RenderConnection()
         {
-            var color = ReferenceEquals(s_Target, null) ? Color.white : (s_Disconnects ? Color.red : Color.green);
+            var color = ReferenceEquals(s_Target, null) ? Color.white : (s_Disconnects ? ChiselColors.HotspotDisconnect.Value : ChiselColors.HotspotConnect.Value);
             ChiselOutlineRenderer.DrawLine(ChiselUVToolCommon.s_WorldStartPosition, s_End, color, LineMode.NoZTest, 4, 0);
             HandleRendering.RenderVertexBox(s_End);
         }

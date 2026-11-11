@@ -162,9 +162,6 @@ namespace Chisel.Editors
         // The edge a trim dropped now would lie on, in world space, while the preview shows it
         static bool s_HasEdge, s_EdgeUsable;
         static Vector3 s_EdgeFrom, s_EdgeTo;
-        static readonly Color kEdgeColor      = new Color(1.0f, 0.85f, 0.1f, 1.0f);
-        // an edge under the mouse that no trim can be put on
-        static readonly Color kEdgeNoTrimColor = new Color(1.0f, 0.2f, 0.2f, 1.0f);
         const float kEdgeWidth = 6;
 
         /// <summary>The stretch of edge a trim decal lies on, in world space (its first edge, the one it was put on)</summary>
@@ -186,7 +183,7 @@ namespace Chisel.Editors
             if (evt.type == EventType.Repaint && s_HasEdge && DragAndDrop.GetGenericData(kDragKey) != null)
             {
                 var zTest = Handles.zTest;
-                using (new Handles.DrawingScope(s_EdgeUsable ? kEdgeColor : kEdgeNoTrimColor))
+                using (new Handles.DrawingScope(s_EdgeUsable ? ChiselColors.TrimEdge.Value : ChiselColors.Invalid.Value))
                 {
                     Handles.zTest = UnityEngine.Rendering.CompareFunction.Always;
                     Handles.DrawAAPolyLine(kEdgeWidth, s_EdgeFrom, s_EdgeTo);
@@ -469,13 +466,7 @@ namespace Chisel.Editors
         void DrawChecker(Rect rect)
         {
             if (checker == null)
-            {
-                checker = new Texture2D(2, 2) { filterMode = FilterMode.Point, wrapMode = TextureWrapMode.Repeat, hideFlags = HideFlags.HideAndDontSave };
-                var light = new Color(0.42f, 0.42f, 0.42f);
-                var dark  = new Color(0.32f, 0.32f, 0.32f);
-                checker.SetPixels(new[] { light, dark, dark, light });
-                checker.Apply();
-            }
+                checker = HotspotSheetView.CreateChecker();
             GUI.DrawTextureWithTexCoords(rect, checker, new Rect(0, 0, rect.width / 16, rect.height / 16));
         }
 
@@ -540,7 +531,7 @@ namespace Chisel.Editors
                 if (evt.type == EventType.Repaint)
                 {
                     if (images[i].tile == selectedTile)
-                        EditorGUI.DrawRect(new Rect(cell.x - 2, cell.y - 2, cell.width + 4, cell.height + 4), new Color(0.24f, 0.48f, 0.9f, 0.8f));
+                        EditorGUI.DrawRect(new Rect(cell.x - 2, cell.y - 2, cell.width + 4, cell.height + 4), ChiselEditorColors.Selection(0.8f));
                     DrawImage(cell, material, images[i].tile);
                 }
                 GUI.Label(cell, new GUIContent(string.Empty, images[i].name));

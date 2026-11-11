@@ -169,11 +169,11 @@ namespace Chisel.Editors
             var evt = Event.current;
             var preset = LoadPreset(item);
             if (item.guid == selectedGuid)
-                EditorGUI.DrawRect(rect, new Color(0.24f, 0.48f, 0.9f, 0.45f));
+                EditorGUI.DrawRect(rect, ChiselEditorColors.Selection(0.45f));
             var thumbRect = new Rect(rect.x + 4, rect.y + 4, thumbSize, thumbSize);
             if (evt.type == EventType.Repaint)
             {
-                EditorGUI.DrawRect(thumbRect, new Color(0, 0, 0, 0.2f));
+                EditorGUI.DrawRect(thumbRect, ChiselEditorColors.ThumbnailBackground);
                 // its materials side by side, two by two
                 var materials = MaterialsShown(preset);
                 var half = thumbSize * 0.5f;

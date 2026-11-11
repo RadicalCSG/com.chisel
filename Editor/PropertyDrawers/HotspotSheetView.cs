@@ -14,12 +14,8 @@ namespace Chisel.Editors
         internal const float kMaxScale = 32;
         const float kWheelStep = 1.15f;
 
-        static readonly Color kBackground = new(0.16f, 0.16f, 0.16f);
-        static readonly Color kNoTexture  = new(0.3f, 0.3f, 0.3f);
         internal static readonly Color kLine    = new(1, 1, 1, 0.55f);
-        internal static readonly Color kHover   = new(1, 0.75f, 0.1f, 1);
         internal static readonly Color kPinned  = new(0.25f, 0.5f, 0.85f, 0.55f);
-        internal static readonly Color kPinMark = new(0.45f, 0.7f, 1, 1);
 
         // pixels of the view a texel takes, and where the sheet's top left is in the view
         public float   scale = 1;
@@ -97,14 +93,14 @@ namespace Chisel.Editors
         // The sheet's texture over the view's background, with a checkerboard under it for one with see through parts
         public void DrawTexture(Vector2Int size, Texture texture, Texture checker = null)
         {
-            EditorGUI.DrawRect(new Rect(0, 0, lastView.width, lastView.height), kBackground);
+            EditorGUI.DrawRect(new Rect(0, 0, lastView.width, lastView.height), ChiselEditorColors.Canvas);
             var sheet = new Rect(origin, (Vector2)size * scale);
             if (checker != null)
                 GUI.DrawTextureWithTexCoords(sheet, checker, new Rect(0, 0, sheet.width / 16, sheet.height / 16), false);
             if (texture != null)
                 GUI.DrawTexture(sheet, texture, ScaleMode.StretchToFill, true);
             else if (checker == null)
-                EditorGUI.DrawRect(sheet, kNoTexture);
+                EditorGUI.DrawRect(sheet, ChiselEditorColors.NoTexture);
         }
 
         // A tile's corners in the view
@@ -168,7 +164,7 @@ namespace Chisel.Editors
                 _                     => new Rect(at.x - size.x * 0.5f, at.y - size.y * 0.5f, size.x, size.y),
             };
             var color = GUI.backgroundColor;
-            GUI.backgroundColor = new Color(0.08f, 0.08f, 0.08f, 0.9f);
+            GUI.backgroundColor = ChiselEditorColors.Tag(0.9f);
             GUI.Label(rect, content, Tag);
             GUI.backgroundColor = color;
         }

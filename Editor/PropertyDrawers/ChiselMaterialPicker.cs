@@ -208,10 +208,6 @@ namespace Chisel.Editors
         const int   kMaxFound  = 200;
         const string kSearchControl = "ChiselMaterialPickerSearch";
 
-        static readonly Color kHeader    = new(0, 0, 0, 0.15f);
-        static readonly Color kChosen    = new(0.17f, 0.36f, 0.53f, 1);
-        static readonly Color kHover     = new(1, 1, 1, 0.08f);
-        static readonly Color kHotspot   = new(1f, 0.75f, 0.2f);
 
         const string kEyedropperTooltip = "Pick a material from a Chisel surface in the Scene view (Escape stops)";
         static readonly GUIContent kNoneContent      = new("None", "No material");
@@ -385,7 +381,7 @@ namespace Chisel.Editors
                     if (currentEvent.type == EventType.Repaint)
                     {
                         if (material == current && current != null)
-                            EditorGUI.DrawRect(new Rect(cell.x - 2, cell.y - 2, cell.width + 4, cell.height + 4), kChosen);
+                            EditorGUI.DrawRect(new Rect(cell.x - 2, cell.y - 2, cell.width + 4, cell.height + 4), ChiselEditorColors.ChosenRow);
                         var preview = AssetPreview.GetAssetPreview(material) ?? AssetPreview.GetMiniThumbnail(material);
                         if (preview != null) GUI.DrawTexture(cell, preview, ScaleMode.ScaleToFit);
                     }
@@ -412,9 +408,9 @@ namespace Chisel.Editors
                 if (currentEvent.type == EventType.Repaint)
                 {
                     if (i == highlighted)
-                        EditorGUI.DrawRect(row, kChosen);
+                        EditorGUI.DrawRect(row, ChiselEditorColors.ChosenRow);
                     else if (row.Contains(currentEvent.mousePosition))
-                        EditorGUI.DrawRect(row, kHover);
+                        EditorGUI.DrawRect(row, ChiselEditorColors.RowHover);
                     var thumb = AssetPreview.GetMiniThumbnail(material);
                     if (thumb != null) GUI.DrawTexture(new Rect(row.x + kPad, row.y + 2, kRow - 4, kRow - 4), thumb, ScaleMode.ScaleToFit);
                     GUI.Label(new Rect(row.x + kPad + kRow + 2, row.y, row.width - kRow * 2 - kPad, row.height), Path.GetFileNameWithoutExtension(listed[i]));
@@ -451,7 +447,7 @@ namespace Chisel.Editors
         static void Header(Rect rect, string title)
         {
             if (Event.current.type == EventType.Repaint)
-                EditorGUI.DrawRect(rect, kHeader);
+                EditorGUI.DrawRect(rect, ChiselEditorColors.Header);
             GUI.Label(new Rect(rect.x + kPad, rect.y, rect.width - 2 * kPad, rect.height), new GUIContent(title, title), EditorStyles.miniBoldLabel);
         }
 
@@ -459,12 +455,12 @@ namespace Chisel.Editors
         static void DrawHotspotIcon(Rect rect)
         {
             const float t = 1.5f;
-            EditorGUI.DrawRect(new Rect(rect.x, rect.y, rect.width, t), kHotspot);
-            EditorGUI.DrawRect(new Rect(rect.x, rect.yMax - t, rect.width, t), kHotspot);
-            EditorGUI.DrawRect(new Rect(rect.x, rect.y, t, rect.height), kHotspot);
-            EditorGUI.DrawRect(new Rect(rect.xMax - t, rect.y, t, rect.height), kHotspot);
-            EditorGUI.DrawRect(new Rect(rect.x, rect.y + rect.height * 0.4f, rect.width, t), kHotspot);
-            EditorGUI.DrawRect(new Rect(rect.x + rect.width * 0.45f, rect.y + rect.height * 0.4f, t, rect.height * 0.6f), kHotspot);
+            EditorGUI.DrawRect(new Rect(rect.x, rect.y, rect.width, t), ChiselEditorColors.Highlight);
+            EditorGUI.DrawRect(new Rect(rect.x, rect.yMax - t, rect.width, t), ChiselEditorColors.Highlight);
+            EditorGUI.DrawRect(new Rect(rect.x, rect.y, t, rect.height), ChiselEditorColors.Highlight);
+            EditorGUI.DrawRect(new Rect(rect.xMax - t, rect.y, t, rect.height), ChiselEditorColors.Highlight);
+            EditorGUI.DrawRect(new Rect(rect.x, rect.y + rect.height * 0.4f, rect.width, t), ChiselEditorColors.Highlight);
+            EditorGUI.DrawRect(new Rect(rect.x + rect.width * 0.45f, rect.y + rect.height * 0.4f, t, rect.height * 0.6f), ChiselEditorColors.Highlight);
         }
 
         // Up and down go through the list, Enter picks, Escape closes

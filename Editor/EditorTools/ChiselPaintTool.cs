@@ -184,7 +184,7 @@ namespace Chisel.Editors
             {
                 if (s_Operation != ChiselPaintOperation.Fill)
                 {
-                    Handles.color = new Color(1, 1, 1, 0.8f);
+                    Handles.color = ChiselColors.PaintBrush.Value;
                     Handles.DrawWireDisc(hit.point, hit.normal, s_Radius);
                     Handles.DrawWireDisc(hit.point, hit.normal, s_Radius * Mathf.Clamp01(s_Hardness));
                 }
@@ -682,7 +682,7 @@ namespace Chisel.Editors
                     if (evt.type == EventType.Repaint)
                     {
                         EditorGUI.DrawRect(cell, border);
-                        EditorGUI.DrawRect(inner, EditorGUIUtility.isProSkin ? new Color(0.22f, 0.22f, 0.22f) : new Color(0.76f, 0.76f, 0.76f));
+                        EditorGUI.DrawRect(inner, ChiselEditorColors.PictureBackground());
                         EditorGUI.DrawRect(new Rect(cell.x + 3, cell.y + 3, cell.width - 6, cell.height - 6), s_Color);
                     }
                     GUI.Label(cell, kAddSwatchContent, GUIStyle.none);

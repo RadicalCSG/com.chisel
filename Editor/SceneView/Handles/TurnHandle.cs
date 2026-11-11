@@ -1,4 +1,4 @@
-﻿using UnityEditor;
+using UnityEditor;
 using UnityEngine;
 
 namespace Chisel.Editors
@@ -15,10 +15,8 @@ namespace Chisel.Editors
 #endif
     public static class TurnHandle
     {
-		readonly static GUIContent kClockWiseRotation     = new("↻");
-		readonly static GUIContent kAntiClockWiseRotation = new("↺");
-
-        public static Color kIconColor = new(201f / 255, 200f / 255, 144f / 255, 1.00f);
+		readonly static GUIContent kClockWiseRotation     = new("\u21BB");
+		readonly static GUIContent kAntiClockWiseRotation = new("\u21BA");
 
         public static TurnState DoHandle(Bounds bounds)
         {
@@ -56,7 +54,7 @@ namespace Chisel.Editors
             pLabel1 += dir1 * (HandleUtility.GetHandleSize(pLabel1) * 0.5f);
 
             var prevColor = Handles.color;
-            Handles.color = kIconColor;
+            Handles.color = SceneHandles.MeasureColor;
 
             var result = TurnState.None;
 

@@ -37,9 +37,6 @@ namespace Chisel.Editors
 
         static readonly Color kSome     = new(0, 0, 0, 0.38f);
         static readonly Color kNone     = new(0, 0, 0, 0.72f);
-        static readonly Color kDim      = new(0, 0, 0, 0.6f);
-        static readonly Color kRowColor = new(0, 0, 0, 0.12f);
-        static readonly Color kWarm     = new(1f, 0.65f, 0.3f);
 
         static readonly GUIContent kAutomaticContent   = new("Automatic tile selection", "Let matching choose the tile for these surfaces");
         static readonly GUIContent kFitContent         = new("Fit", "Show the whole sheet");
@@ -90,6 +87,9 @@ namespace Chisel.Editors
             groups = HotspotTileChoice.GroupsOf(surfaces, FitsOf);
             if (Group == null)
                 ShowMaterial(groups.Count > 0 ? groups[0].material : null);
+            // opened on a material the surfaces have: its sheets weren't made yet
+            else if (pages.Count == 0)
+                ShowMaterial(shownMaterial);
         }
 
         HashSet<Vector2Int> FitsOf(SurfaceReference surface, HotspotTileGroup group)
@@ -247,7 +247,7 @@ namespace Chisel.Editors
         void MaterialsRow(Rect row, HotspotTileGroup group)
         {
             if (Event.current.type == EventType.Repaint)
-                EditorGUI.DrawRect(row, kRowColor);
+                EditorGUI.DrawRect(row, ChiselEditorColors.Panel);
             var x = row.x + kPad;
             var right = row.xMax - kPad;
             for (int i = 0; i < groups.Count; i++)
@@ -290,7 +290,7 @@ namespace Chisel.Editors
         void PagesRow(Rect row)
         {
             if (Event.current.type == EventType.Repaint)
-                EditorGUI.DrawRect(row, kRowColor);
+                EditorGUI.DrawRect(row, ChiselEditorColors.Panel);
             var x = row.x + kPad;
             for (int i = 0; i < pages.Count; i++)
             {
@@ -307,7 +307,7 @@ namespace Chisel.Editors
                     if (page.texture != null)
                         GUI.DrawTexture(thumb, page.texture, ScaleMode.ScaleAndCrop);
                     if (i == shown)
-                        HotspotSheetView.Outline(new Vector3[] { new(button.xMin, button.yMin), new(button.xMax, button.yMin), new(button.xMax, button.yMax), new(button.xMin, button.yMax) }, HotspotSheetView.kPinMark, 2);
+                        HotspotSheetView.Outline(new Vector3[] { new(button.xMin, button.yMin), new(button.xMax, button.yMin), new(button.xMax, button.yMax), new(button.xMin, button.yMax) }, ChiselEditorColors.Accent, 2);
                     GUI.Label(new Rect(thumb.xMax + 6, button.y + 1, width, 18), page.name);
                     GUI.Label(new Rect(thumb.xMax + 6, button.y + 17, width, 16), page.kind, EditorStyles.miniLabel);
                 }
@@ -381,7 +381,7 @@ namespace Chisel.Editors
                 var key = new Vector2Int(page.sheet, tile.id);
                 var fit = group.FitOf(key);
                 if (Finding && !Matches(tile))
-                    HotspotSheetView.Fill(points, kDim, shaped);
+                    HotspotSheetView.Fill(points, ChiselEditorColors.Dim, shaped);
                 else if (fit == HotspotTileFit.None)
                     HotspotSheetView.Fill(points, kNone, shaped);
                 else if (fit == HotspotTileFit.Some)
@@ -403,7 +403,7 @@ namespace Chisel.Editors
                 }
                 var bounds = HotspotSheetView.BoundsOf(points);
                 if (HotspotTileChoice.IsPinOnly(tile) && fit != HotspotTileFit.None)
-                    HotspotSheetView.PinMark(new Rect(bounds.xMax - 14, bounds.y + 3, 10, 12), HotspotSheetView.kPinMark);
+                    HotspotSheetView.PinMark(new Rect(bounds.xMax - 14, bounds.y + 3, 10, 12), ChiselEditorColors.Accent);
             }
             // on top: the pieces of the hovered or pinned tile's inside corners, the pinned, the found and the hovered
             foreach (var tile in layout.tiles)
@@ -414,9 +414,9 @@ namespace Chisel.Editors
                 var pinned = IsPinned(group, page, tile.id);
                 var found = Finding && Matches(tile);
                 if (corners.Contains(tile.id))
-                    HotspotSheetView.Dashed(points, HotspotSheetView.kHover);
+                    HotspotSheetView.Dashed(points, ChiselEditorColors.Highlight);
                 if (tile.id == hover || pinned)
-                    HotspotSheetView.Outline(points, HotspotSheetView.kHover, 3);
+                    HotspotSheetView.Outline(points, ChiselEditorColors.Highlight, 3);
                 else if (found)
                     HotspotSheetView.Outline(points, Color.white, 2.5f);
                 if (tile.id == hover || pinned || found)
@@ -428,14 +428,14 @@ namespace Chisel.Editors
         {
             if (Event.current.type != EventType.Repaint)
                 return;
-            EditorGUI.DrawRect(row, kRowColor);
+            EditorGUI.DrawRect(row, ChiselEditorColors.Panel);
             var x = row.x + kPad;
             var top = row.y + (row.height - 10) * 0.5f;
             void Item(string text, Color fill, bool pin = false)
             {
                 var swatch = new Rect(x, top, 10, 10);
                 if (pin)
-                    HotspotSheetView.PinMark(new Rect(swatch.x, swatch.y - 1, 10, 12), HotspotSheetView.kPinMark);
+                    HotspotSheetView.PinMark(new Rect(swatch.x, swatch.y - 1, 10, 12), ChiselEditorColors.Accent);
                 else
                 {
                     EditorGUI.DrawRect(swatch, new Color(0.55f, 0.55f, 0.55f));
@@ -492,7 +492,7 @@ namespace Chisel.Editors
             if (users.Count > 0)
                 parts.Add("Used by " + string.Join(", ", users.ConvertAll(user => HotspotTileChoice.NameOf(layout, user))));
             parts.Add(HotspotTileChoice.FitText(group, new Vector2Int(page.sheet, id)));
-            var warm = new GUIStyle(EditorStyles.label) { normal = { textColor = kWarm } };
+            var warm = new GUIStyle(EditorStyles.label) { normal = { textColor = ChiselEditorColors.WarmText } };
             GUI.Label(new Rect(x, row.y, Mathf.Max(0, linkRect.x - 6 - x), row.height), string.Join($" {HotspotTileChoice.kDot} ", parts), warm);
         }
 

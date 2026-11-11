@@ -21,7 +21,6 @@ namespace Chisel.Editors
         // OverlayIcon covers the full 16x16 icon; the warning sits in a corner of it as a sub-icon.
         const float kWarningBadgeSize = 10;
 
-        static readonly Color kActiveModelColor = new(0.4f, 0.8f, 1.0f);
 
         // The alpha used to fade disabled nodes.
         const float kInactiveOpacity = 0.25f;
@@ -39,6 +38,7 @@ namespace Chisel.Editors
             public Texture             icon;
             public bool                hasWarning;
             public bool                isActiveModel;
+            public Color               activeModelColor;
             public bool                isEnabled;
         }
 
@@ -89,18 +89,22 @@ namespace Chisel.Editors
             var image         = icon?.image;
             var hasWarning    = !hasValidState;
             var isActiveModel = IsActiveModel(state.node);
+            // the color set in the preferences, so a change to it is shown too
+            var activeColor   = isActiveModel ? ChiselColors.ActiveModel.Value : default;
             var isEnabled     = state.node.isActiveAndEnabled;
 
             if (ReferenceEquals(image, state.icon) &&
                 hasWarning    == state.hasWarning &&
                 isActiveModel == state.isActiveModel &&
+                activeColor   == state.activeModelColor &&
                 isEnabled     == state.isEnabled)
                 return false;
 
-            state.icon          = image;
-            state.hasWarning    = hasWarning;
-            state.isActiveModel = isActiveModel;
-            state.isEnabled     = isEnabled;
+            state.icon             = image;
+            state.hasWarning       = hasWarning;
+            state.isActiveModel    = isActiveModel;
+            state.activeModelColor = activeColor;
+            state.isEnabled        = isEnabled;
             return true;
         }
 
@@ -148,7 +152,7 @@ namespace Chisel.Editors
             if (state.isActiveModel && item.Name != null)
             {
                 item.Name.style.unityFontStyleAndWeight = FontStyle.Bold;
-                item.Name.style.color                   = kActiveModelColor;
+                item.Name.style.color                   = ChiselColors.ActiveModel.Value;
             }
 
             var opacity = state.isEnabled ? 1.0f : kInactiveOpacity;

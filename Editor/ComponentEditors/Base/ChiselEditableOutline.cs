@@ -1039,15 +1039,7 @@ namespace Chisel.Editors
                 return true;
 
             var validState = brush.definition.ValidState;
-
-            #region Default Colors
-            var FrontfacedPolygonColor = SceneHandles.YAxisColor;
-            var BackfacedPolygonColor = new Color(FrontfacedPolygonColor.r, FrontfacedPolygonColor.g, FrontfacedPolygonColor.b, FrontfacedPolygonColor.a * SceneHandles.BackfaceAlphaMultiplier);
-
-            var FrontfacedColor = SceneHandles.ZAxisColor;
-            var BackfacedColor = new Color(FrontfacedColor.r, FrontfacedColor.g, FrontfacedColor.b, FrontfacedColor.a * SceneHandles.BackfaceAlphaMultiplier);
-            var InvalidColor = Color.red;
-            #endregion
+            var baseColors = BaseColors();
 
             var currentHotControl       = GUIUtility.hotControl;
             var currentFocusControl     = SceneHandleUtility.FocusControl;
@@ -1159,11 +1151,22 @@ namespace Chisel.Editors
                 s_TempSoftEdgesState[s] = beforePolygonAState | beforePolygonBState | softEdgeState;
             }
 
-            UpdateStateColors(polygonColors, s_TempPolygonsState, validState, BackfacedColor, FrontfacedColor, InvalidColor);
-            UpdateStateColors(edgeColors, s_TempEdgesState, validState, BackfacedColor, FrontfacedColor, InvalidColor);
-            UpdateStateColors(vertexColors, s_TempVerticesState, validState, BackfacedColor, FrontfacedColor, InvalidColor);
-            UpdateStateColors(softEdgeColors, s_TempSoftEdgesState, validState, BackfacedColor, FrontfacedColor, InvalidColor);
+            UpdateStateColors(polygonColors, s_TempPolygonsState, validState, baseColors.backfacedPolygon, baseColors.frontfacedPolygon, baseColors.invalid);
+            UpdateStateColors(edgeColors, s_TempEdgesState, validState, baseColors.backfacedEdge, baseColors.frontfacedEdge, baseColors.invalid);
+            UpdateStateColors(vertexColors, s_TempVerticesState, validState, baseColors.backfacedEdge, baseColors.frontfacedEdge, baseColors.invalid);
+            UpdateStateColors(softEdgeColors, s_TempSoftEdgesState, validState, baseColors.backfacedEdge, baseColors.frontfacedEdge, baseColors.invalid);
             return true;
+        }
+
+        // The colors as set in Chisel's preferences, those facing away fainter, before selection and hovering change them
+        internal static (Color frontfacedEdge, Color backfacedEdge, Color frontfacedPolygon, Color backfacedPolygon, Color invalid) BaseColors()
+        {
+            var edge    = ChiselColors.BrushEditorEdges.Value;
+            var polygon = ChiselColors.BrushEditorPolygons.Value;
+            var faint   = SceneHandles.BackfaceAlphaMultiplier;
+            return (edge,    SceneHandles.MultiplyTransparency(edge, faint),
+                    polygon, SceneHandles.MultiplyTransparency(polygon, faint),
+                    ChiselColors.Invalid.Value);
         }
         #endregion
 

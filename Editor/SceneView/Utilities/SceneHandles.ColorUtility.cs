@@ -20,39 +20,41 @@ namespace Chisel.Editors
         {
             var prefString	= EditorPrefs.GetString(name);
             if (prevname == prefString)
-                return false; 
+                return false;
 
             prevname = prefString;
-            var split		= prefString.Split(';');
-            if (split.Length != 5)
+            if (TryParsePreferenceColor(prefString, out var newColor))
             {
-                resultColor = defaultColor;
-                return false;
-            }
-        
-            split[1] = split[1].Replace(',', '.');
-            split[2] = split[2].Replace(',', '.');
-            split[3] = split[3].Replace(',', '.');
-            split[4] = split[4].Replace(',', '.');
-
-            bool success;
-            float r, g, b, a;
-            success =  float.TryParse(split[1], NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture.NumberFormat, out r);
-            success &= float.TryParse(split[2], NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture.NumberFormat, out g);
-            success &= float.TryParse(split[3], NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture.NumberFormat, out b);
-            success &= float.TryParse(split[4], NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture.NumberFormat, out a);
-
-            if (success)
-            {
-                var newColor = new Color(r, g, b, a);
                 if (newColor == resultColor)
                     return false;
                 resultColor = newColor;
                 return true;
             }
-            
+
             resultColor = defaultColor;
             return false;
+        }
+
+        /// <summary>A color as Unity keeps it in EditorPrefs for its Colors preferences: "name;r;g;b;a"</summary>
+        public static string FormatPreferenceColor(string name, Color color)
+        {
+            return string.Format(CultureInfo.InvariantCulture, "{0};{1:R};{2:R};{3:R};{4:R}", name, color.r, color.g, color.b, color.a);
+        }
+
+        /// <summary>Reads a color written as Unity keeps it in EditorPrefs ("name;r;g;b;a"), also with decimal commas</summary>
+        public static bool TryParsePreferenceColor(string prefString, out Color color)
+        {
+            color = default;
+            var split = prefString?.Split(';');
+            if (split == null || split.Length != 5)
+                return false;
+            for (int i = 0; i < 4; i++)
+            {
+                if (!float.TryParse(split[i + 1].Replace(',', '.'), NumberStyles.Float, CultureInfo.InvariantCulture.NumberFormat, out var channel))
+                    return false;
+                color[i] = channel;
+            }
+            return true;
         }
 
         public static Color CopyHueSaturation(Color src1, Color src2)

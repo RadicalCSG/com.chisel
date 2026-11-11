@@ -266,7 +266,7 @@ namespace Chisel.Core
 
             // whole where nothing is in front, dashed where something is
             var color  = handles.color;
-            var hidden = Color.Lerp(color, Color.black, 0.45f); hidden.a = color.a;
+            var hidden = ChiselHandleColors.Hidden(color);
             var subtle = color; subtle.a *= 0.35f;
             void Line(Vector3 from, Vector3 to)
             {
