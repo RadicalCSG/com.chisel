@@ -48,10 +48,14 @@ namespace Chisel.Editors
 			hotspotSheetsProp = serializedObject.FindProperty(ChiselSurfaceMetadata.kHotspotSheetsFieldName);
 			decalDefaultsProp = serializedObject.FindProperty(ChiselSurfaceMetadata.kDecalDefaultsFieldName);
 			isDecalProp       = decalDefaultsProp?.FindPropertyRelative(nameof(ChiselDecalDefaults.isDecal));
+			overrideUVScaleProp = serializedObject.FindProperty(ChiselSurfaceMetadata.kOverrideUVScaleFieldName);
+			uvScaleProp         = serializedObject.FindProperty(ChiselSurfaceMetadata.kUVScaleFieldName);
 		}
 
 		SerializedProperty decalDefaultsProp;
 		SerializedProperty isDecalProp;
+		SerializedProperty overrideUVScaleProp;
+		SerializedProperty uvScaleProp;
 
 		internal void OnDisable()
 		{
@@ -63,6 +67,8 @@ namespace Chisel.Editors
 			hotspotSheetsProp = null;
 			decalDefaultsProp = null;
 			isDecalProp = null;
+			overrideUVScaleProp = null;
+			uvScaleProp = null;
 		}
 
 		void OnDestroy() { OnDisable(); }
@@ -108,6 +114,46 @@ namespace Chisel.Editors
 				outputFlagsProp.intValue = (int)flags;
 			}
 			EditorGUI.showMixedValue = false;
+		}
+
+		static readonly GUIContent kUVScaleContents = new("UV Scale", "The scale the uvs of surfaces with this material get before their own UV matrix. When not set, it comes from the texture's aspect, so a texture that isn't square gets square pixels");
+
+		// The material's own uv scale; when it sets none, the one from its texture is shown, greyed out. A hotspot
+		// material takes its uvs from its tiles, which are never scaled, so it has none
+		void UVScaleGUI()
+		{
+			var row = EditorGUILayout.GetControlRect(true);
+			var field = EditorGUI.PrefixLabel(row, kUVScaleContents);
+			var toggle = new Rect(field.x, field.y, EditorGUIUtility.singleLineHeight, field.height);
+			var value = new Rect(toggle.xMax + 2, field.y, field.width - toggle.width - 2, field.height);
+			var prevIndent = EditorGUI.indentLevel;
+			EditorGUI.indentLevel = 0;
+			EditorGUI.PropertyField(toggle, overrideUVScaleProp, GUIContent.none);
+			if (overrideUVScaleProp.hasMultipleDifferentValues)
+			{
+				using (new EditorGUI.DisabledScope(true))
+					EditorGUI.LabelField(value, HotspotTileChoice.kDash);
+			} else if (overrideUVScaleProp.boolValue)
+			{
+				EditorGUI.BeginChangeCheck();
+				EditorGUI.PropertyField(value, uvScaleProp, GUIContent.none);
+				if (EditorGUI.EndChangeCheck())
+				{
+					var scale = uvScaleProp.vector2Value;
+					var min = (float)UVMatrix.kMinScale;
+					uvScaleProp.vector2Value = new Vector2(Mathf.Max(scale.x, min), Mathf.Max(scale.y, min));
+				}
+			} else
+			{
+				using (new EditorGUI.DisabledScope(true))
+				{
+					if (targets.Length == 1)
+						EditorGUI.Vector2Field(value, GUIContent.none, (Vector2)ChiselTextureScale.TextureScaleOf(MaterialOf(target)));
+					else
+						EditorGUI.LabelField(value, HotspotTileChoice.kDash);
+				}
+			}
+			EditorGUI.indentLevel = prevIndent;
 		}
 
 		static Material MaterialOf(UnityEngine.Object metadata)
@@ -360,6 +406,11 @@ namespace Chisel.Editors
 							DoubleSidedGUI();
 							LightmapGUI();
 						}
+						if (isRenderable && overrideUVScaleProp != null && uvScaleProp != null &&
+							hotspotLayoutProp != null && !hotspotLayoutProp.hasMultipleDifferentValues && hotspotLayoutProp.objectReferenceValue == null)
+						{
+							UVScaleGUI();
+						}
 						if (isCollidable)
 						{
 							EditorGUILayout.PropertyField(physicsMaterialProp, true);
@@ -373,6 +424,8 @@ namespace Chisel.Editors
 				if (EditorGUI.EndChangeCheck())
 				{
 					serializedObject.ApplyModifiedProperties();
+					// a changed uv scale is measured again, so the surfaces using the material are built with it
+					ChiselTextureScaleWatcher.Refresh();
 					// the surfaces drawn with the material take its settings again; nothing else is rebuilt
 					foreach (var metadata in targets)
 						ChiselHotspotLayoutWindow.RefreshSurfacesUsing(MaterialOf(metadata));

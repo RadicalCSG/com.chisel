@@ -6,8 +6,9 @@ using UnityEngine.Rendering;
 namespace Chisel.Core
 {
     // How a material's texture is scaled along its short axis, so a texture that isn't square covers a surface with
-    // square pixels: from its main texture's size, 1:1 without one. It goes on the uvs the uv matrix gives
-    // (UVMatrix.Scaled), so the matrix stays the same whatever material a surface has.
+    // square pixels: from its main texture's size, 1:1 without one, unless the material sets a uv scale of its own
+    // (ChiselSurfaceMetadata.uvScale). It goes on the uvs the uv matrix gives (UVMatrix.Scaled), so the matrix stays
+    // the same whatever material a surface has.
 #if UNITY_6000_7_OR_NEWER
     [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
 #endif
@@ -57,13 +58,22 @@ namespace Chisel.Core
             return null;
         }
 
-        static float2 Measure(Material material)
+        /// <summary>The scale from the material's main texture's size, whatever the material sets itself</summary>
+        public static float2 TextureScaleOf(Material material)
         {
             var texture = MainTextureOf(material);
             return texture != null ? ScaleOf(texture.width, texture.height) : 1;
         }
 
-        /// <summary>The material's texture scale (1 without a material)</summary>
+        static float2 Measure(Material material)
+        {
+            var metadata = material.GetMetadataOfType<ChiselSurfaceMetadata>();
+            if (metadata != null && metadata.overrideUVScale)
+                return math.max((float2)metadata.uvScale, (float)UVMatrix.kMinScale);
+            return TextureScaleOf(material);
+        }
+
+        /// <summary>The material's texture scale (1 without a material): its own uv scale when it sets one</summary>
         public static float2 Of(Material material)
         {
             if (material == null)
