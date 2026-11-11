@@ -24,11 +24,9 @@ namespace Chisel.Editors
         static readonly int[]      kSnaps     = { 1, 2, 4, 8, 16, 32, 64 };
         static readonly string[]   kSnapNames = { "1 px", "2 px", "4 px", "8 px", "16 px", "32 px", "64 px" };
         static readonly Color      kLine      = new(1, 1, 1, 0.85f);
-        static readonly Color      kHover     = new(1, 0.75f, 0.1f, 1);
         static readonly Color      kDisabled  = new(0, 0, 0, 0.55f);
         static readonly Color      kBorder    = new(1, 0.3f, 0.3f, 0.9f);
         static readonly Color      kPadding   = new(0.3f, 0.9f, 1, 0.9f);
-        static readonly Color      kBackground = new(0.16f, 0.16f, 0.16f);
         const float kKindAlpha = 0.8f;
 
         // the mouse's work on the canvas
@@ -627,7 +625,7 @@ namespace Chisel.Editors
             var index = layout.IndexOfTile(tile);
             var min = layout.tiles[index].points[0]; var max = min;
             foreach (var p in layout.tiles[index].points) { min = Vector2Int.Min(min, p); max = Vector2Int.Max(max, p); }
-            Handles.color = kHover;
+            Handles.color = ChiselEditorColors.Highlight;
             foreach (var (a, b) in SplitLines(kind, position, min, max))
                 Handles.DrawDottedLine(ToCanvas(a), ToCanvas(b), 4);
             if (kind == HotspotCutKind.Horizontal)
@@ -650,7 +648,7 @@ namespace Chisel.Editors
                 for (int i = 0; i < points.Length; i++)
                 {
                     var hot = (l == hoverLoop && i == hoverCorner) || (l == dragLoop && i == dragCorner);
-                    Handles.color = hot ? kHover : kLine;
+                    Handles.color = hot ? ChiselEditorColors.Highlight : kLine;
                     var p = ToCanvas(points[i]);
                     Handles.DrawSolidDisc(p, Vector3.forward, hot ? 5 : 4);
                     Handles.color = new Color(0, 0, 0, 0.8f);
@@ -668,7 +666,7 @@ namespace Chisel.Editors
                 points[i] = ToCanvas(drawn[i]);
             var cursor = SnappedPixel(local);
             points[drawn.Count] = ToCanvas(cursor);
-            Handles.color = kHover;
+            Handles.color = ChiselEditorColors.Highlight;
             if (points.Length > 1)
                 Handles.DrawAAPolyLine(2, points);
             foreach (var p in points)
@@ -752,16 +750,16 @@ namespace Chisel.Editors
 
             if (current.type == EventType.Repaint)
             {
-                EditorGUI.DrawRect(new Rect(0, 0, canvas.width, canvas.height), kBackground);
+                EditorGUI.DrawRect(new Rect(0, 0, canvas.width, canvas.height), ChiselEditorColors.Canvas);
                 if (layout.texture != null)
                     GUI.DrawTexture(sheet, layout.texture, ScaleMode.StretchToFill, true);
                 else
-                    EditorGUI.DrawRect(sheet, new Color(0.3f, 0.3f, 0.3f));
+                    EditorGUI.DrawRect(sheet, ChiselEditorColors.NoTexture);
                 DrawTiles();
                 for (int i = 0; i < lines.Count; i++)
                 {
                     var movable = layout.MoveRange(lines[i].node, out _, out _);
-                    Handles.color = (i == hoverLine || (dragNode >= 0 && lines[i].node == dragNode)) ? kHover : kLine;
+                    Handles.color = (i == hoverLine || (dragNode >= 0 && lines[i].node == dragNode)) ? ChiselEditorColors.Highlight : kLine;
                     Handles.DrawAAPolyLine(movable ? 3 : 2, ToCanvas(lines[i].a), ToCanvas(lines[i].b));
                 }
                 Handles.color = kLine;
@@ -935,7 +933,7 @@ namespace Chisel.Editors
             if (index < 0 || layout.tiles[index].points == null || layout.tiles[index].points.Length < 3)
                 return;
             var points = CanvasPoints(layout.tiles[index].points);
-            Handles.color = kHover;
+            Handles.color = ChiselEditorColors.Highlight;
             var loop = new Vector3[points.Length + 1];
             points.CopyTo(loop, 0);
             loop[points.Length] = points[0];
@@ -945,7 +943,7 @@ namespace Chisel.Editors
             for (int i = 0; i < points.Length; i++)
             {
                 var middle = (Vector2)(points[i] + points[(i + 1) % points.Length]) * 0.5f;
-                EditorGUI.DrawRect(new Rect(middle.x - 4, middle.y - 4, 8, 8), kHover);
+                EditorGUI.DrawRect(new Rect(middle.x - 4, middle.y - 4, 8, 8), ChiselEditorColors.Highlight);
             }
         }
 
@@ -996,7 +994,7 @@ namespace Chisel.Editors
             var content = new GUIContent(text);
             var size = TagStyle.CalcSize(content);
             var color = GUI.backgroundColor;
-            GUI.backgroundColor = new Color(0.08f, 0.08f, 0.08f, 0.85f * alpha);
+            GUI.backgroundColor = ChiselEditorColors.Tag(0.85f * alpha);
             GUI.Label(new Rect(at - size * 0.5f, size), content, TagStyle);
             GUI.backgroundColor = color;
         }
@@ -1045,7 +1043,7 @@ namespace Chisel.Editors
         void StatusBar(Rect row)
         {
             if (Event.current.type == EventType.Repaint)
-                EditorGUI.DrawRect(row, new Color(0, 0, 0, 0.15f));
+                EditorGUI.DrawRect(row, ChiselEditorColors.Header);
             var position = cursorPixel.HasValue ? $"{Mathf.FloorToInt(cursorPixel.Value.x)}, {Mathf.FloorToInt(cursorPixel.Value.y)} px" : string.Empty;
             GUI.Label(new Rect(row.x + 6, row.y, row.width - 12, row.height), position, EditorStyles.miniLabel);
         }

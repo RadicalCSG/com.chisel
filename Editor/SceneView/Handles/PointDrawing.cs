@@ -1,4 +1,4 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using Chisel.Core;
 using Chisel.Components;
 using UnityEditor;
@@ -238,7 +238,7 @@ namespace Chisel.Editors
                                     if ((points[count] - points[i]).sqrMagnitude < kDistanceEpsilon)
                                     {
                                         if (i > 0)
-                                            UnityEditor.Handles.color = Color.red;
+                                            UnityEditor.Handles.color = ChiselColors.Invalid.Value;
                                         capFunction(-1, points[count], orientation, UnityEditor.HandleUtility.GetHandleSize(points[count]) * (HandleRendering.kPointScale * 2.0f), type);
                                     }
                                 }

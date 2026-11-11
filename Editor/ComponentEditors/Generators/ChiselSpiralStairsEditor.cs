@@ -105,7 +105,7 @@ namespace Chisel.Editors
             var rect = GUILayoutUtility.GetRect(EditorGUIUtility.currentViewWidth - 40, kHeight + 6 + kLabelRoom);
             if (Event.current.type != EventType.Repaint)
                 return;
-            var measure = EditorGUIUtility.isProSkin ? new Color(0.45f, 0.75f, 1f) : new Color(0.1f, 0.35f, 0.75f);
+            var measure = ChiselEditorColors.Measurement;
             var picture = new Rect(rect.center.x - kWidth * 0.5f, rect.y + kLabelRoom, kWidth, kHeight);
             GUI.DrawTexture(picture, Picture(topFloor));
 
@@ -155,7 +155,7 @@ namespace Chisel.Editors
             var size    = Label.CalcSize(content);
             var x       = centered ? at.x - size.x * 0.5f : right ? at.x : at.x - size.x;
             var rect    = new Rect(picture.x + x, picture.y + at.y - size.y * 0.5f, size.x, size.y);
-            var back    = EditorGUIUtility.isProSkin ? new Color(0.22f, 0.22f, 0.22f, 0.85f) : new Color(0.76f, 0.76f, 0.76f, 0.85f);
+            var back    = ChiselEditorColors.PictureBackground(0.85f);
             EditorGUI.DrawRect(rect, back);
             var previous = Label.normal.textColor;
             Label.normal.textColor = color;
@@ -169,12 +169,12 @@ namespace Chisel.Editors
             var which = topFloor ? 1 : 0;
             if (s_Pictures[which] && s_PicturesArePro[which] == EditorGUIUtility.isProSkin)
                 return s_Pictures[which];
-            var isPro = s_PicturesArePro[which] = EditorGUIUtility.isProSkin;
+            s_PicturesArePro[which] = EditorGUIUtility.isProSkin;
 
             var text    = EditorStyles.label.normal.textColor;
             var step    = new Color(text.r, text.g, text.b, 0.18f);
             var line    = new Color(text.r, text.g, text.b, 0.65f);
-            var measure = isPro ? new Color(0.45f, 0.75f, 1f) : new Color(0.1f, 0.35f, 0.75f);
+            var measure = ChiselEditorColors.Measurement;
             var wall    = new Color(measure.r, measure.g, measure.b, 0.22f);
             var pixels  = new Color[kWidth * kHeight];
 
@@ -266,7 +266,7 @@ namespace Chisel.Editors
             if (Event.current.type != EventType.Repaint)
                 return;
 
-            var measure = EditorGUIUtility.isProSkin ? new Color(0.45f, 0.75f, 1f) : new Color(0.1f, 0.35f, 0.75f);
+            var measure = ChiselEditorColors.Measurement;
             var picture = new Rect(rect.center.x - kSize * 0.5f, rect.y, kSize, kSize);
             GUI.DrawTexture(picture, Picture());
 
@@ -304,7 +304,7 @@ namespace Chisel.Editors
         {
             var content = new GUIContent(text);
             var size    = Label.CalcSize(content);
-            var back    = EditorGUIUtility.isProSkin ? new Color(0.22f, 0.22f, 0.22f, 0.85f) : new Color(0.76f, 0.76f, 0.76f, 0.85f);
+            var back    = ChiselEditorColors.PictureBackground(0.85f);
             var rect    = new Rect(at.x - size.x * 0.5f, at.y - size.y * 0.5f, size.x, size.y);
             EditorGUI.DrawRect(rect, back);
             var previous = Label.normal.textColor;
@@ -323,7 +323,7 @@ namespace Chisel.Editors
             var text    = EditorStyles.label.normal.textColor;
             var step    = new Color(text.r, text.g, text.b, 0.18f);
             var line    = new Color(text.r, text.g, text.b, 0.65f);
-            var measure = s_PictureIsPro ? new Color(0.45f, 0.75f, 1f) : new Color(0.1f, 0.35f, 0.75f);
+            var measure = ChiselEditorColors.Measurement;
             var pixels  = new Color[kSize * kSize];
             var center  = new Vector2(kSize * 0.5f, kSize * 0.5f);
             var perStep = kTurn / kSteps;

@@ -522,7 +522,7 @@ namespace Chisel.Core
             var bottomInside = Camera.current != null && cameraY > vertices[sides].y;
             if (vertices[0].y < vertices[sides].y)
                 (topInside, bottomInside) = (cameraY > vertices[0].y, cameraY < vertices[sides].y);
-            var hidden = Color.Lerp(color, Color.black, 0.45f); hidden.a = color.a;
+            var hidden = ChiselHandleColors.Hidden(color);
             bool Facing(int i, int j)
             {
                 var middle = (vertices[i] + vertices[j] + vertices[i + sides] + vertices[j + sides]) * 0.25f;
@@ -609,7 +609,7 @@ namespace Chisel.Core
             DrawSpiral(handles, color, apothem, sides, line - below, math.min(0, low));
 
             // upright where each of its pieces starts and ends
-            var hidden    = Color.Lerp(color, Color.black, 0.45f); hidden.a = color.a;
+            var hidden    = ChiselHandleColors.Hidden(color);
             var floor     = math.min(0, low);
             var start     = math.radians(settings.startAngle);
             var perStep   = math.radians(settings.AnglePerStep);
@@ -685,7 +685,7 @@ namespace Chisel.Core
         void DrawSpiral(IChiselHandles handles, Color color, float apothem, int sides, float bottom, float floor = float.NegativeInfinity)
         {
             const int kSamplesPerSide = 4;
-            var hidden    = Color.Lerp(color, Color.black, 0.45f); hidden.a = color.a;
+            var hidden    = ChiselHandleColors.Hidden(color);
             var start     = math.radians(settings.startAngle);
             var stepCount = settings.StepCount;
             var turn      = math.radians(settings.AnglePerStep) * stepCount;
@@ -761,7 +761,7 @@ namespace Chisel.Core
                 // dashed from the height's handle down to the object's position
                 {
                     var prevColor = handles.color;
-                    var dashed = Color.Lerp(prevColor, Color.black, 0.45f); dashed.a = prevColor.a;
+                    var dashed = ChiselHandleColors.Hidden(prevColor);
                     handles.color = dashed;
                     handles.DrawLine(topPoint, Vector3.zero, lineMode: LineMode.NoZTest, thickness: 1.0f, dashSize: 2.0f);
                     handles.color = prevColor;

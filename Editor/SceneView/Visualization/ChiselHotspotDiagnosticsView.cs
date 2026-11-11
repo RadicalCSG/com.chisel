@@ -41,6 +41,12 @@ namespace Chisel.Editors
             public double leastDensity, mostDensity, mostAnisotropy, mostEnergy;
         }
 
+        // The scales the surfaces are colored on, which the overlay's legend shows: as the tile has it, somewhat off,
+        // far off (for density: stretched), and for density squeezed
+        public static readonly Color kGoodColor       = Color.green;
+        public static readonly Color kSomeColor       = Color.yellow;
+        public static readonly Color kBadColor        = Color.red;
+        public static readonly Color kSqueezedColor   = Color.blue;
         public static readonly Color kLastResortColor = new(1.0f, 0.55f, 0.0f, 1);
         public static readonly Color kAllBorderColor  = new(0.0f, 0.9f, 1.0f, 1);
         public static readonly Color kSeamColor       = new(1, 1, 1, 1);
@@ -179,7 +185,7 @@ namespace Chisel.Editors
                 case HotspotDiagnosticMode.Density:
                 {
                     var v = math.clamp(math.log2(math.sqrt(s1 * s2)), -1, 1);
-                    var c = v < 0 ? Color.Lerp(Color.green, Color.red, (float)-v) : Color.Lerp(Color.green, Color.blue, (float)v);
+                    var c = v < 0 ? Color.Lerp(kGoodColor, kBadColor, (float)-v) : Color.Lerp(kGoodColor, kSqueezedColor, (float)v);
                     c.a = kAlpha;
                     return c;
                 }
@@ -194,7 +200,7 @@ namespace Chisel.Editors
         static Color Ramp(double v)
         {
             v = double.IsNaN(v) ? 1 : math.clamp(v, 0, 1);
-            var c = v < 0.5 ? Color.Lerp(Color.green, Color.yellow, (float)(v * 2)) : Color.Lerp(Color.yellow, Color.red, (float)(v * 2 - 1));
+            var c = v < 0.5 ? Color.Lerp(kGoodColor, kSomeColor, (float)(v * 2)) : Color.Lerp(kSomeColor, kBadColor, (float)(v * 2 - 1));
             c.a = kAlpha;
             return c;
         }

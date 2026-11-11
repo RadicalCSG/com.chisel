@@ -412,7 +412,7 @@ namespace Chisel.Core
                 // each side's profile as the pathed stairs draw theirs: whole where nothing is in front, dashed where something is
                 {
                     var color  = handles.color;
-                    var hidden = Color.Lerp(color, Color.black, 0.45f); hidden.a = color.a;
+                    var hidden = ChiselHandleColors.Hidden(color);
                     void Line(Vector3 from, Vector3 to)
                     {
                         handles.color = hidden;

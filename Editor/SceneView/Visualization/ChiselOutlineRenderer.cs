@@ -212,6 +212,13 @@ namespace Chisel.Editors
             s_ClearSurfaceCache = true;
         }
 
+        // The lines are cached with their colors
+        internal static void OnColorsChanged()
+        {
+            s_UpdateBrushLineCache = true;
+            s_UpdateSurfaceLineCache = true;
+        }
+
         internal void OnTransformationChanged()
         {
             // Defer since we could potentially get several events before we actually render
@@ -618,14 +625,14 @@ namespace Chisel.Editors
                                                ((brush == outline.brush && !anySelected) || (anySelected && ChiselSyncSelection.IsBrushVariantSelected(brush)));
 
                             if (directSelect)
-                                brushOutlineRenderer.DrawOutlines(transformation, wireframeValue, ColorManager.kSelectedOutlineColor, thickness: 3.0f, onlyInnerLines: false);
+                                brushOutlineRenderer.DrawOutlines(transformation, wireframeValue, ColorManager.SelectedOutlineColor, thickness: 3.0f, onlyInnerLines: false);
                             else
-                                brushOutlineRenderer.DrawOutlines(transformation, wireframeValue, ColorManager.kUnselectedOutlineColor, thickness: 1.0f, onlyInnerLines: false);// (ChiselEditModeManager.EditMode == CSGEditMode.ShapeEdit));
+                                brushOutlineRenderer.DrawOutlines(transformation, wireframeValue, ColorManager.UnselectedOutlineColor, thickness: 1.0f, onlyInnerLines: false);// (ChiselEditModeManager.EditMode == CSGEditMode.ShapeEdit));
                         }
                             
                         if ((VisualizationMode & VisualizationMode.SimpleOutline) == VisualizationMode.SimpleOutline)
                         {
-                            brushOutlineRenderer.DrawSimpleOutlines(transformation, wireframeValue, ColorManager.kUnselectedOutlineColor);
+                            brushOutlineRenderer.DrawSimpleOutlines(transformation, wireframeValue, ColorManager.UnselectedOutlineColor);
                         }
                     }
                 }
@@ -682,7 +689,7 @@ namespace Chisel.Editors
                         transformation = brush.NodeToTreeSpaceMatrix;
 
                     if (selection.Contains(surface))
-                        surfaceOutlineRenderer.DrawOutlines(transformation, wireframe, ColorManager.kSelectedOutlineColor, thickness: 1.0f);
+                        surfaceOutlineRenderer.DrawOutlines(transformation, wireframe, ColorManager.SelectedOutlineColor, thickness: 1.0f);
                 }
                 foreach (var pair in surfaceOutlines)
                 {
@@ -709,9 +716,9 @@ namespace Chisel.Editors
 
                     if (selection.Contains(surface))
                     {
-                        surfaceOutlineRenderer.DrawOutlines(transformation, wireframe, ColorManager.kSelectedHoverOutlineColor, thickness: 1.0f);
+                        surfaceOutlineRenderer.DrawOutlines(transformation, wireframe, ColorManager.SelectedHoverOutlineColor, thickness: 1.0f);
                     } else
-                        surfaceOutlineRenderer.DrawOutlines(transformation, wireframe, ColorManager.kPreSelectedOutlineColor, thickness: 1.0f);
+                        surfaceOutlineRenderer.DrawOutlines(transformation, wireframe, ColorManager.PreSelectedOutlineColor, thickness: 1.0f);
                 }
                 surfaceOutlineRenderer.End();
             }

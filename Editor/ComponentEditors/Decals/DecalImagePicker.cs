@@ -19,7 +19,6 @@ namespace Chisel.Editors
         const float kRow  = 28;
         const float kInfo = 26;
 
-        static readonly Color kDim = new(0, 0, 0, 0.6f);
 
         static readonly GUIContent kWholeTextureContent = new("Whole texture", "The decal shows the whole texture");
         static readonly GUIContent kFitContent          = new("Fit", "Show the whole sheet");
@@ -179,7 +178,7 @@ namespace Chisel.Editors
             view.DrawTexture(layout.size, material != null && material.mainTexture != null ? material.mainTexture : layout.texture, checker);
             var sheet = new Vector3[] { view.ToView(Vector2.zero), view.ToView(new Vector2(layout.size.x, 0)), view.ToView(layout.size), view.ToView(new Vector2(0, layout.size.y)) };
             if (chosen == 0)
-                HotspotSheetView.Outline(sheet, HotspotSheetView.kHover, 3);
+                HotspotSheetView.Outline(sheet, ChiselEditorColors.Highlight, 3);
             if (layout.tiles == null)
                 return;
             foreach (var tile in layout.tiles)
@@ -189,7 +188,7 @@ namespace Chisel.Editors
                 var points = view.PointsOf(tile);
                 var shaped = ChiselHotspotLayout.IsShaped(tile);
                 if (Finding && !HotspotTileChoice.NameMatches(tile.name, find))
-                    HotspotSheetView.Fill(points, kDim, shaped);
+                    HotspotSheetView.Fill(points, ChiselEditorColors.Dim, shaped);
                 if (tile.id == chosen)
                     HotspotSheetView.Fill(points, HotspotSheetView.kPinned, shaped);
                 HotspotSheetView.Outline(points, HotspotSheetView.kLine, 1.5f);
@@ -202,7 +201,7 @@ namespace Chisel.Editors
                 if (tile.id != hover && tile.id != chosen && !found)
                     continue;
                 var points = view.PointsOf(tile);
-                HotspotSheetView.Outline(points, tile.id == hover || tile.id == chosen ? HotspotSheetView.kHover : Color.white, tile.id == hover || tile.id == chosen ? 3 : 2.5f);
+                HotspotSheetView.Outline(points, tile.id == hover || tile.id == chosen ? ChiselEditorColors.Highlight : Color.white, tile.id == hover || tile.id == chosen ? 3 : 2.5f);
                 view.Label(HotspotSheetView.BoundsOf(points).center, HotspotTileChoice.NameOf(layout, tile.id));
             }
         }

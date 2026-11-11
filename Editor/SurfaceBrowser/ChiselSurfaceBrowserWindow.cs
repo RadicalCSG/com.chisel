@@ -342,9 +342,9 @@ namespace Chisel.Editors
             if (showDetails) DetailsGUI(details);
             FooterGUI(footer);
 
-            if (showSidebar) EditorGUI.DrawRect(new Rect(sidebar.xMax, body.y, 1, body.height), new Color(0, 0, 0, 0.3f));
-            if (showDetails) EditorGUI.DrawRect(new Rect(details.x - 1, body.y, 1, body.height), new Color(0, 0, 0, 0.3f));
-            EditorGUI.DrawRect(new Rect(0, footer.y, full.width, 1), new Color(0, 0, 0, 0.3f));
+            if (showSidebar) EditorGUI.DrawRect(new Rect(sidebar.xMax, body.y, 1, body.height), ChiselEditorColors.Separator);
+            if (showDetails) EditorGUI.DrawRect(new Rect(details.x - 1, body.y, 1, body.height), ChiselEditorColors.Separator);
+            EditorGUI.DrawRect(new Rect(0, footer.y, full.width, 1), ChiselEditorColors.Separator);
         }
 
         internal const float kMinSidebarWidth = 140;
@@ -475,7 +475,7 @@ namespace Chisel.Editors
         {
             var rect = GUILayoutUtility.GetRect(new GUIContent(text), EditorStyles.label, GUILayout.ExpandWidth(true));
             if (selected)
-                EditorGUI.DrawRect(rect, new Color(0.24f, 0.48f, 0.9f, 0.5f));
+                EditorGUI.DrawRect(rect, ChiselEditorColors.Selection(0.5f));
             var textX    = rect.x + 6 + depth * 14;
             var textRect = new Rect(textX, rect.y, count >= 0 ? WidthBefore(CountRect(rect, count), textX) : rect.xMax - textX, rect.height);
             var style = greyed ? EditorStyles.miniLabel : EditorStyles.label;
@@ -540,7 +540,7 @@ namespace Chisel.Editors
             var evt = Event.current;
             var hovering = rect.Contains(evt.mousePosition);
             if (folders.Contains(node.path))
-                EditorGUI.DrawRect(rect, new Color(0.24f, 0.48f, 0.9f, 0.5f));
+                EditorGUI.DrawRect(rect, ChiselEditorColors.Selection(0.5f));
 
             var indent = node.depth * 14;
             var foldRect = new Rect(rect.x + 2 + indent, rect.y, 14, rect.height);
@@ -694,12 +694,12 @@ namespace Chisel.Editors
             var evt = Event.current;
             var selected = item.guid == selectedGuid;
             if (selected)
-                EditorGUI.DrawRect(rect, new Color(0.24f, 0.48f, 0.9f, 0.45f));
+                EditorGUI.DrawRect(rect, ChiselEditorColors.Selection(0.45f));
             var thumbRect = new Rect(rect.x + 4, rect.y + 4, thumbSize, thumbSize);
             var material = Load(item);
             if (evt.type == EventType.Repaint)
             {
-                EditorGUI.DrawRect(thumbRect, new Color(0, 0, 0, 0.2f));
+                EditorGUI.DrawRect(thumbRect, ChiselEditorColors.ThumbnailBackground);
                 if (ChiselSurfaceBrowserDecals.IsDecal(material))
                     DrawImage(thumbRect, material, 0);      // flat: a decal draws nothing on a preview sphere
                 else
@@ -1114,7 +1114,7 @@ namespace Chisel.Editors
             EditorGUIUtility.AddCursorRect(handle, MouseCursor.ResizeVertical);
             var evt = Event.current;
             if (evt.type == EventType.Repaint)
-                EditorGUI.DrawRect(new Rect(handle.center.x - 12, handle.center.y - 1, 24, 2), new Color(1, 1, 1, 0.25f));
+                EditorGUI.DrawRect(new Rect(handle.center.x - 12, handle.center.y - 1, 24, 2), ChiselEditorColors.Grip);
             switch (evt.type)
             {
                 case EventType.MouseDown when evt.button == 0 && handle.Contains(evt.mousePosition):
@@ -1240,13 +1240,13 @@ namespace Chisel.Editors
         /// <summary>The tint of a label chip: a label it has stands out from the ones that can be added</summary>
         internal static Color ChipTint(bool applied)
         {
-            return applied ? new Color(0.45f, 0.7f, 1f) : Color.white;
+            return applied ? ChiselEditorColors.Accent : Color.white;
         }
 
         /// <summary>The outline of a label chip: a label it has is outlined, one that can be added isn't (clear)</summary>
         internal static Color ChipBorder(bool applied)
         {
-            return applied ? new Color(0.4f, 0.7f, 1f, 1f) : Color.clear;
+            return applied ? ChiselEditorColors.Accent : Color.clear;
         }
 
         // rounded as a button's corners are

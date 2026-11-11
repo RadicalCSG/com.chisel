@@ -190,11 +190,11 @@ namespace Chisel.Editors
                 if (evt.type == EventType.Repaint)
                 {
                     if (part.index == selectedPart)
-                        EditorGUI.DrawRect(rect, new Color(0.24f, 0.48f, 0.9f, 0.5f));
+                        EditorGUI.DrawRect(rect, ChiselEditorColors.Selection(0.5f));
                     else if (inScene.Contains(part.index))
-                        EditorGUI.DrawRect(rect, new Color(0.24f, 0.48f, 0.9f, 0.22f));
+                        EditorGUI.DrawRect(rect, ChiselEditorColors.Selection(0.22f));
                     if (dragged)
-                        EditorGUI.DrawRect(rect, new Color(0.24f, 0.48f, 0.9f, 0.35f));
+                        EditorGUI.DrawRect(rect, ChiselEditorColors.Selection(0.35f));
                 }
 
                 // the material itself, as in the grid: its preview, or a decal's image flat

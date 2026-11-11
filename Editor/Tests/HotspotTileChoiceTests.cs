@@ -295,6 +295,22 @@ namespace Chisel.Editors.Tests
             Assert.That(picker.Group.material, Is.EqualTo(facade));
         }
 
+        // Opened on a material its surfaces have, as the Surface Browser opens it, the picker shows that material's sheet
+        // right away, not an empty view until another material is chosen
+        [Test]
+        public void ThePicker_OpenedOnAMaterial_ShowsItsSheet()
+        {
+            var (trims, facades, _) = Boxes();
+            var given = new List<SurfaceReference>(trims);
+            given.AddRange(facades);
+            var picker = new HotspotTilePicker(() => given, facade);
+            Assume.That(picker.Group.material, Is.EqualTo(facade));
+
+            Assert.That(picker.Pages.Count, Is.GreaterThan(0), "no sheet to show");
+            Assert.That(picker.Shown.material, Is.EqualTo(facade));
+            Assert.That(picker.Shown.layout, Is.EqualTo(picker.Group.layout));
+        }
+
         // A click pins on the shown material's surfaces only, a tile that fits none of them is never pinned, and the
         // picker shows the pin right away
         [Test]

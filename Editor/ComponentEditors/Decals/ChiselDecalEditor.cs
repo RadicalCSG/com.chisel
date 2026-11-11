@@ -15,14 +15,13 @@ namespace Chisel.Editors
     {
         const string kCreateMenuPath = "GameObject/Chisel/Create Decal";
 
-        static readonly Color kHandleColor = new Color(1.0f, 0.6f, 0.1f, 1.0f);
         static readonly BoxBoundsHandle s_BoxHandle = new BoxBoundsHandle();
 
         static readonly GUIContent kMaterialContent      = new GUIContent("Material", "What the decal draws with. A decal without a material draws nothing.");
         static readonly GUIContent kCenterContent        = new GUIContent("Center", "The center of the box, in the decal's own space.");
         static readonly GUIContent kRotateContent        = new GUIContent("Rotate", "Turns the image a quarter turn. A box decal's width and height swap with it, so the image keeps its shape; on a trim decal what ran along the edge runs across it.");
-        static readonly GUIContent kRotateLeftContent    = new GUIContent("90° Left", "A quarter turn counter-clockwise, as seen looking at the surface.");
-        static readonly GUIContent kRotateRightContent   = new GUIContent("90° Right", "A quarter turn clockwise, as seen looking at the surface.");
+        static readonly GUIContent kRotateLeftContent    = new GUIContent("90\u00B0 Left", "A quarter turn counter-clockwise, as seen looking at the surface.");
+        static readonly GUIContent kRotateRightContent   = new GUIContent("90\u00B0 Right", "A quarter turn clockwise, as seen looking at the surface.");
         static readonly GUIContent kSizeContent           = new GUIContent("Size", "X and Y are the image's width and height (for a perspective decal: at the center of the box), Z is how deep the decal reaches.");
         static readonly GUIContent kOmniSizeContent       = new GUIContent("Size", "X and Y are the image's width and height on each surface; Z is the diameter of the sphere it reaches in, or its cube's edge.");
         static readonly GUIContent kReachContent          = new GUIContent("Reach", "Sphere: every surface no further from the center than half of Size Z takes the decal. Cube: every surface passing through the cube of Size Z, turned with the decal.");
@@ -448,7 +447,7 @@ namespace Chisel.Editors
 
             var id = GUIUtility.GetControlID(kExtrudeHandleHash, FocusType.Passive);
             var wasDragging = GUIUtility.hotControl == id;
-            Handles.color = kHandleColor;
+            Handles.color = ChiselColors.DecalHandles.Value;
             // while dragged the arrow is where it was dragged to: the slider only moves it on drag events
             var at  = wasDragging ? position + normal * s_DragHeight : position;
             var tip = Handles.Slider(id, at, Vector3.zero, normal, size, Handles.ArrowHandleCap, snap.y);
@@ -525,7 +524,7 @@ namespace Chisel.Editors
                     SetCorners(decal, frame, "Remove Surface Shape Corner");
                     GUIUtility.ExitGUI();
                 }
-                Handles.color = decal.AnchorOf(i).IsAnchored ? Handles.selectedColor : kHandleColor;
+                Handles.color = decal.AnchorOf(i).IsAnchored ? Handles.selectedColor : ChiselColors.DecalHandles.Value;
                 EditorGUI.BeginChangeCheck();
                 var moved = Handles.Slider2D(id, world, Vector3.zero, normal, right, up, size * 0.06f, Handles.DotHandleCap,
                                              new Vector2(snap.x, snap.y), false);
@@ -545,7 +544,7 @@ namespace Chisel.Editors
                 var b = frame.MultiplyPoint3x4(s_Corners[(i + 1) % count]);
                 var middle = (a + b) * 0.5f;
                 var size = HandleUtility.GetHandleSize(middle);
-                Handles.color = kHandleColor;
+                Handles.color = ChiselColors.DecalHandles.Value;
                 if (Handles.Button(middle, Quaternion.LookRotation(normal), size * 0.03f, size * 0.05f, Handles.DotHandleCap))
                 {
                     s_Corners.Insert(i + 1, frame.inverse.MultiplyPoint3x4(middle));
@@ -572,7 +571,7 @@ namespace Chisel.Editors
             var outline = decal.Polygon;
             if (outline.Count < 3 || Event.current.type != EventType.Repaint)
                 return;
-            Handles.color = kHandleColor;
+            Handles.color = ChiselColors.DecalHandles.Value;
             for (int i = 0; i < outline.Count; i++)
             {
                 var a = decal.transform.TransformPoint(outline[i]);
@@ -654,7 +653,7 @@ namespace Chisel.Editors
             var settings = decal.Settings;
             // the box handle in the decal's unsheared space, so a skewed decal's handle is its parallelogram
             var skew = settings.projection == ChiselDecalProjection.Omni ? Unity.Mathematics.float2.zero : settings.skew;
-            using (new Handles.DrawingScope(kHandleColor, decal.transform.localToWorldMatrix * (Matrix4x4)ChiselDecalSettings.SkewMatrix(skew)))
+            using (new Handles.DrawingScope(ChiselColors.DecalHandles.Value, decal.transform.localToWorldMatrix * (Matrix4x4)ChiselDecalSettings.SkewMatrix(skew)))
             {
                 s_BoxHandle.center = settings.center;
                 s_BoxHandle.size   = settings.size;
@@ -728,7 +727,6 @@ namespace Chisel.Editors
             SceneView.lastActiveSceneView?.Focus();
         }
         static EdgeCandidate s_Candidate;
-        static readonly Color kCandidateColor = new Color(0.2f, 0.9f, 1.0f, 1.0f);
 
         struct EdgeCandidate
         {
@@ -794,7 +792,7 @@ namespace Chisel.Editors
                 case EventType.Repaint:
                     if (s_Candidate.valid)
                     {
-                        using (new Handles.DrawingScope(kCandidateColor))
+                        using (new Handles.DrawingScope(ChiselColors.TrimEdge.Value))
                             Handles.DrawAAPolyLine(6.0f, s_Candidate.from, s_Candidate.to);
                     }
                     break;
@@ -902,10 +900,10 @@ namespace Chisel.Editors
             foreach (var half in s_OutlineHalves)
             {
                 var settings = half.decal.settings;
-                using (new Handles.DrawingScope(kHandleColor, modelToWorld * (Matrix4x4)half.decal.decalToTree))
+                using (new Handles.DrawingScope(ChiselColors.DecalHandles.Value, modelToWorld * (Matrix4x4)half.decal.decalToTree))
                     Handles.DrawWireCube(settings.center, settings.size);
             }
-            using (new Handles.DrawingScope(kHandleColor, modelToWorld))
+            using (new Handles.DrawingScope(ChiselColors.DecalHandles.Value, modelToWorld))
                 Handles.DrawAAPolyLine(4.0f, edgeFrom, edgeTo);
         }
     }

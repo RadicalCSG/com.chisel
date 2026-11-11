@@ -71,7 +71,7 @@ namespace Chisel.Editors
             var text     = EditorStyles.label.normal.textColor;
             var shape    = new Color(text.r, text.g, text.b, 0.15f);
             var outline  = new Color(text.r, text.g, text.b, 0.6f);
-            var measure  = EditorGUIUtility.isProSkin ? new Color(0.45f, 0.75f, 1f) : new Color(0.1f, 0.35f, 0.75f);
+            var measure  = ChiselEditorColors.Measurement;
 
             // in pixels: the steps climb to the right
             const float stepDepth = 54, stepHeight = 26, tread = 6, nosing = 9, riser = 5;
