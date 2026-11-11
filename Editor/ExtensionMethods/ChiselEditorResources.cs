@@ -29,8 +29,7 @@ namespace Chisel.Editors
             FindResourcePaths(); 
         }
 
-        // Should be safe since when these parameters change, Unity will do a domain reload, 
-        // which will call the constructor in which these are set.
+        // Read once, when the scripts load; Chisel reloads them when the skin changes (ChiselEditorSkinWatcher)
         static readonly float s_EditorPixelsPerPoint;
         static readonly bool s_IsProSkin;
         public static bool IsProSkin => s_IsProSkin;
