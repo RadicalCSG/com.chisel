@@ -162,6 +162,45 @@ namespace Chisel.Components.Tests
             Assert.That(vertexCount, Is.GreaterThan(0), "the shadow-only surfaces got no collider");
         }
 
+        // The renderers the Scene view's picking draws
+        static List<ChiselRenderObjects> Picked()
+        {
+            var offsets = new List<SelectionOffset>();
+            ChiselRenderObjects.GetPickingOffsets(_ => true, 0, offsets);
+            var picked = new List<ChiselRenderObjects>();
+            foreach (var offset in offsets)
+            {
+                picked.Add(offset.renderObjects);
+                UnityEngine.Pool.HashSetPool<int>.Release(offset.skipSelectionID);
+            }
+            return picked;
+        }
+
+        // What only casts shadows isn't seen, so it can't be picked: a click goes to what is seen there instead
+        [Test]
+        public void AShadowOnlySurface_CantBePicked([ValueSource(nameof(kShadowOnlyMaterials))] string materialName)
+        {
+            var model = ModelWithABoxOf(ShadowOnlyMaterial(materialName), ChiselProjectSettings.DefaultWallMaterial);
+            var shadowOnly = ShadowOnlyRenderable(model);
+            var picked = Picked();
+            Assert.That(picked, Has.No.Member(shadowOnly));
+            Assert.That(picked.Exists(renderable => System.Array.IndexOf(model.generated.renderables, renderable) >= 0),
+                        "the faces that are seen can be picked");
+        }
+
+        // Shown by the shadow-only debug view, they are seen, and can be picked
+        [Test]
+        public void AShadowOnlySurfaceShownByItsDebugView_CanBePicked()
+        {
+            var model = ModelWithABoxOf(ShadowOnlyMaterial("ShadowOnly"));
+            var helper = System.Array.Find(model.generated.debugVisualizationRenderables, r => r != null && r.debugMode == kShadowOnlyDebugHelper);
+            Assume.That(helper, Is.Not.Null, "the ShadowOnly debug helper was not made");
+            helper.visible = false;
+            Assert.That(Picked(), Has.No.Member(helper), "while the debug view doesn't show it");
+            helper.visible = true;
+            Assert.That(Picked(), Has.Member(helper), "while the debug view shows it");
+        }
+
         [Test]
         public void AModelWithoutShadows_DoesNotCastItsShadowOnlySurfaces()
         {
