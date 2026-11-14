@@ -1213,12 +1213,26 @@ namespace Chisel.Components
             return hashcode;
         }
 
-		public static int RenderPickingModels(ManagedSubMeshTriangleLookup.NeedToRenderForPicking needToRenderForPicking, int selectionIndexOffset, List<SelectionOffset> selectionOffsets)
+		/// <summary>
+		/// Whether picking can find its surfaces: only when the Scene view shows them. The renderer of the surfaces that
+		/// only cast shadows draws them with ForceShadowOnly, which shows nothing, so they can't be picked (a debug view
+		/// that shows them can be).
+		/// </summary>
+		internal bool IsPickable()
+		{
+			return IsRendered() && (debugVisualizationRenderer || (query & SurfaceDestinationFlags.Renderable) != 0);
+		}
+
+		/// <summary>
+		/// The renderers the picking pass draws, each with the selection index it starts at; returns the index after the
+		/// last. The caller releases each skipSelectionID to HashSetPool.
+		/// </summary>
+		internal static int GetPickingOffsets(ManagedSubMeshTriangleLookup.NeedToRenderForPicking needToRenderForPicking, int selectionIndexOffset, List<SelectionOffset> selectionOffsets)
 		{
 			var brushVisibilityLookup = ChiselUnityVisibilityManager.BrushVisibilityLookup;
-            
-            selectionOffsets.Clear();
-            var instance = ChiselModelManager.Instance;
+
+			selectionOffsets.Clear();
+			var instance = ChiselModelManager.Instance;
 			foreach (var model in instance.Models)
 			{
 				// a model can be destroyed a while before it is unregistered
@@ -1226,55 +1240,45 @@ namespace Chisel.Components
 					continue;
 
 				var generated = model.generated;
-				foreach (var renderObjects in generated.renderables)
-				{
-					if (renderObjects == null || !renderObjects.IsRendered())
-						continue;
-
-					var selectionIndexDescriptions = renderObjects.GetSelectionIndexDescriptionArray();
-                    if (selectionIndexDescriptions.Length == 0)
-                        continue;
-
-					var skipSelectionID = HashSetPool<int>.Get();
-					var hashcode = GetInvisibleEntityIDs(brushVisibilityLookup, needToRenderForPicking, selectionIndexDescriptions, skipSelectionID);
-                                       
-					selectionOffsets.Add(new SelectionOffset
-					{
-						offset = selectionIndexOffset,
-						hashcode = hashcode,
-						renderObjects = renderObjects,
-						skipSelectionID = skipSelectionID,
-						selectionIndexDescriptions = selectionIndexDescriptions
-					});
-
-					selectionIndexOffset += selectionIndexDescriptions.Length;
-				}
-
-				foreach (var renderObjects in generated.debugVisualizationRenderables)
-				{
-					if (renderObjects == null || !renderObjects.IsRendered())
-						continue;
-
-					var selectionIndexDescriptions = renderObjects.GetSelectionIndexDescriptionArray();
-					if (selectionIndexDescriptions.Length == 0)
-						continue;
-
-					var skipSelectionID = HashSetPool<int>.Get();
-					var hashcode = GetInvisibleEntityIDs(brushVisibilityLookup, needToRenderForPicking, selectionIndexDescriptions, skipSelectionID);
-					
-					selectionOffsets.Add(new SelectionOffset
-					{
-						offset = selectionIndexOffset,
-						hashcode = hashcode,
-						renderObjects = renderObjects,
-						skipSelectionID = skipSelectionID,
-						selectionIndexDescriptions = selectionIndexDescriptions
-					});
-
-					selectionIndexOffset += selectionIndexDescriptions.Length;
-				}
+				selectionIndexOffset = AddPickingOffsets(generated.renderables, brushVisibilityLookup, needToRenderForPicking, selectionIndexOffset, selectionOffsets);
+				selectionIndexOffset = AddPickingOffsets(generated.debugVisualizationRenderables, brushVisibilityLookup, needToRenderForPicking, selectionIndexOffset, selectionOffsets);
 			}
+			return selectionIndexOffset;
+		}
 
+		static int AddPickingOffsets(ChiselRenderObjects[] renderables, BrushVisibilityLookup brushVisibilityLookup, ManagedSubMeshTriangleLookup.NeedToRenderForPicking needToRenderForPicking, int selectionIndexOffset, List<SelectionOffset> selectionOffsets)
+		{
+			if (renderables == null)
+				return selectionIndexOffset;
+			foreach (var renderObjects in renderables)
+			{
+				if (renderObjects == null || !renderObjects.IsPickable())
+					continue;
+
+				var selectionIndexDescriptions = renderObjects.GetSelectionIndexDescriptionArray();
+				if (selectionIndexDescriptions.Length == 0)
+					continue;
+
+				var skipSelectionID = HashSetPool<int>.Get();
+				var hashcode = GetInvisibleEntityIDs(brushVisibilityLookup, needToRenderForPicking, selectionIndexDescriptions, skipSelectionID);
+
+				selectionOffsets.Add(new SelectionOffset
+				{
+					offset = selectionIndexOffset,
+					hashcode = hashcode,
+					renderObjects = renderObjects,
+					skipSelectionID = skipSelectionID,
+					selectionIndexDescriptions = selectionIndexDescriptions
+				});
+
+				selectionIndexOffset += selectionIndexDescriptions.Length;
+			}
+			return selectionIndexOffset;
+		}
+
+		public static int RenderPickingModels(ManagedSubMeshTriangleLookup.NeedToRenderForPicking needToRenderForPicking, int selectionIndexOffset, List<SelectionOffset> selectionOffsets)
+		{
+			selectionIndexOffset = GetPickingOffsets(needToRenderForPicking, selectionIndexOffset, selectionOffsets);
             foreach (var selectionOffset in selectionOffsets)
 			{
 				var renderObjects = selectionOffset.renderObjects;
