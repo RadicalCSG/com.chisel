@@ -78,6 +78,29 @@ namespace Chisel.Components.Tests
             return (model, box);
         }
 
+        // A box of one material in the model
+        static ChiselBoxComponent AddBox(ChiselModelComponent model, float3 min, float3 max, Material material)
+        {
+            var boxObject = new GameObject("Box");
+            boxObject.transform.SetParent(model.transform, false);
+            var box = boxObject.AddComponent<ChiselBoxComponent>();
+            box.Min = min;
+            box.Max = max;
+            Update();
+            foreach (var surface in box.SurfaceDefinition.surfaces)
+                surface.SetMaterial(material);
+            box.OnValidate();
+            Update();
+            return box;
+        }
+
+        ChiselModelComponent EmptyModel()
+        {
+            var root = new GameObject("Collider layer model");
+            roots.Add(root);
+            return root.AddComponent<ChiselModelComponent>();
+        }
+
         // The layers the model's colliders are on, with their vertex count on each
         static Dictionary<int, int> VerticesByLayer(ChiselModelComponent model)
         {
@@ -147,6 +170,64 @@ namespace Chisel.Components.Tests
             Update();
             Assert.That(VerticesByLayer(model), Is.EqualTo(new Dictionary<int, int> { { model.gameObject.layer, allVertices } }));
             Assert.That(System.Array.TrueForAll(model.generated.colliderLayerContainers, c => !c), "the water layer's container is gone");
+        }
+
+        // What a ray down onto a point hits, with only these layers
+        static bool HitsDown(float3 point, int layerMask, out RaycastHit hit)
+        {
+            Physics.SyncTransforms();
+            return Physics.Raycast(new Vector3(point.x, point.y + 5, point.z), Vector3.down, out hit, 10, layerMask);
+        }
+
+        // Physics with a layer mask finds a surface's colliders on its layer, and only there
+        [Test]
+        public void ARaycastWithALayerMask_HitsOnlyTheCollidersOnThatLayer()
+        {
+            MaterialOnLayer("water", kWaterLayer, out var water);
+            MaterialOnLayer("plain", SurfaceDestinationParameters.kNoColliderLayer, out var plain);
+            var model = EmptyModel();
+            AddBox(model, new float3(0, 0, 0), new float3(1, 1, 1), water);
+            AddBox(model, new float3(3, 0, 0), new float3(4, 1, 1), plain);
+            var waterMask = 1 << kWaterLayer;
+            var modelMask = 1 << model.gameObject.layer;
+            var onWater = new float3(0.5f, 0, 0.5f);
+            var onPlain = new float3(3.5f, 0, 0.5f);
+
+            Assert.That(HitsDown(onWater, waterMask, out var hit), Is.True, "the water box, on the water layer");
+            Assert.That(hit.point.y, Is.EqualTo(1).Within(1e-3f), "its top");
+            Assert.That(HitsDown(onWater, modelMask, out _), Is.False, "the water box isn't on the model's layer");
+            Assert.That(HitsDown(onPlain, waterMask, out _), Is.False, "the plain box isn't on the water layer");
+            Assert.That(HitsDown(onPlain, modelMask, out hit), Is.True, "the plain box, on the model's layer");
+            Assert.That(hit.point.y, Is.EqualTo(1).Within(1e-3f), "its top");
+        }
+
+        // An edit elsewhere keeps the colliders it didn't touch as they are, the ones on a layer too: they are found by
+        // their layer as well as their physics material and chunk
+        [Test]
+        public void AnEditElsewhere_KeepsTheCollidersOnALayer()
+        {
+            MaterialOnLayer("water", kWaterLayer, out var water);
+            MaterialOnLayer("plain", SurfaceDestinationParameters.kNoColliderLayer, out var plain);
+            var model = EmptyModel();
+            AddBox(model, new float3(0, 0, 0), new float3(1, 1, 1), water);
+            // far enough to be in another chunk of space (PrepareSubSections.ChunkOf)
+            var far = AddBox(model, new float3(40, 0, 0), new float3(41, 1, 1), plain);
+
+            var onWater = System.Array.Find(model.generated.colliders, c => c != null && c.colliderLayer > 0);
+            Assume.That(onWater, Is.Not.Null, "the water box's collider");
+            var meshCollider = onWater.meshCollider;
+            var mesh = onWater.sharedMesh;
+
+            far.Max = new float3(41, 2, 1);
+            far.OnValidate();
+            Update();
+
+            Assert.That(model.generated.colliders, Has.Member(onWater), "the same collider");
+            Assert.That(onWater.meshCollider, Is.SameAs(meshCollider));
+            Assert.That(onWater.sharedMesh, Is.SameAs(mesh), "its mesh, not built again");
+            Assert.That(onWater.meshCollider.gameObject.layer, Is.EqualTo(kWaterLayer));
+            Assert.That(HitsDown(new float3(40.5f, 0, 0.5f), 1 << model.gameObject.layer, out var hit) && hit.point.y > 1.5f, Is.True,
+                        "the edited box was built again");
         }
     }
 }
