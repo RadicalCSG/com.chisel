@@ -87,6 +87,9 @@ namespace Chisel.Components
 
 		public GameObject              generatedDataContainer;
         public GameObject              colliderContainer;
+        // The colliders of the surfaces that put them on a layer of their own, by layer: a layer belongs to a GameObject.
+        // Made when a collider needs it, removed when none does; null where there is none.
+        public GameObject[]            colliderLayerContainers;
         public ChiselColliderObjects[] colliders;
 
         public ChiselRenderObjects[]   renderables;
@@ -181,6 +184,12 @@ namespace Chisel.Components
                 debugVisualizationRenderables = null;
             }
             ChiselObjectUtility.SafeDestroy(colliderContainer, ignoreHierarchyEvents: true);
+            if (colliderLayerContainers != null)
+            {
+                foreach (var layerContainer in colliderLayerContainers)
+                    ChiselObjectUtility.SafeDestroy(layerContainer, ignoreHierarchyEvents: true);
+                colliderLayerContainers = null;
+            }
             ChiselObjectUtility.SafeDestroy(generatedDataContainer, ignoreHierarchyEvents: true);
             generatedDataContainer  = null;
             colliderContainer       = null;
@@ -216,6 +225,11 @@ namespace Chisel.Components
                 }
             }
             ChiselObjectUtility.SafeDestroyWithUndo(colliderContainer, ignoreHierarchyEvents: true);
+            if (colliderLayerContainers != null)
+            {
+                foreach (var layerContainer in colliderLayerContainers)
+                    ChiselObjectUtility.SafeDestroyWithUndo(layerContainer, ignoreHierarchyEvents: true);
+            }
             ChiselObjectUtility.SafeDestroyWithUndo(generatedDataContainer, ignoreHierarchyEvents: true);
         }
 
@@ -243,6 +257,11 @@ namespace Chisel.Components
                 }
             }
             ChiselObjectUtility.RemoveContainerFlags(colliderContainer);
+            if (colliderLayerContainers != null)
+            {
+                foreach (var layerContainer in colliderLayerContainers)
+                    ChiselObjectUtility.RemoveContainerFlags(layerContainer);
+            }
             ChiselObjectUtility.RemoveContainerFlags(generatedDataContainer);
         }
 
@@ -335,6 +354,53 @@ namespace Chisel.Components
         // Whether the picking that changes is only the generated objects', which says nothing about the brushes
         public static bool KeepingOutOfPicking { get; private set; }
 
+        // The GameObject a collider of this layer (SurfaceDestinationParameters.colliderLayer) goes on: the collider
+        // container on the model's layer, one of its own for any other
+        GameObject ColliderContainerOf(byte colliderLayer, GameObjectState gameObjectState)
+        {
+            if (colliderLayer == 0)
+                return colliderContainer;
+            var layer = colliderLayer - 1;
+            colliderLayerContainers ??= new GameObject[32];
+            var container = colliderLayerContainers[layer];
+            if (!container)
+            {
+                var name = LayerMask.LayerToName(layer);
+                container = ChiselObjectUtility.CreateGameObject($"{kGeneratedMeshColliderName} {(string.IsNullOrEmpty(name) ? layer.ToString() : name)}",
+                                                                generatedDataContainer.transform, gameObjectState);
+                colliderLayerContainers[layer] = container;
+            }
+            UpdateColliderLayerContainer(container, gameObjectState, layer);
+            return container;
+        }
+
+        static void UpdateColliderLayerContainer(GameObject container, GameObjectState gameObjectState, int layer)
+        {
+            ChiselObjectUtility.UpdateContainerFlags(container, gameObjectState);
+            if (container.layer != layer)
+                container.layer = layer;
+        }
+
+        // A layer's container goes once none of the colliders is on it
+        void RemoveUnusedColliderLayerContainers()
+        {
+            if (colliderLayerContainers == null)
+                return;
+            var used = 0u;
+            foreach (var collider in colliders)
+            {
+                if (collider != null && collider.colliderLayer > 0)
+                    used |= 1u << (collider.colliderLayer - 1);
+            }
+            for (int layer = 0; layer < colliderLayerContainers.Length; layer++)
+            {
+                if ((used & (1u << layer)) != 0 || !colliderLayerContainers[layer])
+                    continue;
+                ChiselObjectUtility.SafeDestroy(colliderLayerContainers[layer], ignoreHierarchyEvents: true);
+                colliderLayerContainers[layer] = null;
+            }
+        }
+
         GameObjectState UpdateContainers(GameObject modelGameObject, bool force = false)
         {
             var modelTransform  = modelGameObject.transform;
@@ -353,6 +419,16 @@ namespace Chisel.Components
             ChiselObjectUtility.ResetTransform(containerTransform, requiredParent: modelTransform);
             ChiselObjectUtility.ResetTransform(colliderTransform, requiredParent: containerTransform);
             ChiselObjectUtility.UpdateContainerFlags(colliderContainer, gameObjectState);
+            if (colliderLayerContainers != null)
+            {
+                for (int layer = 0; layer < colliderLayerContainers.Length; layer++)
+                {
+                    if (!colliderLayerContainers[layer])
+                        continue;
+                    ChiselObjectUtility.ResetTransform(colliderLayerContainers[layer].transform, requiredParent: containerTransform);
+                    UpdateColliderLayerContainer(colliderLayerContainers[layer], gameObjectState, layer);
+                }
+            }
 
             for (int i = 0; i < renderables.Length; i++)
             {
@@ -695,12 +771,12 @@ namespace Chisel.Components
                 Profiler.EndSample();
 
                 Profiler.BeginSample("new_ChiselPhysicsObjectUpdate");
-                // the existing colliders by physics material and chunk
-                var colliderOf = new System.Collections.Generic.Dictionary<(ulong, uint), int>(colliders.Length);
+                // the existing colliders by physics material, chunk and layer
+                var colliderOf = new System.Collections.Generic.Dictionary<(ulong, uint, byte), int>(colliders.Length);
                 for (int j = 0; j < colliders.Length; j++)
                 {
                     if (colliders[j] != null)
-                        colliderOf.TryAdd((colliders[j].surfaceParameter, colliders[j].chunk), j);
+                        colliderOf.TryAdd((colliders[j].surfaceParameter, colliders[j].chunk, colliders[j].colliderLayer), j);
                 }
                 for (int i = 0; i < meshUpdates.meshUpdatesColliders.Length; i++)
                 {
@@ -709,7 +785,7 @@ namespace Chisel.Components
                     var surfaceParameter = colliderMeshUpdate.objectIndex;
                     var colliderIndex = colliderMeshUpdate.colliderIndex;
 
-                    if (colliderOf.Remove((surfaceParameter, colliderMeshUpdate.chunk), out var existing))
+                    if (colliderOf.Remove((surfaceParameter, colliderMeshUpdate.chunk, colliderMeshUpdate.colliderLayer), out var existing))
                     {
                         colliderObjects[colliderIndex] = colliders[existing];
                         colliders[existing] = null;
@@ -717,7 +793,8 @@ namespace Chisel.Components
 
                     Profiler.BeginSample("Create.Colliders");
                     if (colliderObjects[colliderIndex] == null)
-                        colliderObjects[colliderIndex] = ChiselColliderObjects.Create(colliderContainer, surfaceParameter, colliderMeshUpdate.chunk);
+                        colliderObjects[colliderIndex] = ChiselColliderObjects.Create(ColliderContainerOf(colliderMeshUpdate.colliderLayer, gameObjectState),
+                                                                                      surfaceParameter, colliderMeshUpdate.chunk, colliderMeshUpdate.colliderLayer);
                     Profiler.EndSample();
 
                     var instance = colliderObjects[colliderIndex];
@@ -740,7 +817,7 @@ namespace Chisel.Components
                 {
                     foreach (var keptUpdate in meshUpdates.meshUpdatesKeptColliders)
                     {
-                        if (!colliderOf.Remove((keptUpdate.objectIndex, keptUpdate.chunk), out var found) ||
+                        if (!colliderOf.Remove((keptUpdate.objectIndex, keptUpdate.chunk, keptUpdate.colliderLayer), out var found) ||
                             colliders[found] == null || !colliders[found].IsValid())
                             found = -1;
                         if (found < 0)
@@ -772,6 +849,7 @@ namespace Chisel.Components
                 for (int i = 0; i < keptColliders.Count; i++)
                     colliders[colliderCount + i] = keptColliders[i];
                 ListPool<ChiselColliderObjects>.Release(keptColliders);
+                RemoveUnusedColliderLayerContainers();
                 Profiler.EndSample();
 
                 Profiler.BeginSample("Renderers.Update");

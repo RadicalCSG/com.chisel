@@ -97,6 +97,8 @@ namespace Chisel.Core
 		// seen, take a copy of their surface that is. The CSG does no work on them. Not saved.
 		[NonSerialized] internal bool excluded;
 		public SurfaceOutputFlags      OutputFlags      { get { var metadata = chiselMaterial.ResolveSurfaceMetadata(); return (metadata != null) ? metadata.outputFlags : SurfaceOutputFlags.Default; } }
+		// The layer its collider goes on; SurfaceDestinationParameters.kNoColliderLayer for the model's
+		public int                     ColliderLayer    { get { var metadata = chiselMaterial.ResolveSurfaceMetadata(); return (metadata != null) ? metadata.colliderLayer : SurfaceDestinationParameters.kNoColliderLayer; } }
 		public ChiselHotspotLayout     HotspotLayout    { get { var metadata = chiselMaterial.ResolveSurfaceMetadata(); return (metadata != null) ? metadata.hotspotLayout : null; } }
 		public System.Collections.Generic.List<Material> HotspotVariants { get { var metadata = chiselMaterial.ResolveSurfaceMetadata(); return (metadata != null) ? metadata.hotspotVariants : null; } }
 		public System.Collections.Generic.List<Material> HotspotSheets   { get { var metadata = chiselMaterial.ResolveSurfaceMetadata(); return (metadata != null) ? metadata.hotspotSheets : null; } }

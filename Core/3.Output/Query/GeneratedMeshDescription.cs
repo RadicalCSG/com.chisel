@@ -37,6 +37,9 @@ namespace Chisel.Core
         /// <value>For a collider: the chunk of space it covers (a collider is a mesh per physics material and chunk).</value>
         public UInt32		chunk;
 
+        /// <value>For a collider: the layer it goes on, plus one; 0 for the model's layer (<see cref="Chisel.Core.SurfaceDestinationParameters.colliderLayer"/>).</value>
+        public byte			colliderLayer;
+
         /// <value>A sub-mesh of a chunk's transparent decals' mesh (ChiselDecalMeshes.kTransparentDecals)</value>
         public bool			transparentDecals;
 
@@ -71,6 +74,7 @@ namespace Chisel.Core
             var description = (GeneratedMeshDescription)obj;
             return meshQuery		 == description.meshQuery &&
                    surfaceParameter	 == description.surfaceParameter &&
+                   colliderLayer	 == description.colliderLayer &&
                    subMeshQueryIndex == description.subMeshQueryIndex &&
                    meshQueryIndex	 == description.meshQueryIndex &&
                    geometryHashValue == description.geometryHashValue &&
@@ -86,6 +90,7 @@ namespace Chisel.Core
             hashCode = hashCode * -1521134295;
             hashCode = hashCode * -1521134295 + meshQuery.GetHashCode();
             hashCode = hashCode * -1521134295 + surfaceParameter.GetHashCode();
+            hashCode = hashCode * -1521134295 + colliderLayer;
             hashCode = hashCode * -1521134295 + (int)subMeshQueryIndex;
             hashCode = hashCode * -1521134295 + (int)meshQueryIndex;
             hashCode = hashCode * -1521134295 + (int)geometryHashValue;
@@ -100,6 +105,7 @@ namespace Chisel.Core
         {
             return	left.meshQuery			== right.meshQuery &&
                     left.surfaceParameter	== right.surfaceParameter &&
+                    left.colliderLayer		== right.colliderLayer &&
                     left.subMeshQueryIndex	== right.subMeshQueryIndex &&
                     left.meshQueryIndex		== right.meshQueryIndex &&
                     left.geometryHashValue	== right.geometryHashValue &&
@@ -113,6 +119,7 @@ namespace Chisel.Core
         {
             return	left.meshQuery			!= right.meshQuery ||
                     left.surfaceParameter	!= right.surfaceParameter ||
+                    left.colliderLayer		!= right.colliderLayer ||
                     left.subMeshQueryIndex	!= right.subMeshQueryIndex ||
                     left.meshQueryIndex		!= right.meshQueryIndex ||
                     left.geometryHashValue	!= right.geometryHashValue ||

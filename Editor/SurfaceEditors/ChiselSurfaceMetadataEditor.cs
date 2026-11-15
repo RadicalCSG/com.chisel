@@ -50,12 +50,14 @@ namespace Chisel.Editors
 			isDecalProp       = decalDefaultsProp?.FindPropertyRelative(nameof(ChiselDecalDefaults.isDecal));
 			overrideUVScaleProp = serializedObject.FindProperty(ChiselSurfaceMetadata.kOverrideUVScaleFieldName);
 			uvScaleProp         = serializedObject.FindProperty(ChiselSurfaceMetadata.kUVScaleFieldName);
+			colliderLayerProp   = serializedObject.FindProperty(ChiselSurfaceMetadata.kColliderLayerFieldName);
 		}
 
 		SerializedProperty decalDefaultsProp;
 		SerializedProperty isDecalProp;
 		SerializedProperty overrideUVScaleProp;
 		SerializedProperty uvScaleProp;
+		SerializedProperty colliderLayerProp;
 
 		internal void OnDisable()
 		{
@@ -69,6 +71,7 @@ namespace Chisel.Editors
 			isDecalProp = null;
 			overrideUVScaleProp = null;
 			uvScaleProp = null;
+			colliderLayerProp = null;
 		}
 
 		void OnDestroy() { OnDisable(); }
@@ -154,6 +157,47 @@ namespace Chisel.Editors
 				}
 			}
 			EditorGUI.indentLevel = prevIndent;
+		}
+
+		static readonly GUIContent kColliderLayerContents = new("Collider Layer", "The layer the colliders of surfaces with this material go on, so that they only collide with what that layer collides with (Project Settings > Physics). Model's Layer: the model's own layer");
+		const string kModelLayerName = "Model's Layer";
+
+		// The model's layer, then the layers that have a name
+		static (GUIContent[] names, int[] layers) LayerChoices()
+		{
+			var names  = new System.Collections.Generic.List<GUIContent> { new(kModelLayerName) };
+			var layers = new System.Collections.Generic.List<int> { SurfaceDestinationParameters.kNoColliderLayer };
+			for (int layer = 0; layer < 32; layer++)
+			{
+				var name = LayerMask.LayerToName(layer);
+				if (string.IsNullOrEmpty(name))
+					continue;
+				names.Add(new GUIContent($"{layer}: {name}"));
+				layers.Add(layer);
+			}
+			return (names.ToArray(), layers.ToArray());
+		}
+
+		void ColliderLayerGUI()
+		{
+			var (names, layers) = LayerChoices();
+			var current = colliderLayerProp.intValue;
+			var index = System.Array.IndexOf(layers, current);
+			if (index < 0)
+			{
+				// a layer that has lost its name is still shown as what it is
+				System.Array.Resize(ref names, names.Length + 1);
+				System.Array.Resize(ref layers, layers.Length + 1);
+				names[^1] = new GUIContent($"{current}");
+				layers[^1] = current;
+				index = layers.Length - 1;
+			}
+			EditorGUI.showMixedValue = colliderLayerProp.hasMultipleDifferentValues;
+			EditorGUI.BeginChangeCheck();
+			index = EditorGUILayout.Popup(kColliderLayerContents, index, names);
+			if (EditorGUI.EndChangeCheck())
+				colliderLayerProp.intValue = layers[index];
+			EditorGUI.showMixedValue = false;
 		}
 
 		static Material MaterialOf(UnityEngine.Object metadata)
@@ -414,6 +458,8 @@ namespace Chisel.Editors
 						if (isCollidable)
 						{
 							EditorGUILayout.PropertyField(physicsMaterialProp, true);
+							if (colliderLayerProp != null)
+								ColliderLayerGUI();
 						}
 						if (isRenderable && hotspotLayoutProp != null)
 						{

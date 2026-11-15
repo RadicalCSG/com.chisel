@@ -58,6 +58,10 @@ namespace Chisel.Core
 		public Vector2 uvScale = Vector2.one;
 		public const string kOverrideUVScaleFieldName = nameof(overrideUVScale);
 		public const string kUVScaleFieldName         = nameof(uvScale);
+		// The layer the colliders of surfaces with this material go on; SurfaceDestinationParameters.kNoColliderLayer for
+		// the model's layer
+		public int colliderLayer = SurfaceDestinationParameters.kNoColliderLayer;
+		public const string kColliderLayerFieldName = nameof(colliderLayer);
 
 
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -68,6 +72,7 @@ namespace Chisel.Core
 				uint physicsMaterialHashcode = (physicsMaterial != null) ? (uint)physicsMaterial.GetHashCode() : 0u;
 				uint hotspotLayoutHashcode   = (hotspotLayout != null) ? (uint)hotspotLayout.GetHashCode() : 0u;
 				var hash = math.hash(new uint4((uint)destinationFlags, (uint)outputFlags, physicsMaterialHashcode, hotspotLayoutHashcode));
+				hash = math.hash(new uint2(hash, (uint)colliderLayer));
 				if (hotspotVariants != null)
 				{
 					foreach (var variant in hotspotVariants)
