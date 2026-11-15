@@ -29,19 +29,23 @@ namespace Chisel.Core
         public ulong surfaceParameter;
         // the chunk of space of a collider or a render mesh
         public uint  chunk;
+        // a collider's layer, plus one; 0 for the model's (SurfaceDestinationParameters.colliderLayer)
+        public byte  colliderLayer;
         // what a render mesh's lightmap layout is made from: its baked lightmap stays valid while this does
         public uint  lightmapHashValue;
         public ChiselMeshType type;
         public SubMeshSection subMeshSection;
 	}
     
-    // A mesh of a tree: its query, its material and, for a collider, its chunk
+    // A mesh of a tree: its query, its material and, for a collider, its layer and chunk
     public struct RenderMeshKey : System.IEquatable<RenderMeshKey>
     {
         public int   query;
         public ulong surfaceParameter;
         public uint  chunk;
-        public bool Equals(RenderMeshKey other) => query == other.query && surfaceParameter == other.surfaceParameter && chunk == other.chunk;
+        public byte  colliderLayer;
+        public bool Equals(RenderMeshKey other) => query == other.query && surfaceParameter == other.surfaceParameter && chunk == other.chunk &&
+                                                   colliderLayer == other.colliderLayer;
 
         // a debug visualization's query can be a render or collider query too: it is told apart by this bit
         const int kDebugVisualization = 1 << 30;
@@ -53,10 +57,11 @@ namespace Chisel.Core
             {
                 query            = (int)meshQuery.LayerQuery | (debug ? kDebugVisualization : 0),
                 surfaceParameter = description.surfaceParameter,
-                chunk            = description.chunk
+                chunk            = description.chunk,
+                colliderLayer    = description.colliderLayer
             };
         }
-        public override int GetHashCode() => (int)Unity.Mathematics.math.hash(new Unity.Mathematics.uint4((uint)query, (uint)surfaceParameter, (uint)(surfaceParameter >> 32), chunk));
+        public override int GetHashCode() => (int)Unity.Mathematics.math.hash(new Unity.Mathematics.uint4((uint)query ^ ((uint)colliderLayer << 24), (uint)surfaceParameter, (uint)(surfaceParameter >> 32), chunk));
     }
 
     [BurstCompile(CompileSynchronously = true)]
@@ -231,6 +236,7 @@ namespace Chisel.Core
 
                     var surfaceParameter = meshDescriptions[subMeshSection.startIndex].surfaceParameter;
                     var chunk            = meshDescriptions[subMeshSection.startIndex].chunk;
+                    var colliderLayer    = meshDescriptions[subMeshSection.startIndex].colliderLayer;
                     if (keptSections.IsCreated && i < keptSections.Length && keptSections[i])
                     {
                         meshUpdatesKeptColliders.Add(new ChiselMeshUpdate
@@ -240,6 +246,7 @@ namespace Chisel.Core
                             meshIndex      = -1,
                             objectIndex    = surfaceParameter,
                             chunk          = chunk,
+                            colliderLayer  = colliderLayer,
                             type           = ChiselMeshType.Collider,
                             subMeshSection = subMeshSection
                         });
@@ -252,6 +259,7 @@ namespace Chisel.Core
                         meshIndex      = meshIndex,
                         objectIndex    = surfaceParameter,
                         chunk          = chunk,
+                        colliderLayer  = colliderLayer,
                         type           = ChiselMeshType.Collider,
 						subMeshSection = subMeshSection
 					};

@@ -36,7 +36,8 @@ namespace Chisel.Core
                 parameters       = new SurfaceDestinationParameters
 				                   {
 										parameter1 = (surface.RenderMaterial == null) ? 0UL : UnityEngine.EntityId.ToULong(surface.RenderMaterial.GetEntityId()),
-										parameter2 = (surface.PhysicsMaterial == null) ? 0UL : UnityEngine.EntityId.ToULong(surface.PhysicsMaterial.GetEntityId())
+										parameter2 = (surface.PhysicsMaterial == null) ? 0UL : UnityEngine.EntityId.ToULong(surface.PhysicsMaterial.GetEntityId()),
+										colliderLayer = SurfaceDestinationParameters.ColliderLayerValue(surface.ColliderLayer)
 				},
 				destinationFlags = surface.DestinationFlags,
 				outputFlags	     = surface.OutputFlags,

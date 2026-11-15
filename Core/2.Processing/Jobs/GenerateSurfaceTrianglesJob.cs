@@ -49,6 +49,8 @@ namespace Chisel.Core
 				var diff = x.surfaceParameter.CompareTo(y.surfaceParameter);
 				if (diff != 0)
 					return diff;
+				if (x.colliderLayer != y.colliderLayer)
+					return x.colliderLayer - y.colliderLayer;
 				return x.surfaceIndex - y.surfaceIndex;
 			}
 		}
@@ -789,6 +791,8 @@ namespace Chisel.Core
 				var surfaceParameterIndex = (meshQuery.LayerParameterIndex >= SurfaceParameterIndex.Parameter1 &&
 												meshQuery.LayerParameterIndex <= SurfaceParameterIndex.MaxParameterIndex) ?
 												(int)meshQuery.LayerParameterIndex - 1 : -1;
+				// colliders are split by their layer as well as by their physics material
+				var byColliderLayer = meshQuery.LayerParameterIndex == SurfaceParameterIndex.PhysicsMaterial;
 
 				queryList.Clear();
 				for (int s = 0; s < surfaceBuffers.Length; s++)
@@ -810,6 +814,7 @@ namespace Chisel.Core
 					{
 						surfaceIndex      = s,
 						surfaceParameter  = surfaceParameterIndex < 0 ? 0 : buffer.destinationParameters.parameters[surfaceParameterIndex],
+						colliderLayer     = byColliderLayer ? buffer.destinationParameters.colliderLayer : 0,
 						vertexCount       = buffer.vertexCount,
 						indexCount        = buffer.indexCount,
 						surfaceHashValue  = buffer.surfaceHashValue,

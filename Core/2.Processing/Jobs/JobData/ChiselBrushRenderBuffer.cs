@@ -303,6 +303,8 @@ namespace Chisel.Core
     {
         public int	surfaceIndex;
         public ulong	surfaceParameter;
+        // a collider query's: SurfaceDestinationParameters.colliderLayer; 0 for the others (an int: a byte would leave padding)
+        public int	colliderLayer;
 
         public int	vertexCount;
         public int	indexCount;

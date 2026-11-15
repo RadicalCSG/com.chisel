@@ -195,5 +195,14 @@ namespace Chisel.Core
 
         // .. this could be extended in the future, when necessary
         public SurfaceParameterValues parameters;
+
+		/// <value>The layer the surface's collider goes on, plus one; 0 puts it on the model's layer. Colliders are split by
+		/// it as well as by <see cref="parameter2"/>.</value>
+		public byte				colliderLayer;
+
+		public const int kNoColliderLayer = -1;
+
+		/// <summary>The stored value of a collider layer (0..31), or of <see cref="kNoColliderLayer"/></summary>
+		public static byte ColliderLayerValue(int layer) => (layer >= 0 && layer < 32) ? (byte)(layer + 1) : (byte)0;
     }
 }
