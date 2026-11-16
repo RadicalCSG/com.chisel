@@ -95,7 +95,6 @@ namespace Chisel.Core.Tests
 
 		public float4[] TreePlanesOf(ContentsSceneNode brush) => byNode[brush].treePlanes;
 		public bool     IsCarving(ContentsSceneNode brush)    => byNode[brush].carving;
-		public int      OrderOf(ContentsSceneNode brush)      => byNode[brush].order;
 
 		public bool IsFilled(float3 point, int judgingContents)
 		{

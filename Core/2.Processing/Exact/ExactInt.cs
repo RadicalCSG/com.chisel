@@ -103,7 +103,7 @@ namespace Chisel.Core
         public static bool Equals(Int128 a, Int128 b) => a.lo == b.lo && a.hi == b.hi;
     }
 
-    // 192 bit two's complement: the accumulator for the side-of-plane predicate, whose terms are 128 x 64 bit products.
+    // 192 bit two's complement: an exact corner's homogeneous coordinates (ExactVertex), and sums of 128 x 64 bit products.
     struct Int192
     {
         public ulong l0, l1, l2;
@@ -119,6 +119,38 @@ namespace Chisel.Core
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public int Sign() => IsNegative ? -1 : ((l0 | l1 | l2) == 0 ? 0 : 1);
+
+        public bool IsZero
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            get => (l0 | l1 | l2) == 0;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static Int192 FromLong(long value)
+        {
+            ulong fill = value < 0 ? ulong.MaxValue : 0UL;
+            return new Int192((ulong)value, fill, fill);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static Int192 Sub(Int192 a, Int192 b) => Add(a, Negate(b));
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool Equals(Int192 a, Int192 b) => a.l0 == b.l0 && a.l1 == b.l1 && a.l2 == b.l2;
+
+        // Nearest-ish double: a few roundings, so the relative error is below 2^-51. Only ever used by filters, whose error
+        // bounds allow for it.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public double ToDouble()
+        {
+            if (IsNegative)
+            {
+                var magnitude = Negate(this);
+                return -(((double)magnitude.l2 * 18446744073709551616.0 + (double)magnitude.l1) * 18446744073709551616.0 + (double)magnitude.l0);
+            }
+            return ((double)l2 * 18446744073709551616.0 + (double)l1) * 18446744073709551616.0 + (double)l0;
+        }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static Int192 Negate(Int192 v)
@@ -162,6 +194,34 @@ namespace Chisel.Core
             return negative ? Negate(result) : result;
         }
 
+        // value * 2^bits, 0 <= bits < 64; exact while the result fits
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static Int192 ShiftLeft(Int192 value, int bits)
+        {
+            if (bits == 0)
+                return value;
+            return new Int192(value.l0 << bits, (value.l1 << bits) | (value.l0 >> (64 - bits)), (value.l2 << bits) | (value.l1 >> (64 - bits)));
+        }
+
+        // Signed 128 x 128, truncated to 192 bits: exact while |x * y| < 2^191, which the callers' bounds guarantee.
+        public static Int192 Mul(Int128 x, Int128 y)
+        {
+            bool negative = x.IsNegative != y.IsNegative;
+            var a = x.IsNegative ? Int128.Negate(x) : x;
+            var b = y.IsNegative ? Int128.Negate(y) : y;
+            ulong h00 = ExactMath.MulHigh(a.lo, b.lo, out ulong p00);
+            ulong h01 = ExactMath.MulHigh(a.lo, b.hi, out ulong p01);
+            ulong h10 = ExactMath.MulHigh(a.hi, b.lo, out ulong p10);
+            ulong p11 = a.hi * b.hi;    // only its low 64 bits reach the third limb
+            ulong r1 = h00 + p01;
+            ulong c1 = r1 < h00 ? 1UL : 0UL;
+            ulong r1b = r1 + p10;
+            c1 += r1b < r1 ? 1UL : 0UL;
+            ulong r2 = h01 + h10 + p11 + c1;
+            var result = new Int192(p00, r1b, r2);
+            return negative ? Negate(result) : result;
+        }
+
         // Back to 128 bits. Only called where the value is known to fit; `fits` reports it anyway, so a violated bound
         // is a counted failure instead of a silently wrong vertex.
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -176,7 +236,8 @@ namespace Chisel.Core
 
     unsafe struct BigInt
     {
-        public const int kLimbs = 8;
+        // 640 bits: the exact orientation of three corners multiplies three of their Int192 coordinates (ExactVertex)
+        public const int kLimbs = 10;
         public fixed ulong limb[kLimbs];
 
         public bool IsNegative
@@ -212,6 +273,18 @@ namespace Chisel.Core
             result.limb[0] = value.lo;
             result.limb[1] = value.hi;
             for (int i = 2; i < kLimbs; i++)
+                result.limb[i] = fill;
+            return result;
+        }
+
+        public static BigInt FromInt192(Int192 value)
+        {
+            var result = new BigInt();
+            var fill = value.IsNegative ? ulong.MaxValue : 0UL;
+            result.limb[0] = value.l0;
+            result.limb[1] = value.l1;
+            result.limb[2] = value.l2;
+            for (int i = 3; i < kLimbs; i++)
                 result.limb[i] = fill;
             return result;
         }
@@ -254,7 +327,7 @@ namespace Chisel.Core
 
         public static BigInt Sub(BigInt a, BigInt b) => Add(a, Negate(b));
 
-        // Truncated to 512 bits; exact while the true product fits (every caller stays below 2^400).
+        // Truncated to kLimbs * 64 bits; exact while the true product fits (every caller stays below 2^530).
         public static BigInt Mul(BigInt a, BigInt b)
         {
             bool negative = a.IsNegative != b.IsNegative;
@@ -282,7 +355,7 @@ namespace Chisel.Core
             return negative ? Negate(result) : result;
         }
 
-        // value * 2^bits, bits >= 0, truncated to 512 bits.
+        // value * 2^bits, bits >= 0, truncated to kLimbs * 64 bits.
         public static BigInt ShiftLeft(BigInt value, int bits)
         {
             var result = new BigInt();

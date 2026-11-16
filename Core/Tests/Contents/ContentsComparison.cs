@@ -24,8 +24,6 @@ namespace Chisel.Core.Tests
 		{
 			public ContentsSceneNode brush;
 			public int    facing;     // +1 drawn along the sampled plane's normal, -1 against it
-			public int    order;      // the brush's place in the scene: of coplanar faces the later brush's draws
-			public bool   carving;    // a carving brush's wall: against it the tie order decides
 			public bool Equals(Face other) => brush == other.brush && facing == other.facing;
 			public override bool Equals(object obj) => obj is Face other && Equals(other);
 			public override int GetHashCode() => ((brush?.GetHashCode() ?? 0) * 3) + facing;
@@ -218,7 +216,7 @@ namespace Chisel.Core.Tests
 					var facing = verdict == ContentsFaceVerdict.FacingOut ? 1 : -1;
 					if (!sameWay)
 						facing = -facing;
-					expected.Add(new Face { brush = brush, facing = facing, order = oracle.OrderOf(brush), carving = oracle.IsCarving(brush) });
+					expected.Add(new Face { brush = brush, facing = facing });
 				}
 			}
 			return expected;
@@ -314,18 +312,7 @@ namespace Chisel.Core.Tests
 			var candidates = Distinct(expected, facing);
 			if (candidates.Count < 2)
 				return candidates;
-			// between brushes that don't carve, the later brush's face (or any of its type's)
-			if (!candidates.Exists(candidate => candidate.carving))
-			{
-				var latest = candidates[0];
-				foreach (var candidate in candidates)
-				{
-					if (candidate.order > latest.order)
-						latest = candidate;
-				}
-				return candidates.FindAll(candidate => candidate.brush.contents == latest.brush.contents);
-			}
-			// against a carving brush's wall, the tie order
+			// the faces of the type that wins the tie, whichever brush comes later; any of them
 			var winner = candidates[0].brush.contents;
 			foreach (var candidate in candidates)
 			{

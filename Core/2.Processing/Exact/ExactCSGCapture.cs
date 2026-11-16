@@ -113,10 +113,10 @@ namespace Chisel.Core
                         part.positions = new float3[vertexCount];
                         for (int v = 0; v < vertexCount; v++)
                         {
-                            var x = reader.Read<Int128>();
-                            var y = reader.Read<Int128>();
-                            var z = reader.Read<Int128>();
-                            var w = reader.Read<Int128>();
+                            var x = reader.Read<Int192>();
+                            var y = reader.Read<Int192>();
+                            var z = reader.Read<Int192>();
+                            var w = reader.Read<Int192>();
                             part.vertices[v]  = ExactVertex.FromHomogeneous(x, y, z, w);
                             part.positions[v] = reader.Read<float3>();
                         }

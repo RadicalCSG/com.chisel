@@ -3,6 +3,8 @@ using System.Runtime.CompilerServices;
 
 namespace Chisel.Core
 {
+    // A plane a x + b y + c z + w = 0 over points measured in grid steps of 1 / kPointScale m (ExactVertex keeps its
+    // points in metres: Intersect and Side take the difference into account)
     struct ExactPlane
     {
         public const double kNormalScale  = 1048576.0;      // 2^20: a snapped plane's a, b, c are its unit normal times this
@@ -10,11 +12,20 @@ namespace Chisel.Core
         public const double kMaxDistance  = 16777216.0;     // 2^24, |d| of a unit plane
         public const long   kMaxNormal    = 1L << 32;
         public const long   kMaxW         = 1L << 56;
+        // A plane made from a brush's snapped corners (FromPoints) has |a|, |b|, |c| below this, and |w| below 2^88
+        public const long   kMaxPointNormal = 1L << 48;
+        // the grid a brush's corners are snapped to (FromPoints), the same as kOffsetScale, and the unit of every plane
+        public const double kPointScale   = 16384.0;
+        public const int    kPointShift   = 14;     // kPointScale = 2^kPointShift
 
-        public long a, b, c, w;
+        public long a, b, c;
+        public Int128 w;
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public ExactPlane(long a, long b, long c, long w) { this.a = a; this.b = b; this.c = c; this.w = w; }
+        public ExactPlane(long a, long b, long c, long w) { this.a = a; this.b = b; this.c = c; this.w = Int128.FromLong(w); }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public ExactPlane(long a, long b, long c, Int128 w) { this.a = a; this.b = b; this.c = c; this.w = w; }
 
         public bool IsValid
         {
@@ -23,7 +34,7 @@ namespace Chisel.Core
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public ExactPlane Flipped() => new ExactPlane(-a, -b, -c, -w);
+        public ExactPlane Flipped() => new ExactPlane(-a, -b, -c, Int128.Negate(w));
 
         // Round half away from zero, so Quantize(-p) == -Quantize(p) exactly. Values at or above 2^52 are integers
         // already, and adding 0.5 to them would round, so they are only truncated.
@@ -44,9 +55,10 @@ namespace Chisel.Core
             if (!(Math.Abs(d) <= kMaxDistance))
                 return default;
             // w is the snapped offset in the normal's scale: an integer, since kNormalScale is a multiple of kOffsetScale
+            // over points in grid steps the offset is kPointScale times larger
             var plane = new ExactPlane(RoundHalfAway(nx * kNormalScale), RoundHalfAway(ny * kNormalScale),
                                        RoundHalfAway(nz * kNormalScale),
-                                       RoundHalfAway(d * kOffsetScale) * (long)(kNormalScale / kOffsetScale));
+                                       Int128.Mul(RoundHalfAway(d * kOffsetScale) * (long)(kNormalScale / kOffsetScale), 1L << kPointShift));
             return plane;
         }
 
@@ -61,8 +73,64 @@ namespace Chisel.Core
             double scale = 1;
             while (largest * scale >= 4294967296.0) scale *= 0.5;   // 2^32
             while (largest * scale <  2147483648.0) scale *= 2.0;   // 2^31
-            // |w| = |d| * scale <= kMaxDistance * largest * scale < 2^24 * 2^32 = kMaxW
-            return new ExactPlane(RoundHalfAway(nx * scale), RoundHalfAway(ny * scale), RoundHalfAway(nz * scale), RoundHalfAway(d * scale));
+            // |w| = |d| * scale <= kMaxDistance * largest * scale < 2^24 * 2^32 = kMaxW, then in grid steps
+            return new ExactPlane(RoundHalfAway(nx * scale), RoundHalfAway(ny * scale), RoundHalfAway(nz * scale),
+                                  Int128.Mul(RoundHalfAway(d * scale), 1L << kPointShift));
+        }
+
+        // A corner snapped to the grid of 1 / kPointScale, in tree space: rounded half away from zero, so a corner and its
+        // mirror image snap alike. False when it lies outside the world.
+        public static bool SnapPoint(double x, double y, double z, out ExactPoint point)
+        {
+            point = default;
+            const double limit = kMaxDistance * kPointScale;   // 2^38
+            x *= kPointScale; y *= kPointScale; z *= kPointScale;
+            if (!(Math.Abs(x) <= limit && Math.Abs(y) <= limit && Math.Abs(z) <= limit))
+                return false;
+            point = new ExactPoint(RoundHalfAway(x), RoundHalfAway(y), RoundHalfAway(z));
+            return true;
+        }
+
+        // The plane through three snapped corners, exactly: its normal is (p1 - p0) x (p2 - p0) divided by the greatest
+        // common divisor of its components, and w = -n.p0. Points that lie in one plane then give the same plane, whichever
+        // three of them it is made from. Invalid when the points lie on one line, or when the normal reaches
+        // kMaxPointNormal (edges longer than about 700 m).
+        public static ExactPlane FromPoints(in ExactPoint p0, in ExactPoint p1, in ExactPoint p2)
+        {
+            long ux = p1.x - p0.x, uy = p1.y - p0.y, uz = p1.z - p0.z;
+            long vx = p2.x - p0.x, vy = p2.y - p0.y, vz = p2.z - p0.z;
+            // |u|, |v| < 2^39, so the products stay below 2^78
+            var nx = Int128.DifferenceOfProducts(uy, vz, uz, vy);
+            var ny = Int128.DifferenceOfProducts(uz, vx, ux, vz);
+            var nz = Int128.DifferenceOfProducts(ux, vy, uy, vx);
+            if (!FitsLong(nx, out long a) || !FitsLong(ny, out long b) || !FitsLong(nz, out long c) || (a | b | c) == 0)
+                return default;
+            long divisor = (long)GreatestCommonDivisor(GreatestCommonDivisor(ExactMath.Magnitude(a), ExactMath.Magnitude(b)), ExactMath.Magnitude(c));
+            a /= divisor; b /= divisor; c /= divisor;
+            if (ExactMath.Magnitude(a) >= kMaxPointNormal || ExactMath.Magnitude(b) >= kMaxPointNormal || ExactMath.Magnitude(c) >= kMaxPointNormal)
+                return default;
+            // |n| < 2^48 and |p0| <= 2^38, so |w| < 3 * 2^86
+            var w = Int128.Negate(Int128.Add(Int128.Add(Int128.Mul(a, p0.x), Int128.Mul(b, p0.y)), Int128.Mul(c, p0.z)));
+            return new ExactPlane(a, b, c, w);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        static bool FitsLong(Int128 value, out long result)
+        {
+            result = (long)value.lo;
+            ulong extension = result < 0 ? ulong.MaxValue : 0UL;
+            return value.hi == extension && result != long.MinValue;
+        }
+
+        static ulong GreatestCommonDivisor(ulong x, ulong y)
+        {
+            while (y != 0)
+            {
+                ulong t = x % y;
+                x = y;
+                y = t;
+            }
+            return x;
         }
         // The largest normal component, 0 = x, 1 = y, 2 = z; ties go to the lowest axis. Decides the projection used for
         // 2D orientation, and nothing else.
@@ -76,9 +144,18 @@ namespace Chisel.Core
         }
     }
 
+    // A corner snapped to the grid of 1 / ExactPlane.kPointScale, in grid steps
+    struct ExactPoint
+    {
+        public long x, y, z;
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public ExactPoint(long x, long y, long z) { this.x = x; this.y = y; this.z = z; }
+    }
+
     struct ExactVertex
     {
-        public Int128 X, Y, Z, W;
+        public Int192 X, Y, Z, W;
         public double Xd, Yd, Zd, Wd;   // the same, converted with relative error below 2^-52 (filters only)
         public int    signW;            // -1 or 1
 
@@ -96,7 +173,8 @@ namespace Chisel.Core
         // Invalid (signW == 0) when the three normals are linearly dependent: the planes meet in no single point.
         public static ExactVertex Intersect(in ExactPlane p1, in ExactPlane p2, in ExactPlane p3)
         {
-            // Cofactors of the normal matrix N (rows = planes). Each is a difference of two 64 bit products, <= 2^65.
+            // Cofactors of the normal matrix N (rows = planes): differences of two products of normal components, which are
+            // below 2^48 (FromPoints) or 2^32 (the others), so below 2^97.
             var c11 = Int128.DifferenceOfProducts(p2.b, p3.c, p3.b, p2.c);
             var c12 = Int128.DifferenceOfProducts(p3.a, p2.c, p2.a, p3.c);
             var c13 = Int128.DifferenceOfProducts(p2.a, p3.b, p3.a, p2.b);
@@ -107,21 +185,24 @@ namespace Chisel.Core
             var c32 = Int128.DifferenceOfProducts(p2.a, p1.c, p1.a, p2.c);
             var c33 = Int128.DifferenceOfProducts(p1.a, p2.b, p2.a, p1.b);
 
-            var d = Int192.Add(Int192.Add(Int192.Mul(c11, p1.a), Int192.Mul(c12, p1.b)), Int192.Mul(c13, p1.c));
-            var W = d.ToInt128(out _);  // < 2^98.6 by the plane bounds
-            if (W.IsZero)
+            // det(N) < 3 * 2^97 * 2^48
+            var determinant = Int192.Add(Int192.Add(Int192.Mul(c11, p1.a), Int192.Mul(c12, p1.b)), Int192.Mul(c13, p1.c));
+            if (determinant.IsZero)
                 return default;
+            // the planes are over grid steps: X / det(N) is in grid steps, X / (det(N) kPointScale) in metres
+            var W = Int192.ShiftLeft(determinant, ExactPlane.kPointShift);
 
             // N x = -w  =>  x = -adj(N) w / det(N), adj(N) = transpose of the cofactor matrix
             var x = Int192.Add(Int192.Add(Int192.Mul(c11, p1.w), Int192.Mul(c21, p2.w)), Int192.Mul(c31, p3.w));
             var y = Int192.Add(Int192.Add(Int192.Mul(c12, p1.w), Int192.Mul(c22, p2.w)), Int192.Mul(c32, p3.w));
             var z = Int192.Add(Int192.Add(Int192.Mul(c13, p1.w), Int192.Mul(c23, p2.w)), Int192.Mul(c33, p3.w));
 
+            // each term below 2^97 * 2^88, so the sums stay below 2^187
             var vertex = new ExactVertex
             {
-                X = Int128.Negate(x.ToInt128(out _)),
-                Y = Int128.Negate(y.ToInt128(out _)),
-                Z = Int128.Negate(z.ToInt128(out _)),
+                X = Int192.Negate(x),
+                Y = Int192.Negate(y),
+                Z = Int192.Negate(z),
                 W = W
             };
             vertex.Xd = vertex.X.ToDouble();
@@ -134,7 +215,7 @@ namespace Chisel.Core
 
         // The point (X/W, Y/W, Z/W) from coordinates an Intersect made before (ExactCSGCapture keeps only these four).
         // Invalid when W is zero.
-        public static ExactVertex FromHomogeneous(Int128 X, Int128 Y, Int128 Z, Int128 W)
+        public static ExactVertex FromHomogeneous(Int192 X, Int192 Y, Int192 Z, Int192 W)
         {
             if (W.IsZero)
                 return default;
@@ -148,7 +229,7 @@ namespace Chisel.Core
 
         // Homogeneous coordinate by axis: 0 = X, 1 = Y, 2 = Z, 3 = W.
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public Int128 Coordinate(int axis) => axis == 0 ? X : (axis == 1 ? Y : (axis == 2 ? Z : W));
+        public Int192 Coordinate(int axis) => axis == 0 ? X : (axis == 1 ? Y : (axis == 2 ? Z : W));
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public double CoordinateD(int axis) => axis == 0 ? Xd : (axis == 1 ? Yd : (axis == 2 ? Zd : Wd));
@@ -212,15 +293,16 @@ namespace Chisel.Core
         const double kUnitRoundoff = 1.1102230246251565e-16;
 
         // Which side of `plane` the vertex lies on: +1 outside (positive), 0 on it, -1 inside.
-        //   sign(plane(x)) = sign(a X + b Y + c Z + w W) * sign(W), and the sum is below 2^157.
+        //   sign(plane(x)) = sign(s (a X + b Y + c Z) + w W) * sign(W), s = kPointScale, and the sum is below 2^250.
         public static int Side(in ExactPlane plane, in ExactVertex vertex)
         {
             // Each term carries at most three roundings (the conversion of X, of the coefficient, and the product) and the
             // sum two more; 10 u of the absolute sum covers all of it with room to spare.
-            double t0 = plane.a * vertex.Xd;
-            double t1 = plane.b * vertex.Yd;
-            double t2 = plane.c * vertex.Zd;
-            double t3 = (double)plane.w * vertex.Wd;
+            // the plane is over grid steps and the point in metres: its normal times kPointScale (exact, a power of two)
+            double t0 = (plane.a * ExactPlane.kPointScale) * vertex.Xd;
+            double t1 = (plane.b * ExactPlane.kPointScale) * vertex.Yd;
+            double t2 = (plane.c * ExactPlane.kPointScale) * vertex.Zd;
+            double t3 = plane.w.ToDouble() * vertex.Wd;
             double sum = (t0 + t1) + (t2 + t3);
             double magnitude = Math.Abs(t0) + Math.Abs(t1) + Math.Abs(t2) + Math.Abs(t3);
             if (magnitude == 0)
@@ -228,8 +310,11 @@ namespace Chisel.Core
             if (Math.Abs(sum) > magnitude * (10 * kUnitRoundoff))
                 return (sum > 0 ? 1 : -1) * vertex.signW;
 
-            var accumulator = Int192.Add(Int192.Add(Int192.Mul(vertex.X, plane.a), Int192.Mul(vertex.Y, plane.b)),
-                                         Int192.Add(Int192.Mul(vertex.Z, plane.c), Int192.Mul(vertex.W, plane.w)));
+            var normal = BigInt.Add(BigInt.Add(BigInt.Mul(BigInt.FromInt192(vertex.X), BigInt.FromLong(plane.a)),
+                                               BigInt.Mul(BigInt.FromInt192(vertex.Y), BigInt.FromLong(plane.b))),
+                                    BigInt.Mul(BigInt.FromInt192(vertex.Z), BigInt.FromLong(plane.c)));
+            var accumulator = BigInt.Add(BigInt.ShiftLeft(normal, ExactPlane.kPointShift),
+                                         BigInt.Mul(BigInt.FromInt192(vertex.W), BigInt.FromInt128(plane.w)));
             return accumulator.Sign() * vertex.signW;
         }
 
@@ -237,7 +322,7 @@ namespace Chisel.Core
         // d = n(onPlane) x n(edge). Positive: the plane's value grows moving along d.
         public static int DirectionSign(in ExactPlane plane, in ExactPlane onPlane, in ExactPlane edge)
         {
-            // d components are 2x2 minors (< 2^65); the dot product is below 3 * 2^32 * 2^65
+            // d components are 2x2 minors (< 2^97); the dot product is below 3 * 2^48 * 2^97
             var dx = Int128.DifferenceOfProducts(onPlane.b, edge.c, onPlane.c, edge.b);
             var dy = Int128.DifferenceOfProducts(onPlane.c, edge.a, onPlane.a, edge.c);
             var dz = Int128.DifferenceOfProducts(onPlane.a, edge.b, onPlane.b, edge.a);
@@ -267,9 +352,9 @@ namespace Chisel.Core
         {
             if (!NormalsParallel(p, q))
                 return 0;
-            if (!Int128.DifferenceOfProducts(p.a, q.w, q.a, p.w).IsZero ||
-                !Int128.DifferenceOfProducts(p.b, q.w, q.b, p.w).IsZero ||
-                !Int128.DifferenceOfProducts(p.c, q.w, q.c, p.w).IsZero)
+            if (!Int192.Sub(Int192.Mul(q.w, p.a), Int192.Mul(p.w, q.a)).IsZero ||
+                !Int192.Sub(Int192.Mul(q.w, p.b), Int192.Mul(p.w, q.b)).IsZero ||
+                !Int192.Sub(Int192.Mul(q.w, p.c), Int192.Mul(p.w, q.c)).IsZero)
                 return 0;
             var dot = Int192.Add(Int192.Add(Int192.FromInt128(Int128.Mul(p.a, q.a)), Int192.FromInt128(Int128.Mul(p.b, q.b))),
                                  Int192.FromInt128(Int128.Mul(p.c, q.c)));
@@ -281,7 +366,7 @@ namespace Chisel.Core
             int k = p.DominantAxis();
             long pk = k == 0 ? p.a : (k == 1 ? p.b : p.c);
             long qk = k == 0 ? q.a : (k == 1 ? q.b : q.c);
-            var value = Int128.DifferenceOfProducts(q.w, pk, qk, p.w);
+            var value = Int192.Sub(Int192.Mul(q.w, pk), Int192.Mul(p.w, qk));
             return value.Sign() * (pk < 0 ? -1 : 1);
         }
 
@@ -290,9 +375,9 @@ namespace Chisel.Core
             if (NormalDeterminantSign(p, e1, e2) != 0)
                 return 0;
             // columns (a, b, w), (a, c, w), (b, c, w)
-            if (Minor(p.a, p.b, p.w, e1.a, e1.b, e1.w, e2.a, e2.b, e2.w) != 0) return 0;
-            if (Minor(p.a, p.c, p.w, e1.a, e1.c, e1.w, e2.a, e2.c, e2.w) != 0) return 0;
-            if (Minor(p.b, p.c, p.w, e1.b, e1.c, e1.w, e2.b, e2.c, e2.w) != 0) return 0;
+            if (MinorWithOffset(p.a, p.b, p.w, e1.a, e1.b, e1.w, e2.a, e2.b, e2.w) != 0) return 0;
+            if (MinorWithOffset(p.a, p.c, p.w, e1.a, e1.c, e1.w, e2.a, e2.c, e2.w) != 0) return 0;
+            if (MinorWithOffset(p.b, p.c, p.w, e1.b, e1.c, e1.w, e2.b, e2.c, e2.w) != 0) return 0;
 
             // Same line. e2's direction d2 = n_p x n_e2 is alpha times d1 = n_p x n_e1; compare signs on the largest
             // component of d1.
@@ -308,13 +393,15 @@ namespace Chisel.Core
             return 0;   // p and e1 are parallel: not a line at all
         }
 
-        // 3x3 determinant sign of long entries whose products stay below 2^125 per term.
-        static int Minor(long a1, long b1, long c1, long a2, long b2, long c2, long a3, long b3, long c3)
+        // Sign of a 3x3 determinant whose third column is the planes' offsets: each term below 2^48 * 2^48 * 2^88
+        static int MinorWithOffset(long a1, long b1, Int128 c1, long a2, long b2, Int128 c2, long a3, long b3, Int128 c3)
         {
-            var m1 = Int128.DifferenceOfProducts(b2, c3, b3, c2);
-            var m2 = Int128.DifferenceOfProducts(a2, c3, a3, c2);
+            var m1 = Int192.Sub(Int192.Mul(c3, b2), Int192.Mul(c2, b3));
+            var m2 = Int192.Sub(Int192.Mul(c3, a2), Int192.Mul(c2, a3));
             var m3 = Int128.DifferenceOfProducts(a2, b3, a3, b2);
-            var sum = Int192.Add(Int192.Add(Int192.Mul(m1, a1), Int192.Negate(Int192.Mul(m2, b1))), Int192.Mul(m3, c1));
+            var sum = BigInt.Add(BigInt.Sub(BigInt.Mul(BigInt.FromInt192(m1), BigInt.FromLong(a1)),
+                                            BigInt.Mul(BigInt.FromInt192(m2), BigInt.FromLong(b1))),
+                                 BigInt.Mul(BigInt.FromInt128(m3), BigInt.FromInt128(c1)));
             return sum.Sign();
         }
 
@@ -332,11 +419,11 @@ namespace Chisel.Core
                 Math.Abs(p.Yd * q.Wd - q.Yd * p.Wd) > 16 * kUnitRoundoff * (Math.Abs(p.Yd * q.Wd) + Math.Abs(q.Yd * p.Wd)) ||
                 Math.Abs(p.Zd * q.Wd - q.Zd * p.Wd) > 16 * kUnitRoundoff * (Math.Abs(p.Zd * q.Wd) + Math.Abs(q.Zd * p.Wd)))
                 return false;
-            var pW = BigInt.FromInt128(p.W);
-            var qW = BigInt.FromInt128(q.W);
-            if (BigInt.Compare(BigInt.Mul(BigInt.FromInt128(p.X), qW), BigInt.Mul(BigInt.FromInt128(q.X), pW)) != 0) return false;
-            if (BigInt.Compare(BigInt.Mul(BigInt.FromInt128(p.Y), qW), BigInt.Mul(BigInt.FromInt128(q.Y), pW)) != 0) return false;
-            if (BigInt.Compare(BigInt.Mul(BigInt.FromInt128(p.Z), qW), BigInt.Mul(BigInt.FromInt128(q.Z), pW)) != 0) return false;
+            var pW = BigInt.FromInt192(p.W);
+            var qW = BigInt.FromInt192(q.W);
+            if (BigInt.Compare(BigInt.Mul(BigInt.FromInt192(p.X), qW), BigInt.Mul(BigInt.FromInt192(q.X), pW)) != 0) return false;
+            if (BigInt.Compare(BigInt.Mul(BigInt.FromInt192(p.Y), qW), BigInt.Mul(BigInt.FromInt192(q.Y), pW)) != 0) return false;
+            if (BigInt.Compare(BigInt.Mul(BigInt.FromInt192(p.Z), qW), BigInt.Mul(BigInt.FromInt192(q.Z), pW)) != 0) return false;
             return true;
         }
 
@@ -371,9 +458,9 @@ namespace Chisel.Core
 
         public static int OrientationExact(in ExactVertex a, in ExactVertex b, in ExactVertex c, int axisU, int axisV)
         {
-            var Ua = BigInt.FromInt128(a.Coordinate(axisU)); var Va = BigInt.FromInt128(a.Coordinate(axisV)); var Wa = BigInt.FromInt128(a.W);
-            var Ub = BigInt.FromInt128(b.Coordinate(axisU)); var Vb = BigInt.FromInt128(b.Coordinate(axisV)); var Wb = BigInt.FromInt128(b.W);
-            var Uc = BigInt.FromInt128(c.Coordinate(axisU)); var Vc = BigInt.FromInt128(c.Coordinate(axisV)); var Wc = BigInt.FromInt128(c.W);
+            var Ua = BigInt.FromInt192(a.Coordinate(axisU)); var Va = BigInt.FromInt192(a.Coordinate(axisV)); var Wa = BigInt.FromInt192(a.W);
+            var Ub = BigInt.FromInt192(b.Coordinate(axisU)); var Vb = BigInt.FromInt192(b.Coordinate(axisV)); var Wb = BigInt.FromInt192(b.W);
+            var Uc = BigInt.FromInt192(c.Coordinate(axisU)); var Vc = BigInt.FromInt192(c.Coordinate(axisV)); var Wc = BigInt.FromInt192(c.W);
             // det = Ua (Vb Wc - Wb Vc) - Va (Ub Wc - Wb Uc) + Wa (Ub Vc - Vb Uc)
             var m1 = BigInt.Sub(BigInt.Mul(Vb, Wc), BigInt.Mul(Wb, Vc));
             var m2 = BigInt.Sub(BigInt.Mul(Ub, Wc), BigInt.Mul(Wb, Uc));
@@ -390,12 +477,12 @@ namespace Chisel.Core
             if (Math.Abs(difference) > 16 * kUnitRoundoff * (Math.Abs(pa) + Math.Abs(qa)))
                 return difference > 0 ? 1 : -1;
             // p/pW - q/qW = (p qW - q pW) / (pW qW)
-            var value = BigInt.Sub(BigInt.Mul(BigInt.FromInt128(p.Coordinate(axis)), BigInt.FromInt128(q.W)),
-                                   BigInt.Mul(BigInt.FromInt128(q.Coordinate(axis)), BigInt.FromInt128(p.W)));
+            var value = BigInt.Sub(BigInt.Mul(BigInt.FromInt192(p.Coordinate(axis)), BigInt.FromInt192(q.W)),
+                                   BigInt.Mul(BigInt.FromInt192(q.Coordinate(axis)), BigInt.FromInt192(p.W)));
             return value.Sign() * p.signW * q.signW;
         }
 
-        public static float RoundToFloat(Int128 numerator, Int128 denominator)
+        public static float RoundToFloat(Int192 numerator, Int192 denominator)
         {
             if (numerator.IsZero)
                 return 0f;
@@ -424,7 +511,7 @@ namespace Chisel.Core
 
         // The largest float at or below X/W (up == false) or the smallest at or above it (up == true), exactly: bounds made
         // of these contain the exact points they are made from.
-        public static float DirectedToFloat(Int128 numerator, Int128 denominator, bool up)
+        public static float DirectedToFloat(Int192 numerator, Int192 denominator, bool up)
         {
             float nearest = RoundToFloat(numerator, denominator);
             if (float.IsInfinity(nearest))
@@ -467,7 +554,7 @@ namespace Chisel.Core
         }
 
         // sign(numerator / denominator - value), exactly, for a double value with at most 53 significant bits.
-        static unsafe int CompareWithDouble(Int128 numerator, Int128 denominator, double value)
+        static unsafe int CompareWithDouble(Int192 numerator, Int192 denominator, double value)
         {
             // value = mantissa * 2^exponent with an integer mantissa
             long bits = *(long*)&value;
@@ -479,8 +566,8 @@ namespace Chisel.Core
             if (value < 0) mantissa = -mantissa;
 
             // numerator/denominator - mantissa 2^e  has the sign of  (numerator - mantissa 2^e denominator) * sign(denominator)
-            var n = BigInt.FromInt128(numerator);
-            var m = BigInt.Mul(BigInt.FromLong(mantissa), BigInt.FromInt128(denominator));
+            var n = BigInt.FromInt192(numerator);
+            var m = BigInt.Mul(BigInt.FromLong(mantissa), BigInt.FromInt192(denominator));
             int result;
             if (exponent >= 0)
                 result = BigInt.Compare(n, BigInt.ShiftLeft(m, exponent));

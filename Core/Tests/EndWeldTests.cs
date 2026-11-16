@@ -581,9 +581,8 @@ namespace Chisel.Core.Tests
 		[Test]
 		public void TheExactJudge_ChecksWhatTheCollapseRecorded()
 		{
-			// the drain cap's corners a few hundredths of a millimetre apart are collapsed (OutputModelWeld.kCollapseLength)
-			var node = ContentsSceneNode.Brush(Planes(kDrainCap), localToTree: float4x4.Translate(Pivot(kDrainCapPivot)), name: "drain cap");
-			using var harness = ContentsTreeHarness.Build(new ContentsScene().Add(node));
+			// brushes of an imported map whose output has an edge shorter than the collapse takes (OutputModelWeld.kCollapseLength)
+			using var harness = ContentsTreeHarness.Build(ImportedMapCaseTests.DetailsSite1());
 			Assert.That(harness.Update(), Is.True, "the CSG update did not run");
 			var recorded = new List<float3x2>(harness.CollapseMoves);
 			Assert.That(recorded.Count, Is.GreaterThan(0), "the weld collapsed nothing");

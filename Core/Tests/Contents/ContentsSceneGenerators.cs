@@ -275,7 +275,7 @@ namespace Chisel.Core.Tests
 		// The control: the same geometry with one type everywhere draws exactly what it draws without contents
 		public static ContentsScene AllSolid(ContentsScene scene)
 		{
-			var copy = new ContentsScene();
+			var copy = scene.EmptyCopy();
 			foreach (var node in scene.roots)
 				copy.Add(CloneAsSolid(node));
 			return copy;

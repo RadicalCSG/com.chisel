@@ -44,6 +44,13 @@ namespace Chisel.Core.Tests
 		{
 			var text = new StringBuilder();
 			text.AppendLine($"var {sceneName} = new ContentsScene()");
+			if (scene.contentsList != null)
+			{
+				text.Append("\t.WithContentsList(");
+				for (int i = 0; i < scene.contentsList.Length; i++)
+					text.Append(i > 0 ? ", \"" : "\"").Append(scene.contentsList[i]).Append('"');
+				text.AppendLine(")");
+			}
 			foreach (var node in scene.roots)
 				AppendNode(text, node, "\t");
 			text.AppendLine("\t;");
@@ -119,7 +126,7 @@ namespace Chisel.Core.Tests
 
 		public static ContentsScene Clone(ContentsScene scene)
 		{
-			var copy = new ContentsScene();
+			var copy = scene.EmptyCopy();
 			foreach (var node in scene.roots)
 				copy.Add(CloneNode(node));
 			return copy;

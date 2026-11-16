@@ -38,19 +38,27 @@ namespace Chisel.Core
                         return CategoryIndex.Outside;
                     return contentsB == kSolid ? category : CategoryIndex.Outside;
 
-                // Coplanar and facing the same way: exactly one of the two faces survives. Between two brushes
-                // that don't carve it is the later one's, as between brushes of one type; a carving brush leaves it
-                // to the brush it carves, and against a later brush its wall goes by the tie order.
+                // Coplanar and facing the same way: the pair alone does not decide which face survives, as the
+                // winner's face may not be drawn there (GivesWay); each face is built as if the other were not there.
                 case CategoryIndex.Aligned:
-                    if (aCarvesB)
-                        return CategoryIndex.Outside;
-                    if (!carvingA)
-                        return bIsLater ? CategoryIndex.Inside : CategoryIndex.Outside;
-                    return WinsTie(contentsB, contentsA) ? CategoryIndex.Inside : CategoryIndex.Outside;
+                    return CategoryIndex.Outside;
 
                 default:
                     return category;
             }
+        }
+
+        // Whether A's face gives way to a coplanar face of B, facing the same way, where B's face is drawn: when B's type
+        // wins the tie, whichever brush comes later, so another type never removes a face of Solid. A carving brush
+        // leaves it to the brush it carves, and a carve's face is decided by Rewrite.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool GivesWay(byte contentsA, bool carvingA, byte contentsB, bool carvingB, bool bIsLater)
+        {
+            if (contentsA == contentsB || carvingB)
+                return false;
+            if (carvingA && !bIsLater)
+                return false;
+            return WinsTie(contentsB, contentsA);
         }
 
         // Whether brush B still removes the faces of a brush A that lies entirely inside it, which is what
@@ -61,9 +69,8 @@ namespace Chisel.Core
             return contentsA == contentsB || carvingB || contentsB == kSolid;
         }
 
-        // Which of two types draws a coplanar face both have, where a carving brush's wall meets a later brush's
-        // face: Solid always wins, and between two other types the earlier entry in the list does. Equal types don't
-        // win against each other.
+        // Which of two types draws a coplanar face both have: Solid always wins, and between two other types the
+        // earlier entry in the list does. Equal types don't win against each other.
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static bool WinsTie(byte contents, byte against)
         {

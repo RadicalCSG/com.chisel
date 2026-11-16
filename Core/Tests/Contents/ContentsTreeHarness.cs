@@ -46,6 +46,8 @@ namespace Chisel.Core.Tests
 		ContentsScene scene;
 		CSGTree tree;
 		bool capturing;
+		// the scene's own contents list while the harness lives (ContentsScene.contentsList)
+		ContentsListScope contentsList;
 
 		public IReadOnlyList<CapturedTriangle> Triangles => triangles;
 		// Where the weld's last step moved the corners it moved at the last update (from, to; OutputModelWeld), what the
@@ -53,6 +55,9 @@ namespace Chisel.Core.Tests
 		public List<float3x2> CollapseMoves { get; internal set; } = new List<float3x2>();
 		// Where the cleanup's snap put each brush's corners (OutputMeshCleanup.Clean), from the last update
 		public Dictionary<CompactNodeID, List<float3x2>> SnapMoves { get; internal set; } = new Dictionary<CompactNodeID, List<float3x2>>();
+		// The triangles the cleanup took out of each brush's surfaces and put in (OutputMeshCleanup.Clean, recorded while the
+		// exact CSG is captured), from the last update; settable to plant an error in a test
+		internal Dictionary<CompactNodeID, List<MeshCleanupChange>> CleanupChanges { get; set; } = new Dictionary<CompactNodeID, List<MeshCleanupChange>>();
 		// The total area of the collider triangles the last delivered update made
 		public double ColliderArea { get; private set; }
 		public int ColliderVertexCount { get; private set; }
@@ -72,9 +77,12 @@ namespace Chisel.Core.Tests
 
 		public static ContentsTreeHarness Build(ContentsScene scene)
 		{
+			var harness  = new ContentsTreeHarness { scene = scene };
+			// installed before the tree exists, so it is built with it from the start
+			if (scene.contentsList != null)
+				harness.contentsList = new ContentsListScope(scene.contentsList);
 			PrepareForUpdate();
 
-			var harness  = new ContentsTreeHarness { scene = scene };
 			var children = new CSGTreeNode[scene.roots.Count];
 			for (int i = 0; i < scene.roots.Count; i++)
 				children[i] = harness.CreateNode(scene.roots[i]);
@@ -347,10 +355,18 @@ namespace Chisel.Core.Tests
 						CollapseMoves.Add(move);
 				}
 				SnapMoves = new Dictionary<CompactNodeID, List<float3x2>>();
+				CleanupChanges = new Dictionary<CompactNodeID, List<MeshCleanupChange>>();
 				if (lookup.meshCleanupCache.IsCreated)
 				{
 					foreach (var entry in lookup.meshCleanupCache)
 					{
+						if (entry.Value.changes.IsCreated)
+						{
+							var changes = new List<MeshCleanupChange>();
+							foreach (var change in entry.Value.changes)
+								changes.Add(change);
+							CleanupChanges[entry.Key] = changes;
+						}
 						if (!entry.Value.snapMoves.IsCreated)
 							continue;
 						var moves = new List<float3x2>();
@@ -619,6 +635,7 @@ namespace Chisel.Core.Tests
 		// Plant errors in the captured output, for tests that show a check notices one (ExactJudgeTests).
 		internal void RemoveTriangleForTest(int index) => triangles.RemoveAt(index);
 		internal void ReplaceTriangleForTest(int index, CapturedTriangle triangle) => triangles[index] = triangle;
+		internal void AddTriangleForTest(CapturedTriangle triangle) => triangles.Add(triangle);
 
 		// The stable id of the tree brush built for this described brush (what ExactCSGCapture is keyed by), or
 		// NodeID.Invalid when the brush is not in this harness.
@@ -766,6 +783,8 @@ namespace Chisel.Core.Tests
 				capturing = false;
 				ExactCSGCapture.Release();
 			}
+			contentsList?.Dispose();
+			contentsList = null;
 		}
 	}
 }

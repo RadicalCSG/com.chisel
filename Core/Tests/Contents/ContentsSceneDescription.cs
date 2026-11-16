@@ -84,11 +84,24 @@ namespace Chisel.Core.Tests
 	{
 		public readonly List<ContentsSceneNode> roots = new List<ContentsSceneNode>();
 
+		// The names of the contents list the scene was made with, or null for the editor's own. What a brush builds as
+		// depends on it: an index past the end of the list builds as Solid.
+		public string[] contentsList;
+
 		public ContentsScene Add(ContentsSceneNode node)
 		{
 			roots.Add(node);
 			return this;
 		}
+
+		public ContentsScene WithContentsList(params string[] names)
+		{
+			contentsList = names;
+			return this;
+		}
+
+		// An empty scene with the same contents list
+		public ContentsScene EmptyCopy() => new ContentsScene { contentsList = contentsList };
 
 		// Six planes of an axis aligned box, normals pointing out, so the inside is the negative side
 		// of every plane.

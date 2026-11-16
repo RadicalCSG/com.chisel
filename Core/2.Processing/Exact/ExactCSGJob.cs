@@ -128,10 +128,7 @@ namespace Chisel.Core
             builder.collectDiscarded = collectDiscarded;
             var triangulator = ExactTriangulator.Create();
             var touching     = new ExactList<ExactTouchingBrush>(16);
-            var routingRows  = new ExactList<ushort>(64);
-            var lookupStart  = new ExactList<int>(16);
-            var lookupEnd    = new ExactList<int>(16);
-            var lookupBrush  = new ExactList<int>(16);
+            var routing      = ExactRouting.Create();
             var triangles    = new ExactList<int>(64);
             try
             {
@@ -141,95 +138,9 @@ namespace Chisel.Core
                 int faceCount = builder.planes.Length;
                 bool valid = CornerCount(brushNodeOrder) > 0 && AllValid(ref builder.planes, 0, faceCount);
 
-                ref var compactTree   = ref compactTreeRef.Value.Value;
-                var processedContents = compactTree.GetBrushContents(brushIndexOrder.compactNodeID);
-
-                ref var routingTable = ref routingTableRef.Value;
-                ref var lookups = ref routingTable.routingLookups;
-                for (int k = 0; k < lookups.Length; k++)
-                {
-                    lookupStart.Add(lookups[k].startIndex);
-                    lookupEnd.Add(lookups[k].endIndex);
-                    lookupBrush.Add(-1);
-                }
-                ref var rows = ref routingTable.routingRows;
-                for (int r = 0; r < rows.Length; r++)
-                {
-                    var row = rows[r];
-                    routingRows.Add(row.inside);
-                    routingRows.Add(row.aligned);
-                    routingRows.Add(row.selfAligned);
-                    routingRows.Add(row.selfReverseAligned);
-                    routingRows.Add(row.reverseAligned);
-                    routingRows.Add(row.outside);
-                }
-
-                var touchedRef = brushesTouchedByBrushCache[brushNodeOrder];
-                if (valid && touchedRef.IsCreated)
-                {
-                    ref var intersections = ref touchedRef.Value.brushIntersections;
-                    int lastOrder = -1;
-                    for (int i = 0; i < intersections.Length; i++)
-                    {
-                        var intersection = intersections[i];
-                        if (intersection.type != IntersectionType.Intersection)
-                            continue;
-                        int otherOrder = intersection.nodeIndexOrder.nodeOrder;
-                        if (otherOrder == brushNodeOrder || otherOrder < 0 || otherOrder >= brushMeshLookup.Length)
-                            continue;
-                        var otherMesh = brushMeshLookup[otherOrder];
-                        if (!otherMesh.IsCreated)
-                            continue;
-                        // the same brush listed twice is one brush: in node order (StoreBrushIntersectionsJob) that is the
-                        // one before it, else any before it
-                        bool duplicate = false;
-                        if (otherOrder > lastOrder)
-                            lastOrder = otherOrder;
-                        else
-                        {
-                            for (int t = 0; t < touching.Length && !duplicate; t++)
-                                duplicate = touching[t].nodeOrder == otherOrder;
-                        }
-                        if (duplicate)
-                            continue;
-                        // A brush without volume covers nothing, and one that takes no part covers nothing either, the
-                        // same way in every job that sees it; the exact broad phase never pairs either of them.
-                        if (CornerCount(otherOrder) <= 0)
-                            continue;
-
-                        int offset = builder.planes.Length;
-                        AddTreePlanes(ref builder.planes, otherOrder);
-                        int count = builder.planes.Length - offset;
-
-                        var otherNodeID   = intersection.nodeIndexOrder.compactNodeID;
-                        var otherContents = compactTree.GetBrushContents(otherNodeID);
-                        bool later        = otherOrder > brushNodeOrder;
-                        var touchingBrush = new ExactTouchingBrush
-                        {
-                            planeOffset = offset,
-                            planeCount  = count,
-                            nodeOrder   = otherOrder,
-                            insideCategory         = (byte)ContentsRules.Rewrite(CategoryIndex.Inside,         processedContents.Contents, processedContents.Carving, otherContents.Contents, otherContents.Carving, otherContents.Intersecting, later),
-                            alignedCategory        = (byte)ContentsRules.Rewrite(CategoryIndex.Aligned,        processedContents.Contents, processedContents.Carving, otherContents.Contents, otherContents.Carving, otherContents.Intersecting, later),
-                            reverseAlignedCategory = (byte)ContentsRules.Rewrite(CategoryIndex.ReverseAligned, processedContents.Contents, processedContents.Carving, otherContents.Contents, otherContents.Carving, otherContents.Intersecting, later),
-                            routes = false,
-                            bounds = exactBrushCache[otherOrder].Value.bounds
-                        };
-
-                        // Its lookup in the routing table, if it has one
-                        var idWithOffset = otherNodeID.slotIndex.index - routingTable.nodeIDOffset;
-                        if (idWithOffset >= 0 && idWithOffset < routingTable.nodeIDToTableIndex.Length)
-                        {
-                            int lookup = routingTable.nodeIDToTableIndex[idWithOffset];
-                            if (lookup >= 0 && lookup < lookupBrush.Length)
-                            {
-                                lookupBrush[lookup] = touching.Length;
-                                touchingBrush.routes = true;
-                            }
-                        }
-                        touching.Add(touchingBrush);
-                    }
-                }
+                AddLevel(brushNodeOrder, brushIndexOrder.compactNodeID, valid, brushNodeOrder, faceCount, ref builder.planes, ref touching, ref routing);
+                int ownTouching = touching.Length;
+                int ownPlanes   = builder.planes.Length;
 
                 for (int surface = 0; surface < surfaceCount; surface++)
                 {
@@ -241,8 +152,33 @@ namespace Chisel.Core
                         continue;
                     }
                     Count(ExactCSGStat.Faces);
+
+                    // The routing of every brush with a face in this face's plane, facing the same way, this face gives
+                    // way to
+                    ref var own    = ref exactBrushCache[brushNodeOrder].Value;
+                    var face       = builder.planes[surface];
+                    var faceBounds = own.faceBounds[surface];
+                    for (int t = 0; t < ownTouching; t++)
+                    {
+                        var other = touching[t];
+                        if (!other.givesWay ||
+                            !math.all(other.bounds.Min <= faceBounds.Max) || !math.all(other.bounds.Max >= faceBounds.Min) ||
+                            !HasPlane(ref builder.planes, other.planeOffset, other.planeCount, face))
+                            continue;
+                        int level = routing.levels.Length;
+                        if (AddLevel(other.nodeOrder, other.nodeID, true, brushNodeOrder, faceCount, ref builder.planes, ref touching, ref routing))
+                            touching[t].tieLevel = level;
+                    }
+
                     builder.routingErrors = 0;
-                    var failure = builder.BuildFace(surface, ref exactBrushCache[brushNodeOrder].Value, ref touching, ref routingRows, ref lookupStart, ref lookupEnd, ref lookupBrush);
+                    var failure = builder.BuildFace(surface, ref own, ref touching, ref routing);
+
+                    for (int t = 0; t < ownTouching; t++)
+                        touching[t].tieLevel = 0;
+                    touching.Resize(ownTouching);
+                    builder.planes.Resize(ownPlanes);
+                    routing.Truncate(1);
+
                     Count(ExactCSGStat.RoutingOutOfRange, builder.routingErrors);
                     if (failure != ExactFaceFailure.None)
                     {
@@ -294,13 +230,145 @@ namespace Chisel.Core
                 builder.Dispose();
                 triangulator.Dispose();
                 touching.Dispose();
-                routingRows.Dispose();
-                lookupStart.Dispose();
-                lookupEnd.Dispose();
-                lookupBrush.Dispose();
+                routing.Dispose();
                 triangles.Dispose();
             }
             EndForEachIndex();
+        }
+
+        static bool HasPlane(ref ExactList<ExactPlane> planes, int offset, int count, in ExactPlane plane)
+        {
+            for (int p = 0; p < count; p++)
+                if (ExactPredicates.SamePlane(plane, planes[offset + p]) > 0)
+                    return true;
+            return false;
+        }
+
+        // A level of routing (ExactRouting): the routing table of brush levelOrder, and, with addTouching, every brush
+        // touching it that can meet it, with the categories it gives that brush's faces. The faces built are those of
+        // brush faceOrder, whose faceCount planes come first in the plane table; a brush already in the table shares its
+        // planes. False when the brush has no routing table, and so draws nothing.
+        bool AddLevel(int levelOrder, CompactNodeID levelNodeID, bool addTouching, int faceOrder, int faceCount,
+                      ref ExactList<ExactPlane> planes, ref ExactList<ExactTouchingBrush> touching, ref ExactRouting routing)
+        {
+            var routingTableRef = routingTableCache[levelOrder];
+            if (!routingTableRef.IsCreated)
+                return false;
+            ref var routingTable = ref routingTableRef.Value;
+
+            int firstLookup = routing.lookupStart.Length;
+            int firstRow    = routing.rows.Length / ExactFaceBuilder.kCategoryCount;
+            ref var lookups = ref routingTable.routingLookups;
+            for (int k = 0; k < lookups.Length; k++)
+            {
+                routing.lookupStart.Add(firstRow + lookups[k].startIndex);
+                routing.lookupEnd.Add(firstRow + lookups[k].endIndex);
+                routing.lookupBrush.Add(-1);
+            }
+            ref var rows = ref routingTable.routingRows;
+            for (int r = 0; r < rows.Length; r++)
+            {
+                var row = rows[r];
+                routing.rows.Add(row.inside);
+                routing.rows.Add(row.aligned);
+                routing.rows.Add(row.selfAligned);
+                routing.rows.Add(row.selfReverseAligned);
+                routing.rows.Add(row.reverseAligned);
+                routing.rows.Add(row.outside);
+            }
+            routing.levels.Add(new int3(firstLookup, routing.lookupStart.Length, firstRow));
+
+            var touchedRef = brushesTouchedByBrushCache[levelOrder];
+            if (!addTouching || !touchedRef.IsCreated)
+                return true;
+
+            ref var compactTree = ref compactTreeRef.Value.Value;
+            var levelContents   = compactTree.GetBrushContents(levelNodeID);
+            ref var intersections = ref touchedRef.Value.brushIntersections;
+            int firstTouching = touching.Length;
+            int lastOrder = -1;
+            for (int i = 0; i < intersections.Length; i++)
+            {
+                var intersection = intersections[i];
+                if (intersection.type != IntersectionType.Intersection)
+                    continue;
+                int otherOrder = intersection.nodeIndexOrder.nodeOrder;
+                if (otherOrder == levelOrder || otherOrder < 0 || otherOrder >= brushMeshLookup.Length)
+                    continue;
+                var otherMesh = brushMeshLookup[otherOrder];
+                if (!otherMesh.IsCreated)
+                    continue;
+                // the same brush listed twice is one brush: in node order (StoreBrushIntersectionsJob) that is the one
+                // before it, else any before it
+                bool duplicate = false;
+                if (otherOrder > lastOrder)
+                    lastOrder = otherOrder;
+                else
+                {
+                    for (int t = firstTouching; t < touching.Length && !duplicate; t++)
+                        duplicate = touching[t].nodeOrder == otherOrder;
+                }
+                if (duplicate)
+                    continue;
+                // A brush without volume covers nothing, and one that takes no part covers nothing either, the same way
+                // in every job that sees it; the exact broad phase never pairs either of them.
+                if (CornerCount(otherOrder) <= 0)
+                    continue;
+
+                int offset = -1, count = 0;
+                if (otherOrder == faceOrder)
+                {
+                    offset = 0;
+                    count  = faceCount;
+                }
+                else
+                {
+                    for (int t = 0; t < firstTouching && offset < 0; t++)
+                    {
+                        if (touching[t].nodeOrder != otherOrder)
+                            continue;
+                        offset = touching[t].planeOffset;
+                        count  = touching[t].planeCount;
+                    }
+                }
+                if (offset < 0)
+                {
+                    offset = planes.Length;
+                    AddTreePlanes(ref planes, otherOrder);
+                    count = planes.Length - offset;
+                }
+
+                var otherNodeID   = intersection.nodeIndexOrder.compactNodeID;
+                var otherContents = compactTree.GetBrushContents(otherNodeID);
+                bool later        = otherOrder > levelOrder;
+                var touchingBrush = new ExactTouchingBrush
+                {
+                    planeOffset = offset,
+                    planeCount  = count,
+                    nodeOrder   = otherOrder,
+                    nodeID      = otherNodeID,
+                    givesWay    = ContentsRules.GivesWay(levelContents.Contents, levelContents.Carving, otherContents.Contents, otherContents.Carving, later),
+                    insideCategory         = (byte)ContentsRules.Rewrite(CategoryIndex.Inside,         levelContents.Contents, levelContents.Carving, otherContents.Contents, otherContents.Carving, otherContents.Intersecting, later),
+                    alignedCategory        = (byte)ContentsRules.Rewrite(CategoryIndex.Aligned,        levelContents.Contents, levelContents.Carving, otherContents.Contents, otherContents.Carving, otherContents.Intersecting, later),
+                    reverseAlignedCategory = (byte)ContentsRules.Rewrite(CategoryIndex.ReverseAligned, levelContents.Contents, levelContents.Carving, otherContents.Contents, otherContents.Carving, otherContents.Intersecting, later),
+                    routes = false,
+                    bounds = exactBrushCache[otherOrder].Value.bounds
+                };
+
+                // Its lookup in the routing table, if it has one
+                var idWithOffset = otherNodeID.slotIndex.index - routingTable.nodeIDOffset;
+                if (idWithOffset >= 0 && idWithOffset < routingTable.nodeIDToTableIndex.Length)
+                {
+                    int lookup = routingTable.nodeIDToTableIndex[idWithOffset];
+                    if (lookup >= 0 && lookup < lookups.Length)
+                    {
+                        routing.lookupBrush[firstLookup + lookup] = touching.Length;
+                        touchingBrush.routes = true;
+                    }
+                }
+                touching.Add(touchingBrush);
+            }
+            return true;
         }
 
         void EndForEachIndex()

@@ -5,7 +5,7 @@ namespace Chisel.Core.Tests
     [TestFixture]
     public class ExactPlaneSnapTests
     {
-        static bool Same(ExactPlane p, ExactPlane q) => p.a == q.a && p.b == q.b && p.c == q.c && p.w == q.w;
+        static bool Same(ExactPlane p, ExactPlane q) => p.a == q.a && p.b == q.b && p.c == q.c && Int128.Equals(p.w, q.w);
 
         // The sample scene's pit: two carves meant to meet at y = -2, their planes fitted to float vertices
         [Test]
@@ -24,7 +24,7 @@ namespace Chisel.Core.Tests
             var p = ExactPlane.Quantize(0, 1, 0, 2);
             var q = ExactPlane.Quantize(0, 1, 0, 2 + step);
             Assert.That(Same(p, q), Is.False, "an offset step merged");
-            Assert.That(q.w - p.w, Is.EqualTo((long)(ExactPlane.kNormalScale / ExactPlane.kOffsetScale)));
+            Assert.That(Int128.Sub(q.w, p.w).ToDouble(), Is.EqualTo(ExactPlane.kNormalScale / ExactPlane.kOffsetScale * ExactPlane.kPointScale));
 
             var tilted = ExactPlane.Quantize(0, 1, 1.0 / ExactPlane.kNormalScale, 2);
             Assert.That(Same(p, tilted), Is.False, "a normal step merged");
@@ -54,7 +54,7 @@ namespace Chisel.Core.Tests
                 Assert.That(System.Math.Abs(p.a / ExactPlane.kNormalScale - x), Is.LessThanOrEqualTo(0.5 / ExactPlane.kNormalScale));
                 Assert.That(System.Math.Abs(p.b / ExactPlane.kNormalScale - y), Is.LessThanOrEqualTo(0.5 / ExactPlane.kNormalScale));
                 Assert.That(System.Math.Abs(p.c / ExactPlane.kNormalScale - z), Is.LessThanOrEqualTo(0.5 / ExactPlane.kNormalScale));
-                Assert.That(System.Math.Abs(p.w / ExactPlane.kNormalScale - d), Is.LessThanOrEqualTo(0.5 / ExactPlane.kOffsetScale));
+                Assert.That(System.Math.Abs(p.w.ToDouble() / ExactPlane.kPointScale / ExactPlane.kNormalScale - d), Is.LessThanOrEqualTo(0.5 / ExactPlane.kOffsetScale));
             }
         }
     }

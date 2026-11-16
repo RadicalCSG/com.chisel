@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Unity.Mathematics;
 using Unity.Collections;
 using BigInteger = System.Numerics.BigInteger;
@@ -43,7 +44,11 @@ namespace Chisel.Core.Tests
 
 		static BigInteger Big(Chisel.Core.Int128 value) => ((BigInteger)(long)value.hi << 64) + value.lo;
 
-		static Plane ToPlane(in ExactPlane plane) => new Plane { a = plane.a, b = plane.b, c = plane.c, w = plane.w };
+		static BigInteger Big(Chisel.Core.Int192 value) => ((((BigInteger)(long)value.l2 << 64) + value.l1) << 64) + value.l0;
+
+		// an exact plane is over grid steps (ExactPlane.kPointScale): over metres its normal is that much larger
+		static Plane ToPlane(in ExactPlane plane) => new Plane { a = (BigInteger)plane.a << ExactPlane.kPointShift, b = (BigInteger)plane.b << ExactPlane.kPointShift,
+																 c = (BigInteger)plane.c << ExactPlane.kPointShift, w = Big(plane.w) };
 
 		static Point ToPoint(in ExactVertex vertex) => MakePoint(Big(vertex.X), Big(vertex.Y), Big(vertex.Z), Big(vertex.W));
 
@@ -227,6 +232,10 @@ namespace Chisel.Core.Tests
 			public bool                     hasVolume;
 			public readonly List<Point>     corners = new List<Point>();
 			public double3                  min, max;       // around the corners, widened far beyond the rounding of doubles
+			// each face as ExactBrushes.AddPlanes makes it from the brush's current mesh (CheckInput)
+			public readonly List<ExactPlane>        ownPlanes   = new List<ExactPlane>();
+			public readonly List<ExactPlane>        floatPlanes = new List<ExactPlane>();
+			public readonly List<List<ExactPoint>>  faceCorners = new List<List<ExactPoint>>();
 		}
 
 		static Brush Prepare(ContentsSceneNode node, int index, ExactCSGCapture.Brush capture)
@@ -346,8 +355,6 @@ namespace Chisel.Core.Tests
 			public int                              splitByTheWeld;
 			// Pairs of facing needles the weld across the model dropped (OutputModelWeld)
 			public int                              pairedByTheWeld;
-			// Pairs of identical triangles facing opposite ways the weld across the model dropped (OutputModelWeld)
-			public int                              cancelledByTheWeld;
 			// Triangles the weld's last step across the model moved or dropped, collapsing edges shorter than a millimetre
 			public int                              collapsedByTheWeld;
 			public bool[]                           inMinus, inPlus;
@@ -748,7 +755,7 @@ namespace Chisel.Core.Tests
 				else continue;
 				if (shape.relation == kAbove)
 					facing = -facing;
-				expected.Add(new ContentsComparison.Face { brush = shape.brush.node, facing = facing, order = shape.brush.index, carving = context.oracle.IsCarving(shape.brush.node) });
+				expected.Add(new ContentsComparison.Face { brush = shape.brush.node, facing = facing });
 			}
 
 			var found = new List<ContentsComparison.Face>();
@@ -862,6 +869,7 @@ namespace Chisel.Core.Tests
 					Report(context, brush, -1, float3.zero,
 						   $"the exact CSG counted {brush.capture.cornerCount} corners, the judge finds {(brush.hasVolume ? "volume" : "none")}");
 			}
+			CheckSharedPlanes(context);
 
 			// The triangles, on the planes of the faces they belong to
 			var trianglesByPlane = new Dictionary<PlaneKey, List<Shape>>();
@@ -900,13 +908,16 @@ namespace Chisel.Core.Tests
 			if (!context.Full)
 				CheckAttributes(context, harness);
 			if (checkMesh && !context.Full)
+				CheckClosed(context, harness);
+			if (checkMesh && !context.Full)
+				CheckCleanup(context, harness);
+			if (checkMesh && !context.Full)
 				CheckMesh(context, harness);
 			judged = context.intervals;
 			LastDroppedByTheWeld = context.droppedByTheWeld;
 			LastFlippedByTheWeld = context.flippedByTheWeld;
 			LastSplitByTheWeld   = context.splitByTheWeld;
 			LastPairedByTheWeld  = context.pairedByTheWeld;
-			LastCancelledByTheWeld = context.cancelledByTheWeld;
 			LastCollapsedByTheWeld = context.collapsedByTheWeld;
 			return context.mismatches;
 		}
@@ -921,10 +932,6 @@ namespace Chisel.Core.Tests
 
 		// How many pairs of facing needles of the last judgement's rounded exact triangles the weld across the model dropped
 		internal static int LastPairedByTheWeld { get; private set; }
-
-		// How many pairs of identical triangles facing opposite ways, of the last judgement's rounded exact triangles or the
-		// halves of a split, the weld across the model dropped
-		internal static int LastCancelledByTheWeld { get; private set; }
 
 		// How many of the last judgement's rounded exact triangles the weld's last step across the model moved or dropped
 		// (edges shorter than OutputModelWeld.kCollapseLength collapsed)
@@ -941,25 +948,37 @@ namespace Chisel.Core.Tests
 				Report(context, brush, -1, float3.zero, "the brush has no tree brush in the harness");
 				return;
 			}
-			var expected = new List<ExactPlane>();
+			var expected = brush.ownPlanes;
+			var corners  = brush.faceCorners;
+			expected.Clear(); corners.Clear(); brush.floatPlanes.Clear();
 			var instance = treeBrush.BrushMesh;
 			var meshRef  = instance.Valid ? BrushMeshManager.GetBrushMeshBlob(instance) : default;
 			if (meshRef.IsCreated)
 			{
-				var m      = treeBrush.NodeToTreeSpaceMatrix;
-				var affine = ExactAffine.Create(m.c0.x, m.c0.y, m.c0.z, m.c1.x, m.c1.y, m.c1.z,
-												m.c2.x, m.c2.y, m.c2.z, m.c3.x, m.c3.y, m.c3.z);
-				ref var mesh = ref meshRef.Value;
-				for (int p = 0; p < mesh.localPlaneCount; p++)
+				// made the way the exact CSG makes them (ExactBrushes.AddPlanes), with each face's snapped corners
+				var planes     = new ExactList<ExactPlane>(16);
+				var faceRanges = new ExactList<int2>(16);
+				var facePoints = new ExactList<ExactPoint>(64);
+				var rounded    = new ExactList<ExactPlane>(16);
+				try
 				{
-					var plane = default(ExactPlane);
-					if (affine.IsValid)
+					ExactBrushes.AddPlanes(ref meshRef.Value, treeBrush.NodeToTreeSpaceMatrix, ref planes, ref faceRanges, ref facePoints, ref rounded);
+					for (int p = 0; p < planes.Length; p++)
 					{
-						var local = mesh.localPlanes[p];
-						affine.TransformPlane(local.x, local.y, local.z, local.w, out double nx, out double ny, out double nz, out double d);
-						plane = ExactPlane.Quantize(nx, ny, nz, d);
+						expected.Add(planes[p]);
+						brush.floatPlanes.Add(rounded[p]);
+						var points = new List<ExactPoint>();
+						for (int v = 0; v < faceRanges[p].y; v++)
+							points.Add(facePoints[faceRanges[p].x + v]);
+						corners.Add(points);
 					}
-					expected.Add(plane);
+				}
+				finally
+				{
+					planes.Dispose();
+					faceRanges.Dispose();
+					facePoints.Dispose();
+					rounded.Dispose();
 				}
 			}
 			var captured = brush.capture.planes;
@@ -969,14 +988,82 @@ namespace Chisel.Core.Tests
 					   $"the exact CSG used {captured.Length} planes, the brush's current mesh has {expected.Count}");
 				return;
 			}
-			for (int p = 0; p < captured.Length; p++)
+			// a plane other than the face's own is one shared with other brushes' faces (ExactPlaneMerge), which
+			// CheckSharedPlanes checks
+		}
+
+		// The plane's integers, exactly
+		static string Text(in ExactPlane p) => $"({p.a}, {p.b}, {p.c}, {((System.Numerics.BigInteger)(long)p.w.hi << 64) + p.w.lo})";
+
+		static bool SamePlane(in ExactPlane p, in ExactPlane q) => p.a == q.a && p.b == q.b && p.c == q.c && Int128.Equals(p.w, q.w);
+
+		// Faces of different brushes that touch and are one plane in float (ExactPlaneMerge.OnePlane on their rounded float
+		// planes) must be cut with exactly one plane, facing either way, or they would meet a hair apart. A face cut with a
+		// plane other than its own must be one of those, and its plane must face its way.
+		static void CheckSharedPlanes(Context context)
+		{
+			var faces = new List<(Brush brush, int face, double3 min, double3 max)>();
+			foreach (var brush in context.brushes)
 			{
-				var c = captured[p]; var e = expected[p];
-				if (c.a == e.a && c.b == e.b && c.c == e.c && c.w == e.w)
+				if (brush.capture.cornerCount <= 0 || brush.ownPlanes.Count != brush.capture.planes.Length)
 					continue;
-				Report(context, brush, p, float3.zero,
-					   $"the exact CSG used plane {p} = ({c.a}, {c.b}, {c.c}, {c.w}), which is not the brush's current plane ({e.a}, {e.b}, {e.c}, {e.w})");
-				return;
+				for (int f = 0; f < brush.ownPlanes.Count; f++)
+				{
+					var corners = brush.faceCorners[f];
+					if (corners.Count < 3 || !brush.ownPlanes[f].IsValid || !brush.floatPlanes[f].IsValid)
+						continue;
+					double3 min = double.MaxValue, max = double.MinValue;
+					foreach (var corner in corners)
+					{
+						var position = new double3(corner.x, corner.y, corner.z);
+						min = math.min(min, position);
+						max = math.max(max, position);
+					}
+					faces.Add((brush, f, min, max));
+				}
+			}
+			faces.Sort((x, y) => x.min.x.CompareTo(y.min.x));
+
+			var shared = new HashSet<(Brush, int)>();
+			const double kTouch = ExactPlaneMerge.kTouch;
+			for (int i = 0; i < faces.Count; i++)
+			{
+				var fi = faces[i];
+				for (int j = i + 1; j < faces.Count && faces[j].min.x <= fi.max.x + kTouch; j++)
+				{
+					var fj = faces[j];
+					if (fi.brush == fj.brush)
+						continue;
+					if (math.any(fj.min > fi.max + kTouch) || math.any(fi.min > fj.max + kTouch))
+						continue;
+					if (!ExactPlaneMerge.OnePlane(fi.brush.floatPlanes[fi.face], fj.brush.floatPlanes[fj.face]))
+						continue;
+					shared.Add((fi.brush, fi.face));
+					shared.Add((fj.brush, fj.face));
+					var p = fi.brush.capture.planes[fi.face];
+					var q = fj.brush.capture.planes[fj.face];
+					if (SamePlane(p, q) || SamePlane(p, q.Flipped()))
+						continue;
+					Report(context, fi.brush, fi.face, float3.zero,
+						   $"face {fi.face} and face {fj.face} of brush '{fj.brush.node.name}' touch and are one plane in float, but the exact CSG cut them with {Text(p)} and {Text(q)}");
+				}
+			}
+
+			foreach (var brush in context.brushes)
+			{
+				if (brush.ownPlanes.Count != brush.capture.planes.Length)
+					continue;
+				for (int f = 0; f < brush.ownPlanes.Count; f++)
+				{
+					var c = brush.capture.planes[f]; var e = brush.ownPlanes[f];
+					if (SamePlane(c, e))
+						continue;
+					double facing = (double)c.a * e.a + (double)c.b * e.b + (double)c.c * e.c;
+					if (shared.Contains((brush, f)) && facing > 0)
+						continue;
+					Report(context, brush, f, float3.zero,
+						   $"the exact CSG used plane {f} = {Text(c)}, which is not the brush's current plane {Text(e)}, nor one it shares with a touching face of another brush");
+				}
 			}
 		}
 
@@ -1052,18 +1139,260 @@ namespace Chisel.Core.Tests
 		static bool Finite(float3 v) => math.all(math.isfinite(v));
 		static bool Finite(float4 v) => math.all(math.isfinite(v));
 
-		static void CheckMesh(Context context, ContentsTreeHarness harness)
+		// Where the exact CSG's output is closed (every edge, at its rounded corners, run both ways as often), the mesh is
+		// closed too: what the weld and the cleanup do after it only welds, and never opens the surface
+		static void CheckClosed(Context context, ContentsTreeHarness harness)
 		{
-			var difference = new Dictionary<(int, int, int, int, int, int, int, int, int, int), int>();
-			var snaps = SnapsByNode(harness, out var allSnaps);
-			var snappedKeys = new HashSet<(int, int, int, int, int, int, int, int, int, int)>();
-			// where each snapped triangle's corners were before the snap, when the weld chose what to split
-			var unsnapped = new Dictionary<(int, int, int, int, int, int, int, int, int, int), Dictionary<float3, float3>>();
+			var exact = new Dictionary<(float3, float3), int>();
+			void Add(Dictionary<(float3, float3), int> count, float3 a, float3 b)
+			{
+				count.TryGetValue((a, b), out var n);
+				count[(a, b)] = n + 1;
+			}
+			bool Closed(Dictionary<(float3, float3), int> count)
+			{
+				foreach (var pair in count)
+				{
+					count.TryGetValue((pair.Key.Item2, pair.Key.Item1), out var back);
+					if (pair.Value != back)
+						return false;
+				}
+				return true;
+			}
 			foreach (var brush in context.brushes)
 			{
 				if (brush.capture.parts == null)
 					continue;
-				snaps.TryGetValue(brush.node, out var snap);
+				foreach (var part in brush.capture.parts)
+				{
+					for (int t = 0; t + 2 < part.triangles.Length; t += 3)
+					{
+						var a = part.positions[part.triangles[t]] + 0.0f;
+						var b = part.positions[part.triangles[t + 1]] + 0.0f;
+						var c = part.positions[part.triangles[t + 2]] + 0.0f;
+						Add(exact, a, b); Add(exact, b, c); Add(exact, c, a);
+					}
+				}
+			}
+			if (!Closed(exact))
+				return;
+
+			var mesh  = new Dictionary<(float3, float3), int>();
+			var owner = new Dictionary<(float3, float3), Brush>();
+			foreach (var triangle in harness.Triangles)
+			{
+				var node = harness.NodeOf(triangle.brushID);
+				if (node == null || !context.byNode.TryGetValue(node, out var brush))
+					continue;
+				var a = triangle.a + 0.0f; var b = triangle.b + 0.0f; var c = triangle.c + 0.0f;
+				Add(mesh, a, b); Add(mesh, b, c); Add(mesh, c, a);
+				owner.TryAdd((a, b), brush); owner.TryAdd((b, c), brush); owner.TryAdd((c, a), brush);
+			}
+			foreach (var pair in mesh)
+			{
+				mesh.TryGetValue((pair.Key.Item2, pair.Key.Item1), out var back);
+				if (pair.Value <= back)
+					continue;
+				Report(context, owner[pair.Key], -1, (pair.Key.Item1 + pair.Key.Item2) * 0.5f,
+					   $"the mesh is open along {Format(pair.Key.Item1)} {Format(pair.Key.Item2)} ({pair.Value - back}x), where the exact CSG's output is closed");
+				if (context.Full)
+					return;
+			}
+		}
+
+		// What the cleanup changed (ContentsTreeHarness.CleanupChanges), surface by surface: the triangles it put in cover
+		// what those it took out cover, at the corners its snap gave them (SnapMoves). Their outline is the same, but for
+		// corners of other surfaces put into its edges (OutputMeshCleanup.SplitOutline: within kJunctionDistance of the edge,
+		// further than that from its ends), none of them turns over, and together they have the same area, but for what
+		// those corners add or take.
+		static void CheckCleanup(Context context, ContentsTreeHarness harness)
+		{
+			var snaps = SnapsByNode(harness, out _);
+			foreach (var pair in harness.CleanupChanges)
+			{
+				var node = harness.NodeOf(pair.Key);
+				if (node == null || !context.byNode.TryGetValue(node, out var brush))
+					continue;
+				snaps.TryGetValue(node, out var snap);
+				foreach (var surface in pair.Value.GroupBy(change => change.surface))
+				{
+					var problem = CheckCleanupOf(surface.ToList(), snap, out var at);
+					if (problem == null)
+						continue;
+					Report(context, brush, -1, at, $"the cleanup made surface {surface.Key} cover something else: {problem}");
+					if (context.Full)
+						return;
+				}
+			}
+		}
+
+		static string CheckCleanupOf(List<MeshCleanupChange> changes, Dictionary<float3, float3> snap, out float3 at)
+		{
+			at = changes.Count > 0 ? changes[0].a : float3.zero;
+			var before = new List<float3[]>();
+			var after  = new List<float3[]>();
+			foreach (var change in changes)
+			{
+				if (change.added != 0)
+					after.Add(new[] { change.a, change.b, change.c });
+				else
+					before.Add(new[] { Snapped(snap, change.a), Snapped(snap, change.b), Snapped(snap, change.c) });
+			}
+
+			// the side the surface faces, from what was there, or from what is there where that covered nothing (a needle
+			// cut at a corner put into its edge, OutputMeshCleanup.SplitOutline)
+			var normal = double3.zero;
+			double largest = 0, perimeter = 0;
+			foreach (var corners in before)
+			{
+				normal += math.cross((double3)corners[1] - corners[0], (double3)corners[2] - corners[0]);
+			}
+			if (!(math.length(normal) > 0))
+			{
+				foreach (var corners in after)
+					normal += math.cross((double3)corners[1] - corners[0], (double3)corners[2] - corners[0]);
+			}
+			normal = math.length(normal) > 0 ? math.normalize(normal) : double3.zero;
+			// a few units in the last place of the float corners, of what was there and what is
+			foreach (var corners in before.Concat(after))
+				for (int e = 0; e < 3; e++)
+					largest = math.max(largest, math.cmax(math.abs((double3)corners[e])));
+			var ulps = largest * (4.0 / (1 << 23));
+
+			// How the surface's outline changed: the edges of what it put in, less those of what it took out, as often as each
+			// runs one way more often than the other. That is closed, and has to be made of edges w -> u of the old outline
+			// run back (taken out), each with a chain u -> ... -> w through corners put into it (as SplitOutline puts them
+			// in: within kJunctionDistance of the edge, further than that from its ends), longest first. A corner put in off
+			// the surface's plane (within that distance) gives the chain a triangle standing on the edge: the same.
+			var outlineChange = OutlineChange(before, after);
+			foreach (var (from, to) in Outline(before).Concat(outlineChange))
+				perimeter += math.distance((double3)from, to);
+			outlineChange.Sort((x, y) => math.distancesq(y.to, y.from).CompareTo(math.distancesq(x.to, x.from)));
+			double moved = 0;
+			var used = new bool[outlineChange.Count];
+			for (int r = 0; r < outlineChange.Count; r++)
+			{
+				if (used[r])
+					continue;
+				// taken out: w -> u run back, so the chain runs u -> w
+				var u = outlineChange[r].to; var w = outlineChange[r].from;
+				var direction = w - u;
+				var length = math.length(direction);
+				var chain = new List<int>();
+				var current = u; var currentAlong = 0.0f; double chainMoved = 0;
+				while (!current.Equals(w))
+				{
+					int best = -1; var bestAlong = float.PositiveInfinity;
+					for (int n = 0; n < outlineChange.Count; n++)
+					{
+						if (n == r || used[n] || chain.Contains(n) || !outlineChange[n].from.Equals(current))
+							continue;
+						var p = outlineChange[n].to;
+						if (p.Equals(w))
+						{
+							if (length < bestAlong) { best = n; bestAlong = length; }
+							continue;
+						}
+						// as SplitOutline decides it
+						var along = math.dot(p - u, direction) / length;
+						if (along <= OutputMeshCleanup.kJunctionDistance || along >= length - OutputMeshCleanup.kJunctionDistance || !(along > currentAlong))
+							continue;
+						var off = math.distance(p, u + direction * (along / length));
+						if (off > OutputMeshCleanup.kJunctionDistance)
+							continue;
+						if (along < bestAlong) { best = n; bestAlong = along; }
+					}
+					if (best < 0)
+						break;
+					chain.Add(best);
+					// what the corner adds or takes: the triangle it makes with the edge
+					chainMoved += 0.5 * math.length(math.cross((double3)direction, (double3)outlineChange[best].to - u));
+					current = outlineChange[best].to;
+					currentAlong = bestAlong;
+				}
+				if (!current.Equals(w) || chain.Count < 2)
+					continue;
+				used[r] = true;
+				foreach (var n in chain)
+					used[n] = true;
+				moved += chainMoved;
+			}
+			for (int n = 0; n < outlineChange.Count; n++)
+			{
+				if (used[n])
+					continue;
+				at = outlineChange[n].from;
+				return $"its outline changed along {Format(outlineChange[n].from)} {Format(outlineChange[n].to)}, which is no corner put into an edge";
+			}
+
+			// nothing turned over further than the corners put into edges fold it (a corner on the inside of the edge it was
+			// put into stands its triangle over the one it was put into), and the same area, but for what they add or take
+			double areaBefore = 0, areaAfter = 0;
+			foreach (var corners in before)
+				areaBefore += math.dot(math.cross((double3)corners[1] - corners[0], (double3)corners[2] - corners[0]), normal) * 0.5;
+			foreach (var corners in after)
+			{
+				var area = math.dot(math.cross((double3)corners[1] - corners[0], (double3)corners[2] - corners[0]), normal) * 0.5;
+				var longest = math.max(math.distance((double3)corners[0], corners[1]), math.max(math.distance((double3)corners[1], corners[2]), math.distance((double3)corners[2], corners[0])));
+				if (area < -(longest * ulps + moved))
+				{
+					at = corners[0];
+					return $"it put in {Format(corners[0])} {Format(corners[1])} {Format(corners[2])} turned over";
+				}
+				areaAfter += area;
+			}
+			if (!(math.abs(areaAfter - areaBefore) <= moved + perimeter * ulps))
+				return $"it put in {areaAfter} of area where it took out {areaBefore}";
+			return null;
+		}
+
+		// The edges of triangles an edge of none of the others runs back along, as often as it does not
+		static List<(float3 from, float3 to)> Outline(List<float3[]> triangles) => OutlineChange(new List<float3[]>(), triangles);
+
+		// The edges of the triangles put in, less those of the triangles taken out, as often as each runs one way more
+		// often than the other
+		static List<(float3 from, float3 to)> OutlineChange(List<float3[]> takenOut, List<float3[]> putIn)
+		{
+			var count = new Dictionary<(float3, float3), int>();
+			var order = new List<(float3, float3)>();
+			void Add(float3[] corners, int sign)
+			{
+				for (int e = 0; e < 3; e++)
+				{
+					var edge = (corners[e] + 0.0f, corners[(e + 1) % 3] + 0.0f);
+					if (edge.Item1.Equals(edge.Item2))
+						continue;
+					if (!count.TryGetValue(edge, out var n))
+						order.Add(edge);
+					count[edge] = n + sign;
+				}
+			}
+			foreach (var corners in putIn)   Add(corners, +1);
+			foreach (var corners in takenOut) Add(corners, -1);
+			var outline = new List<(float3, float3)>();
+			var done = new HashSet<(float3, float3)>();
+			foreach (var edge in order)
+			{
+				var back = (edge.Item2, edge.Item1);
+				if (!done.Add(edge) || !done.Add(back))
+					continue;
+				count.TryGetValue(back, out var against);
+				var net = count[edge] - against;
+				for (int n = net; n > 0; n--)
+					outline.Add(edge);
+				for (int n = -net; n > 0; n--)
+					outline.Add(back);
+			}
+			return outline;
+		}
+
+		static void CheckMesh(Context context, ContentsTreeHarness harness)
+		{
+			var difference = new Dictionary<(int, int, int, int, int, int, int, int, int, int), int>();
+			foreach (var brush in context.brushes)
+			{
+				if (brush.capture.parts == null)
+					continue;
 				foreach (var part in brush.capture.parts)
 				{
 					for (int t = 0; t + 2 < part.triangles.Length; t += 3)
@@ -1076,40 +1405,11 @@ namespace Chisel.Core.Tests
 							context.droppedByTheWeld++;
 							continue;
 						}
-						// the cleanup's snap, after the weld: a triangle two of whose corners it made one is taken out
-						var snapped = false;
-						Dictionary<float3, float3> before = null;
-						if (snap != null)
-						{
-							var sa = Snapped(snap, a); var sb = Snapped(snap, b); var sc = Snapped(snap, c);
-							snapped = !sa.Equals(a) || !sb.Equals(b) || !sc.Equals(c);
-							if (snapped && (sa.Equals(sb) || sb.Equals(sc) || sc.Equals(sa)))
-								continue;
-							if (snapped)
-								before = new Dictionary<float3, float3> { [sa] = a, [sb] = b, [sc] = c };
-							a = sa; b = sb; c = sc;
-						}
 						var key = part.category == CategoryIndex.SelfAligned ? TriangleKey(brush.index, a, b, c) : TriangleKey(brush.index, a, c, b);
 						difference.TryGetValue(key, out int count);
 						difference[key] = count + 1;
-						if (snapped)
-						{
-							snappedKeys.Add(key);
-							unsnapped[key] = before;
-						}
 					}
 				}
-			}
-			// and two triangles it made the same three corners wound the other way round cover nothing
-			foreach (var key in snappedKeys)
-			{
-				var twin = TriangleKey(key.Item1, math.asfloat(new int3(key.Item2, key.Item3, key.Item4)), math.asfloat(new int3(key.Item8, key.Item9, key.Item10)),
-									   math.asfloat(new int3(key.Item5, key.Item6, key.Item7)));
-				if (!difference.TryGetValue(key, out var count) || count <= 0 || !difference.TryGetValue(twin, out var twinCount) || twinCount <= 0)
-					continue;
-				var n = Math.Min(count, twinCount);
-				difference[key] = count - n;
-				difference[twin] = twinCount - n;
 			}
 			foreach (var triangle in harness.Triangles)
 			{
@@ -1120,11 +1420,24 @@ namespace Chisel.Core.Tests
 				difference.TryGetValue(key, out int count);
 				difference[key] = count - 1;
 			}
-			var collapse = new CollapseMap(context, harness, allSnaps);
+			// what the cleanup took out and put in, as it recorded it (CheckCleanup checks it): with that put back, what is
+			// left is what the weld changed
+			foreach (var pair in harness.CleanupChanges)
+			{
+				var node = harness.NodeOf(pair.Key);
+				if (node == null || !context.byNode.TryGetValue(node, out var brush))
+					continue;
+				foreach (var change in pair.Value)
+				{
+					var key = TriangleKey(brush.index, change.a, change.b, change.c);
+					difference.TryGetValue(key, out int count);
+					difference[key] = count + (change.added != 0 ? 1 : -1);
+				}
+			}
+			var collapse = new CollapseMap(context, harness);
 			context.flippedByTheWeld = CancelFlippedNeedles(difference, collapse);
-			CancelModelWeld(difference, unsnapped, out context.splitByTheWeld, out context.pairedByTheWeld, out context.cancelledByTheWeld);
+			CancelModelWeld(difference, null, out context.splitByTheWeld, out context.pairedByTheWeld);
 			context.collapsedByTheWeld = CancelCollapse(difference, collapse);
-			CancelFlippedQuads(difference);
 			foreach (var pair in difference)
 			{
 				if (pair.Value == 0)
@@ -1174,11 +1487,11 @@ namespace Chisel.Core.Tests
 						needles[longEdge] = count + 1;
 					}
 				}
-				// accounted for: in the mesh as the weld's last step left it, left without area by that step, or flipped again
+				// accounted for: in the mesh as the weld's last step left it, dropped by that step, or flipped again
 				bool Accounted(int brush, float3 x, float3 y, float3 z)
 				{
 					var mx = collapse != null ? collapse.Map(x) : x; var my = collapse != null ? collapse.Map(y) : y; var mz = collapse != null ? collapse.Map(z) : z;
-					if (collapse != null && CollapseMap.WithoutArea(mx, my, mz))
+					if (collapse != null && CollapseMap.Drops(mx, my, mz))
 						return true;
 					if (difference.TryGetValue(TriangleKey(brush, mx, my, mz), out var there) && there < 0)
 						return true;
@@ -1228,7 +1541,7 @@ namespace Chisel.Core.Tests
 		{
 			readonly Dictionary<float3, float3> moved = new();
 
-			public CollapseMap(Context context, ContentsTreeHarness harness, Dictionary<float3, float3> snaps = null)
+			public CollapseMap(Context context, ContentsTreeHarness harness)
 			{
 				var clusters = new Dictionary<float3, List<float3>>();
 				foreach (var move in harness.CollapseMoves)
@@ -1253,15 +1566,6 @@ namespace Chisel.Core.Tests
 					if (!(math.length(hi - lo) <= OutputModelWeld.kCollapseLength))
 						Problem(context, pair.Key, $"the weld collapsed corners {math.length(hi - lo)} across onto {Format(pair.Key)}, further than it collapses");
 				}
-				// the expected corners are where the cleanup's snap put them, after the weld
-				if (snaps == null || snaps.Count == 0)
-					return;
-				foreach (var move in new List<KeyValuePair<float3, float3>>(moved))
-				{
-					var from = Snapped(snaps, move.Key); var to = Snapped(snaps, move.Value);
-					if (from.Equals(move.Key) || !moved.ContainsKey(from))
-						moved[from] = to;
-				}
 			}
 
 			static void Problem(Context context, float3 at, string problem)
@@ -1272,12 +1576,12 @@ namespace Chisel.Core.Tests
 
 			public float3 Map(float3 p) => moved.TryGetValue(p + 0.0f, out var to) ? to : p;
 
-			// as the weld decides it
-			public static bool WithoutArea(float3 a, float3 b, float3 c) => OutputWeld.WithoutArea(a, b, c);
+			// whether the collapse drops a triangle, as the weld decides it
+			public static bool Drops(float3 a, float3 b, float3 c) => OutputModelWeld.CollapseDrops(a, b, c);
 		}
 
 		// The weld's last step on what is left: an expected triangle the mesh lacks, its corners where the collapse put them
-		// (CollapseMap), is left without area (the weld dropped it) or is one the mesh has. How many it accounts for.
+		// (CollapseMap), is one the collapse drops or one the mesh has. How many it accounts for.
 		static int CancelCollapse(Dictionary<(int, int, int, int, int, int, int, int, int, int), int> difference, CollapseMap collapse)
 		{
 			float3 Corner((int, int, int, int, int, int, int, int, int, int) k, int i) =>
@@ -1292,7 +1596,7 @@ namespace Chisel.Core.Tests
 				var pa = collapse.Map(a); var pb = collapse.Map(b); var pc = collapse.Map(c);
 				if (pa.Equals(a) && pb.Equals(b) && pc.Equals(c))
 					continue;
-				if (CollapseMap.WithoutArea(pa, pb, pc))
+				if (CollapseMap.Drops(pa, pb, pc))
 				{
 					difference[k] = 0;
 					accounted += count;
@@ -1300,17 +1604,16 @@ namespace Chisel.Core.Tests
 				}
 				var key = TriangleKey(k.Item1, pa, pb, pc);
 				difference.TryGetValue(key, out var there);
-				if (there >= 0)
-					continue;
-				var n = Math.Min(count, -there);
-				difference[k] = count - n;
-				difference[key] = there + n;
+				var n = there < 0 ? Math.Min(count, -there) : 0;
 				accounted += n;
+				// what the mesh still lacks of it, it lacks where the collapse put its corners: the steps after the
+				// collapse (the cleanup's splits and flips) start from there
+				difference[k] = 0;
+				difference[key] = there + count;
 			}
 			return accounted;
 		}
 
-		static bool Less(float3 x, float3 y) => x.x != y.x ? x.x < y.x : (x.y != y.y ? x.y < y.y : x.z < y.z);
 
 		// Where the cleanup's snap put each brush's corners (ContentsTreeHarness.SnapMoves), by node; all: every brush's
 		static Dictionary<ContentsSceneNode, Dictionary<float3, float3>> SnapsByNode(ContentsTreeHarness harness, out Dictionary<float3, float3> all)
@@ -1337,70 +1640,12 @@ namespace Chisel.Core.Tests
 
 		static void CancelModelWeld(Dictionary<(int, int, int, int, int, int, int, int, int, int), int> difference,
 									Dictionary<(int, int, int, int, int, int, int, int, int, int), Dictionary<float3, float3>> unsnapped,
-									out int split, out int paired, out int cancelled)
+									out int split, out int paired)
 		{
 			split = 0;
 			paired = 0;
-			cancelled = 0;
-			for (var progress = true; progress; )
-			{
-				progress  = CancelOppositesOnce(difference, ref cancelled);
-				progress |= CancelModelWeldOnce(difference, unsnapped, ref split, ref paired);
-			}
+			while (CancelModelWeldOnce(difference, unsnapped, ref split, ref paired)) { }
 		}
-
-		// The cleanup's flip of a thin triangle (OutputMeshCleanup.FlipThinTriangles) on a surface it changed: two expected
-		// triangles p, q, r1 and q, p, r2 the mesh lacks, where it has r1, p, r2 and r2, q, r1 covering the same area
-		static void CancelFlippedQuads(Dictionary<(int, int, int, int, int, int, int, int, int, int), int> difference)
-		{
-			var byEdge = new Dictionary<(int, int3, int3), List<(int, int, int, int, int, int, int, int, int, int)>>();
-			foreach (var pair in difference)
-			{
-				if (pair.Value <= 0)
-					continue;
-				var c = CornersOf(pair.Key);
-				for (int e = 0; e < 3; e++)
-				{
-					var edge = (pair.Key.Item1, math.asint(c[e]), math.asint(c[(e + 1) % 3]));
-					if (!byEdge.TryGetValue(edge, out var list))
-						byEdge[edge] = list = new List<(int, int, int, int, int, int, int, int, int, int)>();
-					list.Add(pair.Key);
-				}
-			}
-			foreach (var first in new List<(int, int, int, int, int, int, int, int, int, int)>(difference.Keys))
-			{
-				var c = CornersOf(first);
-				for (int e = 0; e < 3 && difference[first] > 0; e++)
-				{
-					float3 p = c[e], q = c[(e + 1) % 3], r1 = c[(e + 2) % 3];
-					if (!byEdge.TryGetValue((first.Item1, math.asint(q), math.asint(p)), out var across))
-						continue;
-					foreach (var second in across)
-					{
-						if (second.Equals(first) || difference[first] <= 0 || difference[second] <= 0)
-							continue;
-						var s = CornersOf(second);
-						var r2 = !s[0].Equals(p) && !s[0].Equals(q) ? s[0] : (!s[1].Equals(p) && !s[1].Equals(q) ? s[1] : s[2]);
-						var flipA = TriangleKey(first.Item1, r1, p, r2);
-						var flipB = TriangleKey(first.Item1, r2, q, r1);
-						if (!difference.TryGetValue(flipA, out var countA) || countA >= 0 ||
-							!difference.TryGetValue(flipB, out var countB) || countB >= 0)
-							continue;
-						var before = Area(p, q, r1) + Area(q, p, r2);
-						var after  = Area(r1, p, r2) + Area(r2, q, r1);
-						if (math.abs(before - after) > 1e-6 * math.max(1.0, before))
-							continue;
-						difference[first]  -= 1;
-						difference[second] -= 1;
-						difference[flipA]   = countA + 1;
-						difference[flipB]   = countB + 1;
-						break;
-					}
-				}
-			}
-		}
-
-		static double Area(float3 a, float3 b, float3 c) => 0.5 * math.length(math.cross((double3)b - a, (double3)c - a));
 
 		static float3[] CornersOf((int, int, int, int, int, int, int, int, int, int) k) =>
 			new[] { math.asfloat(new int3(k.Item2, k.Item3, k.Item4)), math.asfloat(new int3(k.Item5, k.Item6, k.Item7)), math.asfloat(new int3(k.Item8, k.Item9, k.Item10)) };
@@ -1425,80 +1670,14 @@ namespace Chisel.Core.Tests
 			return true;
 		}
 
-		// The expected triangles the mesh lacks, by their positions alone (the key's brush -1)
-		static Dictionary<(int, int, int, int, int, int, int, int, int, int), List<(int, int, int, int, int, int, int, int, int, int)>> LackedByPositions(
-			Dictionary<(int, int, int, int, int, int, int, int, int, int), int> difference)
-		{
-			var byPositions = new Dictionary<(int, int, int, int, int, int, int, int, int, int), List<(int, int, int, int, int, int, int, int, int, int)>>();
-			foreach (var pair in difference)
-			{
-				if (pair.Value <= 0)
-					continue;
-				var k = pair.Key;
-				var positions = TriangleKey(-1, math.asfloat(new int3(k.Item2, k.Item3, k.Item4)), math.asfloat(new int3(k.Item5, k.Item6, k.Item7)),
-											math.asfloat(new int3(k.Item8, k.Item9, k.Item10)));
-				if (!byPositions.TryGetValue(positions, out var list))
-					byPositions[positions] = list = new List<(int, int, int, int, int, int, int, int, int, int)>();
-				list.Add(k);
-			}
-			return byPositions;
-		}
-
-		// The key with its corners wound the other way round, by positions alone
-		static (int, int, int, int, int, int, int, int, int, int) Reversed((int, int, int, int, int, int, int, int, int, int) k)
-		{
-			return TriangleKey(-1, math.asfloat(new int3(k.Item2, k.Item3, k.Item4)), math.asfloat(new int3(k.Item8, k.Item9, k.Item10)),
-							   math.asfloat(new int3(k.Item5, k.Item6, k.Item7)));
-		}
-
-		// Expected triangles the mesh lacks, two at a time, at the same three positions wound the other way round. Needles are
-		// left to CancelModelWeldOnce: two facing needles are a pair there.
-		static bool CancelOppositesOnce(Dictionary<(int, int, int, int, int, int, int, int, int, int), int> difference, ref int cancelled)
-		{
-			var byPositions = LackedByPositions(difference);
-			var progress = false;
-			foreach (var k in new List<(int, int, int, int, int, int, int, int, int, int)>(difference.Keys))
-			{
-				if (difference[k] <= 0)
-					continue;
-				if (ExactFloatLine.OnOneLine(math.asfloat(new int3(k.Item2, k.Item3, k.Item4)), math.asfloat(new int3(k.Item5, k.Item6, k.Item7)),
-											 math.asfloat(new int3(k.Item8, k.Item9, k.Item10))))
-					continue;
-				if (!byPositions.TryGetValue(Reversed(k), out var twins))
-					continue;
-				foreach (var twin in twins)
-				{
-					if (twin.Equals(k) || difference[twin] <= 0 || difference[k] <= 0)
-						continue;
-					difference[k]    -= 1;
-					difference[twin] -= 1;
-					cancelled++;
-					progress = true;
-					break;
-				}
-			}
-			return progress;
-		}
-
-		// A triangle the mesh does not have, which the weld cancelled with an expected triangle at its positions wound the
-		// other way round
-		static bool CancelledWithATwin(Dictionary<(int, int, int, int, int, int, int, int, int, int), int> difference,
-									   Dictionary<(int, int, int, int, int, int, int, int, int, int), List<(int, int, int, int, int, int, int, int, int, int)>> lacked,
-									   (int, int, int, int, int, int, int, int, int, int) key)
-		{
-			difference.TryGetValue(key, out var count);
-			return count == 0 && lacked.ContainsKey(Reversed(key));
-		}
-
-		// A half the mesh lacks is accounted for when the weld cancelled it with a twin, or split it again: a needle the mesh
-		// lacks lies across one of its edges, and both halves of that split are accounted for in turn
+		// A half the mesh lacks is accounted for when the weld split it again: a needle the mesh lacks lies across one of its
+		// edges, and both halves of that split are accounted for in turn
 		static bool Accounted(Dictionary<(int, int, int, int, int, int, int, int, int, int), int> difference,
-							  Dictionary<(int, int, int, int, int, int, int, int, int, int), List<(int, int, int, int, int, int, int, int, int, int)>> lacked,
 							  Dictionary<(int3, int3), List<((int, int, int, int, int, int, int, int, int, int) needle, float3 m)>> needles,
 							  (int, int, int, int, int, int, int, int, int, int) key, HashSet<(int, int, int, int, int, int, int, int, int, int)> used)
 		{
 			difference.TryGetValue(key, out var count);
-			if (count < 0 || CancelledWithATwin(difference, lacked, key))
+			if (count < 0)
 				return true;
 			var corners = new[] { math.asfloat(new int3(key.Item2, key.Item3, key.Item4)), math.asfloat(new int3(key.Item5, key.Item6, key.Item7)),
 								  math.asfloat(new int3(key.Item8, key.Item9, key.Item10)) };
@@ -1514,8 +1693,8 @@ namespace Chisel.Core.Tests
 					if (used.Contains(needle) || difference[needle] <= 0)
 						continue;
 					used.Add(needle);
-					var both = Accounted(difference, lacked, needles, TriangleKey(key.Item1, p, m, d), used) &&
-							   Accounted(difference, lacked, needles, TriangleKey(key.Item1, m, q, d), used);
+					var both = Accounted(difference, needles, TriangleKey(key.Item1, p, m, d), used) &&
+							   Accounted(difference, needles, TriangleKey(key.Item1, m, q, d), used);
 					used.Remove(needle);
 					if (both)
 						return true;
@@ -1529,7 +1708,6 @@ namespace Chisel.Core.Tests
 										ref int split, ref int paired)
 		{
 			var progress = false;
-			var lacked = LackedByPositions(difference);
 			// the needles the mesh lacks, by the edge u -> w of the triangle that would lie across them
 			var needles = new Dictionary<(int3, int3), List<((int, int, int, int, int, int, int, int, int, int) needle, float3 m)>>();
 			foreach (var pair in difference)
@@ -1581,11 +1759,11 @@ namespace Chisel.Core.Tests
 						var second = TriangleKey(neighbour.Item1, m, w, d);
 						difference.TryGetValue(first, out var firstCount);
 						difference.TryGetValue(second, out var secondCount);
-						// the mesh has neither half, and the weld cancelled neither with a twin: not this split
+						// the mesh has neither half: not this split
 						if (firstCount >= 0 && secondCount >= 0)
 						{
 							var used = new HashSet<(int, int, int, int, int, int, int, int, int, int)> { needle };
-							if (!Accounted(difference, lacked, needles, first, used) && !Accounted(difference, lacked, needles, second, used))
+							if (!Accounted(difference, needles, first, used) && !Accounted(difference, needles, second, used))
 								continue;
 						}
 						difference[needle]    -= 1;

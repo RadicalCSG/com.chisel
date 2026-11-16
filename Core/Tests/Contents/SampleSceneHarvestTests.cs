@@ -36,6 +36,7 @@ namespace Chisel.Core.Tests
 		{
 			public string[]    models;
 			public DumpEntry[] entries;
+			public string[]    contentsList;    // the names of the contents list the scene was built with
 		}
 #pragma warning restore CS0649
 
@@ -90,6 +91,9 @@ namespace Chisel.Core.Tests
 		static ContentsScene SceneOf(Dump dump, int modelIndex, StringBuilder skipped, out int brushes)
 		{
 			var scene = new ContentsScene();
+			// a list always holds Solid, so an empty one is a dump that did not record it: the editor's own then
+			if (dump.contentsList != null && dump.contentsList.Length > 0)
+				scene.WithContentsList(dump.contentsList);
 			var nodes = new Dictionary<int, ContentsSceneNode>();
 			brushes = 0;
 			for (int i = 0; i < dump.entries.Length; i++)
@@ -353,7 +357,6 @@ namespace Chisel.Core.Tests
 									(ExactJudge.LastFlippedByTheWeld > 0 ? $"; {ExactJudge.LastFlippedByTheWeld} needle(s) the weld flips away" : "") +
 									(ExactJudge.LastSplitByTheWeld > 0 ? $"; {ExactJudge.LastSplitByTheWeld} needle(s) split into another brush's triangle" : "") +
 									(ExactJudge.LastPairedByTheWeld > 0 ? $"; {ExactJudge.LastPairedByTheWeld} pair(s) of facing needles dropped" : "") +
-									(ExactJudge.LastCancelledByTheWeld > 0 ? $"; {ExactJudge.LastCancelledByTheWeld} pair(s) of opposite triangles cancelled" : "") +
 									(mismatches.Count > 0 ? "; first: " + mismatches[0].Format("exact") : "");
 						}
 					}
@@ -483,6 +486,14 @@ namespace Chisel.Core.Tests
 		/// </summary>
 		public static string Harvest(string dumpName, int modelIndex, double budgetSeconds)
 		{
+			return Harvest(dumpName, modelIndex, budgetSeconds, 300.0);
+		}
+
+		/// <summary>
+		/// The same, each site's shrink given at most `siteSeconds` (ContentsHarvest.HarvestSites)
+		/// </summary>
+		public static string Harvest(string dumpName, int modelIndex, double budgetSeconds, double siteSeconds)
+		{
 			var dump = Load(dumpName, out var problem);
 			if (dump == null)
 				return kInconclusive + problem;
@@ -509,7 +520,7 @@ namespace Chisel.Core.Tests
 			File.WriteAllText(outPath, header.ToString());
 
 			// One minimal scene per failing spot, not one per model
-			var findings = ContentsHarvest.HarvestSites(scene, label, budgetSeconds, chunk => File.AppendAllText(outPath, chunk));
+			var findings = ContentsHarvest.HarvestSites(scene, label, budgetSeconds, chunk => File.AppendAllText(outPath, chunk), siteSeconds: siteSeconds);
 			return $"{modelName}: {brushCount} brushes, {findings.Count} distinct minimal failing scene(s); report at {outPath}";
 		}
 	}

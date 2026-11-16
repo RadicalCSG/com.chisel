@@ -156,7 +156,7 @@ namespace Chisel.Core
             // CopyWeldedBrushesJob)
             OutputModelWeld.PrepareIncremental(brushRenderData, allUpdateBrushIndexOrders.AsArray(), ref weldMemory, ref weld);
             do
-                OutputModelWeld.PlanWeldBeforeCollapse(brushRenderData, ref weld, out _, out _, out _, collapseMoves);
+                OutputModelWeld.PlanWeldBeforeCollapse(brushRenderData, ref weld, out _, out _, collapseMoves);
             while (OutputModelWeld.TakeInSplitSurfaces(brushRenderData, ref weldMemory, ref weld));
             OutputModelWeld.RecordRounds(brushRenderData, ref weldMemory, ref weld);
         }
@@ -672,10 +672,12 @@ namespace Chisel.Core
         [NoAlias] public NativeList<int> neighbours;
         [NoAlias] public NativeList<int> outlineBrushes;
         [NoAlias] public NativeList<OutputMeshCleanup.BrushOutlines> outlines;
+        // the exact CSG is captured: the cleanup's changes are recorded too (MeshCleanupChange)
+        [NoAlias, ReadOnly] public bool record;
 
         public void Execute()
         {
-            OutputMeshCleanup.Plan(brushRenderData, meshCleanupCache, work, neighbours, outlineBrushes);
+            OutputMeshCleanup.Plan(brushRenderData, meshCleanupCache, work, neighbours, outlineBrushes, record);
             outlines.Resize(outlineBrushes.Length, NativeArrayOptions.ClearMemory);
         }
     }

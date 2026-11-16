@@ -249,7 +249,7 @@ namespace Chisel.Core.Tests
 		static ContentsScene Localise(ContentsScene scene, float3 min, float3 max, float extent, string keep,
 									  Dictionary<ContentsSceneNode, (float3, float3)> bounds)
 		{
-			var result = new ContentsScene();
+			var result = scene.EmptyCopy();
 			foreach (var root in scene.roots)
 			{
 				var kept = LocaliseNode(root, min, max, extent, keep, bounds);
@@ -287,9 +287,93 @@ namespace Chisel.Core.Tests
 			return copy.children.Count == 0 ? null : copy;
 		}
 
+		// How far around a site's points a brush's bounds may lie and the brush still be one the site is in or on
+		const float kSeedMargin = 0.05f;
+		// How close two brushes' bounds must come for the brushes to count as touching
+		const float kContactMargin = 1e-3f;
+		const int kMaxContactRings = 64;
+
+		static bool Touch((float3, float3) a, (float3, float3) b)
+		{
+			return math.all(a.Item1 <= b.Item2 + kContactMargin) && math.all(b.Item1 <= a.Item2 + kContactMargin);
+		}
+
+		// The site's own brush and the brushes its points lie in or on, then the brushes touching those, ring by ring, until
+		// the site fails again. Follows what travels along contact rather than distance: touching faces that take one plane
+		// (ExactPlaneMerge) and the weld along shared edges reach across a whole floor. Null when the rings take in the whole
+		// scene (the whole-scene fallback's to try), stop growing without failing, or run past the deadline.
+		static ContentsScene GrowByContact(ContentsScene scene, Site site, float extent, Dictionary<ContentsSceneNode, (float3, float3)> bounds,
+										   Stats stats, Stopwatch clock, double deadline, out string origin)
+		{
+			origin = null;
+			var all   = new List<ContentsSceneNode>();
+			var boxes = new List<(float3, float3)>();
+			foreach (var brush in AllBrushes(scene))
+			{
+				if (!bounds.TryGetValue(brush, out var box))
+				{
+					if (!BoundsOf(brush, extent, out var bmin, out var bmax))
+						continue;
+					bounds[brush] = box = (bmin, bmax);
+				}
+				all.Add(brush);
+				boxes.Add(box);
+			}
+
+			var included = new HashSet<ContentsSceneNode>();
+			var frontier = new List<int>();
+			for (int i = 0; i < all.Count; i++)
+			{
+				bool seed = all[i].name == site.brushName || all[i].operation == CSGOperationType.Intersecting;
+				for (int p = 0; p < site.points.Count && !seed; p++)
+					seed = math.all(site.points[p] >= boxes[i].Item1 - kSeedMargin) && math.all(site.points[p] <= boxes[i].Item2 + kSeedMargin);
+				if (seed)
+				{
+					included.Add(all[i]);
+					frontier.Add(i);
+				}
+			}
+
+			for (int ring = 1; ring <= kMaxContactRings && frontier.Count > 0; ring++)
+			{
+				if (clock.Elapsed.TotalSeconds > deadline)
+					return null;
+				var next = new List<int>();
+				for (int i = 0; i < all.Count; i++)
+				{
+					if (included.Contains(all[i]))
+						continue;
+					foreach (var f in frontier)
+					{
+						if (Touch(boxes[i], boxes[f]))
+						{
+							included.Add(all[i]);
+							next.Add(i);
+							break;
+						}
+					}
+				}
+				if (next.Count == 0 || included.Count == all.Count)
+					return null;
+				frontier = next;
+
+				var remove = new HashSet<ContentsSceneNode>();
+				foreach (var brush in AllBrushes(scene))
+					if (!included.Contains(brush))
+						remove.Add(brush);
+				var candidate = Without(scene, remove);
+				if (FailsAt(candidate, site, stats))
+				{
+					origin = $"contact ring {ring}";
+					return candidate;
+				}
+			}
+			return null;
+		}
+
 		static ContentsScene Without(ContentsScene scene, HashSet<ContentsSceneNode> remove)
 		{
-			var result = new ContentsScene();
+			var result = scene.EmptyCopy();
 			foreach (var root in scene.roots)
 			{
 				var kept = WithoutNode(root, remove);
@@ -441,7 +525,7 @@ namespace Chisel.Core.Tests
 			exists = state != 0;
 			if (state != 1)
 				return null;
-			var result = new ContentsScene();
+			var result = scene.EmptyCopy();
 			foreach (var root in roots)
 				result.Add(root);
 			return result;
@@ -511,9 +595,11 @@ namespace Chisel.Core.Tests
 		/// <summary>
 		/// One minimal scene per distinct failing spot, reported through <paramref name="emit"/> as each is found. Each is
 		/// reduced to the brushes near its points and shrunk while its points still fail; sites the budget doesn't reach are listed.
+		/// Each site's shrink gets at most <paramref name="siteSeconds"/>; one that needs the whole scene of a large model needs
+		/// more, as each of its runs rebuilds thousands of brushes.
 		/// </summary>
 		public static List<Finding> HarvestSites(ContentsScene scene, string label, double budgetSeconds, Action<string> emit,
-												 int maxWholeSceneShrinks = 2)
+												 int maxWholeSceneShrinks = 2, double siteSeconds = 300.0)
 		{
 			var clock    = Stopwatch.StartNew();
 			var stats    = new Stats();
@@ -634,6 +720,8 @@ namespace Chisel.Core.Tests
 					}
 				}
 				if (start == null)
+					start = GrowByContact(scene, site, extent, bounds, stats, clock, math.min(budgetSeconds, clock.Elapsed.TotalSeconds + siteSeconds), out origin);
+				if (start == null)
 				{
 					if (wholeSceneShrinks >= maxWholeSceneShrinks || clock.Elapsed.TotalSeconds > budgetSeconds * 0.5)
 					{
@@ -653,7 +741,7 @@ namespace Chisel.Core.Tests
 					wholeSceneShrinks++;
 				}
 
-				var deadline = math.min(budgetSeconds, clock.Elapsed.TotalSeconds + 300.0);
+				var deadline = math.min(budgetSeconds, clock.Elapsed.TotalSeconds + siteSeconds);
 				var minimal  = ShrinkSite(start, site, stats, clock, deadline, out var complete);
 				// The result, checked once more
 				if (!FailsAt(minimal, site, stats))

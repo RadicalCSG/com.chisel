@@ -348,6 +348,24 @@ namespace Chisel.Core.Tests
 				Assert.That(harness.Update(), Is.False, "renaming an entry rebuilt something");
 			}
 		}
+
+		// A scene that names the list it was made with builds with that list, whatever the editor's is, and the editor
+		// gets its own list back afterwards
+		[Test]
+		public void ASceneWithItsOwnList_BuildsWithThatList()
+		{
+			list.Install(ChiselContentsList.kSolidName, "Glass", "Grate");
+			var editorList = ChiselContentsList.Instance;
+			var post = Box("post", new float3(-1, -1, 0), new float3(1, 1, 4));
+			var pane = Box("pane", new float3(-0.5f, 1, 0), new float3(0.5f, 5, 4), kWater);
+			using (var harness = ContentsTreeHarness.Build(Scene(post, pane).WithContentsList(kDefaultNames)))
+			{
+				harness.JudgeEachUpdate = false;
+				Assert.That(harness.Update(), Is.True);
+				ContentsComparison.AssertMatchesOracle(harness, "water from the scene's own list");
+			}
+			Assert.That(ChiselContentsList.Instance, Is.SameAs(editorList), "the editor's list was not given back");
+		}
 		#endregion
 
 		#region Control

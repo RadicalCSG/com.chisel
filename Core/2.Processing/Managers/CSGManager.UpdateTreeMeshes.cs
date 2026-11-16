@@ -235,6 +235,11 @@ namespace Chisel.Core
                 public NativeList<MinMaxAABB>               exactBounds;
                 // The ExactBrush entries this update replaced (ExactInputJob), disposed once the update is done
                 public NativeList<BlobAssetReference<ExactBrush>> exactBrushDisposeList;
+                // The brushes whose planes the merge across brushes changed (ExactPlaneMergeJob), and their new planes, by
+                // merged brush at mergedPlaneOffsets
+                public NativeList<IndexOrder>               mergedBrushIndexOrders;
+                public NativeList<ExactPlane>               mergedPlanes;
+                public NativeList<int>                      mergedPlaneOffsets;
                 // ExactCSGJob's exact output when captureExact is set (see ExactCSGCapture); minimal otherwise, since a job
                 // cannot be scheduled without it. Only created when ExactCSGJob is scheduled.
                 public NativeStream                         exactCapture;
@@ -550,6 +555,9 @@ namespace Chisel.Core
                 Temporaries.exactCSGStats                   = new NativeArray<int>((int)ExactCSGStat.Count, defaultAllocator);
                 this.captureExact                           = ExactCSGCapture.Enabled;
                 Temporaries.exactBounds                     = new NativeList<MinMaxAABB>(math.max(1, brushCount), defaultAllocator);
+                Temporaries.mergedBrushIndexOrders          = new NativeList<IndexOrder>(math.max(1, brushCount), defaultAllocator);
+                Temporaries.mergedPlanes                    = new NativeList<ExactPlane>(math.max(1, brushCount * 6), defaultAllocator);
+                Temporaries.mergedPlaneOffsets              = new NativeList<int>(math.max(1, brushCount), defaultAllocator);
 
                 // The decals, and where they changed since the last update. The next update starts from here.
                 Temporaries.decalVolumes                    = new NativeArray<DecalVolume>(chiselLookupValues.decalVolumes.AsArray(), defaultAllocator);
@@ -644,7 +652,8 @@ namespace Chisel.Core
                 Temporaries.brushesTouchedByBrushDisposeList = new NativeList<BlobAssetReference<BrushesTouchedByBrush>>(chiselLookupValues.brushesTouchedByBrushCache.Length, defaultAllocator);
                 Temporaries.routingTableDisposeList          = new NativeList<BlobAssetReference<RoutingTable>>(chiselLookupValues.routingTableCache.Length, defaultAllocator);
                 Temporaries.brushRenderBufferDisposeList     = new NativeList<BlobAssetReference<ChiselBrushRenderBuffer>>(chiselLookupValues.brushRenderBufferCache.Length, defaultAllocator);
-                Temporaries.exactBrushDisposeList            = new NativeList<BlobAssetReference<ExactBrush>>(math.max(1, chiselLookupValues.exactBrushCache.Length), defaultAllocator);
+                // a brush can be replaced twice: built again (ExactInputJob), then with merged planes (ExactMergedRebuildJob)
+                Temporaries.exactBrushDisposeList            = new NativeList<BlobAssetReference<ExactBrush>>(math.max(1, 2 * math.max(brushCount, chiselLookupValues.exactBrushCache.Length)), defaultAllocator);
 
                 #endregion
             }
@@ -676,6 +685,9 @@ namespace Chisel.Core
                 if (t.brushBoundsSweep.IsCreated)               t.brushBoundsSweep.Dispose();
                 if (t.exactCSGStats.IsCreated)                  t.exactCSGStats.Dispose();
                 if (t.exactBounds.IsCreated)                    t.exactBounds.Dispose();
+                if (t.mergedBrushIndexOrders.IsCreated)         t.mergedBrushIndexOrders.Dispose();
+                if (t.mergedPlanes.IsCreated)                   t.mergedPlanes.Dispose();
+                if (t.mergedPlaneOffsets.IsCreated)             t.mergedPlaneOffsets.Dispose();
                 if (t.decalVolumes.IsCreated)                   t.decalVolumes.Dispose();
                 if (t.decalTargets.IsCreated)                   t.decalTargets.Dispose();
                 if (t.decalParts.IsCreated)                     t.decalParts.Dispose();
@@ -1458,6 +1470,58 @@ namespace Chisel.Core
                         // Write
                         bounds                      = Temporaries.exactBounds
                     };
+                    exactBoundsJob.Schedule(false,
+                        JobHandles.Read(
+                            JobHandleType.allTreeBrushIndexOrdersJobHandle,
+                            JobHandleType.brushMeshLookupJobHandle,
+                            JobHandleType.transformationCacheJobHandle),
+                        JobHandles.Write(
+                            JobHandleType.exactBrushCacheJobHandle));
+
+                    // faces of different brushes that are one plane take one plane; the brushes that changes are built
+                    // again, and from here on count as rebuilt
+                    var exactPlaneMergeJob = new ExactPlaneMergeJob
+                    {
+                        // Read
+                        allTreeBrushIndexOrders     = Temporaries.allTreeBrushIndexOrders,
+                        exactBrushCache             = chiselLookupValues.exactBrushCache,
+
+                        // Read / Write
+                        rebuildTreeBrushIndexOrders = Temporaries.rebuildTreeBrushIndexOrders,
+
+                        // Write
+                        mergedBrushIndexOrders      = Temporaries.mergedBrushIndexOrders,
+                        mergedPlanes                = Temporaries.mergedPlanes,
+                        mergedPlaneOffsets          = Temporaries.mergedPlaneOffsets
+                    };
+                    exactPlaneMergeJob.Schedule(false,
+                        JobHandles.Read(
+                            JobHandleType.allTreeBrushIndexOrdersJobHandle),
+                        JobHandles.Write(
+                            JobHandleType.rebuildTreeBrushIndexOrdersJobHandle,
+                            JobHandleType.exactBrushCacheJobHandle));
+
+                    var exactMergedRebuildJob = new ExactMergedRebuildJob
+                    {
+                        // Read
+                        mergedBrushIndexOrders      = Temporaries.mergedBrushIndexOrders,
+                        mergedPlanes                = Temporaries.mergedPlanes,
+                        mergedPlaneOffsets          = Temporaries.mergedPlaneOffsets,
+
+                        // Read / Write
+                        stats                       = Temporaries.exactCSGStats,
+                        exactBrushCache             = chiselLookupValues.exactBrushCache,
+
+                        // Write
+                        disposeList                 = Temporaries.exactBrushDisposeList.AsParallelWriter()
+                    };
+                    exactMergedRebuildJob.Schedule(runInParallel, Temporaries.mergedBrushIndexOrders, 1,
+                        JobHandles.Read(
+                            JobHandleType.allTreeBrushIndexOrdersJobHandle),
+                        JobHandles.Write(
+                            JobHandleType.exactBrushCacheJobHandle));
+
+                    // the bounds of the brushes built again
                     exactBoundsJob.Schedule(false,
                         JobHandles.Read(
                             JobHandleType.allTreeBrushIndexOrdersJobHandle,
@@ -2279,7 +2343,8 @@ namespace Chisel.Core
                         work             = Temporaries.meshCleanup,
                         neighbours       = Temporaries.meshCleanupNeighbours,
                         outlineBrushes   = Temporaries.meshCleanupOutlineBrushes,
-                        outlines         = Temporaries.meshCleanupOutlines
+                        outlines         = Temporaries.meshCleanupOutlines,
+                        record           = captureExact
                     };
                     planMeshCleanupJob.Schedule(runInParallel,
                         JobHandles.Read(JobHandleType.decalVolumesJobHandle),
@@ -2880,6 +2945,9 @@ namespace Chisel.Core
                 {
                     var exactBrushCacheBarrier = JobHandles[JobHandleType.exactBrushCacheJobHandle].readWriteBarrier;
                     lastJobHandle.AddDependency(Temporaries.exactBounds          .SafeDispose(exactBrushCacheBarrier));
+                    lastJobHandle.AddDependency(Temporaries.mergedBrushIndexOrders.SafeDispose(exactBrushCacheBarrier));
+                    lastJobHandle.AddDependency(Temporaries.mergedPlanes         .SafeDispose(exactBrushCacheBarrier));
+                    lastJobHandle.AddDependency(Temporaries.mergedPlaneOffsets   .SafeDispose(exactBrushCacheBarrier));
                     lastJobHandle.AddDependency(Temporaries.exactBrushDisposeList.DisposeDeep(exactBrushCacheBarrier));
                 }
                 lastJobHandle.AddDependency(Temporaries.brushBrushIntersections         .DisposeDeep(JobHandles[JobHandleType.brushBrushIntersectionsJobHandle].readWriteBarrier));
