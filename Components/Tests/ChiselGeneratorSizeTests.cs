@@ -2568,14 +2568,11 @@ namespace Chisel.Components.Tests
             }
         }
 
-        // A side of an extruded shape is the span from its point to the next: here the first span is by far the longest, the
-        // second the shortest. Each side took the surface of the point two further on
-        [Test]
-        public void ExtrudedShapeSides_AreTheSpansFromTheirPoint()
+        // The area drawn with each surface of an extruded shape with these points
+        float[] ExtrudedShapeAreas(params CurveControlPoint2D[] points)
         {
             var shape = Generator<ChiselExtrudedShapeComponent>(out var model);
-            shape.definition.shape = new Curve2D(new CurveControlPoint2D(0, 0), new CurveControlPoint2D(4, 0), new CurveControlPoint2D(4, 1),
-                                                 new CurveControlPoint2D(2, 3), new CurveControlPoint2D(0, 1));
+            shape.definition.shape = new Curve2D(points);
             shape.OnValidate();
             Update();
             var materials = new List<Material>();
@@ -2598,13 +2595,82 @@ namespace Chisel.Components.Tests
                             areas[surface] += Vector3.Cross(vertices[triangles[t + 1]] - vertices[triangles[t]], vertices[triangles[t + 2]] - vertices[triangles[t]]).magnitude * 0.5f;
                     }
                 }
-                // sides 1 to 5 are surfaces 2 to 6, spans of 4, 1, 2.8, 2.8 and 1 long
-                Assert.That(areas[2], Is.GreaterThan(0), "side 1 isn't drawn");
-                Assert.That(areas[2] / areas[3], Is.EqualTo(4).Within(0.01f), "side 1 or 2 is another span");
-                Assert.That(areas[4] / areas[3], Is.EqualTo(math.sqrt(8)).Within(0.01f), "side 3 is another span");
-                Assert.That(areas[6] / areas[3], Is.EqualTo(1).Within(0.01f), "side 5 is another span");
+                return areas;
             }
             finally { foreach (var m in materials) UnityEngine.Object.DestroyImmediate(m); }
+        }
+
+        // A side of an extruded shape is the span from its point to the next: here the first span is by far the longest, the
+        // second the shortest. Each side took the surface of the point two further on
+        [Test]
+        public void ExtrudedShapeSides_AreTheSpansFromTheirPoint()
+        {
+            var areas = ExtrudedShapeAreas(new CurveControlPoint2D(0, 0), new CurveControlPoint2D(4, 0), new CurveControlPoint2D(4, 1),
+                                           new CurveControlPoint2D(2, 3), new CurveControlPoint2D(0, 1));
+            // sides 1 to 5 are surfaces 2 to 6, spans of 4, 1, 2.8, 2.8 and 1 long
+            Assert.That(areas[2], Is.GreaterThan(0), "side 1 isn't drawn");
+            Assert.That(areas[2] / areas[3], Is.EqualTo(4).Within(0.01f), "side 1 or 2 is another span");
+            Assert.That(areas[4] / areas[3], Is.EqualTo(math.sqrt(8)).Within(0.01f), "side 3 is another span");
+            Assert.That(areas[6] / areas[3], Is.EqualTo(1).Within(0.01f), "side 5 is another span");
+        }
+
+        // Two sides on one line, each with a surface of its own: both are drawn, each with its own surface, though the
+        // brush has both faces in one plane
+        [Test]
+        public void ExtrudedShapeSidesOnOneLine_EachKeepTheirSurface()
+        {
+            var areas = ExtrudedShapeAreas(new CurveControlPoint2D(0, 0), new CurveControlPoint2D(2, 0), new CurveControlPoint2D(4, 0),
+                                           new CurveControlPoint2D(4, 2), new CurveControlPoint2D(0, 2));
+            // sides 1 to 5 are surfaces 2 to 6, spans of 2, 2, 2, 4 and 2 long
+            Assert.That(areas[2], Is.GreaterThan(0), "side 1 isn't drawn");
+            Assert.That(areas[3] / areas[2], Is.EqualTo(1).Within(0.01f), "side 2, on the line of side 1, is another span");
+            Assert.That(areas[4] / areas[2], Is.EqualTo(1).Within(0.01f), "side 3 is another span");
+            Assert.That(areas[5] / areas[2], Is.EqualTo(2).Within(0.01f), "side 4 is another span");
+        }
+
+        // An L whose reflex corner is cut to a corner in line with the side before it: every side is drawn with its own
+        // surface, the one in line with the cut too
+        [Test]
+        public void ExtrudedShapeSides_InLineWithACut_EachKeepTheirSurface()
+        {
+            var areas = ExtrudedShapeAreas(new CurveControlPoint2D(0, 0), new CurveControlPoint2D(2, 0), new CurveControlPoint2D(2, 1),
+                                           new CurveControlPoint2D(1, 1), new CurveControlPoint2D(1, 2), new CurveControlPoint2D(0, 2),
+                                           new CurveControlPoint2D(0, 1));
+            // sides 1 to 7 are surfaces 2 to 8, spans of 2, 1, 1, 1, 1, 1 and 1 long
+            Assert.That(areas[3], Is.GreaterThan(0), "side 2 isn't drawn");
+            Assert.That(areas[2] / areas[3], Is.EqualTo(2).Within(0.01f), "side 1 is another span");
+            for (int side = 3; side <= 7; side++)
+                Assert.That(areas[side + 1] / areas[3], Is.EqualTo(1).Within(0.01f), $"side {side} is another span");
+        }
+
+        // A side with a bump out of it: a cut across the bump's opening would leave a piece with the side either side of
+        // the bump on one line, two surfaces in one face. Each side is drawn with its own surface
+        [Test]
+        public void ExtrudedShapeSides_EitherSideOfABump_EachKeepTheirSurface()
+        {
+            var areas = ExtrudedShapeAreas(new CurveControlPoint2D(0, 0), new CurveControlPoint2D(1, 0), new CurveControlPoint2D(1, -1),
+                                           new CurveControlPoint2D(2, -1), new CurveControlPoint2D(2, 0), new CurveControlPoint2D(3, 0),
+                                           new CurveControlPoint2D(3, 2), new CurveControlPoint2D(0, 2));
+            // sides 1 to 8 are surfaces 2 to 9, spans of 1, 1, 1, 1, 1, 2, 3 and 2 long
+            var spans = new[] { 1f, 1, 1, 1, 1, 2, 3, 2 };
+            Assert.That(areas[2], Is.GreaterThan(0), "side 1 isn't drawn");
+            for (int side = 2; side <= 8; side++)
+                Assert.That(areas[side + 1] / areas[2], Is.EqualTo(spans[side - 1]).Within(0.01f), $"side {side} is another span");
+        }
+
+        // The same with the points clockwise: each side is still the span from its own point. The shape was turned round
+        // to decompose it, and its sides took the surface of the point next to theirs
+        [Test]
+        public void ClockwiseExtrudedShapeSides_AreTheSpansFromTheirPoint()
+        {
+            var areas = ExtrudedShapeAreas(new CurveControlPoint2D(0, 0), new CurveControlPoint2D(0, 1), new CurveControlPoint2D(2, 3),
+                                           new CurveControlPoint2D(4, 1), new CurveControlPoint2D(4, 0));
+            // sides 1 to 5 are surfaces 2 to 6, spans of 1, 2.8, 2.8, 1 and 4 long
+            Assert.That(areas[2], Is.GreaterThan(0), "side 1 isn't drawn");
+            Assert.That(areas[3] / areas[2], Is.EqualTo(math.sqrt(8)).Within(0.01f), "side 2 is another span");
+            Assert.That(areas[4] / areas[2], Is.EqualTo(math.sqrt(8)).Within(0.01f), "side 3 is another span");
+            Assert.That(areas[5] / areas[2], Is.EqualTo(1).Within(0.01f), "side 4 is another span");
+            Assert.That(areas[6] / areas[2], Is.EqualTo(4).Within(0.01f), "side 5 is another span");
         }
 
         // Every surface a generator names faces the way its name says (a rounded one leans that way), and every surface

@@ -141,139 +141,47 @@ namespace Chisel.Core
             return shapeVertices;
         }
 
-        public static float CalculateOrientation(UnsafeList<SegmentVertex> vertices, Range range)
-        {
-            // Newell's algorithm to create a plane for concave polygons.
-            // NOTE: doesn't work well for self-intersecting polygons
-            var direction = 0.0f;
-            var prevVertex = vertices[range.end - 1].position;
-            for (int n = range.start; n < range.end; n++)
-            {
-                var currVertex = vertices[n].position;
-                direction += (prevVertex.x - currVertex.x) * (prevVertex.y + currVertex.y);
-                prevVertex = currVertex;
-            }
-            return direction;
-        }
-
-        /*
-        public bool ConvexPartition(int curveSegments, out NativeList<SegmentVertex> polygonVerticesArray, out NativeList<int> polygonVerticesSegments, Allocator allocator)
-        {
-			using var shapeVertices = new NativeList<SegmentVertex>(Allocator.Temp);
-			AddPathVertices(curveSegments, shapeVertices);
-
-			polygonVerticesArray = new NativeList<SegmentVertex>(allocator);
-			polygonVerticesSegments = new NativeList<int>(allocator);
-
-			//Profiler.BeginSample("ConvexPartition");
-			if (shapeVertices.Length == 3)
-			{
-				polygonVerticesArray.ResizeUninitialized(3);
-				polygonVerticesArray[0] = shapeVertices[0];
-				polygonVerticesArray[1] = shapeVertices[1];
-				polygonVerticesArray[2] = shapeVertices[2];
-
-				polygonVerticesSegments.ResizeUninitialized(1);
-				polygonVerticesSegments[0] = polygonVerticesArray.Length;
-			}
-			else
-			{
-				if (!External.BayazitDecomposerBursted.ConvexPartition(shapeVertices,
-																	   polygonVerticesArray,
-																	   polygonVerticesSegments))
-				{
-					polygonVerticesArray.Dispose();
-					polygonVerticesSegments.Dispose();
-					polygonVerticesArray = default;
-					polygonVerticesSegments = default;
-					return false;
-				}
-
-				for (int i = 0; i < polygonVerticesSegments.Length; i++)
-				{
-					var range = new Range
-					{
-						start = i == 0 ? 0 : polygonVerticesSegments[i - 1],
-						end = polygonVerticesSegments[i]
-					};
-
-					if (CalculateOrientation(polygonVerticesArray, range) < 0)
-						External.BayazitDecomposerBursted.Reverse(polygonVerticesArray, range);
-				}
-			}
-			//Profiler.EndSample();
-
-			//Debug.Assert(polygonVerticesArray.Length == 0 || polygonVerticesArray.Length == polygonVerticesSegments[polygonVerticesSegments.Length - 1]);
-			return true;
-		}
-        */
-
+        // The outline cut into curveSegments per curved span, split where it crosses itself, and each loop decomposed into
+        // convex pieces (ConvexDecomposition), counter-clockwise: their corners in polygonVerticesArray, each piece's end
+        // in polygonVerticesSegments. False when no piece has area, or a loop can't be decomposed.
         public bool ConvexPartition(int curveSegments, out UnsafeList<SegmentVertex> polygonVerticesArray, out UnsafeList<int> polygonVerticesSegments,
                                     Allocator allocator = Allocator.Persistent) // Indirect
         {
-			using var shapeVertices = new NativeList<SegmentVertex>(Allocator.Temp);
-			AddPathVertices(curveSegments, shapeVertices);
+            using var shapeVertices = new NativeList<SegmentVertex>(Allocator.Temp);
+            AddPathVertices(curveSegments, shapeVertices);
 
-			// an outline that crosses itself is split where it crosses, into loops that don't, each filled on its own
-			using var loopVertices = new NativeList<SegmentVertex>(Allocator.Temp);
-			using var loopEnds     = new NativeList<int>(Allocator.Temp);
-			SplitAtCrossings(shapeVertices, loopVertices, loopEnds);
+            // an outline that crosses itself is split where it crosses, into loops that don't, each filled on its own
+            using var loopVertices = new NativeList<SegmentVertex>(Allocator.Temp);
+            using var loopEnds     = new NativeList<int>(Allocator.Temp);
+            SplitAtCrossings(shapeVertices, loopVertices, loopEnds);
 
-			polygonVerticesArray = new UnsafeList<SegmentVertex>(shapeVertices.Length * math.max(1, shapeVertices.Length / 2), allocator);//Allocator.Persistent
-			polygonVerticesSegments = new UnsafeList<int>(shapeVertices.Length, allocator);//Allocator.Persistent
-			using var loop = new NativeList<SegmentVertex>(Allocator.Temp);
-			for (int l = 0; l < loopEnds.Length; l++)
-			{
-				var start = l == 0 ? 0 : loopEnds[l - 1];
-				loop.Clear();
-				for (int n = start; n < loopEnds[l]; n++)
-					loop.Add(loopVertices[n]);
-				if (loop.Length < 3)
-					continue;
-				if (loop.Length == 3)
-				{
-					polygonVerticesArray.Add(loop[0]);
-					polygonVerticesArray.Add(loop[1]);
-					polygonVerticesArray.Add(loop[2]);
-					polygonVerticesSegments.Add(polygonVerticesArray.Length);
-					continue;
-				}
-				if (!External.BayazitDecomposerBursted.ConvexPartition(loop,
-																	   ref polygonVerticesArray,
-																	   ref polygonVerticesSegments))
-				{
-					polygonVerticesArray.Dispose();
-					polygonVerticesSegments.Dispose();
-					polygonVerticesArray = default;
-					polygonVerticesSegments = default;
-					return false;
-				}
-			}
-			if (polygonVerticesSegments.Length == 0)
-			{
-				polygonVerticesArray.Dispose();
-				polygonVerticesSegments.Dispose();
-				polygonVerticesArray = default;
-				polygonVerticesSegments = default;
-				return false;
-			}
-
-			for (int i = 0; i < polygonVerticesSegments.Length; i++)
-			{
-				var range = new Range
-				{
-					start = i == 0 ? 0 : polygonVerticesSegments[i - 1],
-					end = polygonVerticesSegments[i]
-				};
-
-				if (CalculateOrientation(polygonVerticesArray, range) < 0)
-					External.BayazitDecomposerBursted.Reverse(polygonVerticesArray, range);
-			}
-			//Profiler.EndSample();
-
-			//Debug.Assert(polygonVerticesArray.Length == 0 || polygonVerticesArray.Length == polygonVerticesSegments[polygonVerticesSegments.Length - 1]);
-			return true;
-		}
+            polygonVerticesArray    = new UnsafeList<SegmentVertex>(shapeVertices.Length * 2, allocator);
+            polygonVerticesSegments = new UnsafeList<int>(shapeVertices.Length, allocator);
+            using var loop = new NativeList<SegmentVertex>(Allocator.Temp);
+            for (int l = 0; l < loopEnds.Length; l++)
+            {
+                var start = l == 0 ? 0 : loopEnds[l - 1];
+                loop.Clear();
+                for (int n = start; n < loopEnds[l]; n++)
+                    loop.Add(loopVertices[n]);
+                if (loop.Length < 3)
+                    continue;
+                if (!ConvexDecomposition.Decompose(loop, ref polygonVerticesArray, ref polygonVerticesSegments))
+                {
+                    polygonVerticesSegments.Clear();
+                    break;
+                }
+            }
+            if (polygonVerticesSegments.Length == 0)
+            {
+                polygonVerticesArray.Dispose();
+                polygonVerticesSegments.Dispose();
+                polygonVerticesArray = default;
+                polygonVerticesSegments = default;
+                return false;
+            }
+            return true;
+        }
 
         // Splits a closed outline where two of its edges cross, over and over, until no loop crosses itself. At a crossing
         // the outline becomes two loops that both start at the crossing point: one runs along the part between the two
@@ -309,6 +217,7 @@ namespace Chisel.Core
                     {
                         var a0 = loop[i].position;
                         var a1 = loop[(i + 1) % count].position;
+                        float2 low = math.min(a0, a1), high = math.max(a0, a1);
                         // edges next to each other share a corner, they don't cross
                         for (int j = i + 2; j < count && !split; j++)
                         {
@@ -316,6 +225,9 @@ namespace Chisel.Core
                                 continue;
                             var b0 = loop[j].position;
                             var b1 = loop[(j + 1) % count].position;
+                            // apart in x or y: exact, as floats compare exactly
+                            if (math.any(math.max(b0, b1) < low) || math.any(math.min(b0, b1) > high))
+                                continue;
                             if (!Crossing(a0, a1, b0, b1, out var point))
                                 continue;
 
@@ -346,22 +258,21 @@ namespace Chisel.Core
             }
         }
 
-        // Where two edges cross each other, strictly inside both
+        // Where two edges cross each other, strictly inside both: each has an end on either side of the other's line,
+        // decided exactly (ExactFloat2). The point is worked out in double and rounded to float.
         static bool Crossing(float2 a0, float2 a1, float2 b0, float2 b1, out float2 point)
         {
             point = default;
-            var da = a1 - a0;
-            var db = b1 - b0;
-            var denominator = da.x * db.y - da.y * db.x;
-            if (math.abs(denominator) < 1e-9f)
+            if (ExactFloat2.Orientation(a0, a1, b0) * ExactFloat2.Orientation(a0, a1, b1) >= 0 ||
+                ExactFloat2.Orientation(b0, b1, a0) * ExactFloat2.Orientation(b0, b1, a1) >= 0)
                 return false;
-            var offset = b0 - a0;
-            var t = (offset.x * db.y - offset.y * db.x) / denominator;
-            var u = (offset.x * da.y - offset.y * da.x) / denominator;
-            const float kEpsilon = 1e-5f;
-            if (t <= kEpsilon || t >= 1 - kEpsilon || u <= kEpsilon || u >= 1 - kEpsilon)
-                return false;
-            point = a0 + da * t;
+            var da = (double2)a1 - a0;
+            var db = (double2)b1 - b0;
+            var offset = (double2)b0 - a0;
+            var t = (offset.x * db.y - offset.y * db.x) / (da.x * db.y - da.y * db.x);
+            // edges so nearly parallel that double loses where: somewhere on both, in the middle of the edge
+            t = math.isfinite(t) ? math.clamp(t, 0, 1) : 0.5;
+            point = (float2)(a0 + da * t);
             return true;
         }
 
