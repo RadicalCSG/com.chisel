@@ -80,7 +80,7 @@ namespace Chisel.Core.Tests
 			public readonly BlobAssetReference<ChiselBrushRenderBuffer>[] originals;
 			public NativeList<BrushData> brushes = new NativeList<BrushData>(Allocator.Temp);
 			public NativeList<BlobAssetReference<ChiselBrushRenderBuffer>> patched = new NativeList<BlobAssetReference<ChiselBrushRenderBuffer>>(Allocator.Temp);
-			public int split, paired, cancelled;
+			public int split, paired;
 			public readonly Dictionary<(float3, float3), int> boundaryBefore;
 
 			public Model(params BlobAssetReference<ChiselBrushRenderBuffer>[] buffers)
@@ -89,7 +89,7 @@ namespace Chisel.Core.Tests
 				foreach (var buffer in buffers)
 					brushes.Add(new BrushData { brushRenderBuffer = buffer, brushSurfaceCount = buffer.Value.surfaceCount });
 				boundaryBefore = Boundary(buffers);
-				OutputModelWeld.WeldModel(brushes, patched, out split, out paired, out cancelled);
+				OutputModelWeld.WeldModel(brushes, patched, out split, out paired);
 			}
 
 			public BlobAssetReference<ChiselBrushRenderBuffer> this[int brush] => brushes[brush].brushRenderBuffer;
@@ -272,18 +272,6 @@ namespace Chisel.Core.Tests
 			Assert.That(model[0], Is.EqualTo(model.originals[0]), "the first brush's buffer was replaced");
 		}
 
-		// A triangle with two the same facing it cancels against the one keyed last (the last brush's): which one depends on
-		// the triangles, not on the order a hash map gives them back in
-		[Test]
-		public void ATriangleWithTwoFacingIt_CancelsAgainstTheOneKeyedLast()
-		{
-			using var model = new Model(Brush(new[] { U, W, P }), Brush(new[] { U, P, W }), Brush(new[] { U, P, W }));
-			Assert.That(model.cancelled, Is.EqualTo(1), "one pair cancelled");
-			Assert.That(Triangles(model[0], 0).Count, Is.EqualTo(0), "the first brush's triangle");
-			Assert.That(Triangles(model[1], 0).Count, Is.EqualTo(1), "the second brush's is left");
-			Assert.That(Triangles(model[2], 0).Count, Is.EqualTo(0), "the last brush's cancelled");
-		}
-
 		[Test]
 		public void ANeedleWithNothingAcross_Stays()
 		{
@@ -332,61 +320,47 @@ namespace Chisel.Core.Tests
 				AssertStoredAsTheCSGStoresIt(model[b], "brush " + b);
 		}
 
-		// Two triangles at the same three positions, bit for bit, wound the other way round, of two brushes: both go, the
-		// triangle beside one of them stays, and what the surfaces close against does not change
+		// Two triangles at the same three positions, bit for bit, wound the other way round, of two brushes: the weld only
+		// welds, so both stay, as an interface between two contents is drawn from each side
 		[Test]
-		public void TwoIdenticalTrianglesFacingOppositeWays_GoTogether()
+		public void TwoIdenticalTrianglesFacingOppositeWays_BothStay()
 		{
 			var Q = new float3(2, 1, 0);
 			using var model = new Model(Brush(new[] { U, W, P,  W, Q, P }), Brush(new[] { U, P, W }));
-			Assert.That((model.split, model.paired, model.cancelled, model.patched.Length), Is.EqualTo((0, 0, 1, 2)), "split, paired, cancelled, brushes copied");
-			var first = Triangles(model[0], 0);
-			Assert.That(first.Count == 1 && HasTriangle(first, W, Q, P), Is.True, "the first brush's surface: " + string.Join("; ", first));
-			Assert.That(Triangles(model[1], 0).Count, Is.EqualTo(0), "the second brush's triangle");
-			Assert.That(model[1].Value.querySurfaces[0].surfaces.Length, Is.EqualTo(0), "the mesh query lists a surface left without triangles");
-			Assert.That(Boundary(model.Buffers()), Is.EquivalentTo(model.boundaryBefore), "what the surfaces close against changed");
-			AssertStoredAsTheCSGStoresIt(model[0], "the first brush");
-			AssertStoredAsTheCSGStoresIt(model[1], "the second brush");
-			Assert.That(model.originals[1].Value.surfaces[0].indexCount, Is.EqualTo(3), "the cached buffer changed");
+			Assert.That((model.split, model.paired, model.patched.Length), Is.EqualTo((0, 0, 0)), "split, paired, brushes copied");
+			Assert.That(model[0], Is.EqualTo(model.originals[0]), "the first brush's buffer was replaced");
+			Assert.That(model[1], Is.EqualTo(model.originals[1]), "the second brush's buffer was replaced");
 		}
 
-		// The same two, where one surface goes into other meshes than the other: each mesh would lose one of them, so both stay
+		// A split makes a triangle at the same positions as a third brush's, facing the other way: the split is made and the
+		// third brush's triangle stays
 		[Test]
-		public void TwoIdenticalTrianglesFacingOppositeWays_OfSurfacesForOtherMeshes_Stay()
-		{
-			using var model = new Model(Brush(new[] { U, W, P }), Brush(SurfaceDestinationFlags.Renderable, new[] { U, P, W }));
-			Assert.That((model.split, model.paired, model.cancelled, model.patched.Length), Is.EqualTo((0, 0, 0, 0)), "split, paired, cancelled, brushes copied");
-		}
-
-		// A split makes a triangle the identical twin, facing the other way, of a third brush's: the two go in the same weld
-		[Test]
-		public void AHalfOfASplitAndItsTwinFacingTheOtherWay_GoTogether()
+		public void AHalfOfASplitAtAnotherBrushsTriangleFacingTheOtherWay_BothStay()
 		{
 			using var model = new Model(Brush(kNeedleSurface), Brush(kSurfaceAcross), Brush(new[] { D, U, M }));
-			Assert.That((model.split, model.paired, model.cancelled, model.patched.Length), Is.EqualTo((1, 0, 1, 3)), "split, paired, cancelled, brushes copied");
+			Assert.That((model.split, model.paired, model.patched.Length), Is.EqualTo((1, 0, 2)), "split, paired, brushes copied");
 			var across = Triangles(model[1], 0);
-			Assert.That(across.Count == 1 && HasTriangle(across, W, M, D), Is.True, "the surface across: " + string.Join("; ", across));
-			Assert.That(Triangles(model[2], 0).Count, Is.EqualTo(0), "the third brush's triangle");
+			Assert.That(across.Count == 2 && HasTriangle(across, W, M, D) && HasTriangle(across, M, U, D), Is.True, "the surface across: " + string.Join("; ", across));
+			Assert.That(model[2], Is.EqualTo(model.originals[2]), "the third brush's buffer was replaced");
 			Assert.That(Boundary(model.Buffers()), Is.EquivalentTo(model.boundaryBefore), "what the surfaces close against changed");
-			for (int b = 0; b < 3; b++)
+			for (int b = 0; b < 2; b++)
 				AssertStoredAsTheCSGStoresIt(model[b], "brush " + b);
 		}
 
-		// The exact judge recognises what the weld across the model took away (ExactJudge.CheckMesh), on the needle scenes of EndWeldTests
-		// The second split of a chain, in the second turn, makes k-m-d, the twin of a fourth brush's d-m-k
+		// The second split of a chain, in the second turn, makes k-m-d at the positions of a fourth brush's d-m-k: both stay
 		[Test]
-		public void ATwinTheSecondSplitOfAChainMakes_GoesInTheSameWeld()
+		public void TheSecondSplitOfAChainAtAnotherBrushsTriangle_BothStay()
 		{
 			var K = new float3(1.5f, 0, 0);
 			using var model = new Model(Brush(new[] { M, W, K }), Brush(new[] { U, W, M,  W, P, K,  K, P, M,  P, U, M }), Brush(kSurfaceAcross),
 										Brush(new[] { D, M, K }));
-			Assert.That((model.split, model.paired, model.cancelled, model.patched.Length), Is.EqualTo((2, 0, 1, 4)), "split, paired, cancelled, brushes copied");
+			Assert.That((model.split, model.paired, model.patched.Length), Is.EqualTo((2, 0, 3)), "split, paired, brushes copied");
 			var across = Triangles(model[2], 0);
-			Assert.That(across.Count == 2 && HasTriangle(across, W, K, D) && HasTriangle(across, M, U, D), Is.True,
-						"the triangle across, split twice, one half cancelled: " + string.Join("; ", across));
-			Assert.That(Triangles(model[3], 0).Count, Is.EqualTo(0), "the fourth brush's triangle");
+			Assert.That(across.Count == 3 && HasTriangle(across, W, K, D) && HasTriangle(across, K, M, D) && HasTriangle(across, M, U, D), Is.True,
+						"the triangle across, split twice: " + string.Join("; ", across));
+			Assert.That(model[3], Is.EqualTo(model.originals[3]), "the fourth brush's buffer was replaced");
 			Assert.That(Boundary(model.Buffers()), Is.EquivalentTo(model.boundaryBefore), "what the surfaces close against changed");
-			for (int b = 0; b < 4; b++)
+			for (int b = 0; b < 3; b++)
 				AssertStoredAsTheCSGStoresIt(model[b], "brush " + b);
 		}
 
@@ -430,6 +404,24 @@ namespace Chisel.Core.Tests
 		{
 			using var model = new Model(Brush(new[] { ShortB, ShortC, ShortD }));
 			Assert.That(Triangles(model[0], 0).Count, Is.EqualTo(0), "the triangle across the short edge is left without area");
+		}
+
+		// A closed surface in which the collapse of a short edge (b0 onto b) leaves a triangle with its three corners on one
+		// line, a - c - b: it stays, as without it the surface is open along a - b, which the triangle across it has, while
+		// the triangles across a - c and c - b have those
+		[Test]
+		public void ATriangleTheCollapseLeavesOnOneLine_Stays_AndTheSurfaceStaysClosed()
+		{
+			var a  = new float3(0, 0, 0); var c = new float3(1, 0, 0); var b = new float3(2, 0, 0);
+			var b0 = new float3(2, 0.0005f, 0); var e = new float3(1, 1, 0); var f = new float3(1, 0.3f, -1);
+			var top    = new[] { a, c, b0,  c, b, b0,  a, b0, e };
+			var bottom = new[] { c, a, f,  b, c, f,  b0, b, f,  e, b0, f,  a, e, f };
+			using var model = new Model(Brush(top, bottom));
+			Assert.That(model.boundaryBefore, Is.Empty, "closed to begin with");
+			Assert.That(Triangles(model[0], 0).Any(t => t.a.Equals(b0) || t.b.Equals(b0) || t.c.Equals(b0)), Is.False, "b0 was collapsed onto b");
+			Assert.That(HasTriangle(Triangles(model[0], 0), a, c, b), Is.True, "the triangle the collapse left on one line");
+			Assert.That(Boundary(model.Buffers()), Is.Empty, "the surface is open");
+			AssertStoredAsTheCSGStoresIt(model[0], "the welded brush");
 		}
 
 		[Test]
@@ -478,24 +470,92 @@ namespace Chisel.Core.Tests
 			}
 		}
 
+		// Three brushes of an imported map (bm_c0a0a, Details), where the weld takes out two needles that face each other
+		internal static ContentsScene FacingNeedlesOfAMap()
+		{
+			return new ContentsScene()
+				.WithContentsList("Solid", "Water", "Glass", "Grate")
+				.Add(ContentsSceneNode.Brush(new float4[]
+				{
+					new float4(-1f, 0f, 0f, -0.159761965f),
+					new float4(1f, 0f, 0f, -0.145238042f),
+					new float4(0f, -0.9805807f, 0.196116135f, -0.185143262f),
+					new float4(0f, 0.196116135f, -0.9805807f, -0.19795908f),
+					new float4(0f, 1f, 0f, -0.23782739f),
+					new float4(0f, -0.707106769f, -0.707106769f, -0.102697767f),
+					new float4(0f, 0f, 1f, -0.226936042f),
+				}, contents: 0, operation: CSGOperationType.Additive,
+					localToTree: new float4x4(new float4(1f, 0f, 0f, 0f), new float4(0f, 1f, 0f, 0f), new float4(0f, 0f, 1f, 0f), new float4(55.974762f, 0.9821726f, 108.734314f, 1f)), name: "Solid 1317905 #2356")
+					.WithMesh(new float3[] { new float3(-0.159761965f, -0.143422619f, 0.226936042f), new float3(-0.159761965f, 0.23782739f, 0.226936042f), new float3(-0.159761965f, 0.23782739f, -0.154313967f), new float3(-0.159761965f, 0.047202386f, -0.19243896f), new float3(-0.159761965f, -0.181547612f, 0.0363110341f), new float3(0.145238042f, 0.23782739f, 0.226936042f), new float3(0.145238042f, -0.143422619f, 0.226936042f), new float3(0.145238042f, -0.181547612f, 0.0363110341f), new float3(0.145238042f, 0.047202386f, -0.19243896f), new float3(0.145238042f, 0.23782739f, -0.154313967f) }, new int[] { 0, 1, 2, 3, 4, -1, 5, 6, 7, 8, 9, -1, 6, 0, 4, 7, -1, 8, 3, 2, 9, -1, 1, 5, 9, 2, -1, 3, 8, 7, 4, -1, 5, 1, 0, 6, -1 }))
+				.Add(ContentsSceneNode.Brush(new float4[]
+				{
+					new float4(0f, 1f, 0f, -0.0571874864f),
+					new float4(-0.07102497f, -0.7112149f, -0.6993774f, -0.04067172f),
+					new float4(0.9863939f, 0f, -0.164398983f, -0.611914635f),
+					new float4(0.00769208f, 0f, 0.999970436f, -0.0572624058f),
+				}, contents: 0, operation: CSGOperationType.Additive,
+					localToTree: new float4x4(new float4(1f, 0f, 0f, 0f), new float4(0f, 1f, 0f, 0f), new float4(0f, 0f, 1f, 0f), new float4(57.9690323f, 1.08656251f, 108.584763f, 1f)), name: "Solid 506451 #4064")
+					.WithMesh(new float3[] { new float3(-1.84923863f, 0.0571874864f, 0.0714890137f), new float3(0.6290927f, 0.0571874864f, 0.0524249226f), new float3(0.5909677f, 0.0571874864f, -0.176325083f), new float3(0.6290927f, -0.171562523f, 0.0524249226f) }, new int[] { 0, 1, 2, -1, 3, 0, 2, -1, 1, 3, 2, -1, 3, 1, 0, -1 }))
+				.Add(ContentsSceneNode.Brush(new float4[]
+				{
+					new float4(0f, 1f, 0f, -0.0465972126f),
+					new float4(0f, -1f, 0f, -0.0296527855f),
+					new float4(-1f, 0f, 0f, -1.2327069f),
+					new float4(0.9828722f, 0f, -0.184288532f, -1.23443079f),
+					new float4(0.09875158f, 0f, 0.9951121f, -0.1701843f),
+					new float4(-0.10104271f, 0f, -0.9948821f, -0.136146516f),
+				}, contents: 0, operation: CSGOperationType.Additive,
+					localToTree: new float4x4(new float4(1f, 0f, 0f, 0f), new float4(0f, 1f, 0f, 0f), new float4(0f, 0f, 1f, 0f), new float4(57.3527069f, 1.17340279f, 108.6679f, 1f)), name: "Solid 506454 #4066")
+					.WithMesh(new float3[] { new float3(1.20729315f, 0.0465972126f, -0.2594626f), new float3(-1.2327069f, 0.0465972126f, -0.0116500929f), new float3(-1.2327069f, 0.0465972126f, 0.293349922f), new float3(1.26448059f, 0.0465972126f, 0.04553742f), new float3(-1.2327069f, -0.0296527855f, -0.0116500929f), new float3(1.20729315f, -0.0296527855f, -0.2594626f), new float3(1.26448059f, -0.0296527855f, 0.04553742f), new float3(-1.2327069f, -0.0296527855f, 0.293349922f) }, new int[] { 0, 1, 2, 3, -1, 4, 5, 6, 7, -1, 1, 4, 7, 2, -1, 5, 0, 3, 6, -1, 6, 3, 2, 7, -1, 0, 5, 4, 1, -1 }))
+				;
+		}
+
+		// A box and a tilted box crossing its edge, a kilometre and a half from the origin, where a corner of the exact CSG
+		// rounds onto one line with two others: the weld flips the needle that leaves
+		internal static ContentsScene NeedleOnAnEdgeFarAway()
+		{
+			return new ContentsScene()
+				.Add(ContentsSceneNode.Brush(new float4[]
+				{
+					new float4(-1f, 0f, 0f, 0f),
+					new float4(1f, 0f, 0f, -3.1875f),
+					new float4(0f, -1f, 0f, 0f),
+					new float4(0f, 1f, 0f, -3.0625f),
+					new float4(0f, 0f, -1f, 0f),
+					new float4(0f, 0f, 1f, -0.9375f),
+				}, contents: 0, operation: CSGOperationType.Additive,
+					localToTree: new float4x4(new float4(1f, 0f, 0f, 0f), new float4(0f, 1f, 0f, 0f), new float4(0f, 0f, 1f, 0f), new float4(1352f, 1681f, 2700f, 1f)), name: "box"))
+				.Add(ContentsSceneNode.Brush(new float4[]
+				{
+					new float4(-1f, 0f, 0f, -0.8772203f),
+					new float4(1f, 0f, 0f, -0.8772203f),
+					new float4(0f, -1f, 0f, -0.780715764f),
+					new float4(0f, 1f, 0f, -0.780715764f),
+					new float4(0f, 0f, -1f, -0.249651611f),
+					new float4(0f, 0f, 1f, -0.249651611f),
+				}, contents: 0, operation: CSGOperationType.Additive,
+					localToTree: new float4x4(new float4(0.9707907f, -0.231773347f, 0.0620208047f, 0f), new float4(0.2214925f, 0.9651064f, 0.139680624f, 0f), new float4(-0.09223092f, -0.121863514f, 0.988252342f, 0f), new float4(1353.72424f, 1684.14575f, 2700.78223f, 1f)), name: "tilted 0"))
+				;
+		}
+
 		[Test]
 		public void TheExactJudge_CountsWhatTheWeldAcrossTheModelTakesAway()
 		{
-			foreach (var (brushes, pivots, what, flipped, split, paired, cancelled) in new[]
+			foreach (var (scene, what, flipped, split, paired) in new[]
 			{
-				(EndWeldTests.kSeam,       EndWeldTests.kSeamPivots,       "the seam",       0, 1, 0, 0),
-				(EndWeldTests.kFacingNeedles,     EndWeldTests.kFacingNeedlesPivots,     "the facing needles", 0, 0, 1, 0),
-				(EndWeldTests.kNeedleOnABrushEdge, EndWeldTests.kNeedleOnABrushEdgePivots, "the needle on a brush edge", 1, 0, 0, 0),
-				(EndWeldTests.kFarApartNeedle,   EndWeldTests.kFarApartNeedlePivots,   "the far apart needle",   0, 1, 0, 1),
+				// a seam of the sample scene, where the weld splits two triangles of other brushes
+				(SampleSceneCaseTests.Model1Site4(), "the sample scene's seam", 0, 2, 0),
+				(NeedleOnAnEdgeFarAway(), "the needle on an edge far away", 1, 0, 0),
+				(FacingNeedlesOfAMap(), "the facing needles of a map", 0, 0, 1),
 			})
 			{
-				using var harness = ContentsTreeHarness.Build(EndWeldTests.SceneOf(brushes, pivots, what));
+				using var harness = ContentsTreeHarness.Build(scene);
 				Assert.That(harness.Update(), Is.True, what + ": the CSG update did not run");
 				var mismatches = ExactJudge.FindMismatches(harness, 8, out var judged, checkMesh: true);
 				Assert.That(judged, Is.GreaterThan(0), what + ": nothing was judged");
 				Assert.That(mismatches.Count, Is.EqualTo(0), what + ": " + string.Join("; ", mismatches.Select(x => x.Format("exact"))));
-				Assert.That((ExactJudge.LastFlippedByTheWeld, ExactJudge.LastSplitByTheWeld, ExactJudge.LastPairedByTheWeld, ExactJudge.LastCancelledByTheWeld),
-							Is.EqualTo((flipped, split, paired, cancelled)), what + ": flipped (or split within a brush), split into another brush, paired, cancelled");
+				Assert.That((ExactJudge.LastFlippedByTheWeld, ExactJudge.LastSplitByTheWeld, ExactJudge.LastPairedByTheWeld),
+							Is.EqualTo((flipped, split, paired)), what + ": flipped (or split within a brush), split into another brush, paired");
 			}
 		}
 
@@ -533,7 +593,7 @@ namespace Chisel.Core.Tests
 				using var fullMoves = new NativeList<float3x2>(Allocator.Temp);
 				using var patched   = new NativeList<BlobAssetReference<ChiselBrushRenderBuffer>>(Allocator.Temp);
 				OutputModelWeld.WeldIncremental(brushes, orders, ref memory, moves);
-				OutputModelWeld.WeldModel(full, patched, out _, out _, out _, out _, fullMoves);
+				OutputModelWeld.WeldModel(full, patched, out _, out _, out _, fullMoves);
 				try
 				{
 					if (!check)
@@ -561,27 +621,6 @@ namespace Chisel.Core.Tests
 
 		static readonly float3 kFar = new float3(50, 0, 0);
 		static float3[] FarTriangle(float y) => new[] { kFar, kFar + new float3(1, y, 0), kFar + new float3(0, 1, 0) };
-
-		[Test]
-		public void AfterACancelledPairMovesApart_TheIncrementalWeld_IsTheFullWeld()
-		{
-			using var weld = new Incremental();
-			var a = weld.Own(Brush(new[] { U, W, P }));
-			var b = weld.Own(Brush(new[] { U, P, W }));
-			var far = weld.Own(Brush(FarTriangle(1)));
-			weld.Weld("the first update", new[] { (0, a), (1, b), (2, far) });
-			Assert.That(weld.LastScope, Is.EqualTo(-1), "the first update welds everything");
-
-			var moved = weld.Own(Brush(new[] { U, P, W + new float3(0, 0, 1) }));
-			weld.Weld("the facing triangle moved", new[] { (0, a), (1, moved), (2, far) }, 1);
-			Assert.That(weld.LastScope, Is.EqualTo(2), "the moved triangle and the one it faced");
-
-			var far2 = weld.Own(Brush(FarTriangle(2)));
-			weld.Weld("a triangle apart changed", new[] { (0, a), (1, moved), (2, far2) }, 2);
-			Assert.That(weld.LastScope, Is.EqualTo(1), "only the triangle apart");
-
-			weld.Weld("the facing triangle back", new[] { (0, a), (1, b), (2, far2) }, 1);
-		}
 
 		[Test]
 		public void AroundANeedle_TheIncrementalWeld_IsTheFullWeld()
@@ -661,9 +700,9 @@ namespace Chisel.Core.Tests
 			var across = weld.Own(Brush(Shifted(kSurfaceAcross, new float3(0, 0, 10))));
 			weld.Weld("the first update", new[] { (0, a), (2, needle), (3, across) });
 			weld.Weld("a brush added", new[] { (0, a), (1, b), (2, needle), (3, across) }, 1);
-			Assert.That(weld.LastScope, Is.EqualTo(2), "the added triangle and the one it faces");
+			Assert.That(weld.LastScope, Is.EqualTo(1), "only the added triangle: the one at its positions facing the other way is not welded with it");
 			weld.Weld("a brush removed", new[] { (1, b), (2, needle), (3, across) });
-			Assert.That(weld.LastScope, Is.EqualTo(1), "the triangle the removed one faced");
+			Assert.That(weld.LastScope, Is.EqualTo(0), "nothing: the removed triangle was welded with no other");
 			weld.Weld("the needle's brush removed", new[] { (1, b), (3, across) });
 			weld.Weld("and added again", new[] { (1, b), (2, needle), (3, across) }, 2);
 			weld.Weld("two brushes swapped", new[] { (1, b), (3, across), (2, needle) });
@@ -695,13 +734,13 @@ namespace Chisel.Core.Tests
 		public void AGroupWrittenIntoABrushsOwnBuffer_ReachesTheBufferTheWeldKept()
 		{
 			using var weld = new Incremental();
-			var a = weld.Own(Brush(new[] { U, W, P }));
-			var b = weld.Own(Brush(new[] { U, P, W }));
+			var needle = weld.Own(Brush(kNeedleSurface));
+			var across = weld.Own(Brush(kSurfaceAcross));
 			var far = weld.Own(Brush(FarTriangle(1)));
-			weld.Weld("the first update", new[] { (0, a), (1, b), (2, far) });
-			a.Value.surfaces[0].hotspot.group = 7;
-			a.Value.surfaces[0].hotspot.groupVariations = 3;
-			weld.Weld("the group written in place", new[] { (0, a), (1, b), (2, far) });
+			weld.Weld("the first update", new[] { (0, needle), (1, across), (2, far) });
+			across.Value.surfaces[0].hotspot.group = 7;
+			across.Value.surfaces[0].hotspot.groupVariations = 3;
+			weld.Weld("the group written in place", new[] { (0, needle), (1, across), (2, far) });
 		}
 
 		// Planted: a brush's kept buffer forgotten; the verify has to see it
@@ -712,19 +751,19 @@ namespace Chisel.Core.Tests
 			try
 			{
 				using var weld = new Incremental();
-				var a = weld.Own(Brush(new[] { U, W, P }));
-				var b = weld.Own(Brush(new[] { U, P, W }));
+				var needle = weld.Own(Brush(kNeedleSurface));
+				var across = weld.Own(Brush(kSurfaceAcross));
 				var far = weld.Own(Brush(FarTriangle(1)));
-				weld.Weld("the first update", new[] { (0, a), (1, b), (2, far) });
+				weld.Weld("the first update", new[] { (0, needle), (1, across), (2, far) });
 				ref var memory = ref weld.Memory;
 				ref var kept = ref memory.brushes.ElementAt(memory.slotOf[Incremental.Id(1)]);
-				Assert.That(kept.output.IsCreated, Is.True, "the cancelled triangle's brush was stored again");
+				Assert.That(kept.output.IsCreated, Is.True, "the split triangle's brush was stored again");
 				kept.output.Dispose();
 				kept.output = default;
 				OutputModelWeld.VerifyIncremental = true;
 				LogAssert.Expect(LogType.Error, new System.Text.RegularExpressions.Regex("The incremental weld differs from the full weld: 1 of 3"));
 				var far2 = weld.Own(Brush(FarTriangle(2)));
-				weld.Weld("a triangle apart changed", false, new[] { (0, a), (1, b), (2, far2) }, 2);
+				weld.Weld("a triangle apart changed", false, new[] { (0, needle), (1, across), (2, far2) }, 2);
 			}
 			finally
 			{

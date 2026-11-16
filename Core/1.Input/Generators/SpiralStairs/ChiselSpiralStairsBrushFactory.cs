@@ -192,6 +192,10 @@ namespace Chisel.Core
                             int subMeshIndex = i;
                             // the first step from the ground, unless it has a base under it
                             var stepMin = (i == 0 && !haveBase) ? ground : minY;
+                            // on a base the first step is solid down to it: its underside sloping up from the base's top
+                            // edge would touch the base along that edge only, leaving a sliver between them. Its pieces
+                            // stand on the same triangles as the sloped ones
+                            var solid = i == 0 && haveBase;
                             for (int subDiv = 1; subDiv < smoothSubDivisions; subDiv++)
                             {
                                 float stepMidRadius;
@@ -218,7 +222,16 @@ namespace Chisel.Core
                                 i0 = new float2(origin.x + c0i, origin.z + s0i);
                                 i1 = new float2(origin.x + c1i, origin.z + s1i);
 
-                                {                  
+                                if (solid)
+                                {
+                                    brushMeshes[subMeshIndex++] = Classified(FlatBottomWedge(i0, maxY, o0, maxY, o1, maxY, stepMin, in surfaceDefinitionBlob, allocator), StairsPart.Step, origin, anglePerStep, in surfaceDefinitionBlob);// Indirect
+                                    brushMeshes[subMeshIndex++] = Classified(FlatBottomWedge(i0, maxY, o1, maxY, i1, maxY, stepMin, in surfaceDefinitionBlob, allocator), StairsPart.Step, origin, anglePerStep, in surfaceDefinitionBlob);// Indirect
+                                    o0 = i0;
+                                    o1 = i1;
+                                    continue;
+                                }
+
+                                {
                                     //brushMesh.halfEdges = (anglePerStep > 0) ? invertedSquarePyramidHalfEdges.ToArray() : squarePyramidHalfEdges.ToArray();
                                     brushMeshes[subMeshIndex] = SmoothUnderside(Classified(CreateSquarePyramidAssetPolygons(new float3(i0.x, maxY, i0.y), // 0
                                                                                                  new float3(i0.x, stepMin, i0.y), // 1
@@ -253,6 +266,19 @@ namespace Chisel.Core
                                 var chordMiddle = (i0 + i1) * 0.5f;
                                 apex = chordMiddle - math.normalizesafe(chordMiddle - apex) * 0.01f;
                             }
+                            if (solid)
+                            {
+                                // with the piece below, the prism on the triangle from the chord to the apex: a pyramid on
+                                // the chord's face, turned as the first piece of each ring is on the step's front
+                                brushMeshes[subMeshIndex] = Classified(CreateSquarePyramidAssetPolygons(new float3(   i0.x, maxY,    i0.y), // 0
+                                                                                                 new float3(   i0.x, stepMin, i0.y), // 1
+                                                                                                 new float3(   i1.x, stepMin, i1.y), // 2
+                                                                                                 new float3(   i1.x, maxY,    i1.y), // 3
+                                                                                                 new float3( apex.x, stepMin, apex.y), // 4
+                                                                                                 in surfaceDefinitionBlob,
+                                                                                                 allocator), StairsPart.Step, origin, anglePerStep, in surfaceDefinitionBlob);// Indirect
+                                subMeshIndex++;
+                            } else
                             {
                                 //brushMesh.halfEdges = (anglePerStep > 0) ? invertedTriangularPyramidHalfEdges.ToArray() : triangularPyramidHalfEdges.ToArray();
                                 brushMeshes[subMeshIndex] = SmoothUnderside(Classified(CreateTriangularPyramidAssetPolygons(new float3(     i1.x, maxY,     i1.y), // 2

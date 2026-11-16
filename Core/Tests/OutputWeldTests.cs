@@ -494,21 +494,16 @@ namespace Chisel.Core.Tests
 		}
 
 		// The exact judge counts the rounded exact triangles it does not look for in the mesh, because the weld drops them:
-		// exactly the drain cap's two (EndWeldTests), and none of a box's
+		// exactly four at a seam of the sample scene (SampleSceneCaseTests), and none of a box's
 		[Test]
 		public void TheExactJudge_CountsTheTrianglesTheWeldDrops()
 		{
-			var planes = new float4[EndWeldTests.kDrainCap.Length / 4];
-			for (int p = 0; p < planes.Length; p++)
-				planes[p] = math.asfloat(new uint4(EndWeldTests.kDrainCap[p * 4], EndWeldTests.kDrainCap[p * 4 + 1], EndWeldTests.kDrainCap[p * 4 + 2], EndWeldTests.kDrainCap[p * 4 + 3]));
-			var pivot = math.asfloat(new uint3(EndWeldTests.kDrainCapPivot[0], EndWeldTests.kDrainCapPivot[1], EndWeldTests.kDrainCapPivot[2]));
-			var cap = ContentsSceneNode.Brush(planes, localToTree: float4x4.Translate(pivot), name: "drain cap");
-			using (var harness = ContentsTreeHarness.Build(new ContentsScene().Add(cap)))
+			using (var harness = ContentsTreeHarness.Build(SampleSceneCaseTests.Model1Site4()))
 			{
 				Assert.That(harness.Update(), Is.True, "the CSG update did not run");
 				var mismatches = ExactJudge.FindMismatches(harness, 8, out _, checkMesh: true);
-				Assert.That(mismatches, Is.Empty, "the drain cap's mesh is judged wrong");
-				Assert.That(ExactJudge.LastDroppedByTheWeld, Is.EqualTo(2), "the exact triangles the weld drops from the drain cap");
+				Assert.That(mismatches, Is.Empty, "the seam's mesh is judged wrong");
+				Assert.That(ExactJudge.LastDroppedByTheWeld, Is.EqualTo(4), "the exact triangles the weld drops at the seam");
 			}
 			var box = ContentsSceneNode.Brush(ContentsScene.BoxPlanes(new float3(0, 0, 0), new float3(1, 1, 1)), name: "box");
 			using (var harness = ContentsTreeHarness.Build(new ContentsScene().Add(box)))
@@ -519,14 +514,15 @@ namespace Chisel.Core.Tests
 			}
 		}
 
-		// The exact judge recognises the needles the weld flipped away (ExactJudge.CheckMesh): the wedges of EndWeldTests have one
+		// The exact judge recognises the needles the weld flipped away (ExactJudge.CheckMesh): the needle on an edge far away
+		// (OutputModelWeldTests) is one
 		[Test]
 		public void TheExactJudge_CountsTheNeedlesTheWeldFlips()
 		{
-			using var harness = ContentsTreeHarness.Build(EndWeldTests.SceneOf(EndWeldTests.kWedges, EndWeldTests.kWedgesPivots, "wedges"));
+			using var harness = ContentsTreeHarness.Build(OutputModelWeldTests.NeedleOnAnEdgeFarAway());
 			Assert.That(harness.Update(), Is.True, "the CSG update did not run");
 			var mismatches = ExactJudge.FindMismatches(harness, 8, out _, checkMesh: true);
-			Assert.That(mismatches, Is.Empty, "the wedges' mesh is judged wrong");
+			Assert.That(mismatches, Is.Empty, "the needle's mesh is judged wrong");
 			Assert.That(ExactJudge.LastFlippedByTheWeld, Is.EqualTo(1), "needles the weld flipped away");
 		}
 

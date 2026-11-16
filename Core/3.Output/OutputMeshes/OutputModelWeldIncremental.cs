@@ -109,7 +109,7 @@ namespace Chisel.Core
         public UnsafeList<int>    surfaceStart;
         public UnsafeList<int3x3> corners;
         public UnsafeList<bool>   needle;
-        // what the rounds did to it (CancelOpposites, WeldNeedles), by the input triangle it belongs to
+        // what the rounds did to it (WeldNeedles), by the input triangle it belongs to
         public UnsafeList<WeldEntry> entries;
         // what the whole weld made of it (the rounds, the moves and the drops of the collapse), as its buffer was stored
         public UnsafeList<WeldEntry> final;
@@ -133,7 +133,6 @@ namespace Chisel.Core
         public NativeParallelHashMap<CompactNodeID, int> slotOf;
         // the relation's index over every input triangle
         public NativeParallelMultiHashMap<int3, WeldTriangle> atPosition;
-        public NativeParallelMultiHashMap<OutputModelWeld.TriangleKey, WeldTriangle> byTriple;
         public NativeParallelMultiHashMap<int3, WeldShortLink> shortLinks;
         // (slot, surface) -> the input triangles its splits started from
         public NativeParallelMultiHashMap<long, int> splitRoots;
@@ -163,7 +162,6 @@ namespace Chisel.Core
                 freeSlots   = new NativeList<int>(16, allocator),
                 slotOf      = new NativeParallelHashMap<CompactNodeID, int>(64, allocator),
                 atPosition  = new NativeParallelMultiHashMap<int3, WeldTriangle>(256, allocator),
-                byTriple    = new NativeParallelMultiHashMap<OutputModelWeld.TriangleKey, WeldTriangle>(256, allocator),
                 shortLinks  = new NativeParallelMultiHashMap<int3, WeldShortLink>(64, allocator),
                 splitRoots  = new NativeParallelMultiHashMap<long, int>(16, allocator),
                 roundsAt    = new NativeParallelMultiHashMap<int3, long>(64, allocator),
@@ -189,7 +187,7 @@ namespace Chisel.Core
                 brush.output = default;
             }
             brushes.Clear(); freeSlots.Clear(); slotOf.Clear();
-            atPosition.Clear(); byTriple.Clear(); shortLinks.Clear(); splitRoots.Clear(); moves.Clear(); roundsAt.Clear(); touched.Clear();
+            atPosition.Clear(); shortLinks.Clear(); splitRoots.Clear(); moves.Clear(); roundsAt.Clear(); touched.Clear();
             scope.Clear(); slotOfBrush.Clear(); repainted.Clear();
             valid.Value = false;
         }
@@ -204,7 +202,6 @@ namespace Chisel.Core
             if (freeSlots.IsCreated)   freeSlots.Dispose();
             if (slotOf.IsCreated)      slotOf.Dispose();
             if (atPosition.IsCreated)  atPosition.Dispose();
-            if (byTriple.IsCreated)    byTriple.Dispose();
             if (shortLinks.IsCreated)  shortLinks.Dispose();
             if (splitRoots.IsCreated)  splitRoots.Dispose();
             if (moves.IsCreated)       moves.Dispose();
@@ -227,14 +224,6 @@ namespace Chisel.Core
         const float kRelationLength = 2 * kCollapseLength;
 
         static long Key(WeldTriangle t) => Key(t.slot, t.surface);
-
-        static OutputModelWeld.TriangleKey Unordered(int3 a, int3 b, int3 c)
-        {
-            if (Less(b, a)) (a, b) = (b, a);
-            if (Less(c, b)) (b, c) = (c, b);
-            if (Less(b, a)) (a, b) = (b, a);
-            return new TriangleKey { a = a, b = b, c = c };
-        }
 
         static void RemoveOne<TKey, TValue>(NativeParallelMultiHashMap<TKey, TValue> map, TKey key, TValue value)
             where TKey : unmanaged, System.IEquatable<TKey> where TValue : unmanaged, System.IEquatable<TValue>
@@ -284,7 +273,6 @@ namespace Chisel.Core
                     memory.atPosition.Add(c.c0, me);
                     memory.atPosition.Add(c.c1, me);
                     memory.atPosition.Add(c.c2, me);
-                    memory.byTriple.Add(Unordered(c.c0, c.c1, c.c2), me);
                     Link(ref memory, p0, p1, c.c0, c.c1, me, limitSq);
                     Link(ref memory, p1, p2, c.c1, c.c2, me, limitSq);
                     Link(ref memory, p2, p0, c.c2, c.c0, me, limitSq);
@@ -320,7 +308,6 @@ namespace Chisel.Core
                     RemoveOne(memory.atPosition, c.c0, me);
                     RemoveOne(memory.atPosition, c.c1, me);
                     RemoveOne(memory.atPosition, c.c2, me);
-                    RemoveOne(memory.byTriple, Unordered(c.c0, c.c1, c.c2), me);
                     Unlink(ref memory, c.c0, c.c1, me);
                     Unlink(ref memory, c.c1, c.c2, me);
                     Unlink(ref memory, c.c2, c.c0, me);
@@ -355,14 +342,10 @@ namespace Chisel.Core
                 var k = brush.surfaceStart[t.surface] + t.triangle;
                 var c = brush.corners[k];
                 var needle = brush.needle[k];
-                if (memory.byTriple.TryGetFirstValue(Unordered(c.c0, c.c1, c.c2), out var other, out var tripleIt))
-                {
-                    do { Visit(ref memory, queue, other); } while (memory.byTriple.TryGetNextValue(out other, ref tripleIt));
-                }
                 for (int i = 0; i < 3; i++)
                 {
                     var p = c[i];
-                    if (memory.atPosition.TryGetFirstValue(p, out other, out var it))
+                    if (memory.atPosition.TryGetFirstValue(p, out var other, out var it))
                     {
                         do
                         {
@@ -1124,7 +1107,7 @@ namespace Chisel.Core
         }
 
         // The collapse of one surface as the rounds left it (DecideCollapse, ApplyCollapse): a triangle with a corner that
-        // moves and left without area dropped, the corners of the triangles left that move moved; false when nothing moves
+        // moves and left with two corners at one position dropped (OutputModelWeld.CollapseDrops), the corners of the triangles left that move moved; false when nothing moves
         static bool Collapse(NativeParallelHashMap<int3, float3x2> moves, ref Working copy)
         {
             var count = copy.collider.Length;
@@ -1151,7 +1134,7 @@ namespace Chisel.Core
                     var p0 = movedAt[c0] ? targets[c0] : copy.collider[c0];
                     var p1 = movedAt[c1] ? targets[c1] : copy.collider[c1];
                     var p2 = movedAt[c2] ? targets[c2] : copy.collider[c2];
-                    if (OutputWeld.WithoutArea(p0, p1, p2))
+                    if (OutputModelWeld.CollapseDrops(p0, p1, p2))
                         copy.indices[t] = copy.indices[t + 1] = copy.indices[t + 2] = -1;
                 }
                 var used = new NativeArray<bool>(count, Allocator.Temp);
@@ -1290,7 +1273,7 @@ namespace Chisel.Core
                 referencePatched = new NativeList<BlobAssetReference<ChiselBrushRenderBuffer>>(16, Allocator.Temp);
                 referenceMoves   = new NativeList<float3x2>(16, Allocator.Temp);
                 reference.AddRange(brushes.AsArray());
-                WeldModel(reference, referencePatched, out _, out _, out _, out _, referenceMoves);
+                WeldModel(reference, referencePatched, out _, out _, out _, referenceMoves);
             }
 
             // neither its input nor what the weld made of it changed
@@ -1360,7 +1343,7 @@ namespace Chisel.Core
             {
                 PrepareIncremental(brushes, updated, ref memory, ref state);
                 do
-                    PlanWeldBeforeCollapse(brushes, ref state, out _, out _, out _, moves);
+                    PlanWeldBeforeCollapse(brushes, ref state, out _, out _, moves);
                 while (TakeInSplitSurfaces(brushes, ref memory, ref state));
                 RecordRounds(brushes, ref memory, ref state);
                 Collapse(brushes, ref state, moves);

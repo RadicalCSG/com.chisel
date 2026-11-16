@@ -6,6 +6,15 @@ using Unity.Mathematics;
 
 namespace Chisel.Core
 {
+    // A triangle the cleanup took out of a surface, at its corners as they were before the snap, or put into it; what
+    // ExactJudge checks the cleanup by (recorded only when asked, OutputMeshCleanup.Plan)
+    internal struct MeshCleanupChange
+    {
+        public float3 a, b, c;
+        public int    surface;
+        public byte   added;
+    }
+
     // A brush's buffer as the cleanup left it, with what it was made from (OutputMeshCleanup)
     internal struct MeshCleanupEntry
     {
@@ -14,14 +23,18 @@ namespace Chisel.Core
         public BlobAssetReference<ChiselBrushRenderBuffer> result;
         // Where the snap put the corners it moved (from, to); not created when it moved none
         public UnsafeList<float3x2> snapMoves;
+        // The triangles it took out and put in, when recorded; not created when it changed none
+        public UnsafeList<MeshCleanupChange> changes;
         public bool used;
 
         public void Dispose()
         {
             if (result.IsCreated) result.Dispose();
             if (snapMoves.IsCreated) snapMoves.Dispose();
+            if (changes.IsCreated) changes.Dispose();
             result = default;
             snapMoves = default;
+            changes = default;
         }
     }
 
@@ -32,8 +45,10 @@ namespace Chisel.Core
         public int brush;
         public ulong key;
         public int neighbourStart, neighbourCount;
+        public bool record;
         public BlobAssetReference<ChiselBrushRenderBuffer> result;
         public UnsafeList<float3x2> snapMoves;
+        public UnsafeList<MeshCleanupChange> changes;
     }
 
     // At the end of the output, after decals, the model's weld and the hotspot cut, each brush's surfaces are finished:
@@ -125,11 +140,16 @@ namespace Chisel.Core
             public readonly int Compare(int x, int y) => boxes[x].Min.x.CompareTo(boxes[y].Min.x);
         }
 
+        // Mixed into a brush's key when its changes are recorded, so what was cleaned up without recording them is not
+        // taken for what was
+        const ulong kRecordedKey = 0x9E3779B97F4A7C15ul;
+
         // The brushes to clean up (work, with the brushes whose output touches theirs in neighbours, by their slot in
         // outlineBrushes); the others get what the cache kept for them. A brush is cleaned up again when it or a brush
         // touching it changed. Each brush in outlineBrushes has its outlines made once (Outlines), for all it touches.
+        // record: each brush's changes are recorded (MeshCleanupChange)
         public static void Plan(NativeList<BrushData> brushes, NativeParallelHashMap<CompactNodeID, MeshCleanupEntry> cache, NativeList<MeshCleanupWork> work,
-                                NativeList<int> neighbours, NativeList<int> outlineBrushes)
+                                NativeList<int> neighbours, NativeList<int> outlineBrushes, bool record = false)
         {
             work.Clear();
             neighbours.Clear();
@@ -182,6 +202,8 @@ namespace Chisel.Core
                 var key = keys[b];
                 for (int n = 0; n < around.Length; n++)
                     key += math.hash(new uint2((uint)keys[around[n]], (uint)(keys[around[n]] >> 32))) * 0x9E3779B97F4A7C15ul;
+                if (record)
+                    key ^= kRecordedKey;
                 var nodeID = data.brushIndexOrder.compactNodeID;
                 if (cached && cache.TryGetValue(nodeID, out var entry) && entry.key == key)
                 {
@@ -194,7 +216,7 @@ namespace Chisel.Core
                     }
                     continue;
                 }
-                work.Add(new MeshCleanupWork { brush = b, key = key, neighbourStart = neighbours.Length, neighbourCount = around.Length });
+                work.Add(new MeshCleanupWork { brush = b, key = key, neighbourStart = neighbours.Length, neighbourCount = around.Length, record = record });
                 foreach (var neighbour in around)
                 {
                     if (slotOf[neighbour] < 0)
@@ -276,11 +298,21 @@ namespace Chisel.Core
                 AddWithin(neighbour.colliders, box, colliderOutlines);
             }
             using var moves = new NativeList<float3x2>(Allocator.Temp);
-            work.result = Clean(source, outlines, moves, colliderOutlines);
+            var changes = work.record ? new NativeList<MeshCleanupChange>(Allocator.Temp) : default;
+            work.result = Clean(source, outlines, moves, colliderOutlines, changes);
             if (moves.Length > 0)
             {
                 work.snapMoves = new UnsafeList<float3x2>(moves.Length, Allocator.Persistent);
                 work.snapMoves.AddRange(moves.GetUnsafeReadOnlyPtr(), moves.Length);
+            }
+            if (changes.IsCreated)
+            {
+                if (changes.Length > 0)
+                {
+                    work.changes = new UnsafeList<MeshCleanupChange>(changes.Length, Allocator.Persistent);
+                    work.changes.AddRange(changes.GetUnsafeReadOnlyPtr(), changes.Length);
+                }
+                changes.Dispose();
             }
             return work;
         }
@@ -322,14 +354,14 @@ namespace Chisel.Core
         {
             onOpenEdge.Clear();
             onOpenEdge.Resize(positions.Length, NativeArrayOptions.ClearMemory);
-            using var edges = new NativeParallelHashSet<float3x2>(indices.Length, Allocator.Temp);
-            AddEdges(indices, positions, edges);
+            using var edges = new NativeParallelHashMap<float3x2, int>(indices.Length, Allocator.Temp);
+            CountEdges(indices, positions, edges);
             for (int i = 0; i + 2 < indices.Length; i += 3)
             {
                 for (int c = 0; c < 3; c++)
                 {
                     var from = indices[i + c]; var to = indices[i + (c + 1) % 3];
-                    if (edges.Contains(new float3x2(positions[to], positions[from])))
+                    if (!TakeOutline(edges, positions[from], positions[to]))
                         continue;
                     if (shared.TryGetValue(EdgeKey(positions[from], positions[to]), out var count) && count > 1)
                         continue;
@@ -339,17 +371,36 @@ namespace Chisel.Core
             }
         }
 
-        // A surface's edges by the positions of their ends, the way round each triangle runs them: an edge none runs the
-        // other way is on the outline, whether or not the triangles on either side share their vertices (the hotspot cut
-        // gives each piece its own)
-        static void AddEdges(NativeList<int> indices, NativeList<float3> positions, NativeParallelHashSet<float3x2> edges)
+        // A surface's edges by the positions of their ends, counted the way round each triangle runs them (TakeOutline),
+        // whether or not the triangles on either side share their vertices (the hotspot cut gives each piece its own)
+        static void CountEdges(NativeList<int> indices, NativeList<float3> positions, NativeParallelHashMap<float3x2, int> edges)
         {
             for (int i = 0; i + 2 < indices.Length; i += 3)
             {
-                edges.Add(new float3x2(positions[indices[i]],     positions[indices[i + 1]]));
-                edges.Add(new float3x2(positions[indices[i + 1]], positions[indices[i + 2]]));
-                edges.Add(new float3x2(positions[indices[i + 2]], positions[indices[i]]));
+                CountEdge(edges, positions[indices[i]],     positions[indices[i + 1]]);
+                CountEdge(edges, positions[indices[i + 1]], positions[indices[i + 2]]);
+                CountEdge(edges, positions[indices[i + 2]], positions[indices[i]]);
             }
+        }
+
+        static void CountEdge(NativeParallelHashMap<float3x2, int> edges, float3 from, float3 to)
+        {
+            var key = new float3x2(from, to);
+            edges[key] = edges.TryGetValue(key, out var count) ? count + 1 : 1;
+        }
+
+        // Whether this time a triangle runs an edge from -> to is on the outline, asked once for each time (CountEdges): an
+        // edge is on the outline as many times as it is run one way more often than the other, so two triangles at the
+        // same three corners wound the other way round, which cover nothing, close nothing either
+        static bool TakeOutline(NativeParallelHashMap<float3x2, int> edges, float3 from, float3 to)
+        {
+            var key = new float3x2(from, to);
+            edges.TryGetValue(key, out var along);
+            edges.TryGetValue(new float3x2(to, from), out var against);
+            if (along <= against)
+                return false;
+            edges[key] = along - 1;
+            return true;
         }
 
         // Where an edge's ends are, either way round, to the millimetre: the edges of two surfaces that meet match
@@ -374,8 +425,8 @@ namespace Chisel.Core
             if (!buffer.IsCreated)
                 return;
             ref var surfaces = ref buffer.Value.surfaces;
-            // by the positions of their ends (AddEdges)
-            using var edges = new NativeParallelHashSet<float3x2>(64, Allocator.Temp);
+            // by the positions of their ends (CountEdges)
+            using var edges = new NativeParallelHashMap<float3x2, int>(64, Allocator.Temp);
             for (int s = 0; s < surfaces.Length; s++)
             {
                 ref var surface = ref surfaces[s];
@@ -387,9 +438,9 @@ namespace Chisel.Core
                 edges.Clear();
                 for (int i = 0; i + 2 < indices.Length; i += 3)
                 {
-                    edges.Add(new float3x2(vertices[indices[i]],     vertices[indices[i + 1]]));
-                    edges.Add(new float3x2(vertices[indices[i + 1]], vertices[indices[i + 2]]));
-                    edges.Add(new float3x2(vertices[indices[i + 2]], vertices[indices[i]]));
+                    CountEdge(edges, vertices[indices[i]],     vertices[indices[i + 1]]);
+                    CountEdge(edges, vertices[indices[i + 1]], vertices[indices[i + 2]]);
+                    CountEdge(edges, vertices[indices[i + 2]], vertices[indices[i]]);
                 }
                 for (int i = 0; i + 2 < indices.Length; i += 3)
                 {
@@ -397,7 +448,7 @@ namespace Chisel.Core
                     {
                         var from = indices[i + c]; var to = indices[i + (c + 1) % 3];
                         var a = vertices[from]; var b = vertices[to];
-                        if (edges.Contains(new float3x2(b, a)))
+                        if (!TakeOutline(edges, a, b))
                             continue;
                         if (!Overlap(new MinMaxAABB { Min = math.min(a, b), Max = math.max(a, b) }, box))
                             continue;
@@ -421,13 +472,15 @@ namespace Chisel.Core
                     var nodeID = data.brushIndexOrder.compactNodeID;
                     if (cache.TryGetValue(nodeID, out var old))
                         old.Dispose();
-                    cache[nodeID] = new MeshCleanupEntry { key = item.key, result = item.result, snapMoves = item.snapMoves, used = true };
+                    cache[nodeID] = new MeshCleanupEntry { key = item.key, result = item.result, snapMoves = item.snapMoves, changes = item.changes, used = true };
                 } else
                 {
                     if (item.result.IsCreated)
                         patched.Add(item.result);
                     if (item.snapMoves.IsCreated)
                         item.snapMoves.Dispose();
+                    if (item.changes.IsCreated)
+                        item.changes.Dispose();
                 }
                 if (!item.result.IsCreated)
                     continue;
@@ -462,7 +515,8 @@ namespace Chisel.Core
         // surface's outline on it is where they meet with a crack. One two surfaces share is left, or one of them would be
         // split without the other.
         public static BlobAssetReference<ChiselBrushRenderBuffer> Clean(BlobAssetReference<ChiselBrushRenderBuffer> source, NativeList<Outline> others = default,
-                                                                        NativeList<float3x2> snapMoves = default, NativeList<Outline> othersColliders = default)
+                                                                        NativeList<float3x2> snapMoves = default, NativeList<Outline> othersColliders = default,
+                                                                        NativeList<MeshCleanupChange> changes = default)
         {
             if (!source.IsCreated)
                 return default;
@@ -642,6 +696,8 @@ namespace Chisel.Core
                         continue;
                     }
                     anyChanged = true;
+                    if (changes.IsCreated)
+                        RecordChanges(ref from, indices, collider, s, changes);
                     to.Store(builder, indices, collider, select, render);
                     to.CopySections(builder, ref from);
                     // the collider and the lightmap keep the triangles as they were before the cleanup: the cut's own
@@ -700,6 +756,49 @@ namespace Chisel.Core
             {
                 builder.Dispose();
             }
+        }
+
+        // The triangles of a surface the cleanup took out (as they were) and put in (as they are now): those of the one and
+        // not the other, by the positions of their corners, wound as they are
+        static void RecordChanges(ref ChiselSurfaceRenderBuffer from, NativeList<int> indices, NativeList<float3> positions, int surface,
+                                  NativeList<MeshCleanupChange> changes)
+        {
+            NativeParallelHashMap<float3x3, int> count;
+            using var _count = count = new NativeParallelHashMap<float3x3, int>(from.indices.Length / 3 + indices.Length / 3 + 1, Allocator.Temp);
+            for (int i = 0; i + 2 < from.indices.Length; i += 3)
+            {
+                var key = Rotated(from.colliderVertices[from.indices[i]], from.colliderVertices[from.indices[i + 1]], from.colliderVertices[from.indices[i + 2]]);
+                count[key] = count.TryGetValue(key, out var n) ? n + 1 : 1;
+            }
+            for (int i = 0; i + 2 < indices.Length; i += 3)
+            {
+                var key = Rotated(positions[indices[i]], positions[indices[i + 1]], positions[indices[i + 2]]);
+                count[key] = count.TryGetValue(key, out var n) ? n - 1 : -1;
+            }
+            for (int i = 0; i + 2 < from.indices.Length; i += 3)
+            {
+                var key = Rotated(from.colliderVertices[from.indices[i]], from.colliderVertices[from.indices[i + 1]], from.colliderVertices[from.indices[i + 2]]);
+                if (count[key] <= 0)
+                    continue;
+                count[key] -= 1;
+                changes.Add(new MeshCleanupChange { a = key.c0, b = key.c1, c = key.c2, surface = surface });
+            }
+            for (int i = 0; i + 2 < indices.Length; i += 3)
+            {
+                var key = Rotated(positions[indices[i]], positions[indices[i + 1]], positions[indices[i + 2]]);
+                if (count[key] >= 0)
+                    continue;
+                count[key] += 1;
+                changes.Add(new MeshCleanupChange { a = key.c0, b = key.c1, c = key.c2, surface = surface, added = 1 });
+            }
+        }
+
+        // A triangle's corners turned to start at the least (by x, y and z), wound the same way
+        static float3x3 Rotated(float3 a, float3 b, float3 c)
+        {
+            if (Less(b, a) && !Less(c, b)) return new float3x3(b, c, a);
+            if (Less(c, a) && Less(c, b))  return new float3x3(c, a, b);
+            return new float3x3(a, b, c);
         }
 
         // Takes out the triangles two of whose corners are at one position, and the pairs of triangles at the same three
@@ -770,15 +869,9 @@ namespace Chisel.Core
                 if (indices[i] < 0 || indices[i] >= vertexCount)
                     return false;
             }
-            // an edge no triangle runs the other way is on the outline (by position: the triangles either side of one may
-            // each have their own vertices there)
-            using var edges = new NativeParallelHashSet<float3x2>(indices.Length, Allocator.Temp);
-            for (int i = 0; i < indices.Length; i += 3)
-            {
-                edges.Add(new float3x2(collider[indices[i]],     collider[indices[i + 1]]));
-                edges.Add(new float3x2(collider[indices[i + 1]], collider[indices[i + 2]]));
-                edges.Add(new float3x2(collider[indices[i + 2]], collider[indices[i]]));
-            }
+            // the outline (CountEdges, TakeOutline)
+            using var edges = new NativeParallelHashMap<float3x2, int>(indices.Length, Allocator.Temp);
+            CountEdges(indices, collider, edges);
             var changed = false;
             using var output = new NativeList<int>(indices.Length, Allocator.Temp);
             using var ring   = new NativeList<int>(8, Allocator.Temp);
@@ -795,7 +888,7 @@ namespace Chisel.Core
                     var from = triangle[c];
                     var to   = triangle[(c + 1) % 3];
                     ring.Add(from);
-                    if (edges.Contains(new float3x2(collider[to], collider[from])))
+                    if (!TakeOutline(edges, collider[from], collider[to]))
                         continue;
                     if (shared.IsCreated && shared.TryGetValue(EdgeKey(collider[from], collider[to]), out var sharing) && sharing > 1)
                         continue;
@@ -856,13 +949,17 @@ namespace Chisel.Core
                     output.Add(triangle.x); output.Add(triangle.y); output.Add(triangle.z);
                     continue;
                 }
-                // a needle (three corners on a line, OutputWeld.FindNeedles) draws nothing whichever way it is cut: a fan
+                // too thin to fill again in its plane: cut corner by corner by the positions themselves; a needle (three
+                // corners on a line, OutputWeld.FindNeedles) draws nothing whichever way it is cut: a fan
                 var pa = collider[triangle.x];
                 if (!(SurfaceMesh.SmallestAngle(pa, collider[triangle.y], collider[triangle.z]) > kMinAngle))
                 {
-                    for (int r = 1; r + 1 < ring.Length; r++)
+                    if (!CutThin(ring, collider, output))
                     {
-                        output.Add(ring[0]); output.Add(ring[r]); output.Add(ring[r + 1]);
+                        for (int r = 1; r + 1 < ring.Length; r++)
+                        {
+                            output.Add(ring[0]); output.Add(ring[r]); output.Add(ring[r + 1]);
+                        }
                     }
                     changed = true;
                     continue;
@@ -896,6 +993,85 @@ namespace Chisel.Core
                 indices.AddRange(output.AsArray());
             }
             return changed;
+        }
+
+        // A thin triangle with corners put into its edges (ring: its outline in order) as triangles none of which has its
+        // corners on one line: a corner is cut off when its neighbours are not on one line with it, it turns the way the
+        // triangle does, nothing else of the ring lies in what it cuts off, and what is left is not all on one line. False,
+        // with nothing added, when no such cut is left (a needle).
+        static bool CutThin(NativeList<int> ring, NativeList<float3> positions, NativeList<int> output)
+        {
+            var p0 = (double3)positions[ring[0]];
+            var normal = math.cross((double3)positions[ring[1]] - p0, (double3)positions[ring[2]] - p0);
+            for (int r = 3; r < ring.Length; r++)
+                normal += math.cross((double3)positions[ring[r - 1]] - p0, (double3)positions[ring[r]] - p0);
+            using var left = new NativeList<int>(ring.Length, Allocator.Temp);
+            using var cut  = new NativeList<int>(ring.Length * 3, Allocator.Temp);
+            left.AddRange(ring.AsArray());
+            while (left.Length > 3)
+            {
+                var found = -1;
+                for (int i = 0; i < left.Length && found < 0; i++)
+                {
+                    var prev = positions[left[(i + left.Length - 1) % left.Length]];
+                    var self = positions[left[i]];
+                    var next = positions[left[(i + 1) % left.Length]];
+                    if (OutputWeld.OnOneLine(prev, self, next) || !(Turn(prev, self, next, normal) > 0))
+                        continue;
+                    var inside = false;
+                    for (int j = 0; j < left.Length && !inside; j++)
+                    {
+                        if (j == i || j == (i + 1) % left.Length || j == (i + left.Length - 1) % left.Length)
+                            continue;
+                        var p = positions[left[j]];
+                        inside = Turn(prev, self, p, normal) >= 0 && Turn(self, next, p, normal) >= 0 && Turn(next, prev, p, normal) >= 0;
+                    }
+                    if (inside || AllOnOneLine(left, positions, i))
+                        continue;
+                    found = i;
+                }
+                if (found < 0)
+                    return false;
+                cut.Add(left[(found + left.Length - 1) % left.Length]); cut.Add(left[found]); cut.Add(left[(found + 1) % left.Length]);
+                left.RemoveAt(found);
+            }
+            if (OutputWeld.OnOneLine(positions[left[0]], positions[left[1]], positions[left[2]]) ||
+                !(Turn(positions[left[0]], positions[left[1]], positions[left[2]], normal) > 0))
+                return false;
+            cut.Add(left[0]); cut.Add(left[1]); cut.Add(left[2]);
+            output.AddRange(cut.AsArray());
+            return true;
+        }
+
+        // Which way a -> b -> c turns, seen from the normal
+        static double Turn(float3 a, float3 b, float3 c, double3 normal)
+        {
+            return math.dot(math.cross((double3)b - a, (double3)c - b), normal);
+        }
+
+        // Whether the ring without its entry `skip` lies on one line
+        static bool AllOnOneLine(NativeList<int> ring, NativeList<float3> positions, int skip)
+        {
+            int first = -1, second = -1;
+            for (int i = 0; i < ring.Length; i++)
+            {
+                if (i == skip)
+                    continue;
+                if (first < 0) { first = i; continue; }
+                if (!positions[ring[i]].Equals(positions[ring[first]])) { second = i; break; }
+            }
+            if (second < 0)
+                return true;
+            for (int i = 0; i < ring.Length; i++)
+            {
+                if (i == skip || i == first || i == second)
+                    continue;
+                var p = positions[ring[i]];
+                if (!p.Equals(positions[ring[first]]) && !p.Equals(positions[ring[second]]) &&
+                    !OutputWeld.OnOneLine(positions[ring[first]], positions[ring[second]], p))
+                    return false;
+            }
+            return true;
         }
 
         static float DistanceToSegment(float3 p, float3 a, float3 b)
@@ -1534,7 +1710,7 @@ namespace Chisel.Core
                     startRing.Add(ring[(least + i) % ring.Length]);
                     startPoints.Add(points[(least + i) % ring.Length]);
                 }
-                return Fill(startRing, startPoints, filled, minAngle);
+                return FillFrom(startRing, startPoints, filled, positions, minAngle);
             }
 
             static bool Less(float3 a, float3 b)
@@ -1547,15 +1723,15 @@ namespace Chisel.Core
             // How much fatter a corner has to be to be taken before one that comes first
             const float kTieAngle = 1e-4f;
 
-            static bool Fill(NativeList<int> ring, NativeList<float2> points, NativeList<int3> filled, float minAngle)
+            static bool FillFrom(NativeList<int> ring, NativeList<float2> points, NativeList<int3> filled, NativeList<float3> positions, float minAngle)
             {
-                if (Clip(ring, points, filled, minAngle))
+                if (Clip(ring, points, filled, positions, minAngle))
                     return true;
                 using var fan = new NativeList<int3>(ring.Length, Allocator.Temp);
                 var bestAngle = 0.0f; var found = false;
                 for (int apex = 0; apex < ring.Length; apex++)
                 {
-                    var angle = Fan(apex, ring, points, fan, minAngle);
+                    var angle = Fan(apex, ring, points, fan, positions, minAngle);
                     if (angle > 0 && (!found || angle > bestAngle + kTieAngle))
                     {
                         found = true;
@@ -1568,7 +1744,7 @@ namespace Chisel.Core
             }
 
             // The triangles from one corner to every edge it isn't on, and their smallest angle; 0 when one is no good
-            static float Fan(int apex, NativeList<int> ring, NativeList<float2> points, NativeList<int3> fan, float minAngle)
+            static float Fan(int apex, NativeList<int> ring, NativeList<float2> points, NativeList<int3> fan, NativeList<float3> positions, float minAngle)
             {
                 fan.Clear();
                 var smallest = float.MaxValue;
@@ -1576,7 +1752,7 @@ namespace Chisel.Core
                 {
                     var from = (apex + step) % ring.Length;
                     var to   = (apex + step + 1) % ring.Length;
-                    if (!(Cross(points[from] - points[apex], points[to] - points[from]) > 0))
+                    if (!(Cross(points[from] - points[apex], points[to] - points[from]) > 0) || OnOneLine(ring, positions, apex, from, to))
                         return 0;
                     var angle = SmallestAngle(points[apex], points[from], points[to]);
                     if (!(angle > minAngle))
@@ -1592,7 +1768,14 @@ namespace Chisel.Core
                 return smallest;
             }
 
-            static bool Clip(NativeList<int> ring, NativeList<float2> points, NativeList<int3> filled, float minAngle)
+            // The flat points are the positions projected in float, which can take three positions on one line for a
+            // triangle with area: those are judged by their positions
+            static bool OnOneLine(NativeList<int> ring, NativeList<float3> positions, int a, int b, int c)
+            {
+                return OutputWeld.OnOneLine(positions[ring[a]], positions[ring[b]], positions[ring[c]]);
+            }
+
+            static bool Clip(NativeList<int> ring, NativeList<float2> points, NativeList<int3> filled, NativeList<float3> positions, float minAngle)
             {
                 filled.Clear();
                 using var left = new NativeList<int>(ring.Length, Allocator.Temp);
@@ -1606,7 +1789,7 @@ namespace Chisel.Core
                         var prev = left[(i + left.Length - 1) % left.Length];
                         var self = left[i];
                         var next = left[(i + 1) % left.Length];
-                        if (!(Cross(points[self] - points[prev], points[next] - points[self]) > 0))
+                        if (!(Cross(points[self] - points[prev], points[next] - points[self]) > 0) || OnOneLine(ring, positions, prev, self, next))
                             continue;
                         var blocked = false;
                         for (int j = 0; j < left.Length && !blocked; j++)
@@ -1627,7 +1810,8 @@ namespace Chisel.Core
                     left.RemoveAt(best);
                 }
                 if (!(Cross(points[left[1]] - points[left[0]], points[left[2]] - points[left[1]]) > 0) ||
-                    !(SmallestAngle(points[left[0]], points[left[1]], points[left[2]]) > minAngle))
+                    !(SmallestAngle(points[left[0]], points[left[1]], points[left[2]]) > minAngle) ||
+                    OnOneLine(ring, positions, left[0], left[1], left[2]))
                     return false;
                 filled.Add(new int3(ring[left[0]], ring[left[1]], ring[left[2]]));
                 return true;

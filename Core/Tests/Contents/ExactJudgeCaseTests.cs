@@ -65,7 +65,7 @@ namespace Chisel.Core.Tests
 			AssertTheMeshIsWhatTheExactCSGMade(SlabsUnderside());
 		}
 
-		static void AssertTheMeshIsWhatTheExactCSGMade(ContentsScene scene)
+		internal static void AssertTheMeshIsWhatTheExactCSGMade(ContentsScene scene)
 		{
 			using var harness = ContentsTreeHarness.Build(scene);
 			Assert.That(harness.Update(), Is.True, "the CSG update did not run");
@@ -202,6 +202,195 @@ namespace Chisel.Core.Tests
 		public void ACollapsedCorner_2_TheMeshIsWhatTheExactCSGMade()
 		{
 			AssertTheMeshIsWhatTheExactCSGMade(CollapsedCorner2());
+		}
+
+		// Three boxes in a row in one tilted frame, a kilometre and a half from the origin, found by a search for scenes
+		// that make the weld act: the mesh lacks a triangle the exact CSG made on the first
+		static ContentsScene TiltedRowFarAway()
+		{
+			return new ContentsScene()
+				.Add(ContentsSceneNode.Brush(new float4[]
+				{
+					new float4(-1f, 0f, 0f, 0f),
+					new float4(1f, 0f, 0f, -1.125f),
+					new float4(0f, -1f, 0f, -0.25f),
+					new float4(0f, 1f, 0f, -0.9375f),
+					new float4(0f, 0f, -1f, -0.4375f),
+					new float4(0f, 0f, 1f, -0.6875f),
+				}, contents: 0, operation: CSGOperationType.Additive,
+					localToTree: new float4x4(new float4(0.4461611f, 0.4869821f, 0.750858665f, 0f), new float4(0.144309938f, 0.788866162f, -0.597381651f, 0f), new float4(-0.8832412f, 0.374884784f, 0.281685054f, 0f), new float4(1548f, 851f, 2561f, 1f)), name: "row 0"))
+				.Add(ContentsSceneNode.Brush(new float4[]
+				{
+					new float4(-1f, 0f, 0f, 1.125f),
+					new float4(1f, 0f, 0f, -1.625f),
+					new float4(0f, -1f, 0f, -0.25f),
+					new float4(0f, 1f, 0f, -0.9375f),
+					new float4(0f, 0f, -1f, -0.3125f),
+					new float4(0f, 0f, 1f, -0.75f),
+				}, contents: 0, operation: CSGOperationType.Additive,
+					localToTree: new float4x4(new float4(0.4461611f, 0.4869821f, 0.750858665f, 0f), new float4(0.144309938f, 0.788866162f, -0.597381651f, 0f), new float4(-0.8832412f, 0.374884784f, 0.281685054f, 0f), new float4(1548f, 851f, 2561f, 1f)), name: "row 1"))
+				.Add(ContentsSceneNode.Brush(new float4[]
+				{
+					new float4(-1f, 0f, 0f, 1.625f),
+					new float4(1f, 0f, 0f, -2.625f),
+					new float4(0f, -1f, 0f, -0.3125f),
+					new float4(0f, 1f, 0f, -0.625f),
+					new float4(0f, 0f, -1f, -0.3125f),
+					new float4(0f, 0f, 1f, -0.3125f),
+				}, contents: 0, operation: CSGOperationType.Additive,
+					localToTree: new float4x4(new float4(0.4461611f, 0.4869821f, 0.750858665f, 0f), new float4(0.144309938f, 0.788866162f, -0.597381651f, 0f), new float4(-0.8832412f, 0.374884784f, 0.281685054f, 0f), new float4(1548f, 851f, 2561f, 1f)), name: "row 2"))
+				;
+		}
+
+		[Test]
+		public void TheTiltedRowFarAway_TheMeshIsWhatTheExactCSGMade()
+		{
+			AssertTheMeshIsWhatTheExactCSGMade(TiltedRowFarAway());
+		}
+
+		// Three boxes in a row in one tilted frame, a kilometre and a half from the origin, found by the same search: the
+		// mesh has a triangle on the second the exact CSG did not make
+		static ContentsScene TiltedRowFarAwayAgain()
+		{
+			return new ContentsScene()
+				.Add(ContentsSceneNode.Brush(new float4[]
+				{
+					new float4(-1f, 0f, 0f, 0f),
+					new float4(1f, 0f, 0f, -1.25f),
+					new float4(0f, -1f, 0f, -0.3125f),
+					new float4(0f, 1f, 0f, -0.375f),
+					new float4(0f, 0f, -1f, -0.4375f),
+					new float4(0f, 0f, 1f, -0.375f),
+				}, contents: 0, operation: CSGOperationType.Additive,
+					localToTree: new float4x4(new float4(0.788063765f, -0.615556061f, 0.006802529f, 0f), new float4(0.6143057f, 0.787081361f, 0.0559594072f, 0f), new float4(-0.0398002937f, -0.03992075f, 0.998409867f, 0f), new float4(1577f, 1430f, 2302f, 1f)), name: "row 0"))
+				.Add(ContentsSceneNode.Brush(new float4[]
+				{
+					new float4(-1f, 0f, 0f, 1.25f),
+					new float4(1f, 0f, 0f, -2.375f),
+					new float4(0f, -1f, 0f, -0.1875f),
+					new float4(0f, 1f, 0f, -0.9375f),
+					new float4(0f, 0f, -1f, -0.3125f),
+					new float4(0f, 0f, 1f, -0.375f),
+				}, contents: 0, operation: CSGOperationType.Additive,
+					localToTree: new float4x4(new float4(0.788063765f, -0.615556061f, 0.006802529f, 0f), new float4(0.6143057f, 0.787081361f, 0.0559594072f, 0f), new float4(-0.0398002937f, -0.03992075f, 0.998409867f, 0f), new float4(1577f, 1430f, 2302f, 1f)), name: "row 1"))
+				.Add(ContentsSceneNode.Brush(new float4[]
+				{
+					new float4(-1f, 0f, 0f, 2.375f),
+					new float4(1f, 0f, 0f, -3.5625f),
+					new float4(0f, -1f, 0f, -0.0625f),
+					new float4(0f, 1f, 0f, -0.3125f),
+					new float4(0f, 0f, -1f, -0.4375f),
+					new float4(0f, 0f, 1f, -0.5f),
+				}, contents: 0, operation: CSGOperationType.Additive,
+					localToTree: new float4x4(new float4(0.788063765f, -0.615556061f, 0.006802529f, 0f), new float4(0.6143057f, 0.787081361f, 0.0559594072f, 0f), new float4(-0.0398002937f, -0.03992075f, 0.998409867f, 0f), new float4(1577f, 1430f, 2302f, 1f)), name: "row 2"))
+				;
+		}
+
+		[Test]
+		public void TheTiltedRowFarAwayAgain_TheMeshIsWhatTheExactCSGMade()
+		{
+			AssertTheMeshIsWhatTheExactCSGMade(TiltedRowFarAwayAgain());
+		}
+
+		// Four boxes of different contents in a row in one tilted frame, far from the origin, found by the same search:
+		// the mesh has a triangle on the second the exact CSG did not make
+		static ContentsScene TiltedRowOfContents()
+		{
+			return new ContentsScene()
+				.WithContentsList("Solid", "Glass", "Grate", "Water")
+				.Add(ContentsSceneNode.Brush(new float4[]
+				{
+					new float4(-1f, 0f, 0f, 0f),
+					new float4(1f, 0f, 0f, -0.5625f),
+					new float4(0f, -1f, 0f, -0.375f),
+					new float4(0f, 1f, 0f, -0.5f),
+					new float4(0f, 0f, -1f, -0.0625f),
+					new float4(0f, 0f, 1f, -0.8125f),
+				}, contents: 2, operation: CSGOperationType.Additive,
+					localToTree: new float4x4(new float4(0.7527752f, -0.5982439f, -0.274652f, 0f), new float4(0.536372244f, 0.7993097f, -0.270940751f, 0f), new float4(0.381620646f, 0.0566417873f, 0.9225819f, 0f), new float4(1358f, 906f, 2094f, 1f)), name: "row 0"))
+				.Add(ContentsSceneNode.Brush(new float4[]
+				{
+					new float4(-1f, 0f, 0f, 0.5625f),
+					new float4(1f, 0f, 0f, -1.8125f),
+					new float4(0f, -1f, 0f, -0.125f),
+					new float4(0f, 1f, 0f, -0.8125f),
+					new float4(0f, 0f, -1f, 0f),
+					new float4(0f, 0f, 1f, -0.9375f),
+				}, contents: 1, operation: CSGOperationType.Additive,
+					localToTree: new float4x4(new float4(0.7527752f, -0.5982439f, -0.274652f, 0f), new float4(0.536372244f, 0.7993097f, -0.270940751f, 0f), new float4(0.381620646f, 0.0566417873f, 0.9225819f, 0f), new float4(1358f, 906f, 2094f, 1f)), name: "row 1"))
+				.Add(ContentsSceneNode.Brush(new float4[]
+				{
+					new float4(-1f, 0f, 0f, 1.8125f),
+					new float4(1f, 0f, 0f, -3.5f),
+					new float4(0f, -1f, 0f, -0.375f),
+					new float4(0f, 1f, 0f, -0.8125f),
+					new float4(0f, 0f, -1f, -0.4375f),
+					new float4(0f, 0f, 1f, -0.3125f),
+				}, contents: 1, operation: CSGOperationType.Additive,
+					localToTree: new float4x4(new float4(0.7527752f, -0.5982439f, -0.274652f, 0f), new float4(0.536372244f, 0.7993097f, -0.270940751f, 0f), new float4(0.381620646f, 0.0566417873f, 0.9225819f, 0f), new float4(1358f, 906f, 2094f, 1f)), name: "row 2"))
+				.Add(ContentsSceneNode.Brush(new float4[]
+				{
+					new float4(-1f, 0f, 0f, 3.5f),
+					new float4(1f, 0f, 0f, -4.9375f),
+					new float4(0f, -1f, 0f, -0.1875f),
+					new float4(0f, 1f, 0f, -0.8125f),
+					new float4(0f, 0f, -1f, 0f),
+					new float4(0f, 0f, 1f, -0.6875f),
+				}, contents: 3, operation: CSGOperationType.Additive,
+					localToTree: new float4x4(new float4(0.7527752f, -0.5982439f, -0.274652f, 0f), new float4(0.536372244f, 0.7993097f, -0.270940751f, 0f), new float4(0.381620646f, 0.0566417873f, 0.9225819f, 0f), new float4(1358f, 906f, 2094f, 1f)), name: "row 3"))
+				;
+		}
+
+		[Test]
+		public void TheTiltedRowOfContents_TheMeshIsWhatTheExactCSGMade()
+		{
+			AssertTheMeshIsWhatTheExactCSGMade(TiltedRowOfContents());
+		}
+
+
+		// Boxes of different contents in a row in one tilted frame, far from the origin, found by the same search: the
+		// exact CSG made a triangle on the second the mesh does not have
+		static ContentsScene TiltedRowOfContentsAgain()
+		{
+			return new ContentsScene()
+				.WithContentsList("Solid", "Glass", "Grate", "Water")
+				.Add(ContentsSceneNode.Brush(new float4[]
+				{
+					new float4(-1f, 0f, 0f, 0f),
+					new float4(1f, 0f, 0f, -0.5625f),
+					new float4(0f, -1f, 0f, -0.4375f),
+					new float4(0f, 1f, 0f, -0.5625f),
+					new float4(0f, 0f, -1f, -0.4375f),
+					new float4(0f, 0f, 1f, -0.625f),
+				}, contents: 2, operation: CSGOperationType.Additive,
+					localToTree: new float4x4(new float4(0.08068049f, -0.584234357f, 0.8075647f, 0f), new float4(0.443922848f, 0.7464752f, 0.495688558f, 0f), new float4(-0.892425358f, 0.3185041f, 0.319581032f, 0f), new float4(1825f, 1231f, 2496f, 1f)), name: "row 0"))
+				.Add(ContentsSceneNode.Brush(new float4[]
+				{
+					new float4(-1f, 0f, 0f, 0.5625f),
+					new float4(1f, 0f, 0f, -2.5f),
+					new float4(0f, -1f, 0f, -0.4375f),
+					new float4(0f, 1f, 0f, -1f),
+					new float4(0f, 0f, -1f, -0.25f),
+					new float4(0f, 0f, 1f, -0.3125f),
+				}, contents: 1, operation: CSGOperationType.Additive,
+					localToTree: new float4x4(new float4(0.08068049f, -0.584234357f, 0.8075647f, 0f), new float4(0.443922848f, 0.7464752f, 0.495688558f, 0f), new float4(-0.892425358f, 0.3185041f, 0.319581032f, 0f), new float4(1825f, 1231f, 2496f, 1f)), name: "row 1"))
+				.Add(ContentsSceneNode.Brush(new float4[]
+				{
+					new float4(-1f, 0f, 0f, 2.5f),
+					new float4(1f, 0f, 0f, -4f),
+					new float4(0f, -1f, 0f, -0.5f),
+					new float4(0f, 1f, 0f, -0.9375f),
+					new float4(0f, 0f, -1f, -0.3125f),
+					new float4(0f, 0f, 1f, -0.375f),
+				}, contents: 1, operation: CSGOperationType.Additive,
+					localToTree: new float4x4(new float4(0.08068049f, -0.584234357f, 0.8075647f, 0f), new float4(0.443922848f, 0.7464752f, 0.495688558f, 0f), new float4(-0.892425358f, 0.3185041f, 0.319581032f, 0f), new float4(1825f, 1231f, 2496f, 1f)), name: "row 2"))
+				;
+		}
+
+		[Test]
+		public void TheTiltedRowOfContentsAgain_TheMeshIsWhatTheExactCSGMade()
+		{
+			AssertTheMeshIsWhatTheExactCSGMade(TiltedRowOfContentsAgain());
 		}
 	}
 }

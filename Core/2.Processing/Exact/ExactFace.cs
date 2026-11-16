@@ -19,17 +19,63 @@ namespace Chisel.Core
         public bool IsEmpty { [MethodImpl(MethodImplOptions.AggressiveInlining)] get => count < 3; }
     }
 
-    // A brush touching the face's brush, as the face builder sees it.
+    // A brush touching the face's brush, or the brush whose routing a level is (ExactRouting.levels), as the face builder
+    // sees it.
     struct ExactTouchingBrush
     {
         public int  planeOffset;        // into the builder's plane table
         public int  planeCount;
         public int  nodeOrder;          // which brush, for the caller's bookkeeping
+        public CompactNodeID nodeID;
+        public bool givesWay;           // the face's brush gives way to this brush's coplanar faces (ContentsRules.GivesWay)
         public byte insideCategory;
         public byte alignedCategory;
         public byte reverseAlignedCategory;
-        public bool routes;             // whether it has a lookup in the routing table
+        public bool routes;             // whether it has a lookup in its level's routing table
+        public int  tieLevel;           // > 0: the face gives way to this brush's face where that routes as drawn at this level
         public MinMaxAABB bounds;       // contains the brush (ExactBrush.bounds)
+    }
+
+    // The routing tables a face is routed through: level 0 is the face's brush's own; each further level is that of a
+    // brush the face gives way to (ExactTouchingBrush.tieLevel), which routes that brush's coplanar face as its own job
+    // would, but with the ties it takes part in left out, the way each face is judged on its own before a tie is decided.
+    struct ExactRouting : IDisposable
+    {
+        public ExactList<ushort> rows;          // ExactFaceBuilder.kCategoryCount values per row
+        public ExactList<int>    lookupStart;   // per lookup: its rows, as indices into all rows
+        public ExactList<int>    lookupEnd;
+        public ExactList<int>    lookupBrush;   // per lookup: index into the touching brushes, -1 when none
+        public ExactList<int3>   levels;        // per level: its lookups, from x up to y, and its first row, z
+
+        public static ExactRouting Create()
+        {
+            return new ExactRouting
+            {
+                rows        = new ExactList<ushort>(64),
+                lookupStart = new ExactList<int>(16),
+                lookupEnd   = new ExactList<int>(16),
+                lookupBrush = new ExactList<int>(16),
+                levels      = new ExactList<int3>(4),
+            };
+        }
+
+        // Back to the first levelCount levels
+        public void Truncate(int levelCount)
+        {
+            if (levelCount >= levels.Length)
+                return;
+            int lookupCount = levels[levelCount].x;
+            rows.Resize(levels[levelCount].z * ExactFaceBuilder.kCategoryCount);
+            lookupStart.Resize(lookupCount);
+            lookupEnd.Resize(lookupCount);
+            lookupBrush.Resize(lookupCount);
+            levels.Resize(levelCount);
+        }
+
+        public void Dispose()
+        {
+            rows.Dispose(); lookupStart.Dispose(); lookupEnd.Dispose(); lookupBrush.Dispose(); levels.Dispose();
+        }
     }
 
     // A point on an output edge, with the exact value the triangulator works on and the float it is emitted as.
@@ -67,7 +113,6 @@ namespace Chisel.Core
     {
         public ExactPolygonRange polygon;
         public int               brush;     // index into the touching brushes; -1 for region 0, the face
-        public byte              category;  // what the covered part carries into routing
     }
 
     struct ExactLineEvent
@@ -117,9 +162,9 @@ namespace Chisel.Core
         public ExactList<byte>              coverage;           // per touching brush: kMisses, kCovers or kCuts the face
         public ExactList<byte>              coveredCategory;    // per touching brush: the category it gives the part it covers
         public ExactList<sbyte>             planeSame;          // per plane: SamePlane with the face (Coverage), where it was asked
-        public ExactList<int>               lookupRegion;       // per routing lookup: region index or -1
+        public ExactList<int2>              ties;               // the touching brushes (x) the face gives way to, and their level (y)
         public ExactList<int>               regionOrientation;  // per region, for the current line
-        public ExactList<byte>              leftInside;         // per region: membership of the left side
+        public ExactList<byte>              leftInside;         // per touching brush: membership of the left side
         public ExactList<byte>              rightInside;
 
         public ExactList<ExactOutputVertex> vertices;
@@ -148,7 +193,7 @@ namespace Chisel.Core
                 coverage            = new ExactList<byte>(16),
                 coveredCategory     = new ExactList<byte>(16),
                 planeSame           = new ExactList<sbyte>(64),
-                lookupRegion        = new ExactList<int>(16),
+                ties                = new ExactList<int2>(4),
                 regionOrientation   = new ExactList<int>(16),
                 leftInside          = new ExactList<byte>(16),
                 rightInside         = new ExactList<byte>(16),
@@ -162,7 +207,7 @@ namespace Chisel.Core
         public void Dispose()
         {
             planes.Dispose(); polygonPool.Dispose(); signs.Dispose(); regions.Dispose(); lines.Dispose(); owners.Dispose();
-            events.Dispose(); order.Dispose(); intervals.Dispose(); nearFace.Dispose(); coverage.Dispose(); coveredCategory.Dispose(); planeSame.Dispose(); lookupRegion.Dispose(); regionOrientation.Dispose();
+            events.Dispose(); order.Dispose(); intervals.Dispose(); nearFace.Dispose(); coverage.Dispose(); coveredCategory.Dispose(); planeSame.Dispose(); ties.Dispose(); regionOrientation.Dispose();
             leftInside.Dispose(); rightInside.Dispose(); vertices.Dispose(); alignedEdges.Dispose(); reverseAlignedEdges.Dispose();
             discardedEdges.Dispose();
         }
@@ -200,7 +245,8 @@ namespace Chisel.Core
         static ExactPlane WorldPlane(int axis, int sign)
         {
             long s = sign * ExactPlane.kMaxNormal;
-            return new ExactPlane(axis == 0 ? s : 0, axis == 1 ? s : 0, axis == 2 ? s : 0, -ExactPlane.kMaxW);
+            // kMaxW over metres is kMaxW kPointScale over grid steps
+            return new ExactPlane(axis == 0 ? s : 0, axis == 1 ? s : 0, axis == 2 ? s : 0, Int128.Mul(-ExactPlane.kMaxW, 1L << ExactPlane.kPointShift));
         }
 
         void AddEdge(in ExactPlane face, in ExactPlane previous, in ExactPlane plane, int planeId, ref ExactFaceFailure failure)
@@ -276,11 +322,7 @@ namespace Chisel.Core
 
         // ---- the face ---------------------------------------------------------------------------------------------
 
-        public ExactFaceFailure BuildFace(int faceId, ref ExactBrush own,
-                                          ref ExactList<ExactTouchingBrush> touching,
-                                          ref ExactList<ushort> routingRows,
-                                          ref ExactList<int> lookupStart, ref ExactList<int> lookupEnd,
-                                          ref ExactList<int> lookupBrush)
+        public ExactFaceFailure BuildFace(int faceId, ref ExactBrush own, ref ExactList<ExactTouchingBrush> touching, ref ExactRouting routing)
         {
             var failure = ExactFaceFailure.None;
             vertices.Clear(); alignedEdges.Clear(); reverseAlignedEdges.Clear(); discardedEdges.Clear();
@@ -295,10 +337,17 @@ namespace Chisel.Core
             if (failure == ExactFaceFailure.None && regions.Length > 0)
             {
                 // No brush cuts the face, so all of it routes the same way: one that is not drawn has nothing to write
-                if (uniform && !collectDiscarded && !IsDrawn(RouteUniform(ref lookupBrush, ref routingRows, ref lookupStart, ref lookupEnd)))
-                    regions.Clear();
-                else
+                bool drawn = true;
+                if (uniform && !collectDiscarded)
+                {
+                    for (int t = 0; t < touching.Length; t++)
+                        leftInside[t] = (byte)(coverage[t] == kCovers ? 1 : 0);
+                    drawn = IsDrawn(Route(ref leftInside, ref routing));
+                }
+                if (drawn)
                     failure = CutRegions(faceId, ref touching);
+                else
+                    regions.Clear();
             }
             if (failure != ExactFaceFailure.None || regions.Length == 0)
             {
@@ -306,19 +355,9 @@ namespace Chisel.Core
                 return failure;
             }
 
-            // Routing lookups to regions.
-            lookupRegion.Clear();
-            for (int k = 0; k < lookupBrush.Length; k++)
-            {
-                int region = -1;
-                int b = lookupBrush[k];
-                if (b >= 0)
-                {
-                    for (int r = 1; r < regions.Length; r++)
-                        if (regions[r].brush == b) { region = r; break; }
-                }
-                lookupRegion.Add(region);
-            }
+            // A brush without a region covers no segment; the ones with a region are set per segment (ProcessLine)
+            for (int t = 0; t < touching.Length; t++)
+                leftInside[t] = rightInside[t] = 0;
 
             // Every distinct line an edge of the face or of a region lies on, and who owns an edge there.
             for (int r = 0; r < regions.Length; r++)
@@ -344,12 +383,10 @@ namespace Chisel.Core
                 }
             }
 
-            leftInside.Resize(regions.Length);
-            rightInside.Resize(regions.Length);
             regionOrientation.Resize(regions.Length);
             for (int l = 0; l < lines.Length; l++)
             {
-                var result = ProcessLine(l, faceId, ref touching, ref routingRows, ref lookupStart, ref lookupEnd);
+                var result = ProcessLine(l, faceId, ref touching, ref routing);
                 if (result != ExactFaceFailure.None) { failure = result; break; }
             }
             planes.Resize(boundBase);
@@ -436,7 +473,7 @@ namespace Chisel.Core
             for (int e = 0; e < range.y; e++)
                 polygonPool.Add(own.faceEdges[range.x + e]);
             var face = planes[faceId];
-            regions.Add(new ExactRegion { polygon = polygon, brush = -1, category = 0 });
+            regions.Add(new ExactRegion { polygon = polygon, brush = -1 });
 
             // A brush whose bounds miss the face's misses the face: it cuts no region and has no interval on its lines
             var faceBounds = own.faceBounds[faceId];
@@ -447,20 +484,25 @@ namespace Chisel.Core
                 nearFace.Add((byte)(math.all(bounds.Min <= faceBounds.Max) && math.all(bounds.Max >= faceBounds.Min) ? 1 : 0));
             }
 
-            // Whether each brush misses, covers or cuts the face, from where the face's corners lie
+            // Whether each brush misses, covers or cuts the face, from where the face's corners lie; a brush the face
+            // gives way to does, even when it does not route, so where its face lies is known
             uniform = true;
-            coverage.Clear(); coveredCategory.Clear();
+            coverage.Clear(); coveredCategory.Clear(); ties.Clear();
             planeSame.Resize(planes.Length);
+            leftInside.Resize(touching.Length);
+            rightInside.Resize(touching.Length);
             for (int t = 0; t < touching.Length; t++)
             {
                 byte kind = kMisses, category = 0;
                 ref var brush = ref touching[t];
-                if (brush.routes && nearFace[t] != 0)
+                if ((brush.routes || brush.tieLevel > 0) && nearFace[t] != 0)
                     kind = Coverage(face, polygon, ref brush, out category);
                 coverage.Add(kind);
                 coveredCategory.Add(category);
                 if (kind == kCuts)
                     uniform = false;
+                if (kind != kMisses && brush.tieLevel > 0)
+                    ties.Add(new int2(t, brush.tieLevel));
             }
             return ExactFaceFailure.None;
         }
@@ -505,9 +547,9 @@ namespace Chisel.Core
             return covers ? kCovers : kCuts;
         }
 
-        // Region 0 is the face, made by BuildRegions; after it, one region per routing touching brush that covers part of
-        // it: all of the face for one that covers it, the face clipped to the planes (that are not the face's) of one
-        // that cuts it (BuildRegions found which).
+        // Region 0 is the face, made by BuildRegions; after it, one region per touching brush that covers part of it: all
+        // of the face for one that covers it, the face clipped to the planes (that are not the face's) of one that cuts
+        // it (BuildRegions found which).
         ExactFaceFailure CutRegions(int faceId, ref ExactList<ExactTouchingBrush> touching)
         {
             var failure = ExactFaceFailure.None;
@@ -532,7 +574,7 @@ namespace Chisel.Core
                     if (region.IsEmpty)
                         continue;
                 }
-                regions.Add(new ExactRegion { polygon = region, brush = t, category = coveredCategory[t] });
+                regions.Add(new ExactRegion { polygon = region, brush = t });
             }
             return ExactFaceFailure.None;
         }
@@ -614,10 +656,7 @@ namespace Chisel.Core
             return events.Length - 1;
         }
 
-        ExactFaceFailure ProcessLine(int lineIndex, int faceId,
-                                     ref ExactList<ExactTouchingBrush> touching,
-                                     ref ExactList<ushort> routingRows,
-                                     ref ExactList<int> lookupStart, ref ExactList<int> lookupEnd)
+        ExactFaceFailure ProcessLine(int lineIndex, int faceId, ref ExactList<ExactTouchingBrush> touching, ref ExactRouting routing)
         {
             var failure = ExactFaceFailure.None;
             var face = planes[faceId];
@@ -730,16 +769,17 @@ namespace Chisel.Core
 
                 for (int r = 1; r < regions.Length; r++)
                 {
-                    var interval = intervals[regions[r].brush];
+                    int brush = regions[r].brush;
+                    var interval = intervals[brush];
                     bool covers = !interval.IsEmpty && events[interval.entry].rank <= rankA && events[interval.exit].rank >= rankB;
                     int orientation = regionOrientation[r];
                     // a region with an edge on this line lies on the side where that edge plane is negative
-                    leftInside[r]  = (byte)(covers && orientation >= 0 ? 1 : 0);
-                    rightInside[r] = (byte)(covers && orientation <= 0 ? 1 : 0);
+                    leftInside[brush]  = (byte)(covers && orientation >= 0 ? 1 : 0);
+                    rightInside[brush] = (byte)(covers && orientation <= 0 ? 1 : 0);
                 }
 
-                int leftCategory  = leftInFace  ? Route(ref leftInside,  ref routingRows, ref lookupStart, ref lookupEnd) : -1;
-                int rightCategory = rightInFace ? Route(ref rightInside, ref routingRows, ref lookupStart, ref lookupEnd) : -1;
+                int leftCategory  = leftInFace  ? Route(ref leftInside,  ref routing) : -1;
+                int rightCategory = rightInFace ? Route(ref rightInside, ref routing) : -1;
                 if (leftCategory == rightCategory)
                     continue;
                 Emit(leftCategory, rightCategory, (int)CategoryIndex.SelfAligned,        a, b, lineIndex, ref alignedEdges);
@@ -833,41 +873,39 @@ namespace Chisel.Core
             return category == (int)CategoryIndex.SelfAligned || category == (int)CategoryIndex.SelfReverseAligned;
         }
 
-        // The category routing gives all of a face no brush cuts, from the brushes that cover it.
-        int RouteUniform(ref ExactList<int> lookupBrush, ref ExactList<ushort> routingRows, ref ExactList<int> lookupStart, ref ExactList<int> lookupEnd)
+        // The category routing gives a piece of the face, from its membership in each touching brush. A piece drawn
+        // where a face it gives way to is drawn the same way is not drawn: of two coplanar faces of different types,
+        // facing the same way, only the winner's is.
+        int Route(ref ExactList<byte> inside, ref ExactRouting routing)
         {
-            int input = 0;
-            for (int k = 0; k < lookupStart.Length; k++)
+            int category = RouteLevel(0, ref inside, ref routing);
+            if (!IsDrawn(category))
+                return category;
+            for (int i = 0; i < ties.Length; i++)
             {
-                int row = lookupStart[k] + input;
-                if (row < lookupStart[k] || row >= lookupEnd[k])
-                {
-                    routingErrors++;
-                    continue;
-                }
-                int b = lookupBrush[k];
-                int category = b >= 0 && coverage[b] == kCovers ? coveredCategory[b] : (int)CategoryIndex.Outside;
-                input = routingRows[row * kCategoryCount + category];
+                if (inside[ties[i].x] != 0 && RouteLevel(ties[i].y, ref inside, ref routing) == category)
+                    return (int)CategoryIndex.Inside;
             }
-            return input;
+            return category;
         }
 
-        // The category routing gives a piece of the face, from its membership in each region.
-        int Route(ref ExactList<byte> inside, ref ExactList<ushort> routingRows, ref ExactList<int> lookupStart, ref ExactList<int> lookupEnd)
+        int RouteLevel(int level, ref ExactList<byte> inside, ref ExactRouting routing)
         {
+            var lookups = routing.levels[level];
             int input = 0;
-            for (int k = 0; k < lookupStart.Length; k++)
+            for (int k = lookups.x; k < lookups.y; k++)
             {
-                int row = lookupStart[k] + input;
-                if (row < lookupStart[k] || row >= lookupEnd[k])
+                int start = routing.lookupStart[k];
+                int row = start + input;
+                if (row < start || row >= routing.lookupEnd[k])
                 {
                     // a lookup without a row for this input leaves the input as it is
                     routingErrors++;
                     continue;
                 }
-                int region = lookupRegion[k];
-                int category = region >= 0 && inside[region] != 0 ? regions[region].category : (int)CategoryIndex.Outside;
-                input = routingRows[row * kCategoryCount + category];
+                int brush = routing.lookupBrush[k];
+                int category = brush >= 0 && inside[brush] != 0 ? coveredCategory[brush] : (int)CategoryIndex.Outside;
+                input = routing.rows[row * kCategoryCount + category];
             }
             return input;
         }

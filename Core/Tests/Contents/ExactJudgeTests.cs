@@ -143,7 +143,7 @@ namespace Chisel.Core.Tests
 			{
 				var brush = CaptureOf(harness, "A");
 				var part  = PartFacing(brush, 0, 1);
-				brush.planes[part.surface].w += 1;
+				brush.planes[part.surface].w = Int128.Add(brush.planes[part.surface].w, Int128.FromLong(1));
 				AssertReports(Judge(harness), "does not lie on its face's plane", "A's +x plane moved by 2^-20");
 			}
 		}
@@ -199,6 +199,110 @@ namespace Chisel.Core.Tests
 				harness.RemoveTriangleForTest(0);
 				AssertReports(Judge(harness), "the mesh does not have", "a triangle taken out of the mesh");
 			}
+		}
+
+		// The cleanup puts a corner that lies on a surface's outline edge into that edge (OutputMeshCleanup.SplitOutline),
+		// where the surface across has it: the triangles on both sides of the edge become two each, that cover the same,
+		// and it records what it took out and put in
+		[Test]
+		public void ATriangleSplitAtAPointOnItsEdge_IsTheSameTriangle()
+		{
+			using (var harness = BuildAndUpdate(GapScene()))
+			{
+				SplitTriangle(harness, 0, offTheEdge: 0, bothSides: true, recorded: true);
+				var mismatches = Judge(harness);
+				Assert.That(mismatches, Is.Empty, Describe(mismatches));
+			}
+		}
+
+		// The same with the point a centimetre off the edge covers something else: what the cleanup recorded is reported
+		[Test]
+		public void ATriangleSplitAtAPointOffItsEdge_IsReported()
+		{
+			using (var harness = BuildAndUpdate(GapScene()))
+			{
+				SplitTriangle(harness, 0, offTheEdge: 0.01f, bothSides: true, recorded: true);
+				AssertReports(Judge(harness), "cover something else", "a triangle split at a point off its edge");
+			}
+		}
+
+		// A split the cleanup did not record is no change of the cleanup's, and none the weld makes
+		[Test]
+		public void ATriangleSplitTheCleanupDidNotRecord_IsReported()
+		{
+			using (var harness = BuildAndUpdate(GapScene()))
+			{
+				SplitTriangle(harness, 0, offTheEdge: 0, bothSides: true, recorded: false);
+				AssertReports(Judge(harness), "the mesh has a triangle the exact CSG did not make", "a split no step recorded");
+			}
+		}
+
+		// Split on one side only, the edge across runs past the point: a crack, where the exact CSG's output is closed
+		[Test]
+		public void ATriangleSplitOnOneSideOfItsEdge_IsReportedOpen()
+		{
+			using (var harness = BuildAndUpdate(GapScene()))
+			{
+				SplitTriangle(harness, 0, offTheEdge: 0, bothSides: false, recorded: true);
+				AssertReports(Judge(harness), "the mesh is open along", "a triangle split on one side of its edge");
+			}
+		}
+
+		// Mesh triangle `index` as two, split at the middle of an edge where its face meets another (on its surface's
+		// outline, where the cleanup puts corners), moved `offTheEdge` into its plane, away from its third corner; with
+		// bothSides, the triangle across the edge too, at the same point. recorded: as the cleanup records what it changed
+		static void SplitTriangle(ContentsTreeHarness harness, int index, float offTheEdge, bool bothSides, bool recorded)
+		{
+			Assert.That(harness.Triangles.Count, Is.GreaterThan(index), "the mesh is empty");
+			var triangle = harness.Triangles[index];
+			var corners = new[] { triangle.a, triangle.b, triangle.c };
+			for (int e = 0; e < 3; e++)
+			{
+				var from = corners[e]; var to = corners[(e + 1) % 3]; var third = corners[(e + 2) % 3];
+				var across = -1;
+				for (int t = 0; t < harness.Triangles.Count && across < 0; t++)
+				{
+					var other = harness.Triangles[t];
+					if ((other.a.Equals(to) && other.b.Equals(from)) || (other.b.Equals(to) && other.c.Equals(from)) || (other.c.Equals(to) && other.a.Equals(from)))
+						across = t;
+				}
+				if (across < 0 || math.dot(math.normalize(harness.Triangles[across].Normal), math.normalize(triangle.Normal)) > 0.5f)
+					continue;
+				var middle = (from + to) * 0.5f;
+				var inPlane = math.normalize(math.cross(triangle.Normal, to - from));
+				if (math.dot(inPlane, third - middle) > 0)
+					inPlane = -inPlane;
+				middle += inPlane * offTheEdge;
+				Split(harness, index, from, to, middle, recorded ? kPlantedSurface : -1);
+				if (bothSides)
+					Split(harness, across, to, from, middle, recorded ? kPlantedSurface + 1 : -1);
+				return;
+			}
+			Assert.Fail("the triangle has no edge where its face meets another");
+		}
+
+		// Surfaces of the changes planted as the cleanup's, past any a brush here has, so none mixes with one it recorded
+		const int kPlantedSurface = 1000;
+
+		// Mesh triangle `index`, which runs from -> to, as two, split at point; recorded as a change of the cleanup's to
+		// `surface` when that is not negative
+		static void Split(ContentsTreeHarness harness, int index, float3 from, float3 to, float3 point, int surface)
+		{
+			var triangle = harness.Triangles[index];
+			var corners = new[] { triangle.a, triangle.b, triangle.c };
+			var start = corners[0].Equals(from) && corners[1].Equals(to) ? 0 : (corners[1].Equals(from) && corners[2].Equals(to) ? 1 : 2);
+			var third = corners[(start + 2) % 3];
+			var first = triangle;  first.a  = from;  first.b  = point; first.c  = third;
+			var second = triangle; second.a = point; second.b = to;    second.c = third;
+			harness.ReplaceTriangleForTest(index, first);
+			harness.AddTriangleForTest(second);
+			if (surface < 0)
+				return;
+			if (!harness.CleanupChanges.TryGetValue(triangle.brushID, out var changes))
+				harness.CleanupChanges[triangle.brushID] = changes = new List<MeshCleanupChange>();
+			changes.Add(new MeshCleanupChange { a = triangle.a, b = triangle.b, c = triangle.c, surface = surface });
+			changes.Add(new MeshCleanupChange { a = first.a,  b = first.b,  c = first.c,  surface = surface, added = 1 });
+			changes.Add(new MeshCleanupChange { a = second.a, b = second.b, c = second.c, surface = surface, added = 1 });
 		}
 
 		[Test]

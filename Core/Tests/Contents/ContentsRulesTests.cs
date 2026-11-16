@@ -15,8 +15,8 @@ namespace Chisel.Core.Tests
         // remove it.
         static bool FaceRemovedInside(int a, int b) => a == b || b == kSolid;
 
-        // Does b's face win a coplanar tie against a carving brush's wall of type a? Solid first, then the order of
-        // the list. Between two brushes that don't carve the later brush's face wins.
+        // Does b's face win a coplanar tie against a's? Solid first, then the order of the list, whichever brush comes
+        // later.
         static bool TieGoesTo(int b, int a)
         {
             if (a == b)      return false;
@@ -40,15 +40,38 @@ namespace Chisel.Core.Tests
                         return (bCarvesA && !intersectingB) ? CategoryIndex.Outside : computed;
                     return (!aCarvesB && b == kSolid) ? computed : CategoryIndex.Outside;
                 case CategoryIndex.Aligned:
+                    // a tie between two types is not decided by the pair alone (ExpectedGivesWay)
                     if (carvingB)
                         return bCarvesA ? CategoryIndex.Inside : computed;
-                    if (aCarvesB)
-                        return CategoryIndex.Outside;
-                    if (!carvingA)
-                        return bIsLater ? CategoryIndex.Inside : CategoryIndex.Outside;
-                    return TieGoesTo(b, a) ? CategoryIndex.Inside : CategoryIndex.Outside;
+                    return CategoryIndex.Outside;
                 default:
                     return computed;
+            }
+        }
+
+        // Does a's face give way to b's coplanar face of another type, facing the same way, where b's is drawn? When b's
+        // type wins the tie, unless a carves b.
+        static bool ExpectedGivesWay(int a, bool carvingA, int b, bool carvingB, bool bIsLater)
+        {
+            if (a == b || carvingB)
+                return false;
+            if (carvingA && !bIsLater)
+                return false;
+            return TieGoesTo(b, a);
+        }
+
+        [Test]
+        public void GivesWay_FollowsTheTieOrder_ForEveryPairOfTypes([Values] bool carvingA, [Values] bool carvingB, [Values] bool bIsLater)
+        {
+            for (int a = 0; a < kTypes; a++)
+            {
+                for (int b = 0; b < kTypes; b++)
+                {
+                    var expected = ExpectedGivesWay(a, carvingA, b, carvingB, bIsLater);
+                    var actual   = ContentsRules.GivesWay((byte)a, carvingA, (byte)b, carvingB, bIsLater);
+                    if (actual != expected)
+                        Assert.Fail($"type {a}{(carvingA ? " (carving)" : "")} against type {b}{(carvingB ? " (carving)" : "")}{(bIsLater ? " after it" : " before it")}: {actual}, expected {expected}");
+                }
             }
         }
 
@@ -84,7 +107,7 @@ namespace Chisel.Core.Tests
             }
         }
 
-        // Two coplanar faces of different types facing the same way: exactly one is drawn
+        // Two coplanar faces of different types facing the same way, both drawn: exactly one gives way to the other
         [Test]
         public void AlignedFacesOfDifferentTypes_KeepExactlyOne()
         {
@@ -94,9 +117,28 @@ namespace Chisel.Core.Tests
                 {
                     if (a == b)
                         continue;
-                    var keptA = ContentsRules.Rewrite(CategoryIndex.Aligned, (byte)a, false, (byte)b, carvingB: false, intersectingB: false, bIsLater: true)  == CategoryIndex.Outside;
-                    var keptB = ContentsRules.Rewrite(CategoryIndex.Aligned, (byte)b, false, (byte)a, carvingB: false, intersectingB: false, bIsLater: false) == CategoryIndex.Outside;
+                    var keptA = !ContentsRules.GivesWay((byte)a, false, (byte)b, carvingB: false, bIsLater: true);
+                    var keptB = !ContentsRules.GivesWay((byte)b, false, (byte)a, carvingB: false, bIsLater: false);
                     Assert.That(keptA != keptB, Is.True, $"types {a} and {b}");
+                }
+            }
+        }
+
+        // Another type never removes a face of Solid, inside it, back to back with it or coplanar with it, before or
+        // after it; only a carve does
+        [Test]
+        public void ASolidFace_IsNeverRemovedByAnotherType([Values] bool bIsLater)
+        {
+            foreach (var category in new[] { CategoryIndex.Inside, CategoryIndex.Aligned, CategoryIndex.ReverseAligned })
+            {
+                for (int b = 0; b < kTypes; b++)
+                {
+                    if (b == kSolid)
+                        continue;
+                    Assert.That(ContentsRules.Rewrite(category, ContentsRules.kSolid, false, (byte)b, carvingB: false, intersectingB: false, bIsLater),
+                                Is.EqualTo(CategoryIndex.Outside), $"{category} against type {b}{(bIsLater ? " after it" : " before it")}");
+                    Assert.That(ContentsRules.GivesWay(ContentsRules.kSolid, false, (byte)b, carvingB: false, bIsLater), Is.False,
+                                $"tie with type {b}{(bIsLater ? " after it" : " before it")}");
                 }
             }
         }

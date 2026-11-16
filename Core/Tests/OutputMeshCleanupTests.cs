@@ -369,6 +369,43 @@ namespace Chisel.Core.Tests
             AssertNoTriangleWithoutArea(surface);
         }
 
+        // A sliver too thin to fill again in its plane, with the corner on an edge from its first corner: the pieces are cut
+        // at the corner, none of them without area
+        [Test]
+        public void ACornerOnAnEdgeOfAVeryThinSliver_IsPutIntoIt_WithoutANeedle()
+        {
+            var first = new float3(2.125f, 0, 0); var tip = new float3(17.375f, 1.0f / 16384, 0); var last = new float3(0, 0, 0);
+            var corner = new float3(1.8125f, 0, 0);
+            using var surface = new Surface(new[] { first, tip, last });
+            Assert.That(Split(surface, corner), Is.True);
+            Assert.That(surface.Uses(corner), Is.True);
+            AssertNoTriangleWithoutArea(surface);
+        }
+
+        // The same with corners on all three of its edges: every piece faces its way with three corners off one line, and
+        // together they cover the sliver
+        [Test]
+        public void CornersOnEveryEdgeOfAVeryThinSliver_AreAllPutIn_WithoutANeedle()
+        {
+            var first = new float3(2.125f, 0, 0); var tip = new float3(17.375f, 1.0f / 16384, 0); var last = new float3(0, 0, 0);
+            var corners = new[] { new float3(1.8125f, 0, 0), new float3(1, 0, 0), new float3(8.6875f, 1.0f / 32768, 0), new float3(9.75f, 1.0f / 32768, 0) };
+            using var surface = new Surface(new[] { first, tip, last });
+            Assert.That(Split(surface, corners), Is.True);
+            foreach (var corner in corners)
+                Assert.That(surface.Uses(corner), Is.True, $"{corner}");
+            double area = 0;
+            for (int i = 0; i < surface.indices.Length; i += 3)
+            {
+                var a = surface.collider[surface.indices[i]]; var b = surface.collider[surface.indices[i + 1]]; var c = surface.collider[surface.indices[i + 2]];
+                Assert.That(OutputWeld.OnOneLine(a, b, c), Is.False, $"a triangle without area: {a} {b} {c}");
+                var cross = math.cross((double3)b - a, (double3)c - a).z;
+                Assert.That(cross, Is.GreaterThan(0), $"a triangle facing away: {a} {b} {c}");
+                area += cross;
+            }
+            var whole = math.cross((double3)tip - first, (double3)last - first).z;
+            Assert.That(area, Is.EqualTo(whole).Within(1e-9 * whole), "the pieces cover the sliver");
+        }
+
         // Pieces with a corner so small its cosine rounds to 1 still have an area, and a corner near the tip, so near two
         // edges, goes into the one it is on
         [Test]
@@ -444,6 +481,52 @@ namespace Chisel.Core.Tests
             Assert.That(surface.Uses(Bottom), Is.False);
         }
 
+        // Two triangles at the same three corners wound the other way round (the weld's collapse can leave them) cover
+        // nothing and close nothing: the edge one of them shares with the square's outline is run one way once more than
+        // the other, so it is still on the outline
+        [Test]
+        public void AnOutlineEdge_ATwinPairShares_IsStillOnTheOutline()
+        {
+            var s = new float3(1, -1e-5f, 0);
+            var corners = new[] { A, B, C,  A, C, D,  B, s, A,  B, A, s };
+            using var surface = new Surface(corners);
+            Assert.That(Split(surface, Bottom), Is.True);
+            Assert.That(surface.Uses(Bottom), Is.True);
+        }
+
+        // The same edge closed by another surface of the brush, beside which such a pair lies: it has no crack, and is left
+        [Test]
+        public void AnEdgeAnotherSurfaceCloses_WithATwinPairBeside_IsLeft()
+        {
+            var s        = new float3(1, -1e-5f, 0);
+            var below    = new[] { B, A, new float3(1, -1, 0),  B, s, A,  B, A, s };
+            var touching = new[] { Bottom, new float3(1, 0, -1), new float3(2, 0, -1) };
+            var source = Brush(-1, kSquare, below, touching);
+            try
+            {
+                var result = OutputMeshCleanup.Clean(source);
+                try
+                {
+                    ref var brush = ref (result.IsCreated ? ref result.Value : ref source.Value);
+                    for (int surface = 0; surface < 2; surface++)
+                    {
+                        ref var cleaned = ref brush.surfaces[surface];
+                        for (int i = 0; i < cleaned.indices.Length; i++)
+                            Assert.That(math.all(cleaned.colliderVertices[cleaned.indices[i]] == Bottom), Is.False, $"surface {surface} has the corner put in");
+                    }
+                }
+                finally
+                {
+                    if (result.IsCreated)
+                        result.Dispose();
+                }
+            }
+            finally
+            {
+                source.Dispose();
+            }
+        }
+
         // The weld leaves a needle (three corners on a line) where an edge meets several: it draws nothing, so it is cut
         // however thin its pieces are
         [Test]
@@ -456,6 +539,59 @@ namespace Chisel.Core.Tests
             Assert.That(surface.Uses(new float3(0.5f, 0, 0)), Is.True);
             for (int i = 0; i < surface.indices.Length; i += 3)
                 Assert.That(surface.indices[i] != surface.indices[i + 1] && surface.indices[i + 1] != surface.indices[i + 2] && surface.indices[i] != surface.indices[i + 2], Is.True);
+        }
+
+        // What the cleanup changed is recorded when asked: of the surface it put a corner into, the triangles it took out (of
+        // those it had) and those it put in (of those it has, wound as they are), covering the same; nothing of the surface
+        // it left
+        [Test]
+        public void WhatTheCleanupChanged_IsRecorded()
+        {
+            var touching = new[] { Bottom, new float3(1, 0, -1), new float3(2, 0, -1) };
+            var source = Brush(-1, kSquare, touching);
+            using var changes = new NativeList<MeshCleanupChange>(Allocator.Temp);
+            try
+            {
+                var result = OutputMeshCleanup.Clean(source, changes: changes);
+                Assert.That(result.IsCreated, Is.True);
+                try
+                {
+                    float takenOut = 0, putIn = 0;
+                    var cornerPutIn = false;
+                    foreach (var change in changes)
+                    {
+                        Assert.That(change.surface, Is.EqualTo(0), "a change of the surface the cleanup left");
+                        ref var surface = ref (change.added != 0 ? ref result.Value.surfaces[0] : ref source.Value.surfaces[0]);
+                        Assert.That(Has(ref surface, change.a, change.b, change.c), Is.True, change.added != 0 ? "put in, but not there" : "taken out, but never there");
+                        var area = math.length(math.cross(change.b - change.a, change.c - change.a)) * 0.5f;
+                        if (change.added != 0) { putIn += area; cornerPutIn |= change.a.Equals(Bottom) || change.b.Equals(Bottom) || change.c.Equals(Bottom); }
+                        else                     takenOut += area;
+                    }
+                    Assert.That(takenOut, Is.GreaterThan(0), "nothing taken out");
+                    Assert.That(putIn, Is.EqualTo(takenOut).Within(1e-5f), "what was put in covers what was taken out");
+                    Assert.That(cornerPutIn, Is.True, "the corner put into the edge");
+                }
+                finally
+                {
+                    result.Dispose();
+                }
+            }
+            finally
+            {
+                source.Dispose();
+            }
+        }
+
+        // Whether the surface has the triangle a, b, c, wound that way
+        static bool Has(ref ChiselSurfaceRenderBuffer surface, float3 a, float3 b, float3 c)
+        {
+            for (int i = 0; i + 2 < surface.indices.Length; i += 3)
+            {
+                var p = surface.colliderVertices[surface.indices[i]]; var q = surface.colliderVertices[surface.indices[i + 1]]; var r = surface.colliderVertices[surface.indices[i + 2]];
+                if ((p.Equals(a) && q.Equals(b) && r.Equals(c)) || (q.Equals(a) && r.Equals(b) && p.Equals(c)) || (r.Equals(a) && p.Equals(b) && q.Equals(c)))
+                    return true;
+            }
+            return false;
         }
 
         // Only what is drawn shows a crack: an edge only a surface of the collider shares is still open
