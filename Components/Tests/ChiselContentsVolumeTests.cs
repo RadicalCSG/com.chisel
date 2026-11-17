@@ -292,6 +292,34 @@ namespace Chisel.Components.Tests
                 AssertClose(planes[p], expectedPlanes[p], $"plane {p}");
         }
 
+        // The volume comes with every update of the model's meshes: after brushes are moved, retyped, made to carve and
+        // removed, it is still the tree walked node by node
+        [Test]
+        public void AfterEdits_TheVolumeIsStillTheTreeWalkedNodeByNode()
+        {
+            var model = ModelOfManyBrushes(4, 40);
+            var boxes = model.GetComponentsInChildren<ChiselBoxComponent>();
+            boxes[3].transform.localPosition += new Vector3(0.5f, 0, 0);
+            boxes[5].Contents  = kWater;
+            boxes[7].Operation = CSGOperationType.Subtractive;
+            Object.DestroyImmediate(boxes[9].gameObject);
+            Update();
+
+            var expectedNodes  = new List<ContentsVolumeNode>();
+            var expectedPlanes = new List<float4>();
+            ReferenceBuild(model.Node, expectedNodes, expectedPlanes);
+            var nodes = model.generated.generatedDataContainer.GetComponent<ChiselContentsVolume>().Nodes;
+            Assert.That(nodes.Length, Is.EqualTo(expectedNodes.Count), "nodes");
+            for (int n = 0; n < nodes.Length; n++)
+            {
+                var actual = nodes[n]; var expected = expectedNodes[n];
+                Assert.That((actual.operation, actual.isBrush, actual.carving, actual.contents, actual.descendants, actual.firstPlane, actual.planeCount),
+                            Is.EqualTo((expected.operation, expected.isBrush, expected.carving, expected.contents, expected.descendants, expected.firstPlane, expected.planeCount)), $"node {n}");
+                AssertClose(new float4(actual.min, 0), new float4(expected.min, 0), $"node {n} min");
+                AssertClose(new float4(actual.max, 0), new float4(expected.max, 0), $"node {n} max");
+            }
+        }
+
         // The volume is built again after every update of the model's meshes, so it must not cost more than the update
         [Test]
         public void BuildingTheVolume_IsFarFasterThanWalkingTheTreeNodeByNode()

@@ -287,6 +287,9 @@ namespace Chisel.Core
                 // where each surface of the render meshes goes (PrepareRenderCopiesJob)
                 public NativeList<RenderCopyRange>          renderCopyRanges;
                 public NativeList<int2>                     renderCopyChunks;
+                // the tree's contents volume (ContentsVolume), handed over with the meshes
+                public NativeList<ContentsVolumeNode>       contentsVolumeNodes;
+                public NativeList<float4>                   contentsVolumePlanes;
 
                 public NativeList<BlobAssetReference<BasePolygonsBlob>>           basePolygonDisposeList;
                 public NativeList<BlobAssetReference<BrushTreeSpaceVerticesBlob>> treeSpaceVerticesDisposeList;
@@ -354,6 +357,7 @@ namespace Chisel.Core
                 subMeshDescriptionsJobHandle,
                 treeSpaceVerticesCacheJobHandle,
                 transformationCacheJobHandle,
+                contentsVolumeJobHandle,
                 vertexBufferContents_renderDescriptorsJobHandle,
                 vertexBufferContents_colliderDescriptorsJobHandle,
                 vertexBufferContents_subMeshSectionsJobHandle,
@@ -617,6 +621,8 @@ namespace Chisel.Core
                 Temporaries.meshCleanupNeighbours = new NativeList<int>(defaultAllocator);
                 Temporaries.meshCleanupOutlineBrushes = new NativeList<int>(defaultAllocator);
                 Temporaries.meshCleanupOutlines = new NativeList<OutputMeshCleanup.BrushOutlines>(defaultAllocator);
+                Temporaries.contentsVolumeNodes = new NativeList<ContentsVolumeNode>(defaultAllocator);
+                Temporaries.contentsVolumePlanes = new NativeList<float4>(defaultAllocator);
                 Temporaries.weld = WeldState.Create(defaultAllocator);
                 Temporaries.hotspotFind = FindState.Create(defaultAllocator);
                 
@@ -715,6 +721,8 @@ namespace Chisel.Core
                 if (t.meshCleanup.IsCreated)                    t.meshCleanup.Dispose();
                 if (t.meshCleanupNeighbours.IsCreated)          t.meshCleanupNeighbours.Dispose();
                 if (t.meshCleanupOutlineBrushes.IsCreated)      t.meshCleanupOutlineBrushes.Dispose();
+                if (t.contentsVolumeNodes.IsCreated)            t.contentsVolumeNodes.Dispose();
+                if (t.contentsVolumePlanes.IsCreated)           t.contentsVolumePlanes.Dispose();
                 if (t.meshCleanupOutlines.IsCreated)
                 {
                     for (int i = 0; i < t.meshCleanupOutlines.Length; i++)
@@ -985,7 +993,10 @@ namespace Chisel.Core
                                                                                               treeUpdate.JobHandles[JobHandleType.vertexBufferContents_triangleBrushIndicesJobHandle].writeBarrier,
                                                                                               treeUpdate.JobHandles[JobHandleType.vertexBufferContents_meshesJobHandle].writeBarrier);
 
-                            #region Clear tree/brush status flags 
+                            // the contents volume reads the hierarchy, and nothing else waits for it
+                            treeUpdate.JobHandles[JobHandleType.contentsVolumeJobHandle].writeBarrier.Complete();
+
+                            #region Clear tree/brush status flags
                             ref var compactHierarchy = ref CompactHierarchyManager.GetHierarchy(treeUpdate.treeCompactNodeID);
                             using (kClearFlagsProfilerMarker.Auto())
                             {
@@ -1024,7 +1035,9 @@ namespace Chisel.Core
 									    meshUpdatesDebugVisualizations  = treeUpdate.Temporaries.meshUpdatesDebugVisualizations,
 									    meshUpdatesKept                 = treeUpdate.Temporaries.meshUpdatesKept,
 									    meshUpdatesKeptColliders        = treeUpdate.Temporaries.meshUpdatesKeptColliders,
-									    meshUpdatesKeptDebugVisualizations = treeUpdate.Temporaries.meshUpdatesKeptDebugVisualizations
+									    meshUpdatesKeptDebugVisualizations = treeUpdate.Temporaries.meshUpdatesKeptDebugVisualizations,
+									    contentsVolumeNodes             = treeUpdate.Temporaries.contentsVolumeNodes,
+									    contentsVolumePlanes            = treeUpdate.Temporaries.contentsVolumePlanes
                                     };
 								    var usedMeshCount = finishMeshUpdates(treeUpdate.tree, meshUpdates, treeUpdate.dependencies);
                                     treeUpdate.Temporaries.meshDataArray = default;
@@ -1428,6 +1441,19 @@ namespace Chisel.Core
                         JobHandles.Write(
                             JobHandleType.brushMeshLookupJobHandle,
                             JobHandleType.surfaceCountRefJobHandle));
+                }
+                #endregion
+
+                #region Contents volume
+                // the tree's contents volume needs only the hierarchy and the brush meshes: it is built while the CSG runs
+                {
+                    const bool runInParallel = runInParallelDefault;
+                    ContentsVolume.JobFor(treeCompactNodeID, Temporaries.contentsVolumeNodes, Temporaries.contentsVolumePlanes).Schedule(runInParallel,
+                        JobHandles.Read(
+                            JobHandleType.brushMeshBlobsLookupJobHandle,
+                            JobHandleType.compactHierarchyJobHandle),
+                        JobHandles.Write(
+                            JobHandleType.contentsVolumeJobHandle));
                 }
                 #endregion
 
@@ -3059,6 +3085,10 @@ namespace Chisel.Core
                 Temporaries.meshCleanupNeighbours = default;
                 lastJobHandle.AddDependency(Temporaries.meshCleanupOutlineBrushes.Dispose(JobHandles[JobHandleType.brushRenderDataJobHandle].readWriteBarrier));
                 Temporaries.meshCleanupOutlineBrushes = default;
+                lastJobHandle.AddDependency(Temporaries.contentsVolumeNodes.Dispose(JobHandles[JobHandleType.contentsVolumeJobHandle].readWriteBarrier));
+                Temporaries.contentsVolumeNodes = default;
+                lastJobHandle.AddDependency(Temporaries.contentsVolumePlanes.Dispose(JobHandles[JobHandleType.contentsVolumeJobHandle].readWriteBarrier));
+                Temporaries.contentsVolumePlanes = default;
                 // what the outlines held, the finishing job let go of
                 lastJobHandle.AddDependency(Temporaries.meshCleanupOutlines.Dispose(JobHandles[JobHandleType.brushRenderDataJobHandle].readWriteBarrier));
                 Temporaries.meshCleanupOutlines = default;

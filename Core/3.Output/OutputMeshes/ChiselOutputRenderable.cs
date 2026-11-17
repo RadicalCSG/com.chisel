@@ -22,7 +22,10 @@ namespace Chisel.Core
 		[ReadOnly] public NativeList<ChiselMeshUpdate>  meshUpdatesKeptColliders;
 		// and for the debug visualizations
 		[ReadOnly] public NativeList<ChiselMeshUpdate>  meshUpdatesKeptDebugVisualizations;
-        
+		// The tree's contents volume as the meshes were made (ContentsVolume), built while the CSG ran
+		[ReadOnly] public NativeList<ContentsVolumeNode> contentsVolumeNodes;
+		[ReadOnly] public NativeList<float4>             contentsVolumePlanes;
+
 		public Mesh.MeshDataArray meshDataArray;
     }
 
