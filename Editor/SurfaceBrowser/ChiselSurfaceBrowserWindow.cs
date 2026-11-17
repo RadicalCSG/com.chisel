@@ -48,7 +48,17 @@ namespace Chisel.Editors
         List<ChiselSurfaceBrowserModel.Item> shown = new();
         List<ChiselSurfaceBrowserModel.Folder> folderTree = new();
         List<KeyValuePair<string, int>> labels = new();
-        bool dirty = true;
+        // the assets are listed once; after that only the ones that change are learned again, a batch per frame
+        bool listed;
+        // how long a frame may spend learning materials (seconds), and how often what depends on them is made again
+        // while it does (folders, labels, the grid)
+        const double kLearnSeconds   = 0.004;
+        const double kRebuildSeconds = 0.5;
+        double lastRebuild;
+        bool rebuildWhenLearned;
+        // what the lists of quick access were last made from: when one changes they are counted and filtered again
+        int sceneVersion = -1, prefsVersion = -1, paintVersion = -1;
+        string hiddenFoldersKey;
 
         Vector2 sidebarScroll, gridScroll, detailsScroll;
         string newLabel = string.Empty;
@@ -77,9 +87,10 @@ namespace Chisel.Editors
             titleContent = new GUIContent("Surface Browser", ChiselEditorResources.LoadIconImages(ChiselIcon.SurfaceBrowser)?[0]);
             model.isFavorite  = item => ChiselSurfaceBrowserPrefs.IsFavorite(item.guid);
             model.recent      = () => ChiselSurfaceBrowserPrefs.Recent;
-            model.isInScene   = item => ChiselSceneMaterialUsage.SurfacesUsing(Load(item)) > 0;
+            model.isInScene   = item => ChiselSceneMaterialUsage.SurfacesUsing(item.guid) > 0;
             model.isDecal     = item => ChiselSurfaceBrowserDecals.IsDecal(Load(item));
             model.isSetUp     = item => MetadataOf(Load(item)) != null;
+            model.learnAsset  = item => item.labels = ChiselAssetLabels.Get(item.preset ? (UnityEngine.Object)LoadPreset(item) : Load(item));
             model.traits.Clear();
             model.traits.AddRange(Traits());
             // only unticked filters are kept; one ticked under the earlier "with it" filters is just ticked now
@@ -94,34 +105,141 @@ namespace Chisel.Editors
                 (presetMode && !ChiselSurfaceBrowserModel.AppliesToPresets((ChiselSurfaceBrowserModel.QuickAccess)quick)))
                 quick = (int)ChiselSurfaceBrowserModel.QuickAccess.All;
             wantsMouseMove = true;     // moving the mouse cancels a rename that's waiting to start
-            EditorApplication.projectChanged += MarkDirty;
-            Selection.selectionChanged       += OnSelectionChanged;
-            Undo.undoRedoPerformed           += MarkDirty;
-            dirty = true;
+            ChiselSurfaceBrowserAssetChanges.Changed += OnAssetsChanged;
+            ObjectChangeEvents.changesPublished      += OnChangesPublished;
+            Selection.selectionChanged               += OnSelectionChanged;
+            Undo.undoRedoPerformed                   += MarkDirty;
+            listed = false;
         }
 
         void OnDisable()
         {
-            EditorApplication.projectChanged -= MarkDirty;
-            Selection.selectionChanged       -= OnSelectionChanged;
-            Undo.undoRedoPerformed           -= MarkDirty;
+            ChiselSurfaceBrowserAssetChanges.Changed -= OnAssetsChanged;
+            ObjectChangeEvents.changesPublished      -= OnChangesPublished;
+            Selection.selectionChanged               -= OnSelectionChanged;
+            Undo.undoRedoPerformed                   -= MarkDirty;
             if (metadataEditor) DestroyImmediate(metadataEditor);
             if (previewEditor)  DestroyImmediate(previewEditor);
             DestroyDecalResources();
             ChiselOutlineRenderer.ShowSelectedSurfaces = false;
         }
 
-        void MarkDirty() { dirty = true; Repaint(); }
+        // the selected material was changed here: it is learned again, and what depends on it made again once it is.
+        // Assets made, deleted, moved or renamed come in through OnAssetsChanged.
+        void MarkDirty()
+        {
+            if (listed && !string.IsNullOrEmpty(selectedGuid) && model.ItemOf(selectedGuid) == null)
+            {
+                // just made, and not told of yet
+                var path = AssetDatabase.GUIDToAssetPath(selectedGuid);
+                var type = AssetDatabase.GetMainAssetTypeAtPath(path);
+                if ((type == typeof(Material) && IsMaterialPath(path)) || type == typeof(ChiselGeneratorMaterialPreset))
+                    model.AddOrUpdate(ItemAt(path, selectedGuid, type == typeof(ChiselGeneratorMaterialPreset)));
+            }
+            model.MarkStale(selectedGuid);
+            rebuildWhenLearned = true;
+            Repaint();
+        }
 
-        // hidden folders are changed in the project settings
-        void OnFocus() { MarkDirty(); UpdatePartHighlight(); }
+        // hidden folders are changed in the project settings: every asset is learned again when they changed
+        void OnFocus()
+        {
+            if (listed && HiddenFoldersKey() != hiddenFoldersKey)
+            {
+                hiddenFoldersKey = HiddenFoldersKey();
+                model.MarkAllStale();
+                rebuildWhenLearned = true;
+            }
+            UpdatePartHighlight();
+            Repaint();
+        }
+
+        static string HiddenFoldersKey() { return string.Join("\n", ChiselProjectSettings.HiddenFolders); }
 
         // repaints now and then, so the selection and scene counts stay current
         void OnInspectorUpdate() { Repaint(); }
 
+        // the asset last loaded: learning an item asks several things of its material in a row
+        static ChiselSurfaceBrowserModel.Item s_LoadedItem;
+        static Material s_Loaded;
+
         static Material Load(ChiselSurfaceBrowserModel.Item item)
         {
-            return item != null ? AssetDatabase.LoadAssetAtPath<Material>(item.path) : null;
+            if (item == null)
+                return null;
+            if (ReferenceEquals(item, s_LoadedItem) && s_Loaded != null)
+                return s_Loaded;
+            s_LoadedItem = item;
+            s_Loaded     = AssetDatabase.LoadAssetAtPath<Material>(item.path);
+            return s_Loaded;
+        }
+
+        static bool IsMaterialPath(string path) { return path.EndsWith(".mat", StringComparison.OrdinalIgnoreCase); }
+
+        static ChiselSurfaceBrowserModel.Item ItemAt(string path, string guid, bool preset)
+        {
+            return new ChiselSurfaceBrowserModel.Item { guid = guid, path = path, name = System.IO.Path.GetFileNameWithoutExtension(path), preset = preset };
+        }
+
+        // only the assets that changed are learned again; a shader changed can change what any material is
+        void OnAssetsChanged(string[] imported, string[] deleted, string[] moved, string[] movedFrom)
+        {
+            if (!listed)
+                return;
+            var changed = false;
+            foreach (var path in deleted)
+            {
+                foreach (var item in model.Items)
+                {
+                    if (item.path == path)
+                    {
+                        model.Remove(item.guid);
+                        changed = true;
+                        break;
+                    }
+                }
+            }
+            var all = false;
+            foreach (var paths in new[] { imported, moved })
+            {
+                foreach (var path in paths)
+                {
+                    var type = AssetDatabase.GetMainAssetTypeAtPath(path);
+                    if (type == typeof(Shader) || path.EndsWith(".shadergraph", StringComparison.OrdinalIgnoreCase))
+                        all = true;
+                    var isMaterial = type == typeof(Material) && IsMaterialPath(path);
+                    var isPreset   = type == typeof(ChiselGeneratorMaterialPreset);
+                    if (!isMaterial && !isPreset)
+                        continue;
+                    if (!path.StartsWith("Assets/", StringComparison.Ordinal) && !path.StartsWith("Packages/", StringComparison.Ordinal))
+                        continue;
+                    model.AddOrUpdate(ItemAt(path, AssetDatabase.AssetPathToGUID(path), isPreset));
+                    changed = true;
+                }
+            }
+            if (all)
+                model.MarkAllStale();
+            if (changed || all)
+            {
+                rebuildWhenLearned = true;
+                Repaint();
+            }
+        }
+
+        // a material or preset changed in the editor (its settings, its metadata) is learned again
+        void OnChangesPublished(ref ObjectChangeEventStream stream)
+        {
+            for (int i = 0; i < stream.length; i++)
+            {
+                if (stream.GetEventType(i) != ObjectChangeKind.ChangeAssetObjectProperties)
+                    continue;
+                stream.GetChangeAssetObjectPropertiesEvent(i, out var change);
+                var item = model.ItemOf(change.guid.ToString());
+                if (item == null)
+                    continue;
+                model.MarkStale(item);
+                rebuildWhenLearned = true;
+            }
         }
 
         static ChiselSurfaceMetadata MetadataOf(Material material)
@@ -205,39 +323,85 @@ namespace Chisel.Editors
             }
         }
 
+        // The assets are listed once, by path, without loading them; each is learned afterwards, a batch per frame
         void Refresh()
         {
-            if (!dirty)
+            if (listed)
                 return;
-            dirty = false;
+            listed = true;
             ChiselProjectSettingsEditor.EnsureDefaultHiddenFolders();
+            hiddenFoldersKey = HiddenFoldersKey();
             var items = new List<ChiselSurfaceBrowserModel.Item>();
             foreach (var guid in AssetDatabase.FindAssets("t:Material", new[] { "Assets", "Packages" }))
             {
                 var path = AssetDatabase.GUIDToAssetPath(guid);
-                if (!path.EndsWith(".mat", StringComparison.OrdinalIgnoreCase))
-                    continue;
-                var asset = AssetDatabase.LoadMainAssetAtPath(path);
-                items.Add(new ChiselSurfaceBrowserModel.Item
-                {
-                    guid   = guid,
-                    path   = path,
-                    name   = System.IO.Path.GetFileNameWithoutExtension(path),
-                    labels = ChiselAssetLabels.Get(asset)
-                });
+                if (IsMaterialPath(path))
+                    items.Add(ItemAt(path, guid, preset: false));
             }
             AddPresetItems(items);
             model.SetItems(items);
+            Rebuild();
+        }
+
+        // what depends on what was learned of the assets: the folders, labels and the grid
+        void Rebuild()
+        {
+            lastRebuild = EditorApplication.timeSinceStartup;
+            rebuildWhenLearned = false;
             folderTree = model.BuildFolders(includeHidden: false);
             labels  = model.Labels();
             Filter();
             RenameNewPreset();
         }
 
+        // learns a batch of assets, and makes again what depends on them now and then while it does, and once done;
+        // counts and filters the quick access lists again when what they are made from changed
+        void LearnAndKeepUp()
+        {
+            if (!listed)
+                return;
+            var repaint = false;
+            if (model.Learning)
+            {
+                model.LearnSome(kLearnSeconds);
+                rebuildWhenLearned = true;
+                repaint = true;
+                if (EditorApplication.timeSinceStartup - lastRebuild > kRebuildSeconds)
+                    Rebuild();
+            }
+            if (!model.Learning && rebuildWhenLearned)
+            {
+                Rebuild();
+                repaint = true;
+            }
+            var paint = ChiselPaintProfiles.Version;
+            if (paint != paintVersion)
+            {
+                if (paintVersion >= 0)
+                    model.MarkAllStale();
+                paintVersion = paint;
+            }
+            var scene = ChiselSceneMaterialUsage.Version;
+            var prefs = ChiselSurfaceBrowserPrefs.Version;
+            if (scene != sceneVersion || prefs != prefsVersion)
+            {
+                sceneVersion = scene;
+                prefsVersion = prefs;
+                model.QuickListsChanged();
+                var dependsOnThem = quick != (int)ChiselSurfaceBrowserModel.QuickAccess.All && quick != (int)ChiselSurfaceBrowserModel.QuickAccess.Decals &&
+                                    quick != (int)ChiselSurfaceBrowserModel.QuickAccess.NotSetUp;
+                if (dependsOnThem || sort == (int)ChiselSurfaceBrowserModel.Sort.UseInScene)
+                    Filter();
+                repaint = true;
+            }
+            if (repaint)
+                Repaint();
+        }
+
         void Filter()
         {
             shown = model.Filter(search, (ChiselSurfaceBrowserModel.QuickAccess)quick, folders, label,
-                                 (ChiselSurfaceBrowserModel.Sort)sort, item => ChiselSceneMaterialUsage.SurfacesUsing(Load(item)));
+                                 (ChiselSurfaceBrowserModel.Sort)sort, item => ChiselSceneMaterialUsage.SurfacesUsing(item.guid));
             // a card being renamed that is no longer shown is renamed as typed so far, not left waiting
             if (cardRenameGuid != null && !shown.Exists(item => item.guid == cardRenameGuid))
             {
@@ -285,14 +449,7 @@ namespace Chisel.Editors
         {
             get
             {
-                if (string.IsNullOrEmpty(selectedGuid))
-                    return null;
-                foreach (var item in model.Items)
-                {
-                    if (item.guid == selectedGuid)
-                        return item;
-                }
-                return null;
+                return string.IsNullOrEmpty(selectedGuid) ? null : model.ItemOf(selectedGuid);
             }
         }
 
@@ -668,12 +825,13 @@ namespace Chisel.Editors
             KeyboardGUI(columns);
         }
 
-        static Texture PreviewOf(Material material, bool flat)
+        internal static Texture PreviewOf(Material material, bool flat)
         {
             if (material == null)
                 return null;
-            if (flat && material.mainTexture != null)
-                return material.mainTexture;
+            var mainTexture = flat ? ChiselTextureScale.MainTextureOf(material) : null;
+            if (mainTexture != null)
+                return mainTexture;
             var preview = AssetPreview.GetAssetPreview(material);
             return preview != null ? preview : AssetPreview.GetMiniThumbnail(material);
         }
@@ -883,6 +1041,7 @@ namespace Chisel.Editors
 
         void Update()
         {
+            LearnAndKeepUp();
             if (pendingRenameGuid == null)
                 return;
             if (pendingRenameGuid != selectedGuid)
@@ -1062,8 +1221,9 @@ namespace Chisel.Editors
                 ReadOnlyNote(ReadOnlyReason(item.path));
             var metadata = MetadataOf(material);
             InfoRow("Shader", material.shader != null ? material.shader.name : "None");
-            if (material.mainTexture != null)
-                InfoRow("Texture", $"{material.mainTexture.width} x {material.mainTexture.height}");
+            var mainTexture = ChiselTextureScale.MainTextureOf(material);
+            if (mainTexture != null)
+                InfoRow("Texture", $"{mainTexture.width} x {mainTexture.height}");
             if (metadata != null && metadata.hotspotLayout != null)
                 InfoRow("Hotspots", 1 + (metadata.hotspotVariants?.Count ?? 0) + (metadata.hotspotSheets?.Count ?? 0) + " sheets (layout, variants and other sheets)");
             var uses = ChiselSceneMaterialUsage.SurfacesUsing(material);

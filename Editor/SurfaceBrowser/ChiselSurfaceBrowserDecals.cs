@@ -307,8 +307,9 @@ namespace Chisel.Editors
         {
             if (material == null)
                 return null;
-            if (material.mainTexture != null)
-                return material.mainTexture;
+            var mainTexture = ChiselTextureScale.MainTextureOf(material);
+            if (mainTexture != null)
+                return mainTexture;
             foreach (var name in material.GetTexturePropertyNames())
             {
                 var texture = material.GetTexture(name);

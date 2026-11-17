@@ -210,7 +210,7 @@ namespace Chisel.Editors
 			var folder = material != null ? System.IO.Path.GetDirectoryName(AssetDatabase.GetAssetPath(material)) : "Assets";
 			var name   = material != null ? material.name + " Hotspots" : "Hotspot Layout";
 			var layout = CreateInstance<ChiselHotspotLayout>();
-			layout.texture = material != null ? material.mainTexture as Texture2D : null;
+			layout.texture = material != null ? ChiselTextureScale.MainTextureOf(material) as Texture2D : null;
 			if (layout.texture != null)
 				layout.size = new Vector2Int(layout.texture.width, layout.texture.height);
 			layout.ResetCuts();

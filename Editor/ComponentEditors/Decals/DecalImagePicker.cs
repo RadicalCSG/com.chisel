@@ -175,7 +175,8 @@ namespace Chisel.Editors
 
         void Draw(int chosen)
         {
-            view.DrawTexture(layout.size, material != null && material.mainTexture != null ? material.mainTexture : layout.texture, checker);
+            var mainTexture = ChiselTextureScale.MainTextureOf(material);
+            view.DrawTexture(layout.size, mainTexture != null ? mainTexture : layout.texture, checker);
             var sheet = new Vector3[] { view.ToView(Vector2.zero), view.ToView(new Vector2(layout.size.x, 0)), view.ToView(layout.size), view.ToView(new Vector2(0, layout.size.y)) };
             if (chosen == 0)
                 HotspotSheetView.Outline(sheet, ChiselEditorColors.Highlight, 3);

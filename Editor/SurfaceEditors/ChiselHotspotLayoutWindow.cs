@@ -69,7 +69,7 @@ namespace Chisel.Editors
         // From a material: a layout without a texture of its own takes the material's
         public static void Open(ChiselHotspotLayout layout, Material material)
         {
-            if (layout != null && layout.texture == null && material != null && material.mainTexture is Texture2D texture)
+            if (layout != null && layout.texture == null && material != null && ChiselTextureScale.MainTextureOf(material) is Texture2D texture)
                 EditLayout(layout, "Hotspot Layout Texture", () => layout.texture = texture);
             var window = GetWindow<ChiselHotspotLayoutWindow>();
             window.titleContent = new GUIContent("Hotspot Layout");

@@ -15,8 +15,21 @@ namespace Chisel.Editors
     public static class ChiselSceneMaterialUsage
     {
         static readonly Dictionary<Material, int> s_Surfaces = new();
+        // the same by the material's GUID, so a list of assets can ask without loading them
+        static readonly Dictionary<string, int> s_SurfacesByGuid = new();
         static readonly Dictionary<(Material, int), int> s_Decals = new();
         static bool s_Dirty = true;
+        static int s_Version;
+
+        /// <summary>Changes each time the counts are made again (counting them first when something changed)</summary>
+        public static int Version
+        {
+            get
+            {
+                Recount();
+                return s_Version;
+            }
+        }
 
         /// <summary>How many times the counts were made; for tests</summary>
         internal static int RecountCount { get; private set; }
@@ -51,6 +64,13 @@ namespace Chisel.Editors
             return material != null && s_Surfaces.TryGetValue(material, out var count) ? count : 0;
         }
 
+        /// <summary>The surfaces using the material with this GUID</summary>
+        public static int SurfacesUsing(string guid)
+        {
+            Recount();
+            return guid != null && s_SurfacesByGuid.TryGetValue(guid, out var count) ? count : 0;
+        }
+
         /// <summary>The placed decals showing an image: a tile of a material, or 0 for its whole texture</summary>
         public static int DecalsUsing(Material material, int tile)
         {
@@ -79,7 +99,9 @@ namespace Chisel.Editors
                 return;
             s_Dirty = false;
             RecountCount++;
+            s_Version++;
             s_Surfaces.Clear();
+            s_SurfacesByGuid.Clear();
             s_Decals.Clear();
 
             foreach (var generator in Object.FindObjectsByType<ChiselGeneratorComponent>(FindObjectsInactive.Exclude))
@@ -99,6 +121,11 @@ namespace Chisel.Editors
                     s_Surfaces.TryGetValue(material, out var count);
                     s_Surfaces[material] = count + 1;
                 }
+            }
+            foreach (var pair in s_Surfaces)
+            {
+                if (AssetDatabase.TryGetGUIDAndLocalFileIdentifier(pair.Key, out string guid, out long _))
+                    s_SurfacesByGuid[guid] = pair.Value;
             }
 
             foreach (var decal in Object.FindObjectsByType<ChiselDecalComponent>(FindObjectsInactive.Exclude))

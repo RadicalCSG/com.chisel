@@ -28,20 +28,34 @@ namespace Chisel.Editors
             return tile != 0 ? guid + ":" + tile : guid;
         }
 
-        static List<string> Read(string name)
+        // what was read of each list, as stored: read again only when what is stored differs
+        static readonly Dictionary<string, (string stored, List<string> items, HashSet<string> set)> s_Read = new();
+
+        /// <summary>Changes when the favorites or the recently used change</summary>
+        public static int Version { get; private set; }
+
+        static (List<string> items, HashSet<string> set) ReadCached(string name)
         {
-            var value = EditorPrefs.GetString(Key(name), string.Empty);
-            return new List<string>(value.Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries));
+            var stored = EditorPrefs.GetString(Key(name), string.Empty);
+            if (s_Read.TryGetValue(name, out var read) && read.stored == stored)
+                return (read.items, read.set);
+            var items = new List<string>(stored.Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries));
+            s_Read[name] = (stored, items, new HashSet<string>(items));
+            Version++;
+            return (items, s_Read[name].set);
         }
+
+        static List<string> Read(string name) { return new List<string>(ReadCached(name).items); }
 
         static void Write(string name, List<string> items)
         {
             EditorPrefs.SetString(Key(name), string.Join(";", items));
+            Version++;
         }
 
-        public static IReadOnlyList<string> Favorites => Read(kFavoritesKey);
+        public static IReadOnlyList<string> Favorites => ReadCached(kFavoritesKey).items;
 
-        public static bool IsFavorite(string item) { return !string.IsNullOrEmpty(item) && Read(kFavoritesKey).Contains(item); }
+        public static bool IsFavorite(string item) { return !string.IsNullOrEmpty(item) && ReadCached(kFavoritesKey).set.Contains(item); }
 
         public static void SetFavorite(string item, bool favorite)
         {
@@ -55,7 +69,7 @@ namespace Chisel.Editors
         }
 
         /// <summary>The most recently used first</summary>
-        public static IReadOnlyList<string> Recent => Read(kRecentKey);
+        public static IReadOnlyList<string> Recent => ReadCached(kRecentKey).items;
 
         /// <summary>Puts an item first in the recently used, keeping at most <see cref="kMaxRecent"/></summary>
         public static void MarkUsed(string item)

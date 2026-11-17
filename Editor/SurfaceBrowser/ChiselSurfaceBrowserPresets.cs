@@ -16,20 +16,12 @@ namespace Chisel.Editors
 
         static void AddPresetItems(List<ChiselSurfaceBrowserModel.Item> items)
         {
+            // listed without loading them; their labels are learned with the rest
             foreach (var guid in AssetDatabase.FindAssets("t:" + nameof(ChiselGeneratorMaterialPreset), new[] { "Assets", "Packages" }))
             {
-                var path  = AssetDatabase.GUIDToAssetPath(guid);
-                var asset = AssetDatabase.LoadMainAssetAtPath(path);
-                if (asset is not ChiselGeneratorMaterialPreset)
-                    continue;
-                items.Add(new ChiselSurfaceBrowserModel.Item
-                {
-                    guid   = guid,
-                    path   = path,
-                    name   = System.IO.Path.GetFileNameWithoutExtension(path),
-                    labels = ChiselAssetLabels.Get(asset),
-                    preset = true
-                });
+                var path = AssetDatabase.GUIDToAssetPath(guid);
+                if (AssetDatabase.GetMainAssetTypeAtPath(path) == typeof(ChiselGeneratorMaterialPreset))
+                    items.Add(ItemAt(path, guid, preset: true));
             }
         }
 
@@ -85,7 +77,10 @@ namespace Chisel.Editors
         {
             if (renameAfterRefresh == null)
                 return;
+            // a new preset is listed once the asset database tells of it: until then this waits
             var item = Selected;
+            if (item == null && selectedGuid == renameAfterRefresh)
+                return;
             if (item != null && item.guid == renameAfterRefresh)
                 StartRename(item);
             renameAfterRefresh = null;

@@ -16,6 +16,16 @@ namespace Chisel.Editors
             public string[] labels = Array.Empty<string>();
             public bool     preset;    // a generator material preset, not a material
 
+            // What the model learned of it (Learn), kept until it is marked stale: until it is known it isn't counted,
+            // and a filter that asks about it leaves it out
+            public bool     known;
+            public bool     hidden;
+            public bool     decal;
+            public bool     setUp;
+            public ulong    traitBits;   // by the index of the trait in traits
+            internal bool   queued;
+            internal bool   removed;
+
             public string Folder
             {
                 get
@@ -60,6 +70,8 @@ namespace Chisel.Editors
         {
             public string           name;
             public Func<Item, bool> has;
+            // a plain trait: none of these (learned from what was learned of them, not asked again)
+            internal List<Trait>    noneOf;
         }
         public enum TraitFilter { Any, With, Without }
 
@@ -69,8 +81,9 @@ namespace Chisel.Editors
             var copy = new List<Trait>(others);
             return new Trait
             {
-                name = "Plain",
-                has  = item => copy.TrueForAll(trait => !trait.has(item))
+                name   = "Plain",
+                has    = item => copy.TrueForAll(trait => !trait.has(item)),
+                noneOf = copy
             };
         }
 
@@ -91,30 +104,29 @@ namespace Chisel.Editors
         /// <summary>The next of Any, With, Without, round again</summary>
         public static TraitFilter Next(TraitFilter filter) { return (TraitFilter)(((int)filter + 1) % 3); }
 
-        // traits are a material's: a preset has none to filter on
+        // traits are a material's: a preset has none to filter on. One not learned yet passes only when no filter asks.
         bool PassesTraits(Item item)
         {
             if (item.preset)
                 return true;
-            foreach (var trait in traits)
+            for (int t = 0; t < traits.Count; t++)
             {
-                var filter = FilterOf(trait.name);
-                if (filter != TraitFilter.Any && trait.has(item) != (filter == TraitFilter.With))
+                var filter = FilterOf(traits[t].name);
+                if (filter == TraitFilter.Any)
+                    continue;
+                if (!item.known || ((item.traitBits >> t & 1) != 0) != (filter == TraitFilter.With))
                     return false;
             }
             return true;
         }
 
-        /// <summary>How many of the visible items have a trait</summary>
+        /// <summary>How many of the visible materials learned have a trait</summary>
         public int CountWith(Trait trait)
         {
-            var count = 0;
-            foreach (var item in items)
-            {
-                if (IsVisible(item) && InMode(item) && !item.preset && trait.has(item))
-                    count++;
-            }
-            return count;
+            if (presets)
+                return 0;
+            var index = traits.IndexOf(trait);
+            return index >= 0 && index < traitCounts.Count ? traitCounts[index] : 0;
         }
 
         // what quick access asks of an item, given from outside: per user and per scene
@@ -122,18 +134,222 @@ namespace Chisel.Editors
         public Func<Item, bool> isInScene    = _ => false;
         public Func<IReadOnlyList<string>> recent = () => Array.Empty<string>();
         public Func<string, bool> isHidden   = ChiselProjectSettings.IsHidden;
+        // learns what an item's asset holds itself (its labels), before the rest is learned of it
+        public Action<Item> learnAsset;
 
         readonly List<Item> items = new();
+        readonly Dictionary<string, Item> byGuid = new();
         public IReadOnlyList<Item> Items => items;
 
+        public Item ItemOf(string guid) { return guid != null && byGuid.TryGetValue(guid, out var item) ? item : null; }
+
+        /// <summary>The items listed: each is learned afterwards, a batch at a time (LearnSome)</summary>
         public void SetItems(IEnumerable<Item> newItems)
         {
+            foreach (var item in items)
+                item.removed = true;
             items.Clear();
-            if (newItems != null)
-                items.AddRange(newItems);
+            byGuid.Clear();
+            queue.Clear();
+            hiddenByFolder.Clear();
+            ClearCounts();
+            if (newItems == null)
+                return;
+            foreach (var item in newItems)
+            {
+                item.known = item.queued = item.removed = false;
+                items.Add(item);
+                byGuid[item.guid] = item;
+                MarkStale(item);
+            }
         }
 
-        public bool IsVisible(Item item) { return !isHidden(item.path); }
+        /// <summary>An item added, or one listed already given its path, name and kind again (moved or renamed): it is
+        /// learned again</summary>
+        public void AddOrUpdate(Item item)
+        {
+            if (byGuid.TryGetValue(item.guid, out var listed))
+            {
+                Forget(listed);
+                listed.path   = item.path;
+                listed.name   = item.name;
+                listed.preset = item.preset;
+                MarkStale(listed);
+                return;
+            }
+            item.known = item.queued = item.removed = false;
+            items.Add(item);
+            byGuid[item.guid] = item;
+            MarkStale(item);
+        }
+
+        public void Remove(string guid)
+        {
+            if (!byGuid.TryGetValue(guid, out var item))
+                return;
+            Forget(item);
+            item.removed = true;
+            byGuid.Remove(guid);
+            items.Remove(item);
+        }
+
+        public bool IsVisible(Item item) { return item.known ? !item.hidden : !HiddenPath(item); }
+
+        // whether hidden folders hide an item, asked once per folder: hidden folders hide everything in them
+        readonly Dictionary<string, bool> hiddenByFolder = new(StringComparer.Ordinal);
+
+        bool HiddenPath(Item item)
+        {
+            var folder = item.Folder;
+            if (!hiddenByFolder.TryGetValue(folder, out var hidden))
+                hiddenByFolder[folder] = hidden = isHidden(item.path);
+            return hidden;
+        }
+
+        #region Learning
+        // the items to learn (again), in the order they were marked
+        readonly Queue<Item> queue = new();
+        // of the visible items learned: per mode (materials, presets) how many, and of the materials how many have each
+        // trait, are decals and are not set up
+        readonly int[] shownCounts = new int[2];
+        readonly List<int> traitCounts = new();
+        int decalCount, notSetUpCount;
+        // the quick lists asked of the outside (favorites, recent, in the scene), counted once until they change
+        readonly Dictionary<(bool, QuickAccess), int> listCounts = new();
+
+        /// <summary>Whether items are waiting to be learned</summary>
+        public bool Learning => queue.Count > 0;
+
+        public void MarkStale(Item item)
+        {
+            if (item == null || item.queued || item.removed)
+                return;
+            item.queued = true;
+            queue.Enqueue(item);
+        }
+
+        public void MarkStale(string guid) { MarkStale(ItemOf(guid)); }
+
+        /// <summary>Every item is learned again, its folder's being hidden too</summary>
+        public void MarkAllStale()
+        {
+            hiddenByFolder.Clear();
+            foreach (var item in items)
+                MarkStale(item);
+        }
+
+        /// <summary>The favorites, recently used or what the scene uses changed: they are counted again when asked</summary>
+        public void QuickListsChanged() { listCounts.Clear(); }
+
+        /// <summary>Learns items until the time (in seconds) is up, at least one; how many it learned</summary>
+        public int LearnSome(double seconds)
+        {
+            var clock   = System.Diagnostics.Stopwatch.StartNew();
+            var learned = 0;
+            while (queue.Count > 0 && (learned == 0 || clock.Elapsed.TotalSeconds < seconds))
+            {
+                var item = queue.Dequeue();
+                item.queued = false;
+                if (item.removed)
+                    continue;
+                Learn(item);
+                learned++;
+            }
+            return learned;
+        }
+
+        /// <summary>Learns every item again, all at once</summary>
+        public void LearnAll()
+        {
+            MarkAllStale();
+            while (queue.Count > 0)
+                LearnSome(double.MaxValue);
+        }
+
+        void Learn(Item item)
+        {
+            Forget(item);
+            if (traitCounts.Count != traits.Count)
+            {
+                // the traits changed: what was learned of them is not what they are now
+                ClearCounts();
+                foreach (var other in items)
+                {
+                    if (other != item && other.known)
+                    {
+                        other.known = false;
+                        MarkStale(other);
+                    }
+                }
+            }
+            learnAsset?.Invoke(item);
+            item.hidden    = HiddenPath(item);
+            item.decal     = !item.preset && isDecal(item);
+            item.setUp     = item.preset || isSetUp(item);
+            item.traitBits = 0;
+            if (!item.preset)
+            {
+                for (int t = 0; t < traits.Count; t++)
+                {
+                    if (traits[t].noneOf == null && traits[t].has(item))
+                        item.traitBits |= 1ul << t;
+                }
+                for (int t = 0; t < traits.Count; t++)
+                {
+                    var noneOf = traits[t].noneOf;
+                    if (noneOf == null)
+                        continue;
+                    var none = true;
+                    foreach (var other in noneOf)
+                    {
+                        var o = traits.IndexOf(other);
+                        none &= o < 0 || (item.traitBits >> o & 1) == 0;
+                    }
+                    if (none)
+                        item.traitBits |= 1ul << t;
+                }
+            }
+            item.known = true;
+            Tally(item, 1);
+            listCounts.Clear();
+        }
+
+        // takes what was learned of an item out of the counts
+        void Forget(Item item)
+        {
+            if (!item.known)
+                return;
+            Tally(item, -1);
+            item.known = false;
+            listCounts.Clear();
+        }
+
+        void Tally(Item item, int sign)
+        {
+            if (item.hidden)
+                return;
+            shownCounts[item.preset ? 1 : 0] += sign;
+            if (item.preset)
+                return;
+            for (int t = 0; t < traitCounts.Count; t++)
+            {
+                if ((item.traitBits >> t & 1) != 0)
+                    traitCounts[t] += sign;
+            }
+            if (item.decal)  decalCount    += sign;
+            if (!item.setUp) notSetUpCount += sign;
+        }
+
+        void ClearCounts()
+        {
+            shownCounts[0] = shownCounts[1] = 0;
+            traitCounts.Clear();
+            for (int t = 0; t < traits.Count; t++)
+                traitCounts.Add(0);
+            decalCount = notSetUpCount = 0;
+            listCounts.Clear();
+        }
+        #endregion
 
         // A search: words that must all be in the name, and labels ("l:metal") the item must all have; case is ignored
         public struct Search
@@ -212,8 +428,8 @@ namespace Chisel.Editors
             {
                 case QuickAccess.InThisScene:  return isInScene(item);
                 case QuickAccess.UnusedInThisScene: return !isInScene(item);
-                case QuickAccess.Decals:       return isDecal(item);
-                case QuickAccess.NotSetUp:     return !isSetUp(item);
+                case QuickAccess.Decals:       return item.known && item.decal;
+                case QuickAccess.NotSetUp:     return item.known && !item.setUp;
                 default:                       return true;
             }
         }
@@ -275,14 +491,28 @@ namespace Chisel.Editors
             return int.MaxValue;
         }
 
+        /// <summary>How many visible items learned are in a quick access list: kept as they are learned, the lists asked
+        /// of the outside counted once until they change (QuickListsChanged)</summary>
         public int Count(QuickAccess quick)
         {
+            var shown = shownCounts[presets ? 1 : 0];
+            switch (quick)
+            {
+                case QuickAccess.All:      return shown;
+                case QuickAccess.Decals:   return presets ? 0 : decalCount;
+                case QuickAccess.NotSetUp: return presets ? 0 : notSetUpCount;
+                case QuickAccess.UnusedInThisScene:
+                    return presets ? 0 : shown - Count(QuickAccess.InThisScene);
+            }
+            if (listCounts.TryGetValue((presets, quick), out var cached))
+                return cached;
             var count = 0;
             foreach (var item in items)
             {
-                if (IsVisible(item) && InMode(item) && InQuickAccess(item, quick))
+                if (item.known && !item.hidden && InMode(item) && InQuickAccess(item, quick))
                     count++;
             }
+            listCounts[(presets, quick)] = count;
             return count;
         }
 

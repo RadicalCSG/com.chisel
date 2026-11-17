@@ -143,7 +143,7 @@ namespace Chisel.Editors
                 return pages;
             void Add(Material m, bool variant)
             {
-                var texture = m != null && m.mainTexture != null ? m.mainTexture : null;
+                var texture = ChiselTextureScale.MainTextureOf(m);
                 if (texture != null && !pages.Exists(page => page.sheet == 0 && page.texture == texture))
                 {
                     pages.Add(new Page { layout = layout, texture = texture, material = material,
@@ -165,7 +165,7 @@ namespace Chisel.Editors
                 var sheetLayout = sheet != null ? sheet.GetMetadataOfType<ChiselSurfaceMetadata>()?.hotspotLayout : null;
                 if (sheetLayout == null || sheet == material)
                     continue;
-                pages.Add(new Page { layout = sheetLayout, texture = sheet.mainTexture != null ? sheet.mainTexture : sheetLayout.texture, sheet = i + 1,
+                pages.Add(new Page { layout = sheetLayout, texture = ChiselTextureScale.MainTextureOf(sheet) is Texture sheetTexture ? sheetTexture : sheetLayout.texture, sheet = i + 1,
                                      material = sheet, name = sheet.name, kind = "Other sheet" });
             }
             return pages;
