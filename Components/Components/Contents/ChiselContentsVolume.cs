@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using Chisel.Core;
+using Unity.Collections;
 using Unity.Mathematics;
 using UnityEngine;
 
@@ -23,22 +24,8 @@ namespace Chisel.Components
         /// <summary>The contents of a point no brush fills</summary>
         public const int kNothing = -1;
 
-        [Serializable]
-        public struct Node
-        {
-            public CSGOperationType operation;
-            public bool   isBrush;
-            // the brush, or any brush above it, is subtractive or intersecting
-            public bool   carving;
-            public int    contents;
-            // how many nodes below it follow it: the next sibling is that many further on
-            public int    descendants;
-            public int    firstPlane, planeCount;
-            public float3 min, max;
-        }
-
-        [SerializeField] Node[]   nodes  = Array.Empty<Node>();
-        [SerializeField] float4[] planes = Array.Empty<float4>();
+        [SerializeField] ContentsVolumeNode[] nodes  = Array.Empty<ContentsVolumeNode>();
+        [SerializeField] float4[]             planes = Array.Empty<float4>();
 
         static readonly List<ChiselContentsVolume> s_Volumes = new();
         // whether each brush holds the point, during one query: 0 not known yet, 1 inside, 2 outside
@@ -48,7 +35,7 @@ namespace Chisel.Components
         void OnDisable() { s_Volumes.Remove(this); }
 
         /// <summary>The nodes of the model's tree, in order, each followed by those below it</summary>
-        public ReadOnlySpan<Node> Nodes => nodes;
+        public ReadOnlySpan<ContentsVolumeNode> Nodes => nodes;
 
         /// <summary>
         /// The contents at a point in the world, of every model that has one there: an index of the contents list
@@ -144,67 +131,24 @@ namespace Chisel.Components
         /// <summary>Takes in the brushes of a model's tree, in the model's space</summary>
         internal void Build(CSGTree tree)
         {
-            var builtNodes  = new List<Node>();
-            var builtPlanes = new List<float4>();
-            var contentsCount = CompactHierarchyManager.ContentsCount;
-            for (int i = 0; i < tree.Count; i++)
-                Add(tree[i], float4x4.identity, false, contentsCount, builtNodes, builtPlanes);
-            nodes  = builtNodes.ToArray();
-            planes = builtPlanes.ToArray();
-        }
-
-        static void Add(CSGTreeNode node, float4x4 parentToTree, bool carving, int contentsCount, List<Node> builtNodes, List<float4> builtPlanes)
-        {
-            if (!node.Valid)
-                return;
-            var operation   = node.Operation;
-            var nodeToTree  = math.mul(parentToTree, node.LocalTransformation);
-            carving         = carving || operation == CSGOperationType.Subtractive || operation == CSGOperationType.Intersecting;
-            var index       = builtNodes.Count;
-            if (node.Type != CSGNodeType.Brush)
+            var builtNodes  = new NativeList<ContentsVolumeNode>(math.max(1, nodes.Length), Allocator.TempJob);
+            var builtPlanes = new NativeList<float4>(math.max(1, planes.Length), Allocator.TempJob);
+            try
             {
-                builtNodes.Add(new Node { operation = operation, carving = carving });
-                for (int i = 0; i < node.Count; i++)
-                    Add(node[i], nodeToTree, carving, contentsCount, builtNodes, builtPlanes);
-                var branch = builtNodes[index];
-                branch.descendants = builtNodes.Count - index - 1;
-                builtNodes[index] = branch;
-                return;
+                ContentsVolume.Build(tree, builtNodes, builtPlanes);
+                // the arrays are kept when their size stays, as it does while brushes are moved
+                if (nodes.Length != builtNodes.Length)
+                    nodes = new ContentsVolumeNode[builtNodes.Length];
+                if (planes.Length != builtPlanes.Length)
+                    planes = new float4[builtPlanes.Length];
+                builtNodes.AsArray().CopyTo(nodes);
+                builtPlanes.AsArray().CopyTo(planes);
             }
-
-            var brush = (CSGTreeBrush)node;
-            var blob  = BrushMeshManager.GetBrushMeshBlob(brush.BrushMesh.BrushMeshID);
-            if (!blob.IsCreated)
-                return;
-            ref var mesh = ref blob.Value;
-            // planes go from the brush's space to the tree's by the inverse transpose
-            var planeToTree = math.transpose(math.inverse(nodeToTree));
-            var firstPlane  = builtPlanes.Count;
-            for (int p = 0; p < mesh.localPlaneCount; p++)
+            finally
             {
-                var plane = math.mul(planeToTree, mesh.localPlanes[p]);
-                builtPlanes.Add(plane / math.length(plane.xyz));
+                builtNodes.Dispose();
+                builtPlanes.Dispose();
             }
-            var min = new float3(float.PositiveInfinity);
-            var max = new float3(float.NegativeInfinity);
-            for (int v = 0; v < mesh.localVertices.Length; v++)
-            {
-                var vertex = math.transform(nodeToTree, mesh.localVertices[v]);
-                min = math.min(min, vertex);
-                max = math.max(max, vertex);
-            }
-            const float kSlack = 1e-4f;
-            builtNodes.Add(new Node
-            {
-                operation  = operation,
-                isBrush    = true,
-                carving    = carving,
-                contents   = ContentsRules.Resolve(brush.Contents, contentsCount),
-                firstPlane = firstPlane,
-                planeCount = builtPlanes.Count - firstPlane,
-                min        = min - kSlack,
-                max        = max + kSlack
-            });
         }
     }
 }
