@@ -145,11 +145,66 @@ namespace Chisel.Core
         const ulong kRecordedKey = 0x9E3779B97F4A7C15ul;
 
         // The brushes to clean up (work, with the brushes whose output touches theirs in neighbours, by their slot in
-        // outlineBrushes); the others get what the cache kept for them. A brush is cleaned up again when it or a brush
-        // touching it changed. Each brush in outlineBrushes has its outlines made once (Outlines), for all it touches.
-        // record: each brush's changes are recorded (MeshCleanupChange)
+        // outlineBrushes, in brush order); the others get what the cache kept for them. A brush is cleaned up again when
+        // it or a brush touching it changed. Each brush in outlineBrushes has its outlines made once (Outlines), for all
+        // it touches. record: each brush's changes are recorded (MeshCleanupChange). One brush after the other: the jobs
+        // (MeshCleanupPlanJobs) do each brush's Measure and TouchingAfter in parallel.
         public static void Plan(NativeList<BrushData> brushes, NativeParallelHashMap<CompactNodeID, MeshCleanupEntry> cache, NativeList<MeshCleanupWork> work,
                                 NativeList<int> neighbours, NativeList<int> outlineBrushes, bool record = false)
+        {
+            var count = brushes.Length;
+            NativeArray<ulong> keys; NativeArray<MinMaxAABB> boxes;
+            using var _keys  = keys  = new NativeArray<ulong>(count, Allocator.Temp);
+            using var _boxes = boxes = new NativeArray<MinMaxAABB>(count, Allocator.Temp);
+            for (int b = 0; b < count; b++)
+                Measure(brushes.AsArray(), b, keys, boxes);
+            using var order = new NativeList<int>(count, Allocator.Temp);
+            SortByMinX(boxes, order);
+            using var touching = new NativeStream(math.max(1, order.Length), Allocator.Temp);
+            var writer = touching.AsWriter();
+            for (int i = 0; i < order.Length; i++)
+                TouchingAfter(brushes.AsArray(), boxes, order.AsArray(), i, ref writer);
+            PlanFrom(brushes, cache, keys, order.AsArray(), touching.AsReader(), work, neighbours, outlineBrushes, record);
+        }
+
+        // A brush's key (KeyOf) and bounds (BoundsOf); each brush is independent of the others
+        public static void Measure(NativeArray<BrushData> brushes, int brush, NativeArray<ulong> keys, NativeArray<MinMaxAABB> boxes)
+        {
+            keys[brush]  = KeyOf(brushes[brush].brushRenderBuffer);
+            boxes[brush] = BoundsOf(brushes[brush].brushRenderBuffer);
+        }
+
+        // The brushes with output, by the least x of their bounds
+        public static void SortByMinX(NativeArray<MinMaxAABB> boxes, NativeList<int> order)
+        {
+            order.Clear();
+            for (int b = 0; b < boxes.Length; b++)
+            {
+                if (math.all(boxes[b].Min <= boxes[b].Max))
+                    order.Add(b);
+            }
+            order.Sort(new ByMinX { boxes = boxes });
+        }
+
+        // The brushes after order[i] in order whose output touches its own, written at i; each i is independent of the
+        // others
+        public static void TouchingAfter(NativeArray<BrushData> brushes, NativeArray<MinMaxAABB> boxes, NativeArray<int> order, int i, ref NativeStream.Writer touching)
+        {
+            touching.BeginForEachIndex(i);
+            var a = order[i];
+            for (int j = i + 1; j < order.Length && boxes[order[j]].Min.x <= boxes[a].Max.x; j++)
+            {
+                var b = order[j];
+                if (Overlap(boxes[a], boxes[b]) && SurfacesTouch(brushes[a].brushRenderBuffer, brushes[b].brushRenderBuffer))
+                    touching.Write(b);
+            }
+            touching.EndForEachIndex();
+        }
+
+        // Plan, from each brush's key, the brushes in order and the brushes each touches after it (TouchingAfter)
+        public static void PlanFrom(NativeList<BrushData> brushes, NativeParallelHashMap<CompactNodeID, MeshCleanupEntry> cache, NativeArray<ulong> keys,
+                                    NativeArray<int> order, NativeStream.Reader touching, NativeList<MeshCleanupWork> work,
+                                    NativeList<int> neighbours, NativeList<int> outlineBrushes, bool record)
         {
             work.Clear();
             neighbours.Clear();
@@ -159,49 +214,46 @@ namespace Chisel.Core
             using var _slotOf = slotOf = new NativeArray<int>(count, Allocator.Temp);
             for (int b = 0; b < count; b++)
                 slotOf[b] = -1;
-            NativeArray<ulong> keys; NativeArray<MinMaxAABB> boxes;
-            using var _keys  = keys  = new NativeArray<ulong>(count, Allocator.Temp);
-            using var _boxes = boxes = new NativeArray<MinMaxAABB>(count, Allocator.Temp);
-            using var order = new NativeList<int>(count, Allocator.Temp);
-            for (int b = 0; b < count; b++)
-            {
-                keys[b]  = KeyOf(brushes[b].brushRenderBuffer);
-                boxes[b] = BoundsOf(brushes[b].brushRenderBuffer);
-                if (math.all(boxes[b].Min <= boxes[b].Max))
-                    order.Add(b);
-            }
-            // which brushes touch, swept along x
-            order.Sort(new ByMinX { boxes = boxes });
-            using var touching = new NativeParallelMultiHashMap<int, int>(count * 4 + 16, Allocator.Temp);
+
+            // each brush's touching brushes, both ways: brush b's from first[b] to first[b + 1] in around, in brush order
+            using var pairs = new NativeList<int2>(count * 2, Allocator.Temp);
             for (int i = 0; i < order.Length; i++)
             {
-                var a = order[i];
-                for (int j = i + 1; j < order.Length && boxes[order[j]].Min.x <= boxes[a].Max.x; j++)
-                {
-                    var b = order[j];
-                    if (!Overlap(boxes[a], boxes[b]) || !SurfacesTouch(brushes[a].brushRenderBuffer, brushes[b].brushRenderBuffer))
-                        continue;
-                    touching.Add(a, b);
-                    touching.Add(b, a);
-                }
+                var found = touching.BeginForEachIndex(i);
+                for (int n = 0; n < found; n++)
+                    pairs.Add(new int2(order[i], touching.Read<int>()));
+                touching.EndForEachIndex();
+            }
+            NativeArray<int> first, filled, around;
+            using var _first  = first  = new NativeArray<int>(count + 1, Allocator.Temp);
+            using var _filled = filled = new NativeArray<int>(count, Allocator.Temp);
+            using var _around = around = new NativeArray<int>(math.max(1, pairs.Length * 2), Allocator.Temp);
+            for (int p = 0; p < pairs.Length; p++)
+            {
+                first[pairs[p].x + 1]++;
+                first[pairs[p].y + 1]++;
+            }
+            for (int b = 0; b < count; b++)
+                first[b + 1] += first[b];
+            for (int p = 0; p < pairs.Length; p++)
+            {
+                var pair = pairs[p];
+                around[first[pair.x] + filled[pair.x]++] = pair.y;
+                around[first[pair.y] + filled[pair.y]++] = pair.x;
             }
 
             var cached = cache.IsCreated;
-            using var around = new NativeList<int>(16, Allocator.Temp);
             for (int b = 0; b < count; b++)
             {
                 var data = brushes[b];
                 if (!data.brushRenderBuffer.IsCreated)
                     continue;
-                around.Clear();
-                if (touching.TryGetFirstValue(b, out var other, out var iterator))
-                {
-                    do around.Add(other); while (touching.TryGetNextValue(out other, ref iterator));
-                }
+                var touches = around.GetSubArray(first[b], first[b + 1] - first[b]);
+                touches.Sort();
                 // the same whatever order they were found in
                 var key = keys[b];
-                for (int n = 0; n < around.Length; n++)
-                    key += math.hash(new uint2((uint)keys[around[n]], (uint)(keys[around[n]] >> 32))) * 0x9E3779B97F4A7C15ul;
+                for (int n = 0; n < touches.Length; n++)
+                    key += math.hash(new uint2((uint)keys[touches[n]], (uint)(keys[touches[n]] >> 32))) * 0x9E3779B97F4A7C15ul;
                 if (record)
                     key ^= kRecordedKey;
                 var nodeID = data.brushIndexOrder.compactNodeID;
@@ -216,8 +268,8 @@ namespace Chisel.Core
                     }
                     continue;
                 }
-                work.Add(new MeshCleanupWork { brush = b, key = key, neighbourStart = neighbours.Length, neighbourCount = around.Length, record = record });
-                foreach (var neighbour in around)
+                work.Add(new MeshCleanupWork { brush = b, key = key, neighbourStart = neighbours.Length, neighbourCount = touches.Length, record = record });
+                foreach (var neighbour in touches)
                 {
                     if (slotOf[neighbour] < 0)
                     {

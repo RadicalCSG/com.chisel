@@ -662,10 +662,113 @@ namespace Chisel.Core
         }
     }
 
-    // The brushes to clean up, and the cache's results handed to the others (OutputMeshCleanup)
+    // The jobs that plan the mesh cleanup (OutputMeshCleanup.Plan): each brush's key and bounds, and the brushes each one
+    // touches, in parallel; then the plan, with the cache's results handed to the brushes it kept
+    static class MeshCleanupPlanJobs
+    {
+        // Disposes what it made itself with the handle it returns
+        public static JobHandle Schedule(bool runInParallel, NativeList<BrushData> brushRenderData, NativeParallelHashMap<CompactNodeID, MeshCleanupEntry> meshCleanupCache,
+                                         NativeList<MeshCleanupWork> work, NativeList<int> neighbours, NativeList<int> outlineBrushes,
+                                         NativeList<OutputMeshCleanup.BrushOutlines> outlines, bool record, JobHandle dependsOn)
+        {
+            var keys  = new NativeList<ulong>(Allocator.TempJob);
+            var boxes = new NativeList<MinMaxAABB>(Allocator.TempJob);
+            var order = new NativeList<int>(Allocator.TempJob);
+            var handle = new SizeMeshCleanupPlanJob { brushRenderData = brushRenderData, keys = keys, boxes = boxes }.Schedule(runInParallel, dependsOn);
+            handle = new MeasureMeshCleanupJob
+            {
+                brushRenderData = brushRenderData.AsDeferredJobArray(),
+                keys            = keys.AsDeferredJobArray(),
+                boxes           = boxes.AsDeferredJobArray()
+            }.Schedule(runInParallel, brushRenderData, 16, handle);
+            handle = new SortMeshCleanupJob { boxes = boxes, order = order }.Schedule(runInParallel, handle);
+            handle = NativeCollection.ScheduleConstruct(runInParallel, out var touching, order, Allocator.TempJob, handle);
+            handle = new MeshCleanupTouchingJob
+            {
+                brushRenderData = brushRenderData.AsDeferredJobArray(),
+                boxes           = boxes.AsDeferredJobArray(),
+                order           = order.AsDeferredJobArray(),
+                touching        = touching.AsWriter()
+            }.Schedule(runInParallel, order, 8, handle);
+            handle = new PlanMeshCleanupJob
+            {
+                keys             = keys,
+                order            = order,
+                touching         = touching.AsReader(),
+                brushRenderData  = brushRenderData,
+                meshCleanupCache = meshCleanupCache,
+                work             = work,
+                neighbours       = neighbours,
+                outlineBrushes   = outlineBrushes,
+                outlines         = outlines,
+                record           = record
+            }.Schedule(runInParallel, handle);
+            return JobHandle.CombineDependencies(JobHandle.CombineDependencies(keys.Dispose(handle), boxes.Dispose(handle)),
+                                                 JobHandle.CombineDependencies(order.Dispose(handle), touching.Dispose(handle)));
+        }
+    }
+
+    // A key and bounds for each brush (MeasureMeshCleanupJob)
+    [BurstCompile(CompileSynchronously = true)]
+    struct SizeMeshCleanupPlanJob : IJob
+    {
+        [NoAlias, ReadOnly] public NativeList<BrushData> brushRenderData;
+        [NoAlias] public NativeList<ulong> keys;
+        [NoAlias] public NativeList<MinMaxAABB> boxes;
+
+        public void Execute()
+        {
+            keys.Resize(brushRenderData.Length, NativeArrayOptions.UninitializedMemory);
+            boxes.Resize(brushRenderData.Length, NativeArrayOptions.UninitializedMemory);
+        }
+    }
+
+    [BurstCompile(CompileSynchronously = true)]
+    struct MeasureMeshCleanupJob : IJobParallelForDefer
+    {
+        [NoAlias, ReadOnly] public NativeArray<BrushData> brushRenderData;
+        [NoAlias] public NativeArray<ulong> keys;
+        [NoAlias] public NativeArray<MinMaxAABB> boxes;
+
+        public void Execute(int index)
+        {
+            OutputMeshCleanup.Measure(brushRenderData, index, keys, boxes);
+        }
+    }
+
+    [BurstCompile(CompileSynchronously = true)]
+    struct SortMeshCleanupJob : IJob
+    {
+        [NoAlias, ReadOnly] public NativeList<MinMaxAABB> boxes;
+        [NoAlias] public NativeList<int> order;
+
+        public void Execute()
+        {
+            OutputMeshCleanup.SortByMinX(boxes.AsArray(), order);
+        }
+    }
+
+    [BurstCompile(CompileSynchronously = true)]
+    struct MeshCleanupTouchingJob : IJobParallelForDefer
+    {
+        [NoAlias, ReadOnly] public NativeArray<BrushData> brushRenderData;
+        [NoAlias, ReadOnly] public NativeArray<MinMaxAABB> boxes;
+        [NoAlias, ReadOnly] public NativeArray<int> order;
+        [NoAlias] public NativeStream.Writer touching;
+
+        public void Execute(int index)
+        {
+            OutputMeshCleanup.TouchingAfter(brushRenderData, boxes, order, index, ref touching);
+        }
+    }
+
+    // The brushes to clean up, and the cache's results handed to the others (OutputMeshCleanup.PlanFrom)
     [BurstCompile(CompileSynchronously = true)]
     struct PlanMeshCleanupJob : IJob
     {
+        [NoAlias, ReadOnly] public NativeList<ulong> keys;
+        [NoAlias, ReadOnly] public NativeList<int> order;
+        [NoAlias, ReadOnly] public NativeStream.Reader touching;
         [NoAlias] public NativeList<BrushData> brushRenderData;
         [NoAlias] public NativeParallelHashMap<CompactNodeID, MeshCleanupEntry> meshCleanupCache;
         [NoAlias] public NativeList<MeshCleanupWork> work;
@@ -677,7 +780,7 @@ namespace Chisel.Core
 
         public void Execute()
         {
-            OutputMeshCleanup.Plan(brushRenderData, meshCleanupCache, work, neighbours, outlineBrushes, record);
+            OutputMeshCleanup.PlanFrom(brushRenderData, meshCleanupCache, keys.AsArray(), order.AsArray(), touching, work, neighbours, outlineBrushes, record);
             outlines.Resize(outlineBrushes.Length, NativeArrayOptions.ClearMemory);
         }
     }
