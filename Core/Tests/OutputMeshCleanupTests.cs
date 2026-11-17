@@ -740,7 +740,7 @@ namespace Chisel.Core.Tests
         }
 
         // A brush's buffer of the given surfaces, each as Surface makes it
-        static BlobAssetReference<ChiselBrushRenderBuffer> Brush(int paintedSurface, params float3[][] surfaces)
+        internal static BlobAssetReference<ChiselBrushRenderBuffer> Brush(int paintedSurface, params float3[][] surfaces)
         {
             return Brush(paintedSurface, -1, surfaces);
         }

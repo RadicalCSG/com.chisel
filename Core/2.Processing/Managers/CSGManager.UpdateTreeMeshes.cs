@@ -2337,19 +2337,15 @@ namespace Chisel.Core
                         JobHandles.Write(JobHandleType.brushRenderDataJobHandle));
 
                     // what the cuts added that doesn't change how anything looks, taken out again
-                    var planMeshCleanupJob = new PlanMeshCleanupJob
                     {
-                        brushRenderData  = Temporaries.brushRenderData,
-                        meshCleanupCache = chiselLookupValues.meshCleanupCache,
-                        work             = Temporaries.meshCleanup,
-                        neighbours       = Temporaries.meshCleanupNeighbours,
-                        outlineBrushes   = Temporaries.meshCleanupOutlineBrushes,
-                        outlines         = Temporaries.meshCleanupOutlines,
-                        record           = captureExact
-                    };
-                    planMeshCleanupJob.Schedule(runInParallel,
-                        JobHandles.Read(JobHandleType.decalVolumesJobHandle),
-                        JobHandles.Write(JobHandleType.brushRenderDataJobHandle));
+                        var planReads  = JobHandles.Read(JobHandleType.decalVolumesJobHandle);
+                        var planWrites = JobHandles.Write(JobHandleType.brushRenderDataJobHandle);
+                        var planDependencies = JobExtensions.ResolveDependencies(ref planReads, ref planWrites);
+                        var planned = MeshCleanupPlanJobs.Schedule(runInParallel, Temporaries.brushRenderData, chiselLookupValues.meshCleanupCache,
+                                                                   Temporaries.meshCleanup, Temporaries.meshCleanupNeighbours, Temporaries.meshCleanupOutlineBrushes,
+                                                                   Temporaries.meshCleanupOutlines, captureExact, planDependencies);
+                        JobExtensions.RegisterNode(ref planReads, ref planWrites, planned);
+                    }
 
                     var meshCleanupOutlinesJob = new MeshCleanupOutlinesJob
                     {
