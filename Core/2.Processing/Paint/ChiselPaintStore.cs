@@ -254,11 +254,13 @@ namespace Chisel.Core
                     if (surface.paintSurface < 0 || !changes.TryGetValue(surface.paintSurface, out var change))
                         continue;
                     found = true;
-                    // the weld keeps what it made of an unchanged buffer, so it has to know this one changed
+                    // the weld keeps what it made of an unchanged buffer, so it has to know this one changed; what it holds
+                    // changes in place, so it is told apart by a new serial too
                     if (!repainted)
                     {
                         repainted = true;
                         data.weldMemory.repainted.Add(cache[b]);
+                        buffer.serial = RenderBufferSerial.Next();
                     }
                     surface.surfaceHashValue ^= change;
                     for (int q = 0; q < buffer.querySurfaces.Length; q++)
