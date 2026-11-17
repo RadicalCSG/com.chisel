@@ -5,7 +5,7 @@ namespace Chisel.Components
 {
     [ExecuteInEditMode, HelpURL(kDocumentationBaseURL + kNodeTypeName + kDocumentationExtension)]
     [DisallowMultipleComponent, AddComponentMenu("Chisel/" + kNodeTypeName)]
-    [Icon(kIconBasePath + "boxOutline" + kIconExtension)]
+    [Icon(kIconBasePath + "box_outline" + kIconExtension)]
     public sealed class ChiselBrushComponent : ChiselNodeGeneratorComponent<ChiselBrushDefinition>
     {
         public const string kNodeTypeName = ChiselBrushDefinition.kNodeTypeName;

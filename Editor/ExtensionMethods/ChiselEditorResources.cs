@@ -3,7 +3,6 @@ using System.Buffers;
 using UnityEngine;
 using UnityEditor;
 using Chisel.Core;
-using System.IO;
 using System;
 
 namespace Chisel.Editors
@@ -15,18 +14,13 @@ namespace Chisel.Editors
     {
         internal const string kLargeIconID      = "@2x";
         internal const string kIconPath         = "Icons/";
-        internal const string kActiveIconID     = " On";
+        internal const string kActiveIconID     = " on";
         internal const string kDarkIconID       = "d_";
 
-        internal static string[] s_ResourceFilePaths;
-		internal static string[] s_ResourceUnityPaths;
-
-		static ChiselEditorResources()
+        static ChiselEditorResources()
         {
             s_EditorPixelsPerPoint = EditorGUIUtility.pixelsPerPoint;
-			s_IsProSkin = EditorGUIUtility.isProSkin;
-
-            FindResourcePaths(); 
+            s_IsProSkin = EditorGUIUtility.isProSkin;
         }
 
         // Read once, when the scripts load; Chisel reloads them when the skin changes (ChiselEditorSkinWatcher)
@@ -34,23 +28,12 @@ namespace Chisel.Editors
         static readonly bool s_IsProSkin;
         public static bool IsProSkin => s_IsProSkin;
 
-		public static float ImageScale { get { return (s_EditorPixelsPerPoint > 1.0f) ? 2.0f : 1.0f; } }
+        public static float ImageScale { get { return (s_EditorPixelsPerPoint > 1.0f) ? 2.0f : 1.0f; } }
 
         static Texture2D LoadImageFromResourcePaths(string name)
         {
-            name += kImageExtension;
-
-            var currentPath = Environment.CurrentDirectory; 
-			for (int i = 0; i < s_ResourceUnityPaths.Length; i++)
-            {
-                if (s_ResourceFilePaths[i] != null && !System.IO.File.Exists(s_ResourceFilePaths[i] + name))
-                    continue;
-				var path = s_ResourceUnityPaths[i] + name; 
-				var image = AssetDatabase.LoadAssetAtPath<Texture2D>(path);
-                if (image)
-                    return image;
-            }
-            return null;
+            var path = FindImagePath(name);
+            return path == null ? null : AssetDatabase.LoadAssetAtPath<Texture2D>(path);
         }
 
         static Texture2D LoadScaledTextureInternal(string name)
@@ -64,7 +47,7 @@ namespace Chisel.Editors
                     imagePixelsPerPoint = 2.0f;
             }
 
-            if (image == null) 
+            if (image == null)
                 image = LoadImageFromResourcePaths(name);
 
             if (image == null)
@@ -80,8 +63,9 @@ namespace Chisel.Editors
         // what was made without them is made again once they are (ChiselEditorResourcesImport)
         internal static bool s_AnyMissing;
 
-        public static Texture2D[] LoadIconImages(string name)
+        public static Texture2D[] LoadIconImages(ChiselIcon icon)
         {
+            var name = icon.name;
             var nameID = HashLowerInvariant(name);
             if (!s_IconImagesLookup.TryGetValue(nameID, out var iconImages))
             {
@@ -94,8 +78,9 @@ namespace Chisel.Editors
             return iconImages;
         }
 
-        public static GUIContent[] GetIconContent(string name, string tooltip = null)
+        public static GUIContent[] GetIconContent(ChiselIcon icon, string tooltip = null)
         {
+            var name = icon.name;
             var nameID = HashLowerInvariant(name);
             var id = (nameID * 33) + (tooltip?.GetHashCode() ?? 0);
             if (!s_IconContentLookup.TryGetValue(id, out var contents))
@@ -107,8 +92,9 @@ namespace Chisel.Editors
             return contents;
         }
 
-        public static GUIContent[] GetIconContentWithName(string name, string tooltip = null)
+        public static GUIContent[] GetIconContentWithName(ChiselIcon icon, string tooltip = null)
         {
+            var name = icon.name;
             var nameID = HashLowerInvariant(name);
             var id = (nameID * 33) + (tooltip?.GetHashCode() ?? 0);
             if (!s_IconContentWithNameLookup.TryGetValue(id, out var contents))
@@ -130,9 +116,9 @@ namespace Chisel.Editors
                 var path = FixSlashes(asset);
                 if (!path.EndsWith(kImageExtension, StringComparison.OrdinalIgnoreCase))
                     continue;
-                foreach (var (localPath, _) in searchPaths)
+                foreach (var folder in kSearchFolders)
                 {
-                    if (path.StartsWith(localPath + "/", StringComparison.OrdinalIgnoreCase))
+                    if (path.StartsWith(folder + "/", StringComparison.OrdinalIgnoreCase))
                         return true;
                 }
             }
@@ -173,26 +159,50 @@ namespace Chisel.Editors
             int result;
             unchecked { result = (int)nameBuffer.Hash(); }
             ArrayPool<char>.Shared.Return(nameBuffer);
-            return result; 
+            return result;
         }
 
+        // The names an icon's image is looked for by, in order: the dark skin's first, the active look's before the plain
+        // one, falling back to the plain one
+        static void IconImageNames(string name, bool dark, bool active, List<string> names)
+        {
+            names.Clear();
+            var nameID = name;
+            if (dark)
+            {
+                if (active) names.Add($@"{kIconPath}{kDarkIconID}{nameID}{kActiveIconID}");
+                names.Add($@"{kIconPath}{kDarkIconID}{nameID}");
+            }
+            if (active) names.Add($@"{kIconPath}{nameID}{kActiveIconID}");
+            names.Add($@"{kIconPath}{nameID}");
+        }
 
         static Texture2D LoadIconImageInternal(string name, bool active)
         {
-            Texture2D result = null;
-            var nameID = name.Replace(' ', '_').ToLowerInvariant();
-            if (s_IsProSkin)
+            var names = new List<string>(4);
+            IconImageNames(name, s_IsProSkin, active, names);
+            foreach (var imageName in names)
             {
-                if (active        ) result = LoadImageInternal($@"{kIconPath}{kDarkIconID}{nameID}{kActiveIconID}");
-                if (result == null) result = LoadImageInternal($@"{kIconPath}{kDarkIconID}{nameID}");
+                var result = LoadImageInternal(imageName);
+                if (result != null)
+                    return result;
             }
-            if (result == null)
+            return null;
+        }
+
+        // The asset an icon is loaded from in a skin and look, as the editor finds it, or null when there is none
+        internal static string FindIconPath(ChiselIcon icon, bool dark, bool active)
+        {
+            var names = new List<string>(4);
+            IconImageNames(icon.name, dark, active, names);
+            foreach (var imageName in names)
             {
-                if (active        ) result = LoadImageInternal($@"{kIconPath}{nameID}{kActiveIconID}");
-                if (result == null) result = LoadImageInternal($@"{kIconPath}{nameID}");
+                var path = FindImagePath(imageName);
+                if (path != null)
+                    return path;
             }
-            return result;
-        } 
+            return null;
+        }
 
         static Texture2D[] LoadIconImagesInternal(string name)
         {
@@ -239,69 +249,81 @@ namespace Chisel.Editors
         public static void ClearCache()
         {
             s_AnyMissing = false;
+            s_ImagePaths = null;
             s_ImagesLookup.Clear();
-            s_IconImagesLookup.Clear(); 
-            s_IconContentLookup.Clear(); 
-            s_IconContentWithNameLookup.Clear(); 
+            s_IconImagesLookup.Clear();
+            s_IconContentLookup.Clear();
+            s_IconContentWithNameLookup.Clear();
         }
 
-        
+
         #region Editor Resource Paths
-        const string kEditorResourcesPath   = @"Editor Resources";
         const string kImageExtension        = @".png";
 
-		const string kPackageResourcesPath = "Packages/com.chisel/" + kEditorResourcesPath;
+        // Where Chisel's images are, the package's own first. By its Unity path, which the package has wherever it is
+        // on disk, also before the package manager knows it (a new install)
+        internal static readonly string[] kSearchFolders = { "Packages/com.chisel/Editor Resources", "Assets/Editor Resources" };
 
-		static (string, string)[] GetSearchPaths()
-		{
-			var packageInfo = UnityEditor.PackageManager.PackageInfo.FindForAssembly(System.Reflection.Assembly.GetExecutingAssembly());
-			return SearchPathsFor(packageInfo?.resolvedPath);
-		}
+        // Every image in the search folders, by its path below its folder without the extension, in lower case: the path
+        // it was imported at. Windows and macOS find a file whatever the case of its name, Linux only by its exact name,
+        // so an image is only ever loaded by the path found here, never by one made up from the name it is asked for by
+        static Dictionary<string, string> s_ImagePaths;
 
-		// The package's own path comes first, also when the package manager doesn't know the package yet (a new install):
-		// its folder on disk is then unknown, and its icons are looked for by their Unity path alone
-		internal static (string, string)[] SearchPathsFor(string packageResolvedPath)
-		{
-			var packageFilePath = string.IsNullOrEmpty(packageResolvedPath) ? null
-								: FixSlashes(System.IO.Path.GetFullPath(System.IO.Path.Combine(packageResolvedPath, kEditorResourcesPath)));
-			return new (string, string)[]
-				   {
-						(kPackageResourcesPath, packageFilePath),
-						(
-							FixSlashes(System.IO.Path.Combine(@"Assets/", kEditorResourcesPath)),
-							FixSlashes(System.IO.Path.Combine(Application.dataPath, kEditorResourcesPath))
-						)
-				   };
-		}
-
-        readonly static (string, string)[] searchPaths = GetSearchPaths();
-
-        static void FindResourcePaths()
+        static Dictionary<string, string> ImagePaths
         {
-            var unityPaths = new List<string>();
-            var filePaths = new List<string>();
-            var foundPaths = new HashSet<string>(); 
-
-            foreach((string localPath, string filePath) in searchPaths) 
+            get
             {
-                if ((filePath == null || System.IO.Directory.Exists(filePath)))
-				{
-                    if (foundPaths.Add(localPath))
-                    {
-                        unityPaths.Add(localPath + "/");
-                        filePaths.Add(filePath == null ? null : filePath + "/");
-                    }
+                if (s_ImagePaths != null)
+                    return s_ImagePaths;
+                var folders = new List<string>(kSearchFolders.Length);
+                foreach (var folder in kSearchFolders)
+                {
+                    if (AssetDatabase.IsValidFolder(folder))
+                        folders.Add(folder);
+                }
+                var assetPaths = new List<string>();
+                if (folders.Count > 0)
+                {
+                    foreach (var guid in AssetDatabase.FindAssets("t:Texture2D", folders.ToArray()))
+                        assetPaths.Add(AssetDatabase.GUIDToAssetPath(guid));
+                }
+                return s_ImagePaths = IndexImages(kSearchFolders, assetPaths);
+            }
+        }
+
+        // The images among assetPaths by their path below the first of the folders they are in, without the extension
+        // and in lower case. Of two whose paths differ only in case the first is kept; ChiselIconTests sees there are none
+        internal static Dictionary<string, string> IndexImages(IReadOnlyList<string> folders, IEnumerable<string> assetPaths)
+        {
+            var index = new Dictionary<string, string>(StringComparer.Ordinal);
+            var paths = new List<string>(assetPaths);
+            foreach (var folder in folders)
+            {
+                var prefix = folder + "/";
+                foreach (var assetPath in paths)
+                {
+                    var path = FixSlashes(assetPath);
+                    if (!path.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) ||
+                        !path.EndsWith(kImageExtension, StringComparison.OrdinalIgnoreCase))
+                        continue;
+                    var key = path.Substring(prefix.Length, path.Length - prefix.Length - kImageExtension.Length).ToLowerInvariant();
+                    index.TryAdd(key, path);
                 }
             }
-            s_ResourceUnityPaths = unityPaths.ToArray();
-			s_ResourceFilePaths = filePaths.ToArray();
-		}
-         
+            return index;
+        }
+
+        // The path of the image asked for by a name below the search folders without its extension, whatever its case
+        internal static string FindImagePath(string name)
+        {
+            return ImagePaths.TryGetValue(FixSlashes(name).ToLowerInvariant(), out var path) ? path : null;
+        }
+
         static string FixSlashes(string path)
         {
             return path.Replace('\\', '/');
         }
-        
+
         #endregion
     }
 }

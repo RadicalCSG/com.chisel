@@ -5,28 +5,28 @@ namespace Chisel.Core
     [Flags]
     public enum PlacementFlags
     {
-        [ToggleFlag("SizeFromBottom",   "Extrude from the bottom",
-                    "SizeFromCenter",   "Extrude it from the center")]
+        [ToggleFlag("size_from_bottom",   "Extrude from the bottom",
+                    "size_from_center",   "Extrude it from the center")]
         GenerateFromCenterY     = 1,
 
         
-        [ToggleFlag("DragToHeight",     "Drag to extrude distance",
-                    "AutoHeight",       "Extrude distance is determined by base size")]
+        [ToggleFlag("drag_to_height",     "Drag to extrude distance",
+                    "auto_height",       "Extrude distance is determined by base size")]
         HeightEqualsXZ          = 2,
 
         
-        [ToggleFlag("DragToHeight",     "Drag to extrude distance",
-                    "AutoHeight",       "Extrude distance is determined by base size")]
+        [ToggleFlag("drag_to_height",     "Drag to extrude distance",
+                    "auto_height",       "Extrude distance is determined by base size")]
         HeightEqualsHalfXZ      = 4,
 
         
-        [ToggleFlag("RectangularBase",  "Base width and depth can be sized independently", 
-                    "SquareBase",       "Base width and depth are identical in size")]
+        [ToggleFlag("rectangular_base",  "Base width and depth can be sized independently", 
+                    "square_base",       "Base width and depth are identical in size")]
         SameLengthXZ            = 8,
 
 
-        [ToggleFlag("SizeBaseFromCorner", "Base is sized from corner",
-                    "SizeBaseFromCenter", "Base is sized from center")]
+        [ToggleFlag("size_base_from_corner", "Base is sized from corner",
+                    "size_base_from_center", "Base is sized from center")]
         GenerateFromCenterXZ    = 16,
 
         [ToggleFlag(ignore: true)] None = 0,

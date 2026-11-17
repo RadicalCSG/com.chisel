@@ -106,7 +106,7 @@ namespace Chisel.Editors
             get
             {
                 var tooltip = Tooltip;
-                var content = ChiselEditorResources.GetIconContent(ToolName, tooltip)[0];
+                var content = ChiselEditorResources.GetIconContent(ChiselIcon.OfGenerator(ToolName), tooltip)[0];
                 if (content.image)
                     return content;
                 if (m_ShortContent == null || m_ShortContent.tooltip != tooltip)

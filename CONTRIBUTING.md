@@ -57,6 +57,20 @@ almost always belongs in the CSG, not in a special case in the generator.
 
 Pull requests are squash-merged into a single commit, which keeps you as its author.
 
+## Icons
+
+Chisel's icons are in `Editor Resources/Icons`. Linux finds a file only by its exact name, so every icon file follows
+one pattern, all in lowercase:
+
+* `<name>.png`: the icon. `<name>` is lowercase words joined by underscores, such as `bounds_snap` or `csg_additive`.
+* `d_<name>.png`: its look in the dark skin, if it has one.
+* `<name> on.png` and `d_<name> on.png`: its active look, if it has one.
+* `@2x` before `.png` (`<name>@2x.png`, `d_<name> on@2x.png`): the same at double resolution, if it has one.
+
+Each of `d_`, ` on` and `@2x` needs the file without it: `d_box.png` needs `box.png`, `box on@2x.png` needs
+`box on.png`. Ask for an icon in code by a `ChiselIcon`, named after the file, and add new ones there.
+`ChiselIconTests` checks all of this, and that every icon Chisel uses is there in both skins.
+
 ## Tests
 
 The tests are in `Core/Tests`, `Components/Tests` and `Editor/Tests`. With Chisel embedded in your project's

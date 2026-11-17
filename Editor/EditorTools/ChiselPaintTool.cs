@@ -91,7 +91,7 @@ namespace Chisel.Editors
         static int                  s_UndoGroup = -1;
 
         static GUIContent s_ToolbarIcon;
-        public override GUIContent toolbarIcon => s_ToolbarIcon ??= new GUIContent(ChiselEditorResources.LoadIconImages("paint_tool")?[0],
+        public override GUIContent toolbarIcon => s_ToolbarIcon ??= new GUIContent(ChiselEditorResources.LoadIconImages(ChiselIcon.PaintTool)?[0],
                                                                                    "Chisel Paint Tool: paint vertex data onto surfaces, in the modes of their shaders' paint profiles");
 
         struct Hit
@@ -455,14 +455,14 @@ namespace Chisel.Editors
             return Mathf.Max(chosen, 0);
         }
 
-        static readonly (ChiselPaintOperation operation, string icon, string name, string tooltip)[] kOperations =
+        internal static readonly (ChiselPaintOperation operation, ChiselIcon icon, string name, string tooltip)[] kOperations =
         {
-            (ChiselPaintOperation.Paint,    "paint_paint",    "Paint",    "Towards the color or value"),
-            (ChiselPaintOperation.Fill,     "paint_fill",     "Fill",     "The whole surface clicked on, to the color or value"),
-            (ChiselPaintOperation.Add,      "paint_add",      "Add",      "Raises the value"),
-            (ChiselPaintOperation.Subtract, "paint_subtract", "Subtract", "Lowers the value"),
-            (ChiselPaintOperation.Smooth,   "paint_smooth",   "Smooth",   "Towards the neighbouring paint"),
-            (ChiselPaintOperation.Erase,    "paint_erase",    "Erase",    "Back to the default"),
+            (ChiselPaintOperation.Paint,    ChiselIcon.PaintPaint,    "Paint",    "Towards the color or value"),
+            (ChiselPaintOperation.Fill,     ChiselIcon.PaintFill,     "Fill",     "The whole surface clicked on, to the color or value"),
+            (ChiselPaintOperation.Add,      ChiselIcon.PaintAdd,      "Add",      "Raises the value"),
+            (ChiselPaintOperation.Subtract, ChiselIcon.PaintSubtract, "Subtract", "Lowers the value"),
+            (ChiselPaintOperation.Smooth,   ChiselIcon.PaintSmooth,   "Smooth",   "Towards the neighbouring paint"),
+            (ChiselPaintOperation.Erase,    ChiselIcon.PaintErase,    "Erase",    "Back to the default"),
         };
         static readonly GUIContent[] s_OperationContents = new GUIContent[kOperations.Length];
         static readonly bool[]       s_OperationDisabled = new bool[kOperations.Length];

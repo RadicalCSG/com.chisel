@@ -117,28 +117,34 @@ namespace Chisel.Editors
             return toggleIcons;
         }
 
+        // The icons the toggle of a member of a flags enum shows, inactive and active: those its ToggleFlagAttribute
+        // names, or its own name. False for a member the attribute leaves out
+        internal static bool ToggleIconsOf(MemberInfo member, out ToggleFlagAttribute attribute, out ChiselIcon inactive, out ChiselIcon active)
+        {
+            attribute = member.GetCustomAttribute<ToggleFlagAttribute>();
+            if (attribute != null && attribute.Ignore)
+            {
+                inactive = active = default;
+                return false;
+            }
+            inactive = ChiselIcon.OfToggleFlag(attribute == null ? member.Name : attribute.InactiveIcon);
+            active   = ChiselIcon.OfToggleFlag(attribute == null ? member.Name : attribute.ActiveIcon);
+            return true;
+        }
+
         static ToggleIcons[] GetIconsForProperty(Type type)
         {
             var members         = type.GetMembers(BindingFlags.Public | BindingFlags.Static);
             var toggleItems     = new List<ToggleIcons>();
             foreach (var member in members)
             {
-                var attribute   = member.GetCustomAttribute<ToggleFlagAttribute>();
-                if (attribute.Ignore)
+                if (!ToggleIconsOf(member, out var attribute, out var inactive, out var active))
                     continue;
                 var value       = (int)Enum.Parse(type, member.Name);
 
-                GUIContent[] iconsOn, iconsOff;
-                if (attribute == null)
-                {
-                    iconsOff =
-                    iconsOn = ChiselEditorResources.GetIconContent(member.Name, string.Empty);
-                } else
-                {
-                    iconsOn  = ChiselEditorResources.GetIconContent(attribute.ActiveIcon, attribute.ActiveDescription);
-                    iconsOff = ChiselEditorResources.GetIconContent(attribute.InactiveIcon, attribute.InactiveDescription);
-                }
-                
+                var iconsOn  = ChiselEditorResources.GetIconContent(active,   attribute?.ActiveDescription ?? string.Empty);
+                var iconsOff = ChiselEditorResources.GetIconContent(inactive, attribute?.InactiveDescription ?? string.Empty);
+
                 toggleItems.Add(new ToggleIcons
                 {
                     attribute   = attribute,

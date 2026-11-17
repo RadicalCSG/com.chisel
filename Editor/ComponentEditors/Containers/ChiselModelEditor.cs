@@ -14,11 +14,9 @@ namespace Chisel.Editors
 {
     public sealed class ChiselModelDetails : ChiselNodeDetails<ChiselModelComponent>
     {
-        const string kModelIconName = "csg_model";
-
         public override GUIContent GetHierarchyIcon(ChiselModelComponent node)
         {
-            return ChiselEditorResources.GetIconContent(kModelIconName, node.ChiselNodeTypeName)[0];
+            return ChiselEditorResources.GetIconContent(ChiselIcon.Model, node.ChiselNodeTypeName)[0];
         }
     }
 

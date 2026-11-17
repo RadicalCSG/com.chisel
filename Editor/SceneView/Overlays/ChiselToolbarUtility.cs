@@ -7,10 +7,10 @@ namespace Chisel.Editors
 {
     static class ChiselToolbarUtility
     {
-        public static void SetupToolbarElement(EditorToolbarToggle element, string iconName, string tooltipName)
+        public static void SetupToolbarElement(EditorToolbarToggle element, ChiselIcon icon, string tooltipName)
         {
             element.text   = string.Empty;
-            var icons   = ChiselEditorResources.LoadIconImages(iconName);
+            var icons   = ChiselEditorResources.LoadIconImages(icon);
             if (icons != null && icons[0] != null && icons[1] != null)
             {
                 element.onIcon = icons[0];
@@ -19,10 +19,10 @@ namespace Chisel.Editors
             element.tooltip = tooltipName;
         }
 
-        public static void SetupToolbarElement(EditorToolbarButton element, string iconName, string tooltipName)
+        public static void SetupToolbarElement(EditorToolbarButton element, ChiselIcon icon, string tooltipName)
         {
             element.text = string.Empty;
-            var icons = ChiselEditorResources.LoadIconImages(iconName);
+            var icons = ChiselEditorResources.LoadIconImages(icon);
             if (icons != null && icons[0] != null)
                 element.icon = icons[0];
             element.tooltip = tooltipName;

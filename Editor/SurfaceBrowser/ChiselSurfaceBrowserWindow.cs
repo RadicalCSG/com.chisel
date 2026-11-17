@@ -59,7 +59,6 @@ namespace Chisel.Editors
         public static ChiselSurfaceBrowserWindow Open()
         {
             var window = GetWindow<ChiselSurfaceBrowserWindow>();
-            window.titleContent = new GUIContent("Surface Browser");
             window.minSize = new Vector2(kSidebarWidth + kMinDetailsWidth + kMinGridWidth, 360);
             window.Show();
             return window;
@@ -74,6 +73,8 @@ namespace Chisel.Editors
 
         void OnEnable()
         {
+            // also when the editor opens it again with its layout
+            titleContent = new GUIContent("Surface Browser", ChiselEditorResources.LoadIconImages(ChiselIcon.SurfaceBrowser)?[0]);
             model.isFavorite  = item => ChiselSurfaceBrowserPrefs.IsFavorite(item.guid);
             model.recent      = () => ChiselSurfaceBrowserPrefs.Recent;
             model.isInScene   = item => ChiselSceneMaterialUsage.SurfacesUsing(Load(item)) > 0;
