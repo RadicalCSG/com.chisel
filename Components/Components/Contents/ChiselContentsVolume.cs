@@ -136,19 +136,25 @@ namespace Chisel.Components
             try
             {
                 ContentsVolume.Build(tree, builtNodes, builtPlanes);
-                // the arrays are kept when their size stays, as it does while brushes are moved
-                if (nodes.Length != builtNodes.Length)
-                    nodes = new ContentsVolumeNode[builtNodes.Length];
-                if (planes.Length != builtPlanes.Length)
-                    planes = new float4[builtPlanes.Length];
-                builtNodes.AsArray().CopyTo(nodes);
-                builtPlanes.AsArray().CopyTo(planes);
+                Take(builtNodes.AsArray(), builtPlanes.AsArray());
             }
             finally
             {
                 builtNodes.Dispose();
                 builtPlanes.Dispose();
             }
+        }
+
+        /// <summary>Takes in a volume built already, as the model's update hands it over (ChiselMeshUpdates)</summary>
+        internal void Take(NativeArray<ContentsVolumeNode> builtNodes, NativeArray<float4> builtPlanes)
+        {
+            // the arrays are kept when their size stays, as it does while brushes are moved
+            if (nodes.Length != builtNodes.Length)
+                nodes = new ContentsVolumeNode[builtNodes.Length];
+            if (planes.Length != builtPlanes.Length)
+                planes = new float4[builtPlanes.Length];
+            builtNodes.CopyTo(nodes);
+            builtPlanes.CopyTo(planes);
         }
     }
 }

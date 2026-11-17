@@ -96,13 +96,13 @@ namespace Chisel.Components
 			}
 
 			var count = foundModel.generated.FinishMeshUpdates(foundModel, meshUpdates, dependencies);
-			// the contents its meshes were made of, for ChiselContentsVolume.ContentsAt
+			// the contents its meshes were made of, for ChiselContentsVolume.ContentsAt, built by the update
 			var container = foundModel.generated.generatedDataContainer;
 			if (container)
 			{
 				if (!container.TryGetComponent<ChiselContentsVolume>(out var volume))
 					volume = container.AddComponent<ChiselContentsVolume>();
-				volume.Build(tree);
+				volume.Take(meshUpdates.contentsVolumeNodes.AsArray(), meshUpdates.contentsVolumePlanes.AsArray());
 			}
 			Instance.Rebuild(foundModel);
 			return count;

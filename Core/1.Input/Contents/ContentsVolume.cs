@@ -36,19 +36,26 @@ namespace Chisel.Core
             planes.Clear();
             if (!tree.Valid)
                 return;
-            var treeID = tree.CompactNodeID;
-            new BuildContentsVolumeJob
+            JobFor(tree.CompactNodeID, nodes, planes).Run();
+        }
+
+        // The job that builds the volume of a tree into nodes and planes, as the tree's update schedules it
+        // (ChiselMeshUpdates.contentsVolumeNodes)
+        internal static BuildContentsVolumeJob JobFor(CompactNodeID tree, NativeList<ContentsVolumeNode> nodes, NativeList<float4> planes)
+        {
+            return new BuildContentsVolumeJob
             {
-                hierarchy     = CompactHierarchyManager.GetReadOnlyHierarchy(treeID),
-                tree          = treeID,
+                hierarchy     = CompactHierarchyManager.GetReadOnlyHierarchy(tree),
+                tree          = tree,
                 brushMeshes   = ChiselMeshLookup.Value.brushMeshBlobCache,
                 contentsCount = CompactHierarchyManager.ContentsCount,
                 nodes         = nodes,
                 planes        = planes
-            }.Run();
+            };
         }
     }
 
+    // Clears nodes and planes, then adds the tree's nodes in order
     [BurstCompile(CompileSynchronously = true)]
     struct BuildContentsVolumeJob : IJob
     {
@@ -64,6 +71,8 @@ namespace Chisel.Core
 
         public void Execute()
         {
+            nodes.Clear();
+            planes.Clear();
             int count = hierarchy.ChildCount(tree);
             for (int i = 0; i < count; i++)
                 Add(hierarchy.GetChildCompactNodeIDAt(tree, i), float4x4.identity, false);

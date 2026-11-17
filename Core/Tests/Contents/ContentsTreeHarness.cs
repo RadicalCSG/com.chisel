@@ -72,6 +72,10 @@ namespace Chisel.Core.Tests
 		// the previous output, which is exactly what the editor would keep showing.
 		public bool Delivered { get; private set; }
 
+		// The contents volume the last delivered update handed over with its meshes (ChiselMeshUpdates)
+		public ContentsVolumeNode[] ContentsVolumeNodes { get; private set; }
+		public float4[] ContentsVolumePlanes { get; private set; }
+
 		public string LastUpdateReport { get; private set; } = "(no update yet)";
 		int callbacksForThisTree, callbacksForOtherTrees, renderableSections, sectionsWithLookup;
 
@@ -475,6 +479,8 @@ namespace Chisel.Core.Tests
 				callbacksForThisTree++;
 				Delivered = true;
 				triangles.Clear();
+				ContentsVolumeNodes  = meshUpdates.contentsVolumeNodes.AsArray().ToArray();
+				ContentsVolumePlanes = meshUpdates.contentsVolumePlanes.AsArray().ToArray();
 
 				ColliderArea = 0;
 				ColliderVertexCount = ColliderPositionCount = DegenerateTriangleCount = ColliderDegenerateTriangleCount = 0;
