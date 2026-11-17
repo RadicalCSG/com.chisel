@@ -31,6 +31,8 @@ namespace Chisel.Core
             // Each brush as the exact CSG sees it (ExactBrush: exact planes, corners, bounds), rebuilt when the brush
             // changes (ExactInputJob).
             public NativeList<BlobAssetReference<ExactBrush>>                   exactBrushCache;
+            // what the last plane merge found (ExactPlaneMerge.MergeAgain)
+            public ExactPlaneMergeMemory                                        planeMergeMemory;
 
             public NativeList<ChiselDecalInstance>                              decalInstances;
             // where each decal was in the list SetDecals was given (ChiselDecalStore)
@@ -94,6 +96,7 @@ namespace Chisel.Core
 				brushesTouchedByBrushCache  = new NativeList<BlobAssetReference<BrushesTouchedByBrush>>(1000, Allocator.Persistent); // Confirmed to get disposed
 				brushRenderBufferCache      = new NativeList<BlobAssetReference<ChiselBrushRenderBuffer>>(1000, Allocator.Persistent); // Confirmed to get disposed
 				exactBrushCache             = new NativeList<BlobAssetReference<ExactBrush>>(1000, Allocator.Persistent);
+				planeMergeMemory            = ExactPlaneMergeMemory.Create(Allocator.Persistent);
 
 				decalInstances              = new NativeList<ChiselDecalInstance>(16, Allocator.Persistent);
 				decalSequences              = new NativeList<int>(16, Allocator.Persistent);
@@ -253,6 +256,8 @@ namespace Chisel.Core
                     exactBrushCache.Dispose();
                 }
                 exactBrushCache = default;
+                planeMergeMemory.Dispose();
+                planeMergeMemory = default;
                 if (decalInstances.IsCreated)     decalInstances.Dispose();
                 if (decalSequences.IsCreated)     decalSequences.Dispose();
                 if (decalBounds.IsCreated)        decalBounds.Dispose();
