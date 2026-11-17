@@ -321,12 +321,51 @@ namespace Chisel.Core
 
     internal struct ChiselBrushRenderBuffer
     {
+        // Given to the buffer when it is built (RenderBufferSerial.Next): a buffer is not changed once built, so two with
+        // the same serial hold the same. 0 when it was built without one. Kept first, out of its contents (ContentBytes).
+        public ulong serial;
         public BlobArray<ChiselSurfaceRenderBuffer> surfaces;
         public BlobArray<ChiselQuerySurfaces>       querySurfaces;
         // the node the brush was created with
         public ulong entityID;
         public int surfaceOffset;
         public int surfaceCount;
+
+        // The bytes of what a buffer holds, without its serial: a blob's arrays point at their elements relative to
+        // themselves, so these bytes are the same for two buffers built the same. The size of a blob's data sits in the
+        // header in front of it (Unity.Entities BlobAssetHeader, 32 bytes, Length at 8).
+        public static unsafe bool ContentBytes(BlobAssetReference<ChiselBrushRenderBuffer> buffer, out byte* data, out int length)
+        {
+            data = null;
+            length = 0;
+            if (!buffer.IsCreated)
+                return false;
+            var blob = (byte*)buffer.GetUnsafePtr();
+            var size = *(int*)(blob - 32 + 8);
+            if (size <= sizeof(ulong) || size >= (1 << 30))
+                return false;
+            data   = blob + sizeof(ulong);
+            length = size - sizeof(ulong);
+            return true;
+        }
+
+        // A hash of what a buffer holds (ContentBytes); false when it holds nothing
+        public static unsafe bool ContentHash128(BlobAssetReference<ChiselBrushRenderBuffer> buffer, out uint4 hash)
+        {
+            hash = default;
+            if (!ContentBytes(buffer, out var data, out var length))
+                return false;
+            hash = xxHash3.Hash128(data, length);
+            return true;
+        }
     };
 
+    // The serials of the render buffers built (ChiselBrushRenderBuffer.serial), from any job
+    internal static class RenderBufferSerial
+    {
+        struct Key { }
+        static readonly SharedStatic<long> s_Last = SharedStatic<long>.GetOrCreate<Key>();
+
+        public static ulong Next() => (ulong)System.Threading.Interlocked.Increment(ref s_Last.Data);
+    }
 }

@@ -195,13 +195,21 @@ namespace Chisel.Core
             {
                 if (!kept[b].IsCreated)
                     continue;
-                ref var surfaces = ref kept[b].Value.surfaces;
+                ref var buffer   = ref kept[b].Value;
+                ref var surfaces = ref buffer.surfaces;
+                var changed = false;
                 for (int s = 0; s < surfaces.Length; s++)
                 {
-                    var grouped = groupOf.TryGetValue(new int2(b, s), out var g);
-                    surfaces[s].hotspot.group           = grouped ? groups[g].info.group : 0;
-                    surfaces[s].hotspot.groupVariations = grouped ? groups[g].info.variations : 0;
+                    var grouped    = groupOf.TryGetValue(new int2(b, s), out var g);
+                    var group      = grouped ? groups[g].info.group : 0;
+                    var variations = grouped ? groups[g].info.variations : 0;
+                    changed |= surfaces[s].hotspot.group != group || surfaces[s].hotspot.groupVariations != variations;
+                    surfaces[s].hotspot.group           = group;
+                    surfaces[s].hotspot.groupVariations = variations;
                 }
+                // what it holds changed in place
+                if (changed)
+                    buffer.serial = RenderBufferSerial.Next();
             }
             state.groupKeys.ResizeUninitialized(cached ? groups.Length : 0);
             state.globalKey.Value = default;
@@ -246,7 +254,7 @@ namespace Chisel.Core
         public static unsafe bool ContentHash(BlobAssetReference<ChiselBrushRenderBuffer> source, out uint4 hash)
         {
             hash = default;
-            if (!BlobBytes(source, out var data, out var length))
+            if (!ChiselBrushRenderBuffer.ContentBytes(source, out var data, out var length))
                 return false;
             var state = new xxHash3.StreamingState(false);
             var zero  = 0;
@@ -383,14 +391,6 @@ namespace Chisel.Core
             }
         }
 
-        // The size of a blob's data: it sits in the header in front of it (Unity.Entities BlobAssetHeader, 32 bytes, Length at 8)
-        static unsafe bool BlobBytes(BlobAssetReference<ChiselBrushRenderBuffer> blob, out byte* data, out int length)
-        {
-            data = (byte*)blob.GetUnsafePtr();
-            length = *(int*)(data - 32 + 8);
-            return length > 0 && length < (1 << 30);
-        }
-
         // The group as the cut reads it: where its sections start in the model's flat lists changes with the other groups
         static uint4 HashGroup(HotspotGroups.Group group, NativeList<HotspotSectionLine> lines, NativeList<HotspotSectionHalfPlane> halfPlanes,
                                NativeList<HotspotSectionCell> cells)
@@ -485,6 +485,7 @@ namespace Chisel.Core
             {
                 ref var original = ref source.Value;
                 ref var root     = ref builder.ConstructRoot<ChiselBrushRenderBuffer>();
+                root.serial      = RenderBufferSerial.Next();
                 root.entityID    = original.entityID;
                 var surfaces     = builder.Allocate(ref root.surfaces, original.surfaces.Length);
                 for (int s = 0; s < original.surfaces.Length; s++)
