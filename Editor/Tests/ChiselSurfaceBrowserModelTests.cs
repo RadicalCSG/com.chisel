@@ -25,6 +25,7 @@ namespace Chisel.Editors.Tests
                 Item("Assets/Models/Characters/Guard.mat", "Character"),
                 Item("Packages/com.chisel/Package Resources/Materials/Wall.mat"),
             });
+            model.LearnAll();
             return model;
         }
 
@@ -97,6 +98,7 @@ namespace Chisel.Editors.Tests
             var model = Model("Assets/Models");
             model.traits.Add(new ChiselSurfaceBrowserModel.Trait { name = "Metal", has = item => System.Array.Exists(item.labels, l => l.ToLower() == "metal") });
             model.traits.Add(new ChiselSurfaceBrowserModel.Trait { name = "Trim",  has = item => item.name.StartsWith("Trim") });
+            model.LearnAll();
 
             model.SetFilter("Metal", ChiselSurfaceBrowserModel.TraitFilter.With);
             Assert.That(Names(model.Filter("", ChiselSurfaceBrowserModel.QuickAccess.All)), Is.EqualTo(new[] { "Metal_Floor", "Trim_Industrial" }));
@@ -120,6 +122,7 @@ namespace Chisel.Editors.Tests
             var metal = new ChiselSurfaceBrowserModel.Trait { name = "Metal", has = item => System.Array.Exists(item.labels, l => l.ToLower() == "metal") };
             model.traits.Add(metal);
             model.traits.Add(ChiselSurfaceBrowserModel.PlainTrait(new[] { metal }));
+            model.LearnAll();
             model.SetFilter("Plain", ChiselSurfaceBrowserModel.TraitFilter.Without);
             Assert.That(Names(model.Filter("", ChiselSurfaceBrowserModel.QuickAccess.All)), Is.EqualTo(new[] { "Metal_Floor", "Trim_Industrial" }));
             Assert.That(model.CountWith(model.traits[1]), Is.EqualTo(2), "Concrete_Panels and Wall");
@@ -131,6 +134,7 @@ namespace Chisel.Editors.Tests
             var model = Model("Assets/Models");
             model.isDecal = item => item.name == "Trim_Industrial";
             model.isSetUp = item => item.name != "Wall";
+            model.LearnAll();
             Assert.That(Names(model.Filter("", ChiselSurfaceBrowserModel.QuickAccess.Decals)), Is.EqualTo(new[] { "Trim_Industrial" }));
             Assert.That(Names(model.Filter("", ChiselSurfaceBrowserModel.QuickAccess.NotSetUp)), Is.EqualTo(new[] { "Wall" }));
         }
@@ -269,6 +273,7 @@ namespace Chisel.Editors.Tests
             model.traits.Add(ChiselSurfaceBrowserModel.PlainTrait(new[] { metal }));
             model.SetFilter("Plain", ChiselSurfaceBrowserModel.TraitFilter.Without);
             model.isFavorite = item => item.name == "Wooden Stairs" || item.name == "Metal_Floor";
+            model.LearnAll();
 
             // materials: no presets anywhere
             Assert.That(Names(model.Filter("", ChiselSurfaceBrowserModel.QuickAccess.All)), Has.None.EndsWith("Stairs"));
@@ -290,6 +295,103 @@ namespace Chisel.Editors.Tests
             Assert.That(model.Labels().ConvertAll(pair => pair.Key), Is.EquivalentTo(new[] { "Metal", "Wood" }));
             Assert.That(model.CountWith(model.traits[1]), Is.Zero, "no materials to count");
             Assert.That(ChiselSurfaceBrowserModel.AppliesToPresets(ChiselSurfaceBrowserModel.QuickAccess.Decals), Is.False);
+        }
+
+        // Many materials, each asked about once: a quarter metal, every seventh a decal, every third not set up
+        static ChiselSurfaceBrowserModel ManyMaterials(int count, int[] asked)
+        {
+            var model = new ChiselSurfaceBrowserModel();
+            model.isHidden = path => { asked[0]++; return path.StartsWith("Assets/Hidden/"); };
+            model.isDecal  = item => { asked[0]++; return int.Parse(item.guid) % 7 == 0; };
+            model.isSetUp  = item => { asked[0]++; return int.Parse(item.guid) % 3 != 0; };
+            var metal = new ChiselSurfaceBrowserModel.Trait { name = "Metal", has = item => { asked[0]++; return int.Parse(item.guid) % 4 == 0; } };
+            model.traits.Add(metal);
+            model.traits.Add(ChiselSurfaceBrowserModel.PlainTrait(new[] { metal }));
+            var items = new List<ChiselSurfaceBrowserModel.Item>();
+            for (int i = 0; i < count; i++)
+                items.Add(new ChiselSurfaceBrowserModel.Item { guid = i.ToString(), path = (i % 10 == 0 ? "Assets/Hidden/" : "Assets/Shown/") + i + ".mat", name = "m" + i });
+            model.SetItems(items);
+            return model;
+        }
+
+        static int[] Counts(ChiselSurfaceBrowserModel model)
+        {
+            return new[]
+            {
+                model.Count(ChiselSurfaceBrowserModel.QuickAccess.All), model.Count(ChiselSurfaceBrowserModel.QuickAccess.Decals),
+                model.Count(ChiselSurfaceBrowserModel.QuickAccess.NotSetUp), model.CountWith(model.traits[0]), model.CountWith(model.traits[1])
+            };
+        }
+
+        // The sidebar's counts are read on every repaint: once the materials are learned, counting asks nothing of them
+        [Test]
+        public void Counting_AsksNothingOfTheMaterials()
+        {
+            var asked = new int[1];
+            var model = ManyMaterials(700, asked);
+            model.LearnAll();
+            asked[0] = 0;
+            var counts = Counts(model);
+            Assert.That(asked[0], Is.Zero, "asked about materials to count them");
+            // 630 shown: 0..699 without the multiples of 10
+            Assert.That(counts, Is.EqualTo(new[] { 630, 90, 210, 140, 490 }));
+        }
+
+        // Learning takes a batch at a time; with all batches done the counts are those of learning everything at once
+        [Test]
+        public void LearningInBatches_EndsWithTheCountsOfLearningAtOnce()
+        {
+            var asked = new int[1];
+            var model = ManyMaterials(3000, asked);
+            Assert.That(model.Count(ChiselSurfaceBrowserModel.QuickAccess.All), Is.Zero, "nothing learned yet");
+            var batches = 0;
+            while (model.Learning)
+            {
+                var learned = model.LearnSome(0.0001);
+                Assert.That(learned, Is.GreaterThan(0));
+                batches++;
+            }
+            Assert.That(batches, Is.GreaterThan(1), "learned in more than one batch");
+            var batched = Counts(model);
+            model.LearnAll();
+            Assert.That(batched, Is.EqualTo(Counts(model)));
+        }
+
+        // A material that changed is learned again on its own, and the counts follow
+        [Test]
+        public void AChangedMaterial_IsLearnedAgainOnItsOwn()
+        {
+            var asked = new int[1];
+            var model = ManyMaterials(700, asked);
+            model.LearnAll();
+            var metal = model.CountWith(model.traits[0]);
+            var plain = model.CountWith(model.traits[1]);
+            var learnedAgain = new List<string>();
+            model.traits[0].has = item => { learnedAgain.Add(item.guid); return item.guid == "1" || int.Parse(item.guid) % 4 == 0; };
+            model.MarkStale("1");
+            while (model.Learning)
+                model.LearnSome(1);
+            Assert.That(learnedAgain, Is.EqualTo(new[] { "1" }));
+            Assert.That(model.CountWith(model.traits[0]), Is.EqualTo(metal + 1));
+            Assert.That(model.CountWith(model.traits[1]), Is.EqualTo(plain - 1), "Plain follows");
+        }
+
+        // Materials added, removed and moved into a hidden folder change the counts by themselves only
+        [Test]
+        public void AddedRemovedAndMovedMaterials_ChangeTheCounts()
+        {
+            var asked = new int[1];
+            var model = ManyMaterials(700, asked);
+            model.LearnAll();
+            var all = model.Count(ChiselSurfaceBrowserModel.QuickAccess.All);
+            model.AddOrUpdate(new ChiselSurfaceBrowserModel.Item { guid = "1001", path = "Assets/Shown/1001.mat", name = "m1001" });
+            model.Remove("1");
+            model.AddOrUpdate(new ChiselSurfaceBrowserModel.Item { guid = "2", path = "Assets/Hidden/2.mat", name = "m2" });
+            while (model.Learning)
+                model.LearnSome(1);
+            Assert.That(model.Count(ChiselSurfaceBrowserModel.QuickAccess.All), Is.EqualTo(all + 1 - 1 - 1));
+            Assert.That(model.Items.Count, Is.EqualTo(700));
+            Assert.That(Names(model.Filter("m2", ChiselSurfaceBrowserModel.QuickAccess.All)), Has.None.EqualTo("m2"), "moved into a hidden folder");
         }
 
         [Test]

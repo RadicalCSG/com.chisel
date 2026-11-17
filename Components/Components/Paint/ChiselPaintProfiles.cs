@@ -29,9 +29,13 @@ namespace Chisel.Components
             ChiselPaintManager.SetDirty();
         }
 
+        /// <summary>Changes when profiles may have been added, removed or changed</summary>
+        public static int Version { get; private set; }
+
         /// <summary>Called when profiles may have been added, removed or changed</summary>
         public static void SetDirty()
         {
+            Version++;
             s_ByShader = null;
             ChiselPaintMaterials.Changed();
         }

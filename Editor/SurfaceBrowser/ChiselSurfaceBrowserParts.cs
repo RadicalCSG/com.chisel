@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using Chisel.Components;
+using Chisel.Core;
 using UnityEditor;
 using UnityEngine;
 
@@ -206,8 +207,8 @@ namespace Chisel.Editors
                     else
                     {
                         // never the generic material icon: nothing until the preview has loaded
-                        var preview = IsSheet(part.material) && part.material.mainTexture != null
-                                    ? part.material.mainTexture : AssetPreview.GetAssetPreview(part.material);
+                        var sheetTexture = IsSheet(part.material) ? ChiselTextureScale.MainTextureOf(part.material) : null;
+                        var preview = sheetTexture != null ? sheetTexture : AssetPreview.GetAssetPreview(part.material);
                         if (preview != null)
                             GUI.DrawTexture(thumb, preview, ScaleMode.ScaleToFit);
                         else if (AssetPreview.IsLoadingAssetPreview(part.material.GetEntityId()))
