@@ -52,12 +52,11 @@ namespace Chisel.Editors
     {
         public const string id       = nameof(ChiselGlobalToolbar) + "/" + nameof(CenterPivotOnSelectionButton);
         public const string kTooltip = "Center Pivot On Selection Center";
-        public const string kIcon    = "centerPivotOnSelectionCenter";
 
 
         public CenterPivotOnSelectionButton()
         {
-            ChiselToolbarUtility.SetupToolbarElement(this, kIcon, kTooltip);
+            ChiselToolbarUtility.SetupToolbarElement(this, ChiselIcon.CenterPivotOnSelectionCenter, kTooltip);
             this.clicked += OnClicked;
             ChiselSelectionManager.GeneratorSelectionUpdated += UpdateEnabledState;
             UpdateEnabledState();
@@ -81,12 +80,11 @@ namespace Chisel.Editors
     {
         public const string id          = nameof(ChiselGlobalToolbar) + "/" + nameof(CenterPivotOnEachNodeInSelectionButton);
         public const string kTooltip    = "Center Pivot On Each Node In Selection";
-        public const string kIcon       = "centerPivotOnEach";
 
 
         public CenterPivotOnEachNodeInSelectionButton()
         {
-            ChiselToolbarUtility.SetupToolbarElement(this, kIcon, kTooltip);
+            ChiselToolbarUtility.SetupToolbarElement(this, ChiselIcon.CenterPivotOnEach, kTooltip);
             this.clicked += OnClicked;
             ChiselSelectionManager.GeneratorSelectionUpdated += UpdateEnabledState;
             UpdateEnabledState();
@@ -110,12 +108,11 @@ namespace Chisel.Editors
     {
         public const string id          = nameof(ChiselGlobalToolbar) + "/" + nameof(RebuildAllButton);
         public const string kTooltip    = "Force rebuild all generated meshes";
-        public const string kIcon       = "rebuild";
         
 
         public RebuildAllButton() 
         {
-            ChiselToolbarUtility.SetupToolbarElement(this, kIcon, kTooltip);
+            ChiselToolbarUtility.SetupToolbarElement(this, ChiselIcon.Rebuild, kTooltip);
             this.clicked += OnClicked;
         }
 
@@ -132,12 +129,11 @@ namespace Chisel.Editors
     {
         public const string id          = nameof(ChiselGlobalToolbar) + "/" + nameof(ConvertToBrushesButton);
         public const string kTooltip    = "Convert generator to brush(es)";
-        public const string kIcon       = "convertToBrush";
         
 
         public ConvertToBrushesButton()  
         {
-            ChiselToolbarUtility.SetupToolbarElement(this, kIcon, kTooltip);
+            ChiselToolbarUtility.SetupToolbarElement(this, ChiselIcon.ConvertToBrush, kTooltip);
             this.clicked += OnClicked;
             ChiselSelectionManager.GeneratorSelectionUpdated += UpdateEnabledState;
             UpdateEnabledState();
@@ -300,7 +296,6 @@ namespace Chisel.Editors
         const CSGOperationType  kType       = CSGOperationType.Additive;
         const string            kName       = nameof(CSGOperationType.Additive);
         public const string     kTooltip    = kName + " boolean Operation";
-        public const string     kIcon       = "csg_" + kName;
 
         public ChiselSetAdditiveOperationToggle()
         {
@@ -315,7 +310,7 @@ namespace Chisel.Editors
 
         protected override void InitLabel()
         {
-            ChiselToolbarUtility.SetupToolbarElement(this, kIcon, kTooltip);
+            ChiselToolbarUtility.SetupToolbarElement(this, ChiselIcon.Additive, kTooltip);
             base.InitLabel();
         }
 
@@ -351,7 +346,6 @@ namespace Chisel.Editors
         const CSGOperationType  kType       = CSGOperationType.Subtractive;
         const string            kName       = nameof(CSGOperationType.Subtractive);
         public const string     kTooltip    = kName + " boolean Operation";
-        public const string     kIcon       = "csg_" + kName;
 
         public ChiselSetSubtractiveOperationToggle()
         {
@@ -366,7 +360,7 @@ namespace Chisel.Editors
 
         protected override void InitLabel()
         {
-            ChiselToolbarUtility.SetupToolbarElement(this, kIcon, kTooltip);
+            ChiselToolbarUtility.SetupToolbarElement(this, ChiselIcon.Subtractive, kTooltip);
             base.InitLabel();
         }
 
@@ -402,7 +396,6 @@ namespace Chisel.Editors
         const CSGOperationType  kType       = CSGOperationType.Intersecting;
         const string            kName       = nameof(CSGOperationType.Intersecting);
         public const string     kTooltip    = kName + " boolean Operation";
-        public const string     kIcon       = "csg_" + kName;
 
         public ChiselSetIntersectingOperationToggle()
         {
@@ -417,7 +410,7 @@ namespace Chisel.Editors
 
         protected override void InitLabel()
         {
-            ChiselToolbarUtility.SetupToolbarElement(this, kIcon, kTooltip);
+            ChiselToolbarUtility.SetupToolbarElement(this, ChiselIcon.Intersecting, kTooltip);
             base.InitLabel();
         }
 

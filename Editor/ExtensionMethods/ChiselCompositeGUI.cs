@@ -11,7 +11,7 @@ namespace Chisel.Editors
     {
         const int       kOperationToggleWidth   = 32;
         const int       kAutomaticToggleWidth   = 80;
-        const string    kAutoIconName           = "Automatic";
+        static readonly GUIContent[] kAutomaticContent = { new("Automatic", "Automatic boolean operation"), new("Automatic", "Automatic boolean operation") };
 
         class Styles
         {
@@ -141,8 +141,7 @@ namespace Chisel.Editors
                 if (showAuto)
                 {
                     toggleRect.width = kAutomaticToggleWidth;
-                    var autoIcon = ChiselEditorResources.GetIconContent(kAutoIconName, $"Automatic boolean operation");
-                    if (ToggleLabel(ref toggleRect, !operation.HasValue, autoIcon, s_Styles.leftButton))
+                    if (ToggleLabel(ref toggleRect, !operation.HasValue, kAutomaticContent, s_Styles.leftButton))
                         return null;
                     toggleRect.width = kOperationToggleWidth;
                 } else

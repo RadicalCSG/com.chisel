@@ -91,7 +91,7 @@ namespace Chisel.Editors
             temp.xMin += 25; 
             {
                 EditorGUI.BeginChangeCheck();
-                var content         = ChiselEditorResources.GetIconContentWithName(generator.ToolName, generator.Tooltip)[0];
+                var content         = ChiselEditorResources.GetIconContentWithName(ChiselIcon.OfGenerator(generator.ToolName), generator.Tooltip)[0];
                 var isSelected      = ChiselGeneratorManager.GeneratorMode == generator;
                 var value           = ToggleButton(temp, content, isSelected, style, isActive);
                 if (EditorGUI.EndChangeCheck() && value)
@@ -289,13 +289,12 @@ namespace Chisel.Editors
         public const int kToolsWide = 8;
 
 
-        const string kAddIconName = "Add";
         const string kAddTooltip = "Add or remove generators";
         static GUIContent kAddButton;
         [InitializeOnLoadMethod]
         internal static void InitializeIcons()
         {
-            kAddButton = ChiselEditorResources.GetIconContent(kAddIconName, kAddTooltip)[0];
+            kAddButton = ChiselEditorResources.GetIconContent(ChiselIcon.Add, kAddTooltip)[0];
         }
 
 

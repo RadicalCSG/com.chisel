@@ -16,7 +16,6 @@ namespace Chisel.Editors
     public static class ChiselHierarchyDecorator
     {
         const string kWarningBadgeName = "chisel-warning-badge";
-        const string kWarningIconName  = "warning";
 
         // OverlayIcon covers the full 16x16 icon; the warning sits in a corner of it as a sub-icon.
         const float kWarningBadgeSize = 10;
@@ -129,7 +128,7 @@ namespace Chisel.Editors
             if (item.OverlayIcon == null)
                 return;
 
-            s_WarningImage ??= ChiselEditorResources.GetIconContent(kWarningIconName)[0].image as Texture2D;
+            s_WarningImage ??= ChiselEditorResources.GetIconContent(ChiselIcon.Warning)[0].image as Texture2D;
             if (s_WarningImage == null)
                 return;
 

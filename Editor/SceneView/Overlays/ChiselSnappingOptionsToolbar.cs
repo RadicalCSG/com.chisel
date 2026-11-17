@@ -8,9 +8,9 @@ namespace Chisel.Editors
 {
     abstract class ChiselToggle : EditorToolbarToggle, IEventHandler
     {
-        public ChiselToggle(string iconName, string tooltipName)
+        public ChiselToggle(ChiselIcon icon, string tooltipName)
         {
-            ChiselToolbarUtility.SetupToolbarElement(this, iconName, tooltipName);
+            ChiselToolbarUtility.SetupToolbarElement(this, icon, tooltipName);
             UpdateEnabledState();
         }
         
@@ -28,8 +28,8 @@ namespace Chisel.Editors
     abstract class ChiselSnappingToggle : ChiselToggle
     {
         readonly SnapSettings settingsFlag;
-        public ChiselSnappingToggle(string iconName, string tooltipName, SnapSettings flags)
-            : base(iconName, tooltipName)
+        public ChiselSnappingToggle(ChiselIcon icon, string tooltipName, SnapSettings flags)
+            : base(icon, tooltipName)
         {
             settingsFlag = flags;
             ToolManager.activeToolChanged -= OnToolModeChanged;
@@ -54,9 +54,8 @@ namespace Chisel.Editors
     {
         public const string id          = nameof(ChiselSnappingOptionsToolbar) + "/" + nameof(Snapping.BoundsSnappingEnabled);
         public const string kTooltip    = "Snap bounds against grid";
-        public const string kIcon       = "BoundsSnap";
 
-        public BoundsSnappingToggle() : base(kIcon, kTooltip, SnapSettings.GeometryBoundsToGrid) { this.value = Snapping.BoundsSnappingEnabled; }
+        public BoundsSnappingToggle() : base(ChiselIcon.BoundsSnap, kTooltip, SnapSettings.GeometryBoundsToGrid) { this.value = Snapping.BoundsSnappingEnabled; }
         protected override void SetValue(bool newValue) { Snapping.BoundsSnappingEnabled = newValue; }
     }
 
@@ -65,9 +64,8 @@ namespace Chisel.Editors
     {
         public const string id          = nameof(ChiselSnappingOptionsToolbar) + "/" + nameof(Snapping.PivotSnappingEnabled);
         public const string kTooltip    = "Snap pivots against grid";
-        public const string kIcon       = "PivotSnap";
 
-        public PivotSnappingToggle() : base(kIcon, kTooltip, SnapSettings.GeometryPivotToGrid) { this.value = Snapping.PivotSnappingEnabled; }
+        public PivotSnappingToggle() : base(ChiselIcon.PivotSnap, kTooltip, SnapSettings.GeometryPivotToGrid) { this.value = Snapping.PivotSnappingEnabled; }
         protected override void SetValue(bool newValue) { Snapping.PivotSnappingEnabled = newValue; }
     }
 
@@ -76,9 +74,8 @@ namespace Chisel.Editors
     {
         public const string id          = nameof(ChiselSnappingOptionsToolbar) + "/" + nameof(Snapping.EdgeSnappingEnabled);
         public const string kTooltip    = "Snap against edges";
-        public const string kIcon       = "EdgeSnap";
 
-        public EdgeSnappingToggle() : base(kIcon, kTooltip, SnapSettings.GeometryEdge) { this.value = Snapping.EdgeSnappingEnabled; }
+        public EdgeSnappingToggle() : base(ChiselIcon.EdgeSnap, kTooltip, SnapSettings.GeometryEdge) { this.value = Snapping.EdgeSnappingEnabled; }
         protected override void SetValue(bool newValue) { Snapping.EdgeSnappingEnabled = newValue; }
     }
 
@@ -87,9 +84,8 @@ namespace Chisel.Editors
     {
         public const string id          = nameof(ChiselSnappingOptionsToolbar) + "/" + nameof(Snapping.VertexSnappingEnabled);
         public const string kTooltip    = "Snap against vertices";
-        public const string kIcon       = "VertexSnap";
 
-        public VertexSnappingToggle() : base(kIcon, kTooltip, SnapSettings.GeometryVertex) { this.value = Snapping.VertexSnappingEnabled; }
+        public VertexSnappingToggle() : base(ChiselIcon.VertexSnap, kTooltip, SnapSettings.GeometryVertex) { this.value = Snapping.VertexSnappingEnabled; }
         protected override void SetValue(bool newValue) { Snapping.VertexSnappingEnabled = newValue; }
     }
 
@@ -98,9 +94,8 @@ namespace Chisel.Editors
     {
         public const string id          = nameof(ChiselSnappingOptionsToolbar) + "/" + nameof(Snapping.SurfaceSnappingEnabled);
         public const string kTooltip    = "Snap against surfaces";
-        public const string kIcon       = "SurfaceSnap";
 
-        public SurfaceSnappingToggle() : base(kIcon, kTooltip, SnapSettings.GeometrySurface) { this.value = Snapping.SurfaceSnappingEnabled; }
+        public SurfaceSnappingToggle() : base(ChiselIcon.SurfaceSnap, kTooltip, SnapSettings.GeometrySurface) { this.value = Snapping.SurfaceSnappingEnabled; }
         protected override void SetValue(bool newValue) { Snapping.SurfaceSnappingEnabled = newValue; }
     }
 
@@ -109,9 +104,8 @@ namespace Chisel.Editors
     {
         public const string id          = nameof(ChiselSnappingOptionsToolbar) + "/" + nameof(Snapping.UVGridSnappingEnabled);
         public const string kTooltip    = "Snap UV against grid";
-        public const string kIcon       = "UVGridSnap";
 
-        public UVGridSnappingToggle() : base(kIcon, kTooltip, SnapSettings.UVGeometryGrid) { this.value = Snapping.UVGridSnappingEnabled; }
+        public UVGridSnappingToggle() : base(ChiselIcon.UVGridSnap, kTooltip, SnapSettings.UVGeometryGrid) { this.value = Snapping.UVGridSnappingEnabled; }
         protected override void SetValue(bool newValue) { Snapping.UVGridSnappingEnabled = newValue; }
     }
 
@@ -120,9 +114,8 @@ namespace Chisel.Editors
     {
         public const string id          = nameof(ChiselSnappingOptionsToolbar) + "/" + nameof(Snapping.UVEdgeSnappingEnabled);
         public const string kTooltip    = "Snap UV against surface edges";
-        public const string kIcon       = "UVEdgeSnap";
 
-        public UVEdgeSnappingToggle() : base(kIcon, kTooltip, SnapSettings.UVGeometryEdges) { this.value = Snapping.UVEdgeSnappingEnabled; }
+        public UVEdgeSnappingToggle() : base(ChiselIcon.UVEdgeSnap, kTooltip, SnapSettings.UVGeometryEdges) { this.value = Snapping.UVEdgeSnappingEnabled; }
         protected override void SetValue(bool newValue) { Snapping.UVEdgeSnappingEnabled = newValue; }
     }
 
@@ -131,9 +124,8 @@ namespace Chisel.Editors
     {
         public const string id          = nameof(ChiselSnappingOptionsToolbar) + "/" + nameof(Snapping.UVVertexSnappingEnabled);
         public const string kTooltip    = "Snap UV against surface vertices";
-        public const string kIcon       = "UVVertexSnap";
 
-        public UVVertexSnappingToggle() : base(kIcon, kTooltip, SnapSettings.UVGeometryVertices) { this.value = Snapping.UVVertexSnappingEnabled; }
+        public UVVertexSnappingToggle() : base(ChiselIcon.UVVertexSnap, kTooltip, SnapSettings.UVGeometryVertices) { this.value = Snapping.UVVertexSnappingEnabled; }
         protected override void SetValue(bool newValue) { Snapping.UVVertexSnappingEnabled = newValue; }
     }
 
@@ -151,6 +143,8 @@ namespace Chisel.Editors
             UVEdgeSnappingToggle  .id,
             UVVertexSnappingToggle.id)
         {
+            // shown docked or collapsed
+            collapsedIcon = ChiselEditorResources.LoadIconImages(ChiselIcon.Snapping)?[0];
         }
     }
 }

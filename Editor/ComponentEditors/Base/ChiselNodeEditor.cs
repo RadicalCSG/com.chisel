@@ -731,20 +731,17 @@ namespace Chisel.Editors
 #endif
     public class ChiselDefaultGeneratorDetails : IChiselNodeDetails
     {
-        const string kAdditiveIconName          = "csg_" + nameof(CSGOperationType.Additive);
-        const string kSubtractiveIconName       = "csg_" + nameof(CSGOperationType.Subtractive);
-        const string kIntersectingIconName      = "csg_" + nameof(CSGOperationType.Intersecting);
 
         public static GUIContent GetHierarchyIcon(CSGOperationType operation, string name)
         {
             return GetIconContent(operation, name)[0];
         }
 
-		readonly static string[] kOperationIcons =
+		internal readonly static ChiselIcon[] kOperationIcons =
             {
-                kAdditiveIconName,
-                kSubtractiveIconName,
-                kIntersectingIconName
+                ChiselIcon.Additive,
+                ChiselIcon.Subtractive,
+                ChiselIcon.Intersecting
             };
 
 		readonly static string[] kOperationStrings =
