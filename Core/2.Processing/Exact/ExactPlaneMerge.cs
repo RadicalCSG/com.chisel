@@ -93,6 +93,133 @@ namespace Chisel.Core
             return i;
         }
 
+        // Faces are only compared within a cell of rounded planes: kCellShift bits of each of a, b, c and of the offset in
+        // steps, wide enough that most faces of one plane share a cell
+        const int  kCellShift = 6;
+        const long kCellMask  = (1L << kCellShift) - 1;
+        const int  kOffsetShift = 20;       // one offset step of a rounded plane's w is 2^20 (kOffsetStep)
+
+        // A face in a cell of planes, with its box along the axis the cell is swept on
+        struct CellEntry
+        {
+            public long x, y, z, w;     // the cell
+            public double lo, hi;
+            public int face;
+        }
+
+        struct ByCellThenLo : System.Collections.Generic.IComparer<CellEntry>
+        {
+            public int Compare(CellEntry p, CellEntry q)
+            {
+                if (p.x != q.x) return p.x.CompareTo(q.x);
+                if (p.y != q.y) return p.y.CompareTo(q.y);
+                if (p.z != q.z) return p.z.CompareTo(q.z);
+                if (p.w != q.w) return p.w.CompareTo(q.w);
+                return p.lo.CompareTo(q.lo);
+            }
+        }
+
+        // The axis a cell's faces are swept on: the one its planes' normals lean along least, so the faces spread along it
+        static int SweepAxis(long x, long y, long z)
+        {
+            long ax = math.abs(x), ay = math.abs(y), az = math.abs(z);
+            if (ax <= ay && ax <= az) return 0;
+            return ay <= az ? 1 : 2;
+        }
+
+        // The cells a value of a plane goes in: its own, and the one next to it when it lies on the cell's edge, since a
+        // plane one rounding step off (OnePlane) may lie across it. The edges lie half a cell off the multiples of the
+        // cell's width, so the round values of axis-aligned planes (0, a whole normal, whole offsets) are not on one.
+        static int Cells(long value, out long first)
+        {
+            value += 1L << (kCellShift - 1);
+            long cell = value >> kCellShift;
+            long within = value & kCellMask;
+            first = within == 0 ? cell - 1 : cell;
+            return within == 0 || within == kCellMask ? 2 : 1;
+        }
+
+        static void AddEntries(ref NativeList<CellEntry> entries, in Face face, int index, long a, long b, long c, long offset)
+        {
+            int nx = Cells(a, out long x0), ny = Cells(b, out long y0), nz = Cells(c, out long z0), nw = Cells(offset, out long w0);
+            for (long x = x0; x < x0 + nx; x++)
+            for (long y = y0; y < y0 + ny; y++)
+            for (long z = z0; z < z0 + nz; z++)
+            for (long w = w0; w < w0 + nw; w++)
+            {
+                int axis = SweepAxis(x, y, z);
+                entries.Add(new CellEntry { x = x, y = y, z = z, w = w, lo = face.min[axis], hi = face.max[axis], face = index });
+            }
+        }
+
+        // Joins the faces of different brushes whose boxes meet and that are one plane (OnePlane) into groups: parent[i]
+        // ends up leading, through Find, to the smallest face of i's group. Returns how many pairs of faces it compared.
+        //
+        // Two faces that are one plane have keys (rounded planes, ExactPlane.Quantize) whose a, b, c and offset in steps
+        // differ by at most one, facing the same way or the other. Each face goes in the cells of its key facing both ways
+        // (Cells), so two such faces always share a cell, and only faces in one cell are compared, by a sweep along the
+        // cell's axis: the same pairs are joined as by comparing every pair.
+        public static long Unite(NativeList<Face> faces, NativeArray<int> parent)
+        {
+            for (int i = 0; i < faces.Length; i++)
+                parent[i] = i;
+            var entries = new NativeList<CellEntry>(faces.Length * 3, Allocator.Temp);
+            long compared = 0;
+            try
+            {
+                for (int i = 0; i < faces.Length; i++)
+                {
+                    var key = faces[i].key;
+                    // |w| of a rounded plane is below 2^58 (ExactPlane.kMaxDistance kOffsetScale steps), so it is a long
+                    long w = (long)key.w.lo;
+                    AddEntries(ref entries, faces[i], i,  key.a,  key.b,  key.c,  w >> kOffsetShift);
+                    AddEntries(ref entries, faces[i], i, -key.a, -key.b, -key.c, (-w) >> kOffsetShift);
+                }
+                entries.Sort(new ByCellThenLo());
+
+                for (int start = 0; start < entries.Length;)
+                {
+                    int end = start + 1;
+                    var first = entries[start];
+                    while (end < entries.Length && entries[end].x == first.x && entries[end].y == first.y &&
+                           entries[end].z == first.z && entries[end].w == first.w)
+                        end++;
+                    for (int i = start; i < end; i++)
+                    {
+                        var ei = entries[i];
+                        for (int j = i + 1; j < end && entries[j].lo <= ei.hi + kTouch; j++)
+                        {
+                            compared++;
+                            if (entries[j].face != ei.face)
+                                Join(faces, parent, ei.face, entries[j].face);
+                        }
+                    }
+                    start = end;
+                }
+            }
+            finally
+            {
+                entries.Dispose();
+            }
+            return compared;
+        }
+
+        // Joins the groups of faces i and j when they are of different brushes, their boxes meet and they are one plane
+        static void Join(NativeList<Face> faces, NativeArray<int> parent, int i, int j)
+        {
+            var fi = faces[i];
+            var fj = faces[j];
+            if (fi.brush == fj.brush)
+                return;
+            if (math.any(fj.min > fi.max + kTouch) || math.any(fi.min > fj.max + kTouch))
+                return;
+            if (!OnePlane(fi.key, fj.key))
+                return;
+            int ri = Find(parent, i), rj = Find(parent, j);
+            if (ri != rj)
+                parent[math.max(ri, rj)] = math.min(ri, rj);
+        }
+
         // The planes each brush keeps: brushes[b]'s planes at offsets[b] in planes, one for each of its own. A brush
         // without volume keeps its own.
         public static void Merge(NativeArray<BlobAssetReference<ExactBrush>> brushes, NativeList<ExactPlane> planes, NativeList<int> offsets)
@@ -132,27 +259,8 @@ namespace Chisel.Core
                     return;
                 faces.Sort(new ByMinX());
 
-                // faces of different brushes whose boxes meet, with one float plane
                 var parent = new NativeArray<int>(faces.Length, Allocator.Temp);
-                for (int i = 0; i < faces.Length; i++)
-                    parent[i] = i;
-                for (int i = 0; i < faces.Length; i++)
-                {
-                    var fi = faces[i];
-                    for (int j = i + 1; j < faces.Length && faces[j].min.x <= fi.max.x + kTouch; j++)
-                    {
-                        var fj = faces[j];
-                        if (fi.brush == fj.brush)
-                            continue;
-                        if (math.any(fj.min > fi.max + kTouch) || math.any(fi.min > fj.max + kTouch))
-                            continue;
-                        if (!OnePlane(fi.key, fj.key))
-                            continue;
-                        int ri = Find(parent, i), rj = Find(parent, j);
-                        if (ri != rj)
-                            parent[math.max(ri, rj)] = math.min(ri, rj);
-                    }
-                }
+                Unite(faces, parent);
 
                 // the faces of each group, one group after the other
                 var starts  = new NativeArray<int>(faces.Length + 1, Allocator.Temp);
