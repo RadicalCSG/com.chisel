@@ -297,11 +297,12 @@ namespace Chisel.Components
             var rect     = ImageRectOf(material, tile);
             var metadata = material.GetMetadataOfType<ChiselSurfaceMetadata>();
             var layout   = metadata != null ? metadata.hotspotLayout : null;
+            var mainTexture = ChiselTextureScale.MainTextureOf(material);
             Vector2 size;
             if (tile != 0 && layout != null && layout.size.x > 0 && layout.size.y > 0)
                 size = layout.size;
-            else if (material.mainTexture != null)
-                size = new Vector2(material.mainTexture.width, material.mainTexture.height);
+            else if (mainTexture != null)
+                size = new Vector2(mainTexture.width, mainTexture.height);
             else
                 size = Vector2.one;
             var width  = rect.width  * size.x;

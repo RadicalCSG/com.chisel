@@ -21,6 +21,7 @@ namespace Chisel.Editors.Tests
             Assert.That(Chisel.Core.ChiselTextureScale.MainTextureOf(material), Is.Null);
             ChiselSurfaceBrowserWindow.PreviewOf(material, flat: true);
             ChiselSurfaceBrowserDecals.ImageTextureOf(material);
+            Assert.That(Chisel.Components.ChiselDecalComponent.ImageAspectOf(material, 0), Is.EqualTo(1), "the shape of no image");
             LogAssert.NoUnexpectedReceived();
         }
     }
