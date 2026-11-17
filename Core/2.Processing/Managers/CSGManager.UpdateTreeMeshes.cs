@@ -1488,6 +1488,7 @@ namespace Chisel.Core
 
                         // Read / Write
                         rebuildTreeBrushIndexOrders = Temporaries.rebuildTreeBrushIndexOrders,
+                        memory                      = chiselLookupValues.planeMergeMemory,
 
                         // Write
                         mergedBrushIndexOrders      = Temporaries.mergedBrushIndexOrders,
