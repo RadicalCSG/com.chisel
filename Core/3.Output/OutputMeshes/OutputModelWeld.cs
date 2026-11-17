@@ -425,7 +425,7 @@ namespace Chisel.Core
                             NativeParallelHashMap<long, int> workIndex, NativeList<CollapseDecision> collapseDecisions, out uint4 key)
         {
             key = default;
-            if (!source.TryHash128(out var sourceHash))
+            if (!ChiselBrushRenderBuffer.ContentHash128(source, out var sourceHash))
                 return false;
             var buffer = new UnsafeAppendBuffer(256, 16, Allocator.Temp);
             try
@@ -1219,6 +1219,7 @@ namespace Chisel.Core
             {
                 ref var original = ref source.Value;
                 ref var root     = ref builder.ConstructRoot<ChiselBrushRenderBuffer>();
+                root.serial      = RenderBufferSerial.Next();
                 root.entityID    = original.entityID;
                 var surfaces     = builder.Allocate(ref root.surfaces, original.surfaces.Length);
                 for (int s = 0; s < original.surfaces.Length; s++)

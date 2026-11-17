@@ -1364,25 +1364,29 @@ namespace Chisel.Core
 
         // What the hotspot cut writes into a brush's own buffer in place (OutputHotspotSections.StartCutKeys), as Copy
         // would have copied it
-        static void KeepHotspotGroups(BlobAssetReference<ChiselBrushRenderBuffer> input, BlobAssetReference<ChiselBrushRenderBuffer> output)
+        internal static void KeepHotspotGroups(BlobAssetReference<ChiselBrushRenderBuffer> input, BlobAssetReference<ChiselBrushRenderBuffer> output)
         {
             ref var from = ref input.Value.surfaces;
             ref var to   = ref output.Value.surfaces;
+            var changed = false;
             for (int s = 0; s < from.Length && s < to.Length; s++)
             {
+                changed |= to[s].hotspot.group != from[s].hotspot.group || to[s].hotspot.groupVariations != from[s].hotspot.groupVariations;
                 to[s].hotspot.group           = from[s].hotspot.group;
                 to[s].hotspot.groupVariations = from[s].hotspot.groupVariations;
             }
+            // what it holds changed in place
+            if (changed)
+                output.Value.serial = RenderBufferSerial.Next();
         }
 
         internal static unsafe bool SameBuffer(BlobAssetReference<ChiselBrushRenderBuffer> a, BlobAssetReference<ChiselBrushRenderBuffer> b)
         {
             if (a.Equals(b))
                 return true;
-            if (!a.IsCreated || !b.IsCreated)
+            if (!ChiselBrushRenderBuffer.ContentBytes(a, out var pa, out var la) ||
+                !ChiselBrushRenderBuffer.ContentBytes(b, out var pb, out var lb))
                 return false;
-            var pa = (byte*)a.GetUnsafePtr(); var pb = (byte*)b.GetUnsafePtr();
-            var la = *(int*)(pa - 32 + 8);    var lb = *(int*)(pb - 32 + 8);
             return la == lb && UnsafeUtility.MemCmp(pa, pb, la) == 0;
         }
     }

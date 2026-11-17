@@ -2368,7 +2368,7 @@ namespace Chisel.Core
                         var planWrites = JobHandles.Write(JobHandleType.brushRenderDataJobHandle);
                         var planDependencies = JobExtensions.ResolveDependencies(ref planReads, ref planWrites);
                         var planned = MeshCleanupPlanJobs.Schedule(runInParallel, Temporaries.brushRenderData, chiselLookupValues.meshCleanupCache,
-                                                                   Temporaries.meshCleanup, Temporaries.meshCleanupNeighbours, Temporaries.meshCleanupOutlineBrushes,
+                                                                   chiselLookupValues.meshCleanupPlanMemory, Temporaries.meshCleanup, Temporaries.meshCleanupNeighbours, Temporaries.meshCleanupOutlineBrushes,
                                                                    Temporaries.meshCleanupOutlines, captureExact, planDependencies);
                         JobExtensions.RegisterNode(ref planReads, ref planWrites, planned);
                     }

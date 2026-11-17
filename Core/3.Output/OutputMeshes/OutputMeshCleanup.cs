@@ -80,12 +80,7 @@ namespace Chisel.Core
         // What the brush's buffer holds, to tell whether the cleanup's last result is still what it would make
         public static unsafe ulong KeyOf(BlobAssetReference<ChiselBrushRenderBuffer> buffer)
         {
-            if (!buffer.IsCreated)
-                return 0;
-            // the size of a blob's data sits in the header in front of it (Unity.Entities BlobAssetHeader, 32 bytes, Length at 8)
-            var data   = (byte*)buffer.GetUnsafePtr();
-            var length = *(int*)(data - 32 + 8);
-            if (length <= 0)
+            if (!ChiselBrushRenderBuffer.ContentBytes(buffer, out var data, out var length))
                 return 0;
             var hash = xxHash3.Hash64(data, length);
             return ((ulong)hash.y << 32) | hash.x;
@@ -164,7 +159,9 @@ namespace Chisel.Core
             var writer = touching.AsWriter();
             for (int i = 0; i < order.Length; i++)
                 TouchingAfter(brushes.AsArray(), boxes, order.AsArray(), i, ref writer);
-            PlanFrom(brushes, cache, keys, order.AsArray(), touching.AsReader(), work, neighbours, outlineBrushes, record);
+            using var pairs = new NativeList<int2>(count * 2, Allocator.Temp);
+            PairsFrom(order.AsArray(), touching.AsReader(), pairs);
+            PlanFromPairs(brushes, cache, keys, pairs, work, neighbours, outlineBrushes, record);
         }
 
         // A brush's key (KeyOf) and bounds (BoundsOf); each brush is independent of the others
@@ -201,10 +198,22 @@ namespace Chisel.Core
             touching.EndForEachIndex();
         }
 
-        // Plan, from each brush's key, the brushes in order and the brushes each touches after it (TouchingAfter)
-        public static void PlanFrom(NativeList<BrushData> brushes, NativeParallelHashMap<CompactNodeID, MeshCleanupEntry> cache, NativeArray<ulong> keys,
-                                    NativeArray<int> order, NativeStream.Reader touching, NativeList<MeshCleanupWork> work,
-                                    NativeList<int> neighbours, NativeList<int> outlineBrushes, bool record)
+        // The pairs of brushes that touch, from the brushes in order and the brushes each touches after it (TouchingAfter)
+        public static void PairsFrom(NativeArray<int> order, NativeStream.Reader touching, NativeList<int2> pairs)
+        {
+            for (int i = 0; i < order.Length; i++)
+            {
+                var found = touching.BeginForEachIndex(i);
+                for (int n = 0; n < found; n++)
+                    pairs.Add(new int2(order[i], touching.Read<int>()));
+                touching.EndForEachIndex();
+            }
+        }
+
+        // Plan, from each brush's key and the pairs of brushes that touch, each pair once
+        public static void PlanFromPairs(NativeList<BrushData> brushes, NativeParallelHashMap<CompactNodeID, MeshCleanupEntry> cache, NativeArray<ulong> keys,
+                                         NativeList<int2> pairs, NativeList<MeshCleanupWork> work,
+                                         NativeList<int> neighbours, NativeList<int> outlineBrushes, bool record)
         {
             work.Clear();
             neighbours.Clear();
@@ -216,14 +225,6 @@ namespace Chisel.Core
                 slotOf[b] = -1;
 
             // each brush's touching brushes, both ways: brush b's from first[b] to first[b + 1] in around, in brush order
-            using var pairs = new NativeList<int2>(count * 2, Allocator.Temp);
-            for (int i = 0; i < order.Length; i++)
-            {
-                var found = touching.BeginForEachIndex(i);
-                for (int n = 0; n < found; n++)
-                    pairs.Add(new int2(order[i], touching.Read<int>()));
-                touching.EndForEachIndex();
-            }
             NativeArray<int> first, filled, around;
             using var _first  = first  = new NativeArray<int>(count + 1, Allocator.Temp);
             using var _filled = filled = new NativeArray<int>(count, Allocator.Temp);
@@ -279,6 +280,192 @@ namespace Chisel.Core
                     neighbours.Add(slotOf[neighbour]);
                 }
             }
+        }
+
+        static bool HasOutput(MinMaxAABB box) => math.all(box.Min <= box.Max);
+
+        // The plan's first step with a memory (MeshCleanupPlanMemory): each brush's slot in it, the brushes whose buffers
+        // changed since it measured them (measure, flagged in measured), and the keys and bounds of the others as it kept
+        // them. Every brush is measured again when there is no memory yet, or when so many changed that comparing each with
+        // all the others costs more than sweeping them all; then lastFull is set.
+        public static void PrepareFromMemory(NativeList<BrushData> brushes, ref MeshCleanupPlanMemory memory, NativeList<ulong> keys, NativeList<MinMaxAABB> boxes,
+                                             NativeList<int> slotOfBrush, NativeList<bool> measured, NativeList<int> measure)
+        {
+            var count = brushes.Length;
+            keys.Resize(count, NativeArrayOptions.UninitializedMemory);
+            boxes.Resize(count, NativeArrayOptions.UninitializedMemory);
+            slotOfBrush.Resize(count, NativeArrayOptions.UninitializedMemory);
+            measured.Resize(count, NativeArrayOptions.ClearMemory);
+            measure.Clear();
+            var stamp = ++memory.stamp.Value;
+            var full  = !memory.valid.Value;
+            if (full)
+                memory.Clear();
+            // made valid again by PlanFromMemory: a plan that stops in between leaves a memory the next one starts over from
+            memory.valid.Value = false;
+
+            for (int b = 0; b < count; b++)
+            {
+                var data   = brushes[b];
+                var id     = data.brushIndexOrder.compactNodeID;
+                var serial = data.brushRenderBuffer.IsCreated ? data.brushRenderBuffer.Value.serial : 0ul;
+                var isNew  = !memory.slotOf.TryGetValue(id, out var s);
+                if (isNew)
+                {
+                    if (memory.freeSlots.Length > 0)
+                    {
+                        s = memory.freeSlots[memory.freeSlots.Length - 1];
+                        memory.freeSlots.RemoveAt(memory.freeSlots.Length - 1);
+                    } else
+                    {
+                        s = memory.slots.Length;
+                        memory.slots.Add(default);
+                    }
+                    memory.slotOf.Add(id, s);
+                    memory.slots[s] = new MeshCleanupPlanMemory.Slot { id = id, alive = true };
+                }
+                var slot    = memory.slots[s];
+                // a buffer built without a serial is not known to be the same; no buffer stays no buffer
+                var unknown = data.brushRenderBuffer.IsCreated && serial == 0;
+                var changed = isNew || unknown || serial != slot.serial;
+                slot.serial = serial;
+                slot.brush  = b;
+                slot.stamp  = stamp;
+                memory.slots[s] = slot;
+                slotOfBrush[b]  = s;
+                if (changed)
+                {
+                    measured[b] = true;
+                    measure.Add(b);
+                } else
+                {
+                    keys[b]  = slot.key;
+                    boxes[b] = slot.box;
+                }
+            }
+
+            // the brushes no longer there
+            if (!full)
+            {
+                for (int s = 0; s < memory.slots.Length; s++)
+                {
+                    var slot = memory.slots[s];
+                    if (!slot.alive || slot.stamp == stamp)
+                        continue;
+                    RemoveTouching(ref memory, s);
+                    memory.slotOf.Remove(slot.id);
+                    slot.alive = false;
+                    memory.slots[s] = slot;
+                    memory.freeSlots.Add(s);
+                }
+            }
+
+            if (!full && measure.Length * 8 > count + 64)
+                full = true;
+            if (full)
+            {
+                memory.touching.Clear();
+                measure.Clear();
+                for (int b = 0; b < count; b++)
+                {
+                    measured[b] = true;
+                    measure.Add(b);
+                }
+            } else
+            {
+                for (int m = 0; m < measure.Length; m++)
+                    RemoveTouching(ref memory, slotOfBrush[measure[m]]);
+            }
+            memory.lastFull.Value     = full;
+            memory.lastMeasured.Value = measure.Length;
+        }
+
+        // Takes a slot's pairs out of the memory, both ways
+        static void RemoveTouching(ref MeshCleanupPlanMemory memory, int slot)
+        {
+            using var others = new NativeList<int>(16, Allocator.Temp);
+            if (memory.touching.TryGetFirstValue(slot, out var other, out var iterator))
+            {
+                do others.Add(other); while (memory.touching.TryGetNextValue(out other, ref iterator));
+            }
+            memory.touching.Remove(slot);
+            for (int o = 0; o < others.Length; o++)
+            {
+                if (!memory.touching.TryGetFirstValue(others[o], out var back, out var at))
+                    continue;
+                do
+                {
+                    if (back == slot)
+                    {
+                        memory.touching.Remove(at);
+                        break;
+                    }
+                } while (memory.touching.TryGetNextValue(out back, ref at));
+            }
+        }
+
+        // The brushes whose output touches that of brush probe[i], which was measured again, written at i; a pair of
+        // brushes both measured again is written once, at the lower of the two. Each i is independent of the others.
+        public static void TouchingOf(NativeArray<BrushData> brushes, NativeArray<MinMaxAABB> boxes, NativeArray<bool> measured, NativeArray<int> probe, int i,
+                                      ref NativeStream.Writer touching)
+        {
+            touching.BeginForEachIndex(i);
+            var a   = probe[i];
+            var box = boxes[a];
+            if (HasOutput(box))
+            {
+                for (int b = 0; b < boxes.Length; b++)
+                {
+                    if (b == a || (measured[b] && b < a) || !Overlap(box, boxes[b]) || !HasOutput(boxes[b]))
+                        continue;
+                    if (SurfacesTouch(brushes[a].brushRenderBuffer, brushes[b].brushRenderBuffer))
+                        touching.Write(b);
+                }
+            }
+            touching.EndForEachIndex();
+        }
+
+        // The plan with a memory: the measured brushes' keys and bounds kept, the pairs found taken in (swept, over order,
+        // when every brush was measured again; probed, over probe, otherwise), and the plan made from all the pairs it holds
+        public static void PlanFromMemory(NativeList<BrushData> brushes, NativeParallelHashMap<CompactNodeID, MeshCleanupEntry> cache, ref MeshCleanupPlanMemory memory,
+                                          NativeArray<ulong> keys, NativeArray<MinMaxAABB> boxes, NativeArray<int> slotOfBrush, NativeArray<int> measure,
+                                          NativeArray<int> order, NativeStream.Reader swept, NativeArray<int> probe, NativeStream.Reader probed,
+                                          NativeList<MeshCleanupWork> work, NativeList<int> neighbours, NativeList<int> outlineBrushes, bool record)
+        {
+            for (int m = 0; m < measure.Length; m++)
+            {
+                var b    = measure[m];
+                var slot = memory.slots[slotOfBrush[b]];
+                slot.key = keys[b];
+                slot.box = boxes[b];
+                memory.slots[slotOfBrush[b]] = slot;
+            }
+
+            using var pairs = new NativeList<int2>(math.max(16, brushes.Length * 2), Allocator.Temp);
+            PairsFrom(order, swept, pairs);
+            PairsFrom(probe, probed, pairs);
+            for (int p = 0; p < pairs.Length; p++)
+            {
+                var a = slotOfBrush[pairs[p].x];
+                var b = slotOfBrush[pairs[p].y];
+                memory.touching.Add(a, b);
+                memory.touching.Add(b, a);
+            }
+
+            pairs.Clear();
+            for (int b = 0; b < brushes.Length; b++)
+            {
+                if (!memory.touching.TryGetFirstValue(slotOfBrush[b], out var other, out var iterator))
+                    continue;
+                do
+                {
+                    var o = memory.slots[other].brush;
+                    if (o > b)
+                        pairs.Add(new int2(b, o));
+                } while (memory.touching.TryGetNextValue(out other, ref iterator));
+            }
+            PlanFromPairs(brushes, cache, keys, pairs, work, neighbours, outlineBrushes, record);
+            memory.valid.Value = true;
         }
 
         // The outline edges of a brush's drawn surfaces, and of what of them collides
@@ -663,6 +850,7 @@ namespace Chisel.Core
             try
             {
                 ref var root  = ref builder.ConstructRoot<ChiselBrushRenderBuffer>();
+                root.serial   = RenderBufferSerial.Next();
                 root.entityID = original.entityID;
                 var surfaces  = builder.Allocate(ref root.surfaces, original.surfaces.Length);
                 for (int s = 0; s < original.surfaces.Length; s++)

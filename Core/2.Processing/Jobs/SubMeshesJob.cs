@@ -662,39 +662,70 @@ namespace Chisel.Core
         }
     }
 
-    // The jobs that plan the mesh cleanup (OutputMeshCleanup.Plan): each brush's key and bounds, and the brushes each one
-    // touches, in parallel; then the plan, with the cache's results handed to the brushes it kept
+    // The jobs that plan the mesh cleanup with the tree's memory (OutputMeshCleanup.PrepareFromMemory): the key and bounds
+    // of each brush whose buffer changed, in parallel; the brushes those touch, compared with all the others in parallel, or
+    // every brush swept in parallel when all were measured again; then the plan, with the cache's results handed to the
+    // brushes it kept
     static class MeshCleanupPlanJobs
     {
         // Disposes what it made itself with the handle it returns
         public static JobHandle Schedule(bool runInParallel, NativeList<BrushData> brushRenderData, NativeParallelHashMap<CompactNodeID, MeshCleanupEntry> meshCleanupCache,
-                                         NativeList<MeshCleanupWork> work, NativeList<int> neighbours, NativeList<int> outlineBrushes,
+                                         MeshCleanupPlanMemory memory, NativeList<MeshCleanupWork> work, NativeList<int> neighbours, NativeList<int> outlineBrushes,
                                          NativeList<OutputMeshCleanup.BrushOutlines> outlines, bool record, JobHandle dependsOn)
         {
-            var keys  = new NativeList<ulong>(Allocator.TempJob);
-            var boxes = new NativeList<MinMaxAABB>(Allocator.TempJob);
-            var order = new NativeList<int>(Allocator.TempJob);
-            var handle = new SizeMeshCleanupPlanJob { brushRenderData = brushRenderData, keys = keys, boxes = boxes }.Schedule(runInParallel, dependsOn);
+            var keys        = new NativeList<ulong>(Allocator.TempJob);
+            var boxes       = new NativeList<MinMaxAABB>(Allocator.TempJob);
+            var slotOfBrush = new NativeList<int>(Allocator.TempJob);
+            var measured    = new NativeList<bool>(Allocator.TempJob);
+            var measure     = new NativeList<int>(Allocator.TempJob);
+            var order       = new NativeList<int>(Allocator.TempJob);
+            var probe       = new NativeList<int>(Allocator.TempJob);
+            var handle = new PrepareMeshCleanupPlanJob
+            {
+                brushRenderData = brushRenderData,
+                memory          = memory,
+                keys            = keys,
+                boxes           = boxes,
+                slotOfBrush     = slotOfBrush,
+                measured        = measured,
+                measure         = measure
+            }.Schedule(runInParallel, dependsOn);
             handle = new MeasureMeshCleanupJob
             {
                 brushRenderData = brushRenderData.AsDeferredJobArray(),
+                measure         = measure.AsDeferredJobArray(),
                 keys            = keys.AsDeferredJobArray(),
                 boxes           = boxes.AsDeferredJobArray()
-            }.Schedule(runInParallel, brushRenderData, 16, handle);
-            handle = new SortMeshCleanupJob { boxes = boxes, order = order }.Schedule(runInParallel, handle);
-            handle = NativeCollection.ScheduleConstruct(runInParallel, out var touching, order, Allocator.TempJob, handle);
+            }.Schedule(runInParallel, measure, 8, handle);
+            handle = new SortMeshCleanupJob { full = memory.lastFull, boxes = boxes, measure = measure, order = order, probe = probe }.Schedule(runInParallel, handle);
+            handle = NativeCollection.ScheduleConstruct(runInParallel, out var swept, order, Allocator.TempJob, handle);
+            handle = NativeCollection.ScheduleConstruct(runInParallel, out var probed, probe, Allocator.TempJob, handle);
             handle = new MeshCleanupTouchingJob
             {
                 brushRenderData = brushRenderData.AsDeferredJobArray(),
                 boxes           = boxes.AsDeferredJobArray(),
                 order           = order.AsDeferredJobArray(),
-                touching        = touching.AsWriter()
+                touching        = swept.AsWriter()
             }.Schedule(runInParallel, order, 8, handle);
+            handle = new MeshCleanupProbeJob
+            {
+                brushRenderData = brushRenderData.AsDeferredJobArray(),
+                boxes           = boxes.AsDeferredJobArray(),
+                measured        = measured.AsDeferredJobArray(),
+                probe           = probe.AsDeferredJobArray(),
+                touching        = probed.AsWriter()
+            }.Schedule(runInParallel, probe, 1, handle);
             handle = new PlanMeshCleanupJob
             {
                 keys             = keys,
+                boxes            = boxes,
+                slotOfBrush      = slotOfBrush,
+                measure          = measure,
                 order            = order,
-                touching         = touching.AsReader(),
+                swept            = swept.AsReader(),
+                probe            = probe,
+                probed           = probed.AsReader(),
+                memory           = memory,
                 brushRenderData  = brushRenderData,
                 meshCleanupCache = meshCleanupCache,
                 work             = work,
@@ -703,48 +734,74 @@ namespace Chisel.Core
                 outlines         = outlines,
                 record           = record
             }.Schedule(runInParallel, handle);
-            return JobHandle.CombineDependencies(JobHandle.CombineDependencies(keys.Dispose(handle), boxes.Dispose(handle)),
-                                                 JobHandle.CombineDependencies(order.Dispose(handle), touching.Dispose(handle)));
+            var disposed = new NativeArray<JobHandle>(9, Allocator.Temp);
+            disposed[0] = keys.Dispose(handle);
+            disposed[1] = boxes.Dispose(handle);
+            disposed[2] = slotOfBrush.Dispose(handle);
+            disposed[3] = measured.Dispose(handle);
+            disposed[4] = measure.Dispose(handle);
+            disposed[5] = order.Dispose(handle);
+            disposed[6] = probe.Dispose(handle);
+            disposed[7] = swept.Dispose(handle);
+            disposed[8] = probed.Dispose(handle);
+            var all = JobHandle.CombineDependencies(disposed);
+            disposed.Dispose();
+            return all;
         }
     }
 
-    // A key and bounds for each brush (MeasureMeshCleanupJob)
     [BurstCompile(CompileSynchronously = true)]
-    struct SizeMeshCleanupPlanJob : IJob
+    struct PrepareMeshCleanupPlanJob : IJob
     {
         [NoAlias, ReadOnly] public NativeList<BrushData> brushRenderData;
+        public MeshCleanupPlanMemory memory;
         [NoAlias] public NativeList<ulong> keys;
         [NoAlias] public NativeList<MinMaxAABB> boxes;
+        [NoAlias] public NativeList<int> slotOfBrush;
+        [NoAlias] public NativeList<bool> measured;
+        [NoAlias] public NativeList<int> measure;
 
         public void Execute()
         {
-            keys.Resize(brushRenderData.Length, NativeArrayOptions.UninitializedMemory);
-            boxes.Resize(brushRenderData.Length, NativeArrayOptions.UninitializedMemory);
+            OutputMeshCleanup.PrepareFromMemory(brushRenderData, ref memory, keys, boxes, slotOfBrush, measured, measure);
         }
     }
 
+    // The key and bounds of each brush in measure
     [BurstCompile(CompileSynchronously = true)]
     struct MeasureMeshCleanupJob : IJobParallelForDefer
     {
         [NoAlias, ReadOnly] public NativeArray<BrushData> brushRenderData;
-        [NoAlias] public NativeArray<ulong> keys;
-        [NoAlias] public NativeArray<MinMaxAABB> boxes;
+        [NoAlias, ReadOnly] public NativeArray<int> measure;
+        // each brush is measured once, by its own index
+        [NoAlias, NativeDisableParallelForRestriction] public NativeArray<ulong> keys;
+        [NoAlias, NativeDisableParallelForRestriction] public NativeArray<MinMaxAABB> boxes;
 
         public void Execute(int index)
         {
-            OutputMeshCleanup.Measure(brushRenderData, index, keys, boxes);
+            OutputMeshCleanup.Measure(brushRenderData, measure[index], keys, boxes);
         }
     }
 
+    // With every brush measured again, all of them by their bounds to sweep; otherwise the measured ones to compare with
+    // all the others
     [BurstCompile(CompileSynchronously = true)]
     struct SortMeshCleanupJob : IJob
     {
+        [NoAlias, ReadOnly] public NativeReference<bool> full;
         [NoAlias, ReadOnly] public NativeList<MinMaxAABB> boxes;
+        [NoAlias, ReadOnly] public NativeList<int> measure;
         [NoAlias] public NativeList<int> order;
+        [NoAlias] public NativeList<int> probe;
 
         public void Execute()
         {
-            OutputMeshCleanup.SortByMinX(boxes.AsArray(), order);
+            order.Clear();
+            probe.Clear();
+            if (full.Value)
+                OutputMeshCleanup.SortByMinX(boxes.AsArray(), order);
+            else
+                probe.AddRange(measure.AsArray());
         }
     }
 
@@ -762,13 +819,34 @@ namespace Chisel.Core
         }
     }
 
-    // The brushes to clean up, and the cache's results handed to the others (OutputMeshCleanup.PlanFrom)
+    [BurstCompile(CompileSynchronously = true)]
+    struct MeshCleanupProbeJob : IJobParallelForDefer
+    {
+        [NoAlias, ReadOnly] public NativeArray<BrushData> brushRenderData;
+        [NoAlias, ReadOnly] public NativeArray<MinMaxAABB> boxes;
+        [NoAlias, ReadOnly] public NativeArray<bool> measured;
+        [NoAlias, ReadOnly] public NativeArray<int> probe;
+        [NoAlias] public NativeStream.Writer touching;
+
+        public void Execute(int index)
+        {
+            OutputMeshCleanup.TouchingOf(brushRenderData, boxes, measured, probe, index, ref touching);
+        }
+    }
+
+    // The brushes to clean up, and the cache's results handed to the others (OutputMeshCleanup.PlanFromMemory)
     [BurstCompile(CompileSynchronously = true)]
     struct PlanMeshCleanupJob : IJob
     {
         [NoAlias, ReadOnly] public NativeList<ulong> keys;
+        [NoAlias, ReadOnly] public NativeList<MinMaxAABB> boxes;
+        [NoAlias, ReadOnly] public NativeList<int> slotOfBrush;
+        [NoAlias, ReadOnly] public NativeList<int> measure;
         [NoAlias, ReadOnly] public NativeList<int> order;
-        [NoAlias, ReadOnly] public NativeStream.Reader touching;
+        [NoAlias, ReadOnly] public NativeStream.Reader swept;
+        [NoAlias, ReadOnly] public NativeList<int> probe;
+        [NoAlias, ReadOnly] public NativeStream.Reader probed;
+        public MeshCleanupPlanMemory memory;
         [NoAlias] public NativeList<BrushData> brushRenderData;
         [NoAlias] public NativeParallelHashMap<CompactNodeID, MeshCleanupEntry> meshCleanupCache;
         [NoAlias] public NativeList<MeshCleanupWork> work;
@@ -780,7 +858,8 @@ namespace Chisel.Core
 
         public void Execute()
         {
-            OutputMeshCleanup.PlanFrom(brushRenderData, meshCleanupCache, keys.AsArray(), order.AsArray(), touching, work, neighbours, outlineBrushes, record);
+            OutputMeshCleanup.PlanFromMemory(brushRenderData, meshCleanupCache, ref memory, keys.AsArray(), boxes.AsArray(), slotOfBrush.AsArray(), measure.AsArray(),
+                                             order.AsArray(), swept, probe.AsArray(), probed, work, neighbours, outlineBrushes, record);
             outlines.Resize(outlineBrushes.Length, NativeArrayOptions.ClearMemory);
         }
     }

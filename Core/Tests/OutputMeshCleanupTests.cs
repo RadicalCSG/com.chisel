@@ -762,6 +762,7 @@ namespace Chisel.Core.Tests
                     if (s == paintedSurface)
                         buffers[s].paintSurface = s;
                 }
+                root.serial = RenderBufferSerial.Next();
                 var queries = builder.Allocate(ref root.querySurfaces, 1);
                 using var list = new NativeList<ChiselQuerySurface>(Allocator.Temp);
                 for (int s = 0; s < surfaces.Length; s++)

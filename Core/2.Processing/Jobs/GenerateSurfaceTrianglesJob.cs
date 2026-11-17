@@ -995,6 +995,7 @@ namespace Chisel.Core
 								  builder, surfaceBuffers, ref decalBuilder, decalCandidates, decalTargeted, decalCandidateStart, layout);
 				}
 				root.entityID = entityID;
+				root.serial   = RenderBufferSerial.Next();
 				FinishBrush(brushIndexOrder, brushNodeOrder, builder, ref root, surfaceBuffers, decalCandidateStart, layout);
 			}
 			finally
