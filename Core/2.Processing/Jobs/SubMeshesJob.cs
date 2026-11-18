@@ -980,11 +980,13 @@ namespace Chisel.Core
         [NoAlias, ReadOnly] public NativeArray<BrushData> brushRenderData;
         [NoAlias, ReadOnly] public NativeArray<int> neighbours;
         [NoAlias, ReadOnly] public NativeArray<OutputMeshCleanup.BrushOutlines> outlines;
+        // what each brush was made into last time, and from what (MeshCleanupEntry.inputKey)
+        [NoAlias, ReadOnly] public NativeParallelHashMap<CompactNodeID, MeshCleanupEntry> meshCleanupCache;
         [NoAlias] public NativeArray<MeshCleanupWork> work;
 
         public void Execute(int index)
         {
-            work[index] = OutputMeshCleanup.CleanPlanned(work[index], brushRenderData, neighbours, outlines);
+            work[index] = OutputMeshCleanup.CleanPlanned(work[index], brushRenderData, neighbours, outlines, meshCleanupCache);
         }
     }
 

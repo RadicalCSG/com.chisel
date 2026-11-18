@@ -2385,6 +2385,7 @@ namespace Chisel.Core
                         brushRenderData = Temporaries.brushRenderData.AsDeferredJobArray(),
                         neighbours      = Temporaries.meshCleanupNeighbours.AsDeferredJobArray(),
                         outlines        = Temporaries.meshCleanupOutlines.AsDeferredJobArray(),
+                        meshCleanupCache = chiselLookupValues.meshCleanupCache,
                         work            = Temporaries.meshCleanup.AsDeferredJobArray()
                     };
                     cleanMeshesJob.Schedule(runInParallel, Temporaries.meshCleanup, 1,
