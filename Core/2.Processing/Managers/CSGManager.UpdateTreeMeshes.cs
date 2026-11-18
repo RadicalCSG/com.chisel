@@ -1000,11 +1000,11 @@ namespace Chisel.Core
                             ref var compactHierarchy = ref CompactHierarchyManager.GetHierarchy(treeUpdate.treeCompactNodeID);
                             using (kClearFlagsProfilerMarker.Auto())
                             {
-                                compactHierarchy.ClearAllStatusFlags(treeUpdate.treeCompactNodeID);
-                                for (int b = 0; b < treeUpdate.brushCount; b++)
+                                unsafe
                                 {
-                                    var brushIndexOrder = treeUpdate.Temporaries.allTreeBrushIndexOrders[b];
-                                    compactHierarchy.ClearAllStatusFlags(brushIndexOrder.compactNodeID);
+                                    fixed (CompactHierarchy* hierarchy = &compactHierarchy)
+                                    fixed (NativeList<IndexOrder>* brushes = &treeUpdate.Temporaries.allTreeBrushIndexOrders)
+                                        CompactHierarchyTreeNodes.ClearStatusFlags(hierarchy, treeUpdate.treeCompactNodeID, brushes, treeUpdate.brushCount);
                                 }
                             }
                             #endregion

@@ -1499,7 +1499,8 @@ namespace Chisel.Core
         }
     }
 
-    // CompactHierarchy.GetTreeNodes, Burst compiled (called on the main thread at the start of every update)
+    // What the main thread does with a tree's nodes at the start (CompactHierarchy.GetTreeNodes) and the end (the status
+    // flags cleared) of every update, Burst compiled: a tree can have thousands of brushes
     [BurstCompile]
     static class CompactHierarchyTreeNodes
     {
@@ -1507,6 +1508,15 @@ namespace Chisel.Core
         public static unsafe void Get(CompactHierarchy* hierarchy, NativeList<CompactNodeID>* nodes, NativeList<CompactNodeID>* brushes)
         {
             hierarchy->GetTreeNodes(*nodes, *brushes);
+        }
+
+        // the flags of the tree and of its first brushCount brushes
+        [BurstCompile]
+        public static unsafe void ClearStatusFlags(CompactHierarchy* hierarchy, in CompactNodeID tree, NativeList<IndexOrder>* brushes, int brushCount)
+        {
+            hierarchy->ClearAllStatusFlags(tree);
+            for (int b = 0; b < brushCount; b++)
+                hierarchy->ClearAllStatusFlags((*brushes)[b].compactNodeID);
         }
     }
 }
