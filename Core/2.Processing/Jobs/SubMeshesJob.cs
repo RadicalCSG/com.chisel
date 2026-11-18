@@ -1017,10 +1017,12 @@ namespace Chisel.Core
         [NoAlias] public NativeList<BlobAssetReference<ChiselBrushRenderBuffer>> patchedRenderBuffers;
         [NoAlias] public NativeParallelHashMap<CompactNodeID, MeshCleanupEntry> meshCleanupCache;
         [NoAlias] public NativeList<OutputMeshCleanup.BrushOutlines> outlines;
+        // the plan's memory, kept with the tree: each result kept with its brush's slot
+        public MeshCleanupPlanMemory memory;
 
         public void Execute()
         {
-            OutputMeshCleanup.Finish(brushRenderData, patchedRenderBuffers, work, meshCleanupCache);
+            OutputMeshCleanup.Finish(brushRenderData, patchedRenderBuffers, work, meshCleanupCache, memory);
             for (int i = 0; i < outlines.Length; i++)
                 outlines[i].Dispose();
             outlines.Clear();
