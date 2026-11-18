@@ -91,10 +91,25 @@ namespace Chisel.Core.Tests
 
             public void Dispose()
             {
+                foreach (var entry in cache)
+                    entry.Value.Dispose();
                 work.Dispose(); neighbours.Dispose(); outlineBrushes.Dispose(); cache.Dispose(); memory.Dispose();
                 foreach (var o in outlines) o.Dispose();
                 outlines.Dispose();
             }
+        }
+
+        // The cleanup as an update runs it with the tree's memory and cache: planned, the outlines made, the planned brushes
+        // cleaned up, the results handed to the brushes and kept
+        static void CleanUp(NativeList<BrushData> brushes, Planned planned)
+        {
+            PlanInJobs(brushes, planned);
+            OutputMeshCleanup.Outlines(brushes, planned.outlineBrushes, planned.outlines);
+            for (int i = 0; i < planned.work.Length; i++)
+                planned.work[i] = OutputMeshCleanup.CleanPlanned(planned.work[i], brushes.AsArray(), planned.neighbours.AsArray(), planned.outlines.AsArray());
+            using var patched = new NativeList<BlobAssetReference<ChiselBrushRenderBuffer>>(Allocator.Temp);
+            OutputMeshCleanup.Finish(brushes, patched, planned.work, planned.cache, planned.memory);
+            Assert.That(patched.Length, Is.Zero, "every result kept by the cache");
         }
 
         static void Free(NativeList<BrushData> brushes, List<BlobAssetReference<ChiselBrushRenderBuffer>> made)
@@ -193,6 +208,86 @@ namespace Chisel.Core.Tests
         // One to three brushes changed between plans (given a new buffer, the same buffer built again, no buffer, removed,
         // added or moved in the list), and now and then most of them: what the memory keeps gives the plan of planning
         // everything again
+        // edits random changes to the brushes: new buffers, the same buffers built again, no buffer, removed, added, replaced
+        // by a brush in their slot, swapped; what was done
+        static string Edit(NativeList<BrushData> brushes, ref Random random, List<BlobAssetReference<ChiselBrushRenderBuffer>> made, ref int nextID, int edits)
+        {
+            var what = "";
+            for (int e = 0; e < edits; e++)
+            {
+                var b    = random.NextInt(brushes.Length);
+                var data = brushes[b];
+                switch (random.NextInt(7))
+                {
+                    case 0:
+                    {
+                        var min = new float3(b % 18 + random.NextInt(-1, 2) * 0.25f, random.NextInt(3) * 0.5f, b / 18);
+                        data.brushRenderBuffer = Box(min, min + new float3(1, 1, 1), made);
+                        brushes[b] = data;
+                        what += $", new buffer for {b}";
+                        break;
+                    }
+                    case 1:
+                        // with the brush next to it on the grid, which it touches: two measured brushes that touch
+                        for (int n = b; n < math.min(b + 2, brushes.Length); n++)
+                        {
+                            var rebuilt = brushes[n];
+                            if (!rebuilt.brushRenderBuffer.IsCreated)
+                                continue;
+                            ref var surfaces = ref rebuilt.brushRenderBuffer.Value.surfaces;
+                            var bounds = surfaces[0].aabb;
+                            for (int s = 1; s < surfaces.Length; s++)
+                            {
+                                bounds.Min = math.min(bounds.Min, surfaces[s].aabb.Min);
+                                bounds.Max = math.max(bounds.Max, surfaces[s].aabb.Max);
+                            }
+                            rebuilt.brushRenderBuffer = Box(bounds.Min, bounds.Max, made);
+                            brushes[n] = rebuilt;
+                        }
+                        what += $", same buffers built again for {b} and the next";
+                        break;
+                    case 2:
+                        data.brushRenderBuffer = default;
+                        brushes[b] = data;
+                        what += $", no buffer for {b}";
+                        break;
+                    case 3:
+                        brushes.RemoveAt(b);
+                        what += $", removed {b}";
+                        break;
+                    case 4:
+                    {
+                        var min = new float3(random.NextInt(18), 0, random.NextInt(18));
+                        brushes.InsertRange(b, 1);
+                        brushes[b] = new BrushData { brushRenderBuffer = Box(min, min + new float3(1, 1, 1), made), brushIndexOrder = IndexOf(nextID++) };
+                        what += $", added at {b}";
+                        break;
+                    }
+                    case 5:
+                    {
+                        // gone, and a new brush in its slot (the next generation of its node id)
+                        var id  = data.brushIndexOrder.compactNodeID;
+                        var min = new float3(random.NextInt(18), 0, random.NextInt(18));
+                        brushes[b] = new BrushData
+                        {
+                            brushRenderBuffer = Box(min, min + new float3(1, 1, 1), made),
+                            brushIndexOrder   = new IndexOrder { nodeOrder = nextID++, compactNodeID = new CompactNodeID(default, new SlotIndex { index = id.slotIndex.index, generation = id.slotIndex.generation + 1 }) }
+                        };
+                        what += $", {b} replaced by a brush in its slot";
+                        break;
+                    }
+                    default:
+                    {
+                        var o = random.NextInt(brushes.Length);
+                        (brushes[b], brushes[o]) = (brushes[o], brushes[b]);
+                        what += $", swapped {b} and {o}";
+                        break;
+                    }
+                }
+            }
+            return what;
+        }
+
         [Test]
         public void PlanningWithAMemory_GivesThePlanOfPlanningEverythingAgain([Values(1u, 2u)] uint seed)
         {
@@ -208,84 +303,110 @@ namespace Chisel.Core.Tests
                 {
                     var edits = step % 10 == 9 ? 200 : random.NextInt(1, 4);
                     var what  = $"step {step}";
-                    for (int e = 0; e < edits; e++)
-                    {
-                        var b    = random.NextInt(brushes.Length);
-                        var data = brushes[b];
-                        switch (random.NextInt(7))
-                        {
-                            case 0:
-                            {
-                                var min = new float3(b % 18 + random.NextInt(-1, 2) * 0.25f, random.NextInt(3) * 0.5f, b / 18);
-                                data.brushRenderBuffer = Box(min, min + new float3(1, 1, 1), made);
-                                brushes[b] = data;
-                                what += $", new buffer for {b}";
-                                break;
-                            }
-                            case 1:
-                                // with the brush next to it on the grid, which it touches: two measured brushes that touch
-                                for (int n = b; n < math.min(b + 2, brushes.Length); n++)
-                                {
-                                    var rebuilt = brushes[n];
-                                    if (!rebuilt.brushRenderBuffer.IsCreated)
-                                        continue;
-                                    ref var surfaces = ref rebuilt.brushRenderBuffer.Value.surfaces;
-                                    var bounds = surfaces[0].aabb;
-                                    for (int s = 1; s < surfaces.Length; s++)
-                                    {
-                                        bounds.Min = math.min(bounds.Min, surfaces[s].aabb.Min);
-                                        bounds.Max = math.max(bounds.Max, surfaces[s].aabb.Max);
-                                    }
-                                    rebuilt.brushRenderBuffer = Box(bounds.Min, bounds.Max, made);
-                                    brushes[n] = rebuilt;
-                                }
-                                what += $", same buffers built again for {b} and the next";
-                                break;
-                            case 2:
-                                data.brushRenderBuffer = default;
-                                brushes[b] = data;
-                                what += $", no buffer for {b}";
-                                break;
-                            case 3:
-                                brushes.RemoveAt(b);
-                                what += $", removed {b}";
-                                break;
-                            case 4:
-                            {
-                                var min = new float3(random.NextInt(18), 0, random.NextInt(18));
-                                brushes.InsertRange(b, 1);
-                                brushes[b] = new BrushData { brushRenderBuffer = Box(min, min + new float3(1, 1, 1), made), brushIndexOrder = IndexOf(nextID++) };
-                                what += $", added at {b}";
-                                break;
-                            }
-                            case 5:
-                            {
-                                // gone, and a new brush in its slot (the next generation of its node id)
-                                var id  = data.brushIndexOrder.compactNodeID;
-                                var min = new float3(random.NextInt(18), 0, random.NextInt(18));
-                                brushes[b] = new BrushData
-                                {
-                                    brushRenderBuffer = Box(min, min + new float3(1, 1, 1), made),
-                                    brushIndexOrder   = new IndexOrder { nodeOrder = nextID++, compactNodeID = new CompactNodeID(default, new SlotIndex { index = id.slotIndex.index, generation = id.slotIndex.generation + 1 }) }
-                                };
-                                what += $", {b} replaced by a brush in its slot";
-                                break;
-                            }
-                            default:
-                            {
-                                var o = random.NextInt(brushes.Length);
-                                (brushes[b], brushes[o]) = (brushes[o], brushes[b]);
-                                what += $", swapped {b} and {o}";
-                                break;
-                            }
-                        }
-                    }
+                    what += Edit(brushes, ref random, made, ref nextID, edits);
                     PlanInJobs(brushes, kept);
                     using var fresh = new Planned();
                     OutputMeshCleanup.Plan(brushes, fresh.cache, fresh.work, fresh.neighbours, fresh.outlineBrushes);
                     fresh.outlines.Resize(fresh.outlineBrushes.Length, NativeArrayOptions.ClearMemory);
                     AssertSamePlan(fresh, kept, edits > 100 ? $"step {step}, {edits} edits" : what);
                 }
+            }
+            finally
+            {
+                Free(brushes, made);
+            }
+        }
+
+        // Cleaned up update after update with the memory and the cache, which plan again only the brushes an edit can have
+        // changed the result of, the brushes come out as cleaned up from nothing
+        [Test]
+        public void CleaningUpWithTheMemoryAndTheCache_GivesWhatCleaningUpFromNothingGives([Values(1u, 2u)] uint seed)
+        {
+            var random  = new Random(seed * 104729u);
+            var made    = new List<BlobAssetReference<ChiselBrushRenderBuffer>>();
+            var brushes = Brushes(300, seed, made);
+            var nextID  = 1000;
+            using var kept = new Planned();
+            try
+            {
+                using (var first = new NativeList<BrushData>(brushes.Length, Allocator.TempJob))
+                {
+                    first.AddRange(brushes.AsArray());
+                    CleanUp(first, kept);
+                }
+                var plannedSome = 0;
+                for (int step = 0; step < 30; step++)
+                {
+                    var edits = step % 10 == 9 ? 200 : random.NextInt(1, 4);
+                    var what  = $"step {step}" + Edit(brushes, ref random, made, ref nextID, edits);
+                    using var withMemory = new NativeList<BrushData>(brushes.Length, Allocator.TempJob);
+                    using var fromNothing = new NativeList<BrushData>(brushes.Length, Allocator.TempJob);
+                    withMemory.AddRange(brushes.AsArray());
+                    fromNothing.AddRange(brushes.AsArray());
+                    CleanUp(withMemory, kept);
+                    using (var fresh = new Planned())
+                    {
+                        CleanUp(fromNothing, fresh);
+                        for (int b = 0; b < brushes.Length; b++)
+                            Assert.That(OutputModelWeld.SameBuffer(withMemory[b].brushRenderBuffer, fromNothing[b].brushRenderBuffer), Is.True,
+                                        $"{(edits > 100 ? $"step {step}, {edits} edits" : what)}: brush {b}");
+                    }
+                    if (edits < 100 && kept.work.Length < brushes.Length / 4)
+                        plannedSome++;
+                }
+                Assert.That(plannedSome, Is.GreaterThan(20), "after a few edits only some brushes are planned again");
+            }
+            finally
+            {
+                Free(brushes, made);
+            }
+        }
+
+        // A brush whose result depends on a brush touching it (a corner of that one on its outline) is cleaned up again when
+        // that one moves away, and when it comes back, though it didn't change itself
+        [Test]
+        public void ABrushWhoseNeighbourMoves_IsCleanedUpAgain()
+        {
+            var made     = new List<BlobAssetReference<ChiselBrushRenderBuffer>>();
+            var brushes  = new NativeList<BrushData>(Allocator.Persistent);
+            using var kept = new Planned();
+            try
+            {
+                // a square, and a triangle with a corner on the middle of its bottom edge (OutputMeshCleanupTests)
+                BlobAssetReference<ChiselBrushRenderBuffer> Made(params float3[] corners)
+                {
+                    var buffer = OutputMeshCleanupTests.Brush(-1, corners);
+                    made.Add(buffer);
+                    return buffer;
+                }
+                var square   = Made(new float3(0, 0, 0), new float3(2, 0, 0), new float3(2, 2, 0), new float3(0, 0, 0), new float3(2, 2, 0), new float3(0, 2, 0));
+                var touching = Made(new float3(1, 0, 0), new float3(1, 0, -1), new float3(2, 0, -1));
+                var away     = Made(new float3(11, 0, 0), new float3(11, 0, -1), new float3(12, 0, -1));
+                brushes.Add(new BrushData { brushRenderBuffer = square, brushIndexOrder = IndexOf(0) });
+                brushes.Add(new BrushData { brushRenderBuffer = touching, brushIndexOrder = IndexOf(1) });
+
+                // what the first brush is made into, from the memory and from nothing; the hash of what it is made into (the
+                // buffer itself goes when the cache is given another)
+                uint4 Step(BlobAssetReference<ChiselBrushRenderBuffer> second, string what)
+                {
+                    var data = brushes[1];
+                    data.brushRenderBuffer = second;
+                    brushes[1] = data;
+                    using var withMemory  = new NativeList<BrushData>(brushes.Length, Allocator.TempJob);
+                    using var fromNothing = new NativeList<BrushData>(brushes.Length, Allocator.TempJob);
+                    withMemory.AddRange(brushes.AsArray());
+                    fromNothing.AddRange(brushes.AsArray());
+                    CleanUp(withMemory, kept);
+                    using var fresh = new Planned();
+                    CleanUp(fromNothing, fresh);
+                    Assert.That(OutputModelWeld.SameBuffer(withMemory[0].brushRenderBuffer, fromNothing[0].brushRenderBuffer), Is.True, what);
+                    Assert.That(OutputHotspotSections.ContentHash(withMemory[0].brushRenderBuffer, out var hash), Is.True);
+                    return hash;
+                }
+                var touched = Step(touching, "touched");
+                var alone   = Step(away, "the other moved away");
+                Assert.That(touched, Is.Not.EqualTo(alone), "what it is made into depends on the other");
+                Step(touching, "the other back");
             }
             finally
             {

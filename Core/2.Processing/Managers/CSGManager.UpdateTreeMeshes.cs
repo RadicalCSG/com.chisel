@@ -2401,7 +2401,8 @@ namespace Chisel.Core
                         brushRenderData      = Temporaries.brushRenderData,
                         patchedRenderBuffers = Temporaries.patchedRenderBuffers,
                         meshCleanupCache     = chiselLookupValues.meshCleanupCache,
-                        outlines             = Temporaries.meshCleanupOutlines
+                        outlines             = Temporaries.meshCleanupOutlines,
+                        memory               = chiselLookupValues.meshCleanupPlanMemory
                     };
                     finishMeshCleanupJob.Schedule(runInParallel,
                         JobHandles.Read(JobHandleType.decalVolumesJobHandle),
