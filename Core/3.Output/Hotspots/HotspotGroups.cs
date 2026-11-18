@@ -55,7 +55,7 @@ namespace Chisel.Core
         // what every match reads (InputsKey)
         public NativeReference<uint4> inputs;
         // each surface's part in the groups (HotspotGroups.KindOf), when worked out brush by brush before Prepare
-        // (StartKinds, KindsOf): kinds from kindStart[brush]
+        // (HotspotStageMemory.Prepare, KindsOf): kinds from kindStart[brush]
         public NativeList<int>  kindStart;
         public NativeList<byte> kinds;
         // and what of each candidate grouping reads (HotspotGroups.SurfaceHash), next to its kind
@@ -477,21 +477,6 @@ namespace Chisel.Core
             var source = surface.hotspotSource;
             var texels = layouts[source.layout - 1].pixelsPerUnit * (source.density > 0 ? source.density : 1);
             return Width(ref surface.colliderVertices, source) * texels < kSliverTexels ? kSliver : kCandidate;
-        }
-
-        // Room for each surface's kind (KindsOf), brush by brush
-        public static void StartKinds(NativeList<BrushData> brushes, ref FindState state)
-        {
-            state.kindStart.ResizeUninitialized(brushes.Length + 1);
-            var total = 0;
-            for (int b = 0; b < brushes.Length; b++)
-            {
-                state.kindStart[b] = total;
-                total += brushes[b].brushRenderBuffer.IsCreated ? brushes[b].brushRenderBuffer.Value.surfaces.Length : 0;
-            }
-            state.kindStart[brushes.Length] = total;
-            state.kinds.ResizeUninitialized(total);
-            state.hashes.ResizeUninitialized(total);
         }
 
         // The kinds of a brush's surfaces (KindOf), and the hashes of its candidates (SurfaceHash); each brush is independent

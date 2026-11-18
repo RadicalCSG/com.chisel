@@ -583,8 +583,7 @@ namespace Chisel.Core
             for (int i = 0; i < brushRenderData.Length; i++)
                 hotspotCut.kept.Add(brushRenderData[i].brushRenderBuffer);
             OutputModelWeld.FinishIncremental(brushRenderData, weldCopies, ref weldMemory, verify, collapseMoves);
-            HotspotGroups.StartKinds(brushRenderData, ref hotspotFind);
-            hotspotStageMemory.Prepare(brushRenderData, hotspotLayouts, weldMemory.sameBuffer);
+            hotspotStageMemory.Prepare(brushRenderData, hotspotLayouts, weldMemory.sameBuffer, ref hotspotFind);
         }
     }
 

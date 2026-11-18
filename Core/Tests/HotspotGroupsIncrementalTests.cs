@@ -227,6 +227,7 @@ namespace Chisel.Core.Tests
         public void AStageSlotGivenToAnotherBrush_KeepsNothingOfTheOneBefore()
         {
             var stage = HotspotStageMemory.Create(Allocator.Temp);
+            var find  = FindState.Create(Allocator.Temp);
             NativeList<BrushData> brushes;
             using var _brushes = brushes = new NativeList<BrushData>(Allocator.Temp);
             using var same     = new NativeList<bool>(Allocator.Temp) { true };
@@ -235,19 +236,116 @@ namespace Chisel.Core.Tests
                 var buffer = Buffer(Square(0, 0));
                 CompactNodeID IdOf(int generation) => new CompactNodeID(default, new SlotIndex { index = 3, generation = generation });
                 brushes.Add(new BrushData { brushRenderBuffer = buffer, brushSurfaceCount = 1, brushIndexOrder = new IndexOrder { compactNodeID = IdOf(1) } });
-                stage.Prepare(brushes, layouts, same);
+                stage.Prepare(brushes, layouts, same, ref find);
                 stage.brushes.ElementAt(stage.slotOfBrush[0]).hasContent = true;
-                stage.Prepare(brushes, layouts, same);
+                stage.Prepare(brushes, layouts, same, ref find);
                 Assert.That((stage.keptKinds[0], stage.keptContent[0]), Is.EqualTo((true, true)), "the same brush keeps what was found");
 
                 brushes[0] = new BrushData { brushRenderBuffer = buffer, brushSurfaceCount = 1, brushIndexOrder = new IndexOrder { compactNodeID = IdOf(2) } };
-                stage.Prepare(brushes, layouts, same);
+                stage.Prepare(brushes, layouts, same, ref find);
                 Assert.That(stage.slotOfBrush[0], Is.EqualTo(BrushSlots.Of(IdOf(1))), "the same slot");
                 Assert.That((stage.keptKinds[0], stage.keptContent[0]), Is.EqualTo((false, false)), "another brush there");
             }
             finally
             {
                 stage.Dispose();
+                find.Dispose();
+            }
+        }
+
+        static BrushData StageBrush(BlobAssetReference<ChiselBrushRenderBuffer> buffer, int slot) =>
+            new BrushData { brushRenderBuffer = buffer, brushSurfaceCount = 1, brushIndexOrder = new IndexOrder { compactNodeID = BrushID(slot) } };
+
+        // Each brush's kinds start where the surfaces of the brushes before it end; a brush without a buffer has none
+        [Test]
+        public void TheStagesKindStarts_FollowTheBrushesSurfaces()
+        {
+            var stage = HotspotStageMemory.Create(Allocator.Temp);
+            var find  = FindState.Create(Allocator.Temp);
+            NativeList<BrushData> brushes;
+            using var _brushes = brushes = new NativeList<BrushData>(Allocator.Temp);
+            NativeList<bool> same;
+            using var _same    = same = new NativeList<bool>(Allocator.Temp) { false, false, false };
+            try
+            {
+                brushes.Add(StageBrush(Buffer(Square(0, 0)), 0));
+                brushes.Add(StageBrush(default, 1));
+                brushes.Add(StageBrush(Buffer(Square(2, 4)), 2));
+                stage.Prepare(brushes, layouts, same, ref find);
+                Assert.That(find.kindStart.AsArray().ToArray(), Is.EqualTo(new[] { 0, 1, 1, 2 }));
+                Assert.That((find.kinds.Length, find.hashes.Length), Is.EqualTo((2, 2)));
+
+                same[0] = same[1] = same[2] = true;
+                stage.Prepare(brushes, layouts, same, ref find);
+                Assert.That(find.kindStart.AsArray().ToArray(), Is.EqualTo(new[] { 0, 1, 1, 2 }), "kept");
+            }
+            finally
+            {
+                stage.Dispose();
+                find.Dispose();
+            }
+        }
+
+        // Planted: a brush said to have the buffer of the last update, but without one now; its surfaces are counted from
+        // what was kept of it, its buffer is not gone through
+        [Test]
+        public void ABrushWithTheSameBuffer_IsCountedFromWhatWasKept()
+        {
+            var stage = HotspotStageMemory.Create(Allocator.Temp);
+            var find  = FindState.Create(Allocator.Temp);
+            NativeList<BrushData> brushes;
+            using var _brushes = brushes = new NativeList<BrushData>(Allocator.Temp);
+            NativeList<bool> same;
+            using var _same    = same = new NativeList<bool>(Allocator.Temp) { false };
+            try
+            {
+                brushes.Add(StageBrush(Buffer(Square(0, 0)), 0));
+                stage.Prepare(brushes, layouts, same, ref find);
+                brushes[0] = StageBrush(default, 0);
+                same[0] = true;
+                stage.Prepare(brushes, layouts, same, ref find);
+                Assert.That(find.kindStart.AsArray().ToArray(), Is.EqualTo(new[] { 0, 1 }));
+            }
+            finally
+            {
+                stage.Dispose();
+                find.Dispose();
+            }
+        }
+
+        // A brush that is gone is forgotten, also when another takes a new slot in the same update
+        [Test]
+        public void ABrushThatIsGone_IsForgottenByTheStage()
+        {
+            var stage = HotspotStageMemory.Create(Allocator.Temp);
+            var find  = FindState.Create(Allocator.Temp);
+            NativeList<BrushData> brushes;
+            using var _brushes = brushes = new NativeList<BrushData>(Allocator.Temp);
+            NativeList<bool> same;
+            using var _same    = same = new NativeList<bool>(Allocator.Temp) { false, false };
+            try
+            {
+                brushes.Add(StageBrush(Buffer(Square(0, 0)), 0));
+                brushes.Add(StageBrush(Buffer(Square(1, 4)), 1));
+                stage.Prepare(brushes, layouts, same, ref find);
+                var gone = BrushSlots.Of(BrushID(1));
+                Assert.That(stage.brushes[gone].used, Is.True);
+
+                brushes[1] = StageBrush(Buffer(Square(2, 8)), 2);
+                stage.Prepare(brushes, layouts, same, ref find);
+                Assert.That(stage.brushes[gone].used, Is.False, "replaced by a brush in another slot");
+                Assert.That(stage.brushes[gone].kinds.IsCreated, Is.False, "freed");
+
+                brushes.RemoveAt(1);
+                same.RemoveAt(1);
+                stage.Prepare(brushes, layouts, same, ref find);
+                Assert.That(stage.brushes[BrushSlots.Of(BrushID(2))].used, Is.False, "removed");
+                Assert.That(stage.brushes[BrushSlots.Of(BrushID(0))].used, Is.True, "the other one stays");
+            }
+            finally
+            {
+                stage.Dispose();
+                find.Dispose();
             }
         }
 
