@@ -99,6 +99,42 @@ namespace Chisel.Core.Tests
             }
         }
 
+        // A brush gone and a new one added in the same update: the hierarchy gives the new one the slot of the one gone, and
+        // the memories that keep by slot (BrushSlots: the sections, the weld) take it as that brush gone and a new one there
+        [Test]
+        public void ABrushReplacedInOneUpdate_GroupsAndWeldsLikeEverythingDoneAgain([Values(false, true)] bool split)
+        {
+            SetLightmapBudget(split);
+            var weldVerify = OutputModelWeld.VerifyIncremental;
+            OutputModelWeld.VerifyIncremental = true;
+            try
+            {
+                var random = new Random(11);
+                using var harness = ContentsTreeHarness.Build(Spread(6, 40));
+                harness.JudgeEachUpdate = false;
+                Assert.That(harness.Update(), Is.True, "built");
+                var reused = 0;
+                for (int step = 0; step < 8; step++)
+                {
+                    var roots  = harness.Scene.roots;
+                    var gone   = roots[random.NextInt(roots.Count)];
+                    var goneID = harness.TreeNodeOf(gone).CompactNodeID;
+                    harness.Remove(gone, destroy: true);
+                    var min = new float3(random.NextInt(0, 80), 0, random.NextInt(0, 80));
+                    var box = Box(min, min + new float3(2, 1, 2), $"replacement {step}");
+                    harness.Insert(null, random.NextInt(0, roots.Count + 1), box);
+                    if (BrushSlots.Of(harness.TreeNodeOf(box).CompactNodeID) == BrushSlots.Of(goneID))
+                        reused++;
+                    Assert.That(harness.Update(), Is.True, $"step {step}, {gone.name} replaced");
+                }
+                Assert.That(reused, Is.GreaterThan(0), "the hierarchy gave a new brush the slot of the one gone");
+            }
+            finally
+            {
+                OutputModelWeld.VerifyIncremental = weldVerify;
+            }
+        }
+
         // Planted: a surface the memory lost; the verify has to see it
         [Test]
         public void ALostSurface_IsReportedByTheVerify()
@@ -189,6 +225,45 @@ namespace Chisel.Core.Tests
                 Assert.That((memory.lastFull.Value, memory.lastChanged.Value), Is.EqualTo((false, 0)), "one removed: the others keep their order");
                 Prepare(2, 0);
                 Assert.That(memory.lastFull.Value, Is.True, "another order");
+            }
+            finally
+            {
+                memory.Dispose();
+                brushes.Dispose(); slotOfBrush.Dispose(); changed.Dispose(); touched.Dispose(); touchedSlot.Dispose();
+                foreach (var buffer in buffers)
+                    buffer.Dispose();
+            }
+        }
+
+        // A brush gone and a new one in its slot (BrushSlots), put last: the new one is no brush that moved, so the others
+        // keep their order and only it is grouped again
+        [Test]
+        public void ANewBrushInTheSlotOfOneGone_IsNoReorder()
+        {
+            float3[] Quad(float x) => new[] { new float3(x, 0, 0), new float3(x + 1, 0, 0), new float3(x + 1, 0, 1), new float3(x, 0, 0), new float3(x + 1, 0, 1), new float3(x, 0, 1) };
+            var buffers = new[] { OutputMeshCleanupTests.Brush(-1, Quad(0)), OutputMeshCleanupTests.Brush(-1, Quad(2)), OutputMeshCleanupTests.Brush(-1, Quad(4)), OutputMeshCleanupTests.Brush(-1, Quad(6)) };
+            var memory  = MeshSectionMemory.Create(Unity.Collections.Allocator.Persistent);
+            var brushes = new Unity.Collections.NativeList<BrushData>(Unity.Collections.Allocator.Persistent);
+            var slotOfBrush = new Unity.Collections.NativeList<int>(Unity.Collections.Allocator.Persistent);
+            var changed     = new Unity.Collections.NativeList<int>(Unity.Collections.Allocator.Persistent);
+            var touched     = new Unity.Collections.NativeList<int>(Unity.Collections.Allocator.Persistent);
+            var touchedSlot = new Unity.Collections.NativeList<bool>(Unity.Collections.Allocator.Persistent);
+            try
+            {
+                // (slot, generation, buffer) per brush
+                void Prepare(params int3[] order)
+                {
+                    brushes.Clear();
+                    foreach (var o in order)
+                        brushes.Add(new BrushData { brushRenderBuffer = buffers[o.z], brushIndexOrder = new IndexOrder { nodeOrder = o.z, compactNodeID = new CompactNodeID(default, new SlotIndex { index = o.x, generation = o.y }) } });
+                    MeshSections.Prepare(brushes, ref memory, 1, 0, slotOfBrush, changed, touched, touchedSlot);
+                    MeshSections.Finish(ref memory, touched.AsArray());
+                }
+                Prepare(new int3(1, 1, 0), new int3(2, 1, 1), new int3(3, 1, 2));
+                Assert.That(memory.lastFull.Value, Is.True, "nothing grouped yet");
+                Prepare(new int3(2, 1, 1), new int3(3, 1, 2), new int3(1, 2, 3));
+                Assert.That((memory.lastFull.Value, memory.lastChanged.Value), Is.EqualTo((false, 1)), "the new brush grouped, the others kept");
+                Assert.That(touched.AsArray().ToArray(), Is.EqualTo(new[] { 1 }), "the slot: the gone brush's surfaces out, the new one's in");
             }
             finally
             {

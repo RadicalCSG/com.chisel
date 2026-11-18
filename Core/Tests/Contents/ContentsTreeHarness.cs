@@ -626,6 +626,9 @@ namespace Chisel.Core.Tests
 			return 0;
 		}
 
+		// The tree node made for a described node
+		internal CSGTreeNode TreeNodeOf(ContentsSceneNode node) => treeNodes[node];
+
 		// Which described brush produced this triangle, or null when the triangle came from a tree or
 		// a brush this harness did not build.
 		public ContentsSceneNode NodeOf(CompactNodeID brushID)

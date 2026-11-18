@@ -141,9 +141,8 @@ namespace Chisel.Core
         /// logged as an error</summary>
         public static bool Verify;
 
-        public NativeParallelHashMap<CompactNodeID, int> slotOf;
+        // by brush slot (BrushSlots.Of)
         public NativeList<BrushSlot>                     slots;
-        public NativeList<int>                           freeSlots;
         public NativeList<Query>                         queries;
         public NativeReference<int>                      stamp;
         public NativeReference<bool>                     valid;
@@ -161,9 +160,7 @@ namespace Chisel.Core
         {
             return new MeshSectionMemory
             {
-                slotOf             = new NativeParallelHashMap<CompactNodeID, int>(1024, allocator),
                 slots              = new NativeList<BrushSlot>(1024, allocator),
-                freeSlots          = new NativeList<int>(64, allocator),
                 queries            = new NativeList<Query>(16, allocator),
                 stamp              = new NativeReference<int>(allocator),
                 valid              = new NativeReference<bool>(allocator),
@@ -185,9 +182,7 @@ namespace Chisel.Core
             queries.Clear();
             for (int q = 0; q < queryCount; q++)
                 queries.Add(Query.Create(allocator));
-            slotOf.Clear();
             slots.Clear();
-            freeSlots.Clear();
             valid.Value = false;
         }
 
@@ -199,9 +194,7 @@ namespace Chisel.Core
                     queries[q].Dispose();
                 queries.Dispose();
             }
-            if (slotOf.IsCreated)             slotOf.Dispose();
             if (slots.IsCreated)              slots.Dispose();
-            if (freeSlots.IsCreated)          freeSlots.Dispose();
             if (stamp.IsCreated)              stamp.Dispose();
             if (valid.IsCreated)              valid.Dispose();
             if (lightmapAreaBudget.IsCreated) lightmapAreaBudget.Dispose();
@@ -253,23 +246,15 @@ namespace Chisel.Core
                     var data   = brushes[b];
                     var id     = data.brushIndexOrder.compactNodeID;
                     var serial = data.brushRenderBuffer.IsCreated ? data.brushRenderBuffer.Value.serial : 0ul;
-                    var isNew  = !memory.slotOf.TryGetValue(id, out var s);
+                    var s      = BrushSlots.Of(id);
+                    if (s >= memory.slots.Length)
+                        memory.slots.Resize(s + 1, NativeArrayOptions.ClearMemory);
+                    var slot   = memory.slots[s];
+                    // a slot another brush had: that one is gone, its surfaces are taken out as this one's are put in
+                    var isNew  = !slot.alive || slot.id != id;
                     if (isNew)
-                    {
-                        if (memory.freeSlots.Length > 0)
-                        {
-                            s = memory.freeSlots[memory.freeSlots.Length - 1];
-                            memory.freeSlots.RemoveAt(memory.freeSlots.Length - 1);
-                        } else
-                        {
-                            s = memory.slots.Length;
-                            memory.slots.Add(default);
-                        }
-                        memory.slotOf.Add(id, s);
-                        memory.slots[s] = new MeshSectionMemory.BrushSlot { id = id, alive = true, brush = -1 };
-                    }
-                    var slot = memory.slots[s];
-                    if (!isNew)
+                        slot = new MeshSectionMemory.BrushSlot { id = id, alive = true, brush = -1 };
+                    else
                     {
                         // the groups keep their brushes in the order they had: another order groups everything again
                         reordered |= slot.brush < lastBrush;
@@ -612,10 +597,8 @@ namespace Chisel.Core
                 var slot = memory.slots[s];
                 if (!slot.alive || slot.stamp == stamp)
                     continue;
-                memory.slotOf.Remove(slot.id);
                 slot.alive = false;
                 memory.slots[s] = slot;
-                memory.freeSlots.Add(s);
             }
             memory.valid.Value = true;
         }

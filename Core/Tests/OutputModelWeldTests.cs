@@ -570,7 +570,9 @@ namespace Chisel.Core.Tests
 
 			public BlobAssetReference<ChiselBrushRenderBuffer> Own(BlobAssetReference<ChiselBrushRenderBuffer> buffer) { owned.Add(buffer); return buffer; }
 
-			public static CompactNodeID Id(int id) => new CompactNodeID(default, new SlotIndex { index = id + 1, generation = 1 });
+			// id + k * kGeneration: the node in id's slot k generations later (BrushSlots)
+			public const int kGeneration = 1000;
+			public static CompactNodeID Id(int id) => new CompactNodeID(default, new SlotIndex { index = id % kGeneration + 1, generation = id / kGeneration + 1 });
 
 			// model: (node id, buffer) in tree order; updated: the ids whose buffers this update made again
 			public void Weld(string what, (int id, BlobAssetReference<ChiselBrushRenderBuffer> buffer)[] model, params int[] updated) => Weld(what, true, model, updated);
@@ -642,6 +644,22 @@ namespace Chisel.Core.Tests
 			var away = weld.Own(Brush(new[] { W + new float3(0, 0, 3), U + new float3(0, 0, 3), D }));
 			weld.Weld("the surface across moved off the seam", new[] { (0, needle), (1, away), (2, far2) }, 1);
 			weld.Weld("and back", new[] { (0, needle), (1, across), (2, far2) }, 1);
+		}
+
+		// A brush gone and a new one in its slot, put last: the new one is no brush that moved, so the weld stays with the
+		// pieces of the two and the model is not welded again as a whole
+		[Test]
+		public void ANewBrushInTheSlotOfOneGone_IsWeldedWithoutTheWholeModel()
+		{
+			using var weld = new Incremental();
+			var needle = weld.Own(Brush(kNeedleSurface));
+			var across = weld.Own(Brush(kSurfaceAcross));
+			var far    = weld.Own(Brush(FarTriangle(1)));
+			var other  = weld.Own(Brush(FarTriangle(2)));
+			weld.Weld("the first update", new[] { (0, needle), (1, across), (2, far) });
+			var replacement = Incremental.kGeneration;
+			weld.Weld("the needle gone, a new brush in its slot put last", new[] { (1, across), (2, far), (replacement, other) }, replacement);
+			Assert.That(weld.LastScope, Is.Not.EqualTo(-1), "not the whole model");
 		}
 
 		[Test]
@@ -756,7 +774,7 @@ namespace Chisel.Core.Tests
 				var far = weld.Own(Brush(FarTriangle(1)));
 				weld.Weld("the first update", new[] { (0, needle), (1, across), (2, far) });
 				ref var memory = ref weld.Memory;
-				ref var kept = ref memory.brushes.ElementAt(memory.slotOf[Incremental.Id(1)]);
+				ref var kept = ref memory.brushes.ElementAt(BrushSlots.Of(Incremental.Id(1)));
 				Assert.That(kept.output.IsCreated, Is.True, "the split triangle's brush was stored again");
 				kept.output.Dispose();
 				kept.output = default;
