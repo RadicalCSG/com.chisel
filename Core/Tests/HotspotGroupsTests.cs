@@ -185,6 +185,46 @@ namespace Chisel.Core.Tests
             Assert.That(kept[2].Value.surfaces[0].hotspot.group, Is.Zero, "the one apart is by itself");
         }
 
+        // The group ids go only into the buffers of brushes with a grouped surface and of those whose buffers held ids before
+        // (grouped, which is left with the buffers holding ids now): the other buffers are not gone through
+        [Test]
+        public void GroupIds_AreWrittenOnlyWhereAGroupIsOrWas()
+        {
+            var left  = Square(-2, new float3(1, 0, 0));
+            var right = Square(0, new float3(1, 0, 0));
+            var apart = Square(5, new float3(1, 0, 0));
+            using var brushes = Brushes(left, right, apart);
+            using var kept    = new NativeArray<BlobAssetReference<ChiselBrushRenderBuffer>>(new[] { left, right, apart }, Allocator.Temp);
+            using var grouped = new NativeParallelHashSet<BlobAssetReference<ChiselBrushRenderBuffer>>(4, Allocator.Temp);
+            var state = HotspotCutState.Create(Allocator.Temp);
+            try
+            {
+                HotspotGroups.Find(brushes, tiles.AsArray(), layouts, default, default, ref state.GroupOf, ref state.UnfoldOf, state.groups, state.lines,
+                                   state.halfPlanes, state.cells);
+                OutputHotspotSections.StartCutKeys(brushes, layouts, default, kept, default, false, ref state, grouped);
+                var id = left.Value.surfaces[0].hotspot.group;
+                Assert.That(id, Is.GreaterThan(0), "the touching squares are a group");
+                Assert.That(right.Value.surfaces[0].hotspot.group, Is.EqualTo(id));
+                Assert.That(apart.Value.surfaces[0].hotspot.group, Is.Zero);
+                Assert.That(grouped.Count(), Is.EqualTo(2), "the buffers holding ids");
+
+                // planted: an id in a buffer of no group that held none; it is not gone through, so it stays
+                apart.Value.surfaces[0].hotspot.group = 99;
+                // the group gone: the buffers that held its id are told
+                state.GroupOf.Clear();
+                state.groups.Clear();
+                OutputHotspotSections.StartCutKeys(brushes, layouts, default, kept, default, false, ref state, grouped);
+                Assert.That(left.Value.surfaces[0].hotspot.group, Is.Zero);
+                Assert.That(right.Value.surfaces[0].hotspot.group, Is.Zero);
+                Assert.That(apart.Value.surfaces[0].hotspot.group, Is.EqualTo(99), "not gone through");
+                Assert.That(grouped.Count(), Is.Zero, "no buffer holds an id");
+            }
+            finally
+            {
+                state.Dispose();
+            }
+        }
+
         [Test]
         public void TwoCoplanarSquares_WithoutALink_HaveNoBorderWhereTheyMeet()
         {

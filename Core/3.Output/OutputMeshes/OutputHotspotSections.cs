@@ -182,34 +182,51 @@ namespace Chisel.Core
             FinishCutKeys(brushes, cache, ref state);
         }
 
-        // The groups' ids and keys, told to each brush's own buffer, and room for each brush's key (BrushCutKey)
+        // The groups' ids and keys, told to each brush's own buffer, and room for each brush's key (BrushCutKey).
+        // grouped (kept with the tree; every buffer when not given): the buffers holding group ids, which are the only ones
+        // besides those of the brushes with a grouped surface that can need telling, since a buffer is made without ids;
+        // left with the buffers holding ids now
         public static void StartCutKeys(NativeList<BrushData> brushes, NativeArray<HotspotLayoutData> layouts, NativeArray<float4> tileSides,
                                         NativeArray<BlobAssetReference<ChiselBrushRenderBuffer>> kept, NativeArray<ulong> variants, bool cached,
-                                        ref HotspotCutState state)
+                                        ref HotspotCutState state, NativeParallelHashSet<BlobAssetReference<ChiselBrushRenderBuffer>> grouped = default)
         {
             state.work.Clear();
             var groupOf = state.GroupOf;
             var groups  = state.groups;
             StableGroupIds(brushes, groupOf, groups);
-            for (int b = 0; kept.IsCreated && b < kept.Length && b < brushes.Length; b++)
+            var keptCount = kept.IsCreated ? math.min(kept.Length, brushes.Length) : 0;
+            if (!grouped.IsCreated)
             {
-                if (!kept[b].IsCreated)
-                    continue;
-                ref var buffer   = ref kept[b].Value;
-                ref var surfaces = ref buffer.surfaces;
-                var changed = false;
-                for (int s = 0; s < surfaces.Length; s++)
+                for (int b = 0; b < keptCount; b++)
+                    TellGroups(kept[b], b, groupOf, groups);
+            } else
+            {
+                // in brush order, so the serials they are given are too
+                var told = new NativeList<int>(math.max(1, groupOf.Count), Allocator.Temp);
+                foreach (var pair in groupOf)
                 {
-                    var grouped    = groupOf.TryGetValue(new int2(b, s), out var g);
-                    var group      = grouped ? groups[g].info.group : 0;
-                    var variations = grouped ? groups[g].info.variations : 0;
-                    changed |= surfaces[s].hotspot.group != group || surfaces[s].hotspot.groupVariations != variations;
-                    surfaces[s].hotspot.group           = group;
-                    surfaces[s].hotspot.groupVariations = variations;
+                    if (pair.Key.x >= 0 && pair.Key.x < keptCount)
+                        told.Add(pair.Key.x);
                 }
-                // what it holds changed in place
-                if (changed)
-                    buffer.serial = RenderBufferSerial.Next();
+                if (!grouped.IsEmpty)
+                {
+                    for (int b = 0; b < keptCount; b++)
+                    {
+                        if (kept[b].IsCreated && grouped.Contains(kept[b]))
+                            told.Add(b);
+                    }
+                }
+                told.Sort();
+                grouped.Clear();
+                for (int i = 0; i < told.Length; i++)
+                {
+                    var b = told[i];
+                    if (i > 0 && told[i - 1] == b)
+                        continue;
+                    if (TellGroups(kept[b], b, groupOf, groups))
+                        grouped.Add(kept[b]);
+                }
+                told.Dispose();
             }
             state.groupKeys.ResizeUninitialized(cached ? groups.Length : 0);
             state.globalKey.Value = default;
@@ -221,6 +238,32 @@ namespace Chisel.Core
             }
             state.brushKeys.ResizeUninitialized(brushes.Length);
             state.brushCuts.ResizeUninitialized(brushes.Length);
+        }
+
+        // Each surface of a brush's own buffer told the group it was mapped with (0 and 0: by itself); whether it holds
+        // any group id now
+        static bool TellGroups(BlobAssetReference<ChiselBrushRenderBuffer> keptBuffer, int b, UnsafeHashMap<int2, int> groupOf, NativeList<HotspotGroups.Group> groups)
+        {
+            if (!keptBuffer.IsCreated)
+                return false;
+            ref var buffer   = ref keptBuffer.Value;
+            ref var surfaces = ref buffer.surfaces;
+            var changed = false;
+            var holds   = false;
+            for (int s = 0; s < surfaces.Length; s++)
+            {
+                var inGroup    = groupOf.TryGetValue(new int2(b, s), out var g);
+                var group      = inGroup ? groups[g].info.group : 0;
+                var variations = inGroup ? groups[g].info.variations : 0;
+                changed |= surfaces[s].hotspot.group != group || surfaces[s].hotspot.groupVariations != variations;
+                holds   |= group != 0 || variations != 0;
+                surfaces[s].hotspot.group           = group;
+                surfaces[s].hotspot.groupVariations = variations;
+            }
+            // what it holds changed in place
+            if (changed)
+                buffer.serial = RenderBufferSerial.Next();
+            return holds;
         }
 
         // Whether a brush is cut (0 not, 1 keyed, 2 every time) and its key: what the cut reads, the brush as the weld left

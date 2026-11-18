@@ -221,6 +221,25 @@ namespace Chisel.Core.Tests
             Assert.That(Update(model, step: "and has it again").full, Is.False);
         }
 
+        // Without candidates there is nothing to group, and nothing of the model is kept (its brushes are not gone through):
+        // the next update with candidates groups them all
+        [Test]
+        public void AModelWithoutCandidates_KeepsNothing()
+        {
+            var model = TwoRows();
+            Update(model);
+            var plainModel = new List<Brush>();
+            foreach (var brush in model)
+                plainModel.Add(new Brush { id = brush.id, corners = brush.corners, normal = brush.normal, right = brush.right, plain = true });
+            var none = Update(plainModel, step: "no candidates");
+            Assert.That(none.groups, Is.Zero);
+            Assert.That(memory.valid.Value, Is.False, "nothing kept");
+            Assert.That(memory.order.Length, Is.Zero, "the brushes not gone through");
+            var again = Update(model, step: "candidates again");
+            Assert.That(again.full, Is.True, "grouped from scratch");
+            Assert.That(again.groups, Is.EqualTo(2));
+        }
+
         [Test]
         public void ASliverBesideASquare_FollowsItsNeighbour()
         {
