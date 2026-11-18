@@ -28,15 +28,20 @@ namespace Chisel.Core
         public bool used;
         // What the cleanup read to make it (OutputMeshCleanup.InputKey): the same again gives the same result
         public ulong inputKey;
+        // Per surface, the input the cleanup found nothing to take out of (OutputMeshCleanup.Clean's unchanged); not
+        // created when it didn't look
+        public UnsafeList<ulong> unchanged;
 
         public void Dispose()
         {
             if (result.IsCreated) result.Dispose();
             if (snapMoves.IsCreated) snapMoves.Dispose();
             if (changes.IsCreated) changes.Dispose();
+            if (unchanged.IsCreated) unchanged.Dispose();
             result = default;
             snapMoves = default;
             changes = default;
+            unchanged = default;
         }
     }
 
@@ -55,6 +60,7 @@ namespace Chisel.Core
         public BlobAssetReference<ChiselBrushRenderBuffer> result;
         public UnsafeList<float3x2> snapMoves;
         public UnsafeList<MeshCleanupChange> changes;
+        public UnsafeList<ulong> unchanged;
     }
 
     // At the end of the output, after decals, the model's weld and the hotspot cut, each brush's surfaces are finished:
@@ -594,6 +600,20 @@ namespace Chisel.Core
             return ((ulong)hash.y << 32) | hash.x;
         }
 
+        // Everything CleanSurface reads of a surface: its triangles, its vertices' positions, selections and attributes, and
+        // whether it was cut; never 0
+        public static unsafe ulong CleanInputKey(NativeList<int> indices, NativeList<float3> collider, NativeList<SelectVertex> select, NativeList<RenderVertex> render,
+                                                 bool cut)
+        {
+            var seed = (cut ? 1ul : 2ul) ^ ((ulong)(uint)indices.Length << 32 | (uint)render.Length);
+            var hash = xxHash3.Hash64(indices.GetUnsafeReadOnlyPtr(), indices.Length * sizeof(int), seed);
+            hash = xxHash3.Hash64(collider.GetUnsafeReadOnlyPtr(), collider.Length * UnsafeUtility.SizeOf<float3>(), ((ulong)hash.y << 32) | hash.x);
+            hash = xxHash3.Hash64(select.GetUnsafeReadOnlyPtr(), select.Length * UnsafeUtility.SizeOf<SelectVertex>(), ((ulong)hash.y << 32) | hash.x);
+            hash = xxHash3.Hash64(render.GetUnsafeReadOnlyPtr(), render.Length * UnsafeUtility.SizeOf<RenderVertex>(), ((ulong)hash.y << 32) | hash.x);
+            var key = ((ulong)hash.y << 32) | hash.x;
+            return key == 0 ? 1 : key;
+        }
+
         // One planned brush, with its neighbours' outlines (Outlines, by slot); each is independent of the others. Given
         // what the cache kept for it when that was made from the same input (InputKey).
         public static unsafe MeshCleanupWork CleanPlanned(MeshCleanupWork work, NativeArray<BrushData> brushes, NativeArray<int> neighbours,
@@ -611,7 +631,8 @@ namespace Chisel.Core
                 AddWithin(neighbour.colliders, box, colliderOutlines);
             }
             work.inputKey = InputKey(work.sourceKey, outlines, colliderOutlines, work.record);
-            if (cache.IsCreated && cache.TryGetValue(brushes[work.brush].brushIndexOrder.compactNodeID, out var entry) && entry.inputKey == work.inputKey)
+            MeshCleanupEntry entry = default;
+            if (cache.IsCreated && cache.TryGetValue(brushes[work.brush].brushIndexOrder.compactNodeID, out entry) && entry.inputKey == work.inputKey)
             {
                 work.result = entry.result;
                 work.kept   = true;
@@ -619,7 +640,15 @@ namespace Chisel.Core
             }
             using var moves = new NativeList<float3x2>(Allocator.Temp);
             var changes = work.record ? new NativeList<MeshCleanupChange>(Allocator.Temp) : default;
-            work.result = Clean(source, outlines, moves, colliderOutlines, changes);
+            // kept with the cache's entry: its surfaces the cleanup found nothing in are not gone through again next time
+            var unchanged = cache.IsCreated ? new NativeList<ulong>(Allocator.Temp) : default;
+            work.result = Clean(source, outlines, moves, colliderOutlines, changes, entry.unchanged, unchanged);
+            if (unchanged.IsCreated)
+            {
+                work.unchanged = new UnsafeList<ulong>(math.max(1, unchanged.Length), Allocator.Persistent);
+                work.unchanged.AddRange(unchanged.GetUnsafeReadOnlyPtr(), unchanged.Length);
+                unchanged.Dispose();
+            }
             if (moves.Length > 0)
             {
                 work.snapMoves = new UnsafeList<float3x2>(moves.Length, Allocator.Persistent);
@@ -805,7 +834,7 @@ namespace Chisel.Core
                         if (cache.TryGetValue(nodeID, out var old))
                             old.Dispose();
                         cache[nodeID] = new MeshCleanupEntry { key = item.key, result = item.result, snapMoves = item.snapMoves, changes = item.changes, used = true,
-                                                               inputKey = item.inputKey };
+                                                               inputKey = item.inputKey, unchanged = item.unchanged };
                     }
                     var s = BrushSlots.Of(nodeID);
                     if (memory.IsCreated && s < memory.slots.Length && memory.slots[s].id == nodeID)
@@ -822,6 +851,8 @@ namespace Chisel.Core
                         item.snapMoves.Dispose();
                     if (item.changes.IsCreated)
                         item.changes.Dispose();
+                    if (item.unchanged.IsCreated)
+                        item.unchanged.Dispose();
                 }
                 if (!item.result.IsCreated)
                     continue;
@@ -865,14 +896,21 @@ namespace Chisel.Core
         // The brush's buffer with its surfaces finished; Null when none of them changed. others: the outline edges of the
         // brushes touching it (OutlinesOf). An outline edge no other drawn surface has is open: a corner of another
         // surface's outline on it is where they meet with a crack. One two surfaces share is left, or one of them would be
-        // split without the other.
+        // split without the other. unchanged: per surface, the input it found nothing to take out of (CleanInputKey; 0 when
+        // it took something out, or didn't look); a surface whose input unchangedBefore holds for it is not gone through
+        // again.
         public static BlobAssetReference<ChiselBrushRenderBuffer> Clean(BlobAssetReference<ChiselBrushRenderBuffer> source, NativeList<Outline> others = default,
                                                                         NativeList<float3x2> snapMoves = default, NativeList<Outline> othersColliders = default,
-                                                                        NativeList<MeshCleanupChange> changes = default)
+                                                                        NativeList<MeshCleanupChange> changes = default,
+                                                                        UnsafeList<ulong> unchangedBefore = default, NativeList<ulong> unchanged = default)
         {
+            if (unchanged.IsCreated)
+                unchanged.Clear();
             if (!source.IsCreated)
                 return default;
             ref var original = ref source.Value;
+            if (unchanged.IsCreated)
+                unchanged.Resize(original.surfaces.Length, NativeArrayOptions.ClearMemory);
             var anyChanged = false;
             using var indices  = new NativeList<int>(Allocator.Temp);
             NativeList<float3> collider; NativeList<SelectVertex> select; NativeList<RenderVertex> render;
@@ -1041,7 +1079,12 @@ namespace Chisel.Core
                             }
                             split |= SplitOutline(indices, collider, select, render, onSurface.AsArray(), shared);
                         }
-                        cleaned = CleanSurface(indices, collider, select, render, split || from.physicsIndices.Length > 0);
+                        var cut = split || from.physicsIndices.Length > 0;
+                        var inputKey = unchanged.IsCreated || unchangedBefore.IsCreated ? CleanInputKey(indices, collider, select, render, cut) : 0ul;
+                        var foundBefore = unchangedBefore.IsCreated && s < unchangedBefore.Length && unchangedBefore[s] == inputKey;
+                        cleaned = !foundBefore && CleanSurface(indices, collider, select, render, cut);
+                        if (unchanged.IsCreated && !cleaned)
+                            unchanged[s] = inputKey;
                     }
                     if (!split && !cleaned)
                     {
@@ -1199,7 +1242,7 @@ namespace Chisel.Core
             indices.Resize(kept, NativeArrayOptions.UninitializedMemory);
         }
 
-        static void Load(ref ChiselSurfaceRenderBuffer from, NativeList<int> indices, NativeList<float3> collider, NativeList<SelectVertex> select, NativeList<RenderVertex> render)
+        internal static void Load(ref ChiselSurfaceRenderBuffer from, NativeList<int> indices, NativeList<float3> collider, NativeList<SelectVertex> select, NativeList<RenderVertex> render)
         {
             indices.Clear(); collider.Clear(); select.Clear(); render.Clear();
             for (int i = 0; i < from.indices.Length; i++)          indices.Add(from.indices[i]);
