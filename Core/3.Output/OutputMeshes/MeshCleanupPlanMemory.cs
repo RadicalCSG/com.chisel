@@ -22,9 +22,8 @@ namespace Chisel.Core
             public bool       alive;
         }
 
-        public NativeParallelHashMap<CompactNodeID, int> slotOf;
+        // by brush slot (BrushSlots.Of)
         public NativeList<Slot>                          slots;
-        public NativeList<int>                           freeSlots;
         // the slots each slot's brush touches, both ways
         public NativeParallelMultiHashMap<int, int>      touching;
         public NativeReference<int>                      stamp;
@@ -37,9 +36,7 @@ namespace Chisel.Core
         {
             return new MeshCleanupPlanMemory
             {
-                slotOf       = new NativeParallelHashMap<CompactNodeID, int>(1024, allocator),
                 slots        = new NativeList<Slot>(1024, allocator),
-                freeSlots    = new NativeList<int>(64, allocator),
                 touching     = new NativeParallelMultiHashMap<int, int>(4096, allocator),
                 stamp        = new NativeReference<int>(allocator),
                 valid        = new NativeReference<bool>(allocator),
@@ -50,18 +47,14 @@ namespace Chisel.Core
 
         public void Clear()
         {
-            slotOf.Clear();
             slots.Clear();
-            freeSlots.Clear();
             touching.Clear();
             valid.Value = false;
         }
 
         public void Dispose()
         {
-            if (slotOf.IsCreated)       slotOf.Dispose();
             if (slots.IsCreated)        slots.Dispose();
-            if (freeSlots.IsCreated)    freeSlots.Dispose();
             if (touching.IsCreated)     touching.Dispose();
             if (stamp.IsCreated)        stamp.Dispose();
             if (valid.IsCreated)        valid.Dispose();

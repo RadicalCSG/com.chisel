@@ -28,9 +28,7 @@ namespace Chisel.Core
     // The hotspot stage's results kept with the tree, for the brushes whose buffers stay the same (WeldMemory.sameBuffer)
     internal struct HotspotStageMemory
     {
-        public NativeList<HotspotStageBrush> brushes;   // by slot
-        public NativeList<int> freeSlots;
-        public NativeParallelHashMap<CompactNodeID, int> slotOf;
+        public NativeList<HotspotStageBrush> brushes;   // by brush slot (BrushSlots.Of)
         public NativeReference<uint4> layoutsKey;
         public NativeReference<bool>  valid;
         // this update, brush by brush: its slot, and whether its kinds and its content hash are what was kept
@@ -45,8 +43,6 @@ namespace Chisel.Core
             {
                 groupedBuffers = new NativeParallelHashSet<BlobAssetReference<ChiselBrushRenderBuffer>>(16, allocator),
                 brushes     = new NativeList<HotspotStageBrush>(64, allocator),
-                freeSlots   = new NativeList<int>(16, allocator),
-                slotOf      = new NativeParallelHashMap<CompactNodeID, int>(64, allocator),
                 layoutsKey  = new NativeReference<uint4>(allocator),
                 valid       = new NativeReference<bool>(allocator),
                 slotOfBrush = new NativeList<int>(64, allocator),
@@ -63,8 +59,6 @@ namespace Chisel.Core
                     brushes.ElementAt(i).Free();
                 brushes.Dispose();
             }
-            if (freeSlots.IsCreated)   freeSlots.Dispose();
-            if (slotOf.IsCreated)      slotOf.Dispose();
             if (layoutsKey.IsCreated)  layoutsKey.Dispose();
             if (valid.IsCreated)       valid.Dispose();
             if (slotOfBrush.IsCreated) slotOfBrush.Dispose();
@@ -88,23 +82,18 @@ namespace Chisel.Core
             keptContent.ResizeUninitialized(brushes.Length);
             for (int b = 0; b < brushes.Length; b++)
             {
-                var id = brushes[b].brushIndexOrder.compactNodeID;
-                var known = slotOf.TryGetValue(id, out var slot);
+                var id   = brushes[b].brushIndexOrder.compactNodeID;
+                var slot = BrushSlots.Of(id);
+                if (slot >= this.brushes.Length)
+                    this.brushes.Resize(slot + 1, NativeArrayOptions.ClearMemory);
+                ref var brush = ref this.brushes.ElementAt(slot);
+                var known = brush.used && brush.id == id;
                 if (!known)
                 {
-                    if (freeSlots.Length > 0)
-                    {
-                        slot = freeSlots[freeSlots.Length - 1];
-                        freeSlots.RemoveAt(freeSlots.Length - 1);
-                    } else
-                    {
-                        slot = this.brushes.Length;
-                        this.brushes.Add(default);
-                    }
-                    this.brushes[slot] = new HotspotStageBrush { id = id, used = true };
-                    slotOf.Add(id, slot);
+                    // a slot another brush had: what was found for that one goes
+                    brush.Free();
+                    brush = new HotspotStageBrush { id = id, used = true };
                 }
-                ref var brush = ref this.brushes.ElementAt(slot);
                 brush.live = true;
                 slotOfBrush[b] = slot;
                 var surfaceCount = brushes[b].brushRenderBuffer.IsCreated ? brushes[b].brushRenderBuffer.Value.surfaces.Length : 0;
@@ -130,10 +119,8 @@ namespace Chisel.Core
                 ref var brush = ref this.brushes.ElementAt(i);
                 if (!brush.used || brush.live)
                     continue;
-                slotOf.Remove(brush.id);
                 brush.Free();
                 brush = default;
-                freeSlots.Add(i);
             }
         }
     }

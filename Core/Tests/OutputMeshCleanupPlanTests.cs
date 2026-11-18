@@ -212,7 +212,7 @@ namespace Chisel.Core.Tests
                     {
                         var b    = random.NextInt(brushes.Length);
                         var data = brushes[b];
-                        switch (random.NextInt(6))
+                        switch (random.NextInt(7))
                         {
                             case 0:
                             {
@@ -256,6 +256,19 @@ namespace Chisel.Core.Tests
                                 brushes.InsertRange(b, 1);
                                 brushes[b] = new BrushData { brushRenderBuffer = Box(min, min + new float3(1, 1, 1), made), brushIndexOrder = IndexOf(nextID++) };
                                 what += $", added at {b}";
+                                break;
+                            }
+                            case 5:
+                            {
+                                // gone, and a new brush in its slot (the next generation of its node id)
+                                var id  = data.brushIndexOrder.compactNodeID;
+                                var min = new float3(random.NextInt(18), 0, random.NextInt(18));
+                                brushes[b] = new BrushData
+                                {
+                                    brushRenderBuffer = Box(min, min + new float3(1, 1, 1), made),
+                                    brushIndexOrder   = new IndexOrder { nodeOrder = nextID++, compactNodeID = new CompactNodeID(default, new SlotIndex { index = id.slotIndex.index, generation = id.slotIndex.generation + 1 }) }
+                                };
+                                what += $", {b} replaced by a brush in its slot";
                                 break;
                             }
                             default:

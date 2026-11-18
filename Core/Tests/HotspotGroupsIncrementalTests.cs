@@ -221,6 +221,36 @@ namespace Chisel.Core.Tests
             Assert.That(Update(model, step: "and has it again").full, Is.False);
         }
 
+        // The hotspot stage keeps what it found by a brush's slot (BrushSlots): a new brush in the slot of one that is gone
+        // keeps nothing of that one, though its buffer is the same
+        [Test]
+        public void AStageSlotGivenToAnotherBrush_KeepsNothingOfTheOneBefore()
+        {
+            var stage = HotspotStageMemory.Create(Allocator.Temp);
+            NativeList<BrushData> brushes;
+            using var _brushes = brushes = new NativeList<BrushData>(Allocator.Temp);
+            using var same     = new NativeList<bool>(Allocator.Temp) { true };
+            try
+            {
+                var buffer = Buffer(Square(0, 0));
+                CompactNodeID IdOf(int generation) => new CompactNodeID(default, new SlotIndex { index = 3, generation = generation });
+                brushes.Add(new BrushData { brushRenderBuffer = buffer, brushSurfaceCount = 1, brushIndexOrder = new IndexOrder { compactNodeID = IdOf(1) } });
+                stage.Prepare(brushes, layouts, same);
+                stage.brushes.ElementAt(stage.slotOfBrush[0]).hasContent = true;
+                stage.Prepare(brushes, layouts, same);
+                Assert.That((stage.keptKinds[0], stage.keptContent[0]), Is.EqualTo((true, true)), "the same brush keeps what was found");
+
+                brushes[0] = new BrushData { brushRenderBuffer = buffer, brushSurfaceCount = 1, brushIndexOrder = new IndexOrder { compactNodeID = IdOf(2) } };
+                stage.Prepare(brushes, layouts, same);
+                Assert.That(stage.slotOfBrush[0], Is.EqualTo(BrushSlots.Of(IdOf(1))), "the same slot");
+                Assert.That((stage.keptKinds[0], stage.keptContent[0]), Is.EqualTo((false, false)), "another brush there");
+            }
+            finally
+            {
+                stage.Dispose();
+            }
+        }
+
         // Without candidates there is nothing to group, and nothing of the model is kept (its brushes are not gone through):
         // the next update with candidates groups them all
         [Test]

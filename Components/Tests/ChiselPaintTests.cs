@@ -649,7 +649,8 @@ namespace Chisel.Components.Tests
             Assert.That(BuiltBuffer(model, box), Is.EqualTo(built), "new values built the brush, so this didn't test them");
             var memory = ChiselTreeLookup.Value[model.Node].weldMemory;
             var id = CompactHierarchyManager.GetCompactNodeID(box.TopTreeNode);
-            Assert.That(memory.slotOf.TryGetValue(id, out var slot), Is.True, "the weld doesn't know the box");
+            var slot = BrushSlots.Of(id);
+            Assert.That(slot < memory.brushes.Length && memory.brushes[slot].used && memory.brushes[slot].id == id, Is.True, "the weld doesn't know the box");
             Assert.That(memory.brushes[slot].changed, Is.True, "the weld kept what it made of the box with the old values");
         }
 

@@ -309,21 +309,13 @@ namespace Chisel.Core
                 var data   = brushes[b];
                 var id     = data.brushIndexOrder.compactNodeID;
                 var serial = data.brushRenderBuffer.IsCreated ? data.brushRenderBuffer.Value.serial : 0ul;
-                var isNew  = !memory.slotOf.TryGetValue(id, out var s);
+                var s      = BrushSlots.Of(id);
+                if (s >= memory.slots.Length)
+                    memory.slots.Resize(s + 1, NativeArrayOptions.ClearMemory);
+                // a slot another brush had: that one is gone, and this one is measured, which takes the pairs of the slot out
+                var isNew  = !memory.slots[s].alive || memory.slots[s].id != id;
                 if (isNew)
-                {
-                    if (memory.freeSlots.Length > 0)
-                    {
-                        s = memory.freeSlots[memory.freeSlots.Length - 1];
-                        memory.freeSlots.RemoveAt(memory.freeSlots.Length - 1);
-                    } else
-                    {
-                        s = memory.slots.Length;
-                        memory.slots.Add(default);
-                    }
-                    memory.slotOf.Add(id, s);
                     memory.slots[s] = new MeshCleanupPlanMemory.Slot { id = id, alive = true };
-                }
                 var slot    = memory.slots[s];
                 // a buffer built without a serial is not known to be the same; no buffer stays no buffer
                 var unknown = data.brushRenderBuffer.IsCreated && serial == 0;
@@ -353,10 +345,8 @@ namespace Chisel.Core
                     if (!slot.alive || slot.stamp == stamp)
                         continue;
                     RemoveTouching(ref memory, s);
-                    memory.slotOf.Remove(slot.id);
                     slot.alive = false;
                     memory.slots[s] = slot;
-                    memory.freeSlots.Add(s);
                 }
             }
 
