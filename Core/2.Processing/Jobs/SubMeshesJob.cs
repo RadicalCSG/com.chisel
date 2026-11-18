@@ -549,18 +549,21 @@ namespace Chisel.Core
         [NoAlias] public FindState       hotspotFind;
         // what the last update's grouping found, kept with the tree
         [NoAlias] public HotspotGroupMemory hotspotGroupMemory;
-        // the brushes whose kinds were kept (HotspotStageMemory.keptKinds)
-        [NoAlias, ReadOnly] public NativeList<bool> keptBrushes;
+        // each brush's kinds (SurfaceKindsJob), and the brushes whose kinds were kept
+        [NoAlias] public HotspotStageMemory hotspotStageMemory;
 
         public void Execute()
         {
+            hotspotStageMemory.CountKinds();
             HotspotGroups.Borders(brushRenderData, hotspotLinks, ref hotspotCut.bordersOf);
-            HotspotGroups.PrepareIncremental(brushRenderData, hotspotTiles, hotspotLayouts, hotspotLinks, ref hotspotFind, ref hotspotGroupMemory, keptBrushes.AsArray());
+            HotspotGroups.PrepareIncremental(brushRenderData, hotspotTiles, hotspotLayouts, hotspotLinks, ref hotspotFind, ref hotspotGroupMemory,
+                                             hotspotStageMemory.keptKinds.AsArray(), hotspotStageMemory.Kinds);
             hotspotFind.inputs.Value = HotspotGroups.InputsKey(hotspotTiles, hotspotLayouts, hotspotTileSides);
         }
     }
 
-    // The weld's copies handed to their brushes (each brush's own buffer kept first), and room for the surfaces' kinds
+    // The weld's copies handed to their brushes (each brush's own buffer kept first), and which brushes' surface kinds
+    // are made again (HotspotStageMemory.Prepare)
     [BurstCompile(CompileSynchronously = true)]
     struct FinishWeldJob : IJob
     {
@@ -569,7 +572,6 @@ namespace Chisel.Core
         [NoAlias] public NativeList<BrushData> brushRenderData;
         [NoAlias] public NativeList<BlobAssetReference<ChiselBrushRenderBuffer>> patchedRenderBuffers;
         [NoAlias] public HotspotCutState hotspotCut;
-        [NoAlias] public FindState       hotspotFind;
         [NoAlias] public WeldMemory      weldMemory;
         [NoAlias, ReadOnly] public NativeList<float3x2> collapseMoves;
         public bool verify;
@@ -583,46 +585,25 @@ namespace Chisel.Core
             for (int i = 0; i < brushRenderData.Length; i++)
                 hotspotCut.kept.Add(brushRenderData[i].brushRenderBuffer);
             OutputModelWeld.FinishIncremental(brushRenderData, weldCopies, ref weldMemory, verify, collapseMoves);
-            hotspotStageMemory.Prepare(brushRenderData, hotspotLayouts, weldMemory.sameBuffer, ref hotspotFind);
+            hotspotStageMemory.Prepare(brushRenderData, hotspotLayouts, weldMemory.sameBuffer);
         }
     }
 
-    // Each brush's surfaces' part in the hotspot groups (HotspotGroups.KindsOf), brush by brush
+    // The surfaces' parts in the hotspot groups made again (HotspotStageMemory.MakeKinds), brush by brush, for the brushes
+    // whose kinds are not kept (HotspotStageMemory.redo)
     [BurstCompile(CompileSynchronously = true)]
     struct SurfaceKindsJob : IJobParallelForDefer
     {
         [NoAlias, ReadOnly] public NativeArray<BrushData>         brushRenderData;
         [NoAlias, ReadOnly] public NativeArray<HotspotLayoutData> hotspotLayouts;
-        [NoAlias, ReadOnly] public NativeArray<int>               kindStart;
-        [NativeDisableParallelForRestriction] [NoAlias] public NativeArray<byte>  kinds;
-        [NativeDisableParallelForRestriction] [NoAlias] public NativeArray<uint4> hashes;
-        // what was kept of each brush (HotspotStageMemory): its slot, whether its kinds are kept, the slots
+        [NoAlias, ReadOnly] public NativeArray<int>               redo;
+        // what is kept of each brush (HotspotStageMemory): its slot, the slots
         [NoAlias, ReadOnly] public NativeArray<int>  slotOfBrush;
-        [NoAlias, ReadOnly] public NativeArray<bool> keptKinds;
         [NoAlias, ReadOnly] public NativeArray<HotspotStageBrush> stageBrushes;
 
-        public void Execute(int b)
+        public void Execute(int index)
         {
-            if (!brushRenderData[b].brushRenderBuffer.IsCreated)
-                return;
-            var kept  = stageBrushes[slotOfBrush[b]];
-            var start = kindStart[b];
-            var count = kindStart[b + 1] - start;
-            if (keptKinds[b])
-            {
-                for (int s = 0; s < count; s++)
-                {
-                    kinds[start + s]  = kept.kinds[s];
-                    hashes[start + s] = kept.hashes[s];
-                }
-                return;
-            }
-            HotspotGroups.KindsOf(b, brushRenderData, hotspotLayouts, kindStart, kinds, hashes);
-            for (int s = 0; s < count; s++)
-            {
-                kept.kinds[s]  = kinds[start + s];
-                kept.hashes[s] = hashes[start + s];
-            }
+            HotspotStageMemory.MakeKinds(redo[index], brushRenderData, hotspotLayouts, slotOfBrush, stageBrushes);
         }
     }
 

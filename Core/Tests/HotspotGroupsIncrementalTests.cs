@@ -16,6 +16,8 @@ namespace Chisel.Core.Tests
         NativeList<HotspotTileData> tiles;
         NativeArray<HotspotLayoutData> layouts;
         HotspotGroupMemory memory;
+        // what the hotspot stage keeps of each brush across Updates
+        HotspotStageMemory stage;
         readonly List<BlobAssetReference<ChiselBrushRenderBuffer>> buffers = new();
         // each brush as the last Update had it: one the same again is kept (HotspotStageMemory.keptKinds)
         readonly Dictionary<int, Brush> last = new();
@@ -45,6 +47,7 @@ namespace Chisel.Core.Tests
             HotspotMatcher.AddTiles(layout, tiles, out var data);
             layouts = new NativeArray<HotspotLayoutData>(new[] { data }, Allocator.Persistent);
             memory = HotspotGroupMemory.Create(Allocator.Persistent);
+            stage  = HotspotStageMemory.Create(Allocator.Persistent);
         }
 
         [TearDown]
@@ -55,6 +58,7 @@ namespace Chisel.Core.Tests
             buffers.Clear();
             last.Clear();
             memory.Dispose();
+            stage.Dispose();
             tiles.Dispose();
             layouts.Dispose();
             Object.DestroyImmediate(layout);
@@ -117,10 +121,11 @@ namespace Chisel.Core.Tests
             for (int b = 0; b < model.Count; b++)
                 brushes.Add(new BrushData { brushRenderBuffer = Buffer(model[b]), brushSurfaceCount = 1,
                                             brushIndexOrder = new IndexOrder { compactNodeID = BrushID(model[b].id), nodeOrder = b } });
-            var keptList = new bool[model.Count];
+            using var same = new NativeList<bool>(model.Count, Allocator.Temp);
             for (int b = 0; b < model.Count; b++)
-                keptList[b] = last.TryGetValue(model[b].id, out var was) && Same(was, model[b]);
-            using var kept = new NativeArray<bool>(keptList, Allocator.Temp);
+                same.Add(last.TryGetValue(model[b].id, out var was) && Same(was, model[b]));
+            // the kinds as the hotspot stage keeps them
+            Stage(stage, brushes, same);
             last.Clear();
             foreach (var brush in model)
                 last[brush.id] = brush;
@@ -130,7 +135,7 @@ namespace Chisel.Core.Tests
             try
             {
                 HotspotGroups.Prepare(brushes, tiles.AsArray(), layouts, linkArray, ref full);
-                HotspotGroups.PrepareIncremental(brushes, tiles.AsArray(), layouts, linkArray, ref incremental, ref memory, kept);
+                HotspotGroups.PrepareIncremental(brushes, tiles.AsArray(), layouts, linkArray, ref incremental, ref memory, stage.keptKinds.AsArray(), stage.Kinds);
                 Assert.That(HotspotGroups.SameAs(incremental, full, out var difference), Is.True, $"{step}: {difference}");
                 return (memory.lastFull.Value, memory.lastDirty.Value, full.leads.Length);
             }
@@ -221,13 +226,21 @@ namespace Chisel.Core.Tests
             Assert.That(Update(model, step: "and has it again").full, Is.False);
         }
 
+        // One update of the hotspot stage as the update's jobs run it: what is kept, the kinds made again, counted
+        void Stage(HotspotStageMemory stage, NativeList<BrushData> brushes, NativeList<bool> same)
+        {
+            stage.Prepare(brushes, layouts, same);
+            for (int i = 0; i < stage.redo.Length; i++)
+                HotspotStageMemory.MakeKinds(stage.redo[i], brushes.AsArray(), layouts, stage.slotOfBrush.AsArray(), stage.brushes.AsArray());
+            stage.CountKinds();
+        }
+
         // The hotspot stage keeps what it found by a brush's slot (BrushSlots): a new brush in the slot of one that is gone
         // keeps nothing of that one, though its buffer is the same
         [Test]
         public void AStageSlotGivenToAnotherBrush_KeepsNothingOfTheOneBefore()
         {
             var stage = HotspotStageMemory.Create(Allocator.Temp);
-            var find  = FindState.Create(Allocator.Temp);
             NativeList<BrushData> brushes;
             using var _brushes = brushes = new NativeList<BrushData>(Allocator.Temp);
             using var same     = new NativeList<bool>(Allocator.Temp) { true };
@@ -236,63 +249,76 @@ namespace Chisel.Core.Tests
                 var buffer = Buffer(Square(0, 0));
                 CompactNodeID IdOf(int generation) => new CompactNodeID(default, new SlotIndex { index = 3, generation = generation });
                 brushes.Add(new BrushData { brushRenderBuffer = buffer, brushSurfaceCount = 1, brushIndexOrder = new IndexOrder { compactNodeID = IdOf(1) } });
-                stage.Prepare(brushes, layouts, same, ref find);
+                Stage(stage, brushes, same);
                 stage.brushes.ElementAt(stage.slotOfBrush[0]).hasContent = true;
-                stage.Prepare(brushes, layouts, same, ref find);
+                Stage(stage, brushes, same);
                 Assert.That((stage.keptKinds[0], stage.keptContent[0]), Is.EqualTo((true, true)), "the same brush keeps what was found");
+                Assert.That(stage.candidates.Value, Is.EqualTo(1));
 
                 brushes[0] = new BrushData { brushRenderBuffer = buffer, brushSurfaceCount = 1, brushIndexOrder = new IndexOrder { compactNodeID = IdOf(2) } };
-                stage.Prepare(brushes, layouts, same, ref find);
+                stage.Prepare(brushes, layouts, same);
                 Assert.That(stage.slotOfBrush[0], Is.EqualTo(BrushSlots.Of(IdOf(1))), "the same slot");
                 Assert.That((stage.keptKinds[0], stage.keptContent[0]), Is.EqualTo((false, false)), "another brush there");
+                Assert.That(stage.candidates.Value, Is.Zero, "the one before is not counted");
             }
             finally
             {
                 stage.Dispose();
-                find.Dispose();
             }
         }
 
         static BrushData StageBrush(BlobAssetReference<ChiselBrushRenderBuffer> buffer, int slot) =>
             new BrushData { brushRenderBuffer = buffer, brushSurfaceCount = 1, brushIndexOrder = new IndexOrder { compactNodeID = BrushID(slot) } };
 
-        // Each brush's kinds start where the surfaces of the brushes before it end; a brush without a buffer has none
+        // The stage counts the surfaces of the model that have a kind, brush by brush: only the kinds of the brushes whose
+        // buffers changed are made again, and a brush that is gone is not counted
         [Test]
-        public void TheStagesKindStarts_FollowTheBrushesSurfaces()
+        public void TheStagesCount_FollowsTheModel()
         {
             var stage = HotspotStageMemory.Create(Allocator.Temp);
-            var find  = FindState.Create(Allocator.Temp);
             NativeList<BrushData> brushes;
             using var _brushes = brushes = new NativeList<BrushData>(Allocator.Temp);
             NativeList<bool> same;
             using var _same    = same = new NativeList<bool>(Allocator.Temp) { false, false, false };
             try
             {
+                var plain = Square(2, 4);
+                plain.plain = true;
                 brushes.Add(StageBrush(Buffer(Square(0, 0)), 0));
                 brushes.Add(StageBrush(default, 1));
                 brushes.Add(StageBrush(Buffer(Square(2, 4)), 2));
-                stage.Prepare(brushes, layouts, same, ref find);
-                Assert.That(find.kindStart.AsArray().ToArray(), Is.EqualTo(new[] { 0, 1, 1, 2 }));
-                Assert.That((find.kinds.Length, find.hashes.Length), Is.EqualTo((2, 2)));
+                Stage(stage, brushes, same);
+                Assert.That(stage.candidates.Value, Is.EqualTo(2));
 
                 same[0] = same[1] = same[2] = true;
-                stage.Prepare(brushes, layouts, same, ref find);
-                Assert.That(find.kindStart.AsArray().ToArray(), Is.EqualTo(new[] { 0, 1, 1, 2 }), "kept");
+                stage.Prepare(brushes, layouts, same);
+                Assert.That(stage.redo.Length, Is.Zero, "nothing made again");
+                stage.CountKinds();
+                Assert.That(stage.candidates.Value, Is.EqualTo(2), "kept");
+
+                brushes[2] = StageBrush(Buffer(plain), 2);
+                same[2] = false;
+                Stage(stage, brushes, same);
+                Assert.That(stage.candidates.Value, Is.EqualTo(1), "the last one lost its layout");
+
+                brushes.RemoveAt(0);
+                same.RemoveAt(0);
+                same[0] = same[1] = true;
+                Stage(stage, brushes, same);
+                Assert.That(stage.candidates.Value, Is.Zero, "the first one is gone");
             }
             finally
             {
                 stage.Dispose();
-                find.Dispose();
             }
         }
 
-        // Planted: a brush said to have the buffer of the last update, but without one now; its surfaces are counted from
-        // what was kept of it, its buffer is not gone through
+        // Planted: a brush with the buffer of the last update, but without one now; its kinds are kept, its buffer is not
+        // gone through
         [Test]
-        public void ABrushWithTheSameBuffer_IsCountedFromWhatWasKept()
+        public void ABrushWithTheSameBuffer_KeepsItsKinds()
         {
             var stage = HotspotStageMemory.Create(Allocator.Temp);
-            var find  = FindState.Create(Allocator.Temp);
             NativeList<BrushData> brushes;
             using var _brushes = brushes = new NativeList<BrushData>(Allocator.Temp);
             NativeList<bool> same;
@@ -300,16 +326,17 @@ namespace Chisel.Core.Tests
             try
             {
                 brushes.Add(StageBrush(Buffer(Square(0, 0)), 0));
-                stage.Prepare(brushes, layouts, same, ref find);
+                Stage(stage, brushes, same);
                 brushes[0] = StageBrush(default, 0);
                 same[0] = true;
-                stage.Prepare(brushes, layouts, same, ref find);
-                Assert.That(find.kindStart.AsArray().ToArray(), Is.EqualTo(new[] { 0, 1 }));
+                stage.Prepare(brushes, layouts, same);
+                Assert.That(stage.redo.Length, Is.Zero);
+                Assert.That(stage.brushes[BrushSlots.Of(BrushID(0))].kinds.Length, Is.EqualTo(1));
+                Assert.That(stage.candidates.Value, Is.EqualTo(1));
             }
             finally
             {
                 stage.Dispose();
-                find.Dispose();
             }
         }
 
@@ -318,7 +345,6 @@ namespace Chisel.Core.Tests
         public void ABrushThatIsGone_IsForgottenByTheStage()
         {
             var stage = HotspotStageMemory.Create(Allocator.Temp);
-            var find  = FindState.Create(Allocator.Temp);
             NativeList<BrushData> brushes;
             using var _brushes = brushes = new NativeList<BrushData>(Allocator.Temp);
             NativeList<bool> same;
@@ -327,25 +353,63 @@ namespace Chisel.Core.Tests
             {
                 brushes.Add(StageBrush(Buffer(Square(0, 0)), 0));
                 brushes.Add(StageBrush(Buffer(Square(1, 4)), 1));
-                stage.Prepare(brushes, layouts, same, ref find);
+                Stage(stage, brushes, same);
                 var gone = BrushSlots.Of(BrushID(1));
                 Assert.That(stage.brushes[gone].used, Is.True);
 
                 brushes[1] = StageBrush(Buffer(Square(2, 8)), 2);
-                stage.Prepare(brushes, layouts, same, ref find);
+                Stage(stage, brushes, same);
                 Assert.That(stage.brushes[gone].used, Is.False, "replaced by a brush in another slot");
                 Assert.That(stage.brushes[gone].kinds.IsCreated, Is.False, "freed");
+                Assert.That(stage.candidates.Value, Is.EqualTo(2));
 
                 brushes.RemoveAt(1);
                 same.RemoveAt(1);
-                stage.Prepare(brushes, layouts, same, ref find);
+                Stage(stage, brushes, same);
                 Assert.That(stage.brushes[BrushSlots.Of(BrushID(2))].used, Is.False, "removed");
                 Assert.That(stage.brushes[BrushSlots.Of(BrushID(0))].used, Is.True, "the other one stays");
+                Assert.That(stage.candidates.Value, Is.EqualTo(1));
             }
             finally
             {
                 stage.Dispose();
-                find.Dispose();
+            }
+        }
+
+        // Planted: kinds the stage has not counted. With no surface of the model counted, the brushes are not gone
+        // through; a brush counted without any is not gone through either
+        [Test]
+        public void KindsTheStageDidNotCount_AreNotGoneThrough([Values(false, true)] bool modelCounted)
+        {
+            var stage = HotspotStageMemory.Create(Allocator.Temp);
+            var state = FindState.Create(Allocator.Temp);
+            NativeList<BrushData> brushes;
+            using var _brushes = brushes = new NativeList<BrushData>(Allocator.Temp);
+            NativeList<bool> same;
+            using var _same    = same = new NativeList<bool>(Allocator.Temp) { false, false };
+            using var links    = new NativeArray<HotspotLink>(0, Allocator.Temp);
+            try
+            {
+                var left  = Square(0, 0); left.plain  = true;
+                var right = Square(1, 2); right.plain = true;
+                brushes.Add(StageBrush(Buffer(left), 0));
+                brushes.Add(StageBrush(Buffer(right), 1));
+                Stage(stage, brushes, same);
+                for (int b = 0; b < 2; b++)
+                {
+                    ref var kept = ref stage.brushes.ElementAt(stage.slotOfBrush[b]);
+                    kept.kinds[0] = 1;
+                    kept.candidates = modelCounted ? 0 : 1;
+                }
+                stage.candidates.Value = modelCounted ? 2 : 0;
+                HotspotGroups.PrepareIncremental(brushes, tiles.AsArray(), layouts, links, ref state, ref memory, stage.keptKinds.AsArray(), stage.Kinds);
+                Assert.That(state.leads.Length, Is.Zero);
+                Assert.That(memory.valid.Value, Is.False, "nothing found");
+            }
+            finally
+            {
+                state.Dispose();
+                stage.Dispose();
             }
         }
 
