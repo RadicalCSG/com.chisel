@@ -105,6 +105,8 @@ namespace Chisel.Core
         public BlobAssetReference<ChiselBrushRenderBuffer> input, output;
         public int  order;
         public bool used, live, changed, dirty;
+        // the serial of the input whose hotspot groups output carries (KeepHotspotGroups); 0 when not known
+        public ulong groupsOf;
         // per surface and one past the last: where its triangles start in corners and needle
         public UnsafeList<int>    surfaceStart;
         public UnsafeList<int3x3> corners;
@@ -1283,6 +1285,7 @@ namespace Chisel.Core
                 if (brush.output.IsCreated)
                     brush.output.Dispose();
                 brush.output = copies[i].result;
+                brush.groupsOf = 0;
                 brush.dirty = false;
             }
             for (int b = 0; b < brushes.Length; b++)
@@ -1298,7 +1301,13 @@ namespace Chisel.Core
                 var data = brushes[b];
                 if (brush.output.IsCreated)
                 {
-                    KeepHotspotGroups(data.brushRenderBuffer, brush.output);
+                    // what a buffer holds changes in place only with a new serial
+                    var serial = data.brushRenderBuffer.Value.serial;
+                    if (serial == 0 || serial != brush.groupsOf)
+                    {
+                        KeepHotspotGroups(data.brushRenderBuffer, brush.output);
+                        brush.groupsOf = serial;
+                    }
                     data.brushRenderBuffer = brush.output;
                 }
                 brushes[b] = data;
