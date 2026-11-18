@@ -2211,7 +2211,6 @@ namespace Chisel.Core
                         brushRenderData      = Temporaries.brushRenderData,
                         patchedRenderBuffers = Temporaries.patchedRenderBuffers,
                         hotspotCut           = Temporaries.hotspotCut,
-                        hotspotFind          = Temporaries.hotspotFind,
                         weldMemory           = chiselLookupValues.weldMemory,
                         collapseMoves        = chiselLookupValues.collapseMoves,
                         verify               = OutputModelWeld.VerifyIncremental,
@@ -2226,14 +2225,11 @@ namespace Chisel.Core
                     {
                         brushRenderData = Temporaries.brushRenderData.AsDeferredJobArray(),
                         hotspotLayouts  = Temporaries.hotspotLayouts,
-                        kindStart       = Temporaries.hotspotFind.kindStart.AsDeferredJobArray(),
-                        kinds           = Temporaries.hotspotFind.kinds.AsDeferredJobArray(),
-                        hashes          = Temporaries.hotspotFind.hashes.AsDeferredJobArray(),
+                        redo            = chiselLookupValues.hotspotStageMemory.redo.AsDeferredJobArray(),
                         slotOfBrush     = chiselLookupValues.hotspotStageMemory.slotOfBrush.AsDeferredJobArray(),
-                        keptKinds       = chiselLookupValues.hotspotStageMemory.keptKinds.AsDeferredJobArray(),
                         stageBrushes    = chiselLookupValues.hotspotStageMemory.brushes.AsDeferredJobArray()
                     };
-                    surfaceKindsJob.Schedule(runInParallel, Temporaries.brushRenderData, 16,
+                    surfaceKindsJob.Schedule(runInParallel, chiselLookupValues.hotspotStageMemory.redo, 16,
                         JobHandles.Read(JobHandleType.decalVolumesJobHandle),
                         JobHandles.Write(JobHandleType.brushRenderDataJobHandle));
 
@@ -2250,7 +2246,7 @@ namespace Chisel.Core
                         hotspotCut           = Temporaries.hotspotCut,
                         hotspotFind          = Temporaries.hotspotFind,
                         hotspotGroupMemory   = chiselLookupValues.hotspotGroupMemory,
-                        keptBrushes          = chiselLookupValues.hotspotStageMemory.keptKinds
+                        hotspotStageMemory   = chiselLookupValues.hotspotStageMemory
                     };
                     prepareHotspotGroupsJob.Schedule(runInParallel,
                         JobHandles.Read(JobHandleType.decalVolumesJobHandle),

@@ -54,12 +54,6 @@ namespace Chisel.Core
         public NativeList<GroupMatch> matches;
         // what every match reads (InputsKey)
         public NativeReference<uint4> inputs;
-        // each surface's part in the groups (HotspotGroups.KindOf), when worked out brush by brush before Prepare
-        // (HotspotStageMemory.Prepare, KindsOf): kinds from kindStart[brush]
-        public NativeList<int>  kindStart;
-        public NativeList<byte> kinds;
-        // and what of each candidate grouping reads (HotspotGroups.SurfaceHash), next to its kind
-        public NativeList<uint4> hashes;
 
         public static FindState Create(Allocator allocator)
         {
@@ -71,10 +65,7 @@ namespace Chisel.Core
                 memberOf    = new NativeList<int>(64, allocator),
                 leads       = new NativeList<int>(16, allocator),
                 matches     = new NativeList<GroupMatch>(16, allocator),
-                inputs      = new NativeReference<uint4>(allocator),
-                kindStart   = new NativeList<int>(64, allocator),
-                kinds       = new NativeList<byte>(64, allocator),
-                hashes      = new NativeList<uint4>(64, allocator)
+                inputs      = new NativeReference<uint4>(allocator)
             };
         }
 
@@ -102,16 +93,13 @@ namespace Chisel.Core
             if (memberOf.IsCreated)    memberOf.Dispose();
             if (leads.IsCreated)       leads.Dispose();
             if (inputs.IsCreated)      inputs.Dispose();
-            if (kindStart.IsCreated)   kindStart.Dispose();
-            if (kinds.IsCreated)       kinds.Dispose();
-            if (hashes.IsCreated)      hashes.Dispose();
         }
 
         public Unity.Jobs.JobHandle Dispose(Unity.Jobs.JobHandle dependency)
         {
             if (matches.IsCreated)
                 dependency = Unity.Jobs.IJobExtensions.Schedule(new FreeGroupMatchesJob { matches = matches }, dependency);
-            var handles = new NativeArray<Unity.Jobs.JobHandle>(10, Allocator.Temp);
+            var handles = new NativeArray<Unity.Jobs.JobHandle>(7, Allocator.Temp);
             for (int i = 0; i < handles.Length; i++)
                 handles[i] = dependency;
             if (matches.IsCreated)     handles[0] = matches.Dispose(dependency);
@@ -121,9 +109,6 @@ namespace Chisel.Core
             if (memberOf.IsCreated)    handles[4] = memberOf.Dispose(dependency);
             if (leads.IsCreated)       handles[5] = leads.Dispose(dependency);
             if (inputs.IsCreated)      handles[6] = inputs.Dispose(dependency);
-            if (kindStart.IsCreated)   handles[7] = kindStart.Dispose(dependency);
-            if (kinds.IsCreated)       handles[8] = kinds.Dispose(dependency);
-            if (hashes.IsCreated)      handles[9] = hashes.Dispose(dependency);
             var all = Unity.Jobs.JobHandle.CombineDependencies(handles);
             handles.Dispose();
             return all;
@@ -479,19 +464,16 @@ namespace Chisel.Core
             return Width(ref surface.colliderVertices, source) * texels < kSliverTexels ? kSliver : kCandidate;
         }
 
-        // The kinds of a brush's surfaces (KindOf), and the hashes of its candidates (SurfaceHash); each brush is independent
-        // of the others
-        public static void KindsOf(int b, NativeArray<BrushData> brushes, NativeArray<HotspotLayoutData> layouts, NativeArray<int> kindStart, NativeArray<byte> kinds,
-                                   NativeArray<uint4> hashes)
+        // The kinds of a buffer's surfaces (KindOf), and the hashes of its candidates (SurfaceHash), surface by surface
+        public static void KindsOf(ref ChiselBrushRenderBuffer buffer, NativeArray<HotspotLayoutData> layouts, UnsafeList<byte> kinds, UnsafeList<uint4> hashes)
         {
-            if (!brushes[b].brushRenderBuffer.IsCreated)
-                return;
-            ref var surfaces = ref brushes[b].brushRenderBuffer.Value.surfaces;
-            for (int s = 0; s < surfaces.Length; s++)
+            ref var surfaces = ref buffer.surfaces;
+            var count = math.min(surfaces.Length, math.min(kinds.Length, hashes.Length));
+            for (int s = 0; s < count; s++)
             {
                 var kind = KindOf(ref surfaces[s], layouts);
-                kinds[kindStart[b] + s]  = kind;
-                hashes[kindStart[b] + s] = kind == 0 ? default : SurfaceHash(ref surfaces[s], kind);
+                kinds[s]  = kind;
+                hashes[s] = kind == 0 ? default : SurfaceHash(ref surfaces[s], kind);
             }
         }
 
@@ -528,7 +510,7 @@ namespace Chisel.Core
             state.Clear();
             if (!tiles.IsCreated || !layouts.IsCreated)
                 return;
-            var candidates = Candidates(brushes, layouts, state, out var firstSliver);
+            var candidates = Candidates(brushes, layouts, default, out var firstSliver);
             if (candidates.Length < 2)
             {
                 candidates.Dispose();
@@ -544,20 +526,34 @@ namespace Chisel.Core
         }
 
         // The candidates in candidate order: the slivers last (from firstSliver on), so a group always has a surface that
-        // shows its tile first
-        static NativeList<int2> Candidates(NativeList<BrushData> brushes, NativeArray<HotspotLayoutData> layouts, in FindState state, out int firstSliver)
+        // shows its tile first. kinds: as the hotspot stage keeps them (a brush without any is not gone through), or
+        // worked out here when not given
+        static NativeList<int2> Candidates(NativeList<BrushData> brushes, NativeArray<HotspotLayoutData> layouts, in StageKinds kinds, out int firstSliver)
         {
             var candidates = new NativeList<int2>(64, Allocator.Temp);
             var slivers    = new NativeList<int2>(16, Allocator.Temp);
-            var known      = state.kindStart.Length == brushes.Length + 1;
             for (int b = 0; b < brushes.Length; b++)
             {
+                if (kinds.IsCreated)
+                {
+                    var kept = kinds.brushes[kinds.slotOfBrush[b]];
+                    if (kept.candidates == 0)
+                        continue;
+                    for (int s = 0; s < kept.kinds.Length; s++)
+                    {
+                        if (kept.kinds[s] == kSliver)
+                            slivers.Add(new int2(b, s));
+                        else if (kept.kinds[s] == kCandidate)
+                            candidates.Add(new int2(b, s));
+                    }
+                    continue;
+                }
                 if (!brushes[b].brushRenderBuffer.IsCreated)
                     continue;
                 ref var surfaces = ref brushes[b].brushRenderBuffer.Value.surfaces;
                 for (int s = 0; s < surfaces.Length; s++)
                 {
-                    var kind = known ? state.kinds[state.kindStart[b] + s] : KindOf(ref surfaces[s], layouts);
+                    var kind = KindOf(ref surfaces[s], layouts);
                     if (kind == kSliver)
                         slivers.Add(new int2(b, s));
                     else if (kind == kCandidate)
@@ -572,9 +568,12 @@ namespace Chisel.Core
 
         // Prepare, grouping again only the candidates the edits since the last update can have changed the groups of
         // (IncrementalHotspotGroups.md): its result is Prepare's. memory: what the last update found, kept with the tree.
-        // keptBrushes: the brushes whose kinds and hashes are the last update's (HotspotStageMemory.keptKinds; none when not given)
+        // keptBrushes: the brushes whose kinds and hashes are the last update's (HotspotStageMemory.keptKinds; none when not given).
+        // kinds: each brush's kinds and hashes as the hotspot stage keeps them (HotspotStageMemory.Kinds; worked out here when
+        // not given)
         public static void PrepareIncremental(NativeList<BrushData> brushes, NativeArray<HotspotTileData> tiles, NativeArray<HotspotLayoutData> layouts,
-                                              NativeArray<HotspotLink> links, ref FindState state, ref HotspotGroupMemory memory, NativeArray<bool> keptBrushes = default)
+                                              NativeArray<HotspotLink> links, ref FindState state, ref HotspotGroupMemory memory, NativeArray<bool> keptBrushes = default,
+                                              StageKinds kinds = default)
         {
             state.Clear();
             memory.lastFull.Value  = true;
@@ -584,10 +583,16 @@ namespace Chisel.Core
                 memory.Clear();
                 return;
             }
-            var candidates = Candidates(brushes, layouts, state, out var firstSliver);
-            var count      = candidates.Length;
             // nothing to group: nothing is kept either, and the brushes are not gone through; the next update with
             // candidates groups them all
+            if (kinds.IsCreated && kinds.candidates == 0)
+            {
+                if (memory.valid.Value)
+                    memory.Clear();
+                return;
+            }
+            var candidates = Candidates(brushes, layouts, kinds, out var firstSliver);
+            var count      = candidates.Length;
             if (count == 0)
             {
                 if (memory.valid.Value)
@@ -595,15 +600,14 @@ namespace Chisel.Core
                 candidates.Dispose();
                 return;
             }
-            var known      = state.kindStart.Length == brushes.Length + 1;
             var keys       = new NativeArray<SurfaceKey>(count, Allocator.Temp);
             var hashes     = new NativeArray<uint4>(count, Allocator.Temp);
             for (int c = 0; c < count; c++)
             {
                 var at = candidates[c];
                 keys[c] = new SurfaceKey { brush = brushes[at.x].brushIndexOrder.compactNodeID, surface = at.y };
-                hashes[c] = known ? state.hashes[state.kindStart[at.x] + at.y]
-                                  : SurfaceHash(ref brushes[at.x].brushRenderBuffer.Value.surfaces[at.y], c < firstSliver ? kCandidate : kSliver);
+                hashes[c] = kinds.IsCreated ? kinds.brushes[kinds.slotOfBrush[at.x]].hashes[at.y]
+                                            : SurfaceHash(ref brushes[at.x].brushRenderBuffer.Value.surfaces[at.y], c < firstSliver ? kCandidate : kSliver);
             }
             var inputs = GroupInputsKey(layouts, links);
             var root   = new NativeArray<int>(count, Allocator.Temp);
