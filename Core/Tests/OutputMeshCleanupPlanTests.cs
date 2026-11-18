@@ -471,6 +471,62 @@ namespace Chisel.Core.Tests
             }
         }
 
+        // A brush cleaned up again because something near one of its surfaces changed: a surface of it the cleanup did take
+        // something out of is gone through again, though what it reads of that surface is the same, and comes out as
+        // cleaning up from nothing makes it
+        [Test]
+        public void ASurfaceTheCleanupChanged_IsGoneThroughAgain()
+        {
+            var made     = new List<BlobAssetReference<ChiselBrushRenderBuffer>>();
+            var brushes  = new NativeList<BrushData>(Allocator.Persistent);
+            using var kept = new Planned();
+            try
+            {
+                BlobAssetReference<ChiselBrushRenderBuffer> Made(params float3[][] surfaces)
+                {
+                    var buffer = OutputMeshCleanupTests.Brush(-1, surfaces);
+                    made.Add(buffer);
+                    return buffer;
+                }
+                // a square cut into four around its centre (which the cleanup takes out), and below it a triangle whose
+                // far edge another brush puts a corner on
+                float3 a = new(0, 0, 0), b = new(2, 0, 0), c = new(2, 2, 0), d = new(0, 2, 0), centre = new(1, 1, 0);
+                var fan  = new[] { a, b, centre,  b, c, centre,  c, d, centre,  d, a, centre };
+                var side = new[] { a, new float3(0, 0, -2), new float3(2, 0, -2) };
+                brushes.Add(new BrushData { brushRenderBuffer = Made(fan, side), brushIndexOrder = IndexOf(0) });
+                float3[] Corner(float x) => new[] { new float3(x, 0, -2), new float3(x, -1, -2), new float3(x + 0.25f, -1, -2) };
+                brushes.Add(new BrushData { brushRenderBuffer = Made(Corner(1)), brushIndexOrder = IndexOf(1) });
+
+                for (int step = 0; step < 2; step++)
+                {
+                    if (step == 1)
+                    {
+                        var data = brushes[1];
+                        data.brushRenderBuffer = Made(Corner(1.5f));
+                        brushes[1] = data;
+                    }
+                    using var withMemory  = new NativeList<BrushData>(brushes.Length, Allocator.TempJob);
+                    using var fromNothing = new NativeList<BrushData>(brushes.Length, Allocator.TempJob);
+                    withMemory.AddRange(brushes.AsArray());
+                    fromNothing.AddRange(brushes.AsArray());
+                    CleanUp(withMemory, kept);
+                    var planned = false;
+                    for (int w = 0; w < kept.work.Length; w++)
+                        planned |= kept.work[w].brush == 0 && !kept.work[w].kept;
+                    Assert.That(planned, Is.True, $"step {step}: the brush is cleaned up again");
+                    using var fresh = new Planned();
+                    CleanUp(fromNothing, fresh);
+                    Assert.That(withMemory[0].brushRenderBuffer.IsCreated && withMemory[0].brushRenderBuffer.Value.surfaces[0].indexCount == 6, Is.True,
+                                $"step {step}: the centre is taken out");
+                    Assert.That(OutputModelWeld.SameBuffer(withMemory[0].brushRenderBuffer, fromNothing[0].brushRenderBuffer), Is.True, $"step {step}");
+                }
+            }
+            finally
+            {
+                Free(brushes, made);
+            }
+        }
+
         // A cleanup's input key changes with everything the cleanup reads: the brush's own buffer, the outlines of the
         // brushes touching it, drawn and of their colliders, and whether its changes are recorded
         [Test]

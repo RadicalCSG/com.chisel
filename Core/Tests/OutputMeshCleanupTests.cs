@@ -1,5 +1,6 @@
 using NUnit.Framework;
 using Unity.Collections;
+using Unity.Collections.LowLevel.Unsafe;
 using Unity.Entities;
 using Unity.Mathematics;
 using UnityEngine;
@@ -844,6 +845,70 @@ namespace Chisel.Core.Tests
             {
                 source.Dispose();
             }
+        }
+
+        // The cleanup tells, per surface, the input it found nothing to take out of (CleanInputKey), and doesn't go through a
+        // surface again whose input it was told that of: planted here for a surface with a vertex to take out, which it then
+        // leaves
+        [Test]
+        public void ASurfaceWhoseInputWasFoundUnchangedBefore_IsNotGoneThroughAgain()
+        {
+            var source = Brush(-1, kFan, new[] { A, B, C });
+            NativeList<ulong> unchanged;
+            using var _unchanged = unchanged = new NativeList<ulong>(Allocator.Temp);
+            var before = new UnsafeList<ulong>(2, Allocator.Temp);
+            try
+            {
+                var cleaned = OutputMeshCleanup.Clean(source, unchanged: unchanged);
+                try
+                {
+                    Assert.That(cleaned.IsCreated, Is.True, "the centre is taken out");
+                    Assert.That(unchanged.Length, Is.EqualTo(2));
+                    Assert.That(unchanged[0], Is.EqualTo(0ul), "something was taken out of the fan");
+                    Assert.That(unchanged[1], Is.Not.EqualTo(0ul), "nothing was taken out of the triangle");
+                }
+                finally
+                {
+                    cleaned.Dispose();
+                }
+
+                // the fan as the cleanup reads it from the buffer
+                using var fan = new Surface(new float3[0]);
+                OutputMeshCleanup.Load(ref source.Value.surfaces[0], fan.indices, fan.collider, fan.select, fan.render);
+                before.Add(OutputMeshCleanup.CleanInputKey(fan.indices, fan.collider, fan.select, fan.render, false));
+                before.Add(unchanged[1]);
+                var left = OutputMeshCleanup.Clean(source, unchangedBefore: before);
+                Assert.That(left.IsCreated, Is.False, "the fan is not gone through again, and so left as it was");
+            }
+            finally
+            {
+                before.Dispose();
+                source.Dispose();
+            }
+        }
+
+        // A cleanup's input key changes with each of the surface's lists and with whether it was cut
+        [Test]
+        public void TheCleanInputKey_FollowsTheSurfaceAndTheCut()
+        {
+            using var fan    = new Surface(kFan);
+            using var square = new Surface(kSquare);
+            var key = OutputMeshCleanup.CleanInputKey(fan.indices, fan.collider, fan.select, fan.render, false);
+            Assert.That(key, Is.Not.EqualTo(0ul), "0 is no key");
+            Assert.That(OutputMeshCleanup.CleanInputKey(fan.indices, fan.collider, fan.select, fan.render, false), Is.EqualTo(key));
+            Assert.That(OutputMeshCleanup.CleanInputKey(fan.indices, fan.collider, fan.select, fan.render, true), Is.Not.EqualTo(key), "cut");
+            Assert.That(OutputMeshCleanup.CleanInputKey(square.indices, square.collider, square.select, square.render, false), Is.Not.EqualTo(key), "another surface");
+            var render = fan.render[4]; render.uv0 += 1; fan.render[4] = render;
+            Assert.That(OutputMeshCleanup.CleanInputKey(fan.indices, fan.collider, fan.select, fan.render, false), Is.Not.EqualTo(key), "another uv");
+            render.uv0 -= 1; fan.render[4] = render;
+            var selected = fan.select[4]; selected.entityID = new Vector4(2, 0, 0, 0); fan.select[4] = selected;
+            Assert.That(OutputMeshCleanup.CleanInputKey(fan.indices, fan.collider, fan.select, fan.render, false), Is.Not.EqualTo(key), "another selection");
+            selected.entityID = new Vector4(1, 0, 0, 0); fan.select[4] = selected;
+            fan.collider[4] += new float3(0, 0, 1e-3f);
+            Assert.That(OutputMeshCleanup.CleanInputKey(fan.indices, fan.collider, fan.select, fan.render, false), Is.Not.EqualTo(key), "another position");
+            fan.collider[4] -= new float3(0, 0, 1e-3f);
+            (fan.indices[0], fan.indices[1]) = (fan.indices[1], fan.indices[0]);
+            Assert.That(OutputMeshCleanup.CleanInputKey(fan.indices, fan.collider, fan.select, fan.render, false), Is.Not.EqualTo(key), "another triangle");
         }
 
         // A surface the cleanup leaves no triangle of is not in the meshes: its vertices would be counted but never written
