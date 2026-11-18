@@ -1484,24 +1484,40 @@ namespace Chisel.Core
         }
     }
 
+    // Each query's sub-meshes made on its own (SortSurfacesParallelJob), then put after each other in query order
+    // (GatherSubMeshDescriptionsJob)
+    static class SubMeshDescriptionJobs
+    {
+        // Disposes what it made itself with the handle it returns
+        public static JobHandle Schedule(bool runInParallel, NativeArray<MeshQuery> meshQueries, NativeArray<UnsafeList<SubMeshSurface>> subMeshSurfaces,
+                                         NativeList<SubMeshDescriptions> subMeshDescriptions, JobHandle dependsOn)
+        {
+            var perQuery = new NativeArray<UnsafeList<SubMeshDescriptions>>(meshQueries.Length, Allocator.TempJob);
+            var handle = new SortSurfacesParallelJob
+            {
+                meshQueries     = meshQueries,
+                subMeshSurfaces = subMeshSurfaces,
+                perQuery        = perQuery
+            }.Schedule(runInParallel, meshQueries.Length, 1, dependsOn);
+            handle = new GatherSubMeshDescriptionsJob
+            {
+                perQuery            = perQuery,
+                subMeshDescriptions = subMeshDescriptions
+            }.Schedule(runInParallel, handle);
+            return perQuery.Dispose(handle);
+        }
+    }
+
     [BurstCompile(CompileSynchronously = true)]
-    struct SortSurfacesParallelJob : IJob
+    struct SortSurfacesParallelJob : IJobParallelFor
     {
         // Read
         [NoAlias, ReadOnly] public NativeArray<MeshQuery>                  meshQueries;
-        [NoAlias, ReadOnly] public NativeArray<UnsafeList<SubMeshSurface>> subMeshSurfaces;
+        // each query's transparent decals are sorted in place, by the query's own index
+        [NativeDisableParallelForRestriction] [NoAlias] public NativeArray<UnsafeList<SubMeshSurface>> subMeshSurfaces;
 
-        // Write
-        [NoAlias, WriteOnly] public NativeList<SubMeshDescriptions> subMeshDescriptions;
-
-        public void Execute()
-        {
-            // The sub-mesh lists must be processed in this order
-            for (int t = 0; t < subMeshSurfaces.Length; t++)
-            {
-                Execute(t);
-            }
-        }
+        // Write: each query's sub-meshes, by the query's own index
+        [NoAlias] public NativeArray<UnsafeList<SubMeshDescriptions>> perQuery;
 
         public void Execute(int t)
         {
@@ -1513,8 +1529,7 @@ namespace Chisel.Core
             var meshQuery       = meshQueries[t];
             SortTransparentDecals(subMeshSurfaceList);
 
-			NativeList<SubMeshDescriptions> sectionSubMeshCounts; 
-			using var _sectionSubMeshCounts = sectionSubMeshCounts = new NativeList<SubMeshDescriptions>(surfaceCount, Allocator.Temp);
+			var sectionSubMeshCounts = new UnsafeList<SubMeshDescriptions>(surfaceCount, Allocator.Persistent);
             var currentSubMesh  = new SubMeshDescriptions
             {
                 meshQueryIndex      = t,
@@ -1569,7 +1584,7 @@ namespace Chisel.Core
             if (currentSubMesh.indexCount > 0 && currentSubMesh.vertexCount > 0)
                 sectionSubMeshCounts.AddNoResize(currentSubMesh);
 
-            subMeshDescriptions.AddRangeNoResize(sectionSubMeshCounts);
+            perQuery[t] = sectionSubMeshCounts;
 		}
 
         // A chunk's transparent decals (one group, contiguous) in the order their decals stack, and in brush order within one
@@ -1606,6 +1621,27 @@ namespace Chisel.Core
         struct ByStackThenIndex : System.Collections.Generic.IComparer<int2>
         {
             public int Compare(int2 x, int2 y) => x.x != y.x ? x.x.CompareTo(y.x) : x.y.CompareTo(y.y);
+        }
+    }
+
+    // The queries' sub-meshes after each other in query order (the order the meshes are made in); each query's list freed
+    [BurstCompile(CompileSynchronously = true)]
+    struct GatherSubMeshDescriptionsJob : IJob
+    {
+        [NoAlias] public NativeArray<UnsafeList<SubMeshDescriptions>> perQuery;
+        [NoAlias, WriteOnly] public NativeList<SubMeshDescriptions> subMeshDescriptions;
+
+        public unsafe void Execute()
+        {
+            for (int t = 0; t < perQuery.Length; t++)
+            {
+                var list = perQuery[t];
+                if (!list.IsCreated)
+                    continue;
+                subMeshDescriptions.AddRangeNoResize(list.Ptr, list.Length);
+                list.Dispose();
+                perQuery[t] = default;
+            }
         }
     }
     
