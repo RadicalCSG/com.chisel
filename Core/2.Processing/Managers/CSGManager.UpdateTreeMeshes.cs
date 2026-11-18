@@ -2460,20 +2460,13 @@ namespace Chisel.Core
                 using (kJob_SortSurfacesProfilerMarker.Auto())
                 {
                     const bool runInParallel = runInParallelDefault;
-                    var sortSurfacesParallelJob = new SortSurfacesParallelJob
-                    {
-                        // Read
-                        meshQueries     = Temporaries.meshQueries,
-                        subMeshSurfaces = Temporaries.subMeshSurfaces,
-
-                        // Write
-                        subMeshDescriptions = Temporaries.subMeshDescriptions
-                    };
-                    sortSurfacesParallelJob.Schedule(runInParallel,
-                        JobHandles.Read(
-                            JobHandleType.meshQueriesJobHandle,
-                            JobHandleType.subMeshSurfacesJobHandle),
-                        JobHandles.Write(JobHandleType.subMeshDescriptionsJobHandle));
+                    // each query on its own; its transparent decals are sorted in its list
+                    var describeReads  = JobHandles.Read(JobHandleType.meshQueriesJobHandle);
+                    var describeWrites = JobHandles.Write(JobHandleType.subMeshSurfacesJobHandle, JobHandleType.subMeshDescriptionsJobHandle);
+                    var describeDependencies = JobExtensions.ResolveDependencies(ref describeReads, ref describeWrites);
+                    var described = SubMeshDescriptionJobs.Schedule(runInParallel, Temporaries.meshQueries, Temporaries.subMeshSurfaces,
+                                                                    Temporaries.subMeshDescriptions, describeDependencies);
+                    JobExtensions.RegisterNode(ref describeReads, ref describeWrites, described);
 
                     var gatherSurfacesJob = new GatherSurfacesJob
                     {
