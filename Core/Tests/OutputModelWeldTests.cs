@@ -761,6 +761,30 @@ namespace Chisel.Core.Tests
 			weld.Weld("the group written in place", new[] { (0, needle), (1, across), (2, far) });
 		}
 
+		// Planted: a group written in place without a new serial, which every writer gives (OutputHotspotSections.TellGroups);
+		// a buffer whose serial the weld has seen is not gone through again, one with a new serial is
+		[Test]
+		public void ABuffersGroups_AreOnlyCopiedWhenItsSerialChanged()
+		{
+			using var weld = new Incremental();
+			var needle = weld.Own(Brush(kNeedleSurface));
+			var across = weld.Own(Brush(kSurfaceAcross));
+			var far = weld.Own(Brush(FarTriangle(1)));
+			across.Value.serial = RenderBufferSerial.Next();
+			var model = new[] { (0, needle), (1, across), (2, far) };
+			weld.Weld("the first update", model);
+			ref var kept = ref weld.Memory.brushes.ElementAt(BrushSlots.Of(Incremental.Id(1)));
+			Assert.That(kept.output.IsCreated, Is.True, "the split triangle's brush was stored again");
+
+			across.Value.surfaces[0].hotspot.group = 7;
+			weld.Weld("the group written in place, the serial kept", false, model);
+			Assert.That(weld.Memory.brushes.ElementAt(BrushSlots.Of(Incremental.Id(1))).output.Value.surfaces[0].hotspot.group, Is.Zero, "not gone through");
+
+			across.Value.serial = RenderBufferSerial.Next();
+			weld.Weld("given a new serial", model);
+			Assert.That(weld.Memory.brushes.ElementAt(BrushSlots.Of(Incremental.Id(1))).output.Value.surfaces[0].hotspot.group, Is.EqualTo(7));
+		}
+
 		// Planted: a brush's kept buffer forgotten; the verify has to see it
 		[Test]
 		public void AWrongKeptBuffer_IsReportedByTheVerify()
