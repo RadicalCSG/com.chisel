@@ -2291,7 +2291,8 @@ namespace Chisel.Core
                         hotspotCutCache = chiselLookupValues.hotspotCutCache,
                         hotspotMatchCache = chiselLookupValues.hotspotMatchCache,
                         hotspotCut      = Temporaries.hotspotCut,
-                        hotspotFind     = Temporaries.hotspotFind
+                        hotspotFind     = Temporaries.hotspotFind,
+                        groupedBuffers  = chiselLookupValues.hotspotStageMemory.groupedBuffers
                     };
                     planHotspotCutJob.Schedule(runInParallel,
                         JobHandles.Read(JobHandleType.decalVolumesJobHandle),

@@ -1,5 +1,6 @@
 using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
+using Unity.Entities;
 using Unity.Mathematics;
 
 namespace Chisel.Core
@@ -35,11 +36,14 @@ namespace Chisel.Core
         // this update, brush by brush: its slot, and whether its kinds and its content hash are what was kept
         public NativeList<int>  slotOfBrush;
         public NativeList<bool> keptKinds, keptContent;
+        // the brushes' own buffers holding group ids (OutputHotspotSections.StartCutKeys)
+        public NativeParallelHashSet<BlobAssetReference<ChiselBrushRenderBuffer>> groupedBuffers;
 
         public static HotspotStageMemory Create(Allocator allocator)
         {
             return new HotspotStageMemory
             {
+                groupedBuffers = new NativeParallelHashSet<BlobAssetReference<ChiselBrushRenderBuffer>>(16, allocator),
                 brushes     = new NativeList<HotspotStageBrush>(64, allocator),
                 freeSlots   = new NativeList<int>(16, allocator),
                 slotOf      = new NativeParallelHashMap<CompactNodeID, int>(64, allocator),
@@ -66,6 +70,7 @@ namespace Chisel.Core
             if (slotOfBrush.IsCreated) slotOfBrush.Dispose();
             if (keptKinds.IsCreated)   keptKinds.Dispose();
             if (keptContent.IsCreated) keptContent.Dispose();
+            if (groupedBuffers.IsCreated) groupedBuffers.Dispose();
         }
 
         // Which brushes keep what was found for them (sameBuffer: the brush's buffer is the one of the last update), room

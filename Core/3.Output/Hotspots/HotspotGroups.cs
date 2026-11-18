@@ -601,6 +601,15 @@ namespace Chisel.Core
             }
             var candidates = Candidates(brushes, layouts, state, out var firstSliver);
             var count      = candidates.Length;
+            // nothing to group: nothing is kept either, and the brushes are not gone through; the next update with
+            // candidates groups them all
+            if (count == 0)
+            {
+                if (memory.valid.Value)
+                    memory.Clear();
+                candidates.Dispose();
+                return;
+            }
             var known      = state.kindStart.Length == brushes.Length + 1;
             var keys       = new NativeArray<SurfaceKey>(count, Allocator.Temp);
             var hashes     = new NativeArray<uint4>(count, Allocator.Temp);

@@ -673,6 +673,8 @@ namespace Chisel.Core
         // the model's hotspot groups and the brushes left to cut (CutHotspotBrushesJob)
         [NoAlias] public HotspotCutState hotspotCut;
         [NoAlias] public FindState       hotspotFind;
+        // the brushes' own buffers holding group ids, kept with the tree
+        [NoAlias] public NativeParallelHashSet<BlobAssetReference<ChiselBrushRenderBuffer>> groupedBuffers;
 
         public void Execute()
         {
@@ -680,7 +682,8 @@ namespace Chisel.Core
                                    hotspotMatchCache);
             // Then what is drawn of hotspot surfaces is cut into its sections; the collider stays as welded (each brush's key
             // in HotspotCutKeysJob, the brushes to cut in FinishHotspotCutKeysJob)
-            OutputHotspotSections.StartCutKeys(brushRenderData, hotspotLayouts, hotspotTileSides, hotspotCut.kept.AsArray(), hotspotVariants, hotspotCutCache.IsCreated, ref hotspotCut);
+            OutputHotspotSections.StartCutKeys(brushRenderData, hotspotLayouts, hotspotTileSides, hotspotCut.kept.AsArray(), hotspotVariants, hotspotCutCache.IsCreated,
+                                               ref hotspotCut, groupedBuffers);
         }
     }
 
