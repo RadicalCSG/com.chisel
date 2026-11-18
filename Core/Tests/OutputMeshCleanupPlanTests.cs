@@ -106,7 +106,7 @@ namespace Chisel.Core.Tests
             PlanInJobs(brushes, planned);
             OutputMeshCleanup.Outlines(brushes, planned.outlineBrushes, planned.outlines);
             for (int i = 0; i < planned.work.Length; i++)
-                planned.work[i] = OutputMeshCleanup.CleanPlanned(planned.work[i], brushes.AsArray(), planned.neighbours.AsArray(), planned.outlines.AsArray());
+                planned.work[i] = OutputMeshCleanup.CleanPlanned(planned.work[i], brushes.AsArray(), planned.neighbours.AsArray(), planned.outlines.AsArray(), planned.cache);
             using var patched = new NativeList<BlobAssetReference<ChiselBrushRenderBuffer>>(Allocator.Temp);
             OutputMeshCleanup.Finish(brushes, patched, planned.work, planned.cache, planned.memory);
             Assert.That(patched.Length, Is.Zero, "every result kept by the cache");
@@ -412,6 +412,87 @@ namespace Chisel.Core.Tests
             {
                 Free(brushes, made);
             }
+        }
+
+        // A brush planned again because a brush touching it changed, where nothing of that one near it changed, is given
+        // what it was made into last time instead of being cleaned up again
+        [Test]
+        public unsafe void ABrushWhoseNeighbourChangedAwayFromIt_KeepsWhatItWasMadeInto()
+        {
+            var made     = new List<BlobAssetReference<ChiselBrushRenderBuffer>>();
+            var brushes  = new NativeList<BrushData>(Allocator.Persistent);
+            using var kept = new Planned();
+            try
+            {
+                // a square, and a brush of two triangles: one with a corner on the middle of the square's bottom edge, and
+                // one far away
+                BlobAssetReference<ChiselBrushRenderBuffer> Made(params float3[][] surfaces)
+                {
+                    var buffer = OutputMeshCleanupTests.Brush(-1, surfaces);
+                    made.Add(buffer);
+                    return buffer;
+                }
+                var square = Made(new[] { new float3(0, 0, 0), new float3(2, 0, 0), new float3(2, 2, 0), new float3(0, 0, 0), new float3(2, 2, 0), new float3(0, 2, 0) });
+                float3[] Touching() => new[] { new float3(1, 0, 0), new float3(1, 0, -1), new float3(2, 0, -1) };
+                float3[] Far(float x) => new[] { new float3(x, 0, 0), new float3(x, 0, -1), new float3(x + 1, 0, -1) };
+                brushes.Add(new BrushData { brushRenderBuffer = square, brushIndexOrder = IndexOf(0) });
+                brushes.Add(new BrushData { brushRenderBuffer = Made(Touching(), Far(5)), brushIndexOrder = IndexOf(1) });
+
+                using (var first = new NativeList<BrushData>(brushes.Length, Allocator.TempJob))
+                {
+                    first.AddRange(brushes.AsArray());
+                    CleanUp(first, kept);
+                    Assert.That(first[0].brushRenderBuffer.IsCreated && first[0].brushRenderBuffer.GetUnsafePtr() != square.GetUnsafePtr(), Is.True, "the square is split where the corner is");
+                }
+                Assert.That(kept.cache.TryGetValue(IndexOf(0).compactNodeID, out var before), Is.True);
+                // the cache's buffer is let go of when it is given another
+                var madeInto = before.result.GetUnsafePtr();
+
+                var data = brushes[1];
+                data.brushRenderBuffer = Made(Touching(), Far(6));
+                brushes[1] = data;
+                using var withMemory  = new NativeList<BrushData>(brushes.Length, Allocator.TempJob);
+                using var fromNothing = new NativeList<BrushData>(brushes.Length, Allocator.TempJob);
+                withMemory.AddRange(brushes.AsArray());
+                fromNothing.AddRange(brushes.AsArray());
+                CleanUp(withMemory, kept);
+                var planned = false;
+                for (int w = 0; w < kept.work.Length; w++)
+                    planned |= kept.work[w].brush == 0;
+                Assert.That(planned, Is.True, "the square is planned again: a brush touching it changed");
+                Assert.That(withMemory[0].brushRenderBuffer.IsCreated && withMemory[0].brushRenderBuffer.GetUnsafePtr() == madeInto, Is.True, "given what it was made into");
+                using var fresh = new Planned();
+                CleanUp(fromNothing, fresh);
+                Assert.That(OutputModelWeld.SameBuffer(withMemory[0].brushRenderBuffer, fromNothing[0].brushRenderBuffer), Is.True, "what cleaning up from nothing gives");
+            }
+            finally
+            {
+                Free(brushes, made);
+            }
+        }
+
+        // A cleanup's input key changes with everything the cleanup reads: the brush's own buffer, the outlines of the
+        // brushes touching it, drawn and of their colliders, and whether its changes are recorded
+        [Test]
+        public void TheInputKey_FollowsEverythingTheCleanupReads()
+        {
+            NativeList<OutputMeshCleanup.Outline> drawn, colliders;
+            using var _drawn     = drawn     = new NativeList<OutputMeshCleanup.Outline>(Allocator.Temp);
+            using var _colliders = colliders = new NativeList<OutputMeshCleanup.Outline>(Allocator.Temp);
+            var edge = new OutputMeshCleanup.Outline { from = new float3(0, 0, 0), to = new float3(1, 0, 0), surface = -1 };
+            drawn.Add(edge);
+            colliders.Add(edge);
+            var key = OutputMeshCleanup.InputKey(1, drawn, colliders, false);
+            Assert.That(OutputMeshCleanup.InputKey(1, drawn, colliders, false), Is.EqualTo(key), "the same input");
+            Assert.That(OutputMeshCleanup.InputKey(2, drawn, colliders, false), Is.Not.EqualTo(key), "another buffer");
+            Assert.That(OutputMeshCleanup.InputKey(1, drawn, colliders, true), Is.Not.EqualTo(key), "recorded");
+            drawn[0] = new OutputMeshCleanup.Outline { from = edge.from, to = new float3(2, 0, 0), surface = -1 };
+            Assert.That(OutputMeshCleanup.InputKey(1, drawn, colliders, false), Is.Not.EqualTo(key), "another drawn outline");
+            drawn[0] = edge;
+            colliders[0] = new OutputMeshCleanup.Outline { from = edge.from, to = new float3(2, 0, 0), surface = -1 };
+            Assert.That(OutputMeshCleanup.InputKey(1, drawn, colliders, false), Is.Not.EqualTo(key), "another collider outline");
+            colliders.Clear();
+            Assert.That(OutputMeshCleanup.InputKey(1, drawn, colliders, false), Is.Not.EqualTo(key), "no collider outline");
         }
 
         // The memory measures again only the brush whose buffer changed, of 400

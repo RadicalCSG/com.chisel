@@ -26,6 +26,8 @@ namespace Chisel.Core
         // The triangles it took out and put in, when recorded; not created when it changed none
         public UnsafeList<MeshCleanupChange> changes;
         public bool used;
+        // What the cleanup read to make it (OutputMeshCleanup.InputKey): the same again gives the same result
+        public ulong inputKey;
 
         public void Dispose()
         {
@@ -44,6 +46,10 @@ namespace Chisel.Core
     {
         public int brush;
         public ulong key;
+        // the brush's own buffer (OutputMeshCleanup.KeyOf), and what the cleanup reads (OutputMeshCleanup.InputKey)
+        public ulong sourceKey, inputKey;
+        // the result is what the cache kept for the same input: the cache's entry stays as it is
+        public bool kept;
         public int neighbourStart, neighbourCount;
         public bool record;
         public BlobAssetReference<ChiselBrushRenderBuffer> result;
@@ -280,7 +286,7 @@ namespace Chisel.Core
                 }
                 return true;
             }
-            work.Add(new MeshCleanupWork { brush = b, key = key, neighbourStart = neighbours.Length, neighbourCount = touches.Length, record = record });
+            work.Add(new MeshCleanupWork { brush = b, key = key, sourceKey = keys[b], neighbourStart = neighbours.Length, neighbourCount = touches.Length, record = record });
             foreach (var neighbour in touches)
             {
                 if (outlineSlotOf[neighbour] < 0)
@@ -578,9 +584,21 @@ namespace Chisel.Core
             }
         }
 
-        // One planned brush, with its neighbours' outlines (Outlines, by slot); each is independent of the others
+        // What a brush's cleanup reads: its own buffer (KeyOf), the outlines of the brushes touching it within its bounds,
+        // drawn and of their colliders, and whether its changes are recorded
+        public static unsafe ulong InputKey(ulong sourceKey, NativeList<Outline> drawn, NativeList<Outline> colliders, bool record)
+        {
+            var seed = sourceKey ^ (record ? kRecordedKey : 0ul) ^ ((ulong)(uint)drawn.Length << 32 | (uint)colliders.Length);
+            var hash = xxHash3.Hash64(drawn.GetUnsafeReadOnlyPtr(), drawn.Length * UnsafeUtility.SizeOf<Outline>(), seed);
+            hash = xxHash3.Hash64(colliders.GetUnsafeReadOnlyPtr(), colliders.Length * UnsafeUtility.SizeOf<Outline>(), ((ulong)hash.y << 32) | hash.x);
+            return ((ulong)hash.y << 32) | hash.x;
+        }
+
+        // One planned brush, with its neighbours' outlines (Outlines, by slot); each is independent of the others. Given
+        // what the cache kept for it when that was made from the same input (InputKey).
         public static unsafe MeshCleanupWork CleanPlanned(MeshCleanupWork work, NativeArray<BrushData> brushes, NativeArray<int> neighbours,
-                                                          NativeArray<BrushOutlines> brushOutlines)
+                                                          NativeArray<BrushOutlines> brushOutlines,
+                                                          NativeParallelHashMap<CompactNodeID, MeshCleanupEntry> cache = default)
         {
             var source = brushes[work.brush].brushRenderBuffer;
             using var outlines = new NativeList<Outline>(256, Allocator.Temp);
@@ -591,6 +609,13 @@ namespace Chisel.Core
                 var neighbour = brushOutlines[neighbours[work.neighbourStart + n]];
                 AddWithin(neighbour.drawn, box, outlines);
                 AddWithin(neighbour.colliders, box, colliderOutlines);
+            }
+            work.inputKey = InputKey(work.sourceKey, outlines, colliderOutlines, work.record);
+            if (cache.IsCreated && cache.TryGetValue(brushes[work.brush].brushIndexOrder.compactNodeID, out var entry) && entry.inputKey == work.inputKey)
+            {
+                work.result = entry.result;
+                work.kept   = true;
+                return work;
             }
             using var moves = new NativeList<float3x2>(Allocator.Temp);
             var changes = work.record ? new NativeList<MeshCleanupChange>(Allocator.Temp) : default;
@@ -768,9 +793,20 @@ namespace Chisel.Core
                 if (cached)
                 {
                     var nodeID = data.brushIndexOrder.compactNodeID;
-                    if (cache.TryGetValue(nodeID, out var old))
-                        old.Dispose();
-                    cache[nodeID] = new MeshCleanupEntry { key = item.key, result = item.result, snapMoves = item.snapMoves, changes = item.changes, used = true };
+                    if (item.kept)
+                    {
+                        // the entry made from the same input stays, under the plan's key of now
+                        var entry = cache[nodeID];
+                        entry.key  = item.key;
+                        entry.used = true;
+                        cache[nodeID] = entry;
+                    } else
+                    {
+                        if (cache.TryGetValue(nodeID, out var old))
+                            old.Dispose();
+                        cache[nodeID] = new MeshCleanupEntry { key = item.key, result = item.result, snapMoves = item.snapMoves, changes = item.changes, used = true,
+                                                               inputKey = item.inputKey };
+                    }
                     var s = BrushSlots.Of(nodeID);
                     if (memory.IsCreated && s < memory.slots.Length && memory.slots[s].id == nodeID)
                     {
