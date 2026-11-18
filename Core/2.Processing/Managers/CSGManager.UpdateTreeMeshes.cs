@@ -2446,46 +2446,14 @@ namespace Chisel.Core
                 #region Prepare sub sections
                 using (kJob_PrepareSubSectionsProfilerMarker.Auto())
                 {
+                    // grouped again only where the brushes' buffers changed since the last update
                     const bool runInParallel = runInParallelDefault;
-                    var ranges      = new NativeArray<PrepareSubSections.RangeGroups>(PrepareSubSections.kRangeCount * Temporaries.meshQueriesLength, defaultAllocator);
-                    var rangeChunks = new NativeArray<UnsafeList<uint>>(PrepareSubSections.kRangeCount, defaultAllocator);
-                    new PrepareSubSectionKeysJob
-                    {
-                        meshQueries     = Temporaries.meshQueries,
-                        brushRenderData = Temporaries.brushRenderData,
-                        allocator       = defaultAllocator,
-                        ranges          = ranges,
-                        rangeChunks     = rangeChunks,
-                        lightmapAreaBudget = lightmapAreaBudget
-                    }.Schedule(runInParallel, PrepareSubSections.kRangeCount, 1,
-                        JobHandles.Read(
-                            JobHandleType.meshQueriesJobHandle,
-                            JobHandleType.brushRenderDataJobHandle),
-                        JobHandles.Write(JobHandleType.subMeshSurfacesJobHandle));
-                    new PrepareSubSectionsJob
-                    {
-                        meshQueries     = Temporaries.meshQueries,
-                        lightmapAreaBudget = lightmapAreaBudget,
-                        allocator       = defaultAllocator,
-                        ranges          = ranges,
-                        subMeshSurfaces = Temporaries.subMeshSurfaces,
-                    }.Schedule(runInParallel, Temporaries.meshQueriesLength, 1,
-                        JobHandles.Read(JobHandleType.meshQueriesJobHandle),
-                        JobHandles.Write(JobHandleType.subMeshSurfacesJobHandle));
-                    var scatterHandle = new ScatterSubSectionsJob
-                    {
-                        meshQueries     = Temporaries.meshQueries,
-                        brushRenderData = Temporaries.brushRenderData,
-                        subMeshSurfaces = Temporaries.subMeshSurfaces,
-                        ranges          = ranges,
-                        rangeChunks     = rangeChunks
-                    }.Schedule(runInParallel, PrepareSubSections.kRangeCount, 1,
-                        JobHandles.Read(
-                            JobHandleType.meshQueriesJobHandle,
-                            JobHandleType.brushRenderDataJobHandle),
-                        JobHandles.Write(JobHandleType.subMeshSurfacesJobHandle));
-                    ranges.Dispose(scatterHandle);
-                    rangeChunks.Dispose(scatterHandle);
+                    var sectionReads  = JobHandles.Read(JobHandleType.meshQueriesJobHandle, JobHandleType.brushRenderDataJobHandle);
+                    var sectionWrites = JobHandles.Write(JobHandleType.subMeshSurfacesJobHandle);
+                    var sectionDependencies = JobExtensions.ResolveDependencies(ref sectionReads, ref sectionWrites);
+                    var grouped = MeshSectionJobs.Schedule(runInParallel, Temporaries.meshQueries, Temporaries.brushRenderData, lightmapAreaBudget,
+                                                           chiselLookupValues.meshSectionMemory, Temporaries.subMeshSurfaces, defaultAllocator, sectionDependencies);
+                    JobExtensions.RegisterNode(ref sectionReads, ref sectionWrites, grouped);
                 }
                 #endregion
 
@@ -2550,7 +2518,7 @@ namespace Chisel.Core
             // Marks the sections whose mesh is made from the same as last time (Temporaries.keptSections), remembers what each
             // was made from, and gives each render mesh the hash of what its lightmap layout is made from
             // (Temporaries.sectionLightmapHashes); returns how many are kept (FindKeptSectionHashesJob says which).
-            int FindKeptSections(NativeParallelHashMap<RenderMeshKey, uint4> hashes)
+            int FindKeptSections(NativeParallelHashMap<RenderMeshKey, uint4> hashes, MeshSectionMemory memory)
             {
                 var sections = Temporaries.vertexBufferContents.subMeshSections;
                 Temporaries.keptSections          = new NativeArray<bool>(math.max(1, sections.Length), defaultAllocator);
@@ -2558,6 +2526,9 @@ namespace Chisel.Core
                 using var kept = new NativeReference<int>(Allocator.TempJob);
                 using var sectionHashes = new NativeArray<uint4>(math.max(1, sections.Length), Allocator.TempJob);
                 using var hashed        = new NativeArray<bool>(math.max(1, sections.Length), Allocator.TempJob);
+                using var quickHashes   = new NativeArray<uint4>(math.max(1, sections.Length), Allocator.TempJob);
+                using var quickHashed   = new NativeArray<bool>(math.max(1, sections.Length), Allocator.TempJob);
+                using var differs       = new NativeArray<bool>(math.max(1, sections.Length), Allocator.TempJob);
                 var hashing = new FindKeptSectionHashesJob
                 {
                     sections              = sections,
@@ -2566,10 +2537,27 @@ namespace Chisel.Core
                     lightmapUVSettings    = lightmapUVSettings,
                     keeping               = hashes.IsCreated,
                     debugVisualizations   = DebugVisualizations,
+                    queries               = memory.queries.AsArray(),
+                    remembered            = memory.sectionHashes,
+                    verify                = MeshSectionMemory.Verify,
                     sectionLightmapHashes = Temporaries.sectionLightmapHashes,
                     sectionHashes         = sectionHashes,
-                    hashed                = hashed
+                    hashed                = hashed,
+                    quickHashes           = quickHashes,
+                    quickHashed           = quickHashed,
+                    differs               = differs
                 }.Schedule(sections.Length, 1);
+                var remembering = new RememberSectionHashesJob
+                {
+                    sectionLightmapHashes = Temporaries.sectionLightmapHashes,
+                    sectionHashes         = sectionHashes,
+                    hashed                = hashed,
+                    quickHashes           = quickHashes,
+                    quickHashed           = quickHashed,
+                    differs               = differs,
+                    sectionCount          = sections.Length,
+                    remembered            = memory.sectionHashes
+                }.Schedule(hashing);
                 new FindKeptSectionsJob
                 {
                     sections      = sections,
@@ -2579,7 +2567,7 @@ namespace Chisel.Core
                     hashes        = hashes,
                     keptSections  = Temporaries.keptSections,
                     kept          = kept
-                }.Schedule(hashing).Complete();
+                }.Schedule(remembering).Complete();
                 return kept.Value;
             }
 
@@ -2599,7 +2587,7 @@ namespace Chisel.Core
                     JobHandles[JobHandleType.subMeshDescriptionsJobHandle].writeBarrier.Complete();
                     JobHandles[JobHandleType.subMeshSurfacesJobHandle].writeBarrier.Complete();
                     // a render mesh made from the same as last time is kept as it is
-                    var keptCount = FindKeptSections(chiselLookupValues.renderMeshHashes);
+                    var keptCount = FindKeptSections(chiselLookupValues.renderMeshHashes, chiselLookupValues.meshSectionMemory);
                     // and a debug visualization no draw mode shows is not made
                     var hiddenCount = 0;
                     var sections = Temporaries.vertexBufferContents.subMeshSections;
