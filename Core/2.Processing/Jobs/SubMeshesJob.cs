@@ -264,7 +264,9 @@ namespace Chisel.Core
     // Marks the sections whose mesh is made from the same as last time (keptSections), remembers what each was made from,
     // and gives each render mesh the hash of what its lightmap layout is made from (sectionLightmapHashes); kept: how
     // many are kept. Render, shadow-only, collider and shown debug visualization meshes are kept. Section by section, in
-    // parallel, what each is made from (sectionHashes, FindKeptSectionHashesJob), then FindKeptSectionsJob
+    // parallel, what each is made from (sectionHashes, FindKeptSectionHashesJob), then FindKeptSectionsJob. A section whose
+    // descriptions all start at final groups of the MeshSectionMemory that did not change since an earlier update has
+    // the hashes it had then (memory.sectionHashes, by its quick hash), and its surfaces are not read again
     [BurstCompile(CompileSynchronously = true)]
     unsafe struct FindKeptSectionHashesJob : IJobParallelFor
     {
@@ -275,58 +277,123 @@ namespace Chisel.Core
         public bool keeping;
         // the debug visualizations made (AssignMeshesJob.debugVisualizations): one that isn't leaves no hash behind
         public int debugVisualizations;
+        // the groups the lists were made of, and the hashes of the sections of earlier updates
+        [NoAlias, ReadOnly] public NativeArray<MeshSectionMemory.Query>                          queries;
+        [NoAlias, ReadOnly] public NativeParallelHashMap<uint4, MeshSectionMemory.SectionHashes> remembered;
+        // the remembered hashes are made again too, and a difference is logged as an error
+        public bool verify;
 
         [NoAlias] public NativeArray<uint>   sectionLightmapHashes;
         // what a section that can be kept is made from (hashed: true)
         [NoAlias] public NativeArray<uint4>  sectionHashes;
         [NoAlias] public NativeArray<bool>   hashed;
+        // what each section's surfaces are, to remember its hashes by (quickHashed: true)
+        [NoAlias] public NativeArray<uint4>  quickHashes;
+        [NoAlias] public NativeArray<bool>   quickHashed;
+        // with verify: the remembered hashes differ from those made of the section's surfaces
+        [NoAlias] public NativeArray<bool>   differs;
 
         public void Execute(int i)
         {
             var buffer = new UnsafeAppendBuffer(256, 16, Allocator.Temp);
             try
             {
-                var section  = sections[i];
-                var collider = section.meshQuery.LayerParameterIndex == SurfaceParameterIndex.PhysicsMaterial;
-                var render   = section.meshQuery.LayerParameterIndex == SurfaceParameterIndex.RenderMaterial;
-                var debug    = section.meshQuery.LayerParameterIndex == SurfaceParameterIndex.None;
-                if (render)
-                    sectionLightmapHashes[i] = LightmapHash(section, ref buffer);
-                if (!keeping ||
-                    !(collider || debug || GatherSurfacesJob.OneMeshPerMaterial(section.meshQuery) || PrepareSubSections.OneMaterial(section.meshQuery)) ||
-                    ((render || debug) && section.endIndex - section.startIndex != 1) ||
-                    (debug && AssignMeshesJob.HiddenDebugVisualization(section.meshQuery, debugVisualizations)))
-                    return;
-                // a collider's section is the one description it starts at
-                var description = descriptions[section.startIndex];
-                // transparent decals are made again with their tree's every update
-                if (description.transparentDecals)
-                    return;
-                buffer.Reset();
-                if (render || debug)
+                var section = sections[i];
+                quickHashed[i] = QuickHash(section, ref buffer, out var quick);
+                quickHashes[i] = quick;
+                if (quickHashed[i] && remembered.TryGetValue(quick, out var known))
                 {
-                    buffer.Add(description.geometryHashValue);
-                    buffer.Add(description.surfaceHashValue);
-                    buffer.Add(description.vertexCount);
-                    buffer.Add(description.indexCount);
-                    buffer.Add(lightmapUVSettings);
+                    sectionLightmapHashes[i] = known.lightmap;
+                    sectionHashes[i]         = known.section;
+                    hashed[i]                = known.hashed;
+                    if (!verify)
+                        return;
                 }
-                var surfaces = subMeshSurfaces[description.meshQueryIndex];
-                for (int s = description.surfacesOffset; s < description.surfacesOffset + description.surfacesCount && s < surfaces.Length; s++)
+                Hash(section, ref buffer, out var made);
+                if (quickHashed[i] && remembered.TryGetValue(quick, out known))
                 {
-                    buffer.Add(surfaces[s].brushNodeID);
-                    buffer.Add(surfaces[s].surfaceIndex);
-                    // a collider is the shape as the weld left it, before any hotspot cut
-                    if (collider && surfaces[s].brushRenderBuffer.IsCreated)
-                        buffer.Add(surfaces[s].brushRenderBuffer.Value.surfaces[surfaces[s].surfaceIndex].shapeHashValue);
+                    differs[i] = known.lightmap != made.lightmap || known.hashed != made.hashed || (made.hashed && !known.section.Equals(made.section));
+                    return;
                 }
-                sectionHashes[i] = buffer.Hash128();
-                hashed[i] = true;
+                sectionLightmapHashes[i] = made.lightmap;
+                sectionHashes[i]         = made.section;
+                hashed[i]                = made.hashed;
             }
             finally
             {
                 buffer.Dispose();
             }
+        }
+
+        // What a section's surfaces are: the final group each of its descriptions starts at, with its version, and the
+        // settings the hashes are made with. None for a section with transparent decals (their order is made with the
+        // update) or a description that doesn't start at a final group.
+        bool QuickHash(SubMeshSection section, ref UnsafeAppendBuffer buffer, out uint4 quick)
+        {
+            quick = default;
+            buffer.Reset();
+            buffer.Add(lightmapUVSettings);
+            buffer.Add(keeping);
+            buffer.Add(debugVisualizations);
+            buffer.Add(section.startIndex - section.endIndex);
+            // a collider's section is the one description it starts at
+            var end = math.max(section.endIndex, section.startIndex + 1);
+            for (int d = section.startIndex; d < end; d++)
+            {
+                var description = descriptions[d];
+                if (description.transparentDecals || description.meshQueryIndex >= queries.Length)
+                    return false;
+                var query = queries[description.meshQueryIndex];
+                var at    = query.AssembledAt(description.surfacesOffset);
+                if (at < 0)
+                    return false;
+                buffer.Add(description.meshQueryIndex);
+                buffer.Add(description.surfacesCount);
+                buffer.Add(query.assembled[at].yz);
+            }
+            quick = buffer.Hash128();
+            return true;
+        }
+
+        // What a section is made from, read from its surfaces
+        void Hash(SubMeshSection section, ref UnsafeAppendBuffer buffer, out MeshSectionMemory.SectionHashes made)
+        {
+            made = default;
+            var collider = section.meshQuery.LayerParameterIndex == SurfaceParameterIndex.PhysicsMaterial;
+            var render   = section.meshQuery.LayerParameterIndex == SurfaceParameterIndex.RenderMaterial;
+            var debug    = section.meshQuery.LayerParameterIndex == SurfaceParameterIndex.None;
+            if (render)
+                made.lightmap = LightmapHash(section, ref buffer);
+            if (!keeping ||
+                !(collider || debug || GatherSurfacesJob.OneMeshPerMaterial(section.meshQuery) || PrepareSubSections.OneMaterial(section.meshQuery)) ||
+                ((render || debug) && section.endIndex - section.startIndex != 1) ||
+                (debug && AssignMeshesJob.HiddenDebugVisualization(section.meshQuery, debugVisualizations)))
+                return;
+            // a collider's section is the one description it starts at
+            var description = descriptions[section.startIndex];
+            // transparent decals are made again with their tree's every update
+            if (description.transparentDecals)
+                return;
+            buffer.Reset();
+            if (render || debug)
+            {
+                buffer.Add(description.geometryHashValue);
+                buffer.Add(description.surfaceHashValue);
+                buffer.Add(description.vertexCount);
+                buffer.Add(description.indexCount);
+                buffer.Add(lightmapUVSettings);
+            }
+            var surfaces = subMeshSurfaces[description.meshQueryIndex];
+            for (int s = description.surfacesOffset; s < description.surfacesOffset + description.surfacesCount && s < surfaces.Length; s++)
+            {
+                buffer.Add(surfaces[s].brushNodeID);
+                buffer.Add(surfaces[s].surfaceIndex);
+                // a collider is the shape as the weld left it, before any hotspot cut
+                if (collider && surfaces[s].brushRenderBuffer.IsCreated)
+                    buffer.Add(surfaces[s].brushRenderBuffer.Value.surfaces[surfaces[s].surfaceIndex].shapeHashValue);
+            }
+            made.section = buffer.Hash128();
+            made.hashed  = true;
         }
 
         // What a render mesh's lightmap layout is made from (ChiselOutputRenderable): each surface's chart, which the
@@ -400,6 +467,52 @@ namespace Chisel.Core
             }
             seen.Dispose();
             kept.Value = count;
+        }
+    }
+
+    // The hashes of this update's sections remembered by their quick hashes (FindKeptSectionHashesJob), the others
+    // forgotten; remembered hashes the verify found wrong are logged as an error
+    [BurstCompile(CompileSynchronously = true)]
+    struct RememberSectionHashesJob : IJob
+    {
+        [NoAlias, ReadOnly] public NativeArray<uint>  sectionLightmapHashes;
+        [NoAlias, ReadOnly] public NativeArray<uint4> sectionHashes;
+        [NoAlias, ReadOnly] public NativeArray<bool>  hashed;
+        [NoAlias, ReadOnly] public NativeArray<uint4> quickHashes;
+        [NoAlias, ReadOnly] public NativeArray<bool>  quickHashed;
+        [NoAlias, ReadOnly] public NativeArray<bool>  differs;
+        public int sectionCount;
+
+        [NoAlias] public NativeParallelHashMap<uint4, MeshSectionMemory.SectionHashes> remembered;
+
+        public void Execute()
+        {
+            var wrong = -1;
+            var wrongCount = 0;
+            for (int i = 0; i < sectionCount; i++)
+            {
+                if (!differs[i])
+                    continue;
+                if (wrong < 0)
+                    wrong = i;
+                wrongCount++;
+            }
+            if (wrongCount > 0)
+                Debug.LogError($"The remembered hashes of {wrongCount} sections differ from those made of their surfaces, the first section {wrong}");
+            remembered.Clear();
+            if (remembered.Capacity < sectionCount)
+                remembered.Capacity = sectionCount;
+            for (int i = 0; i < sectionCount; i++)
+            {
+                if (!quickHashed[i])
+                    continue;
+                remembered.TryAdd(quickHashes[i], new MeshSectionMemory.SectionHashes
+                {
+                    section  = sectionHashes[i],
+                    lightmap = sectionLightmapHashes[i],
+                    hashed   = hashed[i]
+                });
+            }
         }
     }
 

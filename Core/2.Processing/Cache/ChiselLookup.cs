@@ -35,6 +35,8 @@ namespace Chisel.Core
             public ExactPlaneMergeMemory                                        planeMergeMemory;
             // what the cleanup's last plan found for each brush (OutputMeshCleanup.PrepareFromMemory)
             public MeshCleanupPlanMemory                                        meshCleanupPlanMemory;
+            // what the last update grouped each mesh query's surfaces into (MeshSections)
+            public MeshSectionMemory                                            meshSectionMemory;
 
             public NativeList<ChiselDecalInstance>                              decalInstances;
             // where each decal was in the list SetDecals was given (ChiselDecalStore)
@@ -100,6 +102,7 @@ namespace Chisel.Core
 				exactBrushCache             = new NativeList<BlobAssetReference<ExactBrush>>(1000, Allocator.Persistent);
 				planeMergeMemory            = ExactPlaneMergeMemory.Create(Allocator.Persistent);
 				meshCleanupPlanMemory       = MeshCleanupPlanMemory.Create(Allocator.Persistent);
+				meshSectionMemory           = MeshSectionMemory.Create(Allocator.Persistent);
 
 				decalInstances              = new NativeList<ChiselDecalInstance>(16, Allocator.Persistent);
 				decalSequences              = new NativeList<int>(16, Allocator.Persistent);
@@ -263,6 +266,8 @@ namespace Chisel.Core
                 planeMergeMemory = default;
                 meshCleanupPlanMemory.Dispose();
                 meshCleanupPlanMemory = default;
+                meshSectionMemory.Dispose();
+                meshSectionMemory = default;
                 if (decalInstances.IsCreated)     decalInstances.Dispose();
                 if (decalSequences.IsCreated)     decalSequences.Dispose();
                 if (decalBounds.IsCreated)        decalBounds.Dispose();
