@@ -103,7 +103,7 @@ namespace Chisel.Core.Tests
 		{
 			if (node.IsBrush)
 			{
-				var instance = node.localVertices != null ? CreateBrushMesh(node) : CreateBrushMesh(node.localPlanes);
+				var instance = node.localVertices != null ? CreateBrushMesh(node) : CreateBrushMesh(node.localPlanes, node.smoothingGroup);
 				instances.Add(instance);
 
 				var brush = CSGTreeBrush.Create(UnityEngine.EntityId.FromULong(node.entityID), node.localToTree, instance, node.operation);
@@ -122,12 +122,15 @@ namespace Chisel.Core.Tests
 			return branch;
 		}
 
-		static BrushMeshInstance CreateBrushMesh(float4[] planes)
+		static BrushMeshInstance CreateBrushMesh(float4[] planes, uint smoothingGroup)
 		{
 			var surfaceArray = new ChiselSurfaceArray();
 			surfaceArray.EnsureSize(planes.Length);
 			for (int i = 0; i < surfaceArray.surfaces.Length; i++)
+			{
 				surfaceArray.surfaces[i] = new ChiselSurface();
+				surfaceArray.surfaces[i].surfaceDetails.smoothingGroup = smoothingGroup;
+			}
 
 			if (!ExactBrushOutline.FromPlanes(planes, out var brushMesh, out _))
 				return BrushMeshInstance.InvalidInstance;
@@ -176,7 +179,10 @@ namespace Chisel.Core.Tests
 			var surfaceArray = new ChiselSurfaceArray();
 			surfaceArray.EnsureSize(polygons.Count);
 			for (int i = 0; i < surfaceArray.surfaces.Length; i++)
+			{
 				surfaceArray.surfaces[i] = new ChiselSurface();
+				surfaceArray.surfaces[i].surfaceDetails.smoothingGroup = node.smoothingGroup;
+			}
 			var brushMesh = new BrushMesh { vertices = (float3[])vertices.Clone(), halfEdges = edges, polygons = polygons.ToArray(),
 											planes = node.localPlanes != null && node.localPlanes.Length == polygons.Count ? (float4[])node.localPlanes.Clone() : null };
 			var instance  = BrushMeshInstance.Create(brushMesh, in surfaceArray);

@@ -330,6 +330,9 @@ namespace Chisel.Core
         public ulong entityID;
         public int surfaceOffset;
         public int surfaceCount;
+        // none of its surfaces has a smoothing group (OutputSmoothNormals): set where the CSG builds it, kept by its copies;
+        // false when that is not known
+        public bool noSmoothingGroups;
 
         // The bytes of what a buffer holds, without its serial: a blob's arrays point at their elements relative to
         // themselves, so these bytes are the same for two buffers built the same. The size of a blob's data sits in the
