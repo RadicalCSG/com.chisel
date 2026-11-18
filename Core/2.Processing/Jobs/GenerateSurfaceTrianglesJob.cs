@@ -954,6 +954,11 @@ namespace Chisel.Core
 
 				using var builder = new BlobBuilder(Allocator.Temp, 4096);
 				ref var root = ref builder.ConstructRoot<ChiselBrushRenderBuffer>();
+				// its surfaces take their smoothing groups from the brush's
+				var noSmoothingGroups = true;
+				for (int surf = 0; surf < baseSurfaceCount; surf++)
+					noSmoothingGroups &= baseSurfaces[surf].smoothingGroup == 0;
+				root.noSmoothingGroups = noSmoothingGroups;
 				var anyDiscarded = false;
 				for (int p = 0; p < parts.Length && !anyDiscarded; p++)
 					anyDiscarded = parts[p].y == (int)kDiscardedPart;

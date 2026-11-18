@@ -29,6 +29,9 @@ namespace Chisel.Core.Tests
 		// Brush only: the entity id its node is created with (0 unless a test needs to tell brushes apart)
 		public ulong entityID;
 
+		// Brush only: the smoothing group of all its surfaces (0: none)
+		public uint smoothingGroup;
+
 		public float3[] localVertices;
 		public int[]    polygonLoops;
 

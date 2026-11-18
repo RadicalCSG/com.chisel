@@ -530,6 +530,7 @@ namespace Chisel.Core
                 ref var root     = ref builder.ConstructRoot<ChiselBrushRenderBuffer>();
                 root.serial      = RenderBufferSerial.Next();
                 root.entityID    = original.entityID;
+                root.noSmoothingGroups = original.noSmoothingGroups;
                 var surfaces     = builder.Allocate(ref root.surfaces, original.surfaces.Length);
                 for (int s = 0; s < original.surfaces.Length; s++)
                 {

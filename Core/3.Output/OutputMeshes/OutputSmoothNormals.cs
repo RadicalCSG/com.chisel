@@ -67,7 +67,7 @@ namespace Chisel.Core
             for (int b = 0; b < brushes.Length; b++)
             {
                 var buffer = brushes[b].brushRenderBuffer;
-                if (!buffer.IsCreated)
+                if (!buffer.IsCreated || (!byAngle && buffer.Value.noSmoothingGroups))
                     continue;
                 ref var surfaces = ref buffer.Value.surfaces;
                 for (int s = 0; s < surfaces.Length; s++)
@@ -79,20 +79,21 @@ namespace Chisel.Core
             if (count == 0)
                 return;
 
-            // every vertex of every drawn surface, by its position
+            // every vertex of every drawn surface, by its position; without the angle a vertex is only smoothed with those
+            // of its own surface and of its smoothing group, so only the surfaces with a smoothing group
             using var corners = new NativeParallelMultiHashMap<int3, Corner>(count, Allocator.Temp);
             using var normals = new NativeList<float3>(16, Allocator.Temp);
             for (int b = 0; b < brushes.Length; b++)
             {
                 var buffer = brushes[b].brushRenderBuffer;
-                if (!buffer.IsCreated)
+                if (!buffer.IsCreated || (!byAngle && buffer.Value.noSmoothingGroups))
                     continue;
                 ref var root     = ref buffer.Value;
                 ref var surfaces = ref root.surfaces;
                 for (int s = 0; s < surfaces.Length; s++)
                 {
                     ref var surface = ref surfaces[s];
-                    if (!Drawn(ref surface) || surface.indices.Length < 3)
+                    if (!Drawn(ref surface) || surface.indices.Length < 3 || (!byAngle && surface.smoothingGroup == 0))
                         continue;
                     var surfaceNormal = SurfaceNormal(ref surface);
                     if (math.all(surfaceNormal == 0))
@@ -116,7 +117,7 @@ namespace Chisel.Core
             for (int b = 0; b < brushes.Length; b++)
             {
                 var buffer = brushes[b].brushRenderBuffer;
-                if (!buffer.IsCreated)
+                if (!buffer.IsCreated || (!byAngle && buffer.Value.noSmoothingGroups))
                     continue;
                 ref var root     = ref buffer.Value;
                 ref var surfaces = ref root.surfaces;
@@ -208,6 +209,7 @@ namespace Chisel.Core
                 ref var root  = ref builder.ConstructRoot<ChiselBrushRenderBuffer>();
                 root.serial   = RenderBufferSerial.Next();
                 root.entityID = original.entityID;
+                root.noSmoothingGroups = original.noSmoothingGroups;
                 var surfaces  = builder.Allocate(ref root.surfaces, original.surfaces.Length);
                 for (int s = 0; s < original.surfaces.Length; s++)
                 {
