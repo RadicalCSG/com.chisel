@@ -795,7 +795,7 @@ namespace Chisel.Core
 
     // The brushes the merge changed, built again with their new planes
     [BurstCompile(CompileSynchronously = true)]
-    struct ExactMergedRebuildJob : IJobParallelForDefer
+    unsafe struct ExactMergedRebuildJob : IJobParallelForDefer
     {
         // Read
         [NoAlias, ReadOnly] public NativeList<IndexOrder>                           mergedBrushIndexOrders;
@@ -807,6 +807,8 @@ namespace Chisel.Core
         [NoAlias] public NativeArray<int>                                           stats;
         [NativeDisableParallelForRestriction]
         [NoAlias] public NativeList<BlobAssetReference<ExactBrush>>                 exactBrushCache;    // by node order
+        // the tree's brush generations (ExactBrushes.SetGeneration)
+        [NativeDisableUnsafePtrRestriction] public long*                            generationCounter;
 
         // Write
         [NoAlias, WriteOnly] public NativeList<BlobAssetReference<ExactBrush>>.ParallelWriter disposeList;
@@ -825,6 +827,7 @@ namespace Chisel.Core
                     builder.planes.Add(mergedPlanes[offset + p]);
                 var previous = exactBrushCache[nodeOrder];
                 var brush = ExactBrushes.Rebuild(ref previous.Value, ref builder, ref corners, out var failure);
+                ExactBrushes.SetGeneration(brush, previous, generationCounter);
                 if (failure != ExactCSGStat.Count)
                 {
                     var counters = (int*)stats.GetUnsafePtr();
