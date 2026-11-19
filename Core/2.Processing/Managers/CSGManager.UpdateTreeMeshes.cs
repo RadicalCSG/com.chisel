@@ -85,6 +85,12 @@ namespace Chisel.Core
         // the Discarded debug visualization is shown (ExactCSGJob.collectDiscarded)
         static bool CollectDiscarded => (s_DebugVisualizations & (1 << AssignMeshesJob.kDiscardedVisualization)) != 0;
 
+        // ExactCSGJob builds every face, rather than writing a face from the last update when nothing that can reach it
+        // changed (ExactFaceCache)
+        internal static bool BuildEveryFace;
+        // ExactCSGJob builds every face it replays too, and counts ExactCSGStat.ReplayMismatch where the two differ
+        internal static bool VerifyReplayedFaces;
+
         #region Update / Rebuild
 
         static readonly ProfilerMarker kUpdateTreeMeshesProfilerMarker = new("UpdateTreeMeshes");
@@ -652,6 +658,8 @@ namespace Chisel.Core
                     chiselLookupValues.brushesTouchedByBrushCache.Resize(newBrushCount, NativeArrayOptions.ClearMemory);
                 if (chiselLookupValues.exactBrushCache.Length < newBrushCount)
                     chiselLookupValues.exactBrushCache.Resize(newBrushCount, NativeArrayOptions.ClearMemory);
+                if (chiselLookupValues.exactFaceCache.Length < newBrushCount)
+                    chiselLookupValues.exactFaceCache.Resize(newBrushCount, NativeArrayOptions.ClearMemory);
 
                 Temporaries.basePolygonDisposeList           = new NativeList<BlobAssetReference<BasePolygonsBlob>>(chiselLookupValues.basePolygonCache.Length, defaultAllocator);
                 Temporaries.treeSpaceVerticesDisposeList     = new NativeList<BlobAssetReference<BrushTreeSpaceVerticesBlob>>(chiselLookupValues.treeSpaceVerticesCache.Length, defaultAllocator);
@@ -1458,7 +1466,11 @@ namespace Chisel.Core
                 #endregion
 
                 #region Exact input
+                unsafe
                 {
+                    // every brush built again takes its generation from here (ExactBrushes.SetGeneration); the jobs that
+                    // do are ordered by exactBrushCacheJobHandle
+                    var generationCounter = (long*)chiselLookupValues.exactBrushGenerations.GetUnsafePtr();
                     const bool runInParallel = runInParallelDefault;
                     var exactInputJob = new ExactInputJob
                     {
@@ -1470,6 +1482,7 @@ namespace Chisel.Core
                         // Read / Write
                         stats                       = Temporaries.exactCSGStats,
                         exactBrushCache             = chiselLookupValues.exactBrushCache,
+                        generationCounter           = generationCounter,
 
                         // Write
                         disposeList                 = Temporaries.exactBrushDisposeList.AsParallelWriter()
@@ -1492,6 +1505,7 @@ namespace Chisel.Core
                         // Read / Write
                         stats                       = Temporaries.exactCSGStats,
                         exactBrushCache             = chiselLookupValues.exactBrushCache,
+                        generationCounter           = generationCounter,
 
                         // Write
                         bounds                      = Temporaries.exactBounds
@@ -1538,6 +1552,7 @@ namespace Chisel.Core
                         // Read / Write
                         stats                       = Temporaries.exactCSGStats,
                         exactBrushCache             = chiselLookupValues.exactBrushCache,
+                        generationCounter           = generationCounter,
 
                         // Write
                         disposeList                 = Temporaries.exactBrushDisposeList.AsParallelWriter()
@@ -2013,6 +2028,11 @@ namespace Chisel.Core
                         compactTreeRef              = Temporaries.compactTreeRef,
                         captureExact                = captureExact,
                         collectDiscarded            = CollectDiscarded,
+                        replayFaces                 = !BuildEveryFace,
+                        verifyReplayedFaces         = VerifyReplayedFaces,
+
+                        // Read / Write
+                        faceCache                   = chiselLookupValues.exactFaceCache,
 
                         // Write
                         stats                       = Temporaries.exactCSGStats,

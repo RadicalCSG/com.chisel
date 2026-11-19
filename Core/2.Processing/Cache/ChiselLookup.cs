@@ -31,6 +31,10 @@ namespace Chisel.Core
             // Each brush as the exact CSG sees it (ExactBrush: exact planes, corners, bounds), rebuilt when the brush
             // changes (ExactInputJob).
             public NativeList<BlobAssetReference<ExactBrush>>                   exactBrushCache;
+            // the last ExactBrush.generation given out in this tree (ExactBrushes.SetGeneration)
+            public NativeReference<long>                                        exactBrushGenerations;
+            // what ExactCSGJob built of each brush's faces, and from what, by node order (ExactFaceCache)
+            public NativeList<ExactFaceCache>                                   exactFaceCache;
             // what the last plane merge found (ExactPlaneMerge.MergeAgain)
             public ExactPlaneMergeMemory                                        planeMergeMemory;
             // what the cleanup's last plan found for each brush (OutputMeshCleanup.PrepareFromMemory)
@@ -100,6 +104,8 @@ namespace Chisel.Core
 				brushesTouchedByBrushCache  = new NativeList<BlobAssetReference<BrushesTouchedByBrush>>(1000, Allocator.Persistent); // Confirmed to get disposed
 				brushRenderBufferCache      = new NativeList<BlobAssetReference<ChiselBrushRenderBuffer>>(1000, Allocator.Persistent); // Confirmed to get disposed
 				exactBrushCache             = new NativeList<BlobAssetReference<ExactBrush>>(1000, Allocator.Persistent);
+				exactBrushGenerations       = new NativeReference<long>(Allocator.Persistent);
+				exactFaceCache              = new NativeList<ExactFaceCache>(1000, Allocator.Persistent);
 				planeMergeMemory            = ExactPlaneMergeMemory.Create(Allocator.Persistent);
 				meshCleanupPlanMemory       = MeshCleanupPlanMemory.Create(Allocator.Persistent);
 				meshSectionMemory           = MeshSectionMemory.Create(Allocator.Persistent);
@@ -262,6 +268,16 @@ namespace Chisel.Core
                     exactBrushCache.Dispose();
                 }
                 exactBrushCache = default;
+                if (exactBrushGenerations.IsCreated)
+                    exactBrushGenerations.Dispose();
+                exactBrushGenerations = default;
+                if (exactFaceCache.IsCreated)
+                {
+                    for (int i = 0; i < exactFaceCache.Length; i++)
+                        exactFaceCache[i].Dispose();
+                    exactFaceCache.Dispose();
+                }
+                exactFaceCache = default;
                 planeMergeMemory.Dispose();
                 planeMergeMemory = default;
                 meshCleanupPlanMemory.Dispose();

@@ -33,10 +33,39 @@ namespace Chisel.Core
         public BlobArray<int2>             faces;
         public BlobArray<MinMaxAABB>       faceBounds;
         public BlobArray<ExactPolygonEdge> faceEdges;
+        // the same for every brush the CSG sees the same (SetGeneration): what the faces replayed from an earlier update
+        // were built with is known by it (ExactFaceCache)
+        public ulong                       generation;
     }
 
     static class ExactBrushes
     {
+        // A brush built again keeps the generation of the one it replaces when the CSG sees it the same: the same planes
+        // and corner count, as all else it reads of the brush (its bounds, faces and their polygons) is made from them.
+        // Otherwise it takes a new one from the tree's counter.
+        internal static unsafe void SetGeneration(BlobAssetReference<ExactBrush> brush, BlobAssetReference<ExactBrush> previous, long* counter)
+        {
+            ref var value = ref brush.Value;
+            if (previous.IsCreated && SeenTheSame(ref previous.Value, ref value))
+                value.generation = previous.Value.generation;
+            else
+                value.generation = (ulong)Interlocked.Increment(ref *counter);
+        }
+
+        static bool SeenTheSame(ref ExactBrush a, ref ExactBrush b)
+        {
+            if (a.cornerCount != b.cornerCount || a.planes.Length != b.planes.Length)
+                return false;
+            for (int p = 0; p < a.planes.Length; p++)
+            {
+                var pa = a.planes[p];
+                var pb = b.planes[p];
+                if (pa.a != pb.a || pa.b != pb.b || pa.c != pb.c || !Int128.Equals(pa.w, pb.w))
+                    return false;
+            }
+            return true;
+        }
+
         public static BlobAssetReference<ExactBrush> Build(BlobAssetReference<BrushMeshBlob> meshRef, in float4x4 nodeToTree,
                                                            ref ExactFaceBuilder builder, ref ExactList<ExactVertex> corners,
                                                            out ExactCSGStat failure)
@@ -331,7 +360,7 @@ namespace Chisel.Core
     }
 
     [BurstCompile(CompileSynchronously = true)]
-    struct ExactInputJob : IJobParallelForDefer
+    unsafe struct ExactInputJob : IJobParallelForDefer
     {
         // Read
         [NoAlias, ReadOnly] public NativeList<IndexOrder>                           rebuildTreeBrushIndexOrders;
@@ -343,6 +372,8 @@ namespace Chisel.Core
         [NoAlias] public NativeArray<int>                                           stats;
         [NativeDisableParallelForRestriction]
         [NoAlias] public NativeList<BlobAssetReference<ExactBrush>>                 exactBrushCache;    // by node order
+        // the tree's brush generations (ExactBrushes.SetGeneration)
+        [NativeDisableUnsafePtrRestriction] public long*                            generationCounter;
 
         // Write
         [NoAlias, WriteOnly] public NativeList<BlobAssetReference<ExactBrush>>.ParallelWriter disposeList;
@@ -361,6 +392,7 @@ namespace Chisel.Core
                 if (failure != ExactCSGStat.Count)
                     Interlocked.Increment(ref counters[(int)failure]);
                 var previous = exactBrushCache[nodeOrder];
+                ExactBrushes.SetGeneration(brush, previous, generationCounter);
                 if (previous.IsCreated)
                     disposeList.AddNoResize(previous);
                 exactBrushCache[nodeOrder] = brush;
@@ -374,7 +406,7 @@ namespace Chisel.Core
     }
 
     [BurstCompile(CompileSynchronously = true)]
-    struct ExactBoundsJob : IJob
+    unsafe struct ExactBoundsJob : IJob
     {
         // Read
         [NoAlias, ReadOnly] public NativeList<IndexOrder>                           allTreeBrushIndexOrders;
@@ -384,6 +416,8 @@ namespace Chisel.Core
         // Read / Write
         [NoAlias] public NativeArray<int>                                           stats;
         [NoAlias] public NativeList<BlobAssetReference<ExactBrush>>                 exactBrushCache;    // by node order
+        // the tree's brush generations (ExactBrushes.SetGeneration)
+        [NativeDisableUnsafePtrRestriction] public long*                            generationCounter;
 
         // Write
         [NoAlias] public NativeList<MinMaxAABB>                                     bounds;             // by node order
@@ -402,8 +436,10 @@ namespace Chisel.Core
                     int nodeOrder = allTreeBrushIndexOrders[b].nodeOrder;
                     if (!exactBrushCache[nodeOrder].IsCreated)
                     {
-                        exactBrushCache[nodeOrder] = ExactBrushes.Build(brushMeshLookup[nodeOrder], transformationCache[nodeOrder].nodeToTree,
-                                                                        ref builder, ref corners, out var failure);
+                        var brush = ExactBrushes.Build(brushMeshLookup[nodeOrder], transformationCache[nodeOrder].nodeToTree,
+                                                       ref builder, ref corners, out var failure);
+                        ExactBrushes.SetGeneration(brush, default, generationCounter);
+                        exactBrushCache[nodeOrder] = brush;
                         stats[(int)ExactCSGStat.InputBrushes]++;
                         if (failure != ExactCSGStat.Count)
                             stats[(int)failure]++;

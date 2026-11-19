@@ -79,7 +79,8 @@ namespace Chisel.Core.Tests
 		public string LastUpdateReport { get; private set; } = "(no update yet)";
 		int callbacksForThisTree, callbacksForOtherTrees, renderableSections, sectionsWithLookup;
 
-		public static ContentsTreeHarness Build(ContentsScene scene)
+		// captureExact false: the exact CSG runs as it does outside tests (ExactCSGCapture off), so nothing is judged exactly
+		public static ContentsTreeHarness Build(ContentsScene scene, bool captureExact = true)
 		{
 			var harness  = new ContentsTreeHarness { scene = scene };
 			// installed before the tree exists, so it is built with it from the start
@@ -94,8 +95,12 @@ namespace Chisel.Core.Tests
 
 			// The exact CSG's planes and triangles, for ExactJudge; only captured while the exact CSG runs. Held until
 			// Dispose, so it covers every update this harness makes.
-			ExactCSGCapture.Acquire();
-			harness.capturing = true;
+			if (captureExact)
+			{
+				ExactCSGCapture.Acquire();
+				harness.capturing = true;
+			} else
+				harness.JudgeEachUpdate = false;
 			return harness;
 		}
 
