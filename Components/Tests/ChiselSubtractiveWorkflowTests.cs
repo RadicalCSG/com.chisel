@@ -981,6 +981,17 @@ namespace Chisel.Components.Tests
             return (probe[0, 0] + probe[1, 0] + probe[2, 0]) / 3;
         }
 
+        // What a bake left the model with, for a failure's message
+        static string BakeState(ChiselModelComponent model)
+        {
+            var renderer  = RendererOf(model);
+            var index     = renderer.lightmapIndex;
+            var lightmaps = LightmapSettings.lightmaps;
+            var texture   = index >= 0 && index < lightmaps.Length ? lightmaps[index].lightmapColor : null;
+            return $"lightmap {index} of {lightmaps.Length}, its texture {(texture ? $"{texture.width}x{texture.height}" : "missing")}, " +
+                   $"scale and offset {renderer.lightmapScaleOffset}, lighting data {(UnityEditor.Lightmapping.lightingDataAsset ? "there" : "missing")}";
+        }
+
         // Bakes the lamp, and how bright the camera sees the baked light alone: with the lamp off, as before a bake a baked
         // light is drawn live
         static float BakedBrightness(Light lamp, Camera camera)
@@ -1012,7 +1023,7 @@ namespace Chisel.Components.Tests
 
             var baked = BakedBrightness(lamp, view);
             Assert.That(RendererOf(model).lightmapIndex, Is.GreaterThanOrEqualTo(0), $"{floor} has a lightmap");
-            Assert.That(baked, Is.GreaterThan(0.05f), $"the baked lamp lights the floor of {floor}");
+            Assert.That(baked, Is.GreaterThan(0.05f), $"the baked lamp lights the floor of {floor} ({BakeState(model)})");
             var probe = ProbeBrightness(kRoomMiddle);
             Assert.That(probe, Is.GreaterThan(0), $"the light probes in {floor} are lit");
             return (baked, probe);
@@ -1172,6 +1183,27 @@ namespace Chisel.Components.Tests
         // in a room carved out of a solid (an additive brush in it)
         [Test]
         public void APillarInARoom_ShadowsTheFloorFromALamp([Values(Floor.OfACarvedRoom, Floor.OfASubtractiveWorkflowRoom)] Floor floor)
+        {
+            // a lamp casts shadows only where the render pipeline lets lights other than the main one cast them: turned on
+            // for the test, whatever the project has
+            var pipeline = UnityEngine.Rendering.GraphicsSettings.currentRenderPipeline;
+            var setting  = pipeline?.GetType().GetProperty("supportsAdditionalLightShadows",
+                                                           System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public);
+            if (setting?.SetMethod == null)
+                Assert.Ignore("the render pipeline has no setting for the shadows of lights other than the main one");
+            var before = (bool)setting.GetValue(pipeline);
+            try
+            {
+                setting.SetValue(pipeline, true);
+                PillarShadowsTheFloor(floor);
+            }
+            finally
+            {
+                setting.SetValue(pipeline, before);
+            }
+        }
+
+        void PillarShadowsTheFloor(Floor floor)
         {
             var model = FloorModel(floor);
             Box(model, new float3(2, 0, 1.5f), new float3(2.5f, 3, 2.5f),
