@@ -32,8 +32,29 @@ namespace Chisel.Components
             var to   = toWorld ? worldToPlane  : objectToPlane;
             details.UV0 = (UVMatrix)math.mul((float4x4)details.UV0, math.mul(from, math.inverse(to)));
 
-            details.hotspot = ToggledHotspot(surface, details.hotspot, toWorld, treePlane.xyz, math.normalizesafe(plane.xyz), nodeToTree, treeToNode);
+            // a hotspot tile is laid out as seen from the side the surface is drawn on
+            var localNormal = math.normalizesafe(plane.xyz);
+            var turned      = IsDrawnTurned(surface, treePlane.xyz);
+            details.hotspot = ToggledHotspot(surface, details.hotspot, toWorld, turned ? -treePlane.xyz : treePlane.xyz, localNormal,
+                                             turned ? -localNormal : localNormal, nodeToTree, treeToNode);
             return Flip(details, toWorld);
+        }
+
+        // Whether the surface was last drawn turned round, seen from behind its brush's plane (treeNormal): every vertex
+        // of it facing the other way, as GenerateSurfaceTrianglesJob decides it
+        static bool IsDrawnTurned(SurfaceReference surface, float3 treeNormal)
+        {
+            if (!ChiselHotspotRepeats.TryGetBuilt(surface, out var buffer))
+                return false;
+            ref var vertices = ref buffer.Value.surfaces[surface.surfaceIndex].renderVertices;
+            if (vertices.Length == 0)
+                return false;
+            for (int v = 0; v < vertices.Length; v++)
+            {
+                if (math.dot(vertices[v].normal, treeNormal) >= 0)
+                    return false;
+            }
+            return true;
         }
 
         static SurfaceDetails Flip(SurfaceDetails details, bool toWorld)
@@ -46,8 +67,9 @@ namespace Chisel.Components
         // A hotspot surface's settings in the other space: the turn between the object's frame and the world's, its
         // density in the brush's own units or the tree's, and its repeats' offset from the inset corner or the frame's
         // origin (from its last build)
+        // (normal: the drawn side's, in the tree; localNormal: the brush's plane's; ownNormal: that facing the drawn side)
         static HotspotSurface ToggledHotspot(SurfaceReference surface, HotspotSurface hotspot, bool toWorld, float3 normal, float3 localNormal,
-                                             float4x4 nodeToTree, float4x4 treeToNode)
+                                             float3 ownNormal, float4x4 nodeToTree, float4x4 treeToNode)
         {
             HotspotMatcher.Frame(normal, localNormal, nodeToTree, 0, false, out _, out var objectUp);
             HotspotMatcher.Frame(normal, 0, false, out var worldRight, out var worldUp);
@@ -56,7 +78,7 @@ namespace Chisel.Components
             var rotation = hotspot.rotation + (toWorld ? delta : -delta);
             rotation -= 360 * math.floor(rotation / 360);
             // the brush's own units along the frame as locked (its rotation there)
-            var units = HotspotMatcher.OwnUnits(normal, localNormal, treeToNode, toWorld ? hotspot.rotation : rotation, hotspot.mirror);
+            var units = HotspotMatcher.OwnUnits(normal, ownNormal, treeToNode, toWorld ? hotspot.rotation : rotation, hotspot.mirror);
             hotspot.rotation = rotation;
             var density = hotspot.Density * (toWorld ? units : 1 / units);
             hotspot.density = density == 1 ? 0 : density;

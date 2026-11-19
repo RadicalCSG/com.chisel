@@ -140,6 +140,18 @@ namespace Chisel.Editors
         }
 
 
+        // The operation of a drawn shape when none is chosen: pulled out of a model's surface (a positive height) it adds,
+        // pushed into it it cuts. In a model with the subtractive workflow the brushes are the empty space, so there it is
+        // the other way round. Drawn on the grid, away from any model, it adds
+        internal static CSGOperationType DrawnOperation(float height, ChiselModelComponent modelBeneathCursor)
+        {
+            if (!modelBeneathCursor)
+                return CSGOperationType.Additive;
+            var pushedIn            = height < 0;
+            var subtractiveWorkflow = modelBeneathCursor.renderSettings != null && modelBeneathCursor.renderSettings.subtractiveWorkflow;
+            return pushedIn != subtractiveWorkflow ? CSGOperationType.Subtractive : CSGOperationType.Additive;
+        }
+
         public bool             IsGenerating    { get; private set; }
 
         public bool             InToolBox 

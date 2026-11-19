@@ -142,10 +142,7 @@ namespace Chisel.Editors
                             generatedComponent.gameObject.SetActive(!flat);
                         if (flat)
                             break;
-                        generatedComponent.Operation = forceOperation ??
-                                                  ((height < 0 && modelBeneathCursor) ?
-                                                    CSGOperationType.Subtractive :
-                                                    CSGOperationType.Additive);
+                        generatedComponent.Operation = forceOperation ?? DrawnOperation(height, modelBeneathCursor);
                         PlacementToolDefinition.OnUpdate(ref generatedComponent.definition, height);
                         generatedComponent.OnValidate();
                         ChiselActiveMaterial.GiveTo(generatedComponent);
@@ -274,10 +271,7 @@ namespace Chisel.Editors
                         if ((generatoreModeFlags & PlacementFlags.AlwaysFaceUp) == PlacementFlags.AlwaysFaceCameraXZ)
                             generatedComponent.Operation = forceOperation ?? CSGOperationType.Additive;
                         else
-                            generatedComponent.Operation = forceOperation ??
-                                                    ((height < 0 && modelBeneathCursor) ?
-                                                    CSGOperationType.Subtractive :
-                                                    CSGOperationType.Additive);
+                            generatedComponent.Operation = forceOperation ?? DrawnOperation(height, modelBeneathCursor);
                         PlacementToolDefinition.OnUpdate(ref generatedComponent.definition, bounds);
                         generatedComponent.OnValidate();
                         ChiselActiveMaterial.GiveTo(generatedComponent);

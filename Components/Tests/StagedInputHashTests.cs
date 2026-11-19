@@ -219,6 +219,16 @@ namespace Chisel.Components.Tests
             });
         }
 
+        [Test]
+        public void TheSubtractiveWorkflow_IsAChange()
+        {
+            AssertBothAgree("turning on the model's subtractive workflow", () =>
+            {
+                model.renderSettings.subtractiveWorkflow = true;
+                model.SyncModelSettingsStore();
+            });
+        }
+
         // What a brush is made of is an index into the contents list, and a project may only have the one it starts
         // with, so this only requires the two hashes to agree
         [Test]

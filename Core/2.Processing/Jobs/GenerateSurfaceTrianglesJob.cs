@@ -56,6 +56,20 @@ namespace Chisel.Core
 		}
 		readonly static CompareSortByBasePlaneIndex kCompareSortByBasePlaneIndex = new();
 
+		// faceNormal, or turned round when every registered vertex faces the other way (UniqueVertexMapper.RegisterVertices
+		// turns a reverse aligned part's normal)
+		static float3 DrawnNormal(NativeList<RenderVertex> vertices, float3 faceNormal)
+		{
+			if (vertices.Length == 0)
+				return faceNormal;
+			for (int v = 0; v < vertices.Length; v++)
+			{
+				if (math.dot(vertices[v].normal, faceNormal) >= 0)
+					return faceNormal;
+			}
+			return -faceNormal;
+		}
+
 		// After a surface's triangles have been registered: normal smoothing, UVs, tangents, lightmap coordinates, the decals on
 		// it and its render buffer.
 		unsafe void FinishSurface(int surf, int brushNodeOrder, ulong entityID, ref BlobArray<BaseSurface> baseSurfaces, float4x4 treeToPlane, float4x4 nodeToTree, float3 finalFaceNormal,
@@ -65,6 +79,9 @@ namespace Chisel.Core
 						   NativeArray<int> decalCandidateStart, SlotLayout slots)
 		{
 			var baseSurfaceCount = slots.baseSurfaceCount;
+			// the side the surface is drawn on: turned round from finalFaceNormal when all its parts are (a subtractive
+			// brush's walls; a pillar in the subtractive workflow). Hotspot tiles are laid out as seen from there
+			var drawnNormal = DrawnNormal(uniqueVertexMapper.surfaceRenderVertices, finalFaceNormal);
 			// a painted surface gets its paint's grid points as vertices, before anything is worked out from them
 			if (paint.TryGetRange(entityID, baseSurfaces[surf].descriptionIndex, out var subdivision))
 				PaintSubdivision.Subdivide(surfaceIndexList, ref uniqueVertexMapper, finalFaceNormal, paint, subdivision);
@@ -84,6 +101,7 @@ namespace Chisel.Core
 			var sectionInput  = default(HotspotSectionInput);
 			var hotspotInfo   = default(HotspotSurfaceInfo);
 			var hotspotSource = default(HotspotSurfaceSource);
+			var hotspotMapped = false;
 			if (hotspot > 0 && hotspot <= hotspotLayouts.Length && hotspotLayouts[hotspot - 1].tileCount > 0)
 			{
 				var layout  = hotspotLayouts[hotspot - 1];
@@ -98,7 +116,7 @@ namespace Chisel.Core
 				var ownUnits = 1.0f;
 				if (cap)
 				{
-					if (math.dot(capNormal, finalFaceNormal) < 0)
+					if (math.dot(capNormal, drawnNormal) < 0)
 						capNormal = -capNormal;
 					var localNormal = math.mul(math.transpose(new float3x3(nodeToTree)), capNormal);
 					// locked to the object, in the brush's own space and units; otherwise the tree's
@@ -116,16 +134,16 @@ namespace Chisel.Core
 				{
 					lead = surf;
 					if (baseSurfaces[surf].textureInWorld)
-						HotspotMatcher.Frame(finalFaceNormal, baseSurfaces[surf].hotspotRotation, baseSurfaces[surf].hotspotMirror, out hotspotRight, out hotspotUp);
+						HotspotMatcher.Frame(drawnNormal, baseSurfaces[surf].hotspotRotation, baseSurfaces[surf].hotspotMirror, out hotspotRight, out hotspotUp);
 					else
 					{
-						// the brush's own normal, facing as the drawn face does (inwards in the subtractive workflow)
+						// the brush's own normal, facing as the drawn face does
 						var ownNormal = math.normalizesafe(baseSurfaces[surf].localPlane.xyz);
 						var toTree = math.transpose(math.inverse(nodeToTree));
-						if (math.dot(math.mul(toTree, new float4(ownNormal, 0)).xyz, finalFaceNormal) < 0)
+						if (math.dot(math.mul(toTree, new float4(ownNormal, 0)).xyz, drawnNormal) < 0)
 							ownNormal = -ownNormal;
-						HotspotMatcher.Frame(finalFaceNormal, baseSurfaces[surf].localPlane.xyz, nodeToTree, baseSurfaces[surf].hotspotRotation, baseSurfaces[surf].hotspotMirror, out hotspotRight, out hotspotUp);
-						ownUnits = HotspotMatcher.OwnUnits(finalFaceNormal, ownNormal, math.inverse(nodeToTree), baseSurfaces[surf].hotspotRotation, baseSurfaces[surf].hotspotMirror);
+						HotspotMatcher.Frame(drawnNormal, baseSurfaces[surf].localPlane.xyz, nodeToTree, baseSurfaces[surf].hotspotRotation, baseSurfaces[surf].hotspotMirror, out hotspotRight, out hotspotUp);
+						ownUnits = HotspotMatcher.OwnUnits(drawnNormal, ownNormal, math.inverse(nodeToTree), baseSurfaces[surf].hotspotRotation, baseSurfaces[surf].hotspotMirror);
 					}
 					shape = HotspotMatcher.ShapeOf(uniqueVertexMapper.surfaceColliderVertices.AsArray(), hotspotRight, hotspotUp);
 					HotspotMatcher.MaskOf(ref shape, uniqueVertexMapper.surfaceColliderVertices.AsArray(), surfaceIndexList.AsArray(), hotspotRight, hotspotUp);
@@ -137,7 +155,7 @@ namespace Chisel.Core
 													pinnedSheet: baseSurfaces[lead].hotspotPinnedSheet);
 				// coplanar neighbours with this layout and frame, of any brush, are matched again together (HotspotGroups)
 				if (!cap)
-					hotspotSource = new HotspotSurfaceSource { layout = hotspot, right = hotspotRight, up = hotspotUp, normal = finalFaceNormal, seed = seed,
+					hotspotSource = new HotspotSurfaceSource { layout = hotspot, right = hotspotRight, up = hotspotUp, normal = drawnNormal, seed = seed,
 															   pinned = baseSurfaces[surf].hotspotPinned, pinnedSheet = baseSurfaces[surf].hotspotPinnedSheet,
 															   density = density, offset = baseSurfaces[surf].hotspotOffset,
 															   world = baseSurfaces[surf].textureInWorld };
@@ -149,6 +167,7 @@ namespace Chisel.Core
 					layout = sheet;
 					uvMat = HotspotMatcher.Mapping(hotspotTiles[choice.tile], layout, shape, choice, hotspotRight, hotspotUp);
 					cornerUVs = false;
+					hotspotMapped = true;
 					// a tile that repeats, has a border, or whose repeats are moved along (a cap is mapped whole): what is drawn is cut
 					// where its sections meet, after the model's weld (OutputHotspotSections)
 					if (!cap && (hotspotTiles[choice.tile].border > 0 || choice.Repeated || math.any(baseSurfaces[surf].hotspotOffset != 0) ||
@@ -169,10 +188,19 @@ namespace Chisel.Core
 				}
 			}
 			
+			// the parts drawn turned round (a subtractive brush's walls; all of them in the subtractive workflow) are seen from
+			// behind the brush's plane: their u runs the other way, so the texture reads as from the front. A hotspot tile is
+			// laid out from the drawn side already
+			var frontNormal = subtractiveWorkflow ? -finalFaceNormal : finalFaceNormal;
+			var turnUVs     = !hotspotMapped;
+			var turnedUVMat = turnUVs ? MeshAlgorithms.TurnedUVMatrix(uvMat) : uvMat;
+
 			MeshAlgorithms.ComputeUVs(uniqueVertexMapper.surfaceRenderVertices, uvMat);
 			if (cornerUVs)
 				surfaceCorners.ApplyUVs(uniqueVertexMapper.surfaceRenderVertices);
-			MeshAlgorithms.ComputeTangents(uniqueVertexMapper.surfaceRenderVertices, finalFaceNormal, uvMat);
+			if (turnUVs)
+				MeshAlgorithms.TurnUVs(uniqueVertexMapper.surfaceRenderVertices, frontNormal);
+			MeshAlgorithms.ComputeTangents(uniqueVertexMapper.surfaceRenderVertices, finalFaceNormal, uvMat, turnedUVMat, frontNormal);
 			MeshAlgorithms.ComputeLightmapCoordinates(uniqueVertexMapper.surfaceRenderVertices, finalFaceNormal);
 
 			// Decals on this surface, each in its own slot
@@ -195,11 +223,13 @@ namespace Chisel.Core
 					onSurface        = new NativeArray<DecalVolume>(candidateCount, Allocator.Temp);
 					onSurfaceIndices = new UnsafeList<int>(candidateCount, Allocator.Temp);
 					var pointOnPlane = (double3)uniqueVertexMapper.surfaceRenderVertices[0].position;
-					var uDirection   = new double3(uvMat.c0.x, uvMat.c1.x, uvMat.c2.x);
+					// the u of the texture as it is seen, on the side the surface is drawn on
+					var seenUVMat    = math.dot(drawnNormal, frontNormal) < 0 ? turnedUVMat : uvMat;
+					var uDirection   = new double3(seenUVMat.c0.x, seenUVMat.c1.x, seenUVMat.c2.x);
 					for (int k = 0; k < candidateCount; k++)
 					{
 						var volume = decalVolumes[candidates[k]];
-						onSurface[k] = volume.IsOmni ? volume.OnSurface(finalFaceNormal, pointOnPlane, uDirection) : volume;
+						onSurface[k] = volume.IsOmni ? volume.OnSurface(drawnNormal, pointOnPlane, uDirection) : volume;
 						onSurfaceIndices.Add(k);
 					}
 					volumes    = onSurface;
@@ -220,7 +250,9 @@ namespace Chisel.Core
 					MeshAlgorithms.ComputeUVs(remaining.renderVertices, uvMat);
 					if (cornerUVs)
 						surfaceCorners.ApplyUVs(remaining.renderVertices);
-					MeshAlgorithms.ComputeTangents(remaining.renderVertices, finalFaceNormal, uvMat);
+					if (turnUVs)
+						MeshAlgorithms.TurnUVs(remaining.renderVertices, frontNormal);
+					MeshAlgorithms.ComputeTangents(remaining.renderVertices, finalFaceNormal, uvMat, turnedUVMat, frontNormal);
 					MeshAlgorithms.ComputeLightmapCoordinates(remaining.renderVertices, finalFaceNormal);
 				}
 				for (int k = 0; k < candidateCount; k++)
@@ -239,6 +271,8 @@ namespace Chisel.Core
 						MeshAlgorithms.ComputeUVs(decalOutput.renderVertices, uvMat);
 						if (cornerUVs)
 							surfaceCorners.ApplyUVs(decalOutput.renderVertices);
+						if (turnUVs)
+							MeshAlgorithms.TurnUVs(decalOutput.renderVertices, frontNormal);
 					}
 					MeshAlgorithms.ComputeTangents(decalOutput.indices, decalOutput.renderVertices);
 					MeshAlgorithms.ComputeLightmapCoordinates(decalOutput.renderVertices, finalFaceNormal);
@@ -936,7 +970,7 @@ namespace Chisel.Core
 						brushMax = math.max(brushMax, vertices[v]);
 					}
 				}
-				FindDecalCandidates(ref baseSurfaces, nodeToTreeInvTrans, vertices.Length > 0, brushMin, brushMax, entityID, decalCandidates, decalTargeted, decalCandidateStart);
+				FindDecalCandidates(ref baseSurfaces, nodeToTreeInvTrans, vertices.Length > 0, brushMin, brushMax, entityID, parts, decalCandidates, decalTargeted, decalCandidateStart);
 				if (decalCandidates.Length > 0)
 					decalBuilder = DecalSurfaceBuilder.Create(Allocator.Temp);
 
@@ -1023,8 +1057,25 @@ namespace Chisel.Core
 			}
 		}
 
+		// Whether every part of a surface the CSG kept is reverse aligned: drawn turned round from its face normal
+		// (UniqueVertexMapper.RegisterVertices), as DrawnNormal finds from its vertices
+		static bool PartsReversed(NativeList<int4> parts, int surf)
+		{
+			var any = false;
+			for (int p = 0; p < parts.Length; p++)
+			{
+				var part = parts[p];
+				if (part.x != surf || part.w < 3 || part.y == (int)kDiscardedPart)
+					continue;
+				if (part.y != (int)CategoryIndex.ReverseAligned && part.y != (int)CategoryIndex.ValidReverseAligned)
+					return false;
+				any = true;
+			}
+			return any;
+		}
+
 		unsafe void FindDecalCandidates(ref BlobArray<BaseSurface> baseSurfaces, float4x4 nodeToTreeInvTrans, bool hasVertices, float3 brushMin, float3 brushMax,
-										ulong brushEntityID, NativeList<int> candidates, NativeList<byte> targeted, NativeArray<int> start)
+										ulong brushEntityID, NativeList<int4> parts, NativeList<int> candidates, NativeList<byte> targeted, NativeArray<int> start)
 		{
 			candidates.Clear();
 			targeted.Clear();
@@ -1063,7 +1114,8 @@ namespace Chisel.Core
 					ref var volume = ref volumes[d];
 					if (volume.IsOmni)
 					{
-						if (!volume.Reaches(subtractiveWorkflow ? -plane : plane))
+						// the plane facing the side the surface is drawn on
+						if (!volume.Reaches(subtractiveWorkflow != PartsReversed(parts, s) ? -plane : plane))
 							continue;
 					} else
 					{

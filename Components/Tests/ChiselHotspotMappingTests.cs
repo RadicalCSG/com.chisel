@@ -510,6 +510,32 @@ namespace Chisel.Components.Tests
             AssertSameLook(plainBefore, plainModel, plainFront, "plain, to the world");
         }
 
+        // A room's wall, seen from inside, looks the same after its lock is toggled too
+        [Test]
+        public void TogglingTheLockOfARoomsWall_ChangesNothingOnScreen([Values] bool subtractiveWorkflow)
+        {
+            BorderOnB1(32);
+            var model = Model();
+            if (subtractiveWorkflow)
+            {
+                model.renderSettings.subtractiveWorkflow = true;
+                model.SyncModelSettingsStore();
+            } else
+                Box(model, new float3(-8, -6, -4), new float3(10, 8, 4));
+            var room = Box(model, new float3(-2, 0, -0.125f), new float3(6, 2, 0.125f), d => { d.hotspot.rotation = 90; return d; });
+            if (!subtractiveWorkflow)
+                room.Operation = CSGOperationType.Subtractive;
+            Place(room, new Vector3(0.3f, 0.2f, 0), Quaternion.Euler(0, 0, 20), new Vector3(0.75f, 0.75f, 0.75f));
+            // the wall the box's front is, seen from inside
+            var inside = math.normalize((float3)(room.transform.localRotation * Vector3.forward));
+            var before = Drawn(model, inside);
+            ToggleLock(room);
+            Assert.That(ChiselTextureLock.IsInWorldSpace(room.SurfaceDefinition.surfaces[0].surfaceDetails), Is.True);
+            AssertSameLook(before, model, inside, "to the world");
+            ToggleLock(room);
+            AssertSameLook(before, model, inside, "back to the object");
+        }
+
         // Every uv drawn at a position on a face with this normal
         static List<float2> UVsAt(ChiselModelComponent model, float3 position, float3 normal)
         {
@@ -1462,6 +1488,30 @@ namespace Chisel.Components.Tests
             AreEqual(new float2(0.5f, 0.75f), UVAt(model, new float3(2, 0, -0.125f), kFront), "bottom right");
             AreEqual(new float2(1.0f, 0.75f), UVAt(model, new float3(-2, 0, -0.125f), kFront), "bottom left");
             AreEqual(new float2(1.0f, 1.0f),  UVAt(model, new float3(-2, 2, -0.125f), kFront), "top left");
+        }
+
+        // The back wall of a room, seen from inside, takes its tile as a wall of a solid does from outside: not mirrored.
+        // The room is carved out of a solid by a subtractive brush, or is a brush of a model with the subtractive workflow
+        [Test]
+        public void ARoomsWall_TakesItsTileUnmirrored([Values] bool subtractiveWorkflow)
+        {
+            var model = Model();
+            if (subtractiveWorkflow)
+            {
+                model.renderSettings.subtractiveWorkflow = true;
+                model.SyncModelSettingsStore();
+                Box(model, new float3(-2, 0, -1.875f), new float3(2, 2, 0.125f));
+            } else
+            {
+                Box(model, new float3(-3, -1, -3), new float3(3, 3, 1));
+                var room = Box(model, new float3(-2, 0, -1.875f), new float3(2, 2, 0.125f));
+                room.Operation = CSGOperationType.Subtractive;
+                Update();
+            }
+            // B1 as on the 4 x 2 wall seen from the front (AWall4x2_TakesThe2To1Tile_UpStaysUp)
+            AreEqual(new float2(0.5f, 0.75f), UVAt(model, new float3(-2, 0, 0.125f), kFront), "bottom left");
+            AreEqual(new float2(1.0f, 0.75f), UVAt(model, new float3(2, 0, 0.125f), kFront), "bottom right");
+            AreEqual(new float2(0.5f, 1.0f),  UVAt(model, new float3(-2, 2, 0.125f), kFront), "top left");
         }
 
         [Test]
