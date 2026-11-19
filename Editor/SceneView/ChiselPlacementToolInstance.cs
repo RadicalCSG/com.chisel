@@ -140,6 +140,13 @@ namespace Chisel.Editors
         }
 
 
+        // The operation of a drawn shape when none is chosen: out of or into the surface of the model beneath it
+        // (ChiselModelComponent.OperationOutOfSurface); drawn on the grid, away from any model, it adds
+        internal static CSGOperationType DrawnOperation(float height, ChiselModelComponent modelBeneathCursor)
+        {
+            return modelBeneathCursor ? modelBeneathCursor.OperationOutOfSurface(height) : CSGOperationType.Additive;
+        }
+
         public bool             IsGenerating    { get; private set; }
 
         public bool             InToolBox 

@@ -1,4 +1,5 @@
 using Chisel.Core;
+using Unity.Entities;
 using Unity.Mathematics;
 
 namespace Chisel.Components
@@ -6,10 +7,10 @@ namespace Chisel.Components
     // A hotspot surface's repeats as its last build laid them
     public static class ChiselHotspotRepeats
     {
-        // The section input a surface was last built with; false when it has none
-        public static bool TryGetSectionInput(SurfaceReference surface, out HotspotSectionInput input)
+        // What the last build of the surface's brush drew; false when it drew nothing yet or the surface isn't in it
+        internal static bool TryGetBuilt(SurfaceReference surface, out BlobAssetReference<ChiselBrushRenderBuffer> buffer)
         {
-            input = default;
+            buffer = default;
             if (surface == null || !surface.node || !surface.brush.Valid)
                 return false;
             var model = surface.node.hierarchyItem.Model;
@@ -21,12 +22,18 @@ namespace Chisel.Components
             var data = lookups[model.Node];
             data.lastJobHandle.Complete();
             if (!data.brushRenderBufferLookup.IsCreated ||
-                !data.brushRenderBufferLookup.TryGetValue(CompactHierarchyManager.GetCompactNodeID(surface.brush), out var buffer) || !buffer.IsCreated)
+                !data.brushRenderBufferLookup.TryGetValue(CompactHierarchyManager.GetCompactNodeID(surface.brush), out buffer) || !buffer.IsCreated)
                 return false;
-            ref var surfaces = ref buffer.Value.surfaces;
-            if (surface.surfaceIndex < 0 || surface.surfaceIndex >= surfaces.Length)
+            return surface.surfaceIndex >= 0 && surface.surfaceIndex < buffer.Value.surfaces.Length;
+        }
+
+        // The section input a surface was last built with; false when it has none
+        public static bool TryGetSectionInput(SurfaceReference surface, out HotspotSectionInput input)
+        {
+            input = default;
+            if (!TryGetBuilt(surface, out var buffer))
                 return false;
-            input = surfaces[surface.surfaceIndex].sectionInput;
+            input = buffer.Value.surfaces[surface.surfaceIndex].sectionInput;
             return input.count > 0;
         }
 

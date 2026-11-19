@@ -386,23 +386,25 @@ namespace Chisel.Core
         }
 
 
+		// Whether p, in the triangle's plane, is in the triangle or on its edges: on the edge two triangles share it is in both,
+		// never in neither
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public static bool PointInTriangle(float3 p, float3 a, float3 b, float3 c)
 		{
 			var cp1A = math.cross(c - b, p - b);
 			var cp2A = math.cross(c - b, a - b);
 			var dotA = math.dot(cp1A, cp2A);
-			var sameSideA = dotA > 0;
+			var sameSideA = dotA >= 0;
 
 			var cp1B = math.cross(c - a, p - a);
 			var cp2B = math.cross(c - a, b - a);
 			var dotB = math.dot(cp1B, cp2B);
-			var sameSideB = dotB > 0;
+			var sameSideB = dotB >= 0;
 
 			var cp1C = math.cross(b - a, p - a);
 			var cp2C = math.cross(b - a, c - a);
 			var dotC = math.dot(cp1C, cp2C);
-			var sameSideC = dotC > 0;
+			var sameSideC = dotC >= 0;
 
 			return sameSideA &&
 					sameSideB &&

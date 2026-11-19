@@ -306,11 +306,13 @@ namespace Chisel.Components.Tests
             Assert.That(math.distance(drawnAfter, drawnBefore), Is.LessThan(1e-5f));
         }
 
-        // Locking the texture to the object or the world doesn't change how it looks now
+        // Locking the texture to the object or the world doesn't change how it looks now, on faces seen from inside too
         [Test]
-        public void ToggledTextureLock_LooksTheSame()
+        public void ToggledTextureLock_LooksTheSame([Values] bool subtractiveWorkflow)
         {
             var model = Model();
+            model.renderSettings.subtractiveWorkflow = subtractiveWorkflow;
+            model.SyncModelSettingsStore();
             var material = MaterialWith(Texture(256, 64));
             var box = Box(model, material);
             box.transform.SetPositionAndRotation(new Vector3(2.3f, 0.7f, -1.1f), Quaternion.Euler(0, 30, 0));

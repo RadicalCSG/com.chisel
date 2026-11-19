@@ -142,6 +142,22 @@ namespace Chisel.Core.Tests
             Assert.That(MathExtensions.PointInTriangle(new float3(1f, 1f, 0), a, b, c),       Is.False);
         }
 
+        // A point on an edge or a corner is in the triangle: on the edge two triangles share, it is in both, not in neither
+        [Test]
+        public void PointInTriangle_OnAnEdgeOrCorner_IsIn()
+        {
+            var a = new float3(0, 0, 0);
+            var b = new float3(1, 0, 0);
+            var c = new float3(0, 1, 0);
+            var d = new float3(1, 1, 0);
+            var onTheSharedEdge = new float3(0.5f, 0.5f, 0);
+            Assert.That(MathExtensions.PointInTriangle(onTheSharedEdge, a, b, c), Is.True);
+            Assert.That(MathExtensions.PointInTriangle(onTheSharedEdge, b, d, c), Is.True);
+            Assert.That(MathExtensions.PointInTriangle(new float3(0.5f, 0, 0), a, b, c), Is.True, "on an outer edge");
+            Assert.That(MathExtensions.PointInTriangle(b, a, b, c), Is.True, "a corner");
+            Assert.That(MathExtensions.PointInTriangle(new float3(2, 0, 0), a, b, c), Is.False, "on an edge's line, past the triangle");
+        }
+
         [Test]
         public void GetTriangleArraySize_MatchesTriangularNumbers()
         {

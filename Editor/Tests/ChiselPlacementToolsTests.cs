@@ -65,6 +65,48 @@ namespace Chisel.Editors.Tests
             Assert.That(ChiselPlacementToolInstance.ShortName("Box"),           Is.EqualTo("Bo"));
         }
 
+        static ChiselModelComponent Model(bool subtractiveWorkflow)
+        {
+            var model = new GameObject("placement test").AddComponent<ChiselModelComponent>();
+            model.renderSettings.subtractiveWorkflow = subtractiveWorkflow;
+            return model;
+        }
+
+        // pulled out of a surface a shape adds to the model, pushed into it it cuts
+        [Test]
+        public void DrawnOnASurface_PulledOutAdds_PushedInCuts()
+        {
+            var model = Model(subtractiveWorkflow: false);
+            try
+            {
+                Assert.That(ChiselPlacementToolInstance.DrawnOperation( 1, model), Is.EqualTo(CSGOperationType.Additive));
+                Assert.That(ChiselPlacementToolInstance.DrawnOperation(-1, model), Is.EqualTo(CSGOperationType.Subtractive));
+            }
+            finally { Object.DestroyImmediate(model.gameObject); }
+        }
+
+        // with the subtractive workflow the brushes are the empty space: pulled out of a room's surface a shape cuts (a
+        // pillar), pushed into it it adds (a pit)
+        [Test]
+        public void DrawnOnASubtractiveWorkflowSurface_PulledOutCuts_PushedInAdds()
+        {
+            var model = Model(subtractiveWorkflow: true);
+            try
+            {
+                Assert.That(ChiselPlacementToolInstance.DrawnOperation( 1, model), Is.EqualTo(CSGOperationType.Subtractive));
+                Assert.That(ChiselPlacementToolInstance.DrawnOperation(-1, model), Is.EqualTo(CSGOperationType.Additive));
+            }
+            finally { Object.DestroyImmediate(model.gameObject); }
+        }
+
+        // drawn on the grid, away from any model, a shape adds whichever way it is drawn
+        [Test]
+        public void DrawnOnTheGrid_Adds()
+        {
+            Assert.That(ChiselPlacementToolInstance.DrawnOperation( 1, null), Is.EqualTo(CSGOperationType.Additive));
+            Assert.That(ChiselPlacementToolInstance.DrawnOperation(-1, null), Is.EqualTo(CSGOperationType.Additive));
+        }
+
         static T Tool<T>() where T : ScriptableObject { return ScriptableObject.CreateInstance<T>(); }
 
         [Test]

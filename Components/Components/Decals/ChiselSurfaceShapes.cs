@@ -148,9 +148,9 @@ namespace Chisel.Components
         }
 
         /// <summary>
-        /// A polygon decal as its surface has it now: its frame laid on the surface's plane (world space, Z into the surface),
-        /// and its corners in that frame's XY, the anchored ones where their edges are now. False when it has no surface
-        /// to be on: then it is where its transform and outline put it.
+        /// A polygon decal as its surface has it now: its frame laid on the surface's plane (world space, Z into the surface
+        /// from the side the decal is on), and its corners in that frame's XY, the anchored ones where their edges are now.
+        /// False when it has no surface to be on: then it is where its transform and outline put it.
         /// </summary>
         public static bool Resolve(ChiselDecalComponent decal, out Matrix4x4 frame, List<Vector2> corners)
         {
@@ -165,9 +165,10 @@ namespace Chisel.Components
                 !SurfaceOutline(targets[0].brush, targets[0].surfaceIndex, outline, out var plane))
                 return false;
 
-            // the decal's frame turned onto the surface's plane, and moved onto it
+            // the decal's frame turned onto the surface's plane, and moved onto it. It stays on the side it was drawn on: a
+            // surface drawn turned round (a room's wall) is seen, and drawn on, from behind its brush's plane
             var transform = decal.transform;
-            var forward   = -plane.normal;
+            var forward   = Vector3.Dot(transform.forward, plane.normal) > 0 ? plane.normal : -plane.normal;
             var turn      = Quaternion.FromToRotation(transform.forward, forward);
             var rotation  = turn * transform.rotation;
             var position  = plane.ClosestPointOnPlane(transform.position);

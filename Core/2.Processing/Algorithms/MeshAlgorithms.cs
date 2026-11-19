@@ -103,6 +103,37 @@ namespace Chisel.Core
 		}
 
 		/// <summary>
+		/// A face drawn turned round is seen from behind its brush's plane, where the uvs its surface gives read mirrored
+		/// left to right: its u is negated, so by default it reads as the face does from the front. Being the same for
+		/// every mapping, it keeps what the uvs match (texture lock, the uv tools), and a mirror in the surface's own uv
+		/// matrix still mirrors it.
+		/// </summary>
+		public static float4x4 TurnedUVMatrix(float4x4 uvMatrix)
+		{
+			uvMatrix.c0.x = -uvMatrix.c0.x;
+			uvMatrix.c1.x = -uvMatrix.c1.x;
+			uvMatrix.c2.x = -uvMatrix.c2.x;
+			uvMatrix.c3.x = -uvMatrix.c3.x;
+			return uvMatrix;
+		}
+
+		/// <summary>
+		/// Turns the uvs of the vertices drawn turned round, whose normals face away from frontNormal (the brush plane's),
+		/// as <see cref="TurnedUVMatrix"/> turns their mapping.
+		/// </summary>
+		public static void TurnUVs(NativeList<RenderVertex> vertices, float3 frontNormal)
+		{
+			for (int i = 0; i < vertices.Length; i++)
+			{
+				var vertex = vertices[i];
+				if (math.dot(vertex.normal, frontNormal) >= 0)
+					continue;
+				vertex.uv0.x = -vertex.uv0.x;
+				vertices[i] = vertex;
+			}
+		}
+
+		/// <summary>
 		/// The axes a surface's lightmap chart lies along in its plane. They follow the world: a floor's run along x and z, a
 		/// wall's along the ground and up, so the texels of a surface in an axis' plane line up with its edges, and surfaces in
 		/// one plane share one grid.
@@ -138,26 +169,34 @@ namespace Chisel.Core
 		/// bitangent the same for v, for the affine mapping uv = uvMatrix * position. Every triangle of the surface gives
 		/// that same answer - except one as thin as a float step, whose corners round to one point, which gives NaN. The
 		/// exact CSG draws such triangles where brushes meet a hair out of line, and a NaN tangent lights its surface NaN.
-		/// Each vertex's tangent is made perpendicular to its own normal, which normal smoothing may have turned.
+		/// Each vertex's tangent is made perpendicular to its own normal, which normal smoothing may have turned. The vertices
+		/// drawn turned round, whose normals face away from frontNormal, take the mapping turnedUVMatrix gives them.
 		/// </summary>
-		public static void ComputeTangents(NativeList<RenderVertex> vertices, float3 planeNormal, float4x4 uvMatrix)
+		public static void ComputeTangents(NativeList<RenderVertex> vertices, float3 planeNormal, float4x4 uvMatrix, float4x4 turnedUVMatrix, float3 frontNormal)
+		{
+			var n = math.normalizesafe((double3)planeNormal);
+			PlaneTangents(n, uvMatrix,       out var tangent,       out var bitangent);
+			PlaneTangents(n, turnedUVMatrix, out var turnedTangent, out var turnedBitangent);
+			for (int i = 0; i < vertices.Length; i++)
+			{
+				var vertex = vertices[i];
+				var normal = math.normalizesafe((double3)vertex.normal, n);
+				vertex.tangent = math.dot(vertex.normal, frontNormal) >= 0 ? Tangent(normal, tangent, bitangent)
+																		  : Tangent(normal, turnedTangent, turnedBitangent);
+				vertices[i] = vertex;
+			}
+		}
+
+		static void PlaneTangents(double3 n, float4x4 uvMatrix, out double3 tangent, out double3 bitangent)
 		{
 			// u = dot(a, position) + ..., v = dot(b, position) + ...: rows 0 and 1 of the mapping
-			var n = math.normalizesafe((double3)planeNormal);
 			var a = new double3(uvMatrix.c0.x, uvMatrix.c1.x, uvMatrix.c2.x);
 			var b = new double3(uvMatrix.c0.y, uvMatrix.c1.y, uvMatrix.c2.y);
 			// In the plane: a.T = 1, b.T = 0 and a.B = 0, b.B = 1, solved by T = (b x n) / det, B = (n x a) / det
 			var determinant = math.dot(n, math.cross(a, b));
 			var mapped = determinant != 0 && math.isfinite(determinant);
-			var tangent   = mapped ? math.cross(b, n) / determinant : double3.zero;
-			var bitangent = mapped ? math.cross(n, a) / determinant : double3.zero;
-			for (int i = 0; i < vertices.Length; i++)
-			{
-				var vertex = vertices[i];
-				var normal = math.normalizesafe((double3)vertex.normal, n);
-				vertex.tangent = Tangent(normal, tangent, bitangent);
-				vertices[i] = vertex;
-			}
+			tangent   = mapped ? math.cross(b, n) / determinant : double3.zero;
+			bitangent = mapped ? math.cross(n, a) / determinant : double3.zero;
 		}
 
 		static float4 Tangent(double3 normal, double3 tangent, double3 bitangent)

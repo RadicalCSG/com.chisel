@@ -173,12 +173,14 @@ namespace Chisel.Components
         }
 
         /// <summary>How far a brush <see cref="ExtrudeIntoBrush"/> made reaches out of its surface (into it below zero),
-        /// adding or cutting to match</summary>
+        /// adding or cutting to match (<see cref="ChiselModelComponent.OperationOutOfSurface"/>)</summary>
         public static void SetExtrusionHeight(ChiselExtrudedShapeComponent extruded, float height)
         {
             if (extruded == null)
                 return;
-            extruded.Operation = height > 0 ? CSGOperationType.Additive : CSGOperationType.Subtractive;
+            var model = extruded.GetComponentInParent<ChiselModelComponent>();
+            extruded.Operation = model ? model.OperationOutOfSurface(height) :
+                                 height > 0 ? CSGOperationType.Additive : CSGOperationType.Subtractive;
             extruded.definition.path.segments[1].position = ChiselPathPoint.DefaultDirection * height;
             extruded.OnValidate();
             // as the placement tools do while dragging, so it is built again
