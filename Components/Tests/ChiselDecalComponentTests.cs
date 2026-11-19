@@ -772,6 +772,24 @@ namespace Chisel.Components.Tests
             Assert.That(UpAreas(model).decal, Is.EqualTo(1.0).Within(kTolerance));
         }
 
+        // The decal manager reads each tree's decal count only after the decal store says some tree's decals may have
+        // changed: planted here, decals taken from the tree without the store saying so are not noticed until it does
+        [Test]
+        public void ATreesDecals_AreLookedAtAgain_OnlyWhenTheStoreChanged()
+        {
+            var model = Floors(out _, out _, out _);
+            Update();
+            Assert.That(model.Node.GetDecalCount(), Is.EqualTo(1));
+
+            ChiselTreeLookup.Value[model.Node].decalInstances.Clear();
+            Update();
+            Assert.That(model.Node.GetDecalCount(), Is.EqualTo(0), "not looked at: nothing said the decals changed");
+
+            ChiselDecalStore.DecalsChanged();
+            Update();
+            Assert.That(model.Node.GetDecalCount(), Is.EqualTo(1), "looked at again, and given its decal");
+        }
+
         [Test]
         public void Targets_LimitTheDecalToTheirSurfaces()
         {

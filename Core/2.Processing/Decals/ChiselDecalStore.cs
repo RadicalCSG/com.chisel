@@ -40,6 +40,12 @@ namespace Chisel.Core
 
         static bool IsEmpty(in MinMaxAABB bounds) => math.any(bounds.Min > bounds.Max);
 
+        // Goes up whenever the decals of any tree may have changed: given (SetDecals), or gone with their tree
+        // (ChiselTreeLookup.ReleaseTree and ReleaseAllTrees). A tree's decal count only changes when it does.
+        internal static int Version { get; private set; }
+
+        internal static void DecalsChanged() => Version++;
+
         public static void SetDecals(CSGTree tree, NativeArray<ChiselDecalInstance> decals, NativeArray<ChiselDecalTarget> targets,
                                      NativeArray<float2> outlines)
         {
@@ -195,6 +201,7 @@ namespace Chisel.Core
 
             data.decalInstances.Clear();
             data.decalInstances.AddRange(sorted.AsArray());
+            DecalsChanged();
             data.decalSequences.Clear();
             data.decalSequences.AddRange(sequences.AsArray());
             data.decalBounds.Clear();

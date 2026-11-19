@@ -29,6 +29,8 @@ namespace Chisel.Components
         // Cached until registration or material metadata changes.
         static readonly Dictionary<ChiselDecalComponent, DecalState> s_DecalStates = new();
         static bool s_Dirty = true;
+        // ChiselDecalStore.Version when the trees' decal counts were last compared with what was given them
+        static int s_SeenDecalsVersion = -1;
 
         sealed class DecalState
         {
@@ -188,6 +190,9 @@ namespace Chisel.Components
                     return;
                 }
 
+                // a tree's decal count changes only when the decal store's version does
+                var countsMayDiffer = ChiselDecalStore.Version != s_SeenDecalsVersion;
+                s_SeenDecalsVersion = ChiselDecalStore.Version;
                 foreach (var model in s_ModelList)
                 {
                     if (!s_Models.TryGetValue(model, out var state))
@@ -196,7 +201,7 @@ namespace Chisel.Components
                         s_Models.Add(model, state);
                     }
                     // A rebuilt tree may reuse a handle, so also compare its decal count.
-                    if (state.tree != model.Node || state.tree.GetDecalCount() != state.previous.Count)
+                    if (state.tree != model.Node || (countsMayDiffer && state.tree.GetDecalCount() != state.previous.Count))
                     {
                         state.tree = model.Node;
                         state.previous.Clear();
@@ -381,6 +386,8 @@ namespace Chisel.Components
                     state.previousOutlines.Clear();
                     state.previousOutlines.AddRange(state.outlines);
                 }
+                // what this update gave the trees moved the version, and is what they have now
+                s_SeenDecalsVersion = ChiselDecalStore.Version;
                 s_Dirty = false;
             }
             finally
