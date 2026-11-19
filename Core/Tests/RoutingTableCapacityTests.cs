@@ -7,7 +7,7 @@ namespace Chisel.Core.Tests
     [TestFixture]
     public class RoutingTableCapacityTests
     {
-        // What CreateRoutingTableJob allocates for the event stack (CreateRoutingTableJob.cs:77).
+        // A branch this wide puts thousands of events on CreateRoutingTableJob's event stack at once
         const int kQueuedEventCapacity = 4096;
 
         static CompactNodeID NodeID(int index)
@@ -140,6 +140,116 @@ namespace Chisel.Core.Tests
         public void ABranchWithMoreTouchingChildrenThanTheEventCapacity_StillRoutes()
         {
             Assert.DoesNotThrow(() => RouteOneBrushOf(kQueuedEventCapacity + 4));
+        }
+
+        // An intersecting child queues an event whether it touches the brush or not, so the event stack grows past
+        // what the touching brushes need. Intersecting with brushes that miss it, the brush keeps nothing.
+        [TestCase(8)]
+        [TestCase(1000)]
+        public void ABrushFollowedByIntersectingSiblingsItDoesNotTouch_IsRemoved(int intersectingCount)
+        {
+            var childCount = intersectingCount + 1;
+            var tree       = Tree(childCount, child => child == 1 ? CSGOperationType.Additive : CSGOperationType.Intersecting);
+            var touching   = TouchingOnly(childCount, touchingBrush: 1);
+            var orders     = new NativeList<IndexOrder>(1, Allocator.Persistent);
+            var touched    = new NativeList<BlobAssetReference<BrushesTouchedByBrush>>(1, Allocator.Persistent);
+            var output     = new NativeList<BlobAssetReference<RoutingTable>>(1, Allocator.Persistent);
+            var treeRef    = new NativeReference<BlobAssetReference<CompactTree>>(tree, Allocator.Persistent);
+            try
+            {
+                orders.Add(new IndexOrder { compactNodeID = NodeID(1), nodeOrder = 0 });
+                touched.Add(touching);
+                output.Resize(1, NativeArrayOptions.ClearMemory);
+
+                new CreateRoutingTableJob
+                {
+                    allUpdateBrushIndexOrders = orders,
+                    brushesTouchedByBrushes   = touched,
+                    compactTreeRef            = treeRef,
+                    routingTableLookup        = output
+                }.Execute(0);
+
+                Assert.That(output[0].IsCreated, Is.True, "no routing table was written");
+                ref var table = ref output[0].Value;
+                Assert.That(table.routingLookups.Length, Is.EqualTo(1));
+                Assert.That(table.routingRows.Length, Is.EqualTo(1));
+                for (int c = 0; c < CategoryRoutingRow.Length; c++)
+                    Assert.That(table.routingRows[0][c], Is.EqualTo((ushort)CategoryIndex.Outside), $"category {(CategoryIndex)c}");
+            }
+            finally
+            {
+                for (int i = 0; i < output.Length; i++)
+                    if (output[i].IsCreated) output[i].Dispose();
+                output.Dispose();
+                touched.Dispose();
+                orders.Dispose();
+                treeRef.Dispose();
+                touching.Dispose();
+                tree.Dispose();
+            }
+        }
+
+        /// <summary>One additive branch with <paramref name="childCount"/> brush children, indices 1..childCount, each with the operation given.</summary>
+        static BlobAssetReference<CompactTree> Tree(int childCount, System.Func<int, CSGOperationType> operationOf)
+        {
+            using var builder = new BlobBuilder(Allocator.Temp);
+            ref var root = ref builder.ConstructRoot<CompactTree>();
+
+            var nodes = builder.Allocate(ref root.compactHierarchy, childCount + 1);
+            nodes[0] = new CompactHierarchyNode
+            {
+                Type          = CSGNodeType.Branch,
+                Operation     = CSGOperationType.Additive,
+                CompactNodeID = NodeID(0),
+                childCount    = childCount,
+                childOffset   = 1
+            };
+            for (int i = 1; i <= childCount; i++)
+            {
+                nodes[i] = new CompactHierarchyNode
+                {
+                    Type          = CSGNodeType.Brush,
+                    Operation     = operationOf(i),
+                    CompactNodeID = NodeID(i),
+                    childCount    = 0,
+                    childOffset   = 0
+                };
+            }
+
+            root.minBrushIDValue = 1;
+            builder.Allocate(ref root.brushIDValueToContents, childCount);
+            builder.Allocate(ref root.brushIDValueToAncestorLegend, childCount);
+            builder.Allocate(ref root.brushAncestorLegend, 0);
+            builder.Allocate(ref root.brushAncestors, 0);
+            root.minNodeIDValue = 0;
+            root.maxNodeIDValue = childCount;
+
+            return builder.CreateBlobAssetReference<CompactTree>(Allocator.Persistent);
+        }
+
+        /// <summary>
+        /// The touching table of brush <paramref name="touchingBrush"/> of a <see cref="Tree(int, System.Func{int, CSGOperationType})"/>
+        /// that touches nothing: only it and the branch are marked, every other brush is no intersection.
+        /// </summary>
+        static BlobAssetReference<BrushesTouchedByBrush> TouchingOnly(int childCount, int touchingBrush)
+        {
+            using var builder = new BlobBuilder(Allocator.Temp);
+            ref var root = ref builder.ConstructRoot<BrushesTouchedByBrush>();
+
+            builder.Allocate(ref root.brushIntersections, 0);
+            root.BitOffset = 0;
+            root.BitCount  = childCount + 1;
+            var wordCount  = ((root.BitCount * 2) + 31) / 32;
+            var bits = builder.Allocate(ref root.intersectionBits, wordCount);
+            for (int i = 0; i < wordCount; i++)
+                bits[i] = 0;
+            foreach (var id in new[] { 0, touchingBrush })
+            {
+                var bitIndex = id << 1;
+                bits[bitIndex >> 5] |= (uint)IntersectionType.Intersection << (bitIndex & 31);
+            }
+
+            return builder.CreateBlobAssetReference<BrushesTouchedByBrush>(Allocator.Persistent);
         }
 
 
