@@ -24,14 +24,29 @@ namespace Chisel.Editors
         // The alpha used to fade disabled nodes.
         const float kInactiveOpacity = 0.25f;
 
-        // NodeHierarchyModified covers edits; the poll is the safety net for state that changes without
-        // it, such as the active model or a node being enabled/disabled.
+        // The rows are refreshed at most this often: edits (NodeHierarchyModified) only mark the messages to be checked
+        // again, and state that changes without it, such as the active model or a node being enabled/disabled, is
+        // read by every poll.
         const double kPollInterval = 0.1;
 
         static Texture2D s_WarningImage;
         static double    s_NextPollTime;
 
-        sealed class RowState
+        // A node's messages (GetMessages, the row's warning and icon) change only with the hierarchy, a model update
+        // or a reset; asking every row for them costs a handful of node lookups each, so the poll asks only after one
+        // of those
+        internal static bool MessagesMayHaveChanged { get; set; } = true;
+
+        internal static bool TakeMessagesMayHaveChanged()
+        {
+            var changed = MessagesMayHaveChanged;
+            MessagesMayHaveChanged = false;
+            return changed;
+        }
+
+        static void OnMessagesMayHaveChanged() => MessagesMayHaveChanged = true;
+
+        internal sealed class RowState
         {
             public ChiselNodeComponent node;
             public Texture             icon;
@@ -53,8 +68,17 @@ namespace Chisel.Editors
             HierarchyWindow.GetTooltip     -= OnGetTooltip;
             HierarchyWindow.GetTooltip     += OnGetTooltip;
 
-            ChiselNodeHierarchyManager.NodeHierarchyModified -= OnNodeHierarchyModified;
-            ChiselNodeHierarchyManager.NodeHierarchyModified += OnNodeHierarchyModified;
+            // fired after every update with queued work, so on every frame of a drag: the next poll refreshes the rows
+            ChiselNodeHierarchyManager.NodeHierarchyModified -= OnMessagesMayHaveChanged;
+            ChiselNodeHierarchyManager.NodeHierarchyModified += OnMessagesMayHaveChanged;
+            ChiselModelManager.Instance.PostUpdateModels -= OnMessagesMayHaveChanged;
+            ChiselModelManager.Instance.PostUpdateModels += OnMessagesMayHaveChanged;
+            ChiselModelManager.Instance.PostReset -= OnMessagesMayHaveChanged;
+            ChiselModelManager.Instance.PostReset += OnMessagesMayHaveChanged;
+            EditorApplication.hierarchyChanged -= OnMessagesMayHaveChanged;
+            EditorApplication.hierarchyChanged += OnMessagesMayHaveChanged;
+            Undo.undoRedoPerformed -= OnMessagesMayHaveChanged;
+            Undo.undoRedoPerformed += OnMessagesMayHaveChanged;
 
             EditorApplication.update -= OnEditorUpdate;
             EditorApplication.update += OnEditorUpdate;
@@ -81,12 +105,18 @@ namespace Chisel.Editors
             return model == ChiselModelManager.Instance.ActiveModel;
         }
 
-        // Returns true when anything the row draws has changed since it was last written.
-        static bool Evaluate(RowState state)
+        // Returns true when anything the row draws has changed since it was last written. checkMessages: the node's
+        // messages are asked for again; otherwise its icon and warning stay as they were found.
+        internal static bool Evaluate(RowState state, bool checkMessages)
         {
-            var icon          = ChiselNodeDetailsManager.GetHierarchyIcon(state.node, out bool hasValidState);
-            var image         = icon?.image;
-            var hasWarning    = !hasValidState;
+            var image      = state.icon;
+            var hasWarning = state.hasWarning;
+            if (checkMessages)
+            {
+                var icon   = ChiselNodeDetailsManager.GetHierarchyIcon(state.node, out bool hasValidState);
+                image      = icon?.image;
+                hasWarning = !hasValidState;
+            }
             var isActiveModel = IsActiveModel(state.node);
             // the color set in the preferences, so a change to it is shown too
             var activeColor   = isActiveModel ? ChiselColors.ActiveModel.Value : default;
@@ -177,7 +207,7 @@ namespace Chisel.Editors
                 return;
 
             var state = new RowState { node = node };
-            Evaluate(state);
+            Evaluate(state, checkMessages: true);
             Apply(item, state);
             s_BoundRows[item] = state;
         }
@@ -188,21 +218,16 @@ namespace Chisel.Editors
             s_BoundRows.Remove(item);
         }
 
-        static void OnNodeHierarchyModified()
-        {
-            RefreshBoundRows();
-        }
-
         static void OnEditorUpdate()
         {
             if (EditorApplication.timeSinceStartup < s_NextPollTime)
                 return;
             s_NextPollTime = EditorApplication.timeSinceStartup + kPollInterval;
-            RefreshBoundRows();
+            RefreshBoundRows(TakeMessagesMayHaveChanged());
         }
 
         // Only walks rows that are currently bound, which is the handful actually on screen.
-        static void RefreshBoundRows()
+        static void RefreshBoundRows(bool checkMessages)
         {
             if (s_BoundRows.Count == 0)
                 return;
@@ -217,7 +242,7 @@ namespace Chisel.Editors
                     continue;
                 }
 
-                if (Evaluate(state))
+                if (Evaluate(state, checkMessages))
                     Apply(item, state);
             }
 
