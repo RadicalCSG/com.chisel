@@ -392,6 +392,7 @@ namespace Chisel.Core
             _singleton.chiselTreeData.Remove(treeNode);
             data.lastJobHandle.Complete();
             data.Dispose();
+            ChiselDecalStore.DecalsChanged();
         }
 
         /// <summary>Releases the caches of every tree, for when all trees go at once.</summary>
@@ -411,6 +412,7 @@ namespace Chisel.Core
                 data.Dispose();
             }
             chiselTreeData.Clear();
+            ChiselDecalStore.DecalsChanged();
         }
 
         void Dispose()

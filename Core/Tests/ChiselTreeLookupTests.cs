@@ -51,6 +51,36 @@ namespace Chisel.Core.Tests
             }
         }
 
+        // A tree's decals change only when they are given (SetDecals) or go with the tree: the decal store's version
+        // tells (ChiselDecalManager reads the trees' decal counts only when it moved)
+        [Test]
+        public void TheDecalStoresVersion_MovesWhenATreesDecalsCanHaveChanged()
+        {
+            var tree = CSGTree.Create(default(UnityEngine.EntityId));
+            try
+            {
+                var version = ChiselDecalStore.Version;
+                tree.ClearDecals();
+                Assert.That(ChiselDecalStore.Version, Is.Not.EqualTo(version), "decals given");
+
+                version = ChiselDecalStore.Version;
+                _ = tree.GetDecalCount();
+                Assert.That(ChiselDecalStore.Version, Is.EqualTo(version), "only read");
+
+                tree.Destroy();
+                Assert.That(ChiselDecalStore.Version, Is.Not.EqualTo(version), "the tree went, with its decals");
+
+                version = ChiselDecalStore.Version;
+                ChiselTreeLookup.ReleaseAllTrees();
+                Assert.That(ChiselDecalStore.Version, Is.Not.EqualTo(version), "every tree's decals went");
+            }
+            finally
+            {
+                if (tree.Valid)
+                    tree.Destroy();
+            }
+        }
+
         [Test]
         public void DestroyingATree_LeavesOtherTreesAlone()
         {
