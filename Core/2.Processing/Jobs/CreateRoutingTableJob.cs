@@ -42,97 +42,6 @@ namespace Chisel.Core
         }
 
 
-        static int MaxQueuedEvents([NoAlias] ref BrushesTouchedByBrush brushesTouchedByBrush,
-                                   [NoAlias] ref BlobArray<CompactHierarchyNode> compactHierarchy)
-        {
-            var nodeCount = compactHierarchy.Length;
-            if (nodeCount <= 0)
-                return 1;
-
-            // depth[v]: the deepest the stack gets while the event for node v is processed and everything it spawns,
-            // counted from v's own event being the only thing on it.
-            var depth = new NativeArray<int>(nodeCount, Allocator.Temp);
-            using var _depth = depth;
-
-            for (int v = nodeCount - 1; v >= 0; v--)
-            {
-                ref var node = ref compactHierarchy[v];
-                depth[v] = 1;   // its own event, popped without pushing anything
-
-                if (node.Type == CSGNodeType.Brush || node.childCount == 0)
-                    continue;
-
-                // The same first-child skip GetStackNodes does: leading children that neither add nor copy never
-                // produce geometry, so they are not walked.
-                var firstIndex = node.childOffset;
-                var lastIndex = firstIndex + node.childCount;
-                if (firstIndex < 0 || lastIndex > nodeCount)
-                    continue;
-                while (firstIndex < lastIndex && (compactHierarchy[firstIndex].Operation != CSGOperationType.Additive &&
-                                                  compactHierarchy[firstIndex].Operation != CSGOperationType.Copy))
-                    firstIndex++;
-                if ((lastIndex - firstIndex) <= 0)
-                    continue;
-
-                if (firstIndex <= v)
-                    return (nodeCount * 2) + 2;   // children before their parent: fall back to an upper bound
-
-                // Pushed in the same order and under the same conditions as GetStackNodes, then popped LIFO: the
-                // GetStackNode for the first child runs first, then the ListItems in increasing index order.
-                var pushed = 0;
-                for (int i = lastIndex - 1; i >= firstIndex + 1; i--)
-                {
-                    var childIntersectionType = brushesTouchedByBrush.Get(compactHierarchy[i].CompactNodeID);
-                    if ((childIntersectionType != IntersectionType.NoIntersection &&
-                         childIntersectionType != IntersectionType.InvalidValue) ||
-                        compactHierarchy[i].Operation == CSGOperationType.Intersecting)
-                        pushed++;
-                }
-                var firstType = brushesTouchedByBrush.Get(compactHierarchy[firstIndex].CompactNodeID);
-                var pushesFirst = firstType != IntersectionType.NoIntersection &&
-                                  firstType != IntersectionType.InvalidValue;
-                if (pushesFirst)
-                    pushed++;
-                if (pushed == 0)
-                    continue;
-
-                // Everything sitting on the stack the instant the branch finishes pushing.
-                var deepest = pushed;
-
-                // Pop position 0 is the first child's GetStackNode, which spawns its subtree with the remaining
-                // events still under it.
-                var remaining = pushed - 1;
-                if (pushesFirst)
-                {
-                    var reached = remaining + depth[firstIndex];
-                    if (reached > deepest) deepest = reached;
-                    remaining--;
-                }
-
-                // Then each ListItem in turn. A ListItem replaces itself with a Combine plus the child's
-                // GetStackNode, and the Combine stays under that child for the whole of its subtree.
-                for (int i = firstIndex + 1; i < lastIndex; i++)
-                {
-                    var childIntersectionType = brushesTouchedByBrush.Get(compactHierarchy[i].CompactNodeID);
-                    var touches = childIntersectionType != IntersectionType.NoIntersection &&
-                                  childIntersectionType != IntersectionType.InvalidValue;
-                    if (!touches && compactHierarchy[i].Operation != CSGOperationType.Intersecting)
-                        continue;
-                    // A ListItem queued for a non-touching intersecting child spawns a GetStackNode that stops
-                    // immediately, so its subtree costs one event rather than depth[i].
-                    var childDepth = touches ? depth[i] : 1;
-                    var reached = remaining + 1 + childDepth;
-                    if (reached > deepest) deepest = reached;
-                    remaining--;
-                }
-
-                depth[v] = deepest;
-            }
-
-            // The walk starts with the root's event already on the stack.
-            return math.max(1, depth[0]);
-        }
-
         public void Execute(int index)
         {
             if (index >= allUpdateBrushIndexOrders.Length)
@@ -149,12 +58,8 @@ namespace Chisel.Core
             ref var compactTree                 = ref compactTreeRef.Value.Value;
             ref var topDownNodes                = ref compactTree.compactHierarchy;
             ref var brushesTouchedByBrushValue  = ref brushesTouchedByBrush.Value;
-            // Sized from the tree: see MaxQueuedEvents.
-            var maxQueuedEvents = MaxQueuedEvents(ref brushesTouchedByBrushValue, ref compactTree.compactHierarchy);
-            NativeArray<QueuedEvent> queuedEvents;
-            using var _queuedEvents = queuedEvents = new NativeArray<QueuedEvent>(maxQueuedEvents, Allocator.Temp);
-
             var touchingBrushCount = math.max(1, brushesTouchedByBrushValue.brushIntersections.Length);
+            var queuedEvents       = new NativeArray<QueuedEvent>(touchingBrushCount + 2, Allocator.Temp);     // the event stack, grown as it is pushed onto (PushEvent)
             var routingTable       = new NativeArray<CategoryStackNode>(touchingBrushCount, Allocator.Temp);   // at least a row per brush it routes through
             var tempStackArray     = new NativeArray<CategoryStackNode>(touchingBrushCount, Allocator.Temp);   // holds one right stack at a time
             var routingSteps       = new NativeArray<int>(touchingBrushCount, Allocator.Temp);                 // one entry per node in a right stack
@@ -251,6 +156,7 @@ namespace Chisel.Core
             }
             finally
             {
+                queuedEvents.Dispose();
                 routingTable.Dispose();
                 tempStackArray.Dispose();
                 routingSteps.Dispose();
@@ -314,6 +220,14 @@ namespace Chisel.Core
             [FieldOffset(16)] public int rightStackStartIndex;
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        static void PushEvent([NoAlias] ref NativeArray<QueuedEvent> queuedEvents, ref int queuedEventCount, QueuedEvent queuedEvent)
+        {
+            NativeCollectionHelpers.GrowToFit(ref queuedEvents, queuedEventCount + 1, keepContents: true);
+            queuedEvents[queuedEventCount] = queuedEvent;
+            queuedEventCount++;
+        }
+
         // Returns the number of rows written to output, or -1 when a Combine refused because a node would need more
         // rows than a routing row can address.
         static int GetStackNodes(CompactNodeID processedNodeID,
@@ -337,8 +251,7 @@ namespace Chisel.Core
             int haveGoneBeyondSelf = 0;
             int outputLength = 0;
             int queuedEventCount = 0;
-            queuedEvents[0] = QueuedEvent.GetStackNode(0, 0, brushesTouchedByBrush.Get(compactHierarchy[0].CompactNodeID));
-            queuedEventCount++;
+            PushEvent(ref queuedEvents, ref queuedEventCount, QueuedEvent.GetStackNode(0, 0, brushesTouchedByBrush.Get(compactHierarchy[0].CompactNodeID)));
             //ref var compactHierarchy = ref compactTree.Value.compactHierarchy;
             while (queuedEventCount > 0)
             {
@@ -429,13 +342,11 @@ namespace Chisel.Core
                             if (childIntersectionType != IntersectionType.NoIntersection &&
                                 childIntersectionType != IntersectionType.InvalidValue)
                             {
-                                queuedEvents[queuedEventCount] = QueuedEvent.ListItem(i, leftStackStartIndex, childIntersectionType);
-                                queuedEventCount++;
+                                PushEvent(ref queuedEvents, ref queuedEventCount, QueuedEvent.ListItem(i, leftStackStartIndex, childIntersectionType));
                             } else
                             if (childNode.Operation == CSGOperationType.Intersecting)
                             {
-                                queuedEvents[queuedEventCount] = QueuedEvent.ListItem(i, leftStackStartIndex, IntersectionType.NoIntersection);
-                                queuedEventCount++;
+                                PushEvent(ref queuedEvents, ref queuedEventCount, QueuedEvent.ListItem(i, leftStackStartIndex, IntersectionType.NoIntersection));
                             }
                         }
 
@@ -446,8 +357,7 @@ namespace Chisel.Core
                         if (firstChildIntersectionType != IntersectionType.NoIntersection &&
                             firstChildIntersectionType != IntersectionType.InvalidValue)
                         {
-                            queuedEvents[queuedEventCount] = QueuedEvent.GetStackNode(firstIndex, leftStackStartIndex, firstChildIntersectionType);
-                            queuedEventCount++;
+                            PushEvent(ref queuedEvents, ref queuedEventCount, QueuedEvent.GetStackNode(firstIndex, leftStackStartIndex, firstChildIntersectionType));
                         }
                         break;
                     }
@@ -459,12 +369,10 @@ namespace Chisel.Core
                         // Note: Events are executed in reverse order, so the last one added is run first
 
                         // 2. Combine the left stack (previous output stack) with the right stack
-                        queuedEvents[queuedEventCount] = QueuedEvent.Combine(currEvent.currIndex, leftHaveGoneBeyondSelf, currEvent.leftStackStartIndex, rightStackStartIndex);
-                        queuedEventCount++;
+                        PushEvent(ref queuedEvents, ref queuedEventCount, QueuedEvent.Combine(currEvent.currIndex, leftHaveGoneBeyondSelf, currEvent.leftStackStartIndex, rightStackStartIndex));
 
                         // 1. Add the right stack to the output stack
-                        queuedEvents[queuedEventCount] = QueuedEvent.GetStackNode(currEvent.currIndex, rightStackStartIndex, currEvent.intersectionType);
-                        queuedEventCount++;
+                        PushEvent(ref queuedEvents, ref queuedEventCount, QueuedEvent.GetStackNode(currEvent.currIndex, rightStackStartIndex, currEvent.intersectionType));
                         break;
                     }
 
