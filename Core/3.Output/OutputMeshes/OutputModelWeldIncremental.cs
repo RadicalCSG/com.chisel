@@ -493,50 +493,43 @@ namespace Chisel.Core
             memory.touched.Clear();
             memory.slotOfBrush.ResizeUninitialized(brushes.Length);
             var lastOrder = -1;
+            var changedCount = 0;
             for (int b = 0; b < brushes.Length; b++)
             {
-                var id   = brushes[b].brushIndexOrder.compactNodeID;
+                var data = brushes[b];
+                var id   = data.brushIndexOrder.compactNodeID;
                 var slot = BrushSlots.Of(id);
                 if (slot >= memory.brushes.Length)
                     memory.brushes.Resize(slot + 1, NativeArrayOptions.ClearMemory);
-                if (!memory.brushes[slot].used)
+                ref var item = ref memory.brushes.ElementAt(slot);
+                if (!item.used)
                 {
-                    ref var added = ref memory.brushes.ElementAt(slot);
-                    added = default;
-                    added.id = id;
-                    added.used = true;
-                    added.order = -1;
-                    added.changed = true;
-                } else if (memory.brushes[slot].id != id)
+                    item = default;
+                    item.id = id;
+                    item.used = true;
+                    item.changed = true;
+                } else if (item.id != id)
                 {
                     // a slot another brush had: that one is gone and this one is there, taken as a brush whose buffer
                     // changed, so the other one's pieces are taken out (with what is kept of it) and this one's put in
-                    ref var replaced = ref memory.brushes.ElementAt(slot);
-                    replaced.id = id;
-                    replaced.changed = true;
+                    item.id = id;
+                    item.changed = true;
                 } else
                 {
-                    ref var known = ref memory.brushes.ElementAt(slot);
-                    if (known.order <= lastOrder)
+                    if (item.order <= lastOrder)
                         full = true;
-                    lastOrder = known.order;
-                    known.changed = updatedIDs.Contains(id) || !known.input.Equals(brushes[b].brushRenderBuffer) ||
-                                    IsRepainted(memory.repainted, brushes[b].brushRenderBuffer);
+                    lastOrder = item.order;
+                    item.changed = updatedIDs.Contains(id) || !item.input.Equals(data.brushRenderBuffer) ||
+                                   IsRepainted(memory.repainted, data.brushRenderBuffer);
                 }
-                ref var item = ref memory.brushes.ElementAt(slot);
-                item.live = true;
+                item.live  = true;
+                item.order = b;
+                if (item.changed)
+                    changedCount++;
                 memory.slotOfBrush[b] = slot;
             }
             updatedIDs.Dispose();
             memory.repainted.Clear();
-            var changedCount = 0;
-            for (int b = 0; b < brushes.Length; b++)
-            {
-                ref var brush = ref memory.brushes.ElementAt(memory.slotOfBrush[b]);
-                brush.order = b;
-                if (brush.changed)
-                    changedCount++;
-            }
             // most of the model: welding all of it is cheaper than finding its pieces
             if (changedCount * 2 > brushes.Length)
                 full = true;
@@ -1298,9 +1291,9 @@ namespace Chisel.Core
                     brush.output = default;
                 }
                 brush.dirty = false;
-                var data = brushes[b];
                 if (brush.output.IsCreated)
                 {
+                    var data = brushes[b];
                     // what a buffer holds changes in place only with a new serial
                     var serial = data.brushRenderBuffer.Value.serial;
                     if (serial == 0 || serial != brush.groupsOf)
@@ -1309,8 +1302,8 @@ namespace Chisel.Core
                         brush.groupsOf = serial;
                     }
                     data.brushRenderBuffer = brush.output;
+                    brushes[b] = data;
                 }
-                brushes[b] = data;
             }
 
             if (!verify)

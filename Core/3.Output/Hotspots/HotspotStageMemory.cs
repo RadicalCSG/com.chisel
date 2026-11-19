@@ -134,11 +134,13 @@ namespace Chisel.Core
                 brush.seen = now;
                 slotOfBrush[b] = slot;
                 var same = known && b < sameBuffer.Length && sameBuffer[b] && brush.kinds.IsCreated;
-                keptContent[b] = same && brush.hasContent;
-                keptKinds[b]   = same && sameLayouts;
-                if (!keptContent[b])
+                var contentKept = same && brush.hasContent;
+                var kindsKept   = same && sameLayouts;
+                keptContent[b] = contentKept;
+                keptKinds[b]   = kindsKept;
+                if (!contentKept)
                     brush.hasContent = false;
-                if (keptKinds[b])
+                if (kindsKept)
                     continue;
                 var surfaceCount = same ? brush.kinds.Length :
                                    brushes[b].brushRenderBuffer.IsCreated ? brushes[b].brushRenderBuffer.Value.surfaces.Length : 0;
