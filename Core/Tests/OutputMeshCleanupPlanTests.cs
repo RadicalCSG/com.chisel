@@ -527,6 +527,64 @@ namespace Chisel.Core.Tests
             }
         }
 
+        // The cache forgets the brushes the plan found gone (removed, replaced by another brush in its slot, left without a
+        // buffer) without going through all of its entries: an entry planted for a brush the plan never saw is left
+        [Test]
+        public void TheCache_ForgetsTheBrushesThePlanFoundGone_WithoutGoingThroughIt()
+        {
+            var made    = new List<BlobAssetReference<ChiselBrushRenderBuffer>>();
+            var brushes = Brushes(60, 7, made);
+            using var kept = new Planned();
+            try
+            {
+                void Step()
+                {
+                    using var copy = new NativeList<BrushData>(brushes.Length, Allocator.TempJob);
+                    copy.AddRange(brushes.AsArray());
+                    CleanUp(copy, kept);
+                }
+                Step();
+                Step();
+                int Find(int from)
+                {
+                    while (!brushes[from].brushRenderBuffer.IsCreated)
+                        from++;
+                    return from;
+                }
+                var removed   = Find(0);
+                var replaced  = Find(removed + 1);
+                var noBuffer  = Find(replaced + 1);
+                var removedID  = brushes[removed].brushIndexOrder.compactNodeID;
+                var replacedID = brushes[replaced].brushIndexOrder.compactNodeID;
+                var noBufferID = brushes[noBuffer].brushIndexOrder.compactNodeID;
+                Assert.That(kept.cache.ContainsKey(removedID) && kept.cache.ContainsKey(replacedID) && kept.cache.ContainsKey(noBufferID), Is.True, "each was cleaned up");
+                var planted = new CompactNodeID(default, new SlotIndex { index = 5000, generation = 1 });
+                kept.cache.Add(planted, new MeshCleanupEntry { key = 1 });
+
+                var data = brushes[noBuffer];
+                data.brushRenderBuffer = default;
+                brushes[noBuffer] = data;
+                var min = new float3(30, 0, 30);
+                brushes[replaced] = new BrushData
+                {
+                    brushRenderBuffer = Box(min, min + new float3(1, 1, 1), made),
+                    brushIndexOrder   = new IndexOrder { nodeOrder = 1000, compactNodeID = new CompactNodeID(default, new SlotIndex { index = replacedID.slotIndex.index, generation = replacedID.slotIndex.generation + 1 }) }
+                };
+                brushes.RemoveAt(removed);
+                Step();
+
+                Assert.That(kept.memory.lastFull.Value, Is.False, "a few brushes changed");
+                Assert.That(kept.cache.ContainsKey(removedID), Is.False, "the removed brush is forgotten");
+                Assert.That(kept.cache.ContainsKey(replacedID), Is.False, "the brush replaced in its slot is forgotten");
+                Assert.That(kept.cache.ContainsKey(noBufferID), Is.False, "the brush without a buffer is forgotten");
+                Assert.That(kept.cache.ContainsKey(planted), Is.True, "the cache is not gone through");
+            }
+            finally
+            {
+                Free(brushes, made);
+            }
+        }
+
         // A cleanup's input key changes with everything the cleanup reads: the brush's own buffer, the outlines of the
         // brushes touching it, drawn and of their colliders, and whether its changes are recorded
         [Test]

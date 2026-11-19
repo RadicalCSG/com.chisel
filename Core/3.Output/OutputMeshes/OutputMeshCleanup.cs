@@ -322,11 +322,14 @@ namespace Chisel.Core
             measure.Clear();
             var stamp = ++memory.stamp.Value;
             var full  = !memory.valid.Value;
+            memory.forget.Clear();
             if (full)
                 memory.Clear();
             // made valid again by PlanFromMemory: a plan that stops in between leaves a memory the next one starts over from
             memory.valid.Value = false;
 
+            // the brushes the cache forgets that this loop finds (replaced in their slot, left without a buffer): few
+            using var lost = new NativeList<CompactNodeID>(4, Allocator.Temp);
             for (int b = 0; b < count; b++)
             {
                 var data   = brushes[b];
@@ -336,10 +339,16 @@ namespace Chisel.Core
                 if (s >= memory.slots.Length)
                     memory.slots.Resize(s + 1, NativeArrayOptions.ClearMemory);
                 // a slot another brush had: that one is gone, and this one is measured, which takes the pairs of the slot out
-                var isNew  = !memory.slots[s].alive || memory.slots[s].id != id;
+                var slot   = memory.slots[s];
+                var isNew  = !slot.alive || slot.id != id;
                 if (isNew)
-                    memory.slots[s] = new MeshCleanupPlanMemory.Slot { id = id, alive = true };
-                var slot    = memory.slots[s];
+                {
+                    if (slot.alive)
+                        lost.Add(slot.id);
+                    slot = new MeshCleanupPlanMemory.Slot { id = id, alive = true };
+                }
+                if (!data.brushRenderBuffer.IsCreated && slot.hasBuffer)
+                    lost.Add(id);
                 // a buffer built without a serial is not known to be the same; no buffer stays no buffer
                 var unknown = data.brushRenderBuffer.IsCreated && serial == 0;
                 var changed = isNew || unknown || serial != slot.serial;
@@ -359,6 +368,7 @@ namespace Chisel.Core
                     boxes[b] = slot.box;
                 }
             }
+            memory.forget.AddRange(lost.AsArray());
 
             // the brushes measured again, and those touching them or a brush no longer there, are planned again
             memory.affected.Clear();
@@ -376,6 +386,7 @@ namespace Chisel.Core
                         continue;
                     AffectTouching(ref memory, s);
                     RemoveTouching(ref memory, s);
+                    memory.forget.Add(slot.id);
                     slot.alive = false;
                     memory.slots[s] = slot;
                 }
@@ -809,7 +820,8 @@ namespace Chisel.Core
 
         // The results handed to the brushes and the cache, which forgets the brushes it wasn't asked for. With the plan's
         // memory (PlanFromMemory, which asks only for the brushes it planned again) each result is kept with its brush's
-        // slot too, and the cache forgets the brushes that are gone or have no buffer.
+        // slot too, and the cache forgets the brushes the plan found gone, replaced in their slot or without a buffer
+        // (memory.forget); after a plan that measured every brush again it goes through all it holds for those.
         public static void Finish(NativeList<BrushData> brushes, NativeList<BlobAssetReference<ChiselBrushRenderBuffer>> patched,
                                   NativeList<MeshCleanupWork> work, NativeParallelHashMap<CompactNodeID, MeshCleanupEntry> cache,
                                   MeshCleanupPlanMemory memory = default)
@@ -861,6 +873,20 @@ namespace Chisel.Core
             }
             if (!cached)
                 return;
+            // the plan listed what is gone since the last update, unless it measured every brush again
+            if (memory.IsCreated && !memory.lastFull.Value)
+            {
+                foreach (var id in memory.forget)
+                {
+                    if (cache.TryGetValue(id, out var dead))
+                    {
+                        dead.Dispose();
+                        cache.Remove(id);
+                    }
+                }
+                memory.forget.Clear();
+                return;
+            }
             using var gone = new NativeList<CompactNodeID>(Allocator.Temp);
             var stamp = memory.IsCreated ? memory.stamp.Value : 0;
             foreach (var pair in cache)
