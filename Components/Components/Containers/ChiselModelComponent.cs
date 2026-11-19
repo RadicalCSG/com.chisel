@@ -247,7 +247,19 @@ namespace Chisel.Components
 
         
         public ChiselGeneratedRenderSettings RenderSettings { get { return renderSettings; } }
-        public ChiselGeneratedColliderSettings ColliderSettings { get { return colliderSettings; } }        
+        public ChiselGeneratedColliderSettings ColliderSettings { get { return colliderSettings; } }
+
+        /// <summary>
+        /// The operation of a brush drawn out of one of the model's surfaces when none is chosen: pulled out of the surface
+        /// (a positive height) it adds, pushed into it it cuts. With the subtractive workflow the model's brushes are the
+        /// empty space, so there it is the other way round.
+        /// </summary>
+        public CSGOperationType OperationOutOfSurface(float height)
+        {
+            var pushedIn            = height < 0;
+            var subtractiveWorkflow = renderSettings != null && renderSettings.subtractiveWorkflow;
+            return pushedIn != subtractiveWorkflow ? CSGOperationType.Subtractive : CSGOperationType.Additive;
+        }
         public override CSGTreeNode TopTreeNode { get { return Node; } protected set { Node = (CSGTree)value; } }
 		public override bool IsContainer { get { return IsActive; } }
 		public bool IsInitialized  { get; private set; } = false;

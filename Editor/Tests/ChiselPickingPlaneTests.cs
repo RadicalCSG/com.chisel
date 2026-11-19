@@ -72,6 +72,23 @@ namespace Chisel.Editors.Tests
             Assert.That(intersection.worldPlane.normal.z, Is.EqualTo(1).Within(1e-4f));
         }
 
+        // In a model with the subtractive workflow the box is a room: its surface, picked from inside, faces the viewer
+        [Test]
+        public void ASurfaceOfASubtractiveWorkflowRoom_FacesTheViewer()
+        {
+            Assert.That(BoxFacingPlusZ(out var box, out var brush, out var surfaceIndex, out var faceZ), Is.True);
+            var model = box.GetComponentInParent<ChiselModelComponent>();
+            model.renderSettings.subtractiveWorkflow = true;
+            model.SyncModelSettingsStore();
+            UpdateModels();
+            var intersection = ChiselSelectionManager.PickedIntersection(box.gameObject, brush, surfaceIndex,
+                                                                          worldCameraOrigin: Vector3.zero,
+                                                                          worldIntersectionPos: new Vector3(0, 0, faceZ));
+            Assert.That(intersection.worldPlane.normal.z, Is.EqualTo(-1).Within(1e-4f));
+            Assert.That(intersection.worldPlaneIntersection.z, Is.EqualTo(faceZ).Within(1e-4f));
+            Assert.That(intersection.treeNode, Is.EqualTo(box), "the room's brush");
+        }
+
         [Test]
         public void ASurfaceSeenFromInside_FacesTheViewer()
         {
