@@ -42,6 +42,9 @@ namespace Chisel.Core
         public NativeList<bool>                          affected;
         // whether the last plan recorded the cleanup's changes: its keys are made with it
         public NativeReference<bool>                     lastRecord;
+        // this update: the brushes the cache forgets (gone, replaced by another brush in their slot, left without a
+        // buffer); with every brush measured again it forgets all it wasn't given (lastFull)
+        public NativeList<CompactNodeID>                 forget;
 
         public static MeshCleanupPlanMemory Create(Allocator allocator)
         {
@@ -54,7 +57,8 @@ namespace Chisel.Core
                 lastFull     = new NativeReference<bool>(allocator),
                 lastMeasured = new NativeReference<int>(allocator),
                 affected     = new NativeList<bool>(1024, allocator),
-                lastRecord   = new NativeReference<bool>(allocator)
+                lastRecord   = new NativeReference<bool>(allocator),
+                forget       = new NativeList<CompactNodeID>(16, allocator)
             };
         }
 
@@ -64,6 +68,7 @@ namespace Chisel.Core
         {
             slots.Clear();
             touching.Clear();
+            forget.Clear();
             valid.Value = false;
         }
 
@@ -77,6 +82,7 @@ namespace Chisel.Core
             if (lastMeasured.IsCreated) lastMeasured.Dispose();
             if (affected.IsCreated)     affected.Dispose();
             if (lastRecord.IsCreated)   lastRecord.Dispose();
+            if (forget.IsCreated)       forget.Dispose();
         }
     }
 }
