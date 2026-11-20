@@ -16,6 +16,8 @@ namespace Chisel.Core
         Faces,
         InputBrushes,           // brushes whose exact input (ExactBrush) was built in this update: only the ones that changed
         FacesReplayed,          // faces written from the last update (ExactFaceCache), not built
+        MeshesLookedUp,         // brushes whose mesh was looked up in this update (FillBrushMeshBlobLookupJob): only the ones that changed
+        BoundsTaken,            // brushes whose exact bounds were taken in this update (ExactBoundsJob): only the ones built again
         InvalidPlane,           // a brush with a plane that cannot be made exact (ExactInputJob): it takes no part
         OpenBrush,              // a brush whose exact planes do not close it within the world: it takes no part
         FaceOutsideBounds,

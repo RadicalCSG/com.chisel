@@ -268,6 +268,26 @@ namespace Chisel.Core.Tests
 			brush.localToTree = localToTree;
 		}
 
+		// Gives a brush a mesh made from these planes, as a generator does when its shape changes: the mesh it had is let go,
+		// so one no other brush uses is gone (and made again when a brush is given the same planes)
+		public void SetPlanes(ContentsSceneNode brush, float4[] planes)
+		{
+			if (!brush.IsBrush || brush.localVertices != null)
+				throw new ArgumentException($"{NameOf(brush)} is not a brush made from planes");
+			var instance = CreateBrushMesh(planes, brush.smoothingGroup);
+			var treeBrush = (CSGTreeBrush)treeNodes[brush];
+			var previous = treeBrush.BrushMesh;
+			treeBrush.BrushMesh = instance;
+			instances.Add(instance);
+			int index = instances.FindIndex(held => held.brushMeshHash == previous.brushMeshHash);
+			if (index >= 0)
+			{
+				instances[index].Destroy();
+				instances.RemoveAt(index);
+			}
+			brush.localPlanes = planes;
+		}
+
 		public void SetContents(ContentsSceneNode brush, int contents)
 		{
 			if (!brush.IsBrush)

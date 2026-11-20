@@ -405,8 +405,9 @@ namespace Chisel.Core
         }
     }
 
+    // Builds the brushes that have no exact brush yet (ExactInputJob builds those that changed), and takes their bounds
     [BurstCompile(CompileSynchronously = true)]
-    unsafe struct ExactBoundsJob : IJob
+    unsafe struct ExactMissingBrushesJob : IJob
     {
         // Read
         [NoAlias, ReadOnly] public NativeList<IndexOrder>                           allTreeBrushIndexOrders;
@@ -416,42 +417,72 @@ namespace Chisel.Core
         // Read / Write
         [NoAlias] public NativeArray<int>                                           stats;
         [NoAlias] public NativeList<BlobAssetReference<ExactBrush>>                 exactBrushCache;    // by node order
+        [NoAlias] public NativeList<MinMaxAABB>                                     exactBoundsCache;   // by node order
         // the tree's brush generations (ExactBrushes.SetGeneration)
         [NativeDisableUnsafePtrRestriction] public long*                            generationCounter;
-
-        // Write
-        [NoAlias] public NativeList<MinMaxAABB>                                     bounds;             // by node order
 
         public void Execute()
         {
             int brushCount = allTreeBrushIndexOrders.Length;
-            bounds.Clear();
-            bounds.ResizeUninitialized(brushCount);
-            var builder = ExactFaceBuilder.Create();
-            var corners = new ExactList<ExactVertex>(32);
+            var builder = default(ExactFaceBuilder);
+            var corners = default(ExactList<ExactVertex>);
             try
             {
                 for (int b = 0; b < brushCount; b++)
                 {
                     int nodeOrder = allTreeBrushIndexOrders[b].nodeOrder;
-                    if (!exactBrushCache[nodeOrder].IsCreated)
+                    if (exactBrushCache[nodeOrder].IsCreated)
+                        continue;
+                    if (!corners.IsCreated)
                     {
-                        var brush = ExactBrushes.Build(brushMeshLookup[nodeOrder], transformationCache[nodeOrder].nodeToTree,
-                                                       ref builder, ref corners, out var failure);
-                        ExactBrushes.SetGeneration(brush, default, generationCounter);
-                        exactBrushCache[nodeOrder] = brush;
-                        stats[(int)ExactCSGStat.InputBrushes]++;
-                        if (failure != ExactCSGStat.Count)
-                            stats[(int)failure]++;
+                        builder = ExactFaceBuilder.Create();
+                        corners = new ExactList<ExactVertex>(32);
                     }
-                    bounds[nodeOrder] = exactBrushCache[nodeOrder].Value.bounds;
+                    var brush = ExactBrushes.Build(brushMeshLookup[nodeOrder], transformationCache[nodeOrder].nodeToTree,
+                                                   ref builder, ref corners, out var failure);
+                    ExactBrushes.SetGeneration(brush, default, generationCounter);
+                    exactBrushCache[nodeOrder]  = brush;
+                    exactBoundsCache[nodeOrder] = brush.Value.bounds;
+                    stats[(int)ExactCSGStat.InputBrushes]++;
+                    stats[(int)ExactCSGStat.BoundsTaken]++;
+                    if (failure != ExactCSGStat.Count)
+                        stats[(int)failure]++;
                 }
             }
             finally
             {
-                builder.Dispose();
-                corners.Dispose();
+                if (corners.IsCreated)
+                {
+                    builder.Dispose();
+                    corners.Dispose();
+                }
             }
+        }
+    }
+
+    // Takes the bounds of the brushes built again in this update (ExactInputJob, ExactMergedRebuildJob): every other brush
+    // keeps the bounds it had (exactBoundsCache follows exactBrushCache, CacheRemappingJob moves both)
+    [BurstCompile(CompileSynchronously = true)]
+    struct ExactBoundsJob : IJob
+    {
+        // Read
+        [NoAlias, ReadOnly] public NativeList<IndexOrder>                           rebuildTreeBrushIndexOrders;
+        [NoAlias, ReadOnly] public NativeList<BlobAssetReference<ExactBrush>>       exactBrushCache;    // by node order
+
+        // Read / Write
+        [NoAlias] public NativeArray<int>                                           stats;
+        [NoAlias] public NativeList<MinMaxAABB>                                     exactBoundsCache;   // by node order
+
+        public void Execute()
+        {
+            for (int r = 0; r < rebuildTreeBrushIndexOrders.Length; r++)
+            {
+                int nodeOrder = rebuildTreeBrushIndexOrders[r].nodeOrder;
+                var brush = exactBrushCache[nodeOrder];
+                exactBoundsCache[nodeOrder] = brush.IsCreated ? brush.Value.bounds
+                                                              : new MinMaxAABB { Min = new float3(float.PositiveInfinity), Max = new float3(float.NegativeInfinity) };
+            }
+            stats[(int)ExactCSGStat.BoundsTaken] += rebuildTreeBrushIndexOrders.Length;
         }
     }
 }
