@@ -771,16 +771,7 @@ namespace Chisel.Editors
                             state.s_CurrentMousePosition = evt.mousePosition;
                             
                             var localToWorldMatrix	= SceneHandles.Matrix;
-                            var forward             = localToWorldMatrix.MultiplyVector(Vector3.forward);
-                            var activeGrid			= Grid.ActiveGrid;
-
-                            switch (activeGrid.GetClosestAxis(forward))
-                            {
-                                case Axis.X: activeGrid = activeGrid.GridYZ; break;
-                                case Axis.Z: activeGrid = activeGrid.GridXY; break;
-                            }
-
-                            state.s_Snapping2D.Initialize(activeGrid, state.s_CurrentMousePosition, state.s_LocalStartPosition, localToWorldMatrix);
+                            state.s_Snapping2D.Initialize(SlideGrid(Grid.ActiveGrid, localToWorldMatrix), state.s_CurrentMousePosition, state.s_LocalStartPosition, localToWorldMatrix);
                             state.s_Snapping2D.CalculateExtents(localExtentsPoints);
                         }
                         break;
@@ -898,6 +889,26 @@ namespace Chisel.Editors
                 }
                 return curve;
             }
+            const float kInGridPlane = 0.9999f;
+
+            // The grid a point of the curve is dragged in, along its plane (its local xy plane): the active grid's plane
+            // it lies in, so it snaps to the grid's lines, or else one in its own plane round its origin, so a point stays
+            // in it and under the mouse however its generator is turned
+            internal static Grid SlideGrid(Grid activeGrid, Matrix4x4 localToWorld)
+            {
+                var forward = localToWorld.MultiplyVector(Vector3.forward).normalized;
+                var grid = activeGrid.GetClosestAxis(forward) switch
+                {
+                    Axis.X => activeGrid.GridYZ,
+                    Axis.Z => activeGrid.GridXY,
+                    _      => activeGrid,
+                };
+                if (Mathf.Abs(Vector3.Dot(grid.Up.normalized, forward)) >= kInGridPlane)
+                    return grid;
+                var curveToWorld = Matrix4x4.TRS(localToWorld.GetColumn(3), localToWorld.rotation, Vector3.one) * Grid.XYPlane;
+                return new Grid(curveToWorld, activeGrid.Spacing);
+            }
+
             /*
             private static bool GetPlaneIntersection(State state, Vector2 position, out Vector3 hitpos)
             {
