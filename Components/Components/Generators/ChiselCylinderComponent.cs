@@ -86,8 +86,8 @@ namespace Chisel.Components
         
         public bool IsElliptical
         {
-            get { return definition.settings.isElliptical; }
-            set { if (value == definition.settings.isElliptical) return; definition.settings.isElliptical = value; OnValidateState(); }
+            get { return definition.settings.IsElliptical; }
+            set { if (value == definition.settings.IsElliptical) return; definition.settings.IsElliptical = value; OnValidateState(); }
         }
         
         public uint SmoothingGroup
