@@ -111,10 +111,10 @@ namespace Chisel.Core
         const float kVertLineThickness			= 0.75f;
         const float kHorzLineThickness			= 1.0f;
 
-        static void DrawOutline(IChiselHandleRenderer renderer, ChiselSphereDefinition definition, Vector3[] vertices, LineMode lineMode)
+        // its rings and the lines from pole to pole through them, of vertices from BrushMeshFactory.CreateSphereVertices
+        internal static void DrawOutline(IChiselHandleRenderer renderer, int sides, Vector3[] vertices, LineMode lineMode)
         {
-            var sides			= definition.settings.horizontalSegments;
-            
+
             var extraVertices	= 2;
             var bottomVertex	= 1;
             var topVertex		= 0;
@@ -151,10 +151,10 @@ namespace Chisel.Core
             if (BrushMeshFactory.GenerateSphereVertices(this, ref vertices))
             {
                 handles.color = handles.GetStateColor(baseColor, false, false);
-                DrawOutline(handles, this, vertices, lineMode: LineMode.ZTest);
+                DrawOutline(handles, settings.horizontalSegments, vertices, lineMode: LineMode.ZTest);
 
                 handles.color = handles.GetStateColor(baseColor, false, true);
-                DrawOutline(handles, this, vertices, lineMode: LineMode.NoZTest);
+                DrawOutline(handles, settings.horizontalSegments, vertices, lineMode: LineMode.NoZTest);
                 handles.color = baseColor;
             }
 
@@ -174,12 +174,19 @@ namespace Chisel.Core
             if (settings.diameterXYZ.y < 0)
                 normal = -normal;
 
-            var radius2D = new float2(settings.diameterXYZ.x, settings.diameterXYZ.z) * 0.5f;
+            // the quarters of its equator, each dragging its x or its z diameter alone
+            var quarters = handles.generatorState as IChiselEllipsoidHandle[];
+            if (quarters == null)
+                handles.generatorState = quarters = handles.CreateEllipseQuarters(normal);
+            var diameterX = settings.diameterXYZ.x;
+            var diameterZ = settings.diameterXYZ.z;
+            var rotate    = quaternion.AxisAngle(new float3(0, 1, 0), settings.rotation);
+            var xVector   = (Vector3)math.mul(rotate, new float3(1, 0, 0));
+            var zVector   = (Vector3)math.mul(rotate, new float3(0, 0, 1));
+            IChiselHandleRendererExtensions.PlaceEllipseQuarters(quarters, center, normal, Vector3.zero, diameterX, diameterZ, math.degrees(settings.rotation));
 
             {
-                var radiusX = radius2D.x;
-                handles.DoRadiusHandle(ref radiusX, normal, center);
-                radius2D.x = radiusX;
+                handles.DoDraggableEllipse(ref diameterX, ref diameterZ, center, xVector, zVector, quarters);
 
                 {
                     var isBottomBackfaced	= false;
@@ -200,8 +207,8 @@ namespace Chisel.Core
             if (handles.modified)
             {
                 var diameter = settings.diameterXYZ;
-                diameter.x = radius2D.x * 2.0f;
-                diameter.z = radius2D.x * 2.0f;
+                diameter.x = diameterX;
+                diameter.z = diameterZ;
                 // a drag that would make it flat isn't taken
                 if (math.abs(topPoint.y - bottomPoint.y) >= ChiselGeneratorLimits.kMinSize)
                 {

@@ -430,50 +430,7 @@ namespace Chisel.Core
         {
             if (isElliptical)
             {
-                Debug.Assert(radiusHandles.Length == 4);
-                diameterX = -diameterX; handles.DoSlider1DHandle(ref diameterX, center, xVector, radiusHandles[1]); // right
-                if (handles.lastHandleHadFocus)
-                {
-                    var radiusX = diameterX * 0.5f;
-                    var radiusZ = diameterZ * 0.5f;
-                    var vecX = (xVector.normalized * radiusX);
-                    var vecZ = (zVector.normalized * radiusZ);
-                    handles.RenderDistanceMeasurement(center, center + vecX, radiusX, "Radius");
-                    handles.RenderDistanceMeasurement(center, center + vecZ, radiusZ, "Radius");
-                }
-                diameterX = -diameterX; handles.DoSlider1DHandle(ref diameterX, center, xVector, radiusHandles[0]); // left
-                if (handles.lastHandleHadFocus)
-                {
-                    var radiusX = diameterX * 0.5f;
-                    var radiusZ = diameterZ * 0.5f;
-                    var vecX = (xVector.normalized * radiusX);
-                    var vecZ = (zVector.normalized * radiusZ);
-                    handles.RenderDistanceMeasurement(center, center + vecX, radiusX, "Radius");
-                    handles.RenderDistanceMeasurement(center, center + vecZ, radiusZ, "Radius");
-                }
-                diameterZ = -diameterZ; handles.DoSlider1DHandle(ref diameterZ, center, zVector, radiusHandles[3]); // back
-                if (handles.lastHandleHadFocus)
-                {
-                    var radiusX = diameterX * 0.5f;
-                    var radiusZ = diameterZ * 0.5f;
-                    var vecX = (xVector.normalized * radiusX);
-                    var vecZ = (zVector.normalized * radiusZ);
-                    handles.RenderDistanceMeasurement(center, center + vecX, radiusX, "Radius");
-                    handles.RenderDistanceMeasurement(center, center + vecZ, radiusZ, "Radius");
-                }
-                diameterZ = -diameterZ; handles.DoSlider1DHandle(ref diameterZ, center, zVector, radiusHandles[2]); // forward
-                if (handles.lastHandleHadFocus)
-                {
-                    var radiusX = diameterX * 0.5f;
-                    var radiusZ = diameterZ * 0.5f;
-                    var vecX = (xVector.normalized * radiusX);
-                    var vecZ = (zVector.normalized * radiusZ);
-                    handles.RenderDistanceMeasurement(center, center + vecX, radiusX, "Radius");
-                    handles.RenderDistanceMeasurement(center, center + vecZ, radiusZ, "Radius");
-                }
-
-                diameterX = math.abs(diameterX);
-                diameterZ = math.abs(diameterZ);
+                handles.DoDraggableEllipse(ref diameterX, ref diameterZ, center, xVector, zVector, radiusHandles);
             } else
             {
                 Debug.Assert(radiusHandles.Length == 1);
@@ -688,46 +645,12 @@ namespace Chisel.Core
                 if (definition.settings.isElliptical)
                 {
                     if (bottomRadiusHandles == null || bottomRadiusHandles.Length != 4)
-                    {
-                        bottomRadiusHandles = new IChiselEllipsoidHandle[]
-                        {
-                            handles.CreateEllipsoidHandle(Vector3.zero, -normal, 0, 0, startAngle: +45f, angles: 90),        // left
-                            handles.CreateEllipsoidHandle(Vector3.zero, -normal, 0, 0, startAngle: +45f + 180f, angles: 90), // right
-                            handles.CreateEllipsoidHandle(Vector3.zero, -normal, 0, 0, startAngle: -45f, angles: 90),        // forward
-                            handles.CreateEllipsoidHandle(Vector3.zero, -normal, 0, 0, startAngle: -45f + 180f, angles: 90), // back
-                        };
-                    }
-
+                        bottomRadiusHandles = handles.CreateEllipseQuarters(-normal);
                     if (topRadiusHandles == null || topRadiusHandles.Length != 4)
-                    {
-                        topRadiusHandles = new IChiselEllipsoidHandle[]
-                        {
-                            handles.CreateEllipsoidHandle(Vector3.zero, normal, 0, 0, startAngle: +45f, angles: 90),          // left
-                            handles.CreateEllipsoidHandle(Vector3.zero, normal, 0, 0, startAngle: +45f + 180f, angles: 90),   // right
-                            handles.CreateEllipsoidHandle(Vector3.zero, normal, 0, 0, startAngle: -45f, angles: 90),          // forward
-                            handles.CreateEllipsoidHandle(Vector3.zero, normal, 0, 0, startAngle: -45f + 180f, angles: 90),   // back
-                        };
-                    }
+                        topRadiusHandles = handles.CreateEllipseQuarters(normal);
 
-                    for (int i = 0; i < bottomRadiusHandles.Length; i++)
-                    {
-                        bottomRadiusHandles[i].Center = bottomPoint;
-                        bottomRadiusHandles[i].Normal = -normal;
-                        bottomRadiusHandles[i].Outward = -normal;
-                        bottomRadiusHandles[i].DiameterX = tempBottomDiameterX;
-                        bottomRadiusHandles[i].DiameterZ = tempBottomDiameterZ;
-                        bottomRadiusHandles[i].Rotation = definition.settings.rotation;
-                    }
-
-                    for (int i = 0; i < topRadiusHandles.Length; i++)
-                    {
-                        topRadiusHandles[i].Center = topPoint;
-                        topRadiusHandles[i].Normal = normal;
-                        topRadiusHandles[i].Outward = normal;
-                        topRadiusHandles[i].DiameterX = tempTopDiameterX;
-                        topRadiusHandles[i].DiameterZ = tempTopDiameterZ;
-                        topRadiusHandles[i].Rotation = definition.settings.rotation;
-                    }
+                    IChiselHandleRendererExtensions.PlaceEllipseQuarters(bottomRadiusHandles, bottomPoint, -normal, -normal, tempBottomDiameterX, tempBottomDiameterZ, definition.settings.rotation);
+                    IChiselHandleRendererExtensions.PlaceEllipseQuarters(topRadiusHandles,    topPoint,     normal,  normal, tempTopDiameterX,    tempTopDiameterZ,    definition.settings.rotation);
 
                     if (bottomHandles == null || bottomHandles.Length != 4)
                         bottomHandles   = new IChiselHandle[] { bottomHandle, bottomRadiusHandles[0], bottomRadiusHandles[1], bottomRadiusHandles[2], bottomRadiusHandles[3] };
