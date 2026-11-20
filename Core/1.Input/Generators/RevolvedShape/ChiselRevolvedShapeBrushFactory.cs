@@ -113,7 +113,15 @@ namespace Chisel.Core
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static UnsafeList<float4x4> GetCircleMatrices(int segments, float3 axis, float totalAngle, Allocator allocator = Allocator.Persistent)
         {
+            return GetCircleMatrices(segments, axis, 0, totalAngle, allocator);
+        }
+
+        // segments + 1 turns round axis, from startAngle as far as totalAngle (in degrees)
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static UnsafeList<float4x4> GetCircleMatrices(int segments, float3 axis, float startAngle, float totalAngle, Allocator allocator = Allocator.Persistent)
+        {
             var radiansPerSegment = math.radians(totalAngle / segments);
+            var startRadians      = math.radians(startAngle);
 
             segments++;
 
@@ -121,7 +129,7 @@ namespace Chisel.Core
             matrices.Resize(segments, NativeArrayOptions.ClearMemory);
             for (int s = 0; s < segments; s++)
             {
-                var hRadians = (s * radiansPerSegment);
+                var hRadians = startRadians + (s * radiansPerSegment);
                 var rotation = quaternion.AxisAngle(axis, hRadians);
                 matrices[s] = float4x4.TRS(float3.zero, rotation, new float3(1));
             }

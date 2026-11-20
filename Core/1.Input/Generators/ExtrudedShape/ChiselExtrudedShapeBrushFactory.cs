@@ -78,15 +78,30 @@ namespace Chisel.Core
                     end   =              polygonVerticesSegments[p    ]
                 };
 
+                // which way round the polygon goes, and its middle (a point of it on the axis a shape is revolved round
+                // doesn't move)
+                var middle  = float2.zero;
+                var winding = 0.0f;
+                for (int i = range.start; i < range.end; i++)
+                {
+                    var point = polygonVerticesArray[i].position;
+                    var next  = polygonVerticesArray[i + 1 < range.end ? i + 1 : range.start].position;
+                    winding += (point.x * next.y) - (next.x * point.y);
+                    middle  += point;
+                }
+                middle /= range.Length;
+
                 for (int s = 1; s < pathMatrices.Length; s++)
                 {
                     var matrix0 = pathMatrices[s - 1];
                     var matrix1 = pathMatrices[s];
 
-                    var polygonVertex4      = new float4(polygonVerticesArray[range.start].position, 0, 1);
-                    var distanceToBottom    = math.mul(math.inverse(matrix0), math.mul(matrix1, polygonVertex4)).z;
-                     
-                    if (distanceToBottom < 0) { var m = matrix0; matrix0 = matrix1; matrix1 = m; }
+                    // the brush is built going along matrix0's z with the polygon wound one way: a mirrored matrix (an
+                    // extrusion's path), going the other way, or the polygon wound the other way round (the half of a
+                    // revolved shape across its axis) each turn it inside out, so the ends are swapped when they do
+                    var travel     = math.mul(math.inverse(matrix0), math.mul(matrix1, new float4(middle, 0, 1))).z;
+                    var handedness = math.determinant(new float3x3(matrix0.c0.xyz, matrix0.c1.xyz, matrix0.c2.xyz));
+                    if (travel * handedness * winding > 0) { var m = matrix0; matrix0 = matrix1; matrix1 = m; }
 
                     if (brushMeshIndex >= brushMeshes.Length)
                     {

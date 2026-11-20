@@ -38,7 +38,7 @@ namespace Chisel.Core
 				return 0;
 
             if (pathMatrices.IsCreated) pathMatrices.Dispose();
-			pathMatrices = BrushMeshFactory.GetCircleMatrices(revolveSegments, new float3(0, 1, 0)); // Indirect
+			pathMatrices = BrushMeshFactory.GetCircleMatrices(revolveSegments, new float3(0, 1, 0), startAngle, totalAngle); // Indirect
 
             BrushMeshFactory.Split2DPolygonAlongOriginXAxis(ref polygonVerticesList, ref polygonVerticesSegments);
 
@@ -146,8 +146,8 @@ namespace Chisel.Core
             return (index < RequiredSurfaceCount) ? ChiselSurfaceNames.Side(index - 1) : null;
         }
 
-        // it always goes all the way round, so it has no start or end
-        public override bool IsSurfaceUsed(int index) { return index >= 2; }
+        // all the way round it has no start or end; part of the way, they close it
+        public override bool IsSurfaceUsed(int index) { return index >= 2 || settings.totalAngle < 360; }
 
 
         const Allocator defaultAllocator = Allocator.TempJob;
@@ -220,7 +220,8 @@ namespace Chisel.Core
             handles.color = baseColor;
 
             {
-                handles.DoShapeHandle(ref shape, float4x4.identity);
+                // edited where it starts, where its brushes begin
+                handles.DoShapeHandle(ref shape, float4x4.RotateY(math.radians(settings.startAngle)));
                 handles.DrawLine(normal * 10, normal * -10, dashSize: 4.0f);
             }
         }
