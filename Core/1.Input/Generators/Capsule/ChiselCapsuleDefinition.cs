@@ -220,20 +220,22 @@ namespace Chisel.Core
             }
         }
 
-        static void DrawOutline(IChiselHandleRenderer renderer, ChiselCapsuleDefinition definition, Vector3[] vertices, LineMode lineMode)
+        // its rings and the lines from end to end through them, of vertices from BrushMeshFactory.GenerateCapsuleVertices;
+        // the loops at its ends only with drawEnds (they're drawn with the handles when it's edited)
+        internal static void DrawOutline(IChiselHandleRenderer renderer, in ChiselCapsule settings, Vector3[] vertices, LineMode lineMode, bool drawEnds = false)
         {
-            var sides			    = definition.settings.sides;
-            
-            var topHemisphere		= definition.settings.HaveRoundedTop;
-            var bottomHemisphere	= definition.settings.HaveRoundedBottom;
-            var topSegments			= topHemisphere    ? definition.settings.topSegments    : 0;
-            var bottomSegments		= bottomHemisphere ? definition.settings.bottomSegments : 0;
-            
-            var extraVertices		= definition.settings.ExtraVertexCount;
-            var bottomVertex		= definition.settings.BottomVertex;
-            var topVertex			= definition.settings.TopVertex;
-            
-            var rings				= definition.settings.RingCount;
+            var sides			    = settings.sides;
+
+            var topHemisphere		= settings.HaveRoundedTop;
+            var bottomHemisphere	= settings.HaveRoundedBottom;
+            var topSegments			= topHemisphere    ? settings.topSegments    : 0;
+            var bottomSegments		= bottomHemisphere ? settings.bottomSegments : 0;
+
+            var extraVertices		= settings.ExtraVertexCount;
+            var bottomVertex		= settings.BottomVertex;
+            var topVertex			= settings.TopVertex;
+
+            var rings				= settings.RingCount;
             var bottomRing			= (bottomHemisphere) ? (rings - bottomSegments) : rings - 1;
             var topRing				= (topHemisphere   ) ? (topSegments - 1) : 0;
 
@@ -243,11 +245,8 @@ namespace Chisel.Core
 
             for (int i = 0, j = extraVertices; i < rings; i++, j += sides)
             {
-                if ((!definition.settings.HaveRoundedTop && i == topRing) ||
-                    (!definition.settings.HaveRoundedBottom && i == bottomRing))
-                    continue;
                 bool isCapRing = (i == topRing || i == bottomRing);
-                if (isCapRing)
+                if (isCapRing && !drawEnds)
                     continue;
                 renderer.color = (isCapRing ? prevColor : color);
                 renderer.DrawLineLoop(vertices, j, sides, lineMode: lineMode, thickness: (isCapRing ? kCapLineThickness : kHorzLineThickness), dashSize: (isCapRing ? 0 : kLineDash));
@@ -277,10 +276,10 @@ namespace Chisel.Core
             if (BrushMeshFactory.GenerateCapsuleVertices(ref settings, ref vertices))
             {
                 handles.color = handles.GetStateColor(baseColor, false, false);
-                DrawOutline(handles, this, vertices, lineMode: LineMode.ZTest);
+                DrawOutline(handles, settings, vertices, lineMode: LineMode.ZTest);
 
                 handles.color = handles.GetStateColor(baseColor, false, true);
-                DrawOutline(handles, this, vertices, lineMode: LineMode.NoZTest);
+                DrawOutline(handles, settings, vertices, lineMode: LineMode.NoZTest);
 
                 handles.color = baseColor;
             }

@@ -1,4 +1,5 @@
-﻿using UnityEngine;
+﻿using System;
+using UnityEngine;
 
 namespace Chisel.Core
 {
@@ -39,10 +40,27 @@ namespace Chisel.Core
             settings.diameterZ    = bounds.size[(int)Axis.Z];
         }
 
+        // the capsule that is made in the box, outlined as when it's edited, with its end loops; its vertices are where it
+        // stands, put in the box by the matrix
         public override void OnPaint(IChiselHandleRenderer renderer, Bounds bounds)
         {
-            renderer.RenderCylinder(bounds, sides);
+            previewDefinition ??= new ChiselCapsuleDefinition();
+            previewDefinition.settings = ChiselCapsule.DefaultSettings;
+            OnCreate(ref previewDefinition);
+            OnUpdate(ref previewDefinition, bounds);
+            ref var settings = ref previewDefinition.settings;
+            settings.Validate();
+            if (BrushMeshFactory.GenerateCapsuleVertices(ref settings, ref previewVertices))
+            {
+                var matrix = renderer.matrix;
+                renderer.matrix = matrix * Matrix4x4.Translate(new Vector3(bounds.center.x, bounds.min.y, bounds.center.z));
+                ChiselCapsuleDefinition.DrawOutline(renderer, settings, previewVertices, LineMode.NoZTest, drawEnds: true);
+                renderer.matrix = matrix;
+            }
             renderer.RenderBoxMeasurements(bounds);
         }
+
+        [NonSerialized] ChiselCapsuleDefinition previewDefinition;
+        [NonSerialized] Vector3[] previewVertices;
     }
 }
