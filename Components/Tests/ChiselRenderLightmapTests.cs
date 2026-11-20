@@ -90,6 +90,26 @@ namespace Chisel.Components.Tests
             }
         }
 
+        // The clone a lightmapped copy is drawn with doesn't keep its material loaded
+        [Test]
+        public void AMaterialDrawnLightmapped_StaysUnloadable()
+        {
+            var material = DrawLightmappedWithAMaterialOfItsOwn();
+            System.GC.Collect();
+            System.GC.WaitForPendingFinalizers();
+            System.GC.Collect();
+            UnityEditor.EditorUtility.UnloadUnusedAssetsImmediate(true);
+            Assert.That((bool)Resources.EntityIdToObject(material), Is.False, "the material is still loaded: something still refers to it");
+        }
+
+        // In a method of its own, so that the test refers to nothing of the material when the unload runs
+        static EntityId DrawLightmappedWithAMaterialOfItsOwn()
+        {
+            var material = new Material(Shader.Find("Universal Render Pipeline/Lit")) { name = "Lightmapped Material" };
+            Assert.That(ChiselRenderObjects.LightmappedMaterialOf(material, directional: true), Is.Not.Null);
+            return material.GetEntityId();
+        }
+
         static void DrawnWithBakedLightmap(LightmapsMode mode, System.Action<MaterialPropertyBlock, Material, Texture2D, Texture2D, Texture2D> check)
         {
             var remembered = SceneLeftClean.Remember();

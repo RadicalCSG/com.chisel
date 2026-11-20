@@ -426,7 +426,8 @@ namespace Chisel.Components
 #if UNITY_EDITOR
                 meshRenderer.stitchLightmapSeams            = isRenderable && renderSettings.stitchLightmapSeams;
                 meshRenderer.scaleInLightmap                = !isRenderable ? 0.0f : renderSettings.scaleInLightmap;
-                meshRenderer.receiveGI                      = renderSettings.receiveGI;
+                // A renderer whose surfaces get no lightmap texels takes light probes, and still takes part in the bake
+                meshRenderer.receiveGI                      = ChiselMaterialLightmaps.GetsLightmap(meshRenderer.sharedMaterial) ? renderSettings.receiveGI : ReceiveGI.LightProbes;
 #endif
             }
         }
@@ -1150,12 +1151,12 @@ namespace Chisel.Components
 
         // A lightmapped copy is drawn with a hidden clone of its material that has the lightmap keywords: setting them on
         // the material itself would change the asset, and every renderer drawn with it. The clone is brought up to date
-        // whenever the material changes.
-        static readonly Dictionary<(Material, bool), (Material clone, int crc)> s_LightmappedMaterials = new();
+        // whenever the material changes. By the material's id, so that drawing a copy doesn't keep the material loaded.
+        static readonly Dictionary<(EntityId, bool), (Material clone, int crc)> s_LightmappedMaterials = new();
 
         internal static Material LightmappedMaterialOf(Material material, bool directional)
         {
-            var key = (material, directional);
+            var key = (material.GetEntityId(), directional);
             var crc = material.ComputeCRC();
             if (s_LightmappedMaterials.TryGetValue(key, out var found) && found.clone && found.crc == crc)
                 return found.clone;
@@ -1180,10 +1181,10 @@ namespace Chisel.Components
         // The clones of materials that are gone
         static void ForgetDestroyedMaterials()
         {
-            List<(Material, bool)> destroyed = null;
+            List<(EntityId, bool)> destroyed = null;
             foreach (var pair in s_LightmappedMaterials)
             {
-                if (pair.Key.Item1)
+                if (Resources.EntityIdToObject(pair.Key.Item1))
                     continue;
                 ChiselObjectUtility.SafeDestroy(pair.Value.clone);
                 (destroyed ??= new()).Add(pair.Key);

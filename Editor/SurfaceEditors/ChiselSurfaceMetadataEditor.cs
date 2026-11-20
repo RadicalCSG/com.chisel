@@ -11,11 +11,15 @@ namespace Chisel.Editors
 	public sealed class ChiselSurfaceMetadataEditor : Editor
 	{
 		static readonly GUIContent   kLightmapContents = new("Lightmap", "How many lightmap texels the surfaces with this material get");
+		const string kAutomaticLightmapTooltip = "Texels in proportion to the surface's size, or none when the material's shader can't sample a lightmap (an unlit one)";
+		static readonly GUIContent kAutomaticLightmap       = new("Automatic", kAutomaticLightmapTooltip);
+		static readonly GUIContent kAutomaticLightmapBySize = new("Automatic (By Size)", kAutomaticLightmapTooltip);
+		static readonly GUIContent kAutomaticLightmapNone   = new("Automatic (None: the shader can't sample a lightmap)", kAutomaticLightmapTooltip);
 		static readonly GUIContent[] kLightmapOptions  =
 		{
-			new("By Size", "Texels in proportion to the surface's size"),
+			kAutomaticLightmap,
 			new("One Texel", "One texel: for a surface that gives off light, whose own lighting doesn't show, but whose light a bake takes from its texels"),
-			new("None", "No texels: for a surface that is never lit by a lightmap, as an unlit one")
+			new("None", "No texels: for a surface that is never lit by a lightmap")
 		};
 
 		SerializedProperty surfaceDestinationFlagsProp;
@@ -101,11 +105,14 @@ namespace Chisel.Editors
 			EditorGUI.showMixedValue = false;
 		}
 
-		// The lightmap texels the surfaces get (SurfaceOutputFlags.NoLightmap, SingleLightmapTexel), as one choice
+		// The lightmap texels the surfaces get (SurfaceOutputFlags.NoLightmap, SingleLightmapTexel), as one choice; left to
+		// the shader, what that comes to is shown for a single material
 		void LightmapGUI()
 		{
 			var flags = (SurfaceOutputFlags)outputFlagsProp.intValue;
 			var current = ((flags & SurfaceOutputFlags.NoLightmap) != 0) ? 2 : ((flags & SurfaceOutputFlags.SingleLightmapTexel) != 0) ? 1 : 0;
+			kLightmapOptions[0] = targets.Length != 1 ? kAutomaticLightmap
+								: ChiselMaterialLightmaps.SamplesLightmaps(MaterialOf(target)) ? kAutomaticLightmapBySize : kAutomaticLightmapNone;
 			EditorGUI.showMixedValue = outputFlagsProp.hasMultipleDifferentValues;
 			EditorGUI.BeginChangeCheck();
 			var chosen = EditorGUILayout.Popup(kLightmapContents, current, kLightmapOptions);
@@ -471,7 +478,7 @@ namespace Chisel.Editors
 				{
 					serializedObject.ApplyModifiedProperties();
 					// a changed uv scale is measured again, so the surfaces using the material are built with it
-					ChiselTextureScaleWatcher.Refresh();
+					ChiselMaterialWatcher.Refresh();
 					// the surfaces drawn with the material take its settings again; nothing else is rebuilt
 					foreach (var metadata in targets)
 						ChiselHotspotLayoutWindow.RefreshSurfacesUsing(MaterialOf(metadata));

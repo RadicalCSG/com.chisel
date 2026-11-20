@@ -335,6 +335,50 @@ namespace Chisel.Components.Tests
             }
         }
 
+        // A brush whose material's shader can't sample a lightmap gets no lightmap, and its renderer takes light probes;
+        // it still takes part in the bake: it shadows the lit floor behind it
+        [Test]
+        public void AnUnlitBrush_GetsNoLightmap_AndStillShadowsTheBake()
+        {
+            var unlit = new Material(Shader.Find("Universal Render Pipeline/Unlit")) { name = "unlit" };
+            try
+            {
+                var model  = Model("model", lightmapped: true);
+                Box(model, "floor", new float3(0, 0, 0), new float3(6, 0.5f, 6));
+                var pillar = Box(model, "pillar", new float3(2, 0.5f, 2), new float3(3, 3, 3));
+                foreach (var surface in pillar.SurfaceDefinition.surfaces)
+                    surface.SetMaterial(unlit);
+                pillar.OnValidate();
+                UpdateModels();
+                var lamp = Lamp(new Vector3(1, 2.5f, 1));
+                lamp.intensity = 8;
+                lamp.shadows   = LightShadows.Hard;
+                var behindThePillar = Looking(roots, new Vector3(4.5f, 2.5f, 4.5f), Vector3.down);
+                var besideTheLamp   = Looking(roots, new Vector3(1, 2, 4), Vector3.down);
+                Bake();
+                lamp.enabled = false;
+
+                foreach (var renderable in Renderables(model))
+                {
+                    var renderer = renderable.meshRenderer;
+                    if (renderer.sharedMaterial == unlit)
+                    {
+                        Assert.That(HasLightmap(renderer), Is.False, $"the unlit brush has no lightmap ({BakeState(renderer)})");
+                        Assert.That(renderer.receiveGI, Is.EqualTo(ReceiveGI.LightProbes));
+                    } else
+                        AssertFitsItsLightmap(renderable, kTexelsPerUnit * model.RenderSettings.scaleInLightmap);
+                }
+                var shadowed = InTheDark(() => Brightness(behindThePillar));
+                var lit      = InTheDark(() => Brightness(besideTheLamp));
+                Assert.That(lit, Is.GreaterThan(0.02f), "the floor beside the lamp is lit");
+                Assert.That(shadowed, Is.LessThan(lit * 0.2f), "the unlit pillar shadows the floor behind it");
+            }
+            finally
+            {
+                Object.DestroyImmediate(unlit);
+            }
+        }
+
         static void RefreshVisibility()
         {
             ChiselUnityVisibilityManager.UpdateVisibility(force: true);
