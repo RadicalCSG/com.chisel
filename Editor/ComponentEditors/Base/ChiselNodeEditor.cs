@@ -1041,6 +1041,29 @@ namespace Chisel.Editors
             return definitionSerializedProperty?.FindPropertyRelative(kSettingsName + "." + name);
         }
 
+        // The inspector writes a toggle setting straight into the settings, past the generator's own property, which may
+        // do more (and validating it first may undo what that needs): turned off, it is turned off through that property
+        // instead. An event changes one setting, so reading the generators back afterwards loses nothing
+        protected void TurnOffThroughProperty(string name, Func<T, bool> isOn, Action<T> turnOff)
+        {
+            var property = SettingsProperty(name);
+            if (property == null || property.hasMultipleDifferentValues || property.boolValue)
+                return;
+
+            // not applied yet, so the generators still hold what they were
+            var turnedOff = false;
+            foreach (var target in targets)
+            {
+                if (target is not T generator || !isOn(generator))
+                    continue;
+                Undo.RecordObject(generator, property.displayName);
+                turnOff(generator);
+                turnedOff = true;
+            }
+            if (turnedOff)
+                serializedObject.Update();
+        }
+
         // Whether an enum setting is, on all that are selected, one value; or differs between them, so what goes with it
         // is shown too
         protected bool SettingsIs(string name, int value)

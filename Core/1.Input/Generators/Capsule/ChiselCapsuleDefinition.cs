@@ -55,6 +55,26 @@ namespace Chisel.Core
 
 
         #region Properties
+        // Not elliptical, x and z are one diameter: turned round, the capsule keeps the larger of the two
+        public bool IsElliptical
+        {
+            get { return isElliptical; }
+            set
+            {
+                if (value == isElliptical)
+                    return;
+                isElliptical = value;
+                if (!value)
+                    KeepLargerDiameter();
+            }
+        }
+
+        // x and z made the larger of the two, so a capsule turned round doesn't shrink
+        public void KeepLargerDiameter()
+        {
+            diameterX = diameterZ = math.max(math.abs(diameterX), math.abs(diameterZ));
+        }
+
         const float kHeightEpsilon = 0.001f;
 
         public bool	        HaveRoundedTop		{ get { return topSegments > 0 && topHeight > kHeightEpsilon; } }
