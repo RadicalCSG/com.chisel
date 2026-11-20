@@ -25,6 +25,8 @@ namespace Chisel.Core
 
             public NativeList<BlobAssetReference<BrushTreeSpaceVerticesBlob>>   treeSpaceVerticesCache;
             public NativeList<BlobAssetReference<ChiselBrushRenderBuffer>>      brushRenderBufferCache;
+            // each brush's render buffer as an update read it, by node order (FindBrushRenderBuffersJob)
+            public NativeList<BrushRenderEntry>                                 brushRenderEntries;
 
             public NativeList<MinMaxAABB>                                       brushTreeSpaceBoundCache;
             public NativeList<BlobAssetReference<BrushesTouchedByBrush>>        brushesTouchedByBrushCache;
@@ -109,6 +111,7 @@ namespace Chisel.Core
 				routingTableCache           = new NativeList<BlobAssetReference<RoutingTable>>(1000, Allocator.Persistent); // Confirmed to get disposed
 				brushesTouchedByBrushCache  = new NativeList<BlobAssetReference<BrushesTouchedByBrush>>(1000, Allocator.Persistent); // Confirmed to get disposed
 				brushRenderBufferCache      = new NativeList<BlobAssetReference<ChiselBrushRenderBuffer>>(1000, Allocator.Persistent); // Confirmed to get disposed
+				brushRenderEntries          = new NativeList<BrushRenderEntry>(1000, Allocator.Persistent);
 				exactBrushCache             = new NativeList<BlobAssetReference<ExactBrush>>(1000, Allocator.Persistent);
 				exactBoundsCache            = new NativeList<MinMaxAABB>(1000, Allocator.Persistent);
 				boundsSweep                 = new NativeList<BrushBoundsSweepEntry>(1000, Allocator.Persistent);
@@ -271,6 +274,10 @@ namespace Chisel.Core
                     brushRenderBufferCache.Dispose();
                 }
                 brushRenderBufferCache = default;
+                // the buffers belong to brushRenderBufferCache
+                if (brushRenderEntries.IsCreated)
+                    brushRenderEntries.Dispose();
+                brushRenderEntries = default;
                 if (exactBrushCache.IsCreated)
                 {
                     for (int i = 0; i < exactBrushCache.Length; i++)

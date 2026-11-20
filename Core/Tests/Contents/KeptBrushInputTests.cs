@@ -4,9 +4,9 @@ using Unity.Mathematics;
 
 namespace Chisel.Core.Tests
 {
-	// Each brush's mesh (FillBrushMeshBlobLookupJob), exact bounds (ExactBoundsJob) and place in the bounds sweep
-	// (BuildBrushBoundsSweepJob) are kept from one update to the next, and taken again only for the brushes that changed:
-	// what is kept must be what taking it again gives
+	// Each brush's mesh (FillBrushMeshBlobLookupJob), exact bounds (ExactBoundsJob), place in the bounds sweep
+	// (BuildBrushBoundsSweepJob) and render buffer (FindBrushRenderBuffersJob) are kept from one update to the next, and
+	// taken again only for the brushes that changed: what is kept must be what taking it again gives
 	[TestFixture]
 	[Category("Contents")]
 	public class KeptBrushInputTests
@@ -67,6 +67,17 @@ namespace Chisel.Core.Tests
 				Assert.That(math.all(math.asint(bounds.Min) == math.asint(exact.Value.bounds.Min)) &&
 							math.all(math.asint(bounds.Max) == math.asint(exact.Value.bounds.Max)), Is.True,
 							$"{what}: brush {k} kept bounds {bounds.Min} {bounds.Max}, its exact brush has {exact.Value.bounds.Min} {exact.Value.bounds.Max}");
+			}
+
+			// every brush's kept render buffer, with its surfaces' offset and count, is the one it has
+			Assert.That(data.brushRenderEntries.Length, Is.GreaterThanOrEqualTo(count), $"{what}: kept render buffers");
+			for (int k = 0; k < count; k++)
+			{
+				var buffer = data.brushRenderBufferCache[k];
+				var kept   = data.brushRenderEntries[k];
+				Assert.That(kept.buffer == buffer, Is.True, $"{what}: brush {k} kept another render buffer than it has");
+				Assert.That(kept.surfaceCount, Is.EqualTo(buffer.IsCreated ? buffer.Value.surfaceCount : 0), $"{what}: brush {k}'s surface count");
+				Assert.That(kept.surfaceOffset, Is.EqualTo(buffer.IsCreated ? buffer.Value.surfaceOffset : 0), $"{what}: brush {k}'s surface offset");
 			}
 
 			// the kept sweep is the one building it from every brush's bounds gives, entry by entry
@@ -130,6 +141,7 @@ namespace Chisel.Core.Tests
 			Assert.That(Stat(ExactCSGStat.MeshesLookedUp), Is.InRange(1, brushCount / 2), "meshes looked up");
 			Assert.That(Stat(ExactCSGStat.BoundsTaken), Is.InRange(1, brushCount / 2), "bounds taken from the exact brushes");
 			Assert.That(Stat(ExactCSGStat.SweepEntriesSorted), Is.InRange(1, brushCount / 2), "brushes placed in the sweep");
+			Assert.That(Stat(ExactCSGStat.RenderBuffersRead), Is.InRange(1, brushCount / 2), "render buffers read");
 		}
 
 		[Test]
