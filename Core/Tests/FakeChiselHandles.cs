@@ -39,6 +39,8 @@ namespace Chisel.Core.Tests
         }
 
         public readonly List<(Vector3 from, Vector3 to)> lines = new();
+        // where a 2D shape handle was put, if one was
+        public Matrix4x4? shapeHandleTransformation;
         public Vector3 dragAxis;
         public float   dragAmount;
         bool dragged;
@@ -160,7 +162,7 @@ namespace Chisel.Core.Tests
         public bool IsSufaceBackFaced(Vector3 point, Vector3 normal) { return false; }
         public bool DoBoundsHandle(ref Bounds bounds, Vector3? snappingSteps = null, string undoMessage = null, bool fixedBottom = false) { return false; }
         public bool DoShapeHandle(ref Curve2D shape, string undoMessage = null) { return false; }
-        public bool DoShapeHandle(ref Curve2D shape, Matrix4x4 transformation, string undoMessage = null) { return false; }
+        public bool DoShapeHandle(ref Curve2D shape, Matrix4x4 transformation, string undoMessage = null) { shapeHandleTransformation = transformation; return false; }
         public bool DoRadiusHandle(ref float outerRadius, Vector3 direction, Vector3 position, bool renderDisc = true, string undoMessage = null) { return false; }
         public bool DoRadius2DHandle(ref Vector3 radius1, ref Vector3 radius2, Vector3 center, Vector3 up, float minRadius1 = 0, float minRadius2 = 0, float maxRadius1 = float.PositiveInfinity, float maxRadius2 = float.PositiveInfinity, bool renderDisc = true, string undoMessage = null) { return false; }
         public bool DoRadius2DHandle(ref Vector3 radius, Vector3 center, Vector3 up, float minRadius = 0, float maxRadius = float.PositiveInfinity, bool renderDisc = true, string undoMessage = null) { return false; }
