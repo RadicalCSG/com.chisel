@@ -61,6 +61,8 @@ namespace Chisel.Components
         public bool             enabled = true;
         // what ChiselGeneratedObjects.UpdateContainers last applied to the container
         [System.NonSerialized] public bool containerApplied;
+        // the last update kept its mesh as it was (ChiselGeneratedObjects.FindRenderables)
+        [System.NonSerialized] public bool meshKept;
         [System.NonSerialized] public bool containerInBakedLight;
 #if UNITY_EDITOR
         [System.NonSerialized] public Mesh partialMesh;

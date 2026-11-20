@@ -335,6 +335,87 @@ namespace Chisel.Components.Tests
             Assert.That(model.generated.colliders.Length, Is.EqualTo(2));
         }
 
+        // A renderer whose mesh an update kept already has the model's shadow settings: the update leaves it alone (a value
+        // planted on it stays), and only a change to the settings goes to every renderer
+        [Test]
+        public void AKeptRenderer_IsLeftAlone_UntilTheShadowSettingsChange()
+        {
+            var model = Model();
+            var moved = Box(model, new float3(-5, 0, 0), new float3(-4, 1, 1), first);
+            Box(model, new float3(4, 0, 0), new float3(5, 1, 1), second);
+            var kept = RenderersOf(model, second)[0];
+            Assume.That(kept.meshRenderer.receiveShadows, Is.True, "the model receives shadows");
+            kept.meshRenderer.receiveShadows = false;
+
+            moved.transform.position += new Vector3(0, 0, 0.5f);
+            ChiselNodeHierarchyManager.UpdateTreeNodeTransformation(moved);
+            Update();
+            Assert.That(RenderersOf(model, second)[0], Is.SameAs(kept), "the second material's renderer was kept");
+            Assert.That(kept.meshRenderer.receiveShadows, Is.False, "the kept renderer was given the shadow settings again");
+
+            model.RenderSettings.castShadows = false;
+            model.SyncModelSettingsStore();
+            Update();
+            Assert.That(kept.meshRenderer.shadowCastingMode, Is.EqualTo(UnityEngine.Rendering.ShadowCastingMode.Off), "a change of the settings reaches it");
+            Assert.That(kept.meshRenderer.receiveShadows, Is.True, "all of the settings");
+        }
+
+        ChiselColliderObjects ColliderNear(ChiselModelComponent model, float x)
+        {
+            foreach (var collider in model.generated.colliders)
+            {
+                if (collider != null && collider.sharedMesh.bounds.center.x * x > 0)
+                    return collider;
+            }
+            return null;
+        }
+
+        // The same for a collider whose mesh an update kept, and the model's collider settings
+        [Test]
+        public void AKeptCollider_IsLeftAlone_UntilTheColliderSettingsChange()
+        {
+            var model = Model();
+            var moved = Box(model, new float3(-51, 0, -1), new float3(-49, 2, 1), first);
+            Box(model, new float3(49, 0, -1), new float3(51, 2, 1), first);
+            var kept = ColliderNear(model, 50);
+            Assume.That(kept, Is.Not.Null);
+            Assume.That(kept.meshCollider.convex, Is.False, "the model's colliders are not convex");
+            kept.meshCollider.convex = true;
+            kept.sharedMesh.bounds = kMarker;
+
+            moved.transform.position += new Vector3(0, 0, 0.5f);
+            ChiselNodeHierarchyManager.UpdateTreeNodeTransformation(moved);
+            Update();
+            Assert.That(ColliderNear(model, 50), Is.SameAs(kept), "the far collider was kept");
+            Assert.That(kept.sharedMesh.bounds, Is.EqualTo(kMarker), "and its mesh with it");
+            Assert.That(kept.meshCollider.convex, Is.True, "the kept collider was given the collider settings again");
+
+            var cookingOptions = model.ColliderSettings.cookingOptions ^ MeshColliderCookingOptions.WeldColocatedVertices;
+            model.ColliderSettings.cookingOptions = cookingOptions;
+            model.SyncModelSettingsStore();
+            Update();
+            Assert.That(kept.meshCollider.cookingOptions, Is.EqualTo(cookingOptions), "a change of the settings reaches it");
+            Assert.That(kept.meshCollider.convex, Is.False, "all of the settings");
+        }
+
+        [Test]
+        public void ChangedColliderSettings_ReachEveryCollider()
+        {
+            var model = Model();
+            Box(model, new float3(-51, 0, -1), new float3(-49, 2, 1), first);
+            Box(model, new float3(49, 0, -1), new float3(51, 2, 1), first);
+            Assume.That(model.generated.colliders.Length, Is.EqualTo(2));
+            model.ColliderSettings.isTrigger = true;
+            model.ColliderSettings.convex    = true;
+            model.SyncModelSettingsStore();
+            Update();
+            foreach (var collider in model.generated.colliders)
+            {
+                Assert.That(collider.meshCollider.isTrigger, Is.True);
+                Assert.That(collider.meshCollider.convex, Is.True);
+            }
+        }
+
         static int IndexCount(Mesh mesh)
         {
             var count = 0;
