@@ -233,7 +233,6 @@ namespace Chisel.Core
                 public int                                  meshQueriesLength;
 
                 public NativeArray<UnsafeList<BrushIntersectWith>> brushBrushIntersections;
-                public NativeList<BrushBoundsSweepEntry>    brushBoundsSweep;
                 // Counters written by ExactCSGJob (ExactCSGStat); always allocated, a job cannot be scheduled without it.
                 public NativeArray<int>                     exactCSGStats;
                 // The ExactBrush entries this update replaced (ExactInputJob), disposed once the update is done
@@ -558,7 +557,6 @@ namespace Chisel.Core
                 Temporaries.brushMeshLookup                 = new NativeArray<BlobAssetReference<BrushMeshBlob>>(brushCount, defaultAllocator);
 
                 Temporaries.brushBrushIntersections         = new NativeArray<UnsafeList<BrushIntersectWith>>(brushCount, defaultAllocator);
-                Temporaries.brushBoundsSweep                = new NativeList<BrushBoundsSweepEntry>(brushCount, defaultAllocator);
                 Temporaries.exactCSGStats                   = new NativeArray<int>((int)ExactCSGStat.Count, defaultAllocator);
                 this.captureExact                           = ExactCSGCapture.Enabled;
                 Temporaries.mergedBrushIndexOrders          = new NativeList<IndexOrder>(math.max(1, brushCount), defaultAllocator);
@@ -694,7 +692,6 @@ namespace Chisel.Core
                 if (t.nodeIDValueToNodeOrder.IsCreated)         t.nodeIDValueToNodeOrder.Dispose();
                 if (t.brushMeshLookup.IsCreated)                t.brushMeshLookup.Dispose();
                 if (t.brushBrushIntersections.IsCreated)        t.brushBrushIntersections.Dispose();
-                if (t.brushBoundsSweep.IsCreated)               t.brushBoundsSweep.Dispose();
                 if (t.exactCSGStats.IsCreated)                  t.exactCSGStats.Dispose();
                 if (t.mergedBrushIndexOrders.IsCreated)         t.mergedBrushIndexOrders.Dispose();
                 if (t.mergedPlanes.IsCreated)                   t.mergedPlanes.Dispose();
@@ -1684,14 +1681,18 @@ namespace Chisel.Core
                         // Read (the exact CSG sweeps the bounds of the brushes as their exact planes make them)
                         allTreeBrushIndexOrders         = Temporaries.allTreeBrushIndexOrders,
                         brushTreeSpaceBounds            = chiselLookupValues.exactBoundsCache,
+                        rebuildTreeBrushIndexOrders     = Temporaries.rebuildTreeBrushIndexOrders,
+                        brushListChanged                = this.brushListChanged,
 
-                        // Write
-                        sweepEntries                    = Temporaries.brushBoundsSweep
+                        // Read / Write (kept with the tree; the stats are written after the exact input's)
+                        sweepEntries                    = chiselLookupValues.boundsSweep,
+                        stats                           = Temporaries.exactCSGStats
                     };
                     buildBrushBoundsSweepJob.Schedule(runInParallel,
                         JobHandles.Read(
                             JobHandleType.allTreeBrushIndexOrdersJobHandle,
                             JobHandleType.brushTreeSpaceBoundCacheJobHandle,
+                            JobHandleType.rebuildTreeBrushIndexOrdersJobHandle,
                             JobHandleType.exactBrushCacheJobHandle),
                         JobHandles.Write(
                             JobHandleType.brushBoundsSweepJobHandle));
@@ -1709,7 +1710,7 @@ namespace Chisel.Core
                         allTreeBrushIndexOrders         = Temporaries.allTreeBrushIndexOrders,
                         brushTreeSpaceBounds            = chiselLookupValues.exactBoundsCache,
                         rebuildTreeBrushIndexOrders     = Temporaries.rebuildTreeBrushIndexOrders,
-                        brushBoundsSweep                = Temporaries.brushBoundsSweep,
+                        brushBoundsSweep                = chiselLookupValues.boundsSweep,
                         exactBrushCache                 = chiselLookupValues.exactBrushCache,
 
                         // Read / Write
@@ -1845,7 +1846,7 @@ namespace Chisel.Core
                         allTreeBrushIndexOrders         = Temporaries.allTreeBrushIndexOrders,
                         brushTreeSpaceBounds            = chiselLookupValues.exactBoundsCache,
                         brushesThatNeedIndirectUpdate   = Temporaries.brushesThatNeedIndirectUpdate,
-                        brushBoundsSweep                = Temporaries.brushBoundsSweep,
+                        brushBoundsSweep                = chiselLookupValues.boundsSweep,
                         exactBrushCache                 = chiselLookupValues.exactBrushCache,
 
                         // Read / Write
@@ -2979,7 +2980,8 @@ namespace Chisel.Core
                 lastJobHandle.AddDependency(Temporaries.meshQueries                     .SafeDispose(JobHandles[JobHandleType.meshQueriesJobHandle].readWriteBarrier));
 
 
-                lastJobHandle.AddDependency(Temporaries.brushBoundsSweep                .SafeDispose(JobHandles[JobHandleType.brushBoundsSweepJobHandle].readWriteBarrier));
+                // the sweep is kept with the tree: the next update waits for the jobs that read it
+                lastJobHandle.AddDependency(JobHandles[JobHandleType.brushBoundsSweepJobHandle].readWriteBarrier);
                 {
                     var exactBrushCacheBarrier = JobHandles[JobHandleType.exactBrushCacheJobHandle].readWriteBarrier;
                     lastJobHandle.AddDependency(Temporaries.mergedBrushIndexOrders.SafeDispose(exactBrushCacheBarrier));

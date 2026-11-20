@@ -33,6 +33,8 @@ namespace Chisel.Core
             public NativeList<BlobAssetReference<ExactBrush>>                   exactBrushCache;
             // each exact brush's bounds (ExactBrush.bounds), by node order: written with exactBrushCache
             public NativeList<MinMaxAABB>                                       exactBoundsCache;
+            // the exact bounds sorted for the broad phase (BuildBrushBoundsSweepJob)
+            public NativeList<BrushBoundsSweepEntry>                            boundsSweep;
             // each brush's mesh as an update looked it up, by node order (FillBrushMeshBlobLookupJob)
             public NativeList<BrushMeshLookupEntry>                             brushMeshLookupCache;
             // the last ExactBrush.generation given out in this tree (ExactBrushes.SetGeneration)
@@ -109,6 +111,7 @@ namespace Chisel.Core
 				brushRenderBufferCache      = new NativeList<BlobAssetReference<ChiselBrushRenderBuffer>>(1000, Allocator.Persistent); // Confirmed to get disposed
 				exactBrushCache             = new NativeList<BlobAssetReference<ExactBrush>>(1000, Allocator.Persistent);
 				exactBoundsCache            = new NativeList<MinMaxAABB>(1000, Allocator.Persistent);
+				boundsSweep                 = new NativeList<BrushBoundsSweepEntry>(1000, Allocator.Persistent);
 				brushMeshLookupCache        = new NativeList<BrushMeshLookupEntry>(1000, Allocator.Persistent);
 				exactBrushGenerations       = new NativeReference<long>(Allocator.Persistent);
 				exactFaceCache              = new NativeList<ExactFaceCache>(1000, Allocator.Persistent);
@@ -283,6 +286,9 @@ namespace Chisel.Core
                 if (exactBoundsCache.IsCreated)
                     exactBoundsCache.Dispose();
                 exactBoundsCache = default;
+                if (boundsSweep.IsCreated)
+                    boundsSweep.Dispose();
+                boundsSweep = default;
                 // the blobs belong to the brush mesh registry (ChiselMeshLookup)
                 if (brushMeshLookupCache.IsCreated)
                     brushMeshLookupCache.Dispose();

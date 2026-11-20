@@ -4,8 +4,9 @@ using Unity.Mathematics;
 
 namespace Chisel.Core.Tests
 {
-	// Each brush's mesh (FillBrushMeshBlobLookupJob) and exact bounds (ExactBoundsJob) are kept from one update to the next,
-	// and taken again only for the brushes that changed: what is kept must be what taking it again gives
+	// Each brush's mesh (FillBrushMeshBlobLookupJob), exact bounds (ExactBoundsJob) and place in the bounds sweep
+	// (BuildBrushBoundsSweepJob) are kept from one update to the next, and taken again only for the brushes that changed:
+	// what is kept must be what taking it again gives
 	[TestFixture]
 	[Category("Contents")]
 	public class KeptBrushInputTests
@@ -67,6 +68,24 @@ namespace Chisel.Core.Tests
 							math.all(math.asint(bounds.Max) == math.asint(exact.Value.bounds.Max)), Is.True,
 							$"{what}: brush {k} kept bounds {bounds.Min} {bounds.Max}, its exact brush has {exact.Value.bounds.Min} {exact.Value.bounds.Max}");
 			}
+
+			// the kept sweep is the one building it from every brush's bounds gives, entry by entry
+			using var orders = new Unity.Collections.NativeList<IndexOrder>(count, Unity.Collections.Allocator.Temp);
+			for (int k = 0; k < count; k++)
+				orders.Add(new IndexOrder { compactNodeID = data.brushIDValues[k], nodeOrder = k });
+			using var built = new Unity.Collections.NativeList<BrushBoundsSweepEntry>(count, Unity.Collections.Allocator.Temp);
+			BrushBoundsSweep.Build(orders, data.exactBoundsCache, built);
+			var sweep = data.boundsSweep;
+			Assert.That(sweep.Length, Is.EqualTo(built.Length), $"{what}: sweep entries");
+			for (int i = 0; i < built.Length; i++)
+			{
+				var a = sweep[i];
+				var b = built[i];
+				Assert.That(a.nodeOrder == b.nodeOrder && a.axis == b.axis &&
+							math.asint(a.sortMin) == math.asint(b.sortMin) && math.asint(a.prefixMax) == math.asint(b.prefixMax) &&
+							math.all(math.asint(a.bounds.Min) == math.asint(b.bounds.Min)) && math.all(math.asint(a.bounds.Max) == math.asint(b.bounds.Max)),
+							Is.True, $"{what}: sweep entry {i} is brush {a.nodeOrder} at {a.sortMin} (max {a.prefixMax}), building it gives brush {b.nodeOrder} at {b.sortMin} (max {b.prefixMax})");
+			}
 		}
 
 		static ContentsSceneNode Named(ContentsTreeHarness harness, string name)
@@ -110,6 +129,7 @@ namespace Chisel.Core.Tests
 			Update(harness, "post 1 0 up");
 			Assert.That(Stat(ExactCSGStat.MeshesLookedUp), Is.InRange(1, brushCount / 2), "meshes looked up");
 			Assert.That(Stat(ExactCSGStat.BoundsTaken), Is.InRange(1, brushCount / 2), "bounds taken from the exact brushes");
+			Assert.That(Stat(ExactCSGStat.SweepEntriesSorted), Is.InRange(1, brushCount / 2), "brushes placed in the sweep");
 		}
 
 		[Test]
@@ -158,6 +178,30 @@ namespace Chisel.Core.Tests
 			Update(harness, "a box added last");
 			Shift(harness, "added last", new float3(0, 0, 0.25f));
 			Update(harness, "the box added last moved");
+		}
+
+		// Boxes apart along one axis and a long one moved along it, past them and back: where each part of the sweep reaches
+		// (BrushBoundsSweepEntry.prefixMax) changes behind and ahead of the moved box
+		[Test]
+		public void ALongBoxMovedAlongARowOfBoxes_KeepsWhatBuildingTheSweepGives()
+		{
+			var scene = new ContentsScene();
+			for (int i = 0; i < 12; i++)
+				scene.Add(Box(new float3(i * 3, 0, 0), new float3(i * 3 + 1, 1, 1), $"box {i}"));
+			scene.Add(Box(new float3(1.5f, 0, 2), new float3(9.5f, 1, 3), "long"));
+			using var harness = ContentsTreeHarness.Build(scene, captureExact: false);
+			Update(harness, "first update");
+			for (int step = 0; step < 10; step++)
+			{
+				Shift(harness, "long", new float3(2.5f, 0, 0));
+				Update(harness, $"step {step} along");
+			}
+			for (int step = 0; step < 10; step++)
+			{
+				Shift(harness, $"box {step % 12}", new float3(0, 0, step % 2 == 0 ? 0.5f : -0.5f));
+				Shift(harness, "long", new float3(-2.5f, 0, 0));
+				Update(harness, $"step {step} back");
+			}
 		}
 
 		[Test]
