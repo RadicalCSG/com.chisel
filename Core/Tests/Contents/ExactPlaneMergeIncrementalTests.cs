@@ -73,19 +73,39 @@ namespace Chisel.Core.Tests
 		[Test]
 		public void RandomEdits_KeepThePlanesOfMergingEverythingAgain([Values(1, 2)] int seed)
 		{
+			RandomEdits(seed, movesOnly: false);
+		}
+
+		// Only moves: the brush list stays the same, so the merge looks only at the brushes built again
+		[Test]
+		public void RandomMoves_KeepThePlanesOfMergingEverythingAgain([Values(1, 2, 3)] int seed)
+		{
+			RandomEdits(seed, movesOnly: true);
+		}
+
+		static void RandomEdits(int seed, bool movesOnly)
+		{
 			var random = new Random((uint)seed * 7907u);
 			using var harness = ContentsTreeHarness.Build(MergedScene());
 			harness.JudgeEachUpdate = false;
 			Assert.That(harness.Update(), Is.True);
-			int added = 0;
+			var memory = ChiselTreeLookup.Value[harness.Tree].planeMergeMemory;
+			int added = 0, lookedAtSome = 0, rebuiltByMerge = 0;
 			for (int step = 0; step < 30; step++)
 			{
 				// one to three edits an update, as faces of one group can change together
 				string edit = "";
 				int edits = random.NextInt(1, 4);
 				for (int e = 0; e < edits; e++)
-					edit += (e > 0 ? ", " : "") + RandomEdit(harness, ref random, ref added);
+					edit += (e > 0 ? ", " : "") + RandomEdit(harness, ref random, ref added, movesOnly);
+				bool afterAMergeRebuilt = memory.mergeRebuilt.Length > 0;
 				Assert.That(harness.Update(), Is.True, edit);
+				if (memory.lastVisited.Value < BrushesOf(harness.Scene).Count)
+				{
+					lookedAtSome++;
+					if (afterAMergeRebuilt)
+						rebuiltByMerge++;
+				}
 				var kept = PlanesOf(harness);
 
 				using var fresh = ContentsTreeHarness.Build(harness.Scene);
@@ -100,13 +120,18 @@ namespace Chisel.Core.Tests
 						Assert.That(Same(kept[b][p], merged[b][p]), Is.True, $"step {step}, {edit}: plane {p} of {names[b].name} is not what merging everything gives");
 				}
 			}
+			if (movesOnly)
+			{
+				Assert.That(lookedAtSome, Is.GreaterThan(0), "no merge looked at only some of the brushes");
+				Assert.That(rebuiltByMerge, Is.GreaterThan(0), "no merge looked at only some brushes after one that built brushes again");
+			}
 		}
 
 		// Moves, removes, adds or reorders a brush at random; says what it did
-		static string RandomEdit(ContentsTreeHarness harness, ref Random random, ref int added)
+		static string RandomEdit(ContentsTreeHarness harness, ref Random random, ref int added, bool movesOnly)
 		{
 			var brushes = BrushesOf(harness.Scene);
-			int kind    = brushes.Count < 2 ? 3 : random.NextInt(5);
+			int kind    = movesOnly ? random.NextInt(2) : brushes.Count < 2 ? 3 : random.NextInt(5);
 			var brush   = brushes.Count > 0 ? brushes[random.NextInt(brushes.Count)] : null;
 			switch (kind)
 			{
@@ -197,6 +222,12 @@ namespace Chisel.Core.Tests
 			Assert.That(harness.Update(), Is.True);
 			Assert.That(memory.lastFull.Value, Is.False, "one brush moved");
 			Assert.That(memory.lastMerged.Value, Is.LessThanOrEqualTo(20), "faces merged again, of 1,800");
+			Assert.That(memory.lastVisited.Value, Is.LessThanOrEqualTo(10), "brushes looked at, of 300");
+
+			// and again: the brushes the last merge built again are looked at too
+			harness.SetLocalToTree(moved, math.mul(float4x4.Translate(new float3(0, 0.25f, 0)), moved.localToTree));
+			Assert.That(harness.Update(), Is.True);
+			Assert.That(memory.lastVisited.Value, Is.LessThanOrEqualTo(10), "brushes looked at the second time, of 300");
 		}
 
 		// A ring of faces that no longer leads back to where it started (looping, or ending) must not hang the update or

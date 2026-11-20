@@ -1516,6 +1516,7 @@ namespace Chisel.Core
                         // Read
                         allTreeBrushIndexOrders     = Temporaries.allTreeBrushIndexOrders,
                         exactBrushCache             = chiselLookupValues.exactBrushCache,
+                        brushListChanged            = this.brushListChanged,
 
                         // Read / Write
                         rebuildTreeBrushIndexOrders = Temporaries.rebuildTreeBrushIndexOrders,

@@ -202,25 +202,32 @@ namespace Chisel.Core
         }
 
         // Every face reachable from the seeds through faces it joins (Joins) is visited once, group by group: each group is
-        // given to visit as its faces (members), in the order found. alive tells which faces are there; index finds them.
-        // Returns how many pairs of faces were compared.
-        public static long Groups<TVisit>(NativeList<Face> faces, NativeList<int> alive, NativeParallelMultiHashMap<CellKey, int> index,
+        // given to visit as its faces (members), in the order found. A face whose present value is negative is not there
+        // (as a free slot of ExactPlaneMergeMemory.next); index finds them. Returns how many pairs of faces were compared.
+        public static long Groups<TVisit>(NativeList<Face> faces, NativeList<int> present, NativeParallelMultiHashMap<CellKey, int> index,
                                           NativeList<int> seeds, ref TVisit visit)
             where TVisit : struct, IGroupVisitor
         {
+            // which face each face was last compared with: by face when most faces are seeds, otherwise only for the faces
+            // compared, so a few seeds among many faces cost what their groups do
+            bool fewSeeds = seeds.Length * 16 < faces.Length;
             var visited = new NativeBitArray(math.max(1, faces.Length), Allocator.Temp);
-            var tested  = new NativeArray<int>(math.max(1, faces.Length), Allocator.Temp, NativeArrayOptions.UninitializedMemory);
+            var tested  = new NativeArray<int>(fewSeeds ? 1 : math.max(1, faces.Length), Allocator.Temp, NativeArrayOptions.UninitializedMemory);
+            var testedOf = new NativeHashMap<int, int>(fewSeeds ? math.max(16, seeds.Length * 16) : 1, Allocator.Temp);
             var members = new NativeList<int>(16, Allocator.Temp);
             var cells   = new NativeList<CellKey>(16, Allocator.Temp);
             long compared = 0;
             try
             {
-                for (int i = 0; i < tested.Length; i++)
-                    tested[i] = -1;
+                if (!fewSeeds)
+                {
+                    for (int i = 0; i < tested.Length; i++)
+                        tested[i] = -1;
+                }
                 for (int s = 0; s < seeds.Length; s++)
                 {
                     int seed = seeds[s];
-                    if (alive[seed] == 0 || visited.IsSet(seed))
+                    if (present[seed] < 0 || visited.IsSet(seed))
                         continue;
                     members.Clear();
                     members.Add(seed);
@@ -236,9 +243,19 @@ namespace Chisel.Core
                                 continue;
                             do
                             {
-                                if (j == i || tested[j] == i || alive[j] == 0)
+                                if (j == i || present[j] < 0)
                                     continue;
-                                tested[j] = i;
+                                if (fewSeeds)
+                                {
+                                    if (testedOf.TryGetValue(j, out int last) && last == i)
+                                        continue;
+                                    testedOf[j] = i;
+                                } else
+                                {
+                                    if (tested[j] == i)
+                                        continue;
+                                    tested[j] = i;
+                                }
                                 compared++;
                                 if (visited.IsSet(j) || !Joins(fi, faces[j]))
                                     continue;
@@ -254,6 +271,7 @@ namespace Chisel.Core
             {
                 visited.Dispose();
                 tested.Dispose();
+                testedOf.Dispose();
                 members.Dispose();
                 cells.Dispose();
             }
@@ -439,7 +457,9 @@ namespace Chisel.Core
         struct ResultOfGroup : IGroupVisitor
         {
             public NativeList<Face> faces;
-            public NativeArray<BlobAssetReference<ExactBrush>> blobs;     // by memory brush
+            public NativeList<MemoryBrush> memoryBrushes;
+            // by memory brush: filled for the brushes of each group before it is read (the rest is never read)
+            public NativeArray<BlobAssetReference<ExactBrush>> blobs;
             public NativeParallelHashMap<int, ExactPlane> planeOfFace;   // by slot
             public NativeList<int> next;
             public NativeHashSet<int> brushes;
@@ -449,6 +469,11 @@ namespace Chisel.Core
             public void Group(NativeList<int> members)
             {
                 visited += members.Length;
+                for (int m = 0; m < members.Length; m++)
+                {
+                    int brush = faces[members[m]].brush;
+                    blobs[brush] = memoryBrushes[brush].blob;
+                }
                 var plane = members.Length < 2 ? default : GroupPlane(faces, members, blobs, ref points);
                 for (int m = 0; m < members.Length; m++)
                 {
@@ -464,10 +489,12 @@ namespace Chisel.Core
 
         // Merges the planes of the brushes again, where they can have changed since the last merge (memory): the groups
         // the changed brushes' faces were in, and the groups their faces are in now. changed: the brushes built again
-        // since then (ExactInputJob). Fills merged with the brushes whose planes change, with those planes.
+        // since then (ExactInputJob). brushListChanged: a brush was added, removed or moved to another order since the last
+        // merge (CacheRemappingJob). Fills merged with the brushes whose planes change, with those planes.
         public static void MergeAgain(ref ExactPlaneMergeMemory memory, NativeList<IndexOrder> brushes, NativeList<BlobAssetReference<ExactBrush>> exactBrushCache,
                                       NativeList<IndexOrder> changed,
-                                      NativeList<IndexOrder> mergedOrders, NativeList<ExactPlane> mergedPlanes, NativeList<int> mergedOffsets)
+                                      NativeList<IndexOrder> mergedOrders, NativeList<ExactPlane> mergedPlanes, NativeList<int> mergedOffsets,
+                                      bool brushListChanged)
         {
             mergedOrders.Clear();
             mergedPlanes.Clear();
@@ -486,37 +513,30 @@ namespace Chisel.Core
                 bool full = !memory.valid.Value || memory.freeFaces.Value > memory.faces.Length / 2 + 4096;
                 if (full)
                     memory.Clear();
-                for (int b = 0; b < brushes.Length; b++)
+                // With the brushes the last merge saw, at the orders it saw them (none added, removed or moved), only a
+                // brush built again since then can have another ExactBrush: one this update built again (changed), or one
+                // the last merge did. Otherwise every brush is looked at; a brush not looked at keeps the stamp it had,
+                // which only the removal below reads, after a pass that looked at every brush.
+                bool sameBrushes = !full && !brushListChanged && memory.brushOf.Count() == brushes.Length;
+                int visited = 0;
+                if (sameBrushes)
                 {
-                    var indexOrder = brushes[b];
-                    var blob = exactBrushCache[indexOrder.nodeOrder];
-                    bool isDirty;
-                    if (!memory.brushOf.TryGetValue(indexOrder.compactNodeID, out int brush))
-                    {
-                        brush = memory.brushes.Length;
-                        memory.brushes.Add(new MemoryBrush { id = indexOrder.compactNodeID, firstFace = memory.faces.Length });
-                        memory.brushOf.Add(indexOrder.compactNodeID, brush);
-                        isDirty = true;
-                    } else
-                    {
-                        var known = memory.brushes[brush];
-                        isDirty = rebuilt.Contains(indexOrder.nodeOrder) || (known.blob != blob && !known.rebuiltByMerge);
-                    }
-                    var entry = memory.brushes[brush];
-                    entry.indexOrder     = indexOrder;
-                    entry.blob           = blob;
-                    entry.stamp          = stamp;
-                    entry.rebuiltByMerge = false;
-                    entry.alive          = true;
-                    memory.brushes[brush] = entry;
-                    if (isDirty)
-                        dirty.Add(brush);
+                    for (int m = 0; m < memory.mergeRebuilt.Length; m++)
+                        visited += Visit(ref memory, memory.brushes[memory.mergeRebuilt[m]].indexOrder, exactBrushCache, rebuilt, stamp, ref dirty);
+                    for (int r = 0; r < changed.Length; r++)
+                        visited += Visit(ref memory, changed[r], exactBrushCache, rebuilt, stamp, ref dirty);
+                } else
+                {
+                    for (int b = 0; b < brushes.Length; b++)
+                        visited += Visit(ref memory, brushes[b], exactBrushCache, rebuilt, stamp, ref dirty);
                 }
+                memory.mergeRebuilt.Clear();
+                memory.lastVisited.Value = visited;
                 if (!full && dirty.Length * 2 > brushes.Length + 16)
                 {
                     // most brushes changed: merging everything again costs less than taking them out one by one
                     memory.valid.Value = false;
-                    MergeAgain(ref memory, brushes, exactBrushCache, changed, mergedOrders, mergedPlanes, mergedOffsets);
+                    MergeAgain(ref memory, brushes, exactBrushCache, changed, mergedOrders, mergedPlanes, mergedOffsets, brushListChanged);
                     return;
                 }
 
@@ -579,20 +599,16 @@ namespace Chisel.Core
                     }
                 }
 
-                var blobs = new NativeArray<BlobAssetReference<ExactBrush>>(math.max(1, memory.brushes.Length), Allocator.Temp);
+                var blobs = new NativeArray<BlobAssetReference<ExactBrush>>(math.max(1, memory.brushes.Length), Allocator.Temp, NativeArrayOptions.UninitializedMemory);
                 var planeOfFace = new NativeParallelHashMap<int, ExactPlane>(math.max(1, seeds.Length * 2), Allocator.Temp);
                 var affected = new NativeHashSet<int>(math.max(1, dirty.Length * 2), Allocator.Temp);
                 var points = new ExactList<ExactPoint>(64);
-                var alive = new NativeList<int>(memory.next.Length, Allocator.Temp);
                 try
                 {
-                    for (int brush = 0; brush < memory.brushes.Length; brush++)
-                        blobs[brush] = memory.brushes[brush].blob;
-                    for (int slot = 0; slot < memory.next.Length; slot++)
-                        alive.Add(memory.next[slot] >= 0 ? 1 : 0);
-                    var visit = new ResultOfGroup { faces = memory.faces, blobs = blobs, planeOfFace = planeOfFace, next = memory.next,
-                                                    brushes = affected, points = points };
-                    Groups(memory.faces, alive, memory.cells, seeds, ref visit);
+                    var visit = new ResultOfGroup { faces = memory.faces, memoryBrushes = memory.brushes, blobs = blobs, planeOfFace = planeOfFace,
+                                                    next = memory.next, brushes = affected, points = points };
+                    // a free slot's next is -1: the faces there are the ones not in the memory
+                    Groups(memory.faces, memory.next, memory.cells, seeds, ref visit);
                     memory.lastMerged.Value = visit.visited;
                     memory.lastFull.Value   = full;
 
@@ -627,6 +643,7 @@ namespace Chisel.Core
                         mergedOffsets.Add(offset);
                         entry.rebuiltByMerge = true;
                         memory.brushes[brush] = entry;
+                        memory.mergeRebuilt.Add(brush);
                     }
                     memory.valid.Value = true;
                 }
@@ -636,7 +653,6 @@ namespace Chisel.Core
                     planeOfFace.Dispose();
                     affected.Dispose();
                     points.Dispose();
-                    alive.Dispose();
                 }
             }
             finally
@@ -655,7 +671,40 @@ namespace Chisel.Core
         {
             Debug.LogError("Chisel: the plane merge memory lost track of a group of faces; every face is merged again.");
             memory.valid.Value = false;
-            MergeAgain(ref memory, brushes, exactBrushCache, changed, mergedOrders, mergedPlanes, mergedOffsets);
+            MergeAgain(ref memory, brushes, exactBrushCache, changed, mergedOrders, mergedPlanes, mergedOffsets, brushListChanged: true);
+        }
+
+        // Brings the memory's entry of a brush up to date with the brush as the tree has it now: its order and ExactBrush.
+        // Dirty (its faces to be taken out and put in again) when it is new, built again in this update, or has another
+        // ExactBrush than the merge saw that the merge did not make. 1 when it was looked at, 0 when it already was.
+        static int Visit(ref ExactPlaneMergeMemory memory, IndexOrder indexOrder, NativeList<BlobAssetReference<ExactBrush>> exactBrushCache,
+                         NativeHashSet<int> rebuilt, int stamp, ref NativeList<int> dirty)
+        {
+            var blob = exactBrushCache[indexOrder.nodeOrder];
+            bool isDirty;
+            if (!memory.brushOf.TryGetValue(indexOrder.compactNodeID, out int brush))
+            {
+                brush = memory.brushes.Length;
+                memory.brushes.Add(new MemoryBrush { id = indexOrder.compactNodeID, firstFace = memory.faces.Length });
+                memory.brushOf.Add(indexOrder.compactNodeID, brush);
+                isDirty = true;
+            } else
+            {
+                var known = memory.brushes[brush];
+                if (known.stamp == stamp)
+                    return 0;
+                isDirty = rebuilt.Contains(indexOrder.nodeOrder) || (known.blob != blob && !known.rebuiltByMerge);
+            }
+            var entry = memory.brushes[brush];
+            entry.indexOrder     = indexOrder;
+            entry.blob           = blob;
+            entry.stamp          = stamp;
+            entry.rebuiltByMerge = false;
+            entry.alive          = true;
+            memory.brushes[brush] = entry;
+            if (isDirty)
+                dirty.Add(brush);
+            return 1;
         }
 
         // Takes the brush's faces out of the memory, and out of their rings, so the rings left hold only faces still in
@@ -701,9 +750,14 @@ namespace Chisel.Core
         public NativeReference<int>                                            stamp;
         public NativeReference<int>                                            freeFaces;
         public NativeReference<bool>                                           valid;
-        // what the last merge did: merged everything again (full), and how many faces it grouped again
+        // what the last merge did: merged everything again (full), how many faces it grouped again, and how many brushes it
+        // looked at
         public NativeReference<bool>                                           lastFull;
         public NativeReference<int>                                            lastMerged;
+        public NativeReference<int>                                            lastVisited;
+        // the brushes (index into brushes) whose planes the last merge changed: ExactMergedRebuildJob replaced their
+        // ExactBrush after it
+        public NativeList<int>                                                 mergeRebuilt;
 
         public static ExactPlaneMergeMemory Create(Allocator allocator)
         {
@@ -718,7 +772,9 @@ namespace Chisel.Core
                 freeFaces  = new NativeReference<int>(allocator),
                 valid      = new NativeReference<bool>(allocator),
                 lastFull   = new NativeReference<bool>(allocator),
-                lastMerged = new NativeReference<int>(allocator)
+                lastMerged = new NativeReference<int>(allocator),
+                lastVisited  = new NativeReference<int>(allocator),
+                mergeRebuilt = new NativeList<int>(16, allocator)
             };
         }
 
@@ -729,6 +785,7 @@ namespace Chisel.Core
             faces.Clear();
             next.Clear();
             cells.Clear();
+            mergeRebuilt.Clear();
             freeFaces.Value = 0;
             valid.Value = false;
         }
@@ -745,6 +802,8 @@ namespace Chisel.Core
             if (valid.IsCreated)      valid.Dispose();
             if (lastFull.IsCreated)   lastFull.Dispose();
             if (lastMerged.IsCreated) lastMerged.Dispose();
+            if (lastVisited.IsCreated)  lastVisited.Dispose();
+            if (mergeRebuilt.IsCreated) mergeRebuilt.Dispose();
         }
     }
 
@@ -756,6 +815,8 @@ namespace Chisel.Core
         // Read
         [NoAlias, ReadOnly] public NativeList<IndexOrder>                           allTreeBrushIndexOrders;
         [NoAlias, ReadOnly] public NativeList<BlobAssetReference<ExactBrush>>       exactBrushCache;    // by node order
+        // a brush was added, removed or moved to another order since the last update (CacheRemappingJob)
+        [NoAlias, ReadOnly] public bool                                             brushListChanged;
 
         // Read / Write
         [NoAlias] public NativeList<IndexOrder>                                     rebuildTreeBrushIndexOrders;
@@ -778,7 +839,7 @@ namespace Chisel.Core
                     rebuilt.Add(rebuildTreeBrushIndexOrders[r].nodeOrder);
                 }
                 ExactPlaneMerge.MergeAgain(ref memory, allTreeBrushIndexOrders, exactBrushCache, changed,
-                                           mergedBrushIndexOrders, mergedPlanes, mergedPlaneOffsets);
+                                           mergedBrushIndexOrders, mergedPlanes, mergedPlaneOffsets, brushListChanged);
                 for (int m = 0; m < mergedBrushIndexOrders.Length; m++)
                 {
                     if (rebuilt.Add(mergedBrushIndexOrders[m].nodeOrder))
