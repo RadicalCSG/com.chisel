@@ -87,6 +87,27 @@ namespace Chisel.Core
 
 
         #region Properties
+        // Not elliptical, x and z are one diameter: turned round, the cylinder keeps the larger of each circle's two
+        public bool IsElliptical
+        {
+            get { return isElliptical; }
+            set
+            {
+                if (value == isElliptical)
+                    return;
+                isElliptical = value;
+                if (!value)
+                    KeepLargerDiameters();
+            }
+        }
+
+        // Each circle's x and z diameters made the larger of the two, so a cylinder turned round doesn't shrink
+        public void KeepLargerDiameters()
+        {
+            topDiameterX    = topDiameterZ    = math.max(math.abs(topDiameterX),    math.abs(topDiameterZ));
+            bottomDiameterX = bottomDiameterZ = math.max(math.abs(bottomDiameterX), math.abs(bottomDiameterZ));
+        }
+
         public float TopDiameterX
         {
             get { return topDiameterX; }
