@@ -98,15 +98,21 @@ namespace Chisel.Core
         public RenderVertex render;
     }
 
-    // A brush as the last update welded it
-    internal struct WeldBrush
+    // A brush as the last update welded it: what the weld's passes over every brush read (WeldMemory.slots), apart from
+    // its triangles (WeldBrush), so those passes touch a few bytes per brush
+    internal struct WeldSlot
     {
         public CompactNodeID id;
         public BlobAssetReference<ChiselBrushRenderBuffer> input, output;
-        public int  order;
-        public bool used, live, changed, dirty;
         // the serial of the input whose hotspot groups output carries (KeepHotspotGroups); 0 when not known
         public ulong groupsOf;
+        public int  order;
+        public bool used, live, changed, dirty;
+    }
+
+    // A brush's triangles as the last update welded them
+    internal struct WeldBrush
+    {
         // per surface and one past the last: where its triangles start in corners and needle
         public UnsafeList<int>    surfaceStart;
         public UnsafeList<int3x3> corners;
@@ -130,7 +136,8 @@ namespace Chisel.Core
     // What the weld did at the last update, by piece (IncrementalWeld.md), kept with the tree
     internal struct WeldMemory
     {
-        public NativeList<WeldBrush> brushes;   // by brush slot (BrushSlots.Of)
+        public NativeList<WeldSlot>  slots;     // by brush slot (BrushSlots.Of)
+        public NativeList<WeldBrush> brushes;   // by brush slot, as long as slots
         // the relation's index over every input triangle
         public NativeParallelMultiHashMap<int3, WeldTriangle> atPosition;
         public NativeParallelMultiHashMap<int3, WeldShortLink> shortLinks;
@@ -158,6 +165,7 @@ namespace Chisel.Core
         {
             return new WeldMemory
             {
+                slots       = new NativeList<WeldSlot>(64, allocator),
                 brushes     = new NativeList<WeldBrush>(64, allocator),
                 atPosition  = new NativeParallelMultiHashMap<int3, WeldTriangle>(256, allocator),
                 shortLinks  = new NativeParallelMultiHashMap<int3, WeldShortLink>(64, allocator),
@@ -177,14 +185,16 @@ namespace Chisel.Core
         public void Clear()
         {
             for (int i = 0; i < brushes.Length; i++)
+                brushes.ElementAt(i).FreeInput();
+            for (int i = 0; i < slots.Length; i++)
             {
-                ref var brush = ref brushes.ElementAt(i);
-                brush.FreeInput();
-                if (brush.output.IsCreated)
-                    brush.output.Dispose();
-                brush.output = default;
+                ref var slot = ref slots.ElementAt(i);
+                if (slot.output.IsCreated)
+                    slot.output.Dispose();
+                slot.output = default;
             }
             brushes.Clear();
+            slots.Clear();
             atPosition.Clear(); shortLinks.Clear(); splitRoots.Clear(); moves.Clear(); roundsAt.Clear(); touched.Clear();
             scope.Clear(); slotOfBrush.Clear(); repainted.Clear();
             valid.Value = false;
@@ -197,6 +207,7 @@ namespace Chisel.Core
                 Clear();
                 brushes.Dispose();
             }
+            if (slots.IsCreated)       slots.Dispose();
             if (atPosition.IsCreated)  atPosition.Dispose();
             if (shortLinks.IsCreated)  shortLinks.Dispose();
             if (splitRoots.IsCreated)  splitRoots.Dispose();
@@ -241,7 +252,7 @@ namespace Chisel.Core
         {
             ref var brush = ref memory.brushes.ElementAt(slot);
             brush.FreeInput();
-            brush.input = buffer;
+            memory.slots.ElementAt(slot).input = buffer;
             ref var surfaces = ref buffer.Value.surfaces;
             brush.surfaceStart = new UnsafeList<int>(surfaces.Length + 1, Allocator.Persistent);
             var count = 0;
@@ -383,7 +394,7 @@ namespace Chisel.Core
             foreach (var slot in slots)
             {
                 ref var brush = ref memory.brushes.ElementAt(slot);
-                brush.dirty = true;
+                memory.slots.ElementAt(slot).dirty = true;
                 var entries = brush.entries;
                 var kept = 0;
                 for (int e = 0; e < entries.Length; e++)
@@ -485,10 +496,10 @@ namespace Chisel.Core
             for (int i = 0; i < updated.Length; i++)
                 updatedIDs.Add(updated[i].compactNodeID);
             var full = !memory.valid.Value;
-            for (int i = 0; i < memory.brushes.Length; i++)
+            for (int i = 0; i < memory.slots.Length; i++)
             {
-                ref var brush = ref memory.brushes.ElementAt(i);
-                brush.live = brush.changed = brush.dirty = false;
+                ref var slotState = ref memory.slots.ElementAt(i);
+                slotState.live = slotState.changed = slotState.dirty = false;
             }
             memory.touched.Clear();
             memory.slotOfBrush.ResizeUninitialized(brushes.Length);
@@ -499,9 +510,12 @@ namespace Chisel.Core
                 var data = brushes[b];
                 var id   = data.brushIndexOrder.compactNodeID;
                 var slot = BrushSlots.Of(id);
-                if (slot >= memory.brushes.Length)
+                if (slot >= memory.slots.Length)
+                {
+                    memory.slots.Resize(slot + 1, NativeArrayOptions.ClearMemory);
                     memory.brushes.Resize(slot + 1, NativeArrayOptions.ClearMemory);
-                ref var item = ref memory.brushes.ElementAt(slot);
+                }
+                ref var item = ref memory.slots.ElementAt(slot);
                 if (!item.used)
                 {
                     item = default;
@@ -544,9 +558,13 @@ namespace Chisel.Core
                 {
                     var id   = brushes[b].brushIndexOrder.compactNodeID;
                     var slot = BrushSlots.Of(id);
-                    if (slot >= memory.brushes.Length)
+                    if (slot >= memory.slots.Length)
+                    {
+                        memory.slots.Resize(slot + 1, NativeArrayOptions.ClearMemory);
                         memory.brushes.Resize(slot + 1, NativeArrayOptions.ClearMemory);
-                    memory.brushes[slot] = new WeldBrush { id = id, used = true, order = b, live = true, changed = true, dirty = true };
+                    }
+                    memory.brushes[slot] = default;
+                    memory.slots[slot] = new WeldSlot { id = id, used = true, order = b, live = true, changed = true, dirty = true };
                     memory.slotOfBrush.Add(slot);
                     Load(ref memory, slot, brushes[b].brushRenderBuffer);
                 }
@@ -557,10 +575,13 @@ namespace Chisel.Core
 
             var queue  = new NativeList<WeldTriangle>(256, Allocator.Temp);
             // the pieces the changed brushes were in
-            for (int slot = 0; slot < memory.brushes.Length; slot++)
+            for (int slot = 0; slot < memory.slots.Length; slot++)
             {
+                var slotState = memory.slots[slot];
+                if (slotState.live && !slotState.changed)
+                    continue;
                 ref var brush = ref memory.brushes.ElementAt(slot);
-                if (!brush.corners.IsCreated || (brush.live && !brush.changed))
+                if (!brush.corners.IsCreated)
                     continue;
                 for (int s = 0; s + 1 < brush.surfaceStart.Length; s++)
                 {
@@ -572,30 +593,31 @@ namespace Chisel.Core
             ForgetScope(ref memory);
 
             // the changed brushes taken out, the gone ones freed, the others read again
-            for (int slot = 0; slot < memory.brushes.Length; slot++)
+            for (int slot = 0; slot < memory.slots.Length; slot++)
             {
-                ref var brush = ref memory.brushes.ElementAt(slot);
-                if (brush.live && !brush.changed)
+                ref var slotState = ref memory.slots.ElementAt(slot);
+                if (slotState.live && !slotState.changed)
                     continue;
-                if (!brush.live)
+                if (!slotState.live)
                 {
-                    if (brush.used)
+                    if (slotState.used)
                     {
                         Unload(ref memory, slot);
-                        if (brush.output.IsCreated)
-                            brush.output.Dispose();
+                        if (slotState.output.IsCreated)
+                            slotState.output.Dispose();
                         memory.brushes[slot] = default;
+                        memory.slots[slot]   = default;
                     }
                     continue;
                 }
                 Unload(ref memory, slot);
-                brush.dirty = true;
+                slotState.dirty = true;
             }
             var survivors = new NativeList<WeldTriangle>(memory.scope.Count(), Allocator.Temp);
             foreach (var t in memory.scope)
             {
-                ref var brush = ref memory.brushes.ElementAt(t.slot);
-                if (brush.live && !brush.changed)
+                var slotState = memory.slots[t.slot];
+                if (slotState.live && !slotState.changed)
                     survivors.Add(t);
             }
             memory.scope.Clear();
@@ -603,8 +625,7 @@ namespace Chisel.Core
             for (int b = 0; b < brushes.Length; b++)
             {
                 var slot = memory.slotOfBrush[b];
-                ref var brush = ref memory.brushes.ElementAt(slot);
-                if (!brush.changed)
+                if (!memory.slots[slot].changed)
                     continue;
                 Load(ref memory, slot, brushes[b].brushRenderBuffer);
             }
@@ -612,9 +633,9 @@ namespace Chisel.Core
             for (int b = 0; b < brushes.Length; b++)
             {
                 var slot = memory.slotOfBrush[b];
-                ref var brush = ref memory.brushes.ElementAt(slot);
-                if (!brush.changed)
+                if (!memory.slots[slot].changed)
                     continue;
+                ref var brush = ref memory.brushes.ElementAt(slot);
                 for (int s = 0; s + 1 < brush.surfaceStart.Length; s++)
                 {
                     for (int t = 0; t < brush.surfaceStart[s + 1] - brush.surfaceStart[s]; t++)
@@ -672,7 +693,7 @@ namespace Chisel.Core
                     continue;
                 var slot = memory.slotOfBrush[item.brush];
                 ref var brush = ref memory.brushes.ElementAt(slot);
-                brush.dirty = true;
+                memory.slots.ElementAt(slot).dirty = true;
                 ref var source = ref brushes[item.brush].brushRenderBuffer.Value.surfaces[item.surface];
                 var sourceTriangles = source.indices.Length / 3;
                 var sourceVertices  = source.colliderVertices.Length;
@@ -848,7 +869,7 @@ namespace Chisel.Core
 
             // every brush near them made again (RemakeBrush, FinishRemake); one the same as it was keeps its buffer
             foreach (var key in surfaces)
-                memory.brushes.ElementAt(memory.slotOfBrush[(int)(key >> 32)]).dirty = true;
+                memory.slots.ElementAt(memory.slotOfBrush[(int)(key >> 32)]).dirty = true;
             WeldState.FreeWork(state.work);
             state.work.Clear();
             state.workIndex.Clear();
@@ -856,7 +877,7 @@ namespace Chisel.Core
             state.decisions.Clear();
             for (int b = 0; b < brushes.Length; b++)
             {
-                if (memory.brushes.ElementAt(memory.slotOfBrush[b]).dirty)
+                if (memory.slots[memory.slotOfBrush[b]].dirty)
                     state.remake.Add(b);
             }
             state.remade.Resize(state.remake.Length, NativeArrayOptions.ClearMemory);
@@ -884,7 +905,7 @@ namespace Chisel.Core
                 remade.work.Add(copy);
                 Diff(ref surfacesOf[s], copy, final);
             }
-            remade.same = !brush.changed && SameEntries(brush.final, final);
+            remade.same = !memory.slots[memory.slotOfBrush[b]].changed && SameEntries(brush.final, final);
             if (!remade.same)
             {
                 remade.final = new UnsafeList<WeldEntry>(final.Length, Allocator.TempJob);
@@ -905,7 +926,7 @@ namespace Chisel.Core
                 var remade = state.remade[r];
                 if (remade.same)
                 {
-                    brush.dirty = false;
+                    memory.slots.ElementAt(memory.slotOfBrush[b]).dirty = false;
                     remade.Free();
                     continue;
                 }
@@ -1269,12 +1290,12 @@ namespace Chisel.Core
             memory.sameBuffer.ResizeUninitialized(brushes.Length);
             for (int b = 0; b < brushes.Length; b++)
             {
-                ref var brush = ref memory.brushes.ElementAt(memory.slotOfBrush[b]);
-                memory.sameBuffer[b] = !brush.changed && !brush.dirty;
+                var slotState = memory.slots[memory.slotOfBrush[b]];
+                memory.sameBuffer[b] = !slotState.changed && !slotState.dirty;
             }
             for (int i = 0; i < copies.Length; i++)
             {
-                ref var brush = ref memory.brushes.ElementAt(memory.slotOfBrush[copies[i].brush]);
+                ref var brush = ref memory.slots.ElementAt(memory.slotOfBrush[copies[i].brush]);
                 if (brush.output.IsCreated)
                     brush.output.Dispose();
                 brush.output = copies[i].result;
@@ -1283,7 +1304,7 @@ namespace Chisel.Core
             }
             for (int b = 0; b < brushes.Length; b++)
             {
-                ref var brush = ref memory.brushes.ElementAt(memory.slotOfBrush[b]);
+                ref var brush = ref memory.slots.ElementAt(memory.slotOfBrush[b]);
                 if (brush.dirty && brush.output.IsCreated)
                 {
                     // stored again with nothing the weld changed: its own buffer
