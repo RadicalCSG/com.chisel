@@ -278,6 +278,56 @@ namespace Chisel.Core
 				RenderRadius(handles, center, closest, diameter * 0.5f, radiusName, innerRadius, innerName);
 		}
 
+		// The four quarters of an ellipse round normal, for DoDraggableEllipse: the two that drag its x diameter, then the
+		// two that drag its z diameter
+		public static IChiselEllipsoidHandle[] CreateEllipseQuarters(this IChiselHandleAllocation handles, Vector3 normal)
+		{
+			return new[]
+			{
+				handles.CreateEllipsoidHandle(Vector3.zero, normal, 0, 0, startAngle: +45f,        angles: 90),
+				handles.CreateEllipsoidHandle(Vector3.zero, normal, 0, 0, startAngle: +45f + 180f, angles: 90),
+				handles.CreateEllipsoidHandle(Vector3.zero, normal, 0, 0, startAngle: -45f,        angles: 90),
+				handles.CreateEllipsoidHandle(Vector3.zero, normal, 0, 0, startAngle: -45f + 180f, angles: 90),
+			};
+		}
+
+		// The quarters put round center at the ellipse's size and turn (in degrees); outward as an end's (zero for none)
+		public static void PlaceEllipseQuarters(IChiselEllipsoidHandle[] quarters, Vector3 center, Vector3 normal, Vector3 outward, float diameterX, float diameterZ, float rotation)
+		{
+			foreach (var quarter in quarters)
+			{
+				quarter.Center    = center;
+				quarter.Normal    = normal;
+				quarter.Outward   = outward;
+				quarter.DiameterX = diameterX;
+				quarter.DiameterZ = diameterZ;
+				quarter.Rotation  = rotation;
+			}
+		}
+
+		// An ellipse's quarters (CreateEllipseQuarters) to drag, each changing one diameter alone: x along xVector, z along
+		// zVector. While one has focus, both radii
+		public static void DoDraggableEllipse(this IChiselHandles handles, ref float diameterX, ref float diameterZ, Vector3 center, Vector3 xVector, Vector3 zVector, IChiselHandle[] quarters)
+		{
+			Debug.Assert(quarters.Length == 4);
+			diameterX = -diameterX; handles.DoSlider1DHandle(ref diameterX, center, xVector, quarters[1]); RenderRadii(handles, diameterX, diameterZ, center, xVector, zVector);
+			diameterX = -diameterX; handles.DoSlider1DHandle(ref diameterX, center, xVector, quarters[0]); RenderRadii(handles, diameterX, diameterZ, center, xVector, zVector);
+			diameterZ = -diameterZ; handles.DoSlider1DHandle(ref diameterZ, center, zVector, quarters[3]); RenderRadii(handles, diameterX, diameterZ, center, xVector, zVector);
+			diameterZ = -diameterZ; handles.DoSlider1DHandle(ref diameterZ, center, zVector, quarters[2]); RenderRadii(handles, diameterX, diameterZ, center, xVector, zVector);
+			diameterX = math.abs(diameterX);
+			diameterZ = math.abs(diameterZ);
+
+			static void RenderRadii(IChiselHandles handles, float diameterX, float diameterZ, Vector3 center, Vector3 xVector, Vector3 zVector)
+			{
+				if (!handles.lastHandleHadFocus)
+					return;
+				var radiusX = diameterX * 0.5f;
+				var radiusZ = diameterZ * 0.5f;
+				handles.RenderDistanceMeasurement(center, center + xVector.normalized * radiusX, radiusX, "Radius");
+				handles.RenderDistanceMeasurement(center, center + zVector.normalized * radiusZ, radiusZ, "Radius");
+			}
+		}
+
         public static void RenderBox(this IChiselHandleRenderer renderer, MinMaxAABB bounds)           { renderer.RenderBox(bounds.ToBounds()); }
         public static void RenderBoxMeasurements(this IChiselHandleRenderer renderer, MinMaxAABB bounds)   { renderer.RenderBoxMeasurements(bounds.ToBounds()); }
         public static void RenderCylinder(this IChiselHandleRenderer renderer, MinMaxAABB bounds, int segments) { renderer.RenderCylinder(bounds.ToBounds(), segments); }
