@@ -70,6 +70,7 @@ namespace Chisel.Core
         [NoAlias] public NativeList<MinMaxAABB>                                     brushTreeSpaceBoundCache;
         [NoAlias] public NativeList<BlobAssetReference<BrushesTouchedByBrush>>      brushesTouchedByBrushCache;
         [NoAlias] public NativeList<BlobAssetReference<ExactBrush>>                 exactBrushCache;
+        [NoAlias] public NativeList<MinMaxAABB>                                     exactBoundsCache;
 
         // Write
         [NoAlias, WriteOnly] public NativeParallelHashSet<IndexOrder>   brushesThatNeedIndirectUpdateHashMap;
@@ -167,6 +168,8 @@ namespace Chisel.Core
 						brushesTouchedByBrushCache.Resize(maxCount, NativeArrayOptions.ClearMemory);
 					if (exactBrushCache.Length < maxCount)
 						exactBrushCache.Resize(maxCount, NativeArrayOptions.ClearMemory);
+					if (exactBoundsCache.Length < exactBrushCache.Length)
+						exactBoundsCache.Resize(exactBrushCache.Length, NativeArrayOptions.ClearMemory);
 
 					// every entry to its new order, those of removed brushes disposed
 					Remap(basePolygonCache, remapOldOrderToNewOrder);
@@ -177,6 +180,7 @@ namespace Chisel.Core
 					RemapValues(brushTreeSpaceBoundCache, remapOldOrderToNewOrder);
 					Remap(brushesTouchedByBrushCache, remapOldOrderToNewOrder);
 					Remap(exactBrushCache, remapOldOrderToNewOrder);
+					RemapValues(exactBoundsCache, remapOldOrderToNewOrder);
 				}
             }
 
