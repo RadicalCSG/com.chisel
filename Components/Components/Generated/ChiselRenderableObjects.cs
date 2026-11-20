@@ -1143,14 +1143,70 @@ namespace Chisel.Components
                 if (material == null)
                     continue;
 
-                renderParams.material = material;
-                if (enableLightmaps) material.EnableKeyword(kLightmapKeyword);
-                else material.DisableKeyword(kLightmapKeyword);
-                if (directional) material.EnableKeyword(kDirectionalLightmapKeyword);
-                else material.DisableKeyword(kDirectionalLightmapKeyword);
+                renderParams.material = enableLightmaps ? LightmappedMaterialOf(material, directional) : material;
                 Graphics.RenderMesh(in renderParams, mesh, submeshIndex, matrix);
             }
 		}
+
+        // A lightmapped copy is drawn with a hidden clone of its material that has the lightmap keywords: setting them on
+        // the material itself would change the asset, and every renderer drawn with it. The clone is brought up to date
+        // whenever the material changes.
+        static readonly Dictionary<(Material, bool), (Material clone, int crc)> s_LightmappedMaterials = new();
+
+        internal static Material LightmappedMaterialOf(Material material, bool directional)
+        {
+            var key = (material, directional);
+            var crc = material.ComputeCRC();
+            if (s_LightmappedMaterials.TryGetValue(key, out var found) && found.clone && found.crc == crc)
+                return found.clone;
+            var clone = found.clone;
+            if (!clone)
+            {
+                ForgetDestroyedMaterials();
+                clone = new Material(material) { name = material.name + " (lightmapped)", hideFlags = HideFlags.HideAndDontSave };
+            } else
+            {
+                if (clone.shader != material.shader)
+                    clone.shader = material.shader;
+                clone.CopyPropertiesFromMaterial(material);
+            }
+            clone.EnableKeyword(kLightmapKeyword);
+            if (directional) clone.EnableKeyword(kDirectionalLightmapKeyword);
+            else clone.DisableKeyword(kDirectionalLightmapKeyword);
+            s_LightmappedMaterials[key] = (clone, crc);
+            return clone;
+        }
+
+        // The clones of materials that are gone
+        static void ForgetDestroyedMaterials()
+        {
+            List<(Material, bool)> destroyed = null;
+            foreach (var pair in s_LightmappedMaterials)
+            {
+                if (pair.Key.Item1)
+                    continue;
+                ChiselObjectUtility.SafeDestroy(pair.Value.clone);
+                (destroyed ??= new()).Add(pair.Key);
+            }
+            if (destroyed == null)
+                return;
+            foreach (var key in destroyed)
+                s_LightmappedMaterials.Remove(key);
+        }
+
+        [UnityEditor.InitializeOnLoadMethod]
+        static void RegisterLightmappedMaterialsCleanup()
+        {
+            UnityEditor.AssemblyReloadEvents.beforeAssemblyReload -= DestroyLightmappedMaterials;
+            UnityEditor.AssemblyReloadEvents.beforeAssemblyReload += DestroyLightmappedMaterials;
+        }
+
+        static void DestroyLightmappedMaterials()
+        {
+            foreach (var pair in s_LightmappedMaterials)
+                ChiselObjectUtility.SafeDestroy(pair.Value.clone);
+            s_LightmappedMaterials.Clear();
+        }
 
 
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]

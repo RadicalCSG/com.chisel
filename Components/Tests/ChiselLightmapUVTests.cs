@@ -1,6 +1,8 @@
 using NUnit.Framework;
+using Unity.Mathematics;
 using UnityEditor;
 using UnityEngine;
+using static Chisel.Components.Tests.ChiselBakeScene;
 
 namespace Chisel.Components.Tests
 {
@@ -28,6 +30,45 @@ namespace Chisel.Components.Tests
             {
                 Object.DestroyImmediate(root);
             }
+        }
+
+        // A renderer an update makes, for a chunk that had none, goes into the bake with the model at once: not only
+        // after some later update
+        [Test]
+        public void ARendererMadeByAnUpdate_IsInTheBake()
+        {
+            var root = new GameObject("Lightmap UV Model");
+            try
+            {
+                var model = root.AddComponent<ChiselModelComponent>();
+                Lightmapped(model);
+                AddBox(model, new float3(0, 0, 0));
+                AddBox(model, new float3(40, 0, 0));
+
+                var renderables = Renderables(model);
+                Assert.That(renderables.Count, Is.EqualTo(2), "a renderer in each chunk");
+                foreach (var renderable in renderables)
+                {
+                    Assert.That(GameObjectUtility.GetStaticEditorFlags(renderable.container) & StaticEditorFlags.ContributeGI,
+                                Is.EqualTo(StaticEditorFlags.ContributeGI), $"the renderer at {renderable.sharedMesh.bounds.center}");
+                }
+            }
+            finally
+            {
+                Object.DestroyImmediate(root);
+                UpdateModels();
+            }
+        }
+
+        static void AddBox(ChiselModelComponent model, float3 min)
+        {
+            var go = new GameObject("box");
+            go.transform.SetParent(model.transform, false);
+            var box = go.AddComponent<ChiselBoxComponent>();
+            box.Max = new float3(1e4f);
+            box.Min = min;
+            box.Max = min + 1;
+            UpdateModels();
         }
     }
 }

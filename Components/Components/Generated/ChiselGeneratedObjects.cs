@@ -403,10 +403,17 @@ namespace Chisel.Components
 
         GameObjectState UpdateContainers(GameObject modelGameObject, bool force = false)
         {
+            var gameObjectState = UpdateModelContainers(modelGameObject, force, out var sameState);
+            UpdateRenderableContainers(gameObjectState, sameState);
+            return gameObjectState;
+        }
+
+        // The containers of the model's generated objects, but not of its renderers
+        GameObjectState UpdateModelContainers(GameObject modelGameObject, bool force, out bool sameState)
+        {
             var modelTransform  = modelGameObject.transform;
             var gameObjectState = GameObjectState.Create(modelGameObject);
-            // a renderable's container only changes with the model's state, or when its geometry comes or goes
-            var sameState       = !force && hasAppliedState && gameObjectState.SameAs(lastAppliedState);
+            sameState           = !force && hasAppliedState && gameObjectState.SameAs(lastAppliedState);
             lastAppliedState    = gameObjectState;
             hasAppliedState     = true;
             ChiselObjectUtility.UpdateContainerFlags(generatedDataContainer, gameObjectState);
@@ -429,7 +436,14 @@ namespace Chisel.Components
                     UpdateColliderLayerContainer(colliderLayerContainers[layer], gameObjectState, layer);
                 }
             }
+            return gameObjectState;
+        }
 
+        // A renderer's container only changes with the model's state, or when its geometry comes or goes: so a renderer
+        // made or filled by a mesh update is set once its mesh is in
+        void UpdateRenderableContainers(GameObjectState gameObjectState, bool sameState)
+        {
+            var containerTransform = generatedDataContainer.transform;
             for (int i = 0; i < renderables.Length; i++)
             {
                 if (renderables[i] == null || renderables[i].invalid)
@@ -460,7 +474,6 @@ namespace Chisel.Components
                     ChiselObjectUtility.ResetTransform(renderableContainer.transform, requiredParent: containerTransform);
                 }
             }
-            return gameObjectState;
         }
 
         internal void RestoreSkippedUpdate(ChiselModelComponent model)
@@ -681,9 +694,10 @@ namespace Chisel.Components
 			try
 			{
                 GameObjectState gameObjectState;
+                bool sameState;
                 {
                     Profiler.BeginSample("Setup");
-                    gameObjectState = UpdateContainers(modelGameObject);
+                    gameObjectState = UpdateModelContainers(modelGameObject, force: false, out sameState);
                     gameObjectStates.Add(model, gameObjectState);
                     Profiler.EndSample();
                 }
@@ -910,6 +924,10 @@ namespace Chisel.Components
                         meshUpdates.meshDataArray.Dispose();
                 }
                 meshUpdates.meshDataArray = default;
+                Profiler.EndSample();
+
+                Profiler.BeginSample("UpdateRenderableContainers");
+                UpdateRenderableContainers(gameObjectState, sameState);
                 Profiler.EndSample();
 
                 Profiler.BeginSample("UpdateColliders");

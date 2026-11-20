@@ -35,8 +35,10 @@ namespace Chisel.Components.Tests
                 Assert.That(block.GetTexture("unity_Lightmap"),    Is.SameAs(color));
                 Assert.That(block.GetTexture("unity_LightmapInd"), Is.SameAs(direction), "the directional lightmap");
                 Assert.That(block.GetTexture("unity_ShadowMask"),  Is.SameAs(shadowMask), "the shadow mask");
-                Assert.IsTrue(material.IsKeywordEnabled("LIGHTMAP_ON"));
-                Assert.IsTrue(material.IsKeywordEnabled("DIRLIGHTMAP_COMBINED"), "drawn as directional");
+                AssertLeftAsItIs(material);
+                var drawn = ChiselRenderObjects.LightmappedMaterialOf(material, directional: true);
+                Assert.IsTrue(drawn.IsKeywordEnabled("LIGHTMAP_ON"));
+                Assert.IsTrue(drawn.IsKeywordEnabled("DIRLIGHTMAP_COMBINED"), "drawn as directional");
             });
         }
 
@@ -46,9 +48,46 @@ namespace Chisel.Components.Tests
             DrawnWithBakedLightmap(LightmapsMode.NonDirectional, (block, material, color, direction, shadowMask) =>
             {
                 Assert.That(block.GetTexture("unity_Lightmap"), Is.SameAs(color));
-                Assert.IsTrue(material.IsKeywordEnabled("LIGHTMAP_ON"));
-                Assert.IsFalse(material.IsKeywordEnabled("DIRLIGHTMAP_COMBINED"), "drawn as directional");
+                AssertLeftAsItIs(material);
+                var drawn = ChiselRenderObjects.LightmappedMaterialOf(material, directional: false);
+                Assert.IsTrue(drawn.IsKeywordEnabled("LIGHTMAP_ON"));
+                Assert.IsFalse(drawn.IsKeywordEnabled("DIRLIGHTMAP_COMBINED"), "drawn as directional");
             });
+        }
+
+        // Drawing a copy leaves its material as it is: the keywords it is drawn with are its clone's
+        static void AssertLeftAsItIs(Material material)
+        {
+            Assert.IsFalse(material.IsKeywordEnabled("LIGHTMAP_ON"), "the material itself was given the lightmap keyword");
+            Assert.IsFalse(material.IsKeywordEnabled("DIRLIGHTMAP_COMBINED"), "the material itself was given the directional keyword");
+        }
+
+        // The clone a lightmapped copy is drawn with follows its material: its properties, keywords and shader
+        [Test]
+        public void TheLightmappedClone_FollowsItsMaterial()
+        {
+            var material = new Material(Shader.Find("Universal Render Pipeline/Lit"));
+            try
+            {
+                var clone = ChiselRenderObjects.LightmappedMaterialOf(material, directional: false);
+                Assert.That(clone, Is.Not.SameAs(material));
+                Assert.That(ChiselRenderObjects.LightmappedMaterialOf(material, directional: false), Is.SameAs(clone), "made once");
+
+                material.SetColor("_BaseColor", Color.red);
+                material.EnableKeyword("_NORMALMAP");
+                Assert.That(ChiselRenderObjects.LightmappedMaterialOf(material, directional: false), Is.SameAs(clone));
+                Assert.That(clone.GetColor("_BaseColor"), Is.EqualTo(Color.red), "the material's color");
+                Assert.IsTrue(clone.IsKeywordEnabled("_NORMALMAP"), "the material's keyword");
+                Assert.IsTrue(clone.IsKeywordEnabled("LIGHTMAP_ON"), "and its own");
+
+                material.shader = Shader.Find("Universal Render Pipeline/Simple Lit");
+                Assert.That(ChiselRenderObjects.LightmappedMaterialOf(material, directional: false).shader, Is.SameAs(material.shader), "the material's shader");
+                AssertLeftAsItIs(material);
+            }
+            finally
+            {
+                Object.DestroyImmediate(material);
+            }
         }
 
         static void DrawnWithBakedLightmap(LightmapsMode mode, System.Action<MaterialPropertyBlock, Material, Texture2D, Texture2D, Texture2D> check)
@@ -118,11 +157,12 @@ namespace Chisel.Components.Tests
                 renderable.meshRenderer.forceRenderingOff = true;
                 renderable.meshRenderer.lightmapIndex = lightmapIndex;
                 Assert.IsTrue(renderable.IsEnabled());
-                material.EnableKeyword("LIGHTMAP_ON");
 
-                Assert.DoesNotThrow(() => ChiselRenderObjects.RenderChiselRenderObjects(new[] { renderable }, new MaterialPropertyBlock(),
+                var block = new MaterialPropertyBlock();
+                Assert.DoesNotThrow(() => ChiselRenderObjects.RenderChiselRenderObjects(new[] { renderable }, block,
                                                                                         Matrix4x4.identity, 0, camera, hasLightmaps: true));
-                Assert.IsFalse(material.IsKeywordEnabled("LIGHTMAP_ON"), "drawn with a lightmap it doesn't have");
+                Assert.IsFalse(block.HasTexture("unity_Lightmap"), "drawn with a lightmap it doesn't have");
+                AssertLeftAsItIs(material);
             }
             finally
             {
