@@ -773,16 +773,16 @@ namespace Chisel.Core.Tests
 			across.Value.serial = RenderBufferSerial.Next();
 			var model = new[] { (0, needle), (1, across), (2, far) };
 			weld.Weld("the first update", model);
-			ref var kept = ref weld.Memory.brushes.ElementAt(BrushSlots.Of(Incremental.Id(1)));
+			ref var kept = ref weld.Memory.slots.ElementAt(BrushSlots.Of(Incremental.Id(1)));
 			Assert.That(kept.output.IsCreated, Is.True, "the split triangle's brush was stored again");
 
 			across.Value.surfaces[0].hotspot.group = 7;
 			weld.Weld("the group written in place, the serial kept", false, model);
-			Assert.That(weld.Memory.brushes.ElementAt(BrushSlots.Of(Incremental.Id(1))).output.Value.surfaces[0].hotspot.group, Is.Zero, "not gone through");
+			Assert.That(weld.Memory.slots.ElementAt(BrushSlots.Of(Incremental.Id(1))).output.Value.surfaces[0].hotspot.group, Is.Zero, "not gone through");
 
 			across.Value.serial = RenderBufferSerial.Next();
 			weld.Weld("given a new serial", model);
-			Assert.That(weld.Memory.brushes.ElementAt(BrushSlots.Of(Incremental.Id(1))).output.Value.surfaces[0].hotspot.group, Is.EqualTo(7));
+			Assert.That(weld.Memory.slots.ElementAt(BrushSlots.Of(Incremental.Id(1))).output.Value.surfaces[0].hotspot.group, Is.EqualTo(7));
 		}
 
 		// Planted: a brush's kept buffer forgotten; the verify has to see it
@@ -798,7 +798,7 @@ namespace Chisel.Core.Tests
 				var far = weld.Own(Brush(FarTriangle(1)));
 				weld.Weld("the first update", new[] { (0, needle), (1, across), (2, far) });
 				ref var memory = ref weld.Memory;
-				ref var kept = ref memory.brushes.ElementAt(BrushSlots.Of(Incremental.Id(1)));
+				ref var kept = ref memory.slots.ElementAt(BrushSlots.Of(Incremental.Id(1)));
 				Assert.That(kept.output.IsCreated, Is.True, "the split triangle's brush was stored again");
 				kept.output.Dispose();
 				kept.output = default;

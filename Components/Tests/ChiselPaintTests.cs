@@ -650,8 +650,8 @@ namespace Chisel.Components.Tests
             var memory = ChiselTreeLookup.Value[model.Node].weldMemory;
             var id = CompactHierarchyManager.GetCompactNodeID(box.TopTreeNode);
             var slot = BrushSlots.Of(id);
-            Assert.That(slot < memory.brushes.Length && memory.brushes[slot].used && memory.brushes[slot].id == id, Is.True, "the weld doesn't know the box");
-            Assert.That(memory.brushes[slot].changed, Is.True, "the weld kept what it made of the box with the old values");
+            Assert.That(slot < memory.slots.Length && memory.slots[slot].used && memory.slots[slot].id == id, Is.True, "the weld doesn't know the box");
+            Assert.That(memory.slots[slot].changed, Is.True, "the weld kept what it made of the box with the old values");
         }
 
         // The upward vertices whose color matches
