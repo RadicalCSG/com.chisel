@@ -82,7 +82,7 @@ namespace Chisel.Editors.Tests
             Assume.That(TopVRange(model, material), Is.EqualTo(4).Within(1e-4f));
 
             material.mainTexture = Texture(256, 128);
-            ChiselTextureScaleWatcher.Refresh();
+            ChiselMaterialWatcher.Refresh();
             Update();
             Assert.That(TopVRange(model, material), Is.EqualTo(2).Within(1e-4f));
         }
@@ -128,7 +128,7 @@ namespace Chisel.Editors.Tests
                 serialized.FindProperty(ChiselSurfaceMetadata.kUVScaleFieldName).vector2Value = new Vector2(1, 2);
                 serialized.ApplyModifiedProperties();
                 Undo.IncrementCurrentGroup();
-                ChiselTextureScaleWatcher.Refresh();
+                ChiselMaterialWatcher.Refresh();
                 Update();
                 Assume.That(TopVRange(model, material), Is.EqualTo(2).Within(1e-4f), "the material's own scale");
 

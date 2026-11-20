@@ -96,7 +96,8 @@ namespace Chisel.Core
 		// Never output, whatever its material says: the faces a generator's brushes have between them, that are never
 		// seen, take a copy of their surface that is. The CSG does no work on them. Not saved.
 		[NonSerialized] internal bool excluded;
-		public SurfaceOutputFlags      OutputFlags      { get { var metadata = chiselMaterial.ResolveSurfaceMetadata(); return (metadata != null) ? metadata.outputFlags : SurfaceOutputFlags.Default; } }
+		// No lightmap texels for a material whose shader can't sample a lightmap (ChiselMaterialLightmaps)
+		public SurfaceOutputFlags      OutputFlags      { get { var metadata = chiselMaterial.ResolveSurfaceMetadata(); return ChiselMaterialLightmaps.OutputFlagsOf(RenderMaterial, (metadata != null) ? metadata.outputFlags : SurfaceOutputFlags.Default); } }
 		// The layer its collider goes on; SurfaceDestinationParameters.kNoColliderLayer for the model's
 		public int                     ColliderLayer    { get { var metadata = chiselMaterial.ResolveSurfaceMetadata(); return (metadata != null) ? metadata.colliderLayer : SurfaceDestinationParameters.kNoColliderLayer; } }
 		public ChiselHotspotLayout     HotspotLayout    { get { var metadata = chiselMaterial.ResolveSurfaceMetadata(); return (metadata != null) ? metadata.hotspotLayout : null; } }
@@ -138,6 +139,8 @@ namespace Chisel.Core
                 hash = math.hash(new uint3(hash, materialHashcode, surfaceMetadataHashcode));
 				// its texture's size: a texture swapped or resized on the material maps the surface anew
 				hash = math.hash(new uint3(hash, math.asuint(ChiselTextureScale.Of(RenderMaterial))));
+				// whether its shader samples a lightmap: a shader swapped on the material gives it lightmap texels or takes them
+				hash = math.hash(new uint2(hash, ChiselMaterialLightmaps.SamplesLightmaps(RenderMaterial) ? 1u : 0u));
                 if (excluded)
                     hash = math.hash(new uint2(hash, 1u));
                 return (int)hash;

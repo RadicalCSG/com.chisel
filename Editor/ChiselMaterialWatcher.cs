@@ -6,12 +6,13 @@ using UnityEngine;
 
 namespace Chisel.Editors
 {
-    // A material whose main texture is swapped, or a texture imported at another size: the generators using a material
-    // whose texture scale changed (ChiselTextureScale) are built again
+    // A material whose main texture or shader is swapped, a texture imported at another size, or a shader changed: the
+    // generators using a material whose texture scale (ChiselTextureScale) or lightmapping (ChiselMaterialLightmaps)
+    // changed are built again
     [InitializeOnLoad]
-    static class ChiselTextureScaleWatcher
+    static class ChiselMaterialWatcher
     {
-        static ChiselTextureScaleWatcher()
+        static ChiselMaterialWatcher()
         {
             ObjectChangeEvents.changesPublished -= OnChangesPublished;
             ObjectChangeEvents.changesPublished += OnChangesPublished;
@@ -35,6 +36,7 @@ namespace Chisel.Editors
         {
             var changed = new List<Material>();
             ChiselTextureScale.Refresh(changed);
+            ChiselMaterialLightmaps.Refresh(changed);
             if (changed.Count == 0)
                 return;
             var materials = new HashSet<Material>(changed);
