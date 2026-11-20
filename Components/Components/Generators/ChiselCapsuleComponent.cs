@@ -27,6 +27,11 @@ namespace Chisel.Components
             get { return definition.settings.bottomHeight; }
             set { if (definition.settings.bottomHeight == value) return; definition.settings.bottomHeight = value; OnValidateState(); }
         }
+        public bool IsElliptical
+        {
+            get { return definition.settings.IsElliptical; }
+            set { if (definition.settings.IsElliptical == value) return; definition.settings.IsElliptical = value; OnValidateState(); }
+        }
         public float DiameterX
         {
             get { return definition.settings.diameterX; }
