@@ -1452,19 +1452,6 @@ namespace Chisel.Core
                 }
                 #endregion
 
-                #region Contents volume
-                // the tree's contents volume needs only the hierarchy and the brush meshes: it is built while the CSG runs
-                {
-                    const bool runInParallel = runInParallelDefault;
-                    ContentsVolume.JobFor(treeCompactNodeID, Temporaries.contentsVolumeNodes, Temporaries.contentsVolumePlanes).Schedule(runInParallel,
-                        JobHandles.Read(
-                            JobHandleType.brushMeshBlobsLookupJobHandle,
-                            JobHandleType.compactHierarchyJobHandle),
-                        JobHandles.Write(
-                            JobHandleType.contentsVolumeJobHandle));
-                }
-                #endregion
-
                 #region Exact input
                 unsafe
                 {
@@ -1510,7 +1497,7 @@ namespace Chisel.Core
                         // Write
                         bounds                      = Temporaries.exactBounds
                     };
-                    exactBoundsJob.Schedule(false,
+                    exactBoundsJob.Schedule(runInParallel,
                         JobHandles.Read(
                             JobHandleType.allTreeBrushIndexOrdersJobHandle,
                             JobHandleType.brushMeshLookupJobHandle,
@@ -1535,7 +1522,7 @@ namespace Chisel.Core
                         mergedPlanes                = Temporaries.mergedPlanes,
                         mergedPlaneOffsets          = Temporaries.mergedPlaneOffsets
                     };
-                    exactPlaneMergeJob.Schedule(false,
+                    exactPlaneMergeJob.Schedule(runInParallel,
                         JobHandles.Read(
                             JobHandleType.allTreeBrushIndexOrdersJobHandle),
                         JobHandles.Write(
@@ -1564,7 +1551,7 @@ namespace Chisel.Core
                             JobHandleType.exactBrushCacheJobHandle));
 
                     // the bounds of the brushes built again
-                    exactBoundsJob.Schedule(false,
+                    exactBoundsJob.Schedule(runInParallel,
                         JobHandles.Read(
                             JobHandleType.allTreeBrushIndexOrdersJobHandle,
                             JobHandleType.brushMeshLookupJobHandle,
@@ -1817,6 +1804,21 @@ namespace Chisel.Core
                             JobHandleType.treeSpaceVerticesCacheJobHandle));
                     //jobHandle.Complete(); 
 				} 
+                #endregion
+
+                #region Contents volume
+                // the tree's contents volume needs only the hierarchy and the brush meshes: it is built while the CSG runs.
+                // Scheduled after the last job that writes the hierarchy (the brushes' bounds, which it doesn't read), so
+                // none waits for it
+                {
+                    const bool runInParallel = runInParallelDefault;
+                    ContentsVolume.JobFor(treeCompactNodeID, Temporaries.contentsVolumeNodes, Temporaries.contentsVolumePlanes).Schedule(runInParallel,
+                        JobHandles.Read(
+                            JobHandleType.brushMeshBlobsLookupJobHandle,
+                            JobHandleType.compactHierarchyJobHandle),
+                        JobHandles.Write(
+                            JobHandleType.contentsVolumeJobHandle));
+                }
                 #endregion
 
                 #region Update intersection pairs (when brush touches a brush that has changed)
