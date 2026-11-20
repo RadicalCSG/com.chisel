@@ -19,6 +19,7 @@ namespace Chisel.Core
         MeshesLookedUp,         // brushes whose mesh was looked up in this update (FillBrushMeshBlobLookupJob): only the ones that changed
         BoundsTaken,            // brushes whose exact bounds were taken in this update (ExactBoundsJob): only the ones built again
         SweepEntriesSorted,     // brushes placed in the bounds sweep in this update (BuildBrushBoundsSweepJob): only the ones built again
+        RenderBuffersRead,      // brushes whose render buffer was read in this update (FindBrushRenderBuffersJob): only the ones built again
         InvalidPlane,           // a brush with a plane that cannot be made exact (ExactInputJob): it takes no part
         OpenBrush,              // a brush whose exact planes do not close it within the world: it takes no part
         FaceOutsideBounds,

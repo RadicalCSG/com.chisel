@@ -101,6 +101,14 @@ namespace Chisel.Core
         }
     }
 
+    // A brush's render buffer as an update read it: the buffer, and its surfaces' offset and count
+    struct BrushRenderEntry
+    {
+        public BlobAssetReference<ChiselBrushRenderBuffer> buffer;
+        public int surfaceOffset;
+        public int surfaceCount;
+    }
+
     [BurstCompile(CompileSynchronously = true)]
     struct FindBrushRenderBuffersJob : IJob
     {
@@ -110,6 +118,15 @@ namespace Chisel.Core
         [NoAlias, ReadOnly] public NativeList<BlobAssetReference<ChiselBrushRenderBuffer>> brushRenderBufferCache;
         // the brushes whose buffers this update made again
         [NoAlias, ReadOnly] public NativeList<IndexOrder>                                  allUpdateBrushIndexOrders;
+        // a brush was added, removed or moved to another order since the last update (CacheRemappingJob)
+        [NoAlias, ReadOnly] public bool                                                    brushListChanged;
+
+        // Read/Write
+        // each brush's buffer as the last update read it, by node order: a brush's buffer is only replaced when this update
+        // makes it again (GenerateSurfaceTrianglesJob, after the invalidation that clears it) or the brush list changes;
+        // painting changes a buffer in place, not its surfaces' offset or count
+        [NoAlias] public NativeList<BrushRenderEntry> renderEntries;
+        [NoAlias] public NativeArray<int>             stats;
 
         // Write
         [NoAlias] public NativeList<BrushData> brushRenderData;
@@ -122,30 +139,51 @@ namespace Chisel.Core
         // the surfaces the weld changed and the brushes to store again (CopyWeldedBrushesJob)
         [NoAlias] public WeldState weld;
 
+        void Read(int nodeOrder)
+        {
+            var buffer = brushRenderBufferCache[nodeOrder];
+            var entry  = new BrushRenderEntry { buffer = buffer };
+            if (buffer.IsCreated)
+            {
+                entry.surfaceOffset = buffer.Value.surfaceOffset;
+                entry.surfaceCount  = buffer.Value.surfaceCount;
+            }
+            renderEntries[nodeOrder] = entry;
+        }
+
         public void Execute()
         {
-            var totalSurfaceCount = 0;
-            for (int b = 0, count_b = allTreeBrushIndexOrders.Length; b < count_b; b++)
+            int count = allTreeBrushIndexOrders.Length;
+            if (renderEntries.Length < count)
+                renderEntries.Resize(count, NativeArrayOptions.ClearMemory);
+            int read = 0;
+            if (brushListChanged)
             {
-                var brushIndexOrder     = allTreeBrushIndexOrders[b];
-                var brushNodeOrder      = allTreeBrushIndexOrders[b].nodeOrder;
-                var brushRenderBuffer   = brushRenderBufferCache[brushNodeOrder];
-                if (!brushRenderBuffer.IsCreated)
+                for (int b = 0; b < count; b++)
+                    Read(allTreeBrushIndexOrders[b].nodeOrder);
+                read = count;
+            } else
+            {
+                for (int u = 0; u < allUpdateBrushIndexOrders.Length; u++)
+                    Read(allUpdateBrushIndexOrders[u].nodeOrder);
+                read = allUpdateBrushIndexOrders.Length;
+            }
+            stats[(int)ExactCSGStat.RenderBuffersRead] += read;
+
+            var totalSurfaceCount = 0;
+            for (int b = 0; b < count; b++)
+            {
+                var brushIndexOrder = allTreeBrushIndexOrders[b];
+                var entry           = renderEntries[brushIndexOrder.nodeOrder];
+                if (!entry.buffer.IsCreated || entry.surfaceCount == 0)
                     continue;
 
-                ref var brushRenderBufferRef = ref brushRenderBuffer.Value;
-
-                var brushSurfaceCount = brushRenderBufferRef.surfaceCount;
-                if (brushSurfaceCount == 0)
-                    continue;
-
-                var brushSurfaceOffset = brushRenderBufferRef.surfaceOffset;
-                totalSurfaceCount += brushSurfaceCount;
+                totalSurfaceCount += entry.surfaceCount;
                 brushRenderData.AddNoResize(new BrushData{
                     brushIndexOrder     = brushIndexOrder,
-                    brushSurfaceOffset  = brushSurfaceOffset,
-                    brushSurfaceCount   = brushSurfaceCount,
-                    brushRenderBuffer   = brushRenderBuffer
+                    brushSurfaceOffset  = entry.surfaceOffset,
+                    brushSurfaceCount   = entry.surfaceCount,
+                    brushRenderBuffer   = entry.buffer
                 });
             }
             if (surfaceCountRef.Value < totalSurfaceCount)

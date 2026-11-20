@@ -2138,11 +2138,14 @@ namespace Chisel.Core
                         allTreeBrushIndexOrders = Temporaries.allTreeBrushIndexOrders,
                         brushRenderBufferCache  = chiselLookupValues.brushRenderBufferCache,
                         allUpdateBrushIndexOrders = Temporaries.allUpdateBrushIndexOrders,
+                        brushListChanged        = this.brushListChanged,
 
                         // Write
                         brushRenderData      = Temporaries.brushRenderData,
 
-                        // Read/Write
+                        // Read/Write (the stats are written after the exact CSG's)
+                        renderEntries   = chiselLookupValues.brushRenderEntries,
+                        stats           = Temporaries.exactCSGStats,
                         surfaceCountRef = Temporaries.surfaceCountRef,
                         collapseMoves   = chiselLookupValues.collapseMoves,
                         weld            = Temporaries.weld,
