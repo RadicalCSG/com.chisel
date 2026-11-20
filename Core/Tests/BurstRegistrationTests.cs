@@ -83,6 +83,7 @@ namespace Chisel.Core.Tests
         [Test] public void ARevolvedShape_IsGeneratedThroughItsJobs() { Generate(new ChiselRevolvedShapeDefinition()); }
         [Test] public void ASpiralStairs_IsGeneratedThroughItsJobs()  { Generate(new ChiselSpiralStairsDefinition()); }
         [Test] public void ATorus_IsGeneratedThroughItsJobs()         { Generate(new ChiselTorusDefinition()); }
+        [Test] public void ACylinder_IsGeneratedThroughItsJobs()      { Generate(new ChiselCylinderDefinition()); }
         [Test] public void AnExtrudedShape_IsGeneratedThroughItsJobs(){ Generate(new ChiselExtrudedShapeDefinition()); }
 
         static void Generate<Generator>(SerializedBranchGenerator<Generator> definition)

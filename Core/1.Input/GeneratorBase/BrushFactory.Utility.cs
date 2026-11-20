@@ -348,7 +348,7 @@ namespace Chisel.Core
 
                     var plane = new Plane(v0, v1, v3);
                     var dist = plane.GetDistanceToPoint(v2);
-                    if (math.abs(dist) < 0.001f)
+                    if (math.abs(dist) < kSideOutOfPlane)
                         segmentTopology[n] = SegmentTopology.Quad;
                     else
                         segmentTopology[n] = (SegmentTopology)math.sign(dist);
@@ -744,7 +744,7 @@ namespace Chisel.Core
                 var plane = new Plane(v0, v1, v3);
                 var dist = plane.GetDistanceToPoint(v2);
 
-                if (math.abs(dist) < 0.001f)
+                if (math.abs(dist) < kSideOutOfPlane)
                     isSegmentConvex[n] = 0;
                 else
                     isSegmentConvex[n] = (sbyte)math.sign(dist);
