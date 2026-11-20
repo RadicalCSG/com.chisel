@@ -91,7 +91,11 @@ namespace Chisel.Components.Tests
             var cylinder = Cylinder();
             var settings = cylinder.definition.settings;
             using var surfaces = BrushMeshManager.BuildInternalSurfaceArrayBlob(cylinder.SurfaceDefinition, Unity.Collections.Allocator.Temp);
-            var mesh = settings.GenerateMesh(surfaces, Unity.Collections.Allocator.Temp);
+            Assert.That(settings.PrepareAndCountRequiredBrushMeshes(), Is.EqualTo(1), "a cylinder is one brush");
+            using var nodes = new Unity.Collections.NativeList<GeneratedNode>(1, Unity.Collections.Allocator.Temp);
+            nodes.Resize(1, Unity.Collections.NativeArrayOptions.ClearMemory);
+            Assert.That(settings.GenerateNodes(surfaces, nodes, Unity.Collections.Allocator.Temp), Is.True);
+            var mesh = nodes[0].brushMesh;
             try
             {
                 Assert.That(mesh.IsCreated, Is.True);

@@ -16,7 +16,7 @@ namespace Chisel.Core
     }
 
     [Serializable]
-    public struct ChiselCylinder : IBrushGenerator, IChiselSurfaceNames
+    public struct ChiselCylinder : IBranchGenerator, IChiselSurfaceNames
     {
         readonly static ChiselCylinder kDefaultSettings = new()
         {
@@ -220,14 +220,13 @@ namespace Chisel.Core
         #endregion
 
         #region Generate
-        public readonly BlobAssetReference<BrushMeshBlob> GenerateMesh(BlobAssetReference<InternalChiselSurfaceArray> surfaceDefinitionBlob, 
-                                                                       Allocator allocator = Allocator.Persistent)// Indirect
-		{
-            var topDiameter     = new float2(topDiameterX, topDiameterZ);
-            var bottomDiameter  = new float2(bottomDiameterX, bottomDiameterZ);
-
-            var topHeight = height + bottomOffset;
-            var bottomHeight = bottomOffset;
+        // The diameters and heights it is built with, for its type
+        readonly void GetShape(out float2 topDiameter, out float topHeight, out float2 bottomDiameter, out float bottomHeight)
+        {
+            topDiameter    = new float2(topDiameterX, topDiameterZ);
+            bottomDiameter = new float2(bottomDiameterX, bottomDiameterZ);
+            topHeight      = height + bottomOffset;
+            bottomHeight   = bottomOffset;
             switch (type)
             {
                 case CylinderShapeType.ConicalFrustum:  break;
@@ -241,26 +240,66 @@ namespace Chisel.Core
                 topDiameter.y = topDiameter.x;
                 bottomDiameter.y = bottomDiameter.x;
             }
+        }
 
-            if (!BrushMeshFactory.GenerateConicalFrustumSubMesh(topDiameter,    topHeight,
+        // A conical frustum whose top isn't its bottom scaled the same along x and z isn't convex: it is made of a brush
+        // for each side and one more (BrushMeshFactory.GenerateWarpedConicalFrustum); otherwise it is one brush
+        readonly bool IsWarped()
+        {
+            GetShape(out var topDiameter, out var topHeight, out var bottomDiameter, out var bottomHeight);
+            return BrushMeshFactory.IsWarpedConicalFrustum(topDiameter, topHeight, bottomDiameter, bottomHeight, rotation, sides, fitToBounds);
+        }
+
+        public int PrepareAndCountRequiredBrushMeshes()
+        {
+            return IsWarped() ? BrushMeshFactory.GetWarpedConicalFrustumBrushCount(sides) : 1;
+        }
+
+        public bool GenerateNodes(BlobAssetReference<InternalChiselSurfaceArray> surfaceDefinitionBlob, NativeList<GeneratedNode> nodes,
+                                  Allocator allocator = Allocator.Persistent)// Indirect
+        {
+            GetShape(out var topDiameter, out var topHeight, out var bottomDiameter, out var bottomHeight);
+            if (IsWarped())
+            {
+                if (nodes.Length != BrushMeshFactory.GetWarpedConicalFrustumBrushCount(sides))
+                    return false;
+                using var brushMeshes = new NativeArray<BlobAssetReference<BrushMeshBlob>>(nodes.Length, Allocator.Temp);
+                if (!BrushMeshFactory.GenerateWarpedConicalFrustum(topDiameter, topHeight, bottomDiameter, bottomHeight,
+                                                                   rotation, sides, fitToBounds,
+                                                                   in surfaceDefinitionBlob, brushMeshes, allocator))// Indirect
+                    return false;
+                for (int i = 0; i < brushMeshes.Length; i++)
+                    nodes[i] = GeneratedNode.GenerateBrush(PutLayoutOn(brushMeshes[i])); // Confirmed to dispose
+                return true;
+            }
+
+            if (nodes.Length != 1 ||
+                !BrushMeshFactory.GenerateConicalFrustumSubMesh(topDiameter,    topHeight,
                                                                 bottomDiameter, bottomHeight,
                                                                 rotation, sides, fitToBounds,
                                                                 in surfaceDefinitionBlob,
                                                                 out var newBrushMesh,
                                                                 allocator))// Indirect
-				return default;
+                return false;
+            nodes[0] = GeneratedNode.GenerateBrush(PutLayoutOn(newBrushMesh)); // Confirmed to dispose
+            return true;
+        }
 
-            // Each face's surface with the layout put on it (a surface mapped in world space keeps its own); the mesh is
-            // only hashed when it is registered, after this
-            ref var polygons = ref newBrushMesh.Value.polygons;
+        // Each face's surface with the layout put on it (a surface mapped in world space keeps its own); the mesh is
+        // only hashed when it is registered, after this
+        readonly BlobAssetReference<BrushMeshBlob> PutLayoutOn(BlobAssetReference<BrushMeshBlob> brushMesh)
+        {
+            ref var polygons = ref brushMesh.Value.polygons;
             for (int p = 0; p < polygons.Length; p++)
             {
                 ref var details = ref polygons[p].surface.details;
                 if ((details.detailFlags & SurfaceDetailFlags.TextureIsInWorldSpace) == 0)
                     details.UV0 = OnLayout(details.UV0, Layout(polygons[p].descriptionIndex));
             }
-            return newBrushMesh;
+            return brushMesh;
         }
+
+        public void Dispose() { }
         #endregion
 
         #region Surfaces
@@ -323,7 +362,8 @@ namespace Chisel.Core
 
         #region Validation
         // A negative height stays (the factory builds it the right way out); a height or diameter of 0 becomes the smallest
-        // (a frustum's top can be 0: then it is a cone)
+        // (a frustum's top can be 0: then it is a cone; an elliptical one with only one diameter at 0 would be a line, and
+        // that one becomes the smallest)
         public bool Validate()
         {
             height = ChiselGeneratorLimits.NotZero(height);
@@ -331,7 +371,8 @@ namespace Chisel.Core
             topDiameterZ = math.abs(topDiameterZ);
             bottomDiameterX = math.max(math.abs(bottomDiameterX), ChiselGeneratorLimits.kMinSize);
             bottomDiameterZ = math.max(math.abs(bottomDiameterZ), ChiselGeneratorLimits.kMinSize);
-            if (type == CylinderShapeType.Cylinder)
+            if (type == CylinderShapeType.Cylinder ||
+                (isElliptical && (topDiameterX > 0 || topDiameterZ > 0)))
             {
                 topDiameterX = math.max(topDiameterX, ChiselGeneratorLimits.kMinSize);
                 topDiameterZ = math.max(topDiameterZ, ChiselGeneratorLimits.kMinSize);
@@ -342,7 +383,7 @@ namespace Chisel.Core
         }
 
         [BurstDiscard]
-        public void GetMessages(IChiselMessageHandler messages)
+        public void GetWarningMessages(IChiselMessageHandler messages)
         {
         }
         #endregion
@@ -353,7 +394,7 @@ namespace Chisel.Core
     }
 
     [Serializable]
-    public class ChiselCylinderDefinition : SerializedBrushGenerator<ChiselCylinder>
+    public class ChiselCylinderDefinition : SerializedBranchGenerator<ChiselCylinder>
     {
         public const string kNodeTypeName = "Cylinder";
 

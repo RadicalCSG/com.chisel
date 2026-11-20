@@ -504,7 +504,7 @@ namespace Chisel.Core
 
 		public void Dispose()
 		{
-			// Confirmed to be called ChiselBox/ChiselCylinder
+			// Confirmed to be called ChiselBox/ChiselSphere
 			GeneratorJobPoolManager.Unregister(this);
             if (generators    .IsCreated) generators    .Dispose();
             if (brushMeshes   .IsCreated) brushMeshes   .Dispose();

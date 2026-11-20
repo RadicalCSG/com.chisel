@@ -186,7 +186,8 @@ namespace Chisel.Editors
             UnityEditor.Undo.DestroyObjectImmediate(chiselNode);
             // ... and then destroy the treeNode ourselves after we're done with it
 
-            var topNodeType = topNode.Type;
+            // one brush, or a branch of one, converts to one brush
+            var oneBrush = topNode.Type == CSGNodeType.Brush || topNode.Count <= 1;
 
             bool result = false;
             try
@@ -206,7 +207,7 @@ namespace Chisel.Editors
                 if (topNode.Valid)
                     topNode.Destroy();
             }
-            UnityEditor.Undo.SetCurrentGroupName((topNodeType == CSGNodeType.Brush) ? $"Converted {nodeTypeName} to brush" : $"Converted {nodeTypeName} to multiple brushes");
+            UnityEditor.Undo.SetCurrentGroupName(oneBrush ? $"Converted {nodeTypeName} to brush" : $"Converted {nodeTypeName} to multiple brushes");
             return result;
         }
         
