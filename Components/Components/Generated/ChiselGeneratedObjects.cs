@@ -313,6 +313,12 @@ namespace Chisel.Components
         [NonSerialized] bool hasAppliedState;
         // the renderer settings FinishMeshUpdates last applied to every renderer
         [NonSerialized] bool rendererPropertiesApplied;
+        // the model's shadow settings (cast, receive) and collider settings as the renderers and colliders last all got them:
+        // while they stay the same, only those of an update's new meshes need them
+        [NonSerialized] bool shadowSettingsApplied;
+        [NonSerialized] (bool, bool) lastShadowSettings;
+        [NonSerialized] bool colliderSettingsApplied;
+        [NonSerialized] (bool, bool, MeshColliderCookingOptions) lastColliderSettings;
         [NonSerialized] (GameObject, Transform, MotionVectorGenerationMode, ReflectionProbeUsage, LightProbeUsage, bool, uint, ReceiveGI, bool, float, Material) lastRendererProperties;
 
         internal void UpdateContainersWhenModelStateChanged(ChiselModelComponent model)
@@ -448,6 +454,9 @@ namespace Chisel.Components
             {
                 if (renderables[i] == null || renderables[i].invalid)
                     continue;
+                // a kept mesh is the one its container was set for
+                if (sameState && renderables[i].containerApplied && renderables[i].meshKept)
+                    continue;
                 var query = renderables[i].query;
                 bool isRenderable   = (query & SurfaceDestinationFlags.Renderable) == SurfaceDestinationFlags.Renderable;
                 // An empty slot takes no part in the baked lighting whatever its surfaces say - there is nothing there
@@ -568,6 +577,8 @@ namespace Chisel.Components
                         renderable?.Destroy();
                         renderable = null;
                     }
+                    if (renderable != null)
+                        renderable.meshKept = true;
                     found[meshUpdates.meshUpdatesRenderables.Length + k] = renderable;
                 }
                 for (int i = 0; i < meshUpdates.meshUpdatesRenderables.Length; i++)
@@ -580,6 +591,7 @@ namespace Chisel.Components
                         renderable.surfaceParameter = update.surfaceParameter;
                         renderable.chunk = update.chunk;
                     }
+                    renderable.meshKept = false;
                     found[i] = renderable;
                     update.objectIndex = (ulong)i;
                     meshUpdates.meshUpdatesRenderables[i] = update;
@@ -870,10 +882,18 @@ namespace Chisel.Components
                 ChiselRenderObjects.UpdateSettings(renderMeshUpdates, renderObjectUpdates, gameObjectStates, foundMeshes, ref meshUpdates.vertexBufferContents);
                 Profiler.EndSample();
 
-                // the model's shadow settings reach the renderers whose meshes were kept too
+                // the renderers of the new meshes got the model's shadow settings above (ChiselRenderObjects.UpdateSettings);
+                // a change of the settings reaches the renderers whose meshes were kept too
                 Profiler.BeginSample("Renderers.ShadowSettings");
-                foreach (var renderable in renderables)
-                    renderable?.ApplyShadowSettings(model.RenderSettings);
+                var renderSettings = model.RenderSettings;
+                var shadowSettings = (renderSettings == null || renderSettings.castShadows, renderSettings == null || renderSettings.receiveShadows);
+                if (!shadowSettingsApplied || !shadowSettings.Equals(lastShadowSettings))
+                {
+                    foreach (var renderable in renderables)
+                        renderable?.ApplyShadowSettings(renderSettings);
+                    shadowSettingsApplied = true;
+                    lastShadowSettings    = shadowSettings;
+                }
                 Profiler.EndSample();
 
                 Debug.Assert(foundMeshes.Count <= meshUpdates.meshDataArray.Length);
@@ -930,8 +950,17 @@ namespace Chisel.Components
                 UpdateRenderableContainers(gameObjectState, sameState);
                 Profiler.EndSample();
 
+                // the same for the colliders: those of the new meshes, or all of them when the settings changed
                 Profiler.BeginSample("UpdateColliders");
-                ChiselColliderObjects.UpdateProperties(model, this.colliders);
+                var colliderSettings = model.ColliderSettings;
+                var colliderSettingsNow = (colliderSettings.isTrigger, colliderSettings.convex, colliderSettings.cookingOptions);
+                if (!colliderSettingsApplied || !colliderSettingsNow.Equals(lastColliderSettings))
+                {
+                    ChiselColliderObjects.UpdateProperties(model, this.colliders);
+                    colliderSettingsApplied = true;
+                    lastColliderSettings    = colliderSettingsNow;
+                } else
+                    ChiselColliderObjects.UpdateProperties(model, changedColliders);
                 Profiler.EndSample();
 
                 // So we need to update the bounds ourselves
