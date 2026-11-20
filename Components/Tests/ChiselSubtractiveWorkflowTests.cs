@@ -4,6 +4,7 @@ using Chisel.Core;
 using NUnit.Framework;
 using Unity.Mathematics;
 using UnityEngine;
+using static Chisel.Components.Tests.ChiselBakeScene;
 
 namespace Chisel.Components.Tests
 {
@@ -861,34 +862,6 @@ namespace Chisel.Components.Tests
             Assert.That(go.transform.position.z, Is.EqualTo(0.25f + skin).Within(0.02f), "stops at the other wall");
         }
 
-        // How bright what the camera sees is, on average (0 to 1)
-        static float Brightness(Camera camera)
-        {
-            const int kSize = 32;
-            var target = RenderTexture.GetTemporary(kSize, kSize, 24);
-            var image  = new Texture2D(kSize, kSize, TextureFormat.RGBA32, false);
-            var active = RenderTexture.active;
-            try
-            {
-                camera.targetTexture = target;
-                camera.Render();
-                RenderTexture.active = target;
-                image.ReadPixels(new Rect(0, 0, kSize, kSize), 0, 0);
-                image.Apply();
-                var sum = 0f;
-                foreach (var color in image.GetPixels())
-                    sum += color.grayscale;
-                return sum / (kSize * kSize);
-            }
-            finally
-            {
-                RenderTexture.active = active;
-                camera.targetTexture = null;
-                RenderTexture.ReleaseTemporary(target);
-                UnityEngine.Object.DestroyImmediate(image);
-            }
-        }
-
         // How much brighter a room's wall, floor or ceiling looks, from its middle looking that way, with a lamp in the
         // middle of the room
         float LitByALamp(Vector3 looking) => LitByALamp(kRoomMiddle, kRoomMiddle, looking, LightShadows.None);
@@ -914,94 +887,6 @@ namespace Chisel.Components.Tests
             });
         }
 
-        // Only the lights of the scene: none from the sky or reflections
-        static T InTheDark<T>(Func<T> lit)
-        {
-            var ambientMode         = RenderSettings.ambientMode;
-            var ambientLight        = RenderSettings.ambientLight;
-            var skybox              = RenderSettings.skybox;
-            var reflectionIntensity = RenderSettings.reflectionIntensity;
-            try
-            {
-                RenderSettings.ambientMode         = UnityEngine.Rendering.AmbientMode.Flat;
-                RenderSettings.ambientLight        = Color.black;
-                RenderSettings.skybox              = null;
-                RenderSettings.reflectionIntensity = 0;
-                Physics.SyncTransforms();
-                return lit();
-            }
-            finally
-            {
-                RenderSettings.ambientMode         = ambientMode;
-                RenderSettings.ambientLight        = ambientLight;
-                RenderSettings.skybox              = skybox;
-                RenderSettings.reflectionIntensity = reflectionIntensity;
-            }
-        }
-
-        static Camera Looking(List<GameObject> owner, Vector3 at, Vector3 looking)
-        {
-            var cameraObject = new GameObject("camera");
-            owner.Add(cameraObject);
-            var up = Mathf.Abs(looking.y) > 0.5f ? Vector3.forward : Vector3.up;
-            cameraObject.transform.SetPositionAndRotation(at, Quaternion.LookRotation(looking, up));
-            var camera = cameraObject.AddComponent<Camera>();
-            camera.enabled         = false;
-            camera.clearFlags      = CameraClearFlags.SolidColor;
-            camera.backgroundColor = Color.black;
-            camera.nearClipPlane   = 0.05f;
-            camera.farClipPlane    = 20;
-            camera.fieldOfView     = 60;
-            return camera;
-        }
-
-        static void Lightmapped(ChiselModelComponent model)
-        {
-            UnityEditor.GameObjectUtility.SetStaticEditorFlags(model.gameObject, UnityEditor.StaticEditorFlags.ContributeGI);
-            model.RenderSettings.receiveGI = ReceiveGI.Lightmaps;
-            model.SyncModelSettingsStore();
-            Update();
-        }
-
-        static MeshRenderer RendererOf(ChiselModelComponent model)
-        {
-            foreach (var renderable in model.generated.renderables)
-            {
-                if (renderable != null && renderable.Valid && renderable.HasGeometry && !renderable.debugVisualizationRenderer)
-                    return renderable.meshRenderer;
-            }
-            Assert.Fail("the model has no renderer");
-            return null;
-        }
-
-        // How bright the light probes are at a point: their constant term, averaged over red, green and blue
-        static float ProbeBrightness(Vector3 at)
-        {
-            LightProbes.GetInterpolatedProbe(at, null, out var probe);
-            return (probe[0, 0] + probe[1, 0] + probe[2, 0]) / 3;
-        }
-
-        // What a bake left the model with, for a failure's message
-        static string BakeState(ChiselModelComponent model)
-        {
-            var renderer  = RendererOf(model);
-            var index     = renderer.lightmapIndex;
-            var lightmaps = LightmapSettings.lightmaps;
-            var texture   = index >= 0 && index < lightmaps.Length ? lightmaps[index].lightmapColor : null;
-            return $"lightmap {index} of {lightmaps.Length}, its texture {(texture ? $"{texture.width}x{texture.height}" : "missing")}, " +
-                   $"scale and offset {renderer.lightmapScaleOffset}, lighting data {(UnityEditor.Lightmapping.lightingDataAsset ? "there" : "missing")}";
-        }
-
-        // Bakes the lamp, and how bright the camera sees the baked light alone: with the lamp off, as before a bake a baked
-        // light is drawn live
-        static float BakedBrightness(Light lamp, Camera camera)
-        {
-            lamp.enabled = true;
-            Assert.That(InTheDark(() => UnityEditor.Lightmapping.Bake()), Is.True, "baking");
-            lamp.enabled = false;
-            return InTheDark(() => Brightness(camera));
-        }
-
         // A lightmapped room with a lamp baked into its middle and light probes round it: how bright its floor looks, and
         // the probes are in its middle
         (float floor, float probe) Baked(Floor floor, out ChiselModelComponent model, out Camera camera, out Light lamp)
@@ -1023,87 +908,38 @@ namespace Chisel.Components.Tests
 
             var baked = BakedBrightness(lamp, view);
             Assert.That(RendererOf(model).lightmapIndex, Is.GreaterThanOrEqualTo(0), $"{floor} has a lightmap");
-            Assert.That(baked, Is.GreaterThan(0.05f), $"the baked lamp lights the floor of {floor} ({BakeState(model)})");
+            Assert.That(baked, Is.GreaterThan(0.05f), $"the baked lamp lights the floor of {floor} ({BakeState(RendererOf(model))})");
             var probe = ProbeBrightness(kRoomMiddle);
             Assert.That(probe, Is.GreaterThan(0), $"the light probes in {floor} are lit");
             return (baked, probe);
         }
 
-        const string kBakeFolder = "Assets/ChiselBakeTest";
-
         // A lamp baked into a room lights its floor and its light probes as in the same room carved out of a solid, and
-        // after the room is changed, baking again lights it again. Lighting is baked into a saved scene: one of its own,
-        // in place of the test runner's, which gets an empty one back
+        // after the room is changed, baking again lights it again
         [Test]
         public void ABakedLamp_LightsARoomAsACarvedOne_AndAgainAfterAnEdit()
         {
-            if (!UnityEditor.AssetDatabase.IsValidFolder(kBakeFolder))
-                UnityEditor.AssetDatabase.CreateFolder("Assets", kBakeFolder.Substring("Assets/".Length));
-            var scene = UnityEditor.SceneManagement.EditorSceneManager.NewScene(UnityEditor.SceneManagement.NewSceneSetup.EmptyScene,
-                                                                                UnityEditor.SceneManagement.NewSceneMode.Single);
-            Assume.That(UnityEditor.SceneManagement.EditorSceneManager.SaveScene(scene, kBakeFolder + "/bake.unity"), Is.True, "the scene is saved");
-            try
-            {
-                BakeTwice();
-            }
-            finally
-            {
-                roots.Clear();
-                UnityEditor.SceneManagement.EditorSceneManager.NewScene(UnityEditor.SceneManagement.NewSceneSetup.EmptyScene,
-                                                                        UnityEditor.SceneManagement.NewSceneMode.Single);
-                Update();
-                UnityEditor.AssetDatabase.DeleteAsset(kBakeFolder);
-            }
-        }
+            using var bakeScene = new ChiselBakeScene();
+            var carved = Baked(Floor.OfACarvedRoom, out _, out _, out _);
+            foreach (var root in roots)
+                UnityEngine.Object.DestroyImmediate(root);
+            roots.Clear();
+            Update();
+            UnityEditor.Lightmapping.Clear();
 
-        void BakeTwice()
-        {
-            var hadSettings = UnityEditor.Lightmapping.TryGetLightingSettings(out var previousSettings);
-            var settings = new LightingSettings
-            {
-                bakedGI                = true,
-                lightmapResolution     = 4,
-                lightmapPadding        = 2,
-                lightmapMaxSize        = 256,
-                directSampleCount      = 8,
-                indirectSampleCount    = 8,
-                environmentSampleCount = 8,
-                maxBounces             = 1,
-                ao                     = false,
-                directionalityMode     = LightmapsMode.NonDirectional,
-                filteringMode          = LightingSettings.FilterMode.None
-            };
-            assets.Add(settings);
-            try
-            {
-                UnityEditor.Lightmapping.lightingSettings = settings;
-                var carved = Baked(Floor.OfACarvedRoom, out _, out _, out _);
-                foreach (var root in roots)
-                    UnityEngine.Object.DestroyImmediate(root);
-                roots.Clear();
-                Update();
-                UnityEditor.Lightmapping.Clear();
+            var room = Baked(Floor.OfASubtractiveWorkflowRoom, out var model, out var camera, out var lamp);
+            Assert.That(room.floor, Is.EqualTo(carved.floor).Within(carved.floor * 0.15f), $"the floor: {room.floor}, in the carved room {carved.floor}");
+            Assert.That(room.probe, Is.EqualTo(carved.probe).Within(carved.probe * 0.15f), $"the light probes: {room.probe}, in the carved room {carved.probe}");
 
-                var room = Baked(Floor.OfASubtractiveWorkflowRoom, out var model, out var camera, out var lamp);
-                Assert.That(room.floor, Is.EqualTo(carved.floor).Within(carved.floor * 0.15f), $"the floor: {room.floor}, in the carved room {carved.floor}");
-                Assert.That(room.probe, Is.EqualTo(carved.probe).Within(carved.probe * 0.15f), $"the light probes: {room.probe}, in the carved room {carved.probe}");
-
-                // the room made longer: its lightmap no longer fits, and baking again gives it one that does
-                var box = model.GetComponentInChildren<ChiselBoxComponent>();
-                box.Max = new float3(5, 3, 4);
-                box.OnValidate();
-                Update();
-                Assert.That(RendererOf(model).lightmapIndex, Is.EqualTo(-1), "the changed room kept a lightmap that doesn't fit it");
-                var again = BakedBrightness(lamp, camera);
-                Assert.That(RendererOf(model).lightmapIndex, Is.GreaterThanOrEqualTo(0), "the changed room has a lightmap");
-                Assert.That(again, Is.EqualTo(room.floor).Within(room.floor * 0.25f), $"the floor after baking again: {again}, before {room.floor}");
-            }
-            finally
-            {
-                UnityEditor.Lightmapping.Clear();
-                if (hadSettings)
-                    UnityEditor.Lightmapping.lightingSettings = previousSettings;
-            }
+            // the room made longer: its lightmap no longer fits, and baking again gives it one that does
+            var box = model.GetComponentInChildren<ChiselBoxComponent>();
+            box.Max = new float3(5, 3, 4);
+            box.OnValidate();
+            Update();
+            Assert.That(RendererOf(model).lightmapIndex, Is.EqualTo(-1), "the changed room kept a lightmap that doesn't fit it");
+            var again = BakedBrightness(lamp, camera);
+            Assert.That(RendererOf(model).lightmapIndex, Is.GreaterThanOrEqualTo(0), "the changed room has a lightmap");
+            Assert.That(again, Is.EqualTo(room.floor).Within(room.floor * 0.25f), $"the floor after baking again: {again}, before {room.floor}");
         }
 
         // A lamp in a room lights its walls, floor and ceiling as it does those of the same room carved out of a solid: they

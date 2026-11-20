@@ -396,6 +396,34 @@ namespace Chisel.Components.Tests
             Assert.That(renderer.meshRenderer.forceRenderingOff, Is.False, "shown again: Unity draws the renderer");
         }
 
+        // The copy without a hidden brush has every vertex channel of the mesh: its lightmap uvs and paint too
+        [Test]
+        public void ACopyWithoutAHiddenBrush_KeepsEveryVertexChannel()
+        {
+            var model = Model();
+            Box(model, new float3(1, 0, 0), new float3(2, 1, 1), first);
+            var hidden = Box(model, new float3(9, 0, 0), new float3(10, 1, 1), first);
+            var renderer = RenderersOf(model, first)[0];
+            try
+            {
+                UnityEditor.SceneVisibilityManager.instance.Hide(hidden.gameObject, false);
+                RefreshVisibility();
+                Assume.That(renderer.DrawnMesh, Is.SameAs(renderer.partialMesh), "a brush hidden: a copy");
+                var mesh = renderer.sharedMesh;
+                var copy = renderer.partialMesh;
+                Assert.That(copy.GetVertexAttributes(), Is.EqualTo(mesh.GetVertexAttributes()), "the same vertex channels");
+                Assert.That(copy.uv2, Is.Not.Empty.And.EqualTo(mesh.uv2), "the lightmap uvs");
+                Assert.That(copy.vertices, Is.EqualTo(mesh.vertices));
+                Assert.That(copy.normals, Is.EqualTo(mesh.normals));
+                Assert.That(copy.uv, Is.EqualTo(mesh.uv));
+            }
+            finally
+            {
+                UnityEditor.SceneVisibilityManager.instance.Show(hidden.gameObject, false);
+                RefreshVisibility();
+            }
+        }
+
         [Test]
         public void MovingABrush_MakesTheColliderAgain()
         {

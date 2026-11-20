@@ -254,27 +254,26 @@ namespace Chisel.Core
 			if (perTriangleNodeIDLookup.Length == 0)
 				return;
 
-			List<Vector3> sVertices = new();
-			List<Vector3> sNormals = new();
-			List<Vector4> sTangents = new();
-			List<Vector2> sUV0 = new();
+			var vertexCount = srcMesh.vertexCount;
+			if (vertexCount == 0)
+				return;
+			// The vertices as they are, every stream of them: the lightmap uvs and the paint too
+			const UnityEngine.Rendering.MeshUpdateFlags kFlags = UnityEngine.Rendering.MeshUpdateFlags.DontValidateIndices |
+			                                                     UnityEngine.Rendering.MeshUpdateFlags.DontRecalculateBounds;
+			dstMesh.SetVertexBufferParams(vertexCount, srcMesh.GetVertexAttributes());
+			using (var srcData = Mesh.AcquireReadOnlyMeshData(srcMesh))
+			{
+				var vertices = srcData[0];
+				for (int stream = 0; stream < vertices.vertexBufferCount; stream++)
+				{
+					var bytes = vertices.GetVertexData<byte>(stream);
+					if (bytes.Length > 0)
+						dstMesh.SetVertexBufferData(bytes, 0, 0, bytes.Length, stream, kFlags);
+				}
+			}
+
 			List<int> sSrcTriangles = new();
 			List<int> sDstTriangles = new();
-
-			srcMesh.GetVertices(sVertices);
-			if (sVertices.Count == 0)
-				return;
-			dstMesh.SetVertices(sVertices);
-
-			srcMesh.GetNormals(sNormals);
-			dstMesh.SetNormals(sNormals);
-
-			srcMesh.GetTangents(sTangents);
-			dstMesh.SetTangents(sTangents);
-
-			srcMesh.GetUVs(0, sUV0);
-			dstMesh.SetUVs(0, sUV0);
-
 			dstMesh.subMeshCount = srcMesh.subMeshCount;
 			for (int subMesh = 0, n = 0; subMesh < srcMesh.subMeshCount; subMesh++)
 			{
@@ -300,7 +299,7 @@ namespace Chisel.Core
 					var i0 = sSrcTriangles[i + 0];
 					var i1 = sSrcTriangles[i + 1];
 					var i2 = sSrcTriangles[i + 2];
-					var maxIndex = sVertices.Count - baseVertex;
+					var maxIndex = vertexCount - baseVertex;
 					if (i0 < 0 || i0 >= maxIndex || i1 < 0 || i1 >= maxIndex || i2 < 0 || i2 >= maxIndex)
 						continue;
 					sDstTriangles.Add(i0);
