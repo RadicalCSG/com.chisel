@@ -706,14 +706,9 @@ namespace Chisel.Editors
                             var selectionType = SelectionUtility.GetCurrentSelectionType(evt);
                             if (state.s_HoverOverEdge != -1 && InCreateVertexMode())
                             {
-                                CurveControlPoint2D newPoint = new CurveControlPoint2D()
-                                {
-                                    position = state.s_HoverEdgePoint
-                                };
-                                // Need to copy this to avoid Undo system getting confused
-                                state.s_ControlPoints = curve.controlPoints.ToArray();
-                                state.s_HoverOverPoint = (state.s_HoverOverEdge + 1) % state.s_ControlPoints.Length;
-                                ArrayUtility.Insert(ref state.s_ControlPoints, state.s_HoverOverPoint, newPoint);
+                                // a new array, so the undo system keeps the old one
+                                state.s_HoverOverPoint = (state.s_HoverOverEdge + 1) % curve.controlPoints.Length;
+                                state.s_ControlPoints = CurveControlPoint2D.InsertedOnSide(curve.controlPoints, state.s_HoverOverEdge, state.s_HoverEdgePoint);
                                     
                                 if (state.s_NewCurveSelection != null)
                                 {
