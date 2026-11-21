@@ -406,6 +406,63 @@ namespace Chisel.Editors
             brushMesh.CalculatePlanes();
         }
 
+        // The handle on the selected vertices while a brush is edited: Tool.Move, Tool.Rotate or Tool.Scale
+        internal static Tool VertexHandle = Tool.Move;
+
+        // The selected vertices where they were when a rotation or scale started, and its pivot: each step of a drag is
+        // worked out from them, so the steps don't add up
+        int[]    transformVertices;
+        float3[] transformStart;
+        float3   transformPivot;
+
+        internal void BeginVertexTransform()
+        {
+            var count = selection.selectedVertices.Count;
+            if (transformVertices == null || transformVertices.Length != count)
+            {
+                transformVertices = new int[count];
+                transformStart    = new float3[count];
+            }
+            selection.selectedVertices.CopyTo(transformVertices);
+            for (int i = 0; i < count; i++)
+                transformStart[i] = brushMesh.vertices[transformVertices[i]];
+            transformPivot = vertexSelectionCenter;
+        }
+
+        // the selected vertices turned about the pivot, from where they started
+        internal void RotateSelectedVertices(Quaternion rotation)
+        {
+            if (transformVertices == null)
+                return;
+            var turn     = (quaternion)rotation;
+            var vertices = brushMesh.vertices;
+            Undo.RecordObject(brush, "Rotated vertices of Brush");
+            for (int i = 0; i < transformVertices.Length; i++)
+                vertices[transformVertices[i]] = transformPivot + math.mul(turn, transformStart[i] - transformPivot);
+            brushMesh.CalculatePlanes();
+        }
+
+        // the selected vertices stretched from the pivot along the axes, from where they started
+        internal void ScaleSelectedVertices(Vector3 scale, Quaternion axes)
+        {
+            if (transformVertices == null)
+                return;
+            var turn     = (quaternion)axes;
+            var unturn   = math.inverse(turn);
+            var stretch  = (float3)scale;
+            var vertices = brushMesh.vertices;
+            Undo.RecordObject(brush, "Scaled vertices of Brush");
+            for (int i = 0; i < transformVertices.Length; i++)
+                vertices[transformVertices[i]] = transformPivot + math.mul(turn, math.mul(unturn, transformStart[i] - transformPivot) * stretch);
+            brushMesh.CalculatePlanes();
+        }
+
+        // The axes of the rotate and scale handles, in the brush's space: the brush's own for Local, the world's for Global
+        internal static Quaternion VertexHandleAxes(PivotRotation pivotRotation, Matrix4x4 brushToWorld)
+        {
+            return pivotRotation == PivotRotation.Local ? Quaternion.identity : Quaternion.Inverse(brushToWorld.rotation);
+        }
+
         void SplitPolygonBetweenTwoVertices(int startEdge, int endEdge, Vector3 prevNewVertex, Vector3 firstNewVertex)
         {
             var twin = brushMesh.halfEdges[startEdge].twinIndex;
@@ -2144,6 +2201,56 @@ namespace Chisel.Editors
             return false;
         }
 
+        Quaternion vertexHandleRotation = Quaternion.identity;
+        Vector3    vertexHandleScale    = Vector3.one;
+
+        // Before a drag the handle sits on the selection as it is now; once taken hold of it keeps what it started from
+        Quaternion PrepareVertexTransformHandle()
+        {
+            var axes = VertexHandleAxes(Tools.pivotRotation, Handles.matrix);
+            if (GUIUtility.hotControl == 0)
+            {
+                if (transformVertices == null || Event.current.type == EventType.MouseDown)
+                    BeginVertexTransform();
+                transformPivot       = vertexSelectionCenter;
+                vertexHandleRotation = axes;
+                vertexHandleScale    = Vector3.one;
+            }
+            return axes;
+        }
+
+        // This method returns true when the brushMesh has changed
+        public bool HandleVertexRotation()
+        {
+            using (new EditorGUI.DisabledScope(HaveFocusOnPolygon))
+            {
+                var axes = PrepareVertexTransformHandle();
+                EditorGUI.BeginChangeCheck();
+                var rotation = Handles.RotationHandle(vertexHandleRotation, transformPivot);
+                if (!EditorGUI.EndChangeCheck())
+                    return false;
+                vertexHandleRotation = rotation;
+                RotateSelectedVertices(rotation * Quaternion.Inverse(axes));
+                return true;
+            }
+        }
+
+        // This method returns true when the brushMesh has changed
+        public bool HandleVertexScale()
+        {
+            using (new EditorGUI.DisabledScope(HaveFocusOnPolygon))
+            {
+                var axes = PrepareVertexTransformHandle();
+                EditorGUI.BeginChangeCheck();
+                var scale = Handles.ScaleHandle(vertexHandleScale, transformPivot, axes, UnityEditor.HandleUtility.GetHandleSize(transformPivot));
+                if (!EditorGUI.EndChangeCheck())
+                    return false;
+                vertexHandleScale = scale;
+                ScaleSelectedVertices(scale, axes);
+                return true;
+            }
+        }
+
         bool InAlternateEditMode    { get { return Event.current.shift; } }
 
         bool InCreateEdgeEditMode   { get { return InAlternateEditMode; } }
@@ -2214,8 +2321,12 @@ namespace Chisel.Editors
                 !in2DMode &&
                 selection.selectedVertices.Count > 0)
             {
-                if (HandleVertexMovementWithPositionHandle())
-                    return true;
+                switch (VertexHandle)
+                {
+                    case Tool.Rotate: if (HandleVertexRotation()) return true; break;
+                    case Tool.Scale:  if (HandleVertexScale())    return true; break;
+                    default:          if (HandleVertexMovementWithPositionHandle()) return true; break;
+                }
             }
 
             RenderOutline(cameraDirection, isCameraOrtho, isOutlineInsideOut);
