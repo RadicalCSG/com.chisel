@@ -160,6 +160,14 @@ namespace Chisel.Core
         public NativeList<bool> sameBuffer;
         // buffers whose paint values were written in place since the last update (ChiselPaintStore): their brushes changed
         public NativeList<BlobAssetReference<ChiselBrushRenderBuffer>> repainted;
+        // brush by brush: its node and its input as the last update had them, so an update of the same brushes in the same
+        // order is told apart, and its changed brushes found, without going through their slots
+        public NativeList<CompactNodeID> idOfBrush;
+        public NativeList<BlobAssetReference<ChiselBrushRenderBuffer>> inputOfBrush;
+        // the slots the last update took as changed: the only ones whose changed flag is set
+        public NativeList<int> changedSlots;
+        // how many brushes the last update's preparation looked at: every brush, or only the changed ones
+        public NativeReference<int> lastLookedAt;
 
         public static WeldMemory Create(Allocator allocator)
         {
@@ -178,7 +186,11 @@ namespace Chisel.Core
                 scope       = new NativeParallelHashSet<WeldTriangle>(256, allocator),
                 slotOfBrush = new NativeList<int>(64, allocator),
                 sameBuffer  = new NativeList<bool>(64, allocator),
-                repainted   = new NativeList<BlobAssetReference<ChiselBrushRenderBuffer>>(4, allocator)
+                repainted   = new NativeList<BlobAssetReference<ChiselBrushRenderBuffer>>(4, allocator),
+                idOfBrush    = new NativeList<CompactNodeID>(64, allocator),
+                inputOfBrush = new NativeList<BlobAssetReference<ChiselBrushRenderBuffer>>(64, allocator),
+                changedSlots = new NativeList<int>(64, allocator),
+                lastLookedAt = new NativeReference<int>(allocator)
             };
         }
 
@@ -197,6 +209,7 @@ namespace Chisel.Core
             slots.Clear();
             atPosition.Clear(); shortLinks.Clear(); splitRoots.Clear(); moves.Clear(); roundsAt.Clear(); touched.Clear();
             scope.Clear(); slotOfBrush.Clear(); repainted.Clear();
+            idOfBrush.Clear(); inputOfBrush.Clear(); changedSlots.Clear();
             valid.Value = false;
         }
 
@@ -220,6 +233,10 @@ namespace Chisel.Core
             if (slotOfBrush.IsCreated) slotOfBrush.Dispose();
             if (sameBuffer.IsCreated)  sameBuffer.Dispose();
             if (repainted.IsCreated)   repainted.Dispose();
+            if (idOfBrush.IsCreated)    idOfBrush.Dispose();
+            if (inputOfBrush.IsCreated) inputOfBrush.Dispose();
+            if (changedSlots.IsCreated) changedSlots.Dispose();
+            if (lastLookedAt.IsCreated) lastLookedAt.Dispose();
         }
     }
 
@@ -451,17 +468,21 @@ namespace Chisel.Core
             scope.surfaceBase.ResizeUninitialized(brushes.Length);
             scope.surfaceStart.Clear();
             scope.inside.Clear();
-            var touched = new NativeParallelHashSet<int>(64, Allocator.Temp);
-            foreach (var t in memory.scope)
-                touched.Add(t.slot);
             for (int b = 0; b < brushes.Length; b++)
+                scope.surfaceBase[b] = -1;
+            // the brushes with a triangle in the scope, in brush order (a slot's order is its brush's place this update)
+            var touched = new NativeParallelHashSet<int>(64, Allocator.Temp);
+            var order   = new NativeList<int>(64, Allocator.Temp);
+            foreach (var t in memory.scope)
             {
+                if (touched.Add(t.slot))
+                    order.Add(memory.slots[t.slot].order);
+            }
+            order.Sort();
+            for (int o = 0; o < order.Length; o++)
+            {
+                var b    = order[o];
                 var slot = memory.slotOfBrush[b];
-                if (!touched.Contains(slot))
-                {
-                    scope.surfaceBase[b] = -1;
-                    continue;
-                }
                 ref var brush = ref memory.brushes.ElementAt(slot);
                 scope.surfaceBase[b] = scope.surfaceStart.Length;
                 var start = scope.inside.Length;
@@ -474,6 +495,7 @@ namespace Chisel.Core
                 }
             }
             touched.Dispose();
+            order.Dispose();
             state.scope = scope;
         }
 
@@ -492,6 +514,149 @@ namespace Chisel.Core
         // Everything when there is no memory yet or the brushes' order changed.
         public static void PrepareIncremental(NativeList<BrushData> brushes, NativeArray<IndexOrder> updated, ref WeldMemory memory, ref WeldState state)
         {
+            if (PrepareSameBrushes(brushes, updated, ref memory, ref state))
+                return;
+            PrepareEveryBrush(brushes, updated, ref memory, ref state);
+            KeepBrushes(brushes, ref memory);
+        }
+
+        // The brushes as this update has them, for the next one to compare with
+        static void KeepBrushes(NativeList<BrushData> brushes, ref WeldMemory memory)
+        {
+            memory.idOfBrush.ResizeUninitialized(brushes.Length);
+            memory.inputOfBrush.ResizeUninitialized(brushes.Length);
+            for (int b = 0; b < brushes.Length; b++)
+            {
+                memory.idOfBrush[b]    = brushes[b].brushIndexOrder.compactNodeID;
+                memory.inputOfBrush[b] = brushes[b].brushRenderBuffer;
+            }
+        }
+
+        // The same as PrepareEveryBrush when the brushes are the ones the last update had, in the same order: then only a
+        // brush that changed (made again, another input, repainted) has a changed flag to set, pieces to take out and put in,
+        // and none is gone; every other brush's slot is left as it is. False (and nothing done) for other brushes.
+        static bool PrepareSameBrushes(NativeList<BrushData> brushes, NativeArray<IndexOrder> updated, ref WeldMemory memory, ref WeldState state)
+        {
+            if (!memory.valid.Value || memory.idOfBrush.Length != brushes.Length || memory.slotOfBrush.Length != brushes.Length)
+                return false;
+            var changed = new NativeList<int>(math.max(16, updated.Length), Allocator.Temp);   // by brush
+            try
+            {
+                var repainted = memory.repainted.Length > 0;
+                for (int b = 0; b < brushes.Length; b++)
+                {
+                    var data = brushes[b];
+                    if (data.brushIndexOrder.compactNodeID != memory.idOfBrush[b])
+                        return false;
+                    if (!memory.inputOfBrush[b].Equals(data.brushRenderBuffer) ||
+                        (repainted && IsRepainted(memory.repainted, data.brushRenderBuffer)))
+                        changed.Add(b);
+                }
+                for (int i = 0; i < updated.Length; i++)
+                {
+                    var id   = updated[i].compactNodeID;
+                    var slot = BrushSlots.Of(id);
+                    if (slot >= memory.slots.Length)
+                        continue;
+                    var known = memory.slots[slot];
+                    // a brush made again that has nothing to weld is not one of the brushes
+                    if (!known.used || !known.live || known.id != id)
+                        continue;
+                    changed.Add(known.order);
+                }
+                changed.Sort();
+                int unique = 0;
+                for (int c = 0; c < changed.Length; c++)
+                {
+                    if (unique == 0 || changed[unique - 1] != changed[c])
+                        changed[unique++] = changed[c];
+                }
+                changed.Resize(unique, NativeArrayOptions.UninitializedMemory);
+                // most of the model: welding all of it is cheaper than finding its pieces
+                if (changed.Length * 2 > brushes.Length)
+                    return false;
+
+                for (int c = 0; c < memory.changedSlots.Length; c++)
+                    memory.slots.ElementAt(memory.changedSlots[c]).changed = false;
+                memory.changedSlots.Clear();
+                for (int c = 0; c < changed.Length; c++)
+                {
+                    var slot = memory.slotOfBrush[changed[c]];
+                    memory.slots.ElementAt(slot).changed = true;
+                    memory.changedSlots.Add(slot);
+                }
+                memory.touched.Clear();
+                memory.repainted.Clear();
+                memory.scope.Clear();
+                memory.lastLookedAt.Value = changed.Length;
+
+                var queue = new NativeList<WeldTriangle>(256, Allocator.Temp);
+                // the pieces the changed brushes were in
+                for (int c = 0; c < memory.changedSlots.Length; c++)
+                {
+                    var slot = memory.changedSlots[c];
+                    ref var brush = ref memory.brushes.ElementAt(slot);
+                    if (!brush.corners.IsCreated)
+                        continue;
+                    for (int s = 0; s + 1 < brush.surfaceStart.Length; s++)
+                    {
+                        for (int t = 0; t < brush.surfaceStart[s + 1] - brush.surfaceStart[s]; t++)
+                            Visit(ref memory, queue, new WeldTriangle { slot = slot, surface = s, triangle = t });
+                    }
+                }
+                Grow(ref memory, queue);
+                ForgetScope(ref memory);
+
+                // the changed brushes taken out (none is gone)
+                for (int c = 0; c < memory.changedSlots.Length; c++)
+                {
+                    var slot = memory.changedSlots[c];
+                    Unload(ref memory, slot);
+                    memory.slots.ElementAt(slot).dirty = true;
+                }
+                var survivors = new NativeList<WeldTriangle>(memory.scope.Count(), Allocator.Temp);
+                foreach (var t in memory.scope)
+                {
+                    if (!memory.slots[t.slot].changed)
+                        survivors.Add(t);
+                }
+                memory.scope.Clear();
+                queue.Clear();
+                for (int c = 0; c < changed.Length; c++)
+                {
+                    var b = changed[c];
+                    Load(ref memory, memory.slotOfBrush[b], brushes[b].brushRenderBuffer);
+                    memory.inputOfBrush[b] = brushes[b].brushRenderBuffer;
+                }
+                // the pieces they are in now, and those the old pieces' other triangles are in
+                for (int c = 0; c < memory.changedSlots.Length; c++)
+                {
+                    var slot = memory.changedSlots[c];
+                    ref var brush = ref memory.brushes.ElementAt(slot);
+                    for (int s = 0; s + 1 < brush.surfaceStart.Length; s++)
+                    {
+                        for (int t = 0; t < brush.surfaceStart[s + 1] - brush.surfaceStart[s]; t++)
+                            Visit(ref memory, queue, new WeldTriangle { slot = slot, surface = s, triangle = t });
+                    }
+                }
+                for (int i = 0; i < survivors.Length; i++)
+                    Visit(ref memory, queue, survivors[i]);
+                Grow(ref memory, queue);
+                ForgetScope(ref memory);
+                BuildScope(brushes, ref memory, ref state);
+                memory.lastScope.Value = memory.scope.Count();
+                survivors.Dispose(); queue.Dispose();
+                return true;
+            }
+            finally
+            {
+                changed.Dispose();
+            }
+        }
+
+        static void PrepareEveryBrush(NativeList<BrushData> brushes, NativeArray<IndexOrder> updated, ref WeldMemory memory, ref WeldState state)
+        {
+            memory.lastLookedAt.Value = brushes.Length;
             var updatedIDs = new NativeParallelHashSet<CompactNodeID>(math.max(16, updated.Length), Allocator.Temp);
             for (int i = 0; i < updated.Length; i++)
                 updatedIDs.Add(updated[i].compactNodeID);
@@ -542,6 +707,12 @@ namespace Chisel.Core
                     changedCount++;
                 memory.slotOfBrush[b] = slot;
             }
+            memory.changedSlots.Clear();
+            for (int b = 0; b < brushes.Length; b++)
+            {
+                if (memory.slots[memory.slotOfBrush[b]].changed)
+                    memory.changedSlots.Add(memory.slotOfBrush[b]);
+            }
             updatedIDs.Dispose();
             memory.repainted.Clear();
             // most of the model: welding all of it is cheaper than finding its pieces
@@ -566,6 +737,7 @@ namespace Chisel.Core
                     memory.brushes[slot] = default;
                     memory.slots[slot] = new WeldSlot { id = id, used = true, order = b, live = true, changed = true, dirty = true };
                     memory.slotOfBrush.Add(slot);
+                    memory.changedSlots.Add(slot);
                     Load(ref memory, slot, brushes[b].brushRenderBuffer);
                 }
                 state.scope.all.Value = true;
