@@ -120,45 +120,17 @@ namespace Chisel.Core
             }
             if (remake.IsCreated)          remake.Dispose();
         }
-
-        public Unity.Jobs.JobHandle Dispose(Unity.Jobs.JobHandle dependency)
-        {
-            if (work.IsCreated)
-                dependency = Unity.Jobs.IJobExtensions.Schedule(new FreeWeldWorkJob { work = work, remade = remade }, dependency);
-            var a = work.IsCreated      ? work.Dispose(dependency)      : dependency;
-            var b = workIndex.IsCreated ? workIndex.Dispose(dependency) : dependency;
-            var c = copies.IsCreated    ? copies.Dispose(dependency)    : dependency;
-            var d = dependency;
-            var handles = new NativeArray<Unity.Jobs.JobHandle>(13, Allocator.Temp);
-            handles[0] = Unity.Jobs.JobHandle.CombineDependencies(a, b, c);
-            handles[1] = d;
-            handles[2] = edgeCounts.IsCreated      ? edgeCounts.Dispose(dependency)      : dependency;
-            handles[3] = edgeOffsets.IsCreated     ? edgeOffsets.Dispose(dependency)     : dependency;
-            handles[4] = shortPairs.IsCreated      ? shortPairs.Dispose(dependency)      : dependency;
-            handles[5] = keptCorners.IsCreated     ? keptCorners.Dispose(dependency)     : dependency;
-            handles[6] = movedTo.IsCreated         ? movedTo.Dispose(dependency)         : dependency;
-            handles[7] = decisionCounts.IsCreated  ? decisionCounts.Dispose(dependency)  : dependency;
-            handles[8] = decisionOffsets.IsCreated ? decisionOffsets.Dispose(dependency) : dependency;
-            handles[9] = decisions.IsCreated       ? decisions.Dispose(dependency)       : dependency;
-            handles[10] = scope.Dispose(dependency);
-            handles[11] = remake.IsCreated ? remake.Dispose(dependency) : dependency;
-            handles[12] = remade.IsCreated ? remade.Dispose(dependency) : dependency;
-            var all = Unity.Jobs.JobHandle.CombineDependencies(handles);
-            handles.Dispose();
-            return all;
-        }
     }
 
+    // The weld as WeldState.Create leaves it, its working copies freed, for the tree's next update
     [Unity.Burst.BurstCompile]
-    struct FreeWeldWorkJob : Unity.Jobs.IJob
+    struct ClearWeldJob : Unity.Jobs.IJob
     {
-        public NativeList<OutputModelWeld.Working> work;
-        public NativeList<OutputModelWeld.Remade>  remade;
+        public WeldState state;
         public void Execute()
         {
-            WeldState.FreeWork(work);
-            if (remade.IsCreated)
-                WeldState.FreeRemade(remade);
+            state.Clear();
+            state.scope.Clear();
         }
     }
 

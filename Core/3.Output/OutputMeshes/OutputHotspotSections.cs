@@ -69,6 +69,17 @@ namespace Chisel.Core
         public readonly unsafe ref UnsafeHashMap<int2, int> GroupOf => ref UnsafeUtility.AsRef<UnsafeHashMap<int2, int>>(groupOfRef.GetUnsafePtr());
         public readonly unsafe ref UnsafeHashMap<int2, float4x4> UnfoldOf => ref UnsafeUtility.AsRef<UnsafeHashMap<int2, float4x4>>(unfoldOfRef.GetUnsafePtr());
 
+        // As Create leaves it
+        public void Clear()
+        {
+            GroupOf.Clear();
+            UnfoldOf.Clear();
+            bordersOf.Clear();
+            groups.Clear(); lines.Clear(); halfPlanes.Clear(); cells.Clear(); work.Clear(); kept.Clear();
+            groupKeys.Clear(); brushKeys.Clear(); brushCuts.Clear();
+            globalKey.Value = default;
+        }
+
         public void Dispose()
         {
             if (groupOfRef.IsCreated)  { if (GroupOf.IsCreated) GroupOf.Dispose(); groupOfRef.Dispose(); }
@@ -84,45 +95,6 @@ namespace Chisel.Core
             if (globalKey.IsCreated)  globalKey.Dispose();
             if (brushKeys.IsCreated)  brushKeys.Dispose();
             if (brushCuts.IsCreated)  brushCuts.Dispose();
-        }
-
-        public Unity.Jobs.JobHandle Dispose(Unity.Jobs.JobHandle dependency)
-        {
-            // the maps as the jobs left them, then their references
-            if (groupOfRef.IsCreated && unfoldOfRef.IsCreated)
-                dependency = Unity.Jobs.IJobExtensions.Schedule(new DisposeHotspotCutMapsJob { groupOf = groupOfRef, unfoldOf = unfoldOfRef }, dependency);
-            var handles = new NativeArray<Unity.Jobs.JobHandle>(13, Allocator.Temp);
-            for (int i = 0; i < handles.Length; i++)
-                handles[i] = dependency;
-            if (groupOfRef.IsCreated)  handles[0] = groupOfRef.Dispose(dependency);
-            if (unfoldOfRef.IsCreated) handles[1] = unfoldOfRef.Dispose(dependency);
-            if (bordersOf.IsCreated)  handles[2] = bordersOf.Dispose(dependency);
-            if (groups.IsCreated)     handles[3] = groups.Dispose(dependency);
-            if (lines.IsCreated)      handles[4] = lines.Dispose(dependency);
-            if (halfPlanes.IsCreated) handles[5] = halfPlanes.Dispose(dependency);
-            if (cells.IsCreated)      handles[6] = cells.Dispose(dependency);
-            if (work.IsCreated)       handles[7] = work.Dispose(dependency);
-            if (kept.IsCreated)       handles[8] = kept.Dispose(dependency);
-            if (groupKeys.IsCreated)  handles[9] = groupKeys.Dispose(dependency);
-            if (globalKey.IsCreated)  handles[10] = globalKey.Dispose(dependency);
-            if (brushKeys.IsCreated)  handles[11] = brushKeys.Dispose(dependency);
-            if (brushCuts.IsCreated)  handles[12] = brushCuts.Dispose(dependency);
-            var all = Unity.Jobs.JobHandle.CombineDependencies(handles);
-            handles.Dispose();
-            return all;
-        }
-    }
-
-    [Unity.Burst.BurstCompile]
-    struct DisposeHotspotCutMapsJob : Unity.Jobs.IJob
-    {
-        public NativeReference<UnsafeHashMap<int2, int>> groupOf;
-        public NativeReference<UnsafeHashMap<int2, float4x4>> unfoldOf;
-
-        public void Execute()
-        {
-            var a = groupOf.Value;  if (a.IsCreated) a.Dispose();
-            var b = unfoldOf.Value; if (b.IsCreated) b.Dispose();
         }
     }
 

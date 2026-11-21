@@ -22,6 +22,58 @@ namespace Chisel.Core
                 array.ClearValues(minimumSize);
         }
 
+        // An array of exactly this length, cleared, as a new one would be
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void EnsureExactSizeAndClear<T>(ref NativeArray<T> array, int size, Allocator allocator = Allocator.Temp)
+            where T: unmanaged
+        {
+            if (!array.IsCreated || array.Length != size)
+            {
+                if (array.IsCreated) array.Dispose();
+                array = new NativeArray<T>(size, allocator);
+            } else
+                array.ClearValues();
+        }
+
+        // An array of the source's length, with its values
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void EnsureCopyOf<T>(ref NativeArray<T> array, NativeArray<T> source, Allocator allocator = Allocator.Temp)
+            where T: unmanaged
+        {
+            if (!array.IsCreated || array.Length != source.Length)
+            {
+                if (array.IsCreated) array.Dispose();
+                array = new NativeArray<T>(source.Length, allocator, NativeArrayOptions.UninitializedMemory);
+            }
+            array.CopyFrom(source);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void EnsureCapacityAndClear<T>(ref NativeParallelHashSet<T> container, int desiredCapacity, Allocator allocator = Allocator.Temp)
+            where T : unmanaged, IEquatable<T>
+        {
+            if (!container.IsCreated)
+            {
+                container = new NativeParallelHashSet<T>(desiredCapacity, allocator);
+            } else
+            {
+                container.Clear();
+                if (container.Capacity < desiredCapacity)
+                    container.Capacity = desiredCapacity;
+            }
+        }
+
+        // A reference holding its type's default value, as a new one would
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void EnsureCreatedAndClear<T>(ref NativeReference<T> reference, Allocator allocator = Allocator.Temp)
+            where T : unmanaged
+        {
+            if (!reference.IsCreated)
+                reference = new NativeReference<T>(allocator);
+            else
+                reference.Value = default;
+        }
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void EnsureMinimumSize<T>(ref NativeArray<T> array, int minimumSize, Allocator allocator = Allocator.Temp)
             where T : struct
