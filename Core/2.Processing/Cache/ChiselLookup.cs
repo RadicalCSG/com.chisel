@@ -21,6 +21,8 @@ namespace Chisel.Core
 
             public NativeList<BlobAssetReference<BasePolygonsBlob>>             basePolygonCache;
             public NativeList<BlobAssetReference<RoutingTable>>                 routingTableCache;
+            // the tree's structure the routing tables were built from (TrackTreeStructureJob)
+            public NativeReference<TreeStructureMemory>                         treeStructure;
             public NativeList<NodeTransformations>                              transformationCache;
 
             public NativeList<BlobAssetReference<BrushTreeSpaceVerticesBlob>>   treeSpaceVerticesCache;
@@ -111,6 +113,7 @@ namespace Chisel.Core
 				basePolygonCache            = new NativeList<BlobAssetReference<BasePolygonsBlob>>(1000, Allocator.Persistent); // Confirmed to get disposed
 				treeSpaceVerticesCache      = new NativeList<BlobAssetReference<BrushTreeSpaceVerticesBlob>>(1000, Allocator.Persistent); // Confirmed to get disposed
 				routingTableCache           = new NativeList<BlobAssetReference<RoutingTable>>(1000, Allocator.Persistent); // Confirmed to get disposed
+				treeStructure               = new NativeReference<TreeStructureMemory>(TreeStructureMemory.Create(Allocator.Persistent), Allocator.Persistent);
 				brushesTouchedByBrushCache  = new NativeList<BlobAssetReference<BrushesTouchedByBrush>>(1000, Allocator.Persistent); // Confirmed to get disposed
 				brushRenderBufferCache      = new NativeList<BlobAssetReference<ChiselBrushRenderBuffer>>(1000, Allocator.Persistent); // Confirmed to get disposed
 				brushRenderEntries          = new NativeList<BrushRenderEntry>(1000, Allocator.Persistent);
@@ -244,6 +247,12 @@ namespace Chisel.Core
                     routingTableCache.Dispose();
                 }
                 routingTableCache = default;
+                if (treeStructure.IsCreated)
+                {
+                    treeStructure.Value.Dispose();
+                    treeStructure.Dispose();
+                }
+                treeStructure = default;
                 if (brushesTouchedByBrushCache.IsCreated)
 				{
                     // Confirmed to be called
