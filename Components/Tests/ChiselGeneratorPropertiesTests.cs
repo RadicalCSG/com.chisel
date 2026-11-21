@@ -111,6 +111,10 @@ namespace Chisel.Components.Tests
         [TestCase("TotalAngle",      180f, true)]
         public void RevolvedShape(string name, object value, bool changesShape) { AssertProperty<ChiselRevolvedShapeComponent>(name, value, changesShape); }
 
+        // only a smooth underside is made of pieces
+        [TestCase("SmoothSubdivisions", 5, false)]
+        public void SpiralStairs(string name, object value, bool changesShape) { AssertProperty<ChiselSpiralStairsComponent>(name, value, changesShape); }
+
         // its guard rails' front offset and how far back they go at the top only show with guard rails
         [TestCase("SideFrontOffset", 0.1f,                     false)]
         [TestCase("TopSide",         StairsTopSideType.Length, false)]

@@ -42,6 +42,7 @@ namespace Chisel.Core
             riserType	    = StairsRiserType.ThickRiser,
             riserDepth	    = 0.03f,
 
+            smoothSubdivisions      = kDefaultSmoothSubdivisions,
             bottomSmoothingGroup    = 1,
 
             centerType      = SpiralStairsCenterType.Open,
@@ -56,8 +57,6 @@ namespace Chisel.Core
             sideDepth       = 0.2f
         };
 		public static ref readonly ChiselSpiralStairs DefaultSettings => ref kDefaultSettings;
-
-		const int smoothSubDivisions = 3;
 
         // how far above the object's position the bottom of the stairs is, set by dragging the bottom handle; only its
         // height is used: moving the stairs sideways is what their transform is for
@@ -90,6 +89,10 @@ namespace Chisel.Core
         public int					    outerSegments;
         [ConditionalName("Under The Steps"), Tooltip("What is under the steps: nothing, a board at the back of each step, solid blocks, a sloped underside, or solid down to the floor")]
         public StairsRiserType		    riserType;
+
+        [ConditionalName("Underside Subdivisions"), Tooltip("How many pieces the sloped underside of each step is made of, from the outside in")]
+        [ConditionalHide(nameof(riserType), StairsRiserType.None, StairsRiserType.ThinRiser, StairsRiserType.ThickRiser, StairsRiserType.FillDown)]
+        public int                      smoothSubdivisions;
 
         [ConditionalName("Underside Smoothing Group"), Tooltip("The smoothing group of the sloped underside, so it shades as one curved surface; 0 to show its flat pieces")]
         [ConditionalHide(nameof(riserType), StairsRiserType.None, StairsRiserType.ThinRiser, StairsRiserType.ThickRiser, StairsRiserType.FillDown)]
@@ -151,8 +154,11 @@ namespace Chisel.Core
         internal bool HaveTread => (nosingDepth < kEpsilon) ? false : (treadHeight >= kEpsilon);
 
         internal int CylinderSubMeshCount => HaveInnerCylinder ? 2 : 1;
+        // the subdivisions a smooth underside is built with, whether validated yet or not (see Validate)
+        internal int SmoothSubdivisions => smoothSubdivisions == 0 ? kDefaultSmoothSubdivisions
+                                                                   : math.clamp(smoothSubdivisions, kMinSmoothSubdivisions, kMaxSmoothSubdivisions);
         internal int SubMeshPerRiser => (riserType == StairsRiserType.None) ? 0 :
-                                               (riserType == StairsRiserType.Smooth) ? (2 * smoothSubDivisions)
+                                               (riserType == StairsRiserType.Smooth) ? (2 * SmoothSubdivisions)
                                                                             : 1;
         internal int RiserSubMeshCount => (StepCount * SubMeshPerRiser) + ((riserType == StairsRiserType.None) ? 0 : CylinderSubMeshCount);
 
@@ -414,6 +420,10 @@ namespace Chisel.Core
         public const float  kMinRiserDepth          = 0.01f;
         public const float	kMinRotation			= 15;
         public const int    kMinSegments            = 3;
+        // fewer leaves no ring inside a wall around the middle; each more is two more brushes under every step
+        public const int    kMinSmoothSubdivisions  = 2;
+        public const int    kMaxSmoothSubdivisions  = 8;
+        public const int    kDefaultSmoothSubdivisions = 3;
         public const float	kMinInnerDiameter		= 0.00f;
         public const float	kMinOuterDiameter		= 0.01f;
         public const float  kMinSideWidth           = 0.01f;
@@ -441,6 +451,8 @@ namespace Chisel.Core
 
             innerSegments   = math.max(kMinSegments, innerSegments);
             outerSegments   = math.max(kMinSegments, outerSegments);
+            // stairs saved before the subdivisions could be set have none: they keep the 3 they had
+            smoothSubdivisions = SmoothSubdivisions;
 
             // stairs saved before the column existed have none set: they get the default
             if (columnThickness == 0)

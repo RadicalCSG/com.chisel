@@ -90,6 +90,13 @@ namespace Chisel.Components
             set { if (value == definition.settings.riserType) return; definition.settings.riserType = value; OnValidateState(); }
         }
 
+        // how many pieces the sloped underside of each step is made of, with a smooth riser
+        public int SmoothSubdivisions
+        {
+            get { return definition.settings.smoothSubdivisions; }
+            set { if (value == definition.settings.smoothSubdivisions) return; definition.settings.smoothSubdivisions = value; OnValidateState(); }
+        }
+
         public uint BottomSmoothingGroup
         {
             get { return definition.settings.bottomSmoothingGroup; }
