@@ -9,6 +9,8 @@ namespace Chisel.Core
     {
         public float2   position;
         public int      segmentIndex;
+        // the edge from this corner is a cut between two convex pieces, inside the outline: no side of the shape
+        public bool     cut;
     }
 
     public struct ChiselCurve2DBlob
@@ -20,6 +22,7 @@ namespace Chisel.Core
             public float2 tangent2;
             public ControlPointConstraint constraint1;
             public ControlPointConstraint constraint2;
+            public bool smoothSide;
         }
 
         public bool closed;
@@ -33,7 +36,8 @@ namespace Chisel.Core
                 tangent1 = srcPoint.tangent1,
                 tangent2 = srcPoint.tangent2,
                 constraint1 = srcPoint.constraint1,
-                constraint2 = srcPoint.constraint2
+                constraint2 = srcPoint.constraint2,
+                smoothSide  = srcPoint.smoothSide
             };
         }
 

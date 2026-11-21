@@ -6,7 +6,8 @@ using Unity.Mathematics;
 namespace Chisel.Core
 {
     // Splits a closed outline into convex pieces whose corners are corners of the outline: it adds none. Each piece is
-    // counter-clockwise, and each of its edges keeps the segment of the corner it starts from (SegmentVertex). A brush
+    // counter-clockwise, and each of its edges keeps the segment of the corner it starts from (SegmentVertex), which
+    // also tells whether the edge is a cut between pieces rather than a side along the outline. A brush
     // has one face per plane, so the sides of a piece on one line are drawn with one surface: a piece never goes straight
     // on at a corner where the segment changes, the sides it has on one line that show have one segment, and a cut on
     // such a line has that segment too (it doesn't show). Any other cut takes the segment of the corner it starts from.
@@ -272,7 +273,8 @@ namespace Chisel.Core
         }
 
         // A convex piece of the loop, its corners counted from loop corner `first` on, appended with each corner having
-        // the segment of the side it starts. A side along the outline has the segment of its edge, and shows. A cut
+        // the segment of the side it starts, and whether that side is a cut. A side along the outline has the segment of
+        // its edge, and shows. A cut
         // doesn't show, but where the piece goes straight on from a side that does, the brush has one face for both,
         // drawn with one surface: there the cut has the segment of that side. False when one line has sides of two
         // segments that show, which no brush can draw.
@@ -320,6 +322,12 @@ namespace Chisel.Core
                     pieceVertices[start + v] = corner;
                 }
                 runStart = runEnd;
+            }
+            for (int v = 0; v < count; v++)
+            {
+                var corner = pieceVertices[start + v];
+                corner.cut = corners[(v + 1) % count] != (corners[v] + 1) % n;
+                pieceVertices[start + v] = corner;
             }
             return true;
         }

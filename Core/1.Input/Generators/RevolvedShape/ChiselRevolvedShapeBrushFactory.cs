@@ -7,8 +7,11 @@ namespace Chisel.Core
 {
     public sealed partial class BrushMeshFactory
     {
+        // Each polygon that crosses the axis cut in two along it. Every edge keeps what the corner it starts from says of it
+        // (its segment, whether it's a cut): a corner on the axis that of the edge it's on, and the half on the negative
+        // side, turned round, has each corner take that of the corner before it, where its edge now starts
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal static void Split2DPolygonAlongOriginXAxis(ref UnsafeList<SegmentVertex> polygonVerticesList, ref UnsafeList<int> polygonVerticesSegments, int defaultSegment = 0)
+        internal static void Split2DPolygonAlongOriginXAxis(ref UnsafeList<SegmentVertex> polygonVerticesList, ref UnsafeList<int> polygonVerticesSegments)
         {
             const float kEpsilon = CSGConstants.kFatPlaneWidthEpsilon;
             for (int r = polygonVerticesSegments.Length - 1; r >= 0; r--)
@@ -60,7 +63,7 @@ namespace Chisel.Core
 						var y_s = (y_a - y_b);
 
 						var intersection = new float2(0, y_b - (y_s * (x_b / x_s)));
-						polygon.Add(new SegmentVertex { position = intersection, segmentIndex = defaultSegment });
+						polygon.Add(new SegmentVertex { position = intersection, segmentIndex = point_a.segmentIndex, cut = point_a.cut });
 					}
 					polygon.Add(point_b);
 				}
@@ -83,7 +86,7 @@ namespace Chisel.Core
 					if (p.x > kEpsilon)
 						polygonVerticesList.Add(v);
 					else
-						polygonVerticesList.Add(new SegmentVertex { position = new float2(kAxisCenter, p.y), segmentIndex = defaultSegment });
+						polygonVerticesList.Add(new SegmentVertex { position = new float2(kAxisCenter, p.y), segmentIndex = v.segmentIndex, cut = v.cut });
 				}
 				polygonVerticesSegments.Add(polygonVerticesList.Length);
 
@@ -95,10 +98,9 @@ namespace Chisel.Core
 					var p = v.position;
 					if (p.x > kEpsilon)
 						continue;
-					if (p.x < -kEpsilon)
-						polygonVerticesList.Add(v);
-					else
-						polygonVerticesList.Add(new SegmentVertex { position = new float2(-kAxisCenter, p.y), segmentIndex = defaultSegment });
+					var before = polygon[(i + polygon.Length - 1) % polygon.Length];
+					var x = (p.x < -kEpsilon) ? p.x : -kAxisCenter;
+					polygonVerticesList.Add(new SegmentVertex { position = new float2(x, p.y), segmentIndex = before.segmentIndex, cut = before.cut });
 				}
 				polygonVerticesSegments.Add(polygonVerticesList.Length);
 			}

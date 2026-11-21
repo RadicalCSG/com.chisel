@@ -16,14 +16,16 @@ namespace Chisel.Core
     [Serializable]
     public struct CurveControlPoint2D
     {
-        public CurveControlPoint2D(Vector2 position) { this.position = position; this.tangent1 = Vector2.zero; this.tangent2 = Vector2.zero; constraint1 = ControlPointConstraint.Straight; constraint2 = ControlPointConstraint.Straight; }
-        public CurveControlPoint2D(float x, float y) { this.position = new Vector2(x,y); this.tangent1 = Vector2.zero; this.tangent2 = Vector2.zero; constraint1 = ControlPointConstraint.Straight; constraint2 = ControlPointConstraint.Straight; }
+        public CurveControlPoint2D(Vector2 position) { this.position = position; this.tangent1 = Vector2.zero; this.tangent2 = Vector2.zero; constraint1 = ControlPointConstraint.Straight; constraint2 = ControlPointConstraint.Straight; smoothSide = false; }
+        public CurveControlPoint2D(float x, float y) { this.position = new Vector2(x,y); this.tangent1 = Vector2.zero; this.tangent2 = Vector2.zero; constraint1 = ControlPointConstraint.Straight; constraint2 = ControlPointConstraint.Straight; smoothSide = false; }
 
         [PositionValue] public Vector2 position;
         [DistanceValue] public Vector2 tangent1;
         [DistanceValue] public Vector2 tangent2;
         public ControlPointConstraint constraint1;
         public ControlPointConstraint constraint2;
+        // the side of a shape from this point to the next shades smooth, as one surface, and with the smooth sides next to it
+        public bool smoothSide;
 
         
         public Vector2					GetTangentPosition	(int index) { if (index == 0) return position - tangent1; else return position - tangent2; }
@@ -67,6 +69,18 @@ namespace Chisel.Core
             }
         }
         public void	SetConstraint(int index, ControlPointConstraint value) { if (index == 0) constraint1 = value; else constraint2 = value; }
+
+        // The points with a new one at position, on the side from point side to the next, which it splits (the last
+        // side's goes first): both halves are smooth when the side was
+        public static CurveControlPoint2D[] InsertedOnSide(CurveControlPoint2D[] points, int side, Vector2 position)
+        {
+            var inserted = new CurveControlPoint2D[points.Length + 1];
+            var at = (side + 1) % points.Length;
+            Array.Copy(points, 0, inserted, 0, at);
+            inserted[at] = new CurveControlPoint2D(position) { smoothSide = points[side].smoothSide };
+            Array.Copy(points, at, inserted, at + 1, points.Length - at);
+            return inserted;
+        }
     }
 
 

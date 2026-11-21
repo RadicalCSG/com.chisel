@@ -53,10 +53,44 @@ namespace Chisel.Core
             return localVertices;
         }
 
+        // The faces of a side from a corner of the shape that is smooth (ChiselCurve2DBlob.Point.smoothSide), and not a cut
+        // between pieces, are put in the smoothing group
+        static void SmoothSides(ref BlobBuilderArray<BrushMeshBlob.Polygon> polygons, in BlobBuilderArray<BrushMeshBlob.HalfEdge> halfEdges,
+                                in UnsafeList<SegmentVertex> polygonVerticesArray, Range range, ref ChiselCurve2DBlob curve, uint smoothingGroup)
+        {
+            var segments = range.Length;
+            for (int p = 2; p < polygons.Length; p++)
+            {
+                // a side's corners are those of the edge it runs along, at either end of the brush: from one corner to the next
+                var a = -1;
+                var b = -1;
+                var firstEdge = polygons[p].firstEdge;
+                for (int e = firstEdge; e < firstEdge + polygons[p].edgeCount && b < 0; e++)
+                {
+                    var corner = halfEdges[e].vertexIndex % segments;
+                    if (a < 0) a = corner;
+                    else if (corner != a) b = corner;
+                }
+                if (b < 0)
+                    continue;
+                var from   = ((a + 1) % segments == b) ? a : b;
+                var vertex = polygonVerticesArray[range.start + from];
+                if (vertex.cut || vertex.segmentIndex < 0 || vertex.segmentIndex >= curve.controlPoints.Length ||
+                    !curve.controlPoints[vertex.segmentIndex].smoothSide)
+                    continue;
+                polygons[p].surface.details.smoothingGroup = smoothingGroup;
+            }
+        }
+
+        // the group the shape's smooth sides are in: along the whole path, which turns in small steps (ChiselPathBlob)
+        const uint kSmoothSidesGroup = 1;
+
+        // The pieces of the shape, from each matrix of the path to the next, its smooth sides in one smoothing group
         public static bool GenerateExtrudedShape(NativeList<BlobAssetReference<BrushMeshBlob>> brushMeshes, 
                                                         in UnsafeList<SegmentVertex>    polygonVerticesArray, 
                                                         in UnsafeList<int>              polygonVerticesSegments,
                                                         in UnsafeList<float4x4>         pathMatrices,
+                                                        in BlobAssetReference<ChiselCurve2DBlob> curveBlob,
                                                         in BlobAssetReference<InternalChiselSurfaceArray> surfaceDefinitionBlob,
                                                         Allocator allocator = Allocator.Persistent)// Indirect
 		{
@@ -122,6 +156,8 @@ namespace Chisel.Core
                         var arrays = CreateExtrudedSubMesh(range.Length, segmentIndices, segmentIndices.Length, 0, 1, in localVertices, in surfaceDefinitionBlob, in builder, ref root);
                         var polygons = arrays.polygons;
                         var halfEdges = arrays.halfEdges;
+                        if (curveBlob.IsCreated)
+                            SmoothSides(ref polygons, in halfEdges, in polygonVerticesArray, range, ref curveBlob.Value, kSmoothSidesGroup);
 
                         if (!Validate(in localVertices, in halfEdges, in polygons, logErrors: true))
                             return false;

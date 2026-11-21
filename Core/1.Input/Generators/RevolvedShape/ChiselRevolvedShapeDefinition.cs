@@ -55,6 +55,7 @@ namespace Chisel.Core
                                                         in polygonVerticesList,
                                                         in polygonVerticesSegments,
                                                         in pathMatrices,
+                                                        in curveBlob,
                                                         in surfaceDefinitionBlob,
                                                         allocator))// Indirect
 			{

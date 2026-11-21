@@ -126,8 +126,10 @@ namespace Chisel.Core.Tests
                         Assert.That(FloatReference.Dot(points[u], points[c], points[c], points[w]).Sign, Is.EqualTo(1), $"{what}: a piece turns back at {points[c]}");
                     runs.TryGetValue((c, w), out var count);
                     runs[(c, w)] = count + 1;
-                    if (outlineSegment.TryGetValue((c, w), out var segment))
+                    var alongTheOutline = outlineSegment.TryGetValue((c, w), out var segment);
+                    if (alongTheOutline)
                         Assert.That(piece[v].segmentIndex, Is.EqualTo(segment), $"{what}: the edge from {points[c]} has another segment");
+                    Assert.That(piece[v].cut, Is.EqualTo(!alongTheOutline), $"{what}: the edge from {points[c]} is {(alongTheOutline ? "along the outline" : "a cut")}");
                 }
             }
             foreach (var edge in outlineSegment.Keys)
