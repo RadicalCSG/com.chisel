@@ -32,6 +32,36 @@ namespace Chisel.Editors.Tests
             return box;
         }
 
+        // Delete removes the selected vertices: selecting an edge selects its vertices, so it goes with them
+        [Test]
+        public void DeletingASelectedEdge_RemovesItsVertices()
+        {
+            BrushMeshFactory.CreateBox(-Vector3.one, Vector3.one, out var box);
+            root = new GameObject("Brush");
+            var brush = root.AddComponent<ChiselBrushComponent>();
+            brush.definition.BrushOutline = box;
+            brush.OnValidate();
+
+            var editable = new ChiselEditableOutline(brush);
+            var mesh     = editable.brushMesh;
+            var edge     = -1;
+            for (int e = 0; e < mesh.halfEdges.Length && edge < 0; e++)
+            {
+                var a = mesh.vertices[mesh.halfEdges[e].vertexIndex];
+                var b = mesh.vertices[mesh.halfEdges[mesh.halfEdges[e].twinIndex].vertexIndex];
+                if (a.x > 0 && a.y > 0 && b.x > 0 && b.y > 0)
+                    edge = e;
+            }
+            editable.SelectEdge(edge, SelectionType.Replace);
+            Assert.That(editable.selection.selectedVertices.Count, Is.EqualTo(2), "the edge's vertices");
+
+            Assert.That(editable.DeleteSelectedVertices(), Is.True);
+
+            Assert.That(editable.brushMesh.vertices.Length, Is.EqualTo(6), "a wedge");
+            Assert.That(editable.brushMesh.polygons.Length, Is.EqualTo(5));
+            Assert.That(editable.selection.selectedVertices, Is.Empty, "nothing selected after");
+        }
+
         [Test]
         public void AConcaveBrush_KeepsItsHandles()
         {

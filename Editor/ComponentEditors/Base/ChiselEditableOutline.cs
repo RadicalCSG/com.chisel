@@ -371,41 +371,27 @@ namespace Chisel.Editors
 
 
         #region Modification Methods
-        struct EdgeVertices { public int vertexIndex1; public int vertexIndex2; }
-
-        void DeleteSelectedEdges()
+        // The selected vertices removed: those of a selected edge or polygon too, so an edge goes with its vertices. Left
+        // as it is when too few would be left, or all in one plane (BrushMesh.RemoveVertices)
+        internal bool DeleteSelectedVertices()
         {
+            if (selection.selectedVertices.Count == 0)
+                return false;
+            var removed = new HashSet<int>(selection.selectedVertices);
+            var before  = new BrushMesh(brushMesh);
+            if (!before.RemoveVertices(removed))
+                return false;
 
-            var halfEdges = brushMesh.halfEdges;
-
-            // since edge indices will change every time we remove one edge, we need to
-            // find our edge indirectly every time after we delete one, we do this
-            // using the vertex indices which will not change
-            var foundEdges = new List<EdgeVertices>();
-            var skipEdges = new HashSet<int>();
-            foreach (var e in selection.selectedEdges)
-            {
-                if (skipEdges.Contains(e))
-                    continue;
-                var twin = halfEdges[e].twinIndex;
-                skipEdges.Add(twin);
-                skipEdges.Add(e);
-                foundEdges.Add(new EdgeVertices()
-                {
-                    vertexIndex1 = halfEdges[twin].vertexIndex,
-                    vertexIndex2 = halfEdges[e].vertexIndex
-                });
-            }
-
-            Undo.RecordObject(brush, "Delete selected edges");
-            for (int i = 0; i < foundEdges.Count; i++)
-            {
-                var realEdge = brushMesh.FindEdgeByVertexIndices(foundEdges[i].vertexIndex1, foundEdges[i].vertexIndex2);
-                if (realEdge == -1)
-                    continue;
-                brushMesh.RemoveEdge(realEdge);
-            }
+            Undo.RecordObjects(new UnityEngine.Object[] { brush, ChiselTopologySelectionManager.Selection }, "Delete selected vertices");
+            brushMesh.vertices               = before.vertices;
+            brushMesh.halfEdges              = before.halfEdges;
+            brushMesh.polygons               = before.polygons;
+            brushMesh.planes                 = before.planes;
+            brushMesh.halfEdgePolygonIndices = before.halfEdgePolygonIndices;
+            brushMesh.halfEdgeUVs            = null;
+            brushMesh.halfEdgeNormals        = null;
             ClearSelection();
+            return true;
         }
 
         void MoveSelectedVertices(Vector3 offset)
@@ -1722,6 +1708,7 @@ namespace Chisel.Editors
         }
 
         // This method returns true when the brushMesh has changed
+        // Delete removes the selected vertices, whichever handle takes the command
         public bool HandleDeletion()
         {
             for (int v = 0; v < s_TempVerticesIDCount; v++)
@@ -1730,7 +1717,7 @@ namespace Chisel.Editors
                 {
                     case ClickState.Delete:
                     {
-                        DeleteSelectedEdges();
+                        DeleteSelectedVertices();
                         return true;
                     }
                 }
@@ -1742,7 +1729,7 @@ namespace Chisel.Editors
                 {
                     case ClickState.Delete:
                     {
-                        DeleteSelectedEdges();
+                        DeleteSelectedVertices();
                         return true;
                     }
                 }
@@ -1754,7 +1741,7 @@ namespace Chisel.Editors
                 {
                     case ClickState.Delete:
                     {
-                        DeleteSelectedEdges();
+                        DeleteSelectedVertices();
                         return true;
                     }
                 }
