@@ -39,7 +39,7 @@ namespace Chisel.Core.Tests
         }
 
         // each brush's vertices and planes
-        internal static List<(float3[] vertices, float4[] planes)> Brushes(ChiselRevolvedShapeDefinition definition)
+        internal static List<(float3[] vertices, float4[] planes)> Brushes<T>(SerializedBranchGenerator<T> definition) where T : unmanaged, IBranchGenerator
         {
             Assert.That(definition.Validate(), Is.True);
             var settings = definition.GetBranchGenerator();

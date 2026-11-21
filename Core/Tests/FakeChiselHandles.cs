@@ -44,6 +44,10 @@ namespace Chisel.Core.Tests
         public Vector3 dragAxis;
         public float   dragAmount;
         bool dragged;
+        // the path point handle, counted in the order they're asked for, that is moved to pathPointMovedTo
+        public int             pathPointToMove = -1;
+        public ChiselPathPoint pathPointMovedTo;
+        int pathPointsAsked;
 
         // the first handle moving along the drag axis takes the drag
         bool TryDrag(Vector3 direction, out float along)
@@ -175,7 +179,14 @@ namespace Chisel.Core.Tests
         public bool DoEdgeHandle1DOffset(out Vector3 offset, Axis axis, Vector3 from, Vector3 to, Vector3 direction, float snappingStep = 0, float handleSize = 0, bool renderLine = true, string undoMessage = null, float thickness = 3.0f) { offset = default; return false; }
         public bool DoEdgeHandle1DOffset(out float offset, Axis axis, Vector3 from, Vector3 to, float snappingStep = 0, float handleSize = 0, bool renderLine = true, string undoMessage = null) { offset = 0; return false; }
         public bool DoMoveGizmo(Vector3 point) { return false; }
-        public bool DoPathPointHandle(ref ChiselPathPoint pathPoint, string undoMessage = null) { return false; }
+        public bool DoPathPointHandle(ref ChiselPathPoint pathPoint, string undoMessage = null)
+        {
+            if (pathPointsAsked++ != pathPointToMove)
+                return false;
+            pathPoint = pathPointMovedTo;
+            modified  = true;
+            return true;
+        }
         public bool DoPositionHandle(ref Vector3 position, Quaternion rotation, string undoMessage = null) { return false; }
         public bool DoRotationHandle(ref Quaternion rotation, Vector3 position, string undoMessage = null) { return false; }
         public bool DoPlanarScaleHandle(ref Vector2 scale2D, Vector3 position, Quaternion rotation, string undoMessage = null) { return false; }

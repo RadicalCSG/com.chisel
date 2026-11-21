@@ -14,16 +14,20 @@ namespace Chisel.Core
         const int kLatestVersion = 1;
         [UnityEngine.SerializeField] int version = 0;
 
+        // saved without a version (0), its rotations are reset once (UpgradeIfNecessary)
         public ChiselPath() { }
 
         public ChiselPath(ChiselPath other)
         {
             this.segments = other.segments.ToArray();
+            this.version  = other.version;
         }
 
+        // the points as they are, rotations and all
         public ChiselPath(ChiselPathPoint[] points)
         {
             this.segments = points.ToArray();
+            this.version  = kLatestVersion;
         }
 
         public ChiselPathPoint[]  segments;
