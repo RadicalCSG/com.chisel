@@ -566,6 +566,7 @@ namespace Chisel.Core.Tests
 			WeldMemory memory = WeldMemory.Create(Allocator.Persistent);
 			readonly List<BlobAssetReference<ChiselBrushRenderBuffer>> owned = new();
 			public int LastScope => memory.lastScope.Value;
+			public int LastLookedAt => memory.lastLookedAt.Value;
 			public ref WeldMemory Memory => ref memory;
 
 			public BlobAssetReference<ChiselBrushRenderBuffer> Own(BlobAssetReference<ChiselBrushRenderBuffer> buffer) { owned.Add(buffer); return buffer; }
@@ -623,6 +624,35 @@ namespace Chisel.Core.Tests
 
 		static readonly float3 kFar = new float3(50, 0, 0);
 		static float3[] FarTriangle(float y) => new[] { kFar, kFar + new float3(1, y, 0), kFar + new float3(0, 1, 0) };
+
+		// The same brushes in the same order: the preparation looks only at the brush that changed; another list of brushes
+		// is looked at whole. The weld is the full weld either way.
+		[Test]
+		public void OneOfTheSameBrushesChanged_IsTheOnlyOneLookedAt()
+		{
+			using var weld = new Incremental();
+			var model = new (int id, BlobAssetReference<ChiselBrushRenderBuffer> buffer)[12];
+			for (int i = 0; i < model.Length; i++)
+				model[i] = (i, weld.Own(Brush(Shifted(FarTriangle(1), new float3(0, 0, i * 3)))));
+			weld.Weld("the first update", model);
+			Assert.That(weld.LastLookedAt, Is.EqualTo(model.Length), "the first update looks at every brush");
+
+			model[5] = (5, weld.Own(Brush(Shifted(FarTriangle(2), new float3(0, 0, 15)))));
+			weld.Weld("one brush made again", model, 5);
+			Assert.That(weld.LastLookedAt, Is.EqualTo(1), "only the brush made again");
+
+			model[7] = (7, weld.Own(Brush(Shifted(FarTriangle(3), new float3(0, 0, 21)))));
+			weld.Weld("another brush with another buffer, not said to be made again", model);
+			Assert.That(weld.LastLookedAt, Is.EqualTo(1), "only the brush with another buffer");
+
+			var fewer = model.Where((_, i) => i != 3).ToArray();
+			weld.Weld("a brush gone", fewer);
+			Assert.That(weld.LastLookedAt, Is.EqualTo(fewer.Length), "another list of brushes is looked at whole");
+
+			fewer[0] = (0, weld.Own(Brush(Shifted(FarTriangle(2), new float3(0, 0, 0)))));
+			weld.Weld("the first brush made again", fewer, 0);
+			Assert.That(weld.LastLookedAt, Is.EqualTo(1), "only the brush made again, after the list changed");
+		}
 
 		[Test]
 		public void AroundANeedle_TheIncrementalWeld_IsTheFullWeld()
