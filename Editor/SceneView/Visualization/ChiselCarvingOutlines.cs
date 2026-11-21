@@ -4,9 +4,11 @@ using UnityEditor.ShortcutManagement;
 
 namespace Chisel.Editors
 {
-    // Subtractive and intersecting brushes carve the model, so on their own they can't be seen: their outlines can be
-    // drawn whether they're selected or not (ChiselOutlineRenderer), switched in the Chisel Helper Surfaces overlay or
-    // with a shortcut
+    // Which outlines are drawn (ChiselOutlineRenderer), switched in the Chisel Helper Surfaces overlay:
+    // - Subtractive and intersecting brushes carve the model, so on their own they can't be seen: their outlines can be
+    //   drawn whether they're selected or not, also switched with a shortcut.
+    // - A generator built from several brushes is outlined as its shape (ChiselShapeOutline), or as every brush in it
+    //   (its pieces).
     public static class ChiselCarvingOutlines
     {
         const string kShortcutBase = "Chisel/Show/";
@@ -33,8 +35,23 @@ namespace Chisel.Editors
                 case CSGOperationType.Intersecting: ChiselEditorSettings.ShowIntersectingOutlines = show; break;
                 default:                            return;
             }
+            Changed();
+        }
+
+        public static bool BrushPiecesShown => ChiselEditorSettings.ShowBrushPieces;
+
+        public static void ShowBrushPieces(bool show)
+        {
+            if (ChiselEditorSettings.ShowBrushPieces == show)
+                return;
+            ChiselEditorSettings.ShowBrushPieces = show;
+            Changed();
+        }
+
+        static void Changed()
+        {
             ChiselEditorSettings.Save();
-            ChiselOutlineRenderer.OnCarvingOutlinesChanged();
+            ChiselOutlineRenderer.OnOutlineOptionsChanged();
             SceneView.RepaintAll();
         }
 

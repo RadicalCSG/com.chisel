@@ -90,10 +90,16 @@ namespace Chisel.Editors
 			EditorGUILayout.Space();
 			CarvingOutlineToggle(kSubtractiveOutlines,  CSGOperationType.Subtractive);
 			CarvingOutlineToggle(kIntersectingOutlines, CSGOperationType.Intersecting);
+
+			EditorGUI.BeginChangeCheck();
+			var pieces = EditorGUILayout.ToggleLeft(kBrushPieces, ChiselCarvingOutlines.BrushPiecesShown);
+			if (EditorGUI.EndChangeCheck())
+				ChiselCarvingOutlines.ShowBrushPieces(pieces);
 		}
 
 		readonly static GUIContent kSubtractiveOutlines  = new("Subtractive Outlines",  "The outlines of subtractive brushes, selected or not, in their own color (Chisel preferences)");
 		readonly static GUIContent kIntersectingOutlines = new("Intersecting Outlines", "The outlines of intersecting brushes, selected or not, in their own color (Chisel preferences)");
+		readonly static GUIContent kBrushPieces          = new("Brush Pieces",          "Outline every brush a generator is built from, rather than its shape as a whole");
 
 		static void CarvingOutlineToggle(GUIContent content, CSGOperationType operation)
 		{

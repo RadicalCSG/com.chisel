@@ -129,6 +129,35 @@ namespace Chisel.Editors
         readonly Dictionary<CSGTreeBrush, BrushOutline>      carvingOutlines	    = new();
         readonly HashSet<CSGTreeBrush>		                 generatorBrushes	    = new();
 
+        // A generator built from several brushes, outlined as its shape (unless its pieces are shown), in its own space
+        sealed class ShapeOutline
+        {
+            public Transform        modelTransform;
+            public CSGTreeNode      node;
+            public ChiselWireframe  wireframe;
+            public bool             selected;
+            public CSGOperationType carving;
+            public bool             found;
+        }
+        readonly Dictionary<CSGTreeNode, ShapeOutline>       shapeOutlines	        = new();
+        readonly List<CSGTreeNode>                           removedShapes	        = new();
+
+        static bool IsOutlinedAsAShape(ChiselGeneratorComponent generator)
+        {
+            return !ChiselCarvingOutlines.BrushPiecesShown && generator.TopTreeNode.Valid && generator.TopTreeNode.Type == CSGNodeType.Branch;
+        }
+
+        void MarkShape(ChiselGeneratorComponent generator, Transform modelTransform, bool selected, CSGOperationType carving)
+        {
+            var node = generator.TopTreeNode;
+            if (!shapeOutlines.TryGetValue(node, out var shape))
+                shapeOutlines[node] = shape = new ShapeOutline { node = node };
+            shape.modelTransform = modelTransform;
+            shape.found          = true;
+            if (selected) shape.selected = true;
+            else          shape.carving  = carving;
+        }
+
         static bool s_UpdateBrushSelection	= false;
         static bool s_UpdateBrushWireframe	= false;
         static bool s_UpdateBrushLineCache	= false;
@@ -216,12 +245,12 @@ namespace Chisel.Editors
             s_UpdateBrushWireframe = true;
             s_UpdateSurfaceWireframe = true;
             s_ClearSurfaceCache = true;
-            // a brush made again, or its operation changed
-            if (ChiselCarvingOutlines.AnyShown)
+            // a brush made again, or its operation changed; a generator made again from other nodes
+            if (ChiselCarvingOutlines.AnyShown || shapeOutlines.Count > 0)
                 s_UpdateBrushSelection = true;
         }
 
-        internal static void OnCarvingOutlinesChanged()
+        internal static void OnOutlineOptionsChanged()
         {
             s_UpdateBrushSelection = true;
         }
@@ -258,6 +287,7 @@ namespace Chisel.Editors
             brushSelected.Clear();
             brushCarving.Clear();
             carvingOutlines.Clear();
+            shapeOutlines.Clear();
 
             s_UpdateBrushSelection = true;
             s_UpdateBrushWireframe = false;
@@ -273,6 +303,12 @@ namespace Chisel.Editors
         {
             brushDirectlySelected.Clear();
             brushSelected.Clear();
+            foreach (var shape in shapeOutlines.Values)
+            {
+                shape.found    = false;
+                shape.selected = false;
+                shape.carving  = CSGOperationType.Additive;
+            }
             var objects = Selection.objects;
             if (objects.Length > 0)
             {
@@ -314,11 +350,16 @@ namespace Chisel.Editors
                                                       // and we don't want to show those as directly selected
                                                       !node.IsContainer;
                                 var transform = ChiselNodeHierarchyManager.FindModelTransformOfTransform(node.hierarchyItem.Transform);
+                                var asAShape  = IsOutlinedAsAShape(node);
+                                if (asAShape)
+                                    MarkShape(node, transform, selected: true, CSGOperationType.Additive);
                                 foreach (var treeBrush in foundTreeBrushes)
                                 {
                                     if (directSelected)
                                         brushDirectlySelected.Add(treeBrush);
                                     brushSelected.Add(treeBrush);
+                                    if (asAShape)
+                                        continue;
                                     var outline = new BrushOutline(transform, treeBrush);
                                     foundBrushOutlines.Add(outline);
                                 }
@@ -350,6 +391,15 @@ namespace Chisel.Editors
                     carvingOutlines.Remove(brush);
                 generatorBrushes.Clear();
             }
+            removedShapes.Clear();
+            foreach (var pair in shapeOutlines)
+            {
+                if (!pair.Value.found || !pair.Key.Valid)
+                    removedShapes.Add(pair.Key);
+            }
+            foreach (var node in removedShapes)
+                shapeOutlines.Remove(node);
+            removedShapes.Clear();
 
             if (foundBrushOutlines.Count == 0)
             {
@@ -425,9 +475,14 @@ namespace Chisel.Editors
             if (generatorBrushes.Count == 0)
                 return;
             var transform = ChiselNodeHierarchyManager.FindModelTransformOfTransform(generator.hierarchyItem.Transform);
+            var asAShape  = IsOutlinedAsAShape(generator);
+            if (asAShape)
+                MarkShape(generator, transform, selected: false, carving);
             foreach (var brush in generatorBrushes)
             {
                 brushCarving[brush] = carving;
+                if (asAShape)
+                    continue;
                 if (carvingOutlines.TryGetValue(brush, out var outline))
                     outline.transform = transform;
                 else
@@ -612,6 +667,17 @@ namespace Chisel.Editors
                 brushOutlines[pair.Key] = pair.Value;
             }
             brushOutlineFixes.Clear();
+
+            // a shape is worked out again only when what it's made of changed (ChiselShapeOutline.Hash)
+            foreach (var shape in shapeOutlines.Values)
+            {
+                if (!shape.node.Valid)
+                    shape.wireframe = null;
+                else if (shape.wireframe == null)
+                    shape.wireframe = ChiselWireframe.CreateShapeWireframe(shape.node);
+                else if (shape.wireframe.Dirty)
+                    shape.wireframe.UpdateWireframe();
+            }
             s_UpdateBrushLineCache = true;
         }
 
@@ -669,13 +735,23 @@ namespace Chisel.Editors
         internal bool TryGetOutlineColor(CSGTreeBrush brush, out Color color, out float thickness)
         {
             if (brushSelected.Contains(brush))
+                return OutlineColor(true, CSGOperationType.Additive, out color, out thickness);
+            if (!brushCarving.TryGetValue(brush, out var carving))
+                carving = CSGOperationType.Additive;
+            return OutlineColor(false, carving, out color, out thickness);
+        }
+
+        // the same for a generator's shape, as for all of its brushes
+        static bool OutlineColor(bool selected, CSGOperationType carving, out Color color, out float thickness)
+        {
+            if (selected)
             {
                 var uvTool = ChiselUVMoveTool.IsActive() || ChiselUVRotateTool.IsActive() || ChiselUVScaleTool.IsActive() || ChiselUVConnectTool.IsActive();
                 color     = uvTool ? ColorManager.SelectedOutlineColor : ColorManager.UnselectedOutlineColor;
                 thickness = uvTool ? 3.0f : 1.0f;
                 return true;
             }
-            if (brushCarving.TryGetValue(brush, out var carving))
+            if (carving != CSGOperationType.Additive)
             {
                 color     = carving == CSGOperationType.Subtractive ? ColorManager.SubtractiveOutlineColor : ColorManager.IntersectingOutlineColor;
                 thickness = 1.0f;
@@ -689,6 +765,12 @@ namespace Chisel.Editors
         internal bool HasOutline(CSGTreeBrush brush)
         {
             return brushOutlines.TryGetValue(new BrushOutline(null, brush), out var wireframe) && wireframe != null;
+        }
+
+        // the outline of a generator's shape, in its own space, when it's drawn as one
+        internal ChiselWireframe ShapeOutlineOf(CSGTreeNode node)
+        {
+            return shapeOutlines.TryGetValue(node, out var shape) ? shape.wireframe : null;
         }
 
         // which outlines are drawn worked out now, rather than when the scene view is next drawn (which draws them): all
@@ -756,6 +838,23 @@ namespace Chisel.Editors
 
                         if ((VisualizationMode & VisualizationMode.SimpleOutline) == VisualizationMode.SimpleOutline)
                             brushOutlineRenderer.DrawSimpleOutlines(transformation, wireframeValue, brushSelected.Contains(brush) ? ColorManager.UnselectedOutlineColor : color);
+                    }
+
+                    foreach (var shape in shapeOutlines.Values)
+                    {
+                        if (shape.wireframe == null || !shape.node.Valid || shape.selected != (pass == 1))
+                            continue;
+                        if (!OutlineColor(shape.selected, shape.carving, out var color, out var thickness))
+                            continue;
+                        Matrix4x4 transformation = shape.node.NodeToTreeSpaceMatrix;
+                        if (shape.modelTransform)
+                            transformation = shape.modelTransform.localToWorldMatrix * transformation;
+
+                        if ((VisualizationMode & VisualizationMode.Outline) == VisualizationMode.Outline)
+                            brushOutlineRenderer.DrawOutlines(transformation, shape.wireframe, color, thickness: thickness, onlyInnerLines: false);
+
+                        if ((VisualizationMode & VisualizationMode.SimpleOutline) == VisualizationMode.SimpleOutline)
+                            brushOutlineRenderer.DrawSimpleOutlines(transformation, shape.wireframe, shape.selected ? ColorManager.UnselectedOutlineColor : color);
                     }
                 }
                 brushOutlineRenderer.End();

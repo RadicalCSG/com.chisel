@@ -50,6 +50,8 @@ namespace Chisel.Editors
         // they can't be seen (ChiselCarvingOutlines)
         public static bool				ShowSubtractiveOutlines   { get; set; }
         public static bool				ShowIntersectingOutlines  { get; set; }
+        // every brush a generator is built from outlined, rather than its shape as a whole (ChiselShapeOutline)
+        public static bool				ShowBrushPieces           { get; set; }
 
         public static bool				RotateSnapping  { get { return Snapping.RotateSnappingEnabled; } set { Snapping.RotateSnappingEnabled = value; } }
         public static float 			RotateSnap      { get { return Snapping.RotateSnappingStep; } set { Snapping.RotateSnappingStep = value; } }
@@ -76,6 +78,7 @@ namespace Chisel.Editors
             HelperSurfaceFlags = (DrawModeFlags)EditorPrefs.GetInt("HelperSurfaceFlags", (int)DrawModeFlags.Default);
             ShowSubtractiveOutlines  = EditorPrefs.GetBool("ShowSubtractiveOutlines",  false);
             ShowIntersectingOutlines = EditorPrefs.GetBool("ShowIntersectingOutlines", false);
+            ShowBrushPieces          = EditorPrefs.GetBool("ShowBrushPieces",          false);
 
             RotateSnapping	= EditorPrefs.GetBool ("RotateSnapping",	true);
 
@@ -115,6 +118,7 @@ namespace Chisel.Editors
             EditorPrefs.SetInt("HelperSurfaceFlags", (int)HelperSurfaceFlags);
             EditorPrefs.SetBool("ShowSubtractiveOutlines",  ShowSubtractiveOutlines);
             EditorPrefs.SetBool("ShowIntersectingOutlines", ShowIntersectingOutlines);
+            EditorPrefs.SetBool("ShowBrushPieces",          ShowBrushPieces);
 
             EditorPrefs.SetBool("RotateSnapping",	RotateSnapping);
 
