@@ -111,6 +111,12 @@ namespace Chisel.Components.Tests
         [TestCase("TotalAngle",      180f, true)]
         public void RevolvedShape(string name, object value, bool changesShape) { AssertProperty<ChiselRevolvedShapeComponent>(name, value, changesShape); }
 
+        // its guard rails' front offset and how far back they go at the top only show with guard rails
+        [TestCase("SideFrontOffset", 0.1f,                     false)]
+        [TestCase("TopSide",         StairsTopSideType.Length, false)]
+        [TestCase("TopSideLength",   0.5f,                     false)]
+        public void LinearStairs(string name, object value, bool changesShape) { AssertProperty<ChiselLinearStairsComponent>(name, value, changesShape); }
+
         // the settings that change the shape on their own; the others only show with guard rails or an open path
         [TestCase("Height",              2.5f,                         true)]
         [TestCase("Depth",               2.5f,                         true)]

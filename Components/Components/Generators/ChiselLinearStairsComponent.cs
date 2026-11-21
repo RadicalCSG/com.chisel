@@ -67,6 +67,27 @@ namespace Chisel.Components
             set { if (definition.settings.sideHeight == value) return; definition.settings.sideHeight = value; OnValidateState(); }
         }
 
+        // how far the guard rails reach out past the steps' fronts
+        public float SideFrontOffset
+        {
+            get { return definition.settings.sideFrontOffset; }
+            set { if (definition.settings.sideFrontOffset == value) return; definition.settings.sideFrontOffset = value; OnValidateState(); }
+        }
+
+        // how far back the guard rails go beside the floor at the top of the stairs
+        public StairsTopSideType TopSide
+        {
+            get { return definition.settings.topSide; }
+            set { if (definition.settings.topSide == value) return; definition.settings.topSide = value; OnValidateState(); }
+        }
+
+        // how far back from the top step the guard rails go, when TopSide is Length
+        public float TopSideLength
+        {
+            get { return definition.settings.topSideLength; }
+            set { if (definition.settings.topSideLength == value) return; definition.settings.topSideLength = value; OnValidateState(); }
+        }
+
         public StairsRiserType RiserType
         {
             get { return definition.settings.riserType; }
