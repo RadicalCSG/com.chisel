@@ -4,6 +4,11 @@ using Unity.Mathematics;
 
 namespace Chisel.Core
 {
+    // Version is kept on entering play mode, as the trees' decals it counts the changes of are
+    // (ChiselTreeLookup), and what ChiselDecalManager last saw of it
+#if UNITY_6000_7_OR_NEWER
+    [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
+#endif
     internal static class ChiselDecalStore
     {
         // A decal and where it was in the list it was given in
