@@ -1,4 +1,5 @@
 using Chisel.Components;
+using Chisel.Core;
 
 using UnityEditor;
 using UnityEditor.Overlays;
@@ -84,6 +85,22 @@ namespace Chisel.Editors
 
 			if (overridden)
 				EditorGUILayout.HelpBox($"Overridden by the '{sceneView.cameraMode.name}' camera mode.", MessageType.Info);
+
+			// not surfaces, but as hard to see on their own; camera modes don't change them
+			EditorGUILayout.Space();
+			CarvingOutlineToggle(kSubtractiveOutlines,  CSGOperationType.Subtractive);
+			CarvingOutlineToggle(kIntersectingOutlines, CSGOperationType.Intersecting);
+		}
+
+		readonly static GUIContent kSubtractiveOutlines  = new("Subtractive Outlines",  "The outlines of subtractive brushes, selected or not, in their own color (Chisel preferences)");
+		readonly static GUIContent kIntersectingOutlines = new("Intersecting Outlines", "The outlines of intersecting brushes, selected or not, in their own color (Chisel preferences)");
+
+		static void CarvingOutlineToggle(GUIContent content, CSGOperationType operation)
+		{
+			EditorGUI.BeginChangeCheck();
+			var show = EditorGUILayout.ToggleLeft(content, ChiselCarvingOutlines.Shows(operation));
+			if (EditorGUI.EndChangeCheck())
+				ChiselCarvingOutlines.Show(operation, show);
 		}
 	}
 }

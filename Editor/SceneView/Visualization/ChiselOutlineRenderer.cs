@@ -122,6 +122,12 @@ namespace Chisel.Editors
         readonly HashSet<CSGTreeBrush>		                 foundTreeBrushes		= new();
         readonly HashSet<BrushOutline>		                 foundBrushOutlines		= new();
         readonly HashSet<BrushOutline>		                 removedBrushes			= new();
+        // the brushes of selected generators, and the subtractive or intersecting ones shown whether selected or not
+        readonly HashSet<CSGTreeBrush>		                 brushSelected		    = new();
+        readonly Dictionary<CSGTreeBrush, CSGOperationType>  brushCarving		    = new();
+        // kept from one update to the next, so they're not made again every time
+        readonly Dictionary<CSGTreeBrush, BrushOutline>      carvingOutlines	    = new();
+        readonly HashSet<CSGTreeBrush>		                 generatorBrushes	    = new();
 
         static bool s_UpdateBrushSelection	= false;
         static bool s_UpdateBrushWireframe	= false;
@@ -210,6 +216,14 @@ namespace Chisel.Editors
             s_UpdateBrushWireframe = true;
             s_UpdateSurfaceWireframe = true;
             s_ClearSurfaceCache = true;
+            // a brush made again, or its operation changed
+            if (ChiselCarvingOutlines.AnyShown)
+                s_UpdateBrushSelection = true;
+        }
+
+        internal static void OnCarvingOutlinesChanged()
+        {
+            s_UpdateBrushSelection = true;
         }
 
         // The lines are cached with their colors
@@ -241,7 +255,10 @@ namespace Chisel.Editors
             foundTreeBrushes.Clear();
             foundBrushOutlines.Clear();
             removedBrushes.Clear();
-            
+            brushSelected.Clear();
+            brushCarving.Clear();
+            carvingOutlines.Clear();
+
             s_UpdateBrushSelection = true;
             s_UpdateBrushWireframe = false;
             s_UpdateBrushLineCache = false;
@@ -255,6 +272,7 @@ namespace Chisel.Editors
         void UpdateBrushSelection()
         {
             brushDirectlySelected.Clear();
+            brushSelected.Clear();
             var objects = Selection.objects;
             if (objects.Length > 0)
             {
@@ -300,6 +318,7 @@ namespace Chisel.Editors
                                 {
                                     if (directSelected)
                                         brushDirectlySelected.Add(treeBrush);
+                                    brushSelected.Add(treeBrush);
                                     var outline = new BrushOutline(transform, treeBrush);
                                     foundBrushOutlines.Add(outline);
                                 }
@@ -309,7 +328,30 @@ namespace Chisel.Editors
                 }
             }
 
-            if (foundTreeBrushes.Count == 0)
+            brushCarving.Clear();
+            if (ChiselCarvingOutlines.AnyShown)
+            {
+                foreach (var sceneHierarchy in ChiselNodeHierarchyManager.sceneHierarchies.Values)
+                {
+                    foreach (var item in sceneHierarchy.RootItems)
+                        FindCarvingBrushes(item, CSGOperationType.Additive);
+                }
+            }
+            // the outlines of brushes no longer shown aren't kept
+            if (carvingOutlines.Count > brushCarving.Count)
+            {
+                generatorBrushes.Clear();
+                foreach (var brush in carvingOutlines.Keys)
+                {
+                    if (!brushCarving.ContainsKey(brush))
+                        generatorBrushes.Add(brush);
+                }
+                foreach (var brush in generatorBrushes)
+                    carvingOutlines.Remove(brush);
+                generatorBrushes.Clear();
+            }
+
+            if (foundBrushOutlines.Count == 0)
             {
                 brushOutlines.Clear();
                 brushOutlineRenderer.Clear();
@@ -348,8 +390,55 @@ namespace Chisel.Editors
             s_UpdateBrushWireframe = true;
         }
         
+        // The brushes of the generators under item that carve: each takes the operation of the nearest of it and the
+        // composites above it that isn't additive, so a brush in a subtractive composite carves too. A generator's own
+        // brushes (the parts it is built from) go with it, as they do when it is selected
+        void FindCarvingBrushes(ChiselHierarchyItem item, CSGOperationType carving)
+        {
+            var component = item.Component;
+            if (!component || !component.isActiveAndEnabled)
+                return;
+            switch (component)
+            {
+                case ChiselModelComponent:
+                    carving = CSGOperationType.Additive;
+                    break;
+                case ChiselCompositeComponent composite:
+                    if (composite.Operation != CSGOperationType.Additive)
+                        carving = composite.Operation;
+                    break;
+                case ChiselGeneratorComponent generator:
+                    if (generator.Operation != CSGOperationType.Additive)
+                        carving = generator.Operation;
+                    if (ChiselCarvingOutlines.Shows(carving))
+                        AddCarvingOutlines(generator, carving);
+                    break;
+            }
+            for (int c = 0; c < item.Children.Count; c++)
+                FindCarvingBrushes(item.Children[c], carving);
+        }
+
+        void AddCarvingOutlines(ChiselGeneratorComponent generator, CSGOperationType carving)
+        {
+            generatorBrushes.Clear();
+            ChiselModelManager.Instance.GetAllTreeBrushes(generator, generatorBrushes);
+            if (generatorBrushes.Count == 0)
+                return;
+            var transform = ChiselNodeHierarchyManager.FindModelTransformOfTransform(generator.hierarchyItem.Transform);
+            foreach (var brush in generatorBrushes)
+            {
+                brushCarving[brush] = carving;
+                if (carvingOutlines.TryGetValue(brush, out var outline))
+                    outline.transform = transform;
+                else
+                    carvingOutlines[brush] = outline = new BrushOutline(transform, brush);
+                foundBrushOutlines.Add(outline);
+            }
+            generatorBrushes.Clear();
+        }
+
         void UpdateSurfaceSelection()
-        {	
+        {
             surfaceOutlines.Clear();
             ChiselSurfaceSelectionManager.Clean();
             var selection	= ChiselSurfaceSelectionManager.Selection;
@@ -575,7 +664,43 @@ namespace Chisel.Editors
             s_UpdateSurfaceLineCache = true;
         }
 
-        void UpdateBrushState()
+        // How a brush's outline is drawn: a selected generator's brushes in the outline color (the selected one, thicker,
+        // in the UV tools), a carving brush that isn't selected in its operation's color; false when it isn't drawn
+        internal bool TryGetOutlineColor(CSGTreeBrush brush, out Color color, out float thickness)
+        {
+            if (brushSelected.Contains(brush))
+            {
+                var uvTool = ChiselUVMoveTool.IsActive() || ChiselUVRotateTool.IsActive() || ChiselUVScaleTool.IsActive() || ChiselUVConnectTool.IsActive();
+                color     = uvTool ? ColorManager.SelectedOutlineColor : ColorManager.UnselectedOutlineColor;
+                thickness = uvTool ? 3.0f : 1.0f;
+                return true;
+            }
+            if (brushCarving.TryGetValue(brush, out var carving))
+            {
+                color     = carving == CSGOperationType.Subtractive ? ColorManager.SubtractiveOutlineColor : ColorManager.IntersectingOutlineColor;
+                thickness = 1.0f;
+                return true;
+            }
+            color     = default;
+            thickness = 0;
+            return false;
+        }
+
+        internal bool HasOutline(CSGTreeBrush brush)
+        {
+            return brushOutlines.TryGetValue(new BrushOutline(null, brush), out var wireframe) && wireframe != null;
+        }
+
+        // which outlines are drawn worked out now, rather than when the scene view is next drawn (which draws them): all
+        // of it again, or only what has changed since, as the scene view does
+        internal void UpdateBrushOutlinesNow(bool all = true)
+        {
+            if (all)
+                s_UpdateBrushSelection = true;
+            UpdateBrushOutlines();
+        }
+
+        void UpdateBrushOutlines()
         {
             if (s_UpdateBrushSelection)
             {
@@ -589,30 +714,37 @@ namespace Chisel.Editors
                 UpdateBrushWireframe();
                 s_UpdateBrushLineCache = true;
             }
+        }
+
+        void UpdateBrushState()
+        {
+            UpdateBrushOutlines();
             if (s_UpdateBrushLineCache)
             {
                 s_UpdateBrushLineCache = false;
                 brushOutlineRenderer.Begin();
 
-                foreach (var pair in brushOutlines)
+                // the carving brushes first, so the selected ones are drawn over them
+                for (int pass = 0; pass < 2; pass++)
                 {
-                    var wireframe = pair.Value;
-                    if (wireframe == null)
-                        continue;
-
-                    var outline = pair.Key;
-                    if (!outline.brush.Valid)
-                        continue;
-
-                    var wireframeValue	= pair.Value;
-                    var modelTransform	= outline.transform;
-                    //var brushes		= outline.brush.AllSynchronizedVariants;
-                    //var anySelected	= ChiselSyncSelection.IsAnyBrushVariantSelected(brushes);
-
-                    //foreach (var brush in brushes)
-                    var brush = outline.brush;
-                    var anySelected = ChiselSyncSelection.IsBrushVariantSelected(brush);
+                    foreach (var pair in brushOutlines)
                     {
+                        var wireframe = pair.Value;
+                        if (wireframe == null)
+                            continue;
+
+                        var outline = pair.Key;
+                        if (!outline.brush.Valid)
+                            continue;
+
+                        var brush = outline.brush;
+                        if (brushSelected.Contains(brush) != (pass == 1))
+                            continue;
+                        if (!TryGetOutlineColor(brush, out var color, out var thickness))
+                            continue;
+
+                        var wireframeValue	= pair.Value;
+                        var modelTransform	= outline.transform;
                         Matrix4x4 transformation;
                         if (modelTransform)
                             transformation = modelTransform.localToWorldMatrix * (Matrix4x4)brush.NodeToTreeSpaceMatrix;
@@ -620,20 +752,10 @@ namespace Chisel.Editors
                             transformation = brush.NodeToTreeSpaceMatrix;
 
                         if ((VisualizationMode & VisualizationMode.Outline) == VisualizationMode.Outline)
-                        {
-                            var directSelect = (ChiselUVMoveTool.IsActive() || ChiselUVRotateTool.IsActive() || ChiselUVScaleTool.IsActive() || ChiselUVConnectTool.IsActive()) &&
-                                               ((brush == outline.brush && !anySelected) || (anySelected && ChiselSyncSelection.IsBrushVariantSelected(brush)));
+                            brushOutlineRenderer.DrawOutlines(transformation, wireframeValue, color, thickness: thickness, onlyInnerLines: false);
 
-                            if (directSelect)
-                                brushOutlineRenderer.DrawOutlines(transformation, wireframeValue, ColorManager.SelectedOutlineColor, thickness: 3.0f, onlyInnerLines: false);
-                            else
-                                brushOutlineRenderer.DrawOutlines(transformation, wireframeValue, ColorManager.UnselectedOutlineColor, thickness: 1.0f, onlyInnerLines: false);// (ChiselEditModeManager.EditMode == CSGEditMode.ShapeEdit));
-                        }
-                            
                         if ((VisualizationMode & VisualizationMode.SimpleOutline) == VisualizationMode.SimpleOutline)
-                        {
-                            brushOutlineRenderer.DrawSimpleOutlines(transformation, wireframeValue, ColorManager.UnselectedOutlineColor);
-                        }
+                            brushOutlineRenderer.DrawSimpleOutlines(transformation, wireframeValue, brushSelected.Contains(brush) ? ColorManager.UnselectedOutlineColor : color);
                     }
                 }
                 brushOutlineRenderer.End();

@@ -41,6 +41,14 @@ namespace Chisel.Editors
         public static readonly ChiselColorSetting SelectedHoverOutline = Setting(kOutlines, "Hovered Selected Outline",
             "The outline of a selected surface under the mouse.", new Color(246f / 255f, 242f / 255f, 50f / 255f, 1f));
 
+        public static readonly ChiselColorSetting SubtractiveOutline = Setting(kOutlines, "Subtractive Outline",
+            "The outline of a subtractive brush that isn't selected, when subtractive outlines are shown (Chisel Helper Surfaces).",
+            new Color(214f / 255f, 92f / 255f, 92f / 255f, 1f));
+
+        public static readonly ChiselColorSetting IntersectingOutline = Setting(kOutlines, "Intersecting Outline",
+            "The outline of an intersecting brush that isn't selected, when intersecting outlines are shown (Chisel Helper Surfaces).",
+            new Color(110f / 255f, 196f / 255f, 120f / 255f, 1f));
+
         public static readonly ChiselColorSetting Handles = Setting(kHandles, "Handles",
             "Chisel's own handles, such as a generator's bounds and the placement tools' shapes.",
             new Color(Mathf.LinearToGammaSpace(61f / 255f), Mathf.LinearToGammaSpace(200f / 255f), Mathf.LinearToGammaSpace(255f / 255f), 0.89f));
@@ -90,7 +98,7 @@ namespace Chisel.Editors
 
         public static readonly IReadOnlyList<ChiselColorSetting> All = new[]
         {
-            UnselectedOutline, PreSelectedOutline, SelectedOutline, SelectedHoverOutline,
+            UnselectedOutline, PreSelectedOutline, SelectedOutline, SelectedHoverOutline, SubtractiveOutline, IntersectingOutline,
             Handles, HoveredHandle, Measurements, Invalid,
             BrushEditorEdges, BrushEditorPolygons,
             DecalHandles, TrimEdge,

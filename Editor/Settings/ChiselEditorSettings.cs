@@ -46,6 +46,11 @@ namespace Chisel.Editors
         /// time it refreshes a scene view camera's draw mode.</summary>
         public static DrawModeFlags		HelperSurfaceFlags { get; set; } = DrawModeFlags.Default;
 
+        // the outlines of subtractive and of intersecting brushes drawn whether they're selected or not, as on their own
+        // they can't be seen (ChiselCarvingOutlines)
+        public static bool				ShowSubtractiveOutlines   { get; set; }
+        public static bool				ShowIntersectingOutlines  { get; set; }
+
         public static bool				RotateSnapping  { get { return Snapping.RotateSnappingEnabled; } set { Snapping.RotateSnappingEnabled = value; } }
         public static float 			RotateSnap      { get { return Snapping.RotateSnappingStep; } set { Snapping.RotateSnappingStep = value; } }
 
@@ -69,6 +74,8 @@ namespace Chisel.Editors
             DefaultUVScale	= EditorPrefs.GetFloat("DefaultUVScale", 1);
 
             HelperSurfaceFlags = (DrawModeFlags)EditorPrefs.GetInt("HelperSurfaceFlags", (int)DrawModeFlags.Default);
+            ShowSubtractiveOutlines  = EditorPrefs.GetBool("ShowSubtractiveOutlines",  false);
+            ShowIntersectingOutlines = EditorPrefs.GetBool("ShowIntersectingOutlines", false);
 
             RotateSnapping	= EditorPrefs.GetBool ("RotateSnapping",	true);
 
@@ -106,6 +113,8 @@ namespace Chisel.Editors
             EditorPrefs.SetFloat("DefaultUVScale",	DefaultUVScale);
 
             EditorPrefs.SetInt("HelperSurfaceFlags", (int)HelperSurfaceFlags);
+            EditorPrefs.SetBool("ShowSubtractiveOutlines",  ShowSubtractiveOutlines);
+            EditorPrefs.SetBool("ShowIntersectingOutlines", ShowIntersectingOutlines);
 
             EditorPrefs.SetBool("RotateSnapping",	RotateSnapping);
 

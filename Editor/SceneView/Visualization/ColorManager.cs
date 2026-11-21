@@ -9,5 +9,7 @@ namespace Chisel.Editors
         public static Color PreSelectedOutlineColor   => ChiselColors.PreSelectedOutline.Value;
         public static Color SelectedHoverOutlineColor => ChiselColors.SelectedHoverOutline.Value;
         public static Color SelectedOutlineColor      => ChiselColors.SelectedOutline.Value;
+        public static Color SubtractiveOutlineColor   => ChiselColors.SubtractiveOutline.Value;
+        public static Color IntersectingOutlineColor  => ChiselColors.IntersectingOutline.Value;
     }
 }
