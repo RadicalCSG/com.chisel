@@ -79,28 +79,6 @@ namespace Chisel.Core
 	}
 
 
-	[BurstCompile(CompileSynchronously = true)]
-    struct AllocateSubMeshesJob : IJob
-    {
-        // Read
-        [NoAlias, ReadOnly] public int                  meshQueryLength;
-        [NoAlias, ReadOnly] public NativeReference<int> surfaceCountRef;
-
-        // Read/Write
-        [NoAlias] public NativeList<SubMeshDescriptions> subMeshDescriptions;
-        [NoAlias] public NativeList<SubMeshSection>      subMeshSections;
-
-        public void Execute()
-        {
-            var subMeshCapacity = surfaceCountRef.Value * meshQueryLength;
-            if (subMeshDescriptions.Capacity < subMeshCapacity)
-                subMeshDescriptions.Capacity = math.max(4, subMeshCapacity);
-            
-            if (subMeshSections.Capacity < subMeshCapacity)
-                subMeshSections.Capacity = math.max(4, subMeshCapacity);
-        }
-    }
-
     // A brush's render buffer as an update read it: the buffer, and its surfaces' offset and count
     struct BrushRenderEntry
     {
@@ -1676,7 +1654,7 @@ namespace Chisel.Core
                 var list = perQuery[t];
                 if (!list.IsCreated)
                     continue;
-                subMeshDescriptions.AddRangeNoResize(list.Ptr, list.Length);
+                subMeshDescriptions.AddRange(list.Ptr, list.Length);
                 list.Dispose();
                 perQuery[t] = default;
             }
@@ -1741,7 +1719,7 @@ namespace Chisel.Core
                     }
 
                     // Group by all subMeshCounts with same query
-                    subMeshSections.AddNoResize(new SubMeshSection
+                    subMeshSections.Add(new SubMeshSection
                     {
                         meshQuery           = subMeshDescriptions[startIndex].meshQuery,
                         startIndex          = startIndex, 
@@ -1764,7 +1742,7 @@ namespace Chisel.Core
                         totalIndexCount  += subMeshDescriptions[i].indexCount;
                     }
 
-                    subMeshSections.AddNoResize(new SubMeshSection
+                    subMeshSections.Add(new SubMeshSection
                     {
                         meshQuery           = subMeshDescriptions[startIndex].meshQuery,
                         startIndex          = startIndex,
@@ -1790,7 +1768,7 @@ namespace Chisel.Core
                     if (subMeshCount.meshQuery.LayerParameterIndex != SurfaceParameterIndex.PhysicsMaterial)
                         break;
 
-                    subMeshSections.AddNoResize(new SubMeshSection
+                    subMeshSections.Add(new SubMeshSection
                     {
                         meshQuery           = subMeshCount.meshQuery,
                         startIndex          = descriptionIndex,

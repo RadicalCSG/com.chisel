@@ -87,6 +87,15 @@ namespace Chisel.Core
             if (subMeshSections.IsCreated) subMeshSections.Clear();
         }
 
+        // Empty, the triangle lookups freed: kept for another update
+        public void FreeLookupsAndClear()
+        {
+            Clear();
+            if (meshes.IsCreated) meshes.Clear();
+            if (subMeshTriangleLookups.IsCreated)
+                new DisposeListChildrenBlobAssetReferenceJob<SubMeshTriangleLookup> { list = subMeshTriangleLookups }.Execute();
+        }
+
         public bool IsCreated
         {
             get

@@ -29,6 +29,15 @@ namespace Chisel.Core
             return scope;
         }
 
+        // As Create leaves it: every triangle
+        public void Clear()
+        {
+            all.Value = true;
+            surfaceBase.Clear();
+            surfaceStart.Clear();
+            inside.Clear();
+        }
+
         public readonly bool Touches(int brush)
         {
             return !all.IsCreated || all.Value || surfaceBase[brush] >= 0;
@@ -53,15 +62,6 @@ namespace Chisel.Core
             if (surfaceBase.IsCreated)  surfaceBase.Dispose();
             if (surfaceStart.IsCreated) surfaceStart.Dispose();
             if (inside.IsCreated)       inside.Dispose();
-        }
-
-        public Unity.Jobs.JobHandle Dispose(Unity.Jobs.JobHandle dependency)
-        {
-            var a = all.IsCreated          ? all.Dispose(dependency)          : dependency;
-            var b = surfaceBase.IsCreated  ? surfaceBase.Dispose(dependency)  : dependency;
-            var c = surfaceStart.IsCreated ? surfaceStart.Dispose(dependency) : dependency;
-            var d = inside.IsCreated       ? inside.Dispose(dependency)       : dependency;
-            return Unity.Jobs.JobHandle.CombineDependencies(Unity.Jobs.JobHandle.CombineDependencies(a, b, c), d);
         }
     }
 
@@ -1062,7 +1062,7 @@ namespace Chisel.Core
         {
             var b = remake[r];
             var brush = memory.brushes[memory.slotOfBrush[b]];
-            // freed within this update (FinishRemake, FreeWeldWorkJob)
+            // freed within this update (FinishRemake, ClearWeldJob)
             var remade = new Remade { work = new UnsafeList<Working>(4, Allocator.TempJob) };
             var final = new NativeList<WeldEntry>(64, Allocator.Temp);
             ref var surfacesOf = ref brushes[b].brushRenderBuffer.Value.surfaces;

@@ -94,25 +94,6 @@ namespace Chisel.Core
             if (leads.IsCreated)       leads.Dispose();
             if (inputs.IsCreated)      inputs.Dispose();
         }
-
-        public Unity.Jobs.JobHandle Dispose(Unity.Jobs.JobHandle dependency)
-        {
-            if (matches.IsCreated)
-                dependency = Unity.Jobs.IJobExtensions.Schedule(new FreeGroupMatchesJob { matches = matches }, dependency);
-            var handles = new NativeArray<Unity.Jobs.JobHandle>(7, Allocator.Temp);
-            for (int i = 0; i < handles.Length; i++)
-                handles[i] = dependency;
-            if (matches.IsCreated)     handles[0] = matches.Dispose(dependency);
-            if (candidates.IsCreated)  handles[1] = candidates.Dispose(dependency);
-            if (unfold.IsCreated)      handles[2] = unfold.Dispose(dependency);
-            if (memberStart.IsCreated) handles[3] = memberStart.Dispose(dependency);
-            if (memberOf.IsCreated)    handles[4] = memberOf.Dispose(dependency);
-            if (leads.IsCreated)       handles[5] = leads.Dispose(dependency);
-            if (inputs.IsCreated)      handles[6] = inputs.Dispose(dependency);
-            var all = Unity.Jobs.JobHandle.CombineDependencies(handles);
-            handles.Dispose();
-            return all;
-        }
     }
 
     // A surface of the tree, by its brush and its index: what a kept grouping is kept by
@@ -257,13 +238,6 @@ namespace Chisel.Core
             if (lastFull.IsCreated)    lastFull.Dispose();
             if (lastDirty.IsCreated)   lastDirty.Dispose();
         }
-    }
-
-    [Unity.Burst.BurstCompile]
-    struct FreeGroupMatchesJob : Unity.Jobs.IJob
-    {
-        public NativeList<GroupMatch> matches;
-        public void Execute() { FindState.FreeMatches(matches); }
     }
 
     // Coplanar neighbouring surfaces, of any brush in the model, with the same hotspot layout and frame are connected:

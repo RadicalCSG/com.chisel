@@ -96,6 +96,8 @@ namespace Chisel.Core
             public NativeParallelHashMap<uint4, GroupMatchEntry>               hotspotMatchCache;
             // What each render mesh was last made from, by (query, material): a mesh made from the same is kept
             public NativeParallelHashMap<RenderMeshKey, uint4>                 renderMeshHashes;
+            // the containers an update of the tree works in, kept for its next update (TreeUpdate.Initialize)
+            internal CompactHierarchyManager.TreeUpdate.TemporariesStruct      updateTemporaries;
 
 			internal void Initialize()
             {
@@ -382,6 +384,7 @@ namespace Chisel.Core
                 hotspotMatchCache = default;
                 if (renderMeshHashes.IsCreated) renderMeshHashes.Dispose();
                 renderMeshHashes = default;
+                CompactHierarchyManager.TreeUpdate.TemporariesStruct.Dispose(ref updateTemporaries);
                 decalInstances = default;
                 decalSequences = default;
                 decalBounds = default;
