@@ -12,7 +12,11 @@ namespace Chisel.Core
     // update groups again only the surfaces of the brushes whose buffers changed (ChiselBrushRenderBuffer.serial). The lists
     // it makes are the ones PrepareSubSectionKeysJob, PrepareSubSectionsJob and ScatterSubSectionsJob make of every brush:
     // per query its groups in key order, each in brush order (Verify compares the two).
-    internal struct MeshSectionMemory
+    // Verify is turned off on entering play mode, as a domain reload would
+#if UNITY_6000_7_OR_NEWER
+    [Unity.Scripting.LifecycleManagement.AutoStaticsCleanup]
+#endif
+    internal partial struct MeshSectionMemory
     {
         public struct BrushSlot
         {
