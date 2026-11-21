@@ -2,6 +2,7 @@ using System;
 using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
 using Unity.Burst;
+using Unity.Mathematics;
 using UnityEngine;
 using Unity.Entities;
 
@@ -23,18 +24,22 @@ namespace Chisel.Core
 
         [UnityEngine.HideInInspector, NonSerialized] internal UnsafeList<SegmentVertex>            polygonVerticesList;
         [UnityEngine.HideInInspector, NonSerialized] internal UnsafeList<int>                      polygonVerticesSegments;
+        [UnityEngine.HideInInspector, NonSerialized] internal UnsafeList<float4x4>                 pathMatrices;
          
         #region Generate
+        // a brush for each piece of the shape along each step of the path, from one of its matrices to the next
         public int PrepareAndCountRequiredBrushMeshes()
         {
-            if (!curveBlob.IsCreated)
+            if (!curveBlob.IsCreated || !pathBlob.IsCreated)
                 return 0; 
 
             ref var curve = ref curveBlob.Value;
             if (!curve.ConvexPartition(curveSegments, out polygonVerticesList, out polygonVerticesSegments))
                 return 0;
 
-            return polygonVerticesSegments.Length;
+            if (pathMatrices.IsCreated) pathMatrices.Dispose();
+            pathMatrices = pathBlob.Value.GetUnsafeMatrices(Allocator.Persistent);
+            return polygonVerticesSegments.Length * math.max(0, pathMatrices.Length - 1);
         }
 
         public bool GenerateNodes(BlobAssetReference<InternalChiselSurfaceArray> surfaceDefinitionBlob, 
@@ -43,8 +48,6 @@ namespace Chisel.Core
 			NativeList<BlobAssetReference<BrushMeshBlob>> generatedBrushMeshes;
 			using var _generatedBrushMeshes = generatedBrushMeshes = new NativeList<BlobAssetReference<BrushMeshBlob>>(nodes.Length, Allocator.Temp);
 			generatedBrushMeshes.Resize(nodes.Length, NativeArrayOptions.ClearMemory);
-
-			using var pathMatrices = pathBlob.Value.GetUnsafeMatrices(Allocator.Temp);
 
 			if (!BrushMeshFactory.GenerateExtrudedShape(generatedBrushMeshes,
 														in polygonVerticesList,
@@ -74,10 +77,12 @@ namespace Chisel.Core
             if (curveBlob.IsCreated) curveBlob.Dispose();
             if (polygonVerticesList.IsCreated) polygonVerticesList.Dispose();
             if (polygonVerticesSegments.IsCreated) polygonVerticesSegments.Dispose();
+            if (pathMatrices.IsCreated) pathMatrices.Dispose();
             pathBlob = default;
             curveBlob = default;
             polygonVerticesList = default;
             polygonVerticesSegments = default;
+            pathMatrices = default;
         }
         #endregion
         

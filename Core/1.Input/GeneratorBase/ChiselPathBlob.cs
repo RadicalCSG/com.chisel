@@ -36,94 +36,11 @@ namespace Chisel.Core
             }
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        static float3 NormalizeAngles(float3 angles)
-        {
-            angles.x = NormalizeAngle(angles.x);
-            angles.y = NormalizeAngle(angles.y);
-            angles.z = NormalizeAngle(angles.z);
-            return angles;
-        }
+        // the most a step of the path turns, in degrees
+        const float kMaxStepDegrees = 5;
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        static float NormalizeAngle(float angle)
-        {
-            while (angle > math.PI * 2f)
-                angle -= math.PI * 2f;
-            while (angle < 0)
-                angle += math.PI * 2f;
-            return angle;
-        }
-
-        // From: https://forum.unity.com/threads/is-there-a-conversion-method-from-quaternion-to-euler.624007/#post-5805985
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static float3 GetQuaternionEulerAngles(quaternion rot)
-        {
-            float4 q1 = rot.value;
-            float sqw = q1.w * q1.w;
-            float sqx = q1.x * q1.x;
-            float sqy = q1.y * q1.y;
-            float sqz = q1.z * q1.z;
-            float unit = sqx + sqy + sqz + sqw; // if normalised is one, otherwise is correction factor
-            float test = q1.x * q1.w - q1.y * q1.z;
-            float3 v;
-
-            if (test > 0.4995f * unit)
-            { // singularity at north pole
-                v.y = 2f * math.atan2(q1.y, q1.x);
-                v.x = math.PI / 2f;
-                v.z = 0;
-                return NormalizeAngles(v);
-            }
-            if (test < -0.4995f * unit)
-            { // singularity at south pole
-                v.y = -2f * math.atan2(q1.y, q1.x);
-                v.x = -math.PI / 2;
-                v.z = 0;
-                return NormalizeAngles(v);
-            }
-
-            rot = new quaternion(q1.w, q1.z, q1.x, q1.y);
-            v.y = math.atan2(2f * rot.value.x * rot.value.w + 2f * rot.value.y * rot.value.z, 1 - 2f * (rot.value.z * rot.value.z + rot.value.w * rot.value.w));    // Yaw
-            v.x = math.asin(2f * (rot.value.x * rot.value.z - rot.value.w * rot.value.y));                                                                          // Pitch
-            v.z = math.atan2(2f * rot.value.x * rot.value.y + 2f * rot.value.z * rot.value.w, 1 - 2f * (rot.value.y * rot.value.y + rot.value.z * rot.value.z));    // Roll
-            return NormalizeAngles(v);
-        }
-
-
-        public NativeList<float4x4> GetMatrices(Allocator allocator)
-        {
-            var matrices = new NativeList<float4x4>(allocator) { segments[0].ToMatrix() };
-            for (int s = 1; s < segments.Length; s++)
-            {
-                var pathPointA = segments[s - 1];
-                var pathPointB = segments[s    ];
-
-                if (math.all(pathPointA.position == pathPointB.position) &&
-                    math.all(pathPointA.rotation.value == pathPointB.rotation.value) &&
-                    math.all(pathPointA.scale == pathPointB.scale))
-                    continue;
-
-                int subSegments = 1;
-                var offsetQuaternion = math.mul(pathPointB.rotation, math.inverse(pathPointA.rotation));
-                var offsetEuler = GetQuaternionEulerAngles(offsetQuaternion);
-                if (offsetEuler.x > 180) offsetEuler.x = 360 - offsetEuler.x;
-                if (offsetEuler.y > 180) offsetEuler.y = 360 - offsetEuler.y;
-                if (offsetEuler.z > 180) offsetEuler.z = 360 - offsetEuler.z;
-                var maxAngle = math.max(math.max(offsetEuler.x, offsetEuler.y), offsetEuler.z);
-                if (maxAngle != 0)
-                    subSegments = math.max(1, (int)math.ceil(maxAngle / 5));
-
-                if ((pathPointA.scale.x / pathPointA.scale.y) != (pathPointB.scale.x / pathPointB.scale.y) &&
-                    (subSegments & 1) == 1)
-                    subSegments += 1;
-
-                for (int n = 1; n <= subSegments; n++)
-                    matrices.Add(ChiselPathBlob.Point.Lerp(ref pathPointA, ref pathPointB, n / (float)subSegments));
-            }
-            return matrices;
-        }
-
+        // A matrix for each point of the path, and between two that turn apart, as many as it takes for no step to turn
+        // more than kMaxStepDegrees (an even number of steps when the shape's aspect changes)
         public UnsafeList<float4x4> GetUnsafeMatrices(Allocator allocator)
         {
             var matrices = new UnsafeList<float4x4>(segments.Length, allocator) { segments[0].ToMatrix() };
@@ -137,15 +54,10 @@ namespace Chisel.Core
                     math.all(pathPointA.scale == pathPointB.scale))
                     continue;
 
-                int subSegments = 1;
-                var offsetQuaternion = math.mul(pathPointB.rotation, math.inverse(pathPointA.rotation));
-                var offsetEuler = GetQuaternionEulerAngles(offsetQuaternion);
-                if (offsetEuler.x > 180) offsetEuler.x = 360 - offsetEuler.x;
-                if (offsetEuler.y > 180) offsetEuler.y = 360 - offsetEuler.y;
-                if (offsetEuler.z > 180) offsetEuler.z = 360 - offsetEuler.z;
-                var maxAngle = math.max(math.max(offsetEuler.x, offsetEuler.y), offsetEuler.z);
-                if (maxAngle != 0)
-                    subSegments = math.max(1, (int)math.ceil(maxAngle / 5));
+                // how far apart the two rotations are: the angle of the one that takes A's to B's
+                var offset  = math.mul(pathPointB.rotation, math.inverse(pathPointA.rotation));
+                var degrees = math.degrees(2 * math.acos(math.min(1, math.abs(offset.value.w))));
+                var subSegments = math.max(1, (int)math.ceil(degrees / kMaxStepDegrees));
 
                 if ((pathPointA.scale.x / pathPointA.scale.y) != (pathPointB.scale.x / pathPointB.scale.y) &&
                     (subSegments & 1) == 1)

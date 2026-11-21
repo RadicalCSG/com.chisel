@@ -174,6 +174,22 @@ namespace Chisel.Core.Tests
         }
 
         [Test]
+        public void AnExtrudedShape_IsSmoothAllAlongItsPath()
+        {
+            var shape = BulgingSquare();
+            shape.controlPoints[1].smoothSide = true;
+            var definition = Extruded(shape);
+            // two steps
+            definition.path = new ChiselPath(new[] { new ChiselPathPoint(Vector3.zero), new ChiselPathPoint(Vector3.up), new ChiselPathPoint(2 * Vector3.up) });
+            var brushes = Brushes(definition);
+            Assert.That(brushes.Count, Is.EqualTo(2), "steps");
+
+            var curved = new List<Face>(OfSide(brushes, 1));
+            foreach (var face in curved)
+                Assert.That(face.smoothingGroup, Is.Not.Zero.And.EqualTo(curved[0].smoothingGroup));
+        }
+
+        [Test]
         public void ARevolvedShape_IsSmoothAllRound()
         {
             var definition = ChiselRevolvedShapeBrushTests.Revolved(ChiselRevolvedShapeBrushTests.Square(1, 2));
