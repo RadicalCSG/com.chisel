@@ -49,6 +49,7 @@ namespace Chisel.Editors
                 SettingsField(nameof(ChiselSpiralStairs.nosingWidth));
                 SettingsField(nameof(ChiselSpiralStairs.riserType));
                 SettingsField(nameof(ChiselSpiralStairs.riserDepth));
+                SettingsField(nameof(ChiselSpiralStairs.smoothSubdivisions));
                 SettingsField(nameof(ChiselSpiralStairs.bottomSmoothingGroup));
                 EditorGUILayout.Space();
 

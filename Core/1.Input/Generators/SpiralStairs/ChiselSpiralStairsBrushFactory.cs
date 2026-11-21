@@ -76,7 +76,7 @@ namespace Chisel.Core
             // raised above the object's position, the first step is solid down to it, as are the walls and the cylinders
             var ground = math.min(0, origin.y);
 
-            var smoothSubDivisions		= 3;
+            var smoothSubDivisions		= definition.SmoothSubdivisions;
 
             var cylinderSubMeshCount	= haveInnerCyl ? 2 : 1;
             var subMeshPerRiser			= (riserType == StairsRiserType.None  ) ? 0 : 
