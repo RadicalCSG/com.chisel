@@ -15,17 +15,42 @@ using Unity.Entities;
 
 namespace Chisel.Core
 {
+    // The tree's structure as the routing tables are built from it, a new generation when it changed (TreeStructureMemory)
     [BurstCompile(CompileSynchronously = true)]
-    struct CreateRoutingTableJob : IJobParallelForDefer
+    struct TrackTreeStructureJob : IJob
+    {
+        // Read
+        [NoAlias, ReadOnly] public NativeReference<BlobAssetReference<CompactTree>>         compactTreeRef;
+
+        // Read / Write
+        [NoAlias] public NativeReference<TreeStructureMemory>                               treeStructure;
+
+        public void Execute()
+        {
+            if (!compactTreeRef.Value.IsCreated)
+                return;
+            var memory = treeStructure.Value;
+            memory.Track(ref compactTreeRef.Value.Value);
+            treeStructure.Value = memory;
+        }
+    }
+
+    [BurstCompile(CompileSynchronously = true)]
+    unsafe struct CreateRoutingTableJob : IJobParallelForDefer
     {
         // Read
         [NoAlias, ReadOnly] public NativeList<IndexOrder>                                   allUpdateBrushIndexOrders;
         [NoAlias, ReadOnly] public NativeList<BlobAssetReference<BrushesTouchedByBrush>>    brushesTouchedByBrushes;
         [NoAlias, ReadOnly] public NativeReference<BlobAssetReference<CompactTree>>         compactTreeRef;
+        [NoAlias, ReadOnly] public NativeReference<TreeStructureMemory>                     treeStructure;
+        [NoAlias, ReadOnly] public bool                                                     keepTables;
+        [NoAlias, ReadOnly] public bool                                                     verifyKeptTables;
 
-        // Write
+        // Read / Write: a brush's table is kept when it was built from what it would be built from now, else replaced
         [NativeDisableParallelForRestriction]
-        [NoAlias, WriteOnly] public NativeList<BlobAssetReference<RoutingTable>>            routingTableLookup;
+        [NoAlias] public NativeList<BlobAssetReference<RoutingTable>>                       routingTableLookup;
+        [NativeDisableParallelForRestriction]
+        [NoAlias] public NativeArray<int>                                                   stats;
 
         public int rowsPerNodeCopyLimit;
 
@@ -51,13 +76,107 @@ namespace Chisel.Core
             var processedNodeID     = processedIndexOrder.compactNodeID;
             int processedNodeOrder  = processedIndexOrder.nodeOrder;
 
+            var previous = routingTableLookup[processedNodeOrder];
             var brushesTouchedByBrush = brushesTouchedByBrushes[processedNodeOrder];
-            if (brushesTouchedByBrush == BlobAssetReference<BrushesTouchedByBrush>.Null)
-                return;
+            var built = brushesTouchedByBrush == BlobAssetReference<BrushesTouchedByBrush>.Null
+                      ? BlobAssetReference<RoutingTable>.Null
+                      : (keepTables && previous.IsCreated && BuiltFromTheSame(ref previous.Value, ref brushesTouchedByBrush.Value))
+                      ? previous
+                      : Build(processedNodeID, ref brushesTouchedByBrush.Value);
 
+            if (built.IsCreated && built == previous)
+            {
+                Count(ExactCSGStat.RoutingTablesKept);
+                if (verifyKeptTables)
+                {
+                    var check = Build(processedNodeID, ref brushesTouchedByBrush.Value);
+                    if (!SameTable(ref previous.Value, check))
+                        Count(ExactCSGStat.RoutingTableMismatch);
+                    if (check.IsCreated)
+                        check.Dispose();
+                }
+                return;
+            }
+            if (previous.IsCreated)
+                previous.Dispose();
+            routingTableLookup[processedNodeOrder] = built;
+        }
+
+        void Count(ExactCSGStat stat)
+        {
+            if (stats.IsCreated)
+                System.Threading.Interlocked.Increment(ref ((int*)stats.GetUnsafePtr())[(int)stat]);
+        }
+
+        // 0 when the tree's structure is not tracked (TrackTreeStructureJob), which a tracked one never is
+        ulong StructureGeneration => treeStructure.IsCreated ? treeStructure.Value.generation : 0;
+
+        int RowLimit =>(rowsPerNodeCopyLimit > 0) ? math.min(rowsPerNodeCopyLimit, kMaxRowsPerNodeCopy) : kMaxRowsPerNodeCopy;
+
+        // Every node a brush touches and how, as RoutingTable.touched has it: the nodes GetStackNodes finds touching
+        // (BrushesTouchedByBrush.Get), all others reading as not touching
+        static int TouchedCount(ref BrushesTouchedByBrush touched)
+        {
+            int count = 0;
+            for (int i = 0; i < touched.BitCount; i++)
+            {
+                if ((i & 15) == 0 && touched.intersectionBits[i >> 4] == 0) { i += 15; continue; }
+                if (TouchedValue(ref touched, i) != 0)
+                    count++;
+            }
+            return count;
+        }
+
+        static uint TouchedValue(ref BrushesTouchedByBrush touched, int i)
+        {
+            int bit = i << 1;
+            return (touched.intersectionBits[bit >> 5] >> (bit & 31)) & 3u;
+        }
+
+        static uint Touched(ref BrushesTouchedByBrush touched, int i, uint value) => ((uint)(i + touched.BitOffset) << 2) | value;
+
+        bool BuiltFromTheSame(ref RoutingTable table, ref BrushesTouchedByBrush touched)
+        {
+            if (table.structureGeneration != StructureGeneration)
+                return false;
+            int n = 0;
+            for (int i = 0; i < touched.BitCount; i++)
+            {
+                if ((i & 15) == 0 && touched.intersectionBits[i >> 4] == 0) { i += 15; continue; }
+                var value = TouchedValue(ref touched, i);
+                if (value == 0)
+                    continue;
+                if (n >= table.touched.Length || table.touched[n] != Touched(ref touched, i, value))
+                    return false;
+                n++;
+            }
+            return n == table.touched.Length;
+        }
+
+        static bool SameTable(ref RoutingTable a, BlobAssetReference<RoutingTable> bRef)
+        {
+            if (!bRef.IsCreated)
+                return false;
+            ref var b = ref bRef.Value;
+            if (a.nodeIDOffset != b.nodeIDOffset || a.routingRows.Length != b.routingRows.Length ||
+                a.routingLookups.Length != b.routingLookups.Length || a.nodeIDToTableIndex.Length != b.nodeIDToTableIndex.Length)
+                return false;
+            for (int i = 0; i < a.routingRows.Length; i++)
+                if (!a.routingRows[i].Equals(b.routingRows[i]))
+                    return false;
+            for (int i = 0; i < a.routingLookups.Length; i++)
+                if (a.routingLookups[i].startIndex != b.routingLookups[i].startIndex || a.routingLookups[i].endIndex != b.routingLookups[i].endIndex)
+                    return false;
+            for (int i = 0; i < a.nodeIDToTableIndex.Length; i++)
+                if (a.nodeIDToTableIndex[i] != b.nodeIDToTableIndex[i])
+                    return false;
+            return true;
+        }
+
+        // The brush's routing table, or none when it is nested too deeply to route
+        BlobAssetReference<RoutingTable> Build(CompactNodeID processedNodeID, ref BrushesTouchedByBrush brushesTouchedByBrushValue)
+        {
             ref var compactTree                 = ref compactTreeRef.Value.Value;
-            ref var topDownNodes                = ref compactTree.compactHierarchy;
-            ref var brushesTouchedByBrushValue  = ref brushesTouchedByBrush.Value;
             var touchingBrushCount = math.max(1, brushesTouchedByBrushValue.brushIntersections.Length);
             var queuedEvents       = new NativeArray<QueuedEvent>(touchingBrushCount + 2, Allocator.Temp);     // the event stack, grown as it is pushed onto (PushEvent)
             var routingTable       = new NativeArray<CategoryStackNode>(touchingBrushCount, Allocator.Temp);   // at least a row per brush it routes through
@@ -69,7 +188,7 @@ namespace Chisel.Core
 #endif
             var mergeClassOfRow    = new NativeArray<int>(touchingBrushCount, Allocator.Temp);                 // MergeEquivalentRows: the class of each row
             var mergeClassRows     = new NativeArray<int>(CategoryRoutingRow.Length, Allocator.Temp);          // MergeEquivalentRows: the first row of each class of one node
-            var rowLimit           = (rowsPerNodeCopyLimit > 0) ? math.min(rowsPerNodeCopyLimit, kMaxRowsPerNodeCopy) : kMaxRowsPerNodeCopy;
+            var rowLimit           = RowLimit;
             try
             {
     			var categoryStackNodeCount = GetStackNodes(processedNodeID, ref brushesTouchedByBrushValue,
@@ -91,17 +210,28 @@ namespace Chisel.Core
                 if (categoryStackNodeCount < 0)
                 {
                     Debug.LogError($"Chisel: brush {processedNodeID.slotIndex.index} is nested too deeply to route: a brush it touches needs more than {rowLimit} rows in its routing table. The brush's surfaces are left out.");
-                    return;
+                    return BlobAssetReference<RoutingTable>.Null;
                 }
 
+                int touchedCount = TouchedCount(ref brushesTouchedByBrushValue);
                 var totalInputsSize = 16 + (categoryStackNodeCount * UnsafeUtility.SizeOf<ushort>());
                 var totalRoutingRowsSize = 16 + (categoryStackNodeCount * UnsafeUtility.SizeOf<CategoryRoutingRow>());
                 var totalLookupsSize = 16 + (categoryStackNodeCount * UnsafeUtility.SizeOf<RoutingLookup>());
                 var totalNodesSize = 16 + (categoryStackNodeCount * UnsafeUtility.SizeOf<int>());
-                var totalSize = totalInputsSize + totalRoutingRowsSize + totalLookupsSize + totalNodesSize;
+                var totalTouchedSize = 16 + (touchedCount * UnsafeUtility.SizeOf<uint>());
+                var totalSize = totalInputsSize + totalRoutingRowsSize + totalLookupsSize + totalNodesSize + totalTouchedSize;
 
     			using var builder = new BlobBuilder(Allocator.Temp, totalSize);
                 ref var root = ref builder.ConstructRoot<RoutingTable>();
+                root.structureGeneration = StructureGeneration;
+                var touched = builder.Allocate(ref root.touched, touchedCount);
+                for (int i = 0, n = 0; i < brushesTouchedByBrushValue.BitCount; i++)
+                {
+                    if ((i & 15) == 0 && brushesTouchedByBrushValue.intersectionBits[i >> 4] == 0) { i += 15; continue; }
+                    var value = TouchedValue(ref brushesTouchedByBrushValue, i);
+                    if (value != 0)
+                        touched[n++] = Touched(ref brushesTouchedByBrushValue, i, value);
+                }
                 var routingRows = builder.Allocate(ref root.routingRows, categoryStackNodeCount);
 
                 int nodeCounter = 1;
@@ -150,8 +280,7 @@ namespace Chisel.Core
                     for (int i = 0; i < nodeCounter; i++)
                         nodeIDToTableIndex[routingTable[routingLookups[i].startIndex].NodeIDValue - minNodeID] = i;
 
-                    var routingTableBlob = builder.CreateBlobAssetReference<RoutingTable>(Allocator.Persistent); // Confirmed to be disposed
-    				routingTableLookup[processedNodeOrder] = routingTableBlob;
+                    return builder.CreateBlobAssetReference<RoutingTable>(Allocator.Persistent); // Confirmed to be disposed
                 }
             }
             finally

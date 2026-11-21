@@ -91,6 +91,13 @@ namespace Chisel.Core
         // ExactCSGJob builds every face it replays too, and counts ExactCSGStat.ReplayMismatch where the two differ
         internal static bool VerifyReplayedFaces;
 
+        // CreateRoutingTableJob keeps a brush's routing table when the tree and the brushes it touches are the same as when
+        // the table was built
+        internal static bool KeepRoutingTables = true;
+        // CreateRoutingTableJob builds every table it keeps too, and counts ExactCSGStat.RoutingTableMismatch where the two
+        // differ
+        internal static bool VerifyKeptRoutingTables;
+
         #region Update / Rebuild
 
         static readonly ProfilerMarker kUpdateTreeMeshesProfilerMarker = new("UpdateTreeMeshes");
@@ -298,7 +305,6 @@ namespace Chisel.Core
                 public NativeList<BlobAssetReference<BasePolygonsBlob>>           basePolygonDisposeList;
                 public NativeList<BlobAssetReference<BrushTreeSpaceVerticesBlob>> treeSpaceVerticesDisposeList;
                 public NativeList<BlobAssetReference<BrushesTouchedByBrush>>      brushesTouchedByBrushDisposeList;
-                public NativeList<BlobAssetReference<RoutingTable>>               routingTableDisposeList;
                 public NativeList<BlobAssetReference<ChiselBrushRenderBuffer>>    brushRenderBufferDisposeList;
 
                 // Decals (ChiselDecalStore): this update's copy of the tree's decals, and where they changed
@@ -385,7 +391,6 @@ namespace Chisel.Core
                     if (t.basePolygonDisposeList.IsCreated)         t.basePolygonDisposeList.Dispose();
                     if (t.treeSpaceVerticesDisposeList.IsCreated)   t.treeSpaceVerticesDisposeList.Dispose();
                     if (t.brushesTouchedByBrushDisposeList.IsCreated) t.brushesTouchedByBrushDisposeList.Dispose();
-                    if (t.routingTableDisposeList.IsCreated)        t.routingTableDisposeList.Dispose();
                     if (t.brushRenderBufferDisposeList.IsCreated)   t.brushRenderBufferDisposeList.Dispose();
                     if (t.exactBrushDisposeList.IsCreated)          t.exactBrushDisposeList.Dispose();
                     if (t.keptSections.IsCreated)                   t.keptSections.Dispose();
@@ -403,7 +408,6 @@ namespace Chisel.Core
             {
                 public NativeList<BlobAssetReference<ExactBrush>>                 exactBrushes;
                 public NativeList<BlobAssetReference<BasePolygonsBlob>>           basePolygons;
-                public NativeList<BlobAssetReference<RoutingTable>>               routingTables;
                 public NativeList<BlobAssetReference<ChiselBrushRenderBuffer>>    renderBuffers;
                 public NativeList<BlobAssetReference<BrushTreeSpaceVerticesBlob>> treeSpaceVertices;
                 public NativeList<BlobAssetReference<BrushesTouchedByBrush>>      brushesTouchedByBrush;
@@ -414,7 +418,6 @@ namespace Chisel.Core
                 {
                     new DisposeListChildrenBlobAssetReferenceJob<ExactBrush>                 { list = exactBrushes }.Execute();
                     new DisposeListChildrenBlobAssetReferenceJob<BasePolygonsBlob>           { list = basePolygons }.Execute();
-                    new DisposeListChildrenBlobAssetReferenceJob<RoutingTable>               { list = routingTables }.Execute();
                     new DisposeListChildrenBlobAssetReferenceJob<ChiselBrushRenderBuffer>    { list = renderBuffers }.Execute();
                     new DisposeListChildrenBlobAssetReferenceJob<BrushTreeSpaceVerticesBlob> { list = treeSpaceVertices }.Execute();
                     new DisposeListChildrenBlobAssetReferenceJob<BrushesTouchedByBrush>      { list = brushesTouchedByBrush }.Execute();
@@ -784,7 +787,6 @@ namespace Chisel.Core
                 NativeCollectionHelpers.EnsureCapacityAndClear(ref Temporaries.basePolygonDisposeList, chiselLookupValues.basePolygonCache.Length, keptAllocator);
                 NativeCollectionHelpers.EnsureCapacityAndClear(ref Temporaries.treeSpaceVerticesDisposeList, chiselLookupValues.treeSpaceVerticesCache.Length, keptAllocator);
                 NativeCollectionHelpers.EnsureCapacityAndClear(ref Temporaries.brushesTouchedByBrushDisposeList, chiselLookupValues.brushesTouchedByBrushCache.Length, keptAllocator);
-                NativeCollectionHelpers.EnsureCapacityAndClear(ref Temporaries.routingTableDisposeList, chiselLookupValues.routingTableCache.Length, keptAllocator);
                 NativeCollectionHelpers.EnsureCapacityAndClear(ref Temporaries.brushRenderBufferDisposeList, chiselLookupValues.brushRenderBufferCache.Length, keptAllocator);
                 // a brush can be replaced twice: built again (ExactInputJob), then with merged planes (ExactMergedRebuildJob)
                 NativeCollectionHelpers.EnsureCapacityAndClear(ref Temporaries.exactBrushDisposeList, math.max(1, 2 * math.max(brushCount, chiselLookupValues.exactBrushCache.Length)), keptAllocator);
@@ -1644,12 +1646,10 @@ namespace Chisel.Core
                         basePolygonCache            = chiselLookupValues.basePolygonCache,
                         treeSpaceVerticesCache      = chiselLookupValues.treeSpaceVerticesCache,
                         brushesTouchedByBrushCache  = chiselLookupValues.brushesTouchedByBrushCache,
-                        routingTableCache           = chiselLookupValues.routingTableCache,
                         brushRenderBufferCache      = chiselLookupValues.brushRenderBufferCache,
 
                         // Write
                         basePolygonDisposeList           = Temporaries.basePolygonDisposeList.AsParallelWriter(),
-                        routingTableDisposeList          = Temporaries.routingTableDisposeList.AsParallelWriter(),
                         brushRenderBufferDisposeList     = Temporaries.brushRenderBufferDisposeList.AsParallelWriter(),
                         treeSpaceVerticesDisposeList     = Temporaries.treeSpaceVerticesDisposeList.AsParallelWriter(),
                         brushesTouchedByBrushDisposeList = Temporaries.brushesTouchedByBrushDisposeList.AsParallelWriter()
@@ -1661,7 +1661,6 @@ namespace Chisel.Core
                             JobHandleType.basePolygonCacheJobHandle,
                             JobHandleType.treeSpaceVerticesCacheJobHandle,
                             JobHandleType.brushesTouchedByBrushCacheJobHandle,
-                            JobHandleType.routingTableCacheJobHandle,
                             JobHandleType.brushRenderBufferCacheJobHandle));
 				}
                 #endregion
@@ -1830,7 +1829,6 @@ namespace Chisel.Core
                         basePolygonCache            = chiselLookupValues.basePolygonCache,
                         treeSpaceVerticesCache      = chiselLookupValues.treeSpaceVerticesCache,
                         brushesTouchedByBrushCache  = chiselLookupValues.brushesTouchedByBrushCache,
-                        routingTableCache           = chiselLookupValues.routingTableCache,
                         brushRenderBufferCache      = chiselLookupValues.brushRenderBufferCache
                     };
                     invalidateIndirectBrushCacheJob.Schedule(runInParallel, Temporaries.brushesThatNeedIndirectUpdate, 16,
@@ -1840,7 +1838,6 @@ namespace Chisel.Core
                             JobHandleType.basePolygonCacheJobHandle,
                             JobHandleType.treeSpaceVerticesCacheJobHandle,
                             JobHandleType.brushesTouchedByBrushCacheJobHandle,
-                            JobHandleType.routingTableCacheJobHandle,
                             JobHandleType.brushRenderBufferCacheJobHandle));
                 }
                 #endregion
@@ -2046,15 +2043,32 @@ namespace Chisel.Core
                 using (kJob_UpdateBrushCategorizationTablesProfilerMarker.Auto())
                 {
                     const bool runInParallel = runInParallelDefault;
+                    // the tree's structure, which a kept routing table was built from too
+                    var trackTreeStructureJob = new TrackTreeStructureJob
+                    {
+                        // Read
+                        compactTreeRef            = Temporaries.compactTreeRef,
+
+                        // Read / Write
+                        treeStructure             = chiselLookupValues.treeStructure
+                    };
+                    trackTreeStructureJob.Schedule(runInParallel,
+                        JobHandles.Read(JobHandleType.compactTreeRefJobHandle),
+                        JobHandles.Write(JobHandleType.routingTableCacheJobHandle));
+
                     var createRoutingTableJob = new CreateRoutingTableJob // Build categorization trees for brushes
                     {
                         // Read
                         allUpdateBrushIndexOrders = Temporaries.allUpdateBrushIndexOrders,
                         brushesTouchedByBrushes   = chiselLookupValues.brushesTouchedByBrushCache,
                         compactTreeRef            = Temporaries.compactTreeRef,
+                        treeStructure             = chiselLookupValues.treeStructure,
+                        keepTables                = KeepRoutingTables,
+                        verifyKeptTables          = VerifyKeptRoutingTables,
 
-                        // Write
-                        routingTableLookup        = chiselLookupValues.routingTableCache
+                        // Read / Write
+                        routingTableLookup        = chiselLookupValues.routingTableCache,
+                        stats                     = Temporaries.exactCSGStats
                     };
                     createRoutingTableJob.Schedule(runInParallel, Temporaries.allUpdateBrushIndexOrders, 1,
                         JobHandles.Read(
@@ -3024,7 +3038,6 @@ namespace Chisel.Core
                     {
                         exactBrushes            = Temporaries.exactBrushDisposeList,
                         basePolygons            = Temporaries.basePolygonDisposeList,
-                        routingTables           = Temporaries.routingTableDisposeList,
                         renderBuffers           = Temporaries.brushRenderBufferDisposeList,
                         treeSpaceVertices       = Temporaries.treeSpaceVerticesDisposeList,
                         brushesTouchedByBrush   = Temporaries.brushesTouchedByBrushDisposeList,
