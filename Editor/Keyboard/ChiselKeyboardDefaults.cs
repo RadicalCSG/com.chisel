@@ -33,6 +33,11 @@ namespace Chisel.Editors
         public const KeyCode FreeDrawGeneratorKey       = KeyCode.N;
         public const KeyCode RevolvedShapeGeneratorKey  = KeyCode.Alpha4;
 
+        // the handle on a brush's selected vertices while it is edited; Unity's Move, Rotate and Scale keys
+        public const KeyCode MoveVerticesKey            = KeyCode.W;
+        public const KeyCode RotateVerticesKey          = KeyCode.E;
+        public const KeyCode ScaleVerticesKey           = KeyCode.R;
+
 
         public const KeyCode            HalfGridSizeKey                 = KeyCode.LeftBracket;
         public const ShortcutModifiers  HalfGridSizeModifiers           = ShortcutModifiers.None;
