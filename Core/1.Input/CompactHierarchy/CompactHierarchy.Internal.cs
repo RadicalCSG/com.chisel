@@ -20,6 +20,14 @@ namespace Chisel.Core
         [NoAlias] SlotIndexMap                 slotIndexMap;
         bool isCreated;
 
+        // Goes up with every change of what the compact tree is built from (CompactTreeBuilder): a node made, children
+        // attached, detached, deleted or moved, an operation or contents changed. A tree built at the same version is the
+        // same.
+        ulong structureVersion;
+        internal readonly ulong StructureVersion { [MethodImpl(MethodImplOptions.AggressiveInlining)] get { return structureVersion; } }
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal void StructureChanged() { structureVersion++; }
+
 
 
 		public struct ReadOnly
@@ -77,6 +85,8 @@ namespace Chisel.Core
 
 			[MethodImpl(MethodImplOptions.AggressiveInlining)]
 			public readonly CompactNodeID GetChildCompactNodeIDAt(CompactNodeID compactNodeID, int index) { return hierarchies[hierarchyIndex].GetChildCompactNodeIDAt(compactNodeID, index); }
+
+            internal readonly ulong StructureVersion { [MethodImpl(MethodImplOptions.AggressiveInlining)] get { return hierarchies[hierarchyIndex].StructureVersion; } }
 
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             internal CSGOperationType GetOperation(CompactNodeID compactNodeID) { return hierarchies[hierarchyIndex].GetOperation(compactNodeID); }
@@ -157,6 +167,7 @@ namespace Chisel.Core
         internal CompactNodeID CreateNode(NodeID nodeID, ref int index, in CompactNode nodeInformation, CompactNodeID parentID)
         {
             Debug.Assert(IsCreated, "Hierarchy has not been initialized");
+            StructureChanged();
             SlotIndex slotIndex;
             if (index == Int32.MaxValue)
             {
@@ -284,6 +295,7 @@ namespace Chisel.Core
 
         void RemoveIndexRange(int parentChildOffset, int parentChildCount, int index, int range)
         {
+            StructureChanged();
             if (index < 0 || index + range > compactNodes.Length)
                 throw new ArgumentOutOfRangeException();
 
@@ -302,6 +314,7 @@ namespace Chisel.Core
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal int AllocateChildCount(int parentNodeIndex, int length)
         {
+            StructureChanged();
             if (length < 0)
                 throw new ArgumentException(nameof(length));
 
@@ -457,6 +470,7 @@ namespace Chisel.Core
 
         bool DeleteRangeInternal(int parentIndex, int siblingIndex, int range, bool deleteChildren)
         {
+            StructureChanged();
             if (range == 0)
                 return false;
             
@@ -572,6 +586,7 @@ namespace Chisel.Core
 
         bool DetachRangeInternal(int parentIndex, int siblingIndex, int range)
         {
+            StructureChanged();
             if (range == 0)
                 return false;
 
@@ -655,6 +670,7 @@ namespace Chisel.Core
         // Note: assumes the given compactNodeID and their respective nodeIDs are consecutive 
         internal int SetChildrenUncheckedSlowPath(int parentChildOffset, int parentChildCount, int insertStartIndex, CompactNodeID parentID, NativeList<CompactNodeID> compactNodeIDs, int startCompactNodeIndex, int count)
         {
+            StructureChanged();
             var compactNodeID       = compactNodeIDs[startCompactNodeIndex];
             var nodeIndex           = HierarchyIndexOfInternal(compactNodeID);
             var prevChildOffset     = parentChildOffset;
@@ -747,6 +763,7 @@ namespace Chisel.Core
             if (noChange &&
                 parentHierarchy.childCount == compactNodeIDs.Length)
                 return true;
+            StructureChanged();
 
             DetachAllChildrenInternal(parentIndex);
 
@@ -889,6 +906,7 @@ namespace Chisel.Core
                 parentChildOffset   = parentHierarchy.childOffset;
                 desiredIndex        = parentChildOffset + insertIndex;
             }
+            StructureChanged();
 
             // If our new parent doesn't have any child nodes yet, we don't need to move our node and just set 
             // our node as the location for our children
@@ -1345,6 +1363,7 @@ namespace Chisel.Core
                 return false;
 
             nodeRef.contents = contents;
+            StructureChanged();
             nodeRef.flags |= NodeStatusFlags.HierarchyModified;
             SetTreeDirty();
             return true;
@@ -1391,6 +1410,7 @@ namespace Chisel.Core
                 var intersectingChanged = nodeRef.operation == CSGOperationType.Intersecting ||
                                           operation         == CSGOperationType.Intersecting;
                 nodeRef.operation = operation;
+                StructureChanged();
                 if (intersectingChanged)
                     SetBrushesBeforeDirty(compactNodeID);
             }
@@ -1399,6 +1419,7 @@ namespace Chisel.Core
             {
                 modifiedFlags |= NodeStatusFlags.HierarchyModified;
                 nodeRef.contents = contents;
+                StructureChanged();
             }
 
             if (math.any(nodeRef.transformation.c0 != transformation.c0) ||

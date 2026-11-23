@@ -21,6 +21,7 @@ namespace Chisel.Core
         SweepEntriesSorted,     // brushes placed in the bounds sweep in this update (BuildBrushBoundsSweepJob): only the ones built again
         RenderBuffersRead,      // brushes whose render buffer was read in this update (FindBrushRenderBuffersJob): only the ones built again
         RoutingTablesKept,      // brushes built again that kept their routing table (CreateRoutingTableJob)
+        CompactTreesKept,       // updates that kept the last update's compact tree (BuildCompactTreeJob)
         InvalidPlane,           // a brush with a plane that cannot be made exact (ExactInputJob): it takes no part
         OpenBrush,              // a brush whose exact planes do not close it within the world: it takes no part
         FaceOutsideBounds,
@@ -32,6 +33,7 @@ namespace Chisel.Core
         NoEar,
         ReplayMismatch,         // a replayed face that building it gave differently (only looked for with VerifyReplayedFaces)
         RoutingTableMismatch,   // a kept routing table that building it gave differently (only looked for with VerifyKeptRoutingTables)
+        CompactTreeMismatch,    // a kept compact tree that building it gave differently (only looked for with VerifyKeptCompactTree)
         Count
     }
 

@@ -1160,6 +1160,7 @@ namespace Chisel.Core
             var intersectingChanged = nodeRef.operation == CSGOperationType.Intersecting ||
                                       operation         == CSGOperationType.Intersecting;
             nodeRef.operation = operation;
+            hierarchy.StructureChanged();
             if (nodeRef.brushMeshHash == Int32.MaxValue)
             {
                 nodeRef.flags |= NodeStatusFlags.BranchNeedsUpdate;
