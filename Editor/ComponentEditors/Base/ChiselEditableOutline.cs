@@ -1098,6 +1098,43 @@ namespace Chisel.Editors
             }
         }
 
+        // Vertices, edges and faces exactly behind each other on screen, as in an axis aligned orthographic view, are at
+        // the same distance from the mouse; their pick distances get a bias of at most this many points, growing with
+        // depth over the brush, so the nearest is picked
+        internal const float kPickTieBias = 0.01f;
+
+        Vector3 pickDepthDirection;
+        float   pickDepthMin;
+        float   pickDepthScale;
+
+        // the direction in the brush's space whose dot product with a point orders it by depth as in the world
+        internal static Vector3 LocalDepthDirection(Matrix4x4 localToWorld, Vector3 worldForward)
+        {
+            return localToWorld.transpose.MultiplyVector(worldForward);
+        }
+
+        internal void UpdatePickDepth(Vector3 localDepthDirection)
+        {
+            var vertices = brushMesh.vertices;
+            var min = float.PositiveInfinity;
+            var max = float.NegativeInfinity;
+            for (int v = 0; v < vertices.Length; v++)
+            {
+                var depth = Vector3.Dot(vertices[v], localDepthDirection);
+                min = Mathf.Min(min, depth);
+                max = Mathf.Max(max, depth);
+            }
+            pickDepthDirection = localDepthDirection;
+            pickDepthMin       = min;
+            pickDepthScale     = max > min ? kPickTieBias / (max - min) : 0;
+        }
+
+        internal float PickDistance(float distance, Vector3 localPosition)
+        {
+            var bias = (Vector3.Dot(localPosition, pickDepthDirection) - pickDepthMin) * pickDepthScale;
+            return distance + Mathf.Clamp(bias, 0, kPickTieBias);
+        }
+
         // The vertices shown inside the rectangle (in GUI points; toGUI gives a vertex's), selected, added or taken away,
         // with the edges and faces all their vertices are of
         internal void SelectVerticesInRect(Rect rect, SelectionType selectionType, Func<Vector3, Vector2> toGUI)
@@ -1141,6 +1178,7 @@ namespace Chisel.Editors
             UpdateVisibility(SceneHandles.InverseMatrix.MultiplyPoint(camera.transform.position),
                              SceneHandles.InverseMatrix.MultiplyVector(camera.transform.forward),
                              camera.orthographic);
+            UpdatePickDepth(LocalDepthDirection(SceneHandles.Matrix, camera.transform.forward));
 
             if (Event.current.type != EventType.Repaint)
                 return true;
@@ -1508,7 +1546,7 @@ namespace Chisel.Editors
                     e1 == twinIndex)
                     continue;
 
-                var distance = HandleUtility.DistanceToLine(vertex0, vertex1);
+                var distance = PickDistance(HandleUtility.DistanceToLine(vertex0, vertex1), (vertex0 + vertex1) * 0.5f);
                 if (distance >= closestEdgeDistance)
                     continue;
 
@@ -1541,7 +1579,7 @@ namespace Chisel.Editors
                 var vertex0 = vertices[vertexIndex0];
                 var vertex1 = vertices[vertexIndex1];
 
-                var distance = HandleUtility.DistanceToLine(vertex0, vertex1);
+                var distance = PickDistance(HandleUtility.DistanceToLine(vertex0, vertex1), (vertex0 + vertex1) * 0.5f);
                 if (distance >= closestEdgeDistance)
                     continue;
 
@@ -1747,6 +1785,14 @@ namespace Chisel.Editors
                 var position    = vertices[v];
                 var handleSize  = UnityEditor.HandleUtility.GetHandleSize(position) * HandleRendering.kPointScale;
 
+                // registered here rather than by the cap, nearest first
+                if (evt.type == EventType.Layout)
+                {
+                    if (!SceneHandles.InCameraOrbitMode)
+                        HandleUtility.AddControl(id, PickDistance(HandleUtility.DistanceToCircle(position, handleSize), position));
+                    continue;
+                }
+
                 SceneHandles.Color = vertexColors[v];
                 SceneHandles.OutlinedDotHandleCap(id, position, Quaternion.identity, handleSize, evt.type);
             }
@@ -1773,7 +1819,9 @@ namespace Chisel.Editors
                 if (HandleEdgeAsPolygon(id, e, cameraDirection, isCameraOrtho))
                     continue;
 
-                SceneHandles.DrawEdgeHandle(id, vertex1, vertex2, setCursor: true, renderEdge: false);
+                SceneHandles.DrawEdgeHandle(id, vertex1, vertex2, setCursor: true, renderEdge: false, setControl: false);
+                if (evt.type == EventType.Layout && !SceneHandles.InCameraOrbitMode)
+                    HandleUtility.AddControl(id, PickDistance(HandleUtility.DistanceToLine(vertex1, vertex2) * 0.5f, (vertex1 + vertex2) * 0.5f));
             }
 
             // Render polygon handles
@@ -1788,8 +1836,20 @@ namespace Chisel.Editors
                 var pointSize       = handleSize * HandleRendering.kPointScale;
                 var normal          = isOutlineInsideOut ? -planes[p].xyz : planes[p].xyz;
 
-                SceneHandles.Color = polygonColors[p];
                 var rotation = Quaternion.LookRotation(normal);
+                // registered here rather than by the cap, as it does (its dot and normal line), nearest first
+                if (evt.type == EventType.Layout)
+                {
+                    if (!SceneHandles.InCameraOrbitMode)
+                    {
+                        var normalEnd = polygonCenter + (rotation * Vector3.forward * pointSize * 10);
+                        HandleUtility.AddControl(id, PickDistance(HandleUtility.DistanceToCircle(polygonCenter, pointSize), polygonCenter));
+                        HandleUtility.AddControl(id, PickDistance(HandleUtility.DistanceToLine(polygonCenter, normalEnd), polygonCenter));
+                    }
+                    continue;
+                }
+
+                SceneHandles.Color = polygonColors[p];
                 SceneHandles.NormalHandleCap(id, polygonCenter, rotation, pointSize, evt.type);
             }
         }
@@ -2037,7 +2097,8 @@ namespace Chisel.Editors
                 SceneHandles.SetCursor(id, vertex1, vertex2);
 
             // Register this edge with the id for the polygon, so that when we interact with it, it'll use the handle code for the polygon instead.
-            UnityEditor.HandleUtility.AddControl(s_TempPolygonsIDs[alignedIndex], UnityEditor.HandleUtility.DistanceToLine(vertex1, vertex2) * 0.5f);
+            if (evt.type == EventType.Layout)
+                UnityEditor.HandleUtility.AddControl(s_TempPolygonsIDs[alignedIndex], PickDistance(UnityEditor.HandleUtility.DistanceToLine(vertex1, vertex2) * 0.5f, (vertex1 + vertex2) * 0.5f));
             return true;
         }
 
