@@ -1,5 +1,3 @@
-using Chisel.Components;
-
 using UnityEditor;
 using UnityEditor.EditorTools;
 using UnityEditor.ShortcutManagement;
@@ -49,19 +47,9 @@ namespace Chisel.Editors
             TagRegistered = active;
         }
 
-        static bool IsABrushSelected()
-        {
-            foreach (var gameObject in Selection.gameObjects)
-            {
-                if (gameObject.TryGetComponent<ChiselBrushComponent>(out _))
-                    return true;
-            }
-            return false;
-        }
-
         internal static void Pick(Tool tool)
         {
-            if (!IsABrushSelected())
+            if (!ChiselEditGeneratorTool.IsABrushSelected())
             {
                 Tools.current = tool;
                 return;

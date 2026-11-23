@@ -144,6 +144,8 @@ namespace Chisel.Editors
         {
             Profiler.BeginSample("OnBeforeSceneGUI");
             ChiselDrawModes.HandleDrawMode(sceneView);
+            // before Unity's rect selection sees the drag
+            ChiselBrushMarquee.OnBeforeSceneGUI(sceneView);
             Profiler.EndSample();
         }
 
@@ -161,6 +163,7 @@ namespace Chisel.Editors
                 ChiselSceneGUIStyle.Update();
                 ChiselGridSettings.GridOnSceneGUI(sceneView);
                 ChiselOutlineRenderer.Instance.OnSceneGUI(sceneView);
+                ChiselBrushMarquee.OnDuringSceneGUI(sceneView);
 
                 if (EditorWindow.mouseOverWindow == sceneView || // This helps prevent weird issues with overlapping sceneviews + avoid some performance issues with multiple sceneviews open
                     (Event.current.type != EventType.MouseMove && Event.current.type != EventType.Layout))

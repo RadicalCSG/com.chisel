@@ -1056,6 +1056,65 @@ namespace Chisel.Editors
             return afterBrushMesh.IsInsideOrOn(point);
         }
 
+        // Which faces, edges and vertices are shown, and so can be clicked or marquee selected: those of a face turned
+        // towards the camera; every one when back faces are selectable too (ChiselEditorSettings.SelectBackFaces), or
+        // when the camera is inside the brush, where it sees them all from behind
+        bool[] polygonShown;
+        bool[] edgeShown;
+        bool[] vertexShown;
+        // the vertices inside the marquee as it's dragged
+        bool[] vertexInMarquee;
+
+        internal bool IsPolygonShown(int p) => polygonShown == null || p >= polygonShown.Length || polygonShown[p];
+        internal bool IsEdgeShown(int e)    => edgeShown    == null || e >= edgeShown.Length    || edgeShown[e];
+        internal bool IsVertexShown(int v)  => vertexShown  == null || v >= vertexShown.Length  || vertexShown[v];
+
+        internal void UpdateVisibility(Vector3 cameraLocalPosition, Vector3 cameraLocalForward, bool orthographic)
+        {
+            var polygons  = brushMesh.polygons;
+            var planes    = brushMesh.planes;
+            var halfEdges = brushMesh.halfEdges;
+            if (polygonShown == null || polygonShown.Length != polygons.Length)          polygonShown = new bool[polygons.Length];
+            if (edgeShown    == null || edgeShown.Length    != halfEdges.Length)         edgeShown    = new bool[halfEdges.Length];
+            if (vertexShown  == null || vertexShown.Length  != brushMesh.vertices.Length) vertexShown  = new bool[brushMesh.vertices.Length];
+            Array.Clear(edgeShown, 0, edgeShown.Length);
+            Array.Clear(vertexShown, 0, vertexShown.Length);
+
+            var all = ChiselEditorSettings.SelectBackFaces || IsPointInsideOutline(cameraLocalPosition);
+            for (int p = 0; p < polygons.Length; p++)
+            {
+                var shown = all || IsPolygonFrontfacing(polygonCenters[p], planes[p], cameraLocalPosition, cameraLocalForward, false, orthographic);
+                polygonShown[p] = shown;
+                if (!shown)
+                    continue;
+                var firstEdge = polygons[p].firstEdge;
+                var lastEdge  = firstEdge + polygons[p].edgeCount;
+                for (int e = firstEdge; e < lastEdge; e++)
+                {
+                    edgeShown[e] = true;
+                    edgeShown[halfEdges[e].twinIndex] = true;
+                    vertexShown[halfEdges[e].vertexIndex] = true;
+                }
+            }
+        }
+
+        // The vertices shown inside the rectangle (in GUI points; toGUI gives a vertex's), selected, added or taken away,
+        // with the edges and faces all their vertices are of
+        internal void SelectVerticesInRect(Rect rect, SelectionType selectionType, Func<Vector3, Vector2> toGUI)
+        {
+            Undo.RecordObject(ChiselTopologySelectionManager.Selection, "Selection modified");
+            if (selectionType == SelectionType.Replace)
+                selection.Clear();
+            var each = selectionType == SelectionType.Subtractive ? SelectionType.Subtractive : SelectionType.Additive;
+            var vertices = brushMesh.vertices;
+            for (int v = 0; v < vertices.Length; v++)
+            {
+                if (IsVertexShown(v) && rect.Contains(toGUI(vertices[v])))
+                    SelectVertex(brushMesh, selection, v, each);
+            }
+            UpdateSelectionCenter();
+        }
+
         void UpdateStateColors(Color[] colors, ItemState[] states, bool validState, Color backfacedColor, Color frontfacedColor, Color invalidColor)
         {
             for (int i = 0; i < colors.Length; i++)
@@ -1077,6 +1136,11 @@ namespace Chisel.Editors
 
             EnsureTemporaryArraySize();
             UpdateControlIDs();
+
+            // on every event: what is shown is what can be clicked
+            UpdateVisibility(SceneHandles.InverseMatrix.MultiplyPoint(camera.transform.position),
+                             SceneHandles.InverseMatrix.MultiplyVector(camera.transform.forward),
+                             camera.orthographic);
 
             if (Event.current.type != EventType.Repaint)
                 return true;
@@ -1105,12 +1169,21 @@ namespace Chisel.Editors
             Array.Clear(s_TempEdgesState, 0, halfEdges.Length);
             Array.Clear(s_TempSoftEdgesState, 0, softEdges.Length);
 
+            // what the marquee would select lights up as it's dragged: the vertices shown inside it, and the edges and
+            // faces all of whose vertices are
+            var marquee         = ChiselBrushMarquee.Dragging;
+            var marqueeRect     = ChiselBrushMarquee.Rect;
+            if (vertexInMarquee == null || vertexInMarquee.Length != vertices.Length)
+                vertexInMarquee = new bool[vertices.Length];
+            for (int v = 0; v < vertices.Length; v++)
+                vertexInMarquee[v] = marquee && IsVertexShown(v) && marqueeRect.Contains(HandleUtility.WorldToGUIPoint(vertices[v]));
+
             for (int v = 0; v < s_TempVerticesIDCount; v++)
             {
                 var id = s_TempVerticesIDs[v];
 
                 var isActive    = currentHotControl == id;
-                var isHovering  = currentFocusControl == id;
+                var isHovering  = currentFocusControl == id || vertexInMarquee[v];
                 var isSelected  = selection.selectedVertices.Contains(v);
 
                 var vertexState = CalculateState(isHovering, isActive, isSelected);
@@ -1125,15 +1198,16 @@ namespace Chisel.Editors
                 if (id == 0)
                     continue;
 
-                var isActive    = (currentHotControl == id);
-                var isHovering  = (currentFocusControl == id) || (currentHighlightEdge == id);
-                var isSelected  = selection.selectedEdges.Contains(e);
-
-                var edgeState   = CalculateState(isHovering, isActive, isSelected);
-
                 var twin        = halfEdges[e].twinIndex;
                 var currVertex  = halfEdges[e].vertexIndex;
                 var prevVertex  = halfEdges[twin].vertexIndex;
+
+                var isActive    = (currentHotControl == id);
+                var isHovering  = (currentFocusControl == id) || (currentHighlightEdge == id) ||
+                                  (vertexInMarquee[currVertex] && vertexInMarquee[prevVertex]);
+                var isSelected  = selection.selectedEdges.Contains(e);
+
+                var edgeState   = CalculateState(isHovering, isActive, isSelected);
 
                 s_TempVerticesState[currVertex] |= edgeState;
                 s_TempVerticesState[prevVertex] |= edgeState;
@@ -1146,7 +1220,6 @@ namespace Chisel.Editors
             {
                 var id              = s_TempPolygonsIDs[p];
 
-                var isHovering      = currentFocusControl == id;
                 var isActive        = currentHotControl == id;
                 var isSelected      = selection.selectedPolygons.Contains(p);
                 var isFrontFacing   = IsPolygonFrontfacing(polygonCenters[p], planes[p], cameraLocalPos, cameraLocalForward, isCameraInsideOutline, isCameraOrthographic);
@@ -1154,6 +1227,11 @@ namespace Chisel.Editors
                 var firstEdge   = polygons[p].firstEdge;
                 var edgeCount   = polygons[p].edgeCount;
                 var lastEdge    = firstEdge + edgeCount;
+
+                var allInMarquee = marquee;
+                for (int e = firstEdge; e < lastEdge && allInMarquee; e++)
+                    allInMarquee = vertexInMarquee[halfEdges[e].vertexIndex];
+                var isHovering      = currentFocusControl == id || allInMarquee;
 
                 var polygonState = CalculateState(isHovering, isActive, isSelected, isFrontFacing);
 
@@ -1655,10 +1733,12 @@ namespace Chisel.Editors
             var vertices    = brushMesh.vertices;
             var halfEdges   = brushMesh.halfEdges;
 
-            // Render the vertices 
+            // Render the vertices; those not shown aren't registered either, so can't be clicked
             for (int v = 0; v < vertices.Length; v++)
             {
                 var id = s_TempVerticesIDs[v];
+                if (!IsVertexShown(v))
+                    continue;
 
                 if (inCreateEdgeEditMode &&
                     currentFocusControl == id)
@@ -1676,6 +1756,7 @@ namespace Chisel.Editors
             {
                 var id = s_TempEdgesIDs[e];
                 if (id == 0) continue; // only handle half of the half-edges / avoid duplicate edges
+                if (!IsEdgeShown(e)) continue;
 
                 var twin        = halfEdges[e].twinIndex;
                 var vertex1     = vertices[halfEdges[e].vertexIndex];
@@ -1698,7 +1779,7 @@ namespace Chisel.Editors
             // Render polygon handles
             for (int p = 0; p < s_TempPolygonsIDCount; p++)
             {
-                if (IsPolygonCameraAligned(p, cameraDirection, isOutlineInsideOut))
+                if (IsPolygonCameraAligned(p, cameraDirection, isOutlineInsideOut) || !IsPolygonShown(p))
                     continue;
 
                 var id = s_TempPolygonsIDs[p];
@@ -2065,6 +2146,8 @@ namespace Chisel.Editors
             var vertices = brushMesh.vertices;
             for (int v = 0; v < vertices.Length; v++)
             {
+                if (!IsVertexShown(v))
+                    continue;
                 var id          = s_TempVerticesIDs[v];
                 var position    = vertices[v];
                 var handleSize  = UnityEditor.HandleUtility.GetHandleSize(position) * HandleRendering.kPointScale;
@@ -2097,9 +2180,9 @@ namespace Chisel.Editors
 
             for (int p = 0; p < s_TempPolygonsIDCount; p++)
             {
-                if (IsPolygonCameraAligned(p, cameraDirection, isOutlineInsideOut))
+                if (IsPolygonCameraAligned(p, cameraDirection, isOutlineInsideOut) || !IsPolygonShown(p))
                     continue;
-                
+
                 var id      = s_TempPolygonsIDs[p];
                 var normal  = isOutlineInsideOut ? -planes[p].xyz : planes[p].xyz;
                 var offset  = Vector3.zero;
@@ -2118,7 +2201,7 @@ namespace Chisel.Editors
 
             for (int p = 0; p < s_TempPolygonsIDCount; p++)
             {
-                if (IsPolygonCameraAligned(p, cameraDirection, isOutlineInsideOut))
+                if (IsPolygonCameraAligned(p, cameraDirection, isOutlineInsideOut) || !IsPolygonShown(p))
                     continue;
 
                 var id      = s_TempPolygonsIDs[p];
@@ -2142,6 +2225,7 @@ namespace Chisel.Editors
             {
                 var id = s_TempEdgesIDs[e];
                 if (id == 0) continue; // only handle half of the half-edges / avoid duplicate edges
+                if (!IsEdgeShown(e)) continue;
 
                 var twin    = halfEdges[e].twinIndex;
                 var vertex1 = vertices[halfEdges[e].vertexIndex];
@@ -2173,6 +2257,7 @@ namespace Chisel.Editors
             {
                 var id = s_TempEdgesIDs[e];
                 if (id == 0) continue; // only handle half of the half-edges / avoid duplicate edges
+                if (!IsEdgeShown(e)) continue;
 
                 var twin    = halfEdges[e].twinIndex;
                 var vertex1 = vertices[halfEdges[e].vertexIndex];
@@ -2273,6 +2358,9 @@ namespace Chisel.Editors
 
             if (HandleDeletion())
                 return true;
+
+            if (ChiselBrushMarquee.TryGetReleased(out var marqueeRect, out var marqueeType))
+                SelectVerticesInRect(marqueeRect, marqueeType, position => HandleUtility.WorldToGUIPoint(position));
 
             HandleSelection(in2DMode, cameraDirection);
 
