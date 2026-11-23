@@ -98,6 +98,12 @@ namespace Chisel.Core
         // differ
         internal static bool VerifyKeptRoutingTables;
 
+        // BuildCompactTreeJob keeps the last update's compact tree while the hierarchy's structure and the number of
+        // contents are the same
+        internal static bool KeepCompactTree = true;
+        // BuildCompactTreeJob builds the tree it keeps too, and counts ExactCSGStat.CompactTreeMismatch where the two differ
+        internal static bool VerifyKeptCompactTree;
+
         #region Update / Rebuild
 
         static readonly ProfilerMarker kUpdateTreeMeshesProfilerMarker = new("UpdateTreeMeshes");
@@ -412,7 +418,6 @@ namespace Chisel.Core
                 public NativeList<BlobAssetReference<BrushTreeSpaceVerticesBlob>> treeSpaceVertices;
                 public NativeList<BlobAssetReference<BrushesTouchedByBrush>>      brushesTouchedByBrush;
                 public NativeArray<UnsafeList<BrushIntersectWith>>                brushBrushIntersections;
-                public NativeReference<BlobAssetReference<CompactTree>>           compactTree;
 
                 public void Execute()
                 {
@@ -422,7 +427,6 @@ namespace Chisel.Core
                     new DisposeListChildrenBlobAssetReferenceJob<BrushTreeSpaceVerticesBlob> { list = treeSpaceVertices }.Execute();
                     new DisposeListChildrenBlobAssetReferenceJob<BrushesTouchedByBrush>      { list = brushesTouchedByBrush }.Execute();
                     new DisposeArrayChildrenJob<UnsafeList<BrushIntersectWith>>              { array = brushBrushIntersections }.Execute();
-                    new DisposeReferenceChildBlobAssetReferenceJob<CompactTree>              { reference = compactTree }.Execute();
                 }
             }
 
@@ -1466,6 +1470,12 @@ namespace Chisel.Core
                         brushes             = Temporaries.brushes,
                         nodes               = Temporaries.nodes,
                         compactHierarchy    = CompactHierarchyManager.GetReadOnlyHierarchy(treeCompactNodeID),
+                        keepTree            = KeepCompactTree,
+                        verifyKeptTree      = VerifyKeptCompactTree,
+
+                        // Read / Write
+                        keptTree            = chiselLookupValues.keptCompactTree,
+                        stats               = Temporaries.exactCSGStats,
 
                         // Write
                         compactTreeRef      = Temporaries.compactTreeRef
@@ -3041,8 +3051,7 @@ namespace Chisel.Core
                         renderBuffers           = Temporaries.brushRenderBufferDisposeList,
                         treeSpaceVertices       = Temporaries.treeSpaceVerticesDisposeList,
                         brushesTouchedByBrush   = Temporaries.brushesTouchedByBrushDisposeList,
-                        brushBrushIntersections = Temporaries.brushBrushIntersections,
-                        compactTree             = Temporaries.compactTreeRef
+                        brushBrushIntersections = Temporaries.brushBrushIntersections
                     }.Schedule();
                 }
 

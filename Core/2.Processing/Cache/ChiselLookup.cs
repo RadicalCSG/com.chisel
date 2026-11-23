@@ -23,6 +23,8 @@ namespace Chisel.Core
             public NativeList<BlobAssetReference<RoutingTable>>                 routingTableCache;
             // the tree's structure the routing tables were built from (TrackTreeStructureJob)
             public NativeReference<TreeStructureMemory>                         treeStructure;
+            // the last update's compact tree, and what it was built from (BuildCompactTreeJob)
+            public NativeReference<KeptCompactTree>                             keptCompactTree;
             public NativeList<NodeTransformations>                              transformationCache;
 
             public NativeList<BlobAssetReference<BrushTreeSpaceVerticesBlob>>   treeSpaceVerticesCache;
@@ -114,6 +116,7 @@ namespace Chisel.Core
 				treeSpaceVerticesCache      = new NativeList<BlobAssetReference<BrushTreeSpaceVerticesBlob>>(1000, Allocator.Persistent); // Confirmed to get disposed
 				routingTableCache           = new NativeList<BlobAssetReference<RoutingTable>>(1000, Allocator.Persistent); // Confirmed to get disposed
 				treeStructure               = new NativeReference<TreeStructureMemory>(TreeStructureMemory.Create(Allocator.Persistent), Allocator.Persistent);
+				keptCompactTree             = new NativeReference<KeptCompactTree>(Allocator.Persistent);
 				brushesTouchedByBrushCache  = new NativeList<BlobAssetReference<BrushesTouchedByBrush>>(1000, Allocator.Persistent); // Confirmed to get disposed
 				brushRenderBufferCache      = new NativeList<BlobAssetReference<ChiselBrushRenderBuffer>>(1000, Allocator.Persistent); // Confirmed to get disposed
 				brushRenderEntries          = new NativeList<BrushRenderEntry>(1000, Allocator.Persistent);
@@ -253,6 +256,12 @@ namespace Chisel.Core
                     treeStructure.Dispose();
                 }
                 treeStructure = default;
+                if (keptCompactTree.IsCreated)
+                {
+                    keptCompactTree.Value.Dispose();
+                    keptCompactTree.Dispose();
+                }
+                keptCompactTree = default;
                 if (brushesTouchedByBrushCache.IsCreated)
 				{
                     // Confirmed to be called
