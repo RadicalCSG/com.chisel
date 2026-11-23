@@ -123,6 +123,12 @@ namespace Chisel.Editors
             var grid = Grid.ActiveGrid;
             var edgeAxis = grid.GetClosestAxis(edgeDelta);
             var axes = grid.GetTangentAxesForAxis(edgeAxis, out Vector3 slideDir1, out Vector3 slideDir2);
+            return Slider2DEdgeHandleOffset(id, from, to, slideDir1, slideDir2, axes, capFunction, snappingSteps);
+        }
+
+        // An edge dragged on the plane through slideDir1 and slideDir2
+        public static Vector3 Slider2DEdgeHandleOffset(int id, Vector3 from, Vector3 to, Vector3 slideDir1, Vector3 slideDir2, Axes axes, CapFunction capFunction = null, Vector3? snappingSteps = null)
+        {
             var midPoint = (from + to) * 0.5f;
             var handleDir = Vector3.Cross(slideDir1, slideDir2);
 

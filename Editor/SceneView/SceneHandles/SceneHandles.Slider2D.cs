@@ -203,9 +203,10 @@ namespace Chisel.Editors
                         var position = handleOrigin + handleCursorOffset;
                         var rotation = Quaternion.LookRotation(handleNormal, slideDir1);
 
+                        // a negative size: the control is registered by its caller
                         if (capFunction != null)
                             capFunction(id, position, rotation, handleSize, EventType.Layout);
-                        else
+                        else if (handleSize >= 0)
                             UnityEditor.HandleUtility.AddControl(id, UnityEditor.HandleUtility.DistanceToCircle(position, handleSize * .5f));
 
                         int currentFocusControl = SceneHandleUtility.FocusControl;

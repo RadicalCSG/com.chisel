@@ -2139,6 +2139,37 @@ namespace Chisel.Editors
             return false;
         }
 
+        // The plane vertices, edges and faces are dragged on, picked by clicking a square of the move handle (XZ, XY or YZ,
+        // in its axes, the grid's); None: each drags as it would without one. Cleared when the selection changes.
+        internal static Axes WorkingPlane = Axes.None;
+
+        internal static void OnSelectionChanged() => WorkingPlane = Axes.None;
+
+        internal static bool TryGetWorkingPlane(Grid grid, out Vector3 normal, out Vector3 slideDir1, out Vector3 slideDir2)
+        {
+            var normalAxis = WorkingPlane switch
+            {
+                Axes.XZ => Axis.Y,
+                Axes.XY => Axis.Z,
+                Axes.YZ => Axis.X,
+                _       => Axis.None
+            };
+            if (normalAxis == Axis.None)
+            {
+                normal = slideDir1 = slideDir2 = default;
+                return false;
+            }
+            grid.GetTangentAxesForAxis(normalAxis, out slideDir1, out slideDir2);
+            normal = normalAxis == Axis.X ? grid.Right : normalAxis == Axis.Y ? grid.Up : grid.Forward;
+            return true;
+        }
+
+        // Dragged on the working plane; the controls are registered by RenderOutline
+        static Vector3 WorkingPlaneOffset(int id, Vector3 position, Vector3 normal, Vector3 slideDir1, Vector3 slideDir2)
+        {
+            return SceneHandles.Slider2DHandle(id, position, Vector3.zero, normal, slideDir1, slideDir2, handleSize: -1, capFunction: null, axes: WorkingPlane) - position;
+        }
+
         // Handle moving an edge along the grid aligned plane which the edge intersects with
         // This method returns true when the brushMesh has changed
         public bool HandleVertexMovementCameraAligned(Vector3 cameraDirection)
@@ -2160,12 +2191,25 @@ namespace Chisel.Editors
         }
 
 
-        // Handle moving a vertex in 3D
-        // Note: We can't actually move the vertex in 3D since we don't know how to map 3D to 2D for a point
-        //       so the name of this method is a bit of a lie, but maybe we'll find a solution for it
+        // Handle moving a vertex in 3D: on the working plane; without one a vertex can't be dragged, as a point gives no
+        // plane to map the mouse onto, so the click is only captured
         // This method returns true when the brushMesh has changed
         public bool HandleVertexMovement3D()
         {
+            if (TryGetWorkingPlane(Grid.ActiveGrid, out var normal, out var slideDir1, out var slideDir2))
+            {
+                var vertices = brushMesh.vertices;
+                for (int v = 0; v < vertices.Length; v++)
+                {
+                    if (!IsVertexShown(v))
+                        continue;
+                    var offset = Vector3.zero;
+                    EditorGUI.BeginChangeCheck();   { offset = WorkingPlaneOffset(s_TempVerticesIDs[v], vertices[v], normal, slideDir1, slideDir2); }
+                    if (EditorGUI.EndChangeCheck()) { MoveSelectedVertices(offset); return true; }
+                }
+                return false;
+            }
+
             // Capture the click so we don't actually pass through to another control
             for (int v = 0; v < s_TempVerticesIDCount; v++)
                 HandleClick(s_TempVerticesIDs[v], captureControl: true);
@@ -2192,12 +2236,13 @@ namespace Chisel.Editors
             return false;
         }
 
-        // Handle moving the polygon center in the direction of the normal
+        // Handle moving the polygon center in the direction of the normal, or on the working plane
         // This method returns true when the brushMesh has changed
         public bool HandlePolygonMovement3D(Vector3 cameraDirection, bool isOutlineInsideOut)
         {
 
             var planes = brushMesh.planes;
+            var onWorkingPlane = TryGetWorkingPlane(Grid.ActiveGrid, out var planeNormal, out var slideDir1, out var slideDir2);
 
             for (int p = 0; p < s_TempPolygonsIDCount; p++)
             {
@@ -2208,7 +2253,11 @@ namespace Chisel.Editors
                 var normal  = isOutlineInsideOut ? -planes[p].xyz : planes[p].xyz;
 
                 var offset = Vector3.zero;
-                EditorGUI.BeginChangeCheck();   { offset = SceneHandles.Slider1DHandleOffset(id, polygonCenters[p], normal, handleSize: -1); }
+                EditorGUI.BeginChangeCheck();
+                {
+                    offset = onWorkingPlane ? WorkingPlaneOffset(id, polygonCenters[p], planeNormal, slideDir1, slideDir2)
+                                            : SceneHandles.Slider1DHandleOffset(id, polygonCenters[p], normal, handleSize: -1);
+                }
                 if (EditorGUI.EndChangeCheck()) { MoveSelectedVertices(offset); return true; }
             }
             return false;
@@ -2246,12 +2295,13 @@ namespace Chisel.Editors
             return false;
         }
 
-        // Handle moving an edge along a grid aligned 2D plane that the edge intersects with
+        // Handle moving an edge along a grid aligned 2D plane that the edge intersects with, or the working plane
         // This method returns true when the brushMesh has changed
         public bool HandleEdgeMovement3D()
         {
             var vertices    = brushMesh.vertices;
             var halfEdges   = brushMesh.halfEdges;
+            var onWorkingPlane = TryGetWorkingPlane(Grid.ActiveGrid, out _, out var slideDir1, out var slideDir2);
 
             for (int e = 0; e < halfEdges.Length; e++)
             {
@@ -2264,7 +2314,11 @@ namespace Chisel.Editors
                 var vertex2 = vertices[halfEdges[twin].vertexIndex];
 
                 var offset = Vector3.zero;
-                EditorGUI.BeginChangeCheck();   { offset = SceneHandles.Slider2DHandleTangentOffset(id, vertex1, vertex2); }
+                EditorGUI.BeginChangeCheck();
+                {
+                    offset = onWorkingPlane ? SceneHandles.Slider2DEdgeHandleOffset(id, vertex1, vertex2, slideDir1, slideDir2, WorkingPlane)
+                                            : SceneHandles.Slider2DHandleTangentOffset(id, vertex1, vertex2);
+                }
                 if (EditorGUI.EndChangeCheck()) { MoveSelectedVertices(offset); return true; }
             }
             return false;
@@ -2279,9 +2333,17 @@ namespace Chisel.Editors
 
             using (new EditorGUI.DisabledScope(!enablePositionHandle))
             {
+                // a click on a square picks the working plane, rather than locking axes for all handles
+                s_TempPositionHandleIDs.SetActivePlane(WorkingPlane);
                 var offset = Vector3.zero;
-                EditorGUI.BeginChangeCheck();   { offset = SceneHandles.PositionHandleOffset(ref s_TempPositionHandleIDs, vertexSelectionCenter); }
-                if (EditorGUI.EndChangeCheck()) { MoveSelectedVertices(offset); return true; }
+                EditorGUI.BeginChangeCheck();   { offset = SceneHandles.PositionHandleOffset(ref s_TempPositionHandleIDs, vertexSelectionCenter, lockAxesOnClick: false); }
+                var changed = EditorGUI.EndChangeCheck();
+                if (s_TempPositionHandleIDs.clickedPlane != Axes.None)
+                {
+                    WorkingPlane = s_TempPositionHandleIDs.clickedPlane;
+                    SceneView.RepaintAll();
+                }
+                if (changed) { MoveSelectedVertices(offset); return true; }
             }
             return false;
         }

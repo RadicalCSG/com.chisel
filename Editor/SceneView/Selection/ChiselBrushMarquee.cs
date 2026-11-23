@@ -69,7 +69,7 @@ namespace Chisel.Editors
         internal static void OnDuringSceneGUI(SceneView sceneView)
         {
             var evt = Event.current;
-            if (evt.type == EventType.MouseDown && ChiselRectSelection.Valid)
+            if (evt.rawType == EventType.MouseDown && ChiselRectSelection.Valid)
             {
                 ChiselRectSelection.SceneView = sceneView;
                 HandlePress(evt, s_ControlID, ChiselRectSelection.IsNearestControl, IsEditingABrush());
@@ -81,7 +81,7 @@ namespace Chisel.Editors
         // A press on empty space, after Unity's rect selection noted it: held, so a drag is the marquee's
         internal static void HandlePress(Event evt, int controlID, bool unityNotedIt, bool editing)
         {
-            if (!editing || !unityNotedIt || evt.type != EventType.MouseDown || evt.button != 0 || evt.alt ||
+            if (!editing || !unityNotedIt || evt.rawType != EventType.MouseDown || evt.button != 0 || evt.alt ||
                 GUIUtility.hotControl != 0 || controlID == 0)
                 return;
             s_ControlID = controlID;
@@ -92,7 +92,8 @@ namespace Chisel.Editors
         }
 
         // The drag, release and Escape of a held press, before anything else sees them; true in the event the press
-        // becomes a drag, when Unity's rect selection is to forget it
+        // becomes a drag, when Unity's rect selection is to forget it. Raw event types: a press or release outside the
+        // current clip reads as Ignore.
         internal static bool HandleEvent(Event evt, int controlID, bool editing)
         {
             // a release is read by the brush editors in the event it happens in
@@ -104,7 +105,7 @@ namespace Chisel.Editors
                 return false;
             }
 
-            switch (evt.type)
+            switch (evt.rawType)
             {
                 case EventType.MouseDrag:
                 {

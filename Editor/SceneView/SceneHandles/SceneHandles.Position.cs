@@ -39,6 +39,10 @@ namespace Chisel.Editors
 
             public Vector3 originalPosition;
 
+            // the plane of a square pressed and released without being dragged, in the event it's released
+            public Axes clickedPlane;
+            internal bool planeDragged;
+
             public bool Contains(int id)
             {
                 return  id == xAxisId   || id == yAxisId   || id == zAxisId ||
@@ -74,6 +78,37 @@ namespace Chisel.Editors
             public ControlState yAxisIndirectState  { get { return (ControlState)(((int)yAxisState) | ((int)xyPlaneState) | ((int)yzPlaneState)); } }
             public ControlState zAxisIndirectState  { get { return (ControlState)(((int)zAxisState) | ((int)yzPlaneState) | ((int)xzPlaneState)); } }
             public ControlState combinedState       { get { return (ControlState)(((int)xAxisState) | ((int)yAxisState) | ((int)zAxisState) | ((int)xyPlaneState) | ((int)yzPlaneState) | ((int)xzPlaneState) | ((int)centerState)); } }
+
+            // shows a plane as picked on its square
+            public void SetActivePlane(Axes plane)
+            {
+                switch (plane)
+                {
+                    case Axes.XZ: xzPlaneState |= ControlState.Active; break;
+                    case Axes.XY: xyPlaneState |= ControlState.Active; break;
+                    case Axes.YZ: yzPlaneState |= ControlState.Active; break;
+                }
+            }
+        }
+
+        // Before the handle's sliders see the event: a square that is released without having been dragged is a click on
+        // its plane. The raw type, as a press or release outside the current clip reads as Ignore.
+        internal static void TrackPlaneClick(ref PositionHandleIDs handleIDs, Event evt)
+        {
+            handleIDs.clickedPlane = Axes.None;
+            var hotAxes = handleIDs.HotAxes;
+            var onPlane = hotAxes == Axes.XZ || hotAxes == Axes.XY || hotAxes == Axes.YZ;
+            switch (evt.rawType)
+            {
+                case EventType.MouseDown: handleIDs.planeDragged = false; break;
+                case EventType.MouseDrag: if (onPlane) handleIDs.planeDragged = true; break;
+                case EventType.MouseUp:
+                {
+                    if (onPlane && evt.button == 0 && !handleIDs.planeDragged)
+                        handleIDs.clickedPlane = hotAxes;
+                    break;
+                }
+            }
         }
 
         public static void Initialize(ref PositionHandleIDs handleIDs)
@@ -167,8 +202,12 @@ namespace Chisel.Editors
             return PositionHandle(ref handleIDs, points, position, rotation, enabledAxes);
         }
 
-        public static Vector3[] PositionHandle(ref PositionHandleIDs handleIDs, Vector3[] points, Vector3 position, Quaternion rotation, Axes enabledAxes = Axes.XYZ)
+        // lockAxesOnClick: clicking an arrow or square locks the other axes for all handles (Snapping.ActiveAxes); without
+        // it a click on a square is only reported, in handleIDs.clickedPlane
+        public static Vector3[] PositionHandle(ref PositionHandleIDs handleIDs, Vector3[] points, Vector3 position, Quaternion rotation, Axes enabledAxes = Axes.XYZ, bool lockAxesOnClick = true)
         {
+            TrackPlaneClick(ref handleIDs, Event.current);
+
             var xAxisId   = handleIDs.xAxisId;
             var yAxisId   = handleIDs.yAxisId;
             var zAxisId   = handleIDs.zAxisId;
@@ -232,7 +271,8 @@ namespace Chisel.Editors
                         GUIUtility.hotControl = 0;
                         GUIUtility.keyboardControl = 0;
                         evt.Use();
-                        Snapping.ActiveAxes = Axes.XYZ;
+                        if (lockAxesOnClick)
+                            Snapping.ActiveAxes = Axes.XYZ;
                         EditorGUIUtility.SetWantsMouseJumping(0);
                         SceneView.RepaintAll();
                         handleIDs.originalPosition = position;
@@ -278,42 +318,42 @@ namespace Chisel.Editors
             {
                 SceneHandles.Disabled = xAxisDisabled;
                 SceneHandles.Color = xAxisColor;
-                points = Slider1DHandle(xAxisId, Axis.X, points, position, rotation * Vector3.right, Snapping.MoveSnappingSteps.x, handleSize, ArrowHandleCap, selectLockingAxisOnClick: true);
+                points = Slider1DHandle(xAxisId, Axis.X, points, position, rotation * Vector3.right, Snapping.MoveSnappingSteps.x, handleSize, ArrowHandleCap, selectLockingAxisOnClick: lockAxesOnClick);
             }
 
             if (!yAxisLocked)
             {
                 SceneHandles.Disabled = yAxisDisabled;
                 SceneHandles.Color = yAxisColor;
-                points = Slider1DHandle(yAxisId, Axis.Y, points, position, rotation * Vector3.up, Snapping.MoveSnappingSteps.y, handleSize, ArrowHandleCap, selectLockingAxisOnClick: true);
+                points = Slider1DHandle(yAxisId, Axis.Y, points, position, rotation * Vector3.up, Snapping.MoveSnappingSteps.y, handleSize, ArrowHandleCap, selectLockingAxisOnClick: lockAxesOnClick);
             }
 
             if (!zAxisLocked)
             {
                 SceneHandles.Disabled = zAxisDisabled;
                 SceneHandles.Color = zAxisColor;
-                points = Slider1DHandle(zAxisId, Axis.Z, points, position, rotation * Vector3.forward, Snapping.MoveSnappingSteps.z, handleSize, ArrowHandleCap, selectLockingAxisOnClick: true);
+                points = Slider1DHandle(zAxisId, Axis.Z, points, position, rotation * Vector3.forward, Snapping.MoveSnappingSteps.z, handleSize, ArrowHandleCap, selectLockingAxisOnClick: lockAxesOnClick);
             }
 
             if (!xzPlaneLocked)
             {
                 SceneHandles.Disabled = xzPlaneDisabled;
                 SceneHandles.Color = xzPlaneColor;
-                points = PlanarHandle(xzPlaneId, PlaneAxes.XZ, points, position, rotation, handleSize * 0.3f, selectLockingAxisOnClick: true);
+                points = PlanarHandle(xzPlaneId, PlaneAxes.XZ, points, position, rotation, handleSize * 0.3f, selectLockingAxisOnClick: lockAxesOnClick);
             }
 
             if (!xyPlaneLocked)
             {
                 SceneHandles.Disabled = xyPlaneDisabled;
                 SceneHandles.Color = xyPlaneColor;
-                points = PlanarHandle(xyPlaneId, PlaneAxes.XY, points, position, rotation, handleSize * 0.3f, selectLockingAxisOnClick: true);
+                points = PlanarHandle(xyPlaneId, PlaneAxes.XY, points, position, rotation, handleSize * 0.3f, selectLockingAxisOnClick: lockAxesOnClick);
             }
 
             if (!yzPlaneLocked)
             {
                 SceneHandles.Disabled = yzPlaneDisabled;
                 SceneHandles.Color = yzPlaneColor;
-                points = PlanarHandle(yzPlaneId, PlaneAxes.YZ, points, position, rotation, handleSize * 0.3f, selectLockingAxisOnClick: true);
+                points = PlanarHandle(yzPlaneId, PlaneAxes.YZ, points, position, rotation, handleSize * 0.3f, selectLockingAxisOnClick: lockAxesOnClick);
             }
 
 
@@ -354,12 +394,12 @@ namespace Chisel.Editors
             return PositionHandle(s_PositionHandleArray, position, rotation, enabledAxes)[0];
         }
 
-        public static Vector3 PositionHandle(ref PositionHandleIDs handleIDs, Vector3 position, Axes enabledAxes = Axes.XYZ)
+        public static Vector3 PositionHandle(ref PositionHandleIDs handleIDs, Vector3 position, Axes enabledAxes = Axes.XYZ, bool lockAxesOnClick = true)
         {
             var activeGrid = Grid.ActiveGrid;
             var rotation = Quaternion.LookRotation(activeGrid.Forward, activeGrid.Up);
             s_PositionHandleArray[0] = position;
-            return PositionHandle(ref handleIDs, s_PositionHandleArray, position, rotation, enabledAxes)[0];
+            return PositionHandle(ref handleIDs, s_PositionHandleArray, position, rotation, enabledAxes, lockAxesOnClick)[0];
         }
 
         public static Vector3 PositionHandle(ref PositionHandleIDs handleIDs, Vector3 position, Quaternion rotation, Axes enabledAxes = Axes.XYZ)
@@ -373,9 +413,9 @@ namespace Chisel.Editors
             return PositionHandle(position, enabledAxes) - position;
         }
 
-        public static Vector3 PositionHandleOffset(ref PositionHandleIDs handleIDs, Vector3 position, Axes enabledAxes = Axes.XYZ)
+        public static Vector3 PositionHandleOffset(ref PositionHandleIDs handleIDs, Vector3 position, Axes enabledAxes = Axes.XYZ, bool lockAxesOnClick = true)
         {
-            return PositionHandle(ref handleIDs, position, enabledAxes) - position;
+            return PositionHandle(ref handleIDs, position, enabledAxes, lockAxesOnClick) - position;
         }
     }
 }
