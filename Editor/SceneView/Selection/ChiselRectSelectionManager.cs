@@ -41,7 +41,8 @@ namespace Chisel.Editors
         }
 
         public static bool      RectSelecting       { get { return RectSelectionID != 0 && (GUIUtility.hotControl == RectSelectionID || HandleUtility.nearestControl == RectSelectionID); } }
-        public static bool      IsNearestControl    { get { return (bool)s_IsNearestControlField.GetValue(s_RectSelection); } }
+        // set when a press on empty space was the rect selection's; it picks on the release while set
+        public static bool      IsNearestControl    { get { return (bool)s_IsNearestControlField.GetValue(s_RectSelection); } set { s_IsNearestControlField.SetValue(s_RectSelection, value); } }
         public static Vector2	SelectStartPoint	{ get { return (Vector2)s_SelectStartPointField.GetValue(s_RectSelection); } }
         public static Vector2	SelectMousePoint	{ get { return (Vector2)s_SelectMousePointField.GetValue(s_RectSelection); } }
         public static Object[]	SelectionStart		{ get { return (Object[])s_SelectionStartField.GetValue(s_RectSelection); } set { s_SelectionStartField.SetValue(s_RectSelection, value); } }
@@ -142,12 +143,19 @@ namespace Chisel.Editors
         static Vector2  s_ClickMousePosition  = Vector2.zero;
         
         public static SelectionType GetCurrentSelectionType()
-        {            
+        {
+            return GetSelectionType(Event.current);
+        }
+
+        public static SelectionType GetSelectionType(Event evt)
+        {
+            // the action key: Command on macOS, Control elsewhere (EditorGUI.actionKey, of the current event)
+            var actionKey = Application.platform == RuntimePlatform.OSXEditor ? evt.command : evt.control;
             var selectionType = SelectionType.Replace;
             // shift only
-            if ( Event.current.shift && !EditorGUI.actionKey && !Event.current.alt) { selectionType = SelectionType.Additive; } else
-            // action key only (Command on macOS, Control on Windows)
-            if (!Event.current.shift &&  EditorGUI.actionKey && !Event.current.alt) { selectionType = SelectionType.Subtractive; } 
+            if ( evt.shift && !actionKey && !evt.alt) { selectionType = SelectionType.Additive; } else
+            // action key only
+            if (!evt.shift &&  actionKey && !evt.alt) { selectionType = SelectionType.Subtractive; }
             return selectionType;
         }
         

@@ -52,6 +52,9 @@ namespace Chisel.Editors
         public static bool				ShowIntersectingOutlines  { get; set; }
         // every brush a generator is built from outlined, rather than its shape as a whole (ChiselShapeOutline)
         public static bool				ShowBrushPieces           { get; set; }
+        // while a brush is edited, the vertices, edges and faces on its faces turned away from the camera are shown and
+        // can be selected too (ChiselEditableOutline)
+        public static bool				SelectBackFaces           { get; set; }
 
         public static bool				RotateSnapping  { get { return Snapping.RotateSnappingEnabled; } set { Snapping.RotateSnappingEnabled = value; } }
         public static float 			RotateSnap      { get { return Snapping.RotateSnappingStep; } set { Snapping.RotateSnappingStep = value; } }
@@ -79,6 +82,7 @@ namespace Chisel.Editors
             ShowSubtractiveOutlines  = EditorPrefs.GetBool("ShowSubtractiveOutlines",  false);
             ShowIntersectingOutlines = EditorPrefs.GetBool("ShowIntersectingOutlines", false);
             ShowBrushPieces          = EditorPrefs.GetBool("ShowBrushPieces",          false);
+            SelectBackFaces          = EditorPrefs.GetBool("SelectBackFaces",          false);
 
             RotateSnapping	= EditorPrefs.GetBool ("RotateSnapping",	true);
 
@@ -119,6 +123,7 @@ namespace Chisel.Editors
             EditorPrefs.SetBool("ShowSubtractiveOutlines",  ShowSubtractiveOutlines);
             EditorPrefs.SetBool("ShowIntersectingOutlines", ShowIntersectingOutlines);
             EditorPrefs.SetBool("ShowBrushPieces",          ShowBrushPieces);
+            EditorPrefs.SetBool("SelectBackFaces",          SelectBackFaces);
 
             EditorPrefs.SetBool("RotateSnapping",	RotateSnapping);
 

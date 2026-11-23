@@ -16,6 +16,17 @@ namespace Chisel.Editors
 
         public static bool IsActive() { return ToolManager.activeToolType == typeof(ChiselEditGeneratorTool); }
 
+        // a brush among the selection, which this tool edits
+        internal static bool IsABrushSelected()
+        {
+            foreach (var gameObject in Selection.gameObjects)
+            {
+                if (gameObject.TryGetComponent<Chisel.Components.ChiselBrushComponent>(out _))
+                    return true;
+            }
+            return false;
+        }
+
         public override SnapSettings ToolUsedSnappingModes { get { return Chisel.Editors.SnapSettings.AllGeometry; } }
 
 
