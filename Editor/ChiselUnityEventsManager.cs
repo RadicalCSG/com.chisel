@@ -193,6 +193,7 @@ namespace Chisel.Editors
         {
             //ChiselClickSelectionManager.Instance.OnSelectionChanged();
             ChiselOutlineRenderer.Instance.OnSelectionChanged();
+            ChiselEditableOutline.OnSelectionChanged();
         }
 
         private static void OnSurfaceSelectionChanged()
