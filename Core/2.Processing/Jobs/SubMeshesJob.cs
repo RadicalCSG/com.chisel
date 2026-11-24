@@ -613,9 +613,9 @@ namespace Chisel.Core
         [NoAlias, ReadOnly] public NativeArray<BrushData>         brushRenderData;
         [NoAlias, ReadOnly] public NativeArray<HotspotLayoutData> hotspotLayouts;
         [NoAlias, ReadOnly] public NativeArray<int>               redo;
-        // what is kept of each brush (HotspotStageMemory): its slot, the slots
+        // what is kept of each brush (HotspotStageMemory): its slot, the slots; each brush writes only its own slot
         [NoAlias, ReadOnly] public NativeArray<int>  slotOfBrush;
-        [NoAlias, ReadOnly] public NativeArray<HotspotStageBrush> stageBrushes;
+        [NativeDisableParallelForRestriction] [NoAlias] public NativeArray<HotspotStageBrush> stageBrushes;
 
         public void Execute(int index)
         {
@@ -701,14 +701,22 @@ namespace Chisel.Core
         [NoAlias, ReadOnly] public NativeArray<int>  slotOfBrush;
         [NoAlias, ReadOnly] public NativeArray<bool> keptContent;
         [NativeDisableParallelForRestriction] [NoAlias] public NativeArray<HotspotStageBrush> stageBrushes;
+        // how many surfaces of the model have sections (HotspotStageMemory): with none and no groups no brush is cut
+        [NoAlias, ReadOnly] public NativeReference<int> sectionedSurfaces;
 
         public void Execute(int b)
         {
+            if (sectionedSurfaces.Value == 0 && groupOf.Value.IsEmpty)
+            {
+                brushCuts[b] = 0;
+                brushKeys[b] = default;
+                return;
+            }
             var slot    = slotOfBrush[b];
             var kept    = stageBrushes[slot];
             var content = kept.content;
             brushCuts[b] = OutputHotspotSections.BrushCutKey(b, brushRenderData, groupOf.Value, unfoldOf.Value, bordersOf, groupKeys, globalKey.Value, cached,
-                                                             keptContent[b], ref content, out var key, out var made);
+                                                             keptContent[b], kept.sections, ref content, out var key, out var made);
             brushKeys[b] = key;
             if (made)
             {
