@@ -26,12 +26,15 @@ namespace Chisel.Editors
         static Vector2       s_Current;
         static bool          s_Dragged;
         static bool          s_Released;
+        static SelectionType s_PressType;
         static SelectionType s_ReleasedType;
         // the key up of an Escape that cancelled a drag, which would otherwise deselect the brush
         static bool          s_SwallowEscape;
 
         static bool Holding  => s_ControlID != 0 && GUIUtility.hotControl == s_ControlID;
         internal static bool Dragging => Holding && s_Dragged;
+        // how it selects: set by the keys held when it started
+        internal static SelectionType DraggingType => s_PressType;
 
         internal static Rect Rect => Rect.MinMaxRect(Mathf.Min(s_Start.x, s_Current.x), Mathf.Min(s_Start.y, s_Current.y),
                                                      Mathf.Max(s_Start.x, s_Current.x), Mathf.Max(s_Start.y, s_Current.y));
@@ -89,6 +92,8 @@ namespace Chisel.Editors
             s_Start   = evt.mousePosition;
             s_Current = evt.mousePosition;
             s_Dragged = false;
+            // as Unity's box selection: added to or taken away by the keys held when it starts
+            s_PressType = ChiselRectSelectionManager.GetSelectionType(evt);
         }
 
         // The drag, release and Escape of a held press, before anything else sees them; true in the event the press
@@ -128,7 +133,7 @@ namespace Chisel.Editors
                     s_Dragged      = false;
                     s_Current      = evt.mousePosition;
                     s_Released     = true;
-                    s_ReleasedType = ChiselRectSelectionManager.GetSelectionType(evt);
+                    s_ReleasedType = s_PressType;
                     break;
                 }
                 case EventType.KeyDown:

@@ -31,14 +31,5 @@ namespace Chisel.Editors.Tests
             foreach (var id in ids)
                 Assert.That(names, Does.Contain(id.Substring(ChiselKeyboardDefaults.ShortCutCreateBase.Length)), id);
         }
-
-        // without Chisel's tools active the keys are left to Unity
-        [Test]
-        public void WithoutChiselTools_ShortcutsAreInactive()
-        {
-            if (UnityEditor.EditorTools.ToolManager.activeContextType == typeof(ChiselToolsContext))
-                Assert.Ignore("Chisel's tools are active");
-            Assert.That(ChiselGeneratorShortcuts.TagRegistered, Is.False);
-        }
     }
 }

@@ -147,10 +147,12 @@ namespace Chisel.Editors
             return GetSelectionType(Event.current);
         }
 
+        // the action key: Command on macOS, Control elsewhere (EditorGUI.actionKey, of the given event)
+        public static bool IsActionKeyHeld(Event evt) => Application.platform == RuntimePlatform.OSXEditor ? evt.command : evt.control;
+
         public static SelectionType GetSelectionType(Event evt)
         {
-            // the action key: Command on macOS, Control elsewhere (EditorGUI.actionKey, of the current event)
-            var actionKey = Application.platform == RuntimePlatform.OSXEditor ? evt.command : evt.control;
+            var actionKey = IsActionKeyHeld(evt);
             var selectionType = SelectionType.Replace;
             // shift only
             if ( evt.shift && !actionKey && !evt.alt) { selectionType = SelectionType.Additive; } else

@@ -63,17 +63,18 @@ namespace Chisel.Editors
                 editableOutline == null)
                 return;
 
-            var previousHotControl  = GUIUtility.hotControl;
-
             if (editableOutline.DoHandles(handles, generator.definition.IsInsideOut))
                 UpdateEditableOutline(generator);
 
-            var currentHotControl = GUIUtility.hotControl;
-            // When we stop/start dragging or clicking something our hotControl changes. 
-            // We detect this change, and together with generatorModified we know when a user operation is finished.
-            if (s_GeneratorModified && (currentHotControl != previousHotControl))
+            if (ShouldCommit(s_GeneratorModified, GUIUtility.hotControl))
                 CommitChanges();
         }
+
+        // Changes are committed once the operation that made them is over: when no handle holds the mouse. Committing
+        // replaces the editable outlines, so while a handle holds the mouse (from the press that starts a drag on) it
+        // would take away what that drag works from. A change made without holding the mouse, like a delete, is over at
+        // once.
+        internal static bool ShouldCommit(bool modified, int hotControl) => modified && hotControl == 0;
 
         // Creates a new optimized/fixed brushMesh based on the brushMesh inside of the generator
         // this will not be copied to the generator until the current operation is complete. 
