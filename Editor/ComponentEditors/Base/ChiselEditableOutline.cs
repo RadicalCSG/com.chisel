@@ -314,6 +314,59 @@ namespace Chisel.Editors
         }
 
 
+        // Unity's scene view convention for a click: on its own it replaces the selection; Shift adds, or takes away the
+        // active item (the one clicked last); the action key (Control, Command on macOS) adds, or takes away any selected
+        // item, and wins from Shift
+        internal static SelectionType ClickSelectionType(bool shift, bool actionKey, bool isSelected, bool isActive)
+        {
+            if (actionKey) return isSelected ? SelectionType.Subtractive : SelectionType.Additive;
+            if (shift)     return isActive   ? SelectionType.Subtractive : SelectionType.Additive;
+            return SelectionType.Replace;
+        }
+
+        bool IsActive(TopologyItemKind kind, int index)
+        {
+            if (selection.activeKind != kind)
+                return false;
+            if (selection.activeIndex == index)
+                return true;
+            // either half of an edge is the edge
+            return kind == TopologyItemKind.Edge && index < brushMesh.halfEdges.Length &&
+                   brushMesh.halfEdges[index].twinIndex == selection.activeIndex;
+        }
+
+        void SetActive(TopologyItemKind kind, int index, SelectionType selectionType)
+        {
+            if (selectionType != SelectionType.Subtractive)
+                selection.SetActive(kind, index);
+            else if (IsActive(kind, index))
+                selection.SetActive(TopologyItemKind.None, -1);
+        }
+
+        internal void ClickVertex(int v, bool shift, bool actionKey, bool in2DMode = false, Vector3 cameraDirection = default)
+        {
+            var selectionType = ClickSelectionType(shift, actionKey, selection.selectedVertices.Contains(v), IsActive(TopologyItemKind.Vertex, v));
+            if (in2DMode)
+                SelectVertexViewAligned(v, cameraDirection, selectionType);
+            else
+                SelectVertex(v, selectionType);
+            SetActive(TopologyItemKind.Vertex, v, selectionType);
+        }
+
+        internal void ClickEdge(int e, bool shift, bool actionKey)
+        {
+            var selectionType = ClickSelectionType(shift, actionKey, selection.selectedEdges.Contains(e), IsActive(TopologyItemKind.Edge, e));
+            SelectEdge(e, selectionType);
+            SetActive(TopologyItemKind.Edge, e, selectionType);
+        }
+
+        internal void ClickPolygon(int p, bool shift, bool actionKey)
+        {
+            var selectionType = ClickSelectionType(shift, actionKey, selection.selectedPolygons.Contains(p), IsActive(TopologyItemKind.Polygon, p));
+            SelectPolygon(p, selectionType);
+            SetActive(TopologyItemKind.Polygon, p, selectionType);
+        }
+
         static public void RemapSelection(BrushMesh brushMesh, ChiselTopologySelection selection, int[] vertexRemap, int[] edgeRemap, int[] polygonRemap)
         {
             Undo.RecordObject(ChiselTopologySelectionManager.Selection, "Remapping selection");
@@ -331,7 +384,13 @@ namespace Chisel.Editors
             var prevVertexSelection     = selection.selectedVertices.ToArray();
             var prevEdgeSelection       = selection.selectedEdges.ToArray();
             var prevPolygonSelection    = selection.selectedPolygons.ToArray();
+            var activeKind              = selection.activeKind;
+            var activeIndex             = selection.activeIndex;
             selection.Clear();
+            selection.SetActive(activeKind, activeIndex);
+            selection.RemapActive(TopologyItemKind.Vertex,  vertexRemap);
+            selection.RemapActive(TopologyItemKind.Edge,    edgeRemap);
+            selection.RemapActive(TopologyItemKind.Polygon, polygonRemap);
 
 
             if (vertexRemap != null)
@@ -463,53 +522,9 @@ namespace Chisel.Editors
             return pivotRotation == PivotRotation.Local ? Quaternion.identity : Quaternion.Inverse(brushToWorld.rotation);
         }
 
-        void SplitPolygonBetweenTwoVertices(int startEdge, int endEdge, Vector3 prevNewVertex, Vector3 firstNewVertex)
+        void SplitPolygonBetweenTwoVertices(int polygonIndex, int vertexIndex1, int vertexIndex2)
         {
-            var twin = brushMesh.halfEdges[startEdge].twinIndex;
-            var vertexIndex1    = brushMesh.halfEdges[startEdge].vertexIndex;
-            var vertexIndex2    = brushMesh.halfEdges[twin].vertexIndex;
-
-            var polygonIndexA1  = brushMesh.halfEdgePolygonIndices[startEdge];
-            var polygonIndexA2  = brushMesh.halfEdgePolygonIndices[twin];
-
-            var polygonIndexB1  = brushMesh.halfEdgePolygonIndices[endEdge];
-            var polygonIndexB2  = brushMesh.halfEdgePolygonIndices[brushMesh.halfEdges[endEdge].twinIndex];
-
-            int sharedPolygonIndex = (polygonIndexA1 == polygonIndexB1 || polygonIndexA1 == polygonIndexB2) ? polygonIndexA1 :
-                                     (polygonIndexA2 == polygonIndexB1 || polygonIndexA2 == polygonIndexB2) ? polygonIndexA2 : 
-                                     -1;
-
-            if (sharedPolygonIndex == -1)
-            {
-                Debug.Assert(false, "Invalid input, both edges need to be on same polygon");
-                return;
-            }
-
             Undo.RecordObjects(new UnityEngine.Object[] { brush, ChiselTopologySelectionManager.Selection }, "Split polygon between two vertices");
-            var prevNewVertexIndex = brushMesh.FindVertexIndexOfVertex(prevNewVertex);
-            if (prevNewVertexIndex == -1)
-            {
-                prevNewVertexIndex = brushMesh.vertices.Length;
-                ArrayUtility.Add(ref brushMesh.vertices, prevNewVertex);
-                brushMesh.SplitHalfEdge(endEdge, prevNewVertexIndex, out int newEdgeIndex2);
-                startEdge = brushMesh.FindEdgeByVertexIndices(vertexIndex1, vertexIndex2);
-            }
-
-            var firstNewVertexIndex = brushMesh.FindVertexIndexOfVertex(firstNewVertex);
-            if (firstNewVertexIndex == -1)
-            {
-                firstNewVertexIndex = brushMesh.vertices.Length;
-                ArrayUtility.Add(ref brushMesh.vertices, firstNewVertex);
-                brushMesh.SplitHalfEdge(startEdge, firstNewVertexIndex, out int newEdgeIndex1);
-            }
-
-            SplitPolygonBetweenTwoVertices(sharedPolygonIndex, prevNewVertexIndex, firstNewVertexIndex, registerUndo: false);
-        }
-
-        void SplitPolygonBetweenTwoVertices(int polygonIndex, int vertexIndex1, int vertexIndex2, bool registerUndo = true)
-        {
-            if (registerUndo)
-                Undo.RecordObjects(new UnityEngine.Object[] { brush, ChiselTopologySelectionManager.Selection }, "Split polygon between two vertices");
             var indexIn = brushMesh.FindPolygonEdgeByVertexIndex(polygonIndex, vertexIndex1);
             var indexOut = brushMesh.FindPolygonEdgeByVertexIndex(polygonIndex, vertexIndex2);
 
@@ -882,19 +897,7 @@ namespace Chisel.Editors
         const string    kSelectAllCommand       = "SelectAll";
         const string    kSoftDeleteCommand      = "SoftDelete";
 
-        const float     kEqualitySqrDistance    = 0.0001f;
-        const float     kSnapSqrDistance        = 0.01f;
-        
         int         clickCount          = 0;
-
-        int         prevEdgeIndex       = 0;
-        bool?       prevAlternateMode   = null;
-
-        bool        secondVertex        = false;
-        int         highlightEdgeIndex  = -1;
-        Vector3     firstNewVertex;
-        Vector3     prevNewVertex       = new Vector3(float.PositiveInfinity, float.PositiveInfinity, float.PositiveInfinity);
-
 
 
         ClickState HandleClick(int id, bool captureControl = false)
@@ -910,7 +913,6 @@ namespace Chisel.Editors
                     if (SceneHandleUtility.FocusControl != id)
                         break;
 
-                    prevAlternateMode = AlternateEditMode;
                     return ClickState.Hover;
                 }
 
@@ -925,7 +927,6 @@ namespace Chisel.Editors
                     // Unfortunately the clickCount is always 1 at mouseUp, so we need to remember it
                     clickCount = evt.clickCount;
 
-                    prevAlternateMode = AlternateEditMode;
                     return ClickState.MouseDown;
                 }
 
@@ -944,7 +945,6 @@ namespace Chisel.Editors
                     if (!CanUseMouseUp(evt, id))
                         break;
 
-                    prevAlternateMode = null;
                     if (captureControl)
                     {
                         SetControl(evt, 0);
@@ -1000,17 +1000,7 @@ namespace Chisel.Editors
                     break;
                 }
             }
-
-            var alternateEditMode = AlternateEditMode;
-            if (prevAlternateMode.HasValue &&
-                prevAlternateMode.Value == alternateEditMode)
-                return ClickState.None;
-
-            if (SceneHandleUtility.FocusControl != id)
-                return ClickState.None;
-
-            prevAlternateMode = alternateEditMode;
-            return ClickState.Hover;
+            return ClickState.None;
         }
         #endregion
 
@@ -1062,7 +1052,7 @@ namespace Chisel.Editors
         bool[] polygonShown;
         bool[] edgeShown;
         bool[] vertexShown;
-        // the vertices inside the marquee as it's dragged
+        // the vertices shown inside the marquee's rectangle
         bool[] vertexInMarquee;
 
         internal bool IsPolygonShown(int p) => polygonShown == null || p >= polygonShown.Length || polygonShown[p];
@@ -1135,21 +1125,47 @@ namespace Chisel.Editors
             return distance + Mathf.Clamp(bias, 0, kPickTieBias);
         }
 
-        // The vertices shown inside the rectangle (in GUI points; toGUI gives a vertex's), selected, added or taken away,
-        // with the edges and faces all their vertices are of
-        internal void SelectVerticesInRect(Rect rect, SelectionType selectionType, Func<Vector3, Vector2> toGUI)
+        // The vertices shown inside the rectangle (in GUI points; toGUI gives a vertex's)
+        void MarkVerticesInRect(Rect rect, Func<Vector3, Vector2> toGUI)
         {
-            Undo.RecordObject(ChiselTopologySelectionManager.Selection, "Selection modified");
+            var vertices = brushMesh.vertices;
+            if (vertexInMarquee == null || vertexInMarquee.Length != vertices.Length)
+                vertexInMarquee = new bool[vertices.Length];
+            for (int v = 0; v < vertices.Length; v++)
+                vertexInMarquee[v] = IsVertexShown(v) && rect.Contains(toGUI(vertices[v]));
+        }
+
+        // The marked vertices selected, added or taken away, with the edges and faces all their vertices are of
+        static void SelectVertices(BrushMesh brushMesh, ChiselTopologySelection selection, bool[] marked, SelectionType selectionType)
+        {
             if (selectionType == SelectionType.Replace)
                 selection.Clear();
             var each = selectionType == SelectionType.Subtractive ? SelectionType.Subtractive : SelectionType.Additive;
-            var vertices = brushMesh.vertices;
-            for (int v = 0; v < vertices.Length; v++)
+            for (int v = 0; v < marked.Length; v++)
             {
-                if (IsVertexShown(v) && rect.Contains(toGUI(vertices[v])))
+                if (marked[v])
                     SelectVertex(brushMesh, selection, v, each);
             }
+        }
+
+        internal void SelectVerticesInRect(Rect rect, SelectionType selectionType, Func<Vector3, Vector2> toGUI)
+        {
+            Undo.RecordObject(ChiselTopologySelectionManager.Selection, "Selection modified");
+            MarkVerticesInRect(rect, toGUI);
+            SelectVertices(brushMesh, selection, vertexInMarquee, selectionType);
             UpdateSelectionCenter();
+        }
+
+        // the selection as the marquee will leave it when released, shown while it is dragged
+        ChiselTopologySelection marqueePreview;
+
+        internal ChiselTopologySelection MarqueePreview(Rect rect, SelectionType selectionType, Func<Vector3, Vector2> toGUI)
+        {
+            MarkVerticesInRect(rect, toGUI);
+            marqueePreview ??= new ChiselTopologySelection();
+            marqueePreview.CopyFrom(selection);
+            SelectVertices(brushMesh, marqueePreview, vertexInMarquee, selectionType);
+            return marqueePreview;
         }
 
         void UpdateStateColors(Color[] colors, ItemState[] states, bool validState, Color backfacedColor, Color frontfacedColor, Color invalidColor)
@@ -1207,29 +1223,24 @@ namespace Chisel.Editors
             Array.Clear(s_TempEdgesState, 0, halfEdges.Length);
             Array.Clear(s_TempSoftEdgesState, 0, softEdges.Length);
 
-            // what the marquee would select lights up as it's dragged: the vertices shown inside it, and the edges and
-            // faces all of whose vertices are
-            var marquee         = ChiselBrushMarquee.Dragging;
-            var marqueeRect     = ChiselBrushMarquee.Rect;
-            if (vertexInMarquee == null || vertexInMarquee.Length != vertices.Length)
-                vertexInMarquee = new bool[vertices.Length];
-            for (int v = 0; v < vertices.Length; v++)
-                vertexInMarquee[v] = marquee && IsVertexShown(v) && marqueeRect.Contains(HandleUtility.WorldToGUIPoint(vertices[v]));
+            // while the marquee is dragged, the selection is shown as it will be when it is released
+            var shownSelection = ChiselBrushMarquee.Dragging
+                ? MarqueePreview(ChiselBrushMarquee.Rect, ChiselBrushMarquee.DraggingType, position => HandleUtility.WorldToGUIPoint(position))
+                : selection;
 
             for (int v = 0; v < s_TempVerticesIDCount; v++)
             {
                 var id = s_TempVerticesIDs[v];
 
                 var isActive    = currentHotControl == id;
-                var isHovering  = currentFocusControl == id || vertexInMarquee[v];
-                var isSelected  = selection.selectedVertices.Contains(v);
+                var isHovering  = currentFocusControl == id;
+                var isSelected  = shownSelection.selectedVertices.Contains(v);
 
                 var vertexState = CalculateState(isHovering, isActive, isSelected);
 
                 s_TempVerticesState[v] = vertexState;
             }
 
-            var currentHighlightEdge = (secondVertex && highlightEdgeIndex != -1) ? s_TempEdgesIDs[highlightEdgeIndex] : 0;
             for (int e = 0; e < halfEdges.Length; e++)
             {
                 var id = s_TempEdgesIDs[e];
@@ -1241,9 +1252,8 @@ namespace Chisel.Editors
                 var prevVertex  = halfEdges[twin].vertexIndex;
 
                 var isActive    = (currentHotControl == id);
-                var isHovering  = (currentFocusControl == id) || (currentHighlightEdge == id) ||
-                                  (vertexInMarquee[currVertex] && vertexInMarquee[prevVertex]);
-                var isSelected  = selection.selectedEdges.Contains(e);
+                var isHovering  = currentFocusControl == id;
+                var isSelected  = shownSelection.selectedEdges.Contains(e);
 
                 var edgeState   = CalculateState(isHovering, isActive, isSelected);
 
@@ -1259,17 +1269,14 @@ namespace Chisel.Editors
                 var id              = s_TempPolygonsIDs[p];
 
                 var isActive        = currentHotControl == id;
-                var isSelected      = selection.selectedPolygons.Contains(p);
+                var isSelected      = shownSelection.selectedPolygons.Contains(p);
                 var isFrontFacing   = IsPolygonFrontfacing(polygonCenters[p], planes[p], cameraLocalPos, cameraLocalForward, isCameraInsideOutline, isCameraOrthographic);
 
                 var firstEdge   = polygons[p].firstEdge;
                 var edgeCount   = polygons[p].edgeCount;
                 var lastEdge    = firstEdge + edgeCount;
 
-                var allInMarquee = marquee;
-                for (int e = firstEdge; e < lastEdge && allInMarquee; e++)
-                    allInMarquee = vertexInMarquee[halfEdges[e].vertexIndex];
-                var isHovering      = currentFocusControl == id || allInMarquee;
+                var isHovering      = currentFocusControl == id;
 
                 var polygonState = CalculateState(isHovering, isActive, isSelected, isFrontFacing);
 
@@ -1330,406 +1337,7 @@ namespace Chisel.Editors
         #endregion
 
 
-        #region Snapping
-        void SnapVertex(Vector3 point, Vector3 vertex, ref Vector3 snappedPoint, ref float bestDist)
-        {
-            var sqrMagnitude = (vertex - point).sqrMagnitude;
-            if (sqrMagnitude <= kSnapSqrDistance)
-            {
-                var magnitude = Mathf.Sqrt(sqrMagnitude);
-                if (magnitude < bestDist)
-                {
-                    bestDist = magnitude;
-                    snappedPoint = vertex;
-                }
-            }
-        }
-
-        // Snap a point to one of the 2 vertices of the given edge
-        void SnapVertices(Vector3 point, Vector3 vertex1, Vector3 vertex2, ref Vector3 snappedPoint, ref float bestDist)
-        {
-            SnapVertex(point, vertex1, ref snappedPoint, ref bestDist);
-            SnapVertex(point, vertex2, ref snappedPoint, ref bestDist);
-        }
-
-        // Snap a point on an edge where it intersects with the grid. 
-        // Note that we're never allowed to snap to a point outside the edge
-        void SnapToGridOnEdge(float3 point, int edgeIndex, ref Vector3 snappedPoint, ref float bestDist)
-        {
-            var vertices                = brushMesh.vertices;
-            var halfEdges               = brushMesh.halfEdges;
-            var planes                  = brushMesh.planes;
-            var halfEdgePolygonIndices  = brushMesh.halfEdgePolygonIndices;
-            var twinIndex           = halfEdges[edgeIndex].twinIndex;
-            var edgePolygonIndex    = halfEdgePolygonIndices[edgeIndex];
-            var twinPolygonIndex    = halfEdgePolygonIndices[twinIndex];
-            var edgeLocalPlane      = new Plane(planes[edgePolygonIndex].xyz, planes[edgePolygonIndex].w);
-            var twinLocalPlane      = new Plane(planes[twinPolygonIndex].xyz, planes[twinPolygonIndex].w);
-            var localToWorldMatrix  = brush.hierarchyItem.LocalToWorldMatrix;
-            var worldToLocalMatrix  = brush.hierarchyItem.WorldToLocalMatrix;
-
-            var vertex1 = vertices[halfEdges[edgeIndex].vertexIndex];
-            var vertex2 = vertices[halfEdges[twinIndex].vertexIndex];
-
-            var grid    = Chisel.Editors.Grid.DefaultGrid;
-            var xAxis   = (float3)worldToLocalMatrix.MultiplyVector(grid.Right);
-            var yAxis   = (float3)worldToLocalMatrix.MultiplyVector(grid.Up);
-            var zAxis   = (float3)worldToLocalMatrix.MultiplyVector(grid.Forward);
-            var center  = (float3)worldToLocalMatrix.MultiplyPoint(grid.Center);
-            var spacing = grid.Spacing;
-
-            var edgeRay = new Ray(vertex1, math.normalize(vertex2 - vertex1));
-
-            var snapAxis = Axis.X | Axis.Y | Axis.Z;
-            if (Mathf.Abs(Vector3.Dot(xAxis, edgeLocalPlane.normal)) >= kAlignmentEpsilon) snapAxis &= ~Axis.X;
-            if (Mathf.Abs(Vector3.Dot(yAxis, edgeLocalPlane.normal)) >= kAlignmentEpsilon) snapAxis &= ~Axis.Y;
-            if (Mathf.Abs(Vector3.Dot(zAxis, edgeLocalPlane.normal)) >= kAlignmentEpsilon) snapAxis &= ~Axis.Z;
-
-            if (Mathf.Abs(Vector3.Dot(xAxis, twinLocalPlane.normal)) >= kAlignmentEpsilon) snapAxis &= ~Axis.X;
-            if (Mathf.Abs(Vector3.Dot(yAxis, twinLocalPlane.normal)) >= kAlignmentEpsilon) snapAxis &= ~Axis.Y;
-            if (Mathf.Abs(Vector3.Dot(zAxis, twinLocalPlane.normal)) >= kAlignmentEpsilon) snapAxis &= ~Axis.Z;
-
-            var gridPoint = point - center;
-            var posX = Vector3.Dot(xAxis, gridPoint);
-            var posY = Vector3.Dot(yAxis, gridPoint);
-            var posZ = Vector3.Dot(zAxis, gridPoint);
-
-            if ((snapAxis & Axis.X) != Axis.None)
-            {
-                var axis = xAxis;
-                var axisPos = posX;
-                var offset = (posY * yAxis) + (posZ * zAxis) + center;
-                var axisSpacing = spacing.x;
-
-                var min = Vector3.Dot(axis, vertex1 - center);
-                var max = Vector3.Dot(axis, vertex2 - center);
-                if (min > max) { var t = min; min = max; max = t; }
-
-                var floor = Mathf.Floor(axisPos / axisSpacing) * axisSpacing;
-                if (floor > min && floor < max)
-                {
-                    var axisPlane = new Plane(axis, (floor * axis) + offset);
-                    if (axisPlane.Raycast(edgeRay, out float rayDistance))
-                    {
-                        var snapPoint = (float3)edgeRay.GetPoint(rayDistance);
-                        var magnitude = math.length(snapPoint - point);
-                        if (magnitude < bestDist)
-                        {
-                            bestDist = magnitude;
-                            snappedPoint = snapPoint;
-                        }
-                    }
-                }
-
-                var ceil = Mathf.Ceil(axisPos / axisSpacing) * axisSpacing;
-                if (ceil > min && ceil < max)
-                {
-                    var axisPlane = new Plane(axis, (ceil * axis) + offset);
-                    if (axisPlane.Raycast(edgeRay, out float rayDistance))
-                    {
-                        var snapPoint = (float3)edgeRay.GetPoint(rayDistance);
-                        var magnitude = math.length(snapPoint - point);
-                        if (magnitude < bestDist)
-                        {
-                            bestDist = magnitude;
-                            snappedPoint = snapPoint;
-                        }
-                    }
-                }
-            }
-
-            if ((snapAxis & Axis.Y) != Axis.None)
-            {
-                var axis = yAxis;
-                var axisPos = posY;
-                var offset = (posX * xAxis) + (posZ * zAxis) + center;
-                var axisSpacing = spacing.y;
-
-                var min = Vector3.Dot(axis, vertex1 - center);
-                var max = Vector3.Dot(axis, vertex2 - center);
-                if (min > max) { var t = min; min = max; max = t; }
-
-                var floor = Mathf.Floor(axisPos / axisSpacing) * axisSpacing;
-                if (floor > min && floor < max)
-                {
-                    var axisPlane = new Plane(axis, (floor * axis) + offset);
-                    if (axisPlane.Raycast(edgeRay, out float rayDistance))
-                    {
-                        var snapPoint = (float3)edgeRay.GetPoint(rayDistance);
-                        var magnitude = math.length(snapPoint - point);
-                        if (magnitude < bestDist)
-                        {
-                            bestDist = magnitude;
-                            snappedPoint = snapPoint;
-                        }
-                    }
-                }
-
-                var ceil = Mathf.Ceil(axisPos / axisSpacing) * axisSpacing;
-                if (ceil > min && ceil < max)
-                {
-                    var axisPlane = new Plane(axis, (ceil * axis) + offset);
-                    if (axisPlane.Raycast(edgeRay, out float rayDistance))
-                    {
-                        var snapPoint = (float3)edgeRay.GetPoint(rayDistance);
-                        var magnitude = math.length(snapPoint - point);
-                        if (magnitude < bestDist)
-                        {
-                            bestDist = magnitude;
-                            snappedPoint = snapPoint;
-                        }
-                    }
-                }
-            }
-
-            if ((snapAxis & Axis.Z) != Axis.None)
-            {
-                var axis = zAxis;
-                var axisPos = posZ;
-                var offset = (posX * xAxis) + (posY * yAxis) + center;
-                var axisSpacing = spacing.z;
-
-                var min = Vector3.Dot(axis, vertex1 - center);
-                var max = Vector3.Dot(axis, vertex2 - center);
-                if (min > max) { var t = min; min = max; max = t; }
-
-                var floor = Mathf.Floor(axisPos / axisSpacing) * axisSpacing;
-                if (floor > min && floor < max)
-                {
-                    var axisPlane = new Plane(axis, (floor * axis) + offset);
-                    if (axisPlane.Raycast(edgeRay, out float rayDistance))
-                    {
-                        var snapPoint = (float3)edgeRay.GetPoint(rayDistance);
-                        var magnitude = math.length(snapPoint - point);
-                        if (magnitude < bestDist)
-                        {
-                            bestDist = magnitude;
-                            snappedPoint = snapPoint;
-                        }
-                    }
-                }
-
-                var ceil = Mathf.Ceil(axisPos / axisSpacing) * axisSpacing;
-                if (ceil > min && ceil < max)
-                {
-                    var axisPlane = new Plane(axis, (ceil * axis) + offset);
-                    if (axisPlane.Raycast(edgeRay, out float rayDistance))
-                    {
-                        var snapPoint = (float3)edgeRay.GetPoint(rayDistance);
-                        var magnitude = math.length(snapPoint - point);
-                        if (magnitude < bestDist)
-                        {
-                            bestDist = magnitude;
-                            snappedPoint = snapPoint;
-                        }
-                    }
-                }
-            }
-        }
-        #endregion
-
-        #region Snapped intersection point on edges
-        void FindClosestEdgeFromEdge(int polygonIndex, int edgeIndex, int twinIndex, ref int closestEdgeIndex, ref float closestEdgeDistance)
-        {
-            var vertices    = brushMesh.vertices;
-            var polygons    = brushMesh.polygons;
-            var halfEdges   = brushMesh.halfEdges;
-            var firstEdge   = polygons[polygonIndex].firstEdge;
-            var edgeCount   = polygons[polygonIndex].edgeCount;
-            var lastEdge    = firstEdge + edgeCount;
-            for (int e0 = lastEdge - 1, e1 = firstEdge; e1 < lastEdge; e0 = e1, e1++)
-            {
-                var vertex0 = vertices[halfEdges[e0].vertexIndex];
-                var vertex1 = vertices[halfEdges[e1].vertexIndex];
-
-                if (e1 == edgeIndex ||
-                    e1 == twinIndex)
-                    continue;
-
-                var distance = PickDistance(HandleUtility.DistanceToLine(vertex0, vertex1), (vertex0 + vertex1) * 0.5f);
-                if (distance >= closestEdgeDistance)
-                    continue;
-
-                closestEdgeDistance = distance;
-                var twin = halfEdges[e1].twinIndex;
-                if (twin > e1)
-                    closestEdgeIndex = twin;
-                else
-                    closestEdgeIndex = e1;
-            }
-        }
-
-        void FindClosestEdgeFromVertex(int polygonIndex, int vertexIndex, ref int closestEdgeIndex, ref float closestEdgeDistance)
-        {
-            var vertices    = brushMesh.vertices;
-            var polygons    = brushMesh.polygons;
-            var halfEdges   = brushMesh.halfEdges;
-            var firstEdge   = polygons[polygonIndex].firstEdge;
-            var edgeCount   = polygons[polygonIndex].edgeCount;
-            var lastEdge    = firstEdge + edgeCount;
-            for (int e0 = lastEdge - 1, e1 = firstEdge; e1 < lastEdge; e0 = e1, e1++)
-            {
-                var vertexIndex0 = halfEdges[e0].vertexIndex;
-                var vertexIndex1 = halfEdges[e1].vertexIndex;
-
-                if (vertexIndex == vertexIndex0 ||
-                    vertexIndex == vertexIndex1)
-                    continue;
-
-                var vertex0 = vertices[vertexIndex0];
-                var vertex1 = vertices[vertexIndex1];
-
-                var distance = PickDistance(HandleUtility.DistanceToLine(vertex0, vertex1), (vertex0 + vertex1) * 0.5f);
-                if (distance >= closestEdgeDistance)
-                    continue;
-
-                closestEdgeDistance = distance;
-                var twin = halfEdges[e1].twinIndex;
-                if (twin > e1)
-                    closestEdgeIndex = twin;
-                else
-                    closestEdgeIndex = e1;
-            }
-        }
-
-        void FindSnappedPointOnEdge(int edgeIndex)
-        {
-            var vertices    = brushMesh.vertices;
-            var halfEdges   = brushMesh.halfEdges;
-            var twinIndex   = halfEdges[edgeIndex].twinIndex;
-            var vertex1     = vertices[halfEdges[edgeIndex].vertexIndex];
-            var vertex2     = vertices[halfEdges[twinIndex].vertexIndex];
-
-            float bestDist = float.PositiveInfinity;
-            var newVertex = HandleUtility.ClosestPointToPolyLine(vertex1, vertex2);
-            Vector3 snapPoint = newVertex;
-            SnapToGridOnEdge(newVertex, edgeIndex, ref snapPoint, ref bestDist);
-            SnapVertices(newVertex, vertex1, vertex2, ref snapPoint, ref bestDist);
-            newVertex = snapPoint;
-
-            if (prevEdgeIndex == edgeIndex &&
-                (prevNewVertex - newVertex).sqrMagnitude <= kEqualitySqrDistance)
-                return;
-
-            prevEdgeIndex = edgeIndex;
-            prevNewVertex = newVertex;
-            if (Event.current.type != EventType.Repaint)
-                SceneView.RepaintAll();
-        }
-
-        void FindSnappedPointOnVertex(int vertexIndex)
-        {
-            var vertices = brushMesh.vertices;
-            var newVertex = vertices[vertexIndex];
-            if (math.lengthsq((float3)prevNewVertex - newVertex) <= kEqualitySqrDistance)
-                return;
-
-            prevEdgeIndex = brushMesh.FindAnyHalfEdgeWithVertexIndex(vertexIndex);
-            prevNewVertex = newVertex;
-            if (Event.current.type != EventType.Repaint)
-                SceneView.RepaintAll();
-        }
-
-        void UpdateEdgeHoverPointOnEdge(int edgeIndex)
-        {
-            highlightEdgeIndex = -1;
-            var halfEdges               = brushMesh.halfEdges;
-            var halfEdgePolygonIndices  = brushMesh.halfEdgePolygonIndices;
-            if (!secondVertex)
-            {
-                FindSnappedPointOnEdge(edgeIndex);
-                return;
-            }
-
-            var twinIndex        = halfEdges[edgeIndex].twinIndex;
-            var polygonIndex     = halfEdgePolygonIndices[edgeIndex];
-            var twinPolygonIndex = halfEdgePolygonIndices[twinIndex];
-            int closestEdgeIndex = -1;
-
-            float closestEdgeDistance = float.PositiveInfinity;
-            FindClosestEdgeFromEdge(polygonIndex,     edgeIndex, twinIndex, ref closestEdgeIndex, ref closestEdgeDistance);
-            FindClosestEdgeFromEdge(twinPolygonIndex, edgeIndex, twinIndex, ref closestEdgeIndex, ref closestEdgeDistance);
-
-            if (closestEdgeIndex == -1)
-                return;
-
-            highlightEdgeIndex = closestEdgeIndex;
-            FindSnappedPointOnEdge(highlightEdgeIndex);
-        }
-
-        void UpdateEdgeHoverPointOnVertex(int vertexIndex)
-        {
-            highlightEdgeIndex = -1;
-            var polygons = brushMesh.polygons;
-
-            if (!secondVertex)
-            {
-                FindSnappedPointOnVertex(vertexIndex);
-                return;
-            }
-
-            int     closestEdgeIndex    = -1;
-            float   closestEdgeDistance = float.PositiveInfinity;
-            for (int p = 0; p < polygons.Length; p++)
-            {
-                if (!brushMesh.IsVertexIndexPartOfPolygon(p, vertexIndex))
-                    continue;
-                FindClosestEdgeFromVertex(p, vertexIndex, ref closestEdgeIndex, ref closestEdgeDistance);
-            }
-
-            if (closestEdgeIndex == -1)
-                return;
-
-            highlightEdgeIndex = closestEdgeIndex;
-            FindSnappedPointOnEdge(highlightEdgeIndex);
-        }
-
-        void RenderHoverPoint()
-        {
-            if (Event.current.type != EventType.Repaint)
-                return;
-
-            SceneHandles.RenderBorderedCircle(prevNewVertex, HandleUtility.GetHandleSize(prevNewVertex) * HandleRendering.kPointScale);
-            if (secondVertex)
-            {
-                SceneHandles.RenderBorderedCircle(firstNewVertex, HandleUtility.GetHandleSize(firstNewVertex) * HandleRendering.kPointScale);
-                SceneHandles.DrawLine(firstNewVertex, prevNewVertex);
-            }
-        }
-        #endregion
-
-
-        bool AlternateEditMode { get { return Event.current.shift; } }
-
         const float kAlignmentEpsilon = 0.001f;
-
-        bool HaveFocusOnHalfEdgeOrVertex
-        {
-            get
-            {
-                var currentFocusControl = SceneHandleUtility.FocusControl;
-                for (int e = 0; e < s_TempEdgesIDCount; e++)
-                {
-                    var id = s_TempEdgesIDs[e];
-                    if (id == 0) continue; // only handle half of the half-edges / avoid duplicate edges
-
-                    if (currentFocusControl != id)
-                        continue;
-
-                    return true;
-                }
-                for (int e = 0; e < s_TempVerticesIDCount; e++)
-                {
-                    var id = s_TempVerticesIDs[e];
-
-                    if (currentFocusControl != id)
-                        continue;
-
-                    return true;
-                }
-                return false;
-            }
-        }
 
         bool HaveFocusOnPolygon
         {
@@ -1764,7 +1372,6 @@ namespace Chisel.Editors
                 return;
 
             var currentFocusControl     = SceneHandleUtility.FocusControl;
-            var inCreateEdgeEditMode    = InCreateEdgeEditMode;
 
             var polygons    = brushMesh.polygons;
             var planes      = brushMesh.planes;
@@ -1776,10 +1383,6 @@ namespace Chisel.Editors
             {
                 var id = s_TempVerticesIDs[v];
                 if (!IsVertexShown(v))
-                    continue;
-
-                if (inCreateEdgeEditMode &&
-                    currentFocusControl == id)
                     continue;
 
                 var position    = vertices[v];
@@ -1981,6 +1584,8 @@ namespace Chisel.Editors
 
         public void HandleSelection(bool in2DMode, Vector3 cameraDirection)
         {
+            var evt       = Event.current;
+            var actionKey = ChiselRectSelectionManager.IsActionKeyHeld(evt);
             for (int v = 0; v < s_TempVerticesIDCount; v++)
             {
                 switch (HandleClick(s_TempVerticesIDs[v], captureControl: false))
@@ -1997,18 +1602,13 @@ namespace Chisel.Editors
                                 SelectVertexViewAligned(v, cameraDirection, SelectionType.Replace);
                             } else
                                 SelectVertex(v, SelectionType.Replace);
+                            selection.SetActive(TopologyItemKind.Vertex, v);
                         }
                         break;
                     }
                     case ClickState.Clicked:
                     {
-                        // Select the vertex if we clicked on it
-                        var currentSelectionType = ChiselRectSelectionManager.GetCurrentSelectionType();
-                        if (in2DMode)
-                        {
-                            SelectVertexViewAligned(v, cameraDirection, currentSelectionType);
-                        } else
-                            SelectVertex(v, currentSelectionType);
+                        ClickVertex(v, evt.shift, actionKey, in2DMode, cameraDirection);
                         break;
                     }
                 }
@@ -2024,13 +1624,15 @@ namespace Chisel.Editors
                     {
                         // Select the edge if we start dragging on an unselected edge
                         if (!selection.selectedEdges.Contains(e))
+                        {
                             SelectEdge(e, SelectionType.Replace);
+                            selection.SetActive(TopologyItemKind.Edge, e);
+                        }
                         break;
                     }
                     case ClickState.Clicked:
                     {
-                        // Select the edge if we clicked on it
-                        SelectEdge(e, ChiselRectSelectionManager.GetCurrentSelectionType());
+                        ClickEdge(e, evt.shift, actionKey);
                         break;
                     }
                 }
@@ -2046,13 +1648,15 @@ namespace Chisel.Editors
                     {
                         // Select the polygon if we start dragging on an unselected polygon
                         if (!selection.selectedPolygons.Contains(p))
+                        {
                             SelectPolygon(p, SelectionType.Replace);
+                            selection.SetActive(TopologyItemKind.Polygon, p);
+                        }
                         break;
                     }
                     case ClickState.Clicked:
                     {
-                        // Select the polygon if we clicked on it
-                        SelectPolygon(p, ChiselRectSelectionManager.GetCurrentSelectionType());
+                        ClickPolygon(p, evt.shift, actionKey);
                         break;
                     }
                 }
@@ -2100,104 +1704,6 @@ namespace Chisel.Editors
             if (evt.type == EventType.Layout)
                 UnityEditor.HandleUtility.AddControl(s_TempPolygonsIDs[alignedIndex], PickDistance(UnityEditor.HandleUtility.DistanceToLine(vertex1, vertex2) * 0.5f, (vertex1 + vertex2) * 0.5f));
             return true;
-        }
-
-        // Handle splitting a polygon by starting on a point on an edge, 
-        // and creating a new edge by splitting a polygon that is on one of the sides of the starting edge.
-        // This method returns true when the brushMesh has changed
-        public bool HandleEdgeCreationFromEdge()
-        {
-
-            for (int e = 0; e < s_TempEdgesIDCount; e++)
-            {
-                switch (HandleClick(s_TempEdgesIDs[e], captureControl: true))
-                {
-                    case ClickState.Hover:      { UpdateEdgeHoverPointOnEdge(e); break; }
-                    case ClickState.Dragged:    { if (secondVertex) UpdateEdgeHoverPointOnEdge(e); break; }
-                    case ClickState.MouseDown:
-                    {
-                        UpdateEdgeHoverPointOnEdge(e);
-                        secondVertex = true;
-                        firstNewVertex = prevNewVertex;
-                        break;
-                    }
-                    case ClickState.Clicked:
-                    case ClickState.DoubleClicked:
-                    {
-                        secondVertex = false;
-                        break;
-                    }
-                    case ClickState.MouseUp:
-                    {
-                        if (!secondVertex)
-                            break;
-
-                        secondVertex = false;
-                        if (e == highlightEdgeIndex ||
-                            highlightEdgeIndex == -1)
-                            break;
-
-                        SplitPolygonBetweenTwoVertices(e, highlightEdgeIndex, prevNewVertex, firstNewVertex);
-                        return true;
-                    }
-                }
-            }
-            return false;
-        }
-
-        // Handle splitting a polygon by starting on a point on an vertex, 
-        // and creating a new edge by splitting one of the polygons that is around the starting vertex.
-        // This method returns true when the brushMesh has changed
-        public bool HandleEdgeCreationFromVertex()
-        {
-
-            for (int v = 0; v < s_TempVerticesIDCount; v++)
-            {
-                switch (HandleClick(s_TempVerticesIDs[v], captureControl: true))
-                {
-                    case ClickState.Hover:      { UpdateEdgeHoverPointOnVertex(v); break; }
-                    case ClickState.Dragged:    { if (secondVertex) UpdateEdgeHoverPointOnVertex(v); break; }
-                    case ClickState.MouseDown:
-                    {
-                        UpdateEdgeHoverPointOnVertex(v);
-                        secondVertex = true;
-                        firstNewVertex = prevNewVertex;
-                        break;
-                    }
-                    case ClickState.Clicked:
-                    case ClickState.DoubleClicked:
-                    {
-                        secondVertex = false;
-                        break;
-                    }
-                    case ClickState.MouseUp:
-                    {
-                        if (!secondVertex)
-                            break;
-
-                        secondVertex = false;
-                        if (highlightEdgeIndex == -1)
-                            break;
-
-                        // Find the polygon that belongs to the half-edge we're hovering over
-                        var polygonIndex    = brushMesh.halfEdgePolygonIndices[highlightEdgeIndex];
-                        var startEdgeIndex  = brushMesh.FindPolygonEdgeByVertexIndex(polygonIndex, v);
-
-                        // We might be looking on the wrong side of the half-edge, so if we fail, 
-                        // try the polygon on the other side
-                        if (startEdgeIndex == -1)
-                        {
-                            highlightEdgeIndex  = brushMesh.halfEdges[highlightEdgeIndex].twinIndex;
-                            polygonIndex        = brushMesh.halfEdgePolygonIndices[highlightEdgeIndex];
-                            startEdgeIndex      = brushMesh.FindPolygonEdgeByVertexIndex(polygonIndex, v);
-                        }
-
-                        SplitPolygonBetweenTwoVertices(startEdgeIndex, highlightEdgeIndex, prevNewVertex, firstNewVertex);
-                        return true;
-                    }
-                }
-            }
-            return false;
         }
 
         // The plane vertices, edges and faces are dragged on, picked by clicking a square of the move handle (XZ, XY or YZ,
@@ -2459,13 +1965,6 @@ namespace Chisel.Editors
             }
         }
 
-        bool InAlternateEditMode    { get { return Event.current.shift; } }
-
-        bool InCreateEdgeEditMode   { get { return InAlternateEditMode; } }
-
-        bool InDefaultEditMode      { get { return !InAlternateEditMode; } }
-
-
         // This method returns true when the brushMesh has changed
         public bool DoHandles(IChiselHandles handles, bool isOutlineInsideOut)
         {
@@ -2490,46 +1989,23 @@ namespace Chisel.Editors
             if (HandleSoftEdges(tempPolygon1ToPolygon2))
                 return true;
 
-            if (InCreateEdgeEditMode)
+            if (HandleEdgeMovement3D())
+                return true;
+
+            if (HandlePolygonMovement3D(cameraDirection, isOutlineInsideOut))
+                return true;
+
+            if (in2DMode)
             {
-                if (HaveFocusOnHalfEdgeOrVertex)
-                    RenderHoverPoint();
-
-                if (HandleEdgeCreationFromEdge())
+                if (HandleVertexMovementCameraAligned(cameraDirection))
                     return true;
-
-                if (HandleEdgeCreationFromVertex())
-                    return true;
-
-                // Edit mode that is disabled until we figure out how to fit it in, UX wise
-                /*
-                if (HandleEdgeMovementEdgeAligned(cameraDirection, isCameraOrtho))
-                  return true;
-
-                if (HandlePolygonMovementCameraAligned(cameraDirection, isOutlineInsideOut))
-                    return true;
-                */
             } else
             {
-                if (HandleEdgeMovement3D())
+                if (HandleVertexMovement3D())
                     return true;
-
-                if (HandlePolygonMovement3D(cameraDirection, isOutlineInsideOut))
-                    return true;
-
-                if (in2DMode)
-                {
-                    if (HandleVertexMovementCameraAligned(cameraDirection))
-                        return true;
-                } else
-                {
-                    if (HandleVertexMovement3D())
-                        return true;
-                }
             }
 
-            if (InDefaultEditMode && 
-                !in2DMode &&
+            if (!in2DMode &&
                 selection.selectedVertices.Count > 0)
             {
                 switch (VertexHandle)

@@ -7,6 +7,8 @@ using System.Linq;
 
 namespace Chisel.Editors
 {
+    public enum TopologyItemKind : byte { None, Vertex, Edge, Polygon }
+
     [Serializable]
     public sealed class ChiselTopologySelection
     {
@@ -17,11 +19,39 @@ namespace Chisel.Editors
         public readonly HashSet<int> selectedVertices = new HashSet<int>();
         public readonly HashSet<int> selectedPolygons = new HashSet<int>();
 
+        // the item clicked last, as Unity's active object: a Shift click on it takes it away
+        [SerializeField] internal TopologyItemKind activeKind;
+        [SerializeField] internal int activeIndex;
+
         public void Clear()
         {
             selectedEdges.Clear();
             selectedVertices.Clear();
             selectedPolygons.Clear();
+            activeKind = TopologyItemKind.None;
+        }
+
+        internal void CopyFrom(ChiselTopologySelection other)
+        {
+            selectedEdges.Clear();    selectedEdges.UnionWith(other.selectedEdges);
+            selectedVertices.Clear(); selectedVertices.UnionWith(other.selectedVertices);
+            selectedPolygons.Clear(); selectedPolygons.UnionWith(other.selectedPolygons);
+            activeKind  = other.activeKind;
+            activeIndex = other.activeIndex;
+        }
+
+        internal void SetActive(TopologyItemKind kind, int itemIndex)
+        {
+            activeKind  = itemIndex < 0 ? TopologyItemKind.None : kind;
+            activeIndex = itemIndex;
+        }
+
+        // the active item's index after the items of its kind were renumbered (-1 in a remap is removed)
+        internal void RemapActive(TopologyItemKind kind, int[] remap)
+        {
+            if (activeKind != kind || remap == null)
+                return;
+            SetActive(kind, activeIndex < remap.Length ? remap[activeIndex] : -1);
         }
 
         // Since we can't store HashSets when serializing, we have to store them in arrays instead
@@ -65,7 +95,8 @@ namespace Chisel.Editors
         {
             if (vertexRemap == null)
                 return;
-            var prevSelection = selectedVertices.ToArray();            
+            RemapActive(TopologyItemKind.Vertex, vertexRemap);
+            var prevSelection = selectedVertices.ToArray();
             selectedVertices.Clear();
             for (int v = 0; v < prevSelection.Length; v++)
             {
@@ -80,6 +111,7 @@ namespace Chisel.Editors
         {
             if (edgeRemap == null)
                 return;
+            RemapActive(TopologyItemKind.Edge, edgeRemap);
             var prevSelection = selectedEdges.ToArray();
             selectedEdges.Clear();
             for (int e = 0; e < prevSelection.Length; e++)
@@ -95,6 +127,7 @@ namespace Chisel.Editors
         {
             if (polygonRemap == null)
                 return;
+            RemapActive(TopologyItemKind.Polygon, polygonRemap);
             var prevSelection = selectedPolygons.ToArray();
             selectedPolygons.Clear();
             for (int p = 0; p < prevSelection.Length; p++)

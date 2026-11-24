@@ -6,8 +6,8 @@ using UnityEngine;
 
 namespace Chisel.Editors.Tests
 {
-    // While a brush is edited, Unity's Move, Rotate and Scale keys pick the handle on its selected vertices; with no brush
-    // selected they pick Unity's tool, as they would without Chisel
+    // While a brush is edited, Unity's Move, Rotate and Scale keys pick the handle on its selected vertices (when they
+    // are in use: ChiselShortcutContextTests)
     public sealed class ChiselVertexHandleShortcutsTests
     {
         GameObject root;
@@ -57,27 +57,6 @@ namespace Chisel.Editors.Tests
 
             Assert.That(ChiselEditableOutline.VertexHandle, Is.EqualTo(tool));
             Assert.That(Tools.current, Is.EqualTo(toolBefore), "Unity's tool was switched");
-        }
-
-        [Test]
-        public void WithoutABrushSelected_TheKeyPicksUnitysTool()
-        {
-            root = new GameObject("Not a brush");
-            Selection.activeGameObject = root;
-            Tools.current = Tool.Move;
-
-            ChiselVertexHandleShortcuts.Pick(Tool.Rotate);
-
-            Assert.That(Tools.current, Is.EqualTo(Tool.Rotate));
-        }
-
-        // without the edit tool active the keys are left to Unity
-        [Test]
-        public void WithoutTheEditTool_TheKeysAreInactive()
-        {
-            if (ChiselEditGeneratorTool.IsActive())
-                Assert.Ignore("the edit tool is active");
-            Assert.That(ChiselVertexHandleShortcuts.TagRegistered, Is.False);
         }
     }
 }
