@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using NUnit.Framework;
 using Unity.Mathematics;
 
@@ -225,6 +226,185 @@ namespace Chisel.Core.Tests
 			{
 				harness.Move(composite, null, 0);
 				UpdateAndAssert(harness, "[Sub: c], a");
+			}
+		}
+
+		static void Shift(ContentsTreeHarness harness, ContentsSceneNode brush, float3 offset)
+			=> harness.SetLocalToTree(brush, float4x4.Translate(offset));
+
+		// An intersect dragged from the brush before it that it touches onto another brush before it, into empty space,
+		// and back: each brush before it is kept only where the intersect is
+		[Test]
+		public void MovingAnIntersect_OntoAndAwayFromTheBrushesBeforeIt()
+		{
+			var near = Near(); var far = Far(); var inter = Inter();
+			var scene = new ContentsScene().Add(near).Add(far).Add(inter);
+			using (var harness = BuildAndUpdate(scene, "near, far, inter"))
+			{
+				Shift(harness, inter, new float3(9.5f, 0, 0));
+				UpdateAndAssert(harness, "inter moved onto far");
+				Assert.That(harness.TriangleCountOf(near), Is.EqualTo(0), "near is outside inter now");
+				Assert.That(harness.TriangleCountOf(far), Is.GreaterThan(0));
+
+				Shift(harness, inter, new float3(30, 0, 0));
+				UpdateAndAssert(harness, "inter moved into empty space");
+				Assert.That(harness.TriangleCountOf(near) + harness.TriangleCountOf(far), Is.EqualTo(0), "nothing is inside inter");
+
+				Shift(harness, inter, new float3(0));
+				UpdateAndAssert(harness, "inter moved back");
+				Assert.That(harness.TriangleCountOf(near), Is.GreaterThan(0));
+				Assert.That(harness.TriangleCountOf(far), Is.EqualTo(0));
+			}
+		}
+
+		// A brush before an intersect moved out of it and back
+		[Test]
+		public void MovingABrushBeforeAnIntersect_OutOfItAndBack()
+		{
+			var near = Near(); var inter = Inter();
+			var scene = new ContentsScene().Add(near).Add(Far()).Add(inter);
+			using (var harness = BuildAndUpdate(scene, "near, far, inter"))
+			{
+				Shift(harness, near, new float3(-5, 0, 0));
+				UpdateAndAssert(harness, "near moved out of inter");
+				Assert.That(harness.TriangleCountOf(near), Is.EqualTo(0));
+
+				Shift(harness, near, new float3(0));
+				UpdateAndAssert(harness, "near moved back");
+				Assert.That(harness.TriangleCountOf(near), Is.GreaterThan(0));
+			}
+		}
+
+		// A brush the intersect removes, reordered to after the intersect and back: after it, nothing cuts it
+		[Test]
+		public void ReorderingABrushPastAnIntersect_AndBack()
+		{
+			var far = Far();
+			var scene = new ContentsScene().Add(Near()).Add(far).Add(Inter());
+			using (var harness = BuildAndUpdate(scene, "near, far, inter"))
+			{
+				harness.Move(far, null, 2);
+				UpdateAndAssert(harness, "near, inter, far");
+				Assert.That(harness.TriangleCountOf(far), Is.EqualTo(kWholeBox));
+
+				harness.Move(far, null, 1);
+				UpdateAndAssert(harness, "near, far, inter again");
+				Assert.That(harness.TriangleCountOf(far), Is.EqualTo(0));
+			}
+		}
+
+		// A brush reparented into the composite of an intersect that does not touch it, and out again
+		[Test]
+		public void ReparentingABrushIntoAndOutOfAnIntersectsComposite([Values] bool atTheFront)
+		{
+			var far = Far();
+			var composite = ContentsSceneNode.Composite(CSGOperationType.Additive, Near(), Inter());
+			var scene = new ContentsScene().Add(composite).Add(far);
+			using (var harness = BuildAndUpdate(scene, "[near, inter], far"))
+			{
+				harness.Move(far, composite, atTheFront ? 0 : 1);
+				UpdateAndAssert(harness, "far moved into the composite before inter");
+				Assert.That(harness.TriangleCountOf(far), Is.EqualTo(0));
+
+				harness.Move(far, null, 1);
+				UpdateAndAssert(harness, "far moved out again");
+				Assert.That(harness.TriangleCountOf(far), Is.EqualTo(kWholeBox));
+			}
+		}
+
+		// An intersect moved inside its composite onto p; r, outside the composite, touches p but never the intersect, and
+		// has to be rebuilt through p each time
+		[Test]
+		public void MovingAnIntersectInAComposite_RebuildsATouchingBrushOutsideIt()
+		{
+			var p = Box("p", new float3(0), new float3(2));
+			var r = Box("r", new float3(1), new float3(3));
+			var inter = Far().WithOperation(CSGOperationType.Intersecting);
+			var composite = ContentsSceneNode.Composite(CSGOperationType.Additive, p, inter);
+			var scene = new ContentsScene().Add(composite).Add(r);
+			using (var harness = BuildAndUpdate(scene, "[p, far(Int)], r"))
+			{
+				Shift(harness, inter, new float3(-10.5f, 0, 0));
+				UpdateAndAssert(harness, "the intersect moved onto part of p");
+				Assert.That(harness.TriangleCountOf(p), Is.GreaterThan(0));
+
+				Shift(harness, inter, new float3(0));
+				UpdateAndAssert(harness, "the intersect moved away again");
+				Assert.That(harness.TriangleCountOf(p), Is.EqualTo(0));
+			}
+		}
+
+		// Random moves, operation changes, reorders and reparenting among brushes, intersects and a composite holding one:
+		// after every edit the update must give what the scene is
+		[Test]
+		public void RandomEditsAroundIntersects_GiveWhatTheSceneIs([Values(1, 2, 3)] int seed)
+		{
+			var random    = new Unity.Mathematics.Random((uint)seed * 104729u);
+			var brushes   = new List<ContentsSceneNode>
+			{
+				Box("a", new float3(0), new float3(2)),
+				Box("b", new float3(1.5f, 0, 0), new float3(3.5f, 2, 2)),
+				Box("c", new float3(4, 0, 0), new float3(6, 2, 2)),
+				Box("i", new float3(1, -0.5f, -0.5f), new float3(5, 1.5f, 2.5f), CSGOperationType.Intersecting),
+				Box("p", new float3(0, 0, 3), new float3(3, 2, 5)),
+				Box("q", new float3(2, 0.5f, 2.5f), new float3(4, 1.5f, 5.5f), CSGOperationType.Intersecting),
+				Box("r", new float3(2.5f, 0, 4), new float3(5, 2, 6)),
+			};
+			var composite = ContentsSceneNode.Composite(CSGOperationType.Additive, brushes[4], brushes[5]);
+			composite.name = "composite";
+			var scene = new ContentsScene().Add(brushes[0]).Add(brushes[1]).Add(brushes[2]).Add(brushes[3]).Add(composite).Add(brushes[6]);
+			var offsets = new Dictionary<ContentsSceneNode, float3>();
+			using var harness = BuildAndUpdate(scene, "first update");
+			ContentsComparison.AssertMatchesOracle(harness, "first update");
+			for (int step = 0; step < 30; step++)
+			{
+				var brush = brushes[random.NextInt(brushes.Count)];
+				var inComposite = composite.children.Contains(brush);
+				var siblings = inComposite ? composite.children : harness.Scene.roots;
+				string what;
+				switch (random.NextInt(4))
+				{
+					case 0:
+					{
+						var offset = random.NextInt(3) switch { 0 => new float3(0.5f, 0, 0), 1 => new float3(0, 0.5f, 0), _ => new float3(0, 0, 0.5f) };
+						if (random.NextBool()) offset = -offset;
+						offsets.TryGetValue(brush, out var at);
+						offsets[brush] = at + offset;
+						Shift(harness, brush, at + offset);
+						what = $"{brush.name} moved by {offset}";
+						break;
+					}
+					case 1:
+					{
+						var operation = (CSGOperationType)random.NextInt(3);
+						harness.SetOperation(brush, operation);
+						what = $"{brush.name} made {operation}";
+						break;
+					}
+					case 2:
+					{
+						int index = random.NextInt(siblings.Count);
+						harness.Move(brush, inComposite ? composite : null, index);
+						what = $"{brush.name} reordered to {index}";
+						break;
+					}
+					default:
+					{
+						if (inComposite && composite.children.Count == 1)
+						{
+							what = $"{brush.name} left alone, the last in the composite";
+							break;
+						}
+						var target = inComposite ? harness.Scene.roots : composite.children;
+						int index = random.NextInt(target.Count + 1);
+						harness.Move(brush, inComposite ? null : composite, index);
+						what = $"{brush.name} moved {(inComposite ? "out of" : "into")} the composite at {index}";
+						break;
+					}
+				}
+				// an edit that changes nothing (the same operation, the same place) leaves nothing to update
+				harness.Update();
+				ContentsComparison.AssertMatchesOracle(harness, $"seed {seed} step {step}: {what}");
 			}
 		}
 		#endregion

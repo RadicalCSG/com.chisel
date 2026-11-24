@@ -1157,7 +1157,7 @@ namespace Chisel.Core
             switch (nodeType)
             {
                 case CSGNodeType.Brush:  return (node.flags & (NodeStatusFlags.NeedCSGUpdate)) != NodeStatusFlags.None;
-                case CSGNodeType.Branch: return (node.flags & (NodeStatusFlags.BranchNeedsUpdate | NodeStatusFlags.NeedPreviousSiblingsUpdate)) != NodeStatusFlags.None;
+                case CSGNodeType.Branch: return (node.flags & NodeStatusFlags.BranchNeedsUpdate) != NodeStatusFlags.None;
                 case CSGNodeType.Tree:   return (node.flags & (NodeStatusFlags.TreeNeedsUpdate | NodeStatusFlags.TreeMeshNeedsUpdate)) != NodeStatusFlags.None;
             }
             return false;
