@@ -2198,6 +2198,10 @@ namespace Chisel.Core
 
 				#endregion
 
+				// The CSG jobs are on the critical path: hand them to the workers now, instead of when the main thread
+				// first waits after scheduling the jobs that store the results
+				JobHandle.ScheduleBatchedJobs();
+
 
 				#region Store Results
 
