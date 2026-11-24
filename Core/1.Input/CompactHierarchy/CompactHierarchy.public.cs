@@ -14,7 +14,6 @@ namespace Chisel.Core
     {
         None                        = 0,
         //NeedChildUpdate		    = 1,
-        NeedPreviousSiblingsUpdate  = 2,
 
         BranchNeedsUpdate           = 4,
             
