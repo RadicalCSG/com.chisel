@@ -148,7 +148,7 @@ namespace Chisel.Core
             {
                 var content = default(uint4);
                 cuts[b] = BrushCutKey(b, brushes.AsArray(), state.GroupOf, state.UnfoldOf, state.bordersOf, state.groupKeys.AsArray(), state.globalKey.Value,
-                                      cache.IsCreated, false, ref content, out var key, out _);
+                                      cache.IsCreated, false, SectionsUnknown, ref content, out var key, out _);
                 keys[b] = key;
             }
             FinishCutKeys(brushes, cache, ref state);
@@ -238,17 +238,23 @@ namespace Chisel.Core
             return holds;
         }
 
+        // BrushCutKey's sections when they are not known: the brush's buffer is gone through
+        public const int SectionsUnknown = -1;
+
         // Whether a brush is cut (0 not, 1 keyed, 2 every time) and its key: what the cut reads, the brush as the weld left
         // it, its groups, the borders given by hand, the layouts. Each brush is independent of the others.
+        // sections: how many of the buffer's surfaces have sections (CountSections), or SectionsUnknown
         // content: the brush's ContentHash, given (contentKept) or made here (made)
         public static byte BrushCutKey(int b, NativeArray<BrushData> brushes, UnsafeHashMap<int2, int> groupOf, UnsafeHashMap<int2, float4x4> unfoldOf,
                                        in UnsafeParallelMultiHashMap<int2, HotspotBorderCorner> bordersOf, NativeArray<uint4> groupKeys, uint4 globalKey,
-                                       bool cached, bool contentKept, ref uint4 content, out uint4 key, out bool made)
+                                       bool cached, bool contentKept, int sections, ref uint4 content, out uint4 key, out bool made)
         {
             key = default;
             made = false;
-            if (!brushes[b].brushRenderBuffer.IsCreated ||
-                (!HasSections(ref brushes[b].brushRenderBuffer.Value) && !InGroup(ref brushes[b].brushRenderBuffer.Value, b, groupOf)))
+            if (!brushes[b].brushRenderBuffer.IsCreated)
+                return 0;
+            var hasSections = sections == SectionsUnknown ? HasSections(ref brushes[b].brushRenderBuffer.Value) : sections > 0;
+            if (!hasSections && (groupOf.IsEmpty || !InGroup(ref brushes[b].brushRenderBuffer.Value, b, groupOf)))
                 return 0;
             if (!cached)
                 return 2;
@@ -483,10 +489,24 @@ namespace Chisel.Core
         {
             for (int s = 0; s < buffer.surfaces.Length; s++)
             {
-                if (buffer.surfaces[s].sectionInput.count > 0 && buffer.surfaces[s].indices.Length > 0)
+                if (IsSectioned(ref buffer.surfaces[s]))
                     return true;
             }
             return false;
+        }
+
+        // How many of a buffer's surfaces have sections to cut
+        public static int CountSections(ref ChiselBrushRenderBuffer buffer)
+        {
+            var count = 0;
+            for (int s = 0; s < buffer.surfaces.Length; s++)
+                count += IsSectioned(ref buffer.surfaces[s]) ? 1 : 0;
+            return count;
+        }
+
+        static bool IsSectioned(ref ChiselSurfaceRenderBuffer surface)
+        {
+            return surface.sectionInput.count > 0 && surface.indices.Length > 0;
         }
 
         static BlobAssetReference<ChiselBrushRenderBuffer> Cut(BlobAssetReference<ChiselBrushRenderBuffer> source, int brush, UnsafeHashMap<int2, int> groupOf,

@@ -2433,7 +2433,8 @@ namespace Chisel.Core
                         brushCuts       = Temporaries.hotspotCut.brushCuts.AsDeferredJobArray(),
                         slotOfBrush     = chiselLookupValues.hotspotStageMemory.slotOfBrush.AsDeferredJobArray(),
                         keptContent     = chiselLookupValues.hotspotStageMemory.keptContent.AsDeferredJobArray(),
-                        stageBrushes    = chiselLookupValues.hotspotStageMemory.brushes.AsDeferredJobArray()
+                        stageBrushes    = chiselLookupValues.hotspotStageMemory.brushes.AsDeferredJobArray(),
+                        sectionedSurfaces = chiselLookupValues.hotspotStageMemory.sectionedSurfaces
                     };
                     hotspotCutKeysJob.Schedule(runInParallel, Temporaries.brushRenderData, 16,
                         JobHandles.Read(JobHandleType.decalVolumesJobHandle),

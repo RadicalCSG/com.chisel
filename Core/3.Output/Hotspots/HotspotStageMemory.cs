@@ -17,6 +17,8 @@ namespace Chisel.Core
         public UnsafeList<uint4> hashes;
         // how many of its surfaces have a kind (candidates and slivers), once counted (HotspotStageMemory.CountKinds)
         public int candidates;
+        // how many of its surfaces have hotspot sections to cut (OutputHotspotSections.CountSections), made with its kinds
+        public int sections;
         public uint4 content;
         public bool  hasContent;
 
@@ -26,6 +28,7 @@ namespace Chisel.Core
             if (hashes.IsCreated) hashes.Dispose();
             kinds = default; hashes = default;
             candidates = 0;
+            sections   = 0;
             hasContent = false;
         }
     }
@@ -50,6 +53,8 @@ namespace Chisel.Core
         public NativeReference<bool>  valid;
         // how many surfaces of the model have a kind (HotspotStageBrush.candidates)
         public NativeReference<int>   candidates;
+        // how many surfaces of the model have hotspot sections (HotspotStageBrush.sections)
+        public NativeReference<int>   sectionedSurfaces;
         // the update (counted by Prepare), and how many slots are used
         public NativeReference<uint> stamp;
         public NativeReference<int>  usedCount;
@@ -70,7 +75,8 @@ namespace Chisel.Core
                 layoutsKey  = new NativeReference<uint4>(allocator),
                 valid       = new NativeReference<bool>(allocator),
                 candidates  = new NativeReference<int>(allocator),
-                stamp       = new NativeReference<uint>(allocator),
+                sectionedSurfaces = new NativeReference<int>(allocator),
+                stamp      = new NativeReference<uint>(allocator),
                 usedCount   = new NativeReference<int>(allocator),
                 slotOfBrush = new NativeList<int>(64, allocator),
                 keptKinds   = new NativeList<bool>(64, allocator),
@@ -90,7 +96,8 @@ namespace Chisel.Core
             if (layoutsKey.IsCreated)  layoutsKey.Dispose();
             if (valid.IsCreated)       valid.Dispose();
             if (candidates.IsCreated)  candidates.Dispose();
-            if (stamp.IsCreated)       stamp.Dispose();
+            if (sectionedSurfaces.IsCreated) sectionedSurfaces.Dispose();
+            if (stamp.IsCreated)      stamp.Dispose();
             if (usedCount.IsCreated)   usedCount.Dispose();
             if (slotOfBrush.IsCreated) slotOfBrush.Dispose();
             if (keptKinds.IsCreated)   keptKinds.Dispose();
@@ -128,6 +135,7 @@ namespace Chisel.Core
                     if (!brush.used)
                         usedCount.Value++;
                     candidates.Value -= brush.candidates;
+                    sectionedSurfaces.Value -= brush.sections;
                     brush.Free();
                     brush = new HotspotStageBrush { id = id, used = true };
                 }
@@ -152,7 +160,9 @@ namespace Chisel.Core
                 brush.kinds.Resize(surfaceCount, NativeArrayOptions.ClearMemory);
                 brush.hashes.Resize(surfaceCount, NativeArrayOptions.ClearMemory);
                 candidates.Value -= brush.candidates;
+                sectionedSurfaces.Value -= brush.sections;
                 brush.candidates = 0;
+                brush.sections   = 0;
                 if (surfaceCount > 0)
                     redo.Add(b);
             }
@@ -166,25 +176,30 @@ namespace Chisel.Core
                 if (!brush.used || brush.seen == now)
                     continue;
                 candidates.Value -= brush.candidates;
+                sectionedSurfaces.Value -= brush.sections;
                 brush.Free();
                 brush = default;
                 usedCount.Value--;
             }
         }
 
-        // The kinds of a brush to make again (redo) made into its slot (HotspotGroups.KindsOf); each brush is independent
-        // of the others
+        // The kinds of a brush to make again (redo) made into its slot (HotspotGroups.KindsOf), and its surfaces with
+        // sections counted; each brush is independent of the others
         public static void MakeKinds(int b, NativeArray<BrushData> brushes, NativeArray<HotspotLayoutData> layouts, NativeArray<int> slotOfBrush,
                                      NativeArray<HotspotStageBrush> stage)
         {
             if (!brushes[b].brushRenderBuffer.IsCreated)
                 return;
-            var brush = stage[slotOfBrush[b]];
-            HotspotGroups.KindsOf(ref brushes[b].brushRenderBuffer.Value, layouts, brush.kinds, brush.hashes);
+            var slot  = slotOfBrush[b];
+            var brush = stage[slot];
+            ref var buffer = ref brushes[b].brushRenderBuffer.Value;
+            HotspotGroups.KindsOf(ref buffer, layouts, brush.kinds, brush.hashes);
+            brush.sections = OutputHotspotSections.CountSections(ref buffer);
+            stage[slot] = brush;
         }
 
-        // The brushes whose kinds were made again (MakeKinds) counted in: how many of their surfaces have a kind. Until
-        // then nothing is kept at the next update
+        // The brushes whose kinds were made again (MakeKinds) counted in: how many of their surfaces have a kind, and how
+        // many have sections. Until then nothing is kept at the next update
         public void CountKinds()
         {
             for (int i = 0; i < redo.Length; i++)
@@ -195,6 +210,7 @@ namespace Chisel.Core
                     count += brush.kinds[s] != 0 ? 1 : 0;
                 brush.candidates = count;
                 candidates.Value += count;
+                sectionedSurfaces.Value += brush.sections;
             }
             redo.Clear();
             valid.Value = true;

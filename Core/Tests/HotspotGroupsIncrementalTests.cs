@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using NUnit.Framework;
 using Unity.Collections;
+using Unity.Collections.LowLevel.Unsafe;
 using Unity.Entities;
 using Unity.Mathematics;
 using UnityEngine;
@@ -30,6 +31,8 @@ namespace Chisel.Core.Tests
             public float3 normal, right;
             // no hotspot layout: not a candidate
             public bool plain;
+            // its surface has hotspot sections to cut
+            public bool sections;
         }
 
         [SetUp]
@@ -84,6 +87,8 @@ namespace Chisel.Core.Tests
             }
             surfaces[0].Store(builder, indices, collider, select, render);
             surfaces[0].hotspotSource = new HotspotSurfaceSource { layout = brush.plain ? 0 : 1, right = brush.right, up = new float3(0, 1, 0), normal = brush.normal, density = 1 };
+            if (brush.sections)
+                surfaces[0].sectionInput = new HotspotSectionInput { count = 1 };
             root.surfaceCount = 1;
             var buffer = builder.CreateBlobAssetReference<ChiselBrushRenderBuffer>(Allocator.Persistent);
             builder.Dispose();
@@ -309,6 +314,149 @@ namespace Chisel.Core.Tests
             }
             finally
             {
+                stage.Dispose();
+            }
+        }
+
+        // The stage counts each brush's surfaces with hotspot sections when its kinds are made again, and keeps the count
+        // while the brush's buffer stays the same; the model's count follows, also when a brush is gone
+        [Test]
+        public void TheStagesSectionCount_FollowsEachBrushsBuffer()
+        {
+            var stage = HotspotStageMemory.Create(Allocator.Temp);
+            NativeList<BrushData> brushes;
+            using var _brushes = brushes = new NativeList<BrushData>(Allocator.Temp);
+            NativeList<bool> same;
+            using var _same    = same = new NativeList<bool>(Allocator.Temp) { false, false, false };
+            try
+            {
+                var cut = Square(0, 0);
+                cut.sections = true;
+                brushes.Add(StageBrush(Buffer(cut), 0));
+                brushes.Add(StageBrush(Buffer(Square(1, 4)), 1));
+                brushes.Add(StageBrush(default, 2));
+                int SectionsOf(int id) => stage.brushes[BrushSlots.Of(BrushID(id))].sections;
+                Stage(stage, brushes, same);
+                Assert.That((SectionsOf(0), SectionsOf(1), SectionsOf(2)), Is.EqualTo((1, 0, 0)));
+                Assert.That(stage.sectionedSurfaces.Value, Is.EqualTo(1));
+
+                same[0] = same[1] = same[2] = true;
+                Stage(stage, brushes, same);
+                Assert.That(stage.redo.Length, Is.Zero, "nothing made again");
+                Assert.That((SectionsOf(0), SectionsOf(1), SectionsOf(2)), Is.EqualTo((1, 0, 0)), "kept");
+                Assert.That(stage.sectionedSurfaces.Value, Is.EqualTo(1), "kept");
+
+                brushes[0] = StageBrush(Buffer(Square(0, 0)), 0);
+                cut = Square(1, 4);
+                cut.sections = true;
+                brushes[1] = StageBrush(Buffer(cut), 1);
+                same[0] = same[1] = false;
+                Stage(stage, brushes, same);
+                Assert.That((SectionsOf(0), SectionsOf(1)), Is.EqualTo((0, 1)), "counted again for the new buffers");
+                Assert.That(stage.sectionedSurfaces.Value, Is.EqualTo(1));
+
+                brushes[1] = StageBrush(default, 1);
+                same[1] = false;
+                Stage(stage, brushes, same);
+                Assert.That(SectionsOf(1), Is.Zero, "no buffer now");
+                Assert.That(stage.sectionedSurfaces.Value, Is.Zero);
+
+                cut = Square(2, 8);
+                cut.sections = true;
+                brushes[2] = StageBrush(Buffer(cut), 2);
+                same[0] = same[1] = true;
+                same[2] = false;
+                Stage(stage, brushes, same);
+                Assert.That(stage.sectionedSurfaces.Value, Is.EqualTo(1));
+                brushes.RemoveAt(2);
+                same.RemoveAt(2);
+                Stage(stage, brushes, same);
+                Assert.That(stage.sectionedSurfaces.Value, Is.Zero, "a brush that is gone is not counted");
+            }
+            finally
+            {
+                stage.Dispose();
+            }
+        }
+
+        // Planted: a buffer with sections whose kept count says it has none, in a model without groups. The hotspot cut
+        // takes the kept count and does not go through the buffer; without a kept count it does
+        [Test]
+        public void ABrushWithoutKeptSections_IsNotGoneThroughForTheCut()
+        {
+            var cut = Square(0, 0);
+            cut.sections = true;
+            using var brushes   = new NativeArray<BrushData>(new[] { StageBrush(Buffer(cut), 0) }, Allocator.Temp);
+            var groupOf         = new UnsafeHashMap<int2, int>(1, Allocator.Temp);
+            var unfoldOf        = new UnsafeHashMap<int2, float4x4>(1, Allocator.Temp);
+            var bordersOf       = new UnsafeParallelMultiHashMap<int2, HotspotBorderCorner>(1, Allocator.Temp);
+            using var groupKeys = new NativeArray<uint4>(0, Allocator.Temp);
+            try
+            {
+                byte Cut(int sections)
+                {
+                    var content = default(uint4);
+                    return OutputHotspotSections.BrushCutKey(0, brushes, groupOf, unfoldOf, bordersOf, groupKeys, default, false, false, sections,
+                                                             ref content, out _, out _);
+                }
+                Assert.That(Cut(0), Is.Zero, "kept: no sections");
+                Assert.That(Cut(OutputHotspotSections.SectionsUnknown), Is.Not.Zero, "not kept: the buffer is gone through");
+            }
+            finally
+            {
+                groupOf.Dispose();
+                unfoldOf.Dispose();
+                bordersOf.Dispose();
+            }
+        }
+
+        // Planted: a brush counted with sections, in a model the stage counted without any and without groups. The job
+        // that keys the hotspot cut does not go through the brushes then; with the model's count it does
+        [Test]
+        public void AModelWithoutSectionsOrGroups_IsNotGoneThroughForTheCut()
+        {
+            var stage = HotspotStageMemory.Create(Allocator.Temp);
+            var state = HotspotCutState.Create(Allocator.Temp);
+            NativeList<BrushData> brushes;
+            using var _brushes = brushes = new NativeList<BrushData>(Allocator.Temp);
+            using var same     = new NativeList<bool>(Allocator.Temp) { false };
+            try
+            {
+                var cut = Square(0, 0);
+                cut.sections = true;
+                brushes.Add(StageBrush(Buffer(cut), 0));
+                Stage(stage, brushes, same);
+                state.brushKeys.ResizeUninitialized(1);
+                state.brushCuts.ResizeUninitialized(1);
+                byte Cut()
+                {
+                    state.brushCuts[0] = 255;
+                    new HotspotCutKeysJob
+                    {
+                        brushRenderData   = brushes.AsArray(),
+                        groupOf           = state.groupOfRef,
+                        unfoldOf          = state.unfoldOfRef,
+                        bordersOf         = state.bordersOf,
+                        groupKeys         = state.groupKeys.AsArray(),
+                        globalKey         = state.globalKey,
+                        cached            = false,
+                        brushKeys         = state.brushKeys.AsArray(),
+                        brushCuts         = state.brushCuts.AsArray(),
+                        slotOfBrush       = stage.slotOfBrush.AsArray(),
+                        keptContent       = stage.keptContent.AsArray(),
+                        stageBrushes      = stage.brushes.AsArray(),
+                        sectionedSurfaces = stage.sectionedSurfaces
+                    }.Execute(0);
+                    return state.brushCuts[0];
+                }
+                Assert.That(Cut(), Is.Not.Zero, "counted: the brush is cut");
+                stage.sectionedSurfaces.Value = 0;
+                Assert.That(Cut(), Is.Zero, "the model counted without sections");
+                Assert.That(state.brushKeys[0], Is.EqualTo(default(uint4)));
+            }
+            finally
+            {
+                state.Dispose();
                 stage.Dispose();
             }
         }
