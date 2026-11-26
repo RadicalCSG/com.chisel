@@ -22,6 +22,7 @@ namespace Chisel.Editors
                 typeof(ChiselPlacementTool),
                 typeof(ChiselEditGeneratorTool),
                 typeof(ChiselMovePivotTool),
+                typeof(ChiselClipTool),
                 typeof(ChiselUVMoveTool),
                 typeof(ChiselUVRotateTool),
                 typeof(ChiselUVScaleTool),
