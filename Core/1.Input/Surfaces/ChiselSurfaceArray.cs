@@ -65,12 +65,17 @@ namespace Chisel.Core
             if (prevLength > 0)
                 Array.Copy(surfaces, newSurfaces, Mathf.Min(newSurfaces.Length, prevLength));
             for (int i = prevLength; i < newSurfaces.Length; i++)
-            {
-                newSurfaces[i] = ChiselSurface.Create(ChiselProjectSettings.DefaultWallMaterial);
-                newSurfaces[i].surfaceDetails.hotspot.seed = (uint)Guid.NewGuid().GetHashCode();
-            }
+                newSurfaces[i] = CreateNewSurface();
             surfaces = newSurfaces;
             return true;
+        }
+
+        // a surface as a new face gets: the default wall material, and its own hotspot seed
+        public static ChiselSurface CreateNewSurface()
+        {
+            var surface = ChiselSurface.Create(ChiselProjectSettings.DefaultWallMaterial);
+            surface.surfaceDetails.hotspot.seed = (uint)Guid.NewGuid().GetHashCode();
+            return surface;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]

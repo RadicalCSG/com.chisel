@@ -55,6 +55,8 @@ namespace Chisel.Editors
         // while a brush is edited, the vertices, edges and faces on its faces turned away from the camera are shown and
         // can be selected too (ChiselEditableOutline)
         public static bool				SelectBackFaces           { get; set; }
+        // what the clip tool keeps of the brushes it cuts
+        public static ChiselClipMode	ClipMode                  { get; set; }
 
         public static bool				RotateSnapping  { get { return Snapping.RotateSnappingEnabled; } set { Snapping.RotateSnappingEnabled = value; } }
         public static float 			RotateSnap      { get { return Snapping.RotateSnappingStep; } set { Snapping.RotateSnappingStep = value; } }
@@ -83,6 +85,7 @@ namespace Chisel.Editors
             ShowIntersectingOutlines = EditorPrefs.GetBool("ShowIntersectingOutlines", false);
             ShowBrushPieces          = EditorPrefs.GetBool("ShowBrushPieces",          false);
             SelectBackFaces          = EditorPrefs.GetBool("SelectBackFaces",          false);
+            ClipMode                 = (ChiselClipMode)EditorPrefs.GetInt("ClipMode", (int)ChiselClipMode.KeepBehind);
 
             RotateSnapping	= EditorPrefs.GetBool ("RotateSnapping",	true);
 
@@ -124,6 +127,7 @@ namespace Chisel.Editors
             EditorPrefs.SetBool("ShowIntersectingOutlines", ShowIntersectingOutlines);
             EditorPrefs.SetBool("ShowBrushPieces",          ShowBrushPieces);
             EditorPrefs.SetBool("SelectBackFaces",          SelectBackFaces);
+            EditorPrefs.SetInt("ClipMode",                  (int)ClipMode);
 
             EditorPrefs.SetBool("RotateSnapping",	RotateSnapping);
 

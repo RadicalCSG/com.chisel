@@ -17,6 +17,10 @@ namespace Chisel.Editors
         public const KeyCode SwitchToUVRotateMode       = KeyCode.F4;
         public const KeyCode SwitchToUVScaleMode        = KeyCode.F5;
         public const KeyCode SwitchToPivotEditMode      = KeyCode.F6;
+        public const KeyCode SwitchToClipEditMode       = KeyCode.F7;
+
+        // in the clip tool: the next of what it keeps of the brushes it cuts
+        public const KeyCode CycleClipModeKey           = KeyCode.Tab;
 
 
         // picking a generator to draw, in the Scene view while Chisel's tools are active; as in RealtimeCSG where it had them
