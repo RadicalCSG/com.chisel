@@ -76,6 +76,46 @@ namespace Chisel.Core.Tests
 			}
 		}
 
+		// A floor with a grid of boxes standing in it: its top is one face with a hole for every box, each bridged to the
+		// boundary around it before the face is cut into ears
+		[Test]
+		public void AFloorWithAHoleForEveryBoxStandingInIt_IsTriangulatedAsTheSceneIs()
+		{
+			var scene = new ContentsScene()
+				.Add(ContentsSceneNode.Brush(ContentsScene.BoxPlanes(new float3(-1, -1, -1), new float3(31, 0.25f, 31)), name: "floor"));
+			for (int x = 0; x < 10; x++)
+				for (int z = 0; z < 10; z++)
+					scene.Add(ContentsSceneNode.Brush(ContentsScene.BoxPlanes(new float3(x * 3, 0, z * 3), new float3(x * 3 + 1.5f, 1, z * 3 + 1.25f)),
+													  name: $"box {x} {z}"));
+			using (var harness = BuildAndUpdate(scene))
+			{
+				var floor = harness.Scene.roots[0];
+				Assert.That(ExactCSGCapture.Brushes.TryGetValue(harness.NodeIDOf(floor), out var brush) && brush.parts != null, Is.True,
+							"no triangles captured for the floor");
+				int topTriangles = 0, violations = 0, innerEdges = 0;
+				string first = null;
+				foreach (var part in brush.parts)
+				{
+					var plane = brush.planes[part.surface];
+					if (!(plane.a == 0 && plane.c == 0 && plane.b > 0))
+						continue;
+					topTriangles += part.triangles.Length / 3;
+					var result = CheckPart(brush, part);
+					innerEdges += result.innerEdges;
+					violations += result.violations;
+					first ??= result.first;
+				}
+				// a hundred holes of four corners each take more than 400 triangles to fill around
+				Assert.That(topTriangles, Is.GreaterThan(400), "the floor's top was not cut around every box");
+				Assert.That(violations, Is.Zero, $"{violations} of {innerEdges} inner edges are not locally Delaunay; first: {first}");
+
+				var mismatches = ExactJudge.FindMismatches(harness, 100, out var judged);
+				Assert.That(judged, Is.GreaterThan(0), "the judge judged nothing");
+				Assert.That(mismatches, Is.Empty, string.Join("; ", mismatches.Select(m => m.Format(""))));
+				ContentsComparison.AssertMatchesOracle(harness, "the floor and its boxes");
+			}
+		}
+
 		[Test]
 		public void TheCheck_ReportsTheDiagonalThatShouldHaveBeenFlipped()
 		{

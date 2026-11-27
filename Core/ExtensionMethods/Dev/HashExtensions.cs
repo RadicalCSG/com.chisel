@@ -99,4 +99,34 @@ namespace Chisel.Core
 			buffer.Add(array.GetUnsafeReadOnlyPtr(), array.Length * sizeof(T));
 		}
 	}
+
+	// A hash map key whose hash is mixed before the map takes its low bits for a bucket. Unity.Mathematics hashes a float
+	// vector by multiplying and adding its bits, and the low bits of a position on a grid (0.25, 4.5, ...) are all zero, so
+	// such positions as keys would all fall into a few buckets. Equal as the value is equal.
+	public readonly struct MixedKey<T> : IEquatable<MixedKey<T>> where T : unmanaged, IEquatable<T>
+	{
+		public readonly T value;
+
+		[MethodImpl(MethodImplOptions.AggressiveInlining)]
+		public MixedKey(T value) { this.value = value; }
+
+		[MethodImpl(MethodImplOptions.AggressiveInlining)]
+		public bool Equals(MixedKey<T> other) { return value.Equals(other.value); }
+
+		public override bool Equals(object obj) { return obj is MixedKey<T> other && Equals(other); }
+
+		// MurmurHash3's finalizer: every bit of the value's hash reaches the low bits
+		[MethodImpl(MethodImplOptions.AggressiveInlining)]
+		public override int GetHashCode()
+		{
+			uint h = (uint)value.GetHashCode();
+			h ^= h >> 16; h *= 0x85ebca6bu;
+			h ^= h >> 13; h *= 0xc2b2ae35u;
+			h ^= h >> 16;
+			return (int)h;
+		}
+
+		[MethodImpl(MethodImplOptions.AggressiveInlining)]
+		public static implicit operator MixedKey<T>(T value) { return new MixedKey<T>(value); }
+	}
 }
