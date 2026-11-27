@@ -464,21 +464,19 @@ namespace Chisel.Core
                     continue;
                 candidates.Add(n);
             }
-            for (int i = 1; i < candidates.Length; i++)
+            // Tried nearest first (largest u), and among equals in the order they were found: the order a stable sort would
+            // give, taken one at a time, since the first visible one is usually among the first few
+            while (candidates.Length > 0)
             {
-                int item = candidates[i];
-                int j = i - 1;
-                while (j >= 0 && ExactPredicates.CompareCoordinate(vertices[nodes[candidates[j]].vertex].vertex,
-                                                                   vertices[nodes[item].vertex].vertex, axisU) < 0)
+                int best = 0;
+                for (int c = 1; c < candidates.Length; c++)
                 {
-                    candidates[j + 1] = candidates[j];
-                    j--;
+                    if (ExactPredicates.CompareCoordinate(vertices[nodes[candidates[best]].vertex].vertex,
+                                                          vertices[nodes[candidates[c]].vertex].vertex, axisU) < 0)
+                        best = c;
                 }
-                candidates[j + 1] = item;
-            }
-            for (int c = 0; c < candidates.Length; c++)
-            {
-                int target = candidates[c];
+                int target = candidates[best];
+                candidates.RemoveAt(best);
                 if (!BridgeVisible(ref vertices, from, target))
                     continue;
                 Splice(from, target, nodes[target].loop);

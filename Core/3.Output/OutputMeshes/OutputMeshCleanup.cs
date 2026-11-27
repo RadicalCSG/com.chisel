@@ -714,7 +714,7 @@ namespace Chisel.Core
         {
             onOpenEdge.Clear();
             onOpenEdge.Resize(positions.Length, NativeArrayOptions.ClearMemory);
-            using var edges = new NativeParallelHashMap<float3x2, int>(indices.Length, Allocator.Temp);
+            using var edges = new NativeParallelHashMap<MixedKey<float3x2>, int>(indices.Length, Allocator.Temp);
             CountEdges(indices, positions, edges);
             for (int i = 0; i + 2 < indices.Length; i += 3)
             {
@@ -733,7 +733,7 @@ namespace Chisel.Core
 
         // A surface's edges by the positions of their ends, counted the way round each triangle runs them (TakeOutline),
         // whether or not the triangles on either side share their vertices (the hotspot cut gives each piece its own)
-        static void CountEdges(NativeList<int> indices, NativeList<float3> positions, NativeParallelHashMap<float3x2, int> edges)
+        static void CountEdges(NativeList<int> indices, NativeList<float3> positions, NativeParallelHashMap<MixedKey<float3x2>, int> edges)
         {
             for (int i = 0; i + 2 < indices.Length; i += 3)
             {
@@ -743,7 +743,7 @@ namespace Chisel.Core
             }
         }
 
-        static void CountEdge(NativeParallelHashMap<float3x2, int> edges, float3 from, float3 to)
+        static void CountEdge(NativeParallelHashMap<MixedKey<float3x2>, int> edges, float3 from, float3 to)
         {
             var key = new float3x2(from, to);
             edges[key] = edges.TryGetValue(key, out var count) ? count + 1 : 1;
@@ -752,7 +752,7 @@ namespace Chisel.Core
         // Whether this time a triangle runs an edge from -> to is on the outline, asked once for each time (CountEdges): an
         // edge is on the outline as many times as it is run one way more often than the other, so two triangles at the
         // same three corners wound the other way round, which cover nothing, close nothing either
-        static bool TakeOutline(NativeParallelHashMap<float3x2, int> edges, float3 from, float3 to)
+        static bool TakeOutline(NativeParallelHashMap<MixedKey<float3x2>, int> edges, float3 from, float3 to)
         {
             var key = new float3x2(from, to);
             edges.TryGetValue(key, out var along);
@@ -786,7 +786,7 @@ namespace Chisel.Core
                 return;
             ref var surfaces = ref buffer.Value.surfaces;
             // by the positions of their ends (CountEdges)
-            using var edges = new NativeParallelHashMap<float3x2, int>(64, Allocator.Temp);
+            using var edges = new NativeParallelHashMap<MixedKey<float3x2>, int>(64, Allocator.Temp);
             for (int s = 0; s < surfaces.Length; s++)
             {
                 ref var surface = ref surfaces[s];
@@ -988,8 +988,8 @@ namespace Chisel.Core
             }
             using var outlineCorner = new NativeList<bool>(Allocator.Temp);
             // the corners of every open outline edge, this brush's or another's: a corner another brush moves moves here too
-            NativeParallelHashSet<float3> openCorners;
-            using var _openCorners = openCorners = new NativeParallelHashSet<float3>(64, Allocator.Temp);
+            NativeParallelHashSet<MixedKey<float3>> openCorners;
+            using var _openCorners = openCorners = new NativeParallelHashSet<MixedKey<float3>>(64, Allocator.Temp);
             for (int o = 0; o < outlines.Length; o++)
             {
                 if (shared[EdgeKey(outlines[o].from, outlines[o].to)] != 1)
@@ -999,8 +999,8 @@ namespace Chisel.Core
             }
             // where each corner of the brush's drawn outlines moves: one position moves alike in every surface of the
             // brush, outline or not, so no surface keeps a corner another one moved
-            NativeParallelHashMap<float3, float3> snapOf;
-            using var _snapOf = snapOf = new NativeParallelHashMap<float3, float3>(64, Allocator.Temp);
+            NativeParallelHashMap<MixedKey<float3>, float3> snapOf;
+            using var _snapOf = snapOf = new NativeParallelHashMap<MixedKey<float3>, float3>(64, Allocator.Temp);
             for (int s = 0; s < original.surfaces.Length; s++)
             {
                 ref var from = ref original.surfaces[s];
@@ -1186,8 +1186,8 @@ namespace Chisel.Core
         static void RecordChanges(ref ChiselSurfaceRenderBuffer from, NativeList<int> indices, NativeList<float3> positions, int surface,
                                   NativeList<MeshCleanupChange> changes)
         {
-            NativeParallelHashMap<float3x3, int> count;
-            using var _count = count = new NativeParallelHashMap<float3x3, int>(from.indices.Length / 3 + indices.Length / 3 + 1, Allocator.Temp);
+            NativeParallelHashMap<MixedKey<float3x3>, int> count;
+            using var _count = count = new NativeParallelHashMap<MixedKey<float3x3>, int>(from.indices.Length / 3 + indices.Length / 3 + 1, Allocator.Temp);
             for (int i = 0; i + 2 < from.indices.Length; i += 3)
             {
                 var key = Rotated(from.colliderVertices[from.indices[i]], from.colliderVertices[from.indices[i + 1]], from.colliderVertices[from.indices[i + 2]]);
@@ -1231,7 +1231,7 @@ namespace Chisel.Core
             var count = indices.Length / 3;
             NativeArray<bool> drop;
             using var _drop = drop = new NativeArray<bool>(count, Allocator.Temp);
-            using var byCorners = new NativeParallelMultiHashMap<float3x3, int>(count + 1, Allocator.Temp);
+            using var byCorners = new NativeParallelMultiHashMap<MixedKey<float3x3>, int>(count + 1, Allocator.Temp);
             for (int t = 0; t < count; t++)
             {
                 var a = positions[indices[t * 3]]; var b = positions[indices[t * 3 + 1]]; var c = positions[indices[t * 3 + 2]];
@@ -1293,7 +1293,7 @@ namespace Chisel.Core
                     return false;
             }
             // the outline (CountEdges, TakeOutline)
-            using var edges = new NativeParallelHashMap<float3x2, int>(indices.Length, Allocator.Temp);
+            using var edges = new NativeParallelHashMap<MixedKey<float3x2>, int>(indices.Length, Allocator.Temp);
             CountEdges(indices, collider, edges);
             var changed = false;
             using var output = new NativeList<int>(indices.Length, Allocator.Temp);
@@ -1868,7 +1868,7 @@ namespace Chisel.Core
             public bool RemoveSeamVertices()
             {
                 var changed = false;
-                using var byPosition = new NativeParallelMultiHashMap<float3, int>(render.Length, Allocator.Temp);
+                using var byPosition = new NativeParallelMultiHashMap<MixedKey<float3>, int>(render.Length, Allocator.Temp);
                 for (int v = 0; v < render.Length; v++)
                 {
                     if (sameAs[v] == v)
@@ -1961,7 +1961,7 @@ namespace Chisel.Core
             public static bool RemoveSharedSeamVertices(ref SurfaceMesh a, ref SurfaceMesh b)
             {
                 var changed = false;
-                using var inB = new NativeParallelHashMap<float3, int>(b.render.Length, Allocator.Temp);
+                using var inB = new NativeParallelHashMap<MixedKey<float3>, int>(b.render.Length, Allocator.Temp);
                 for (int v = 0; v < b.render.Length; v++)
                 {
                     if (b.sameAs[v] == v)
